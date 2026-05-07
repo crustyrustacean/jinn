@@ -102,8 +102,11 @@ fn render_strategy_row(
     Line::from(all_spans)
 }
 
-/// Splits `text` into spans, applying [`PICKER_HIGHLIGHT_STYLE`] to characters whose
+/// Splits `text` into spans, applying the highlight style to characters whose
 /// byte offset falls within one of `match_indices`.
+///
+/// Matched characters get [`PICKER_HIGHLIGHT_STYLE`] patched onto the base style
+/// (preserving the base foreground color).
 fn highlight_text<'a>(
     text: &str,
     base_style: Style,
@@ -112,6 +115,8 @@ fn highlight_text<'a>(
     if match_indices.is_empty() || text.is_empty() {
         return vec![Span::styled(text.to_owned(), base_style)];
     }
+
+    let highlight_style = base_style.patch(PICKER_HIGHLIGHT_STYLE);
 
     let mut spans = Vec::new();
     let mut current_start = 0;
@@ -125,7 +130,7 @@ fn highlight_text<'a>(
             if !segment.is_empty() {
                 spans.push(Span::styled(
                     segment,
-                    if in_highlight { PICKER_HIGHLIGHT_STYLE } else { base_style },
+                    if in_highlight { highlight_style } else { base_style },
                 ));
             }
             current_start = byte_off;
@@ -137,7 +142,7 @@ fn highlight_text<'a>(
         let rest = text[current_start..].to_owned();
         spans.push(Span::styled(
             rest,
-            if in_highlight { PICKER_HIGHLIGHT_STYLE } else { base_style },
+            if in_highlight { highlight_style } else { base_style },
         ));
     }
 
@@ -448,21 +453,21 @@ mod tests {
     }
 
     #[test]
-    fn render_row_with_highlight_applies_cyan_bg_to_matched_name_chars() {
+    fn render_row_with_highlight_applies_gray_bg_to_matched_name_chars() {
         // Given a strategy entry with name "Passthrough".
         let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
 
         // When highlighting with match at byte 0 (the "P").
         let line = entry.render_row_with_highlight(false, &[0..1]);
 
-        // Then at least one span has cyan background.
-        let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(ratatui::style::Color::Blue));
-        assert!(has_highlight, "expected at least one span with cyan background");
+        // Then at least one span has gray background.
+        let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(ratatui::style::Color::DarkGray));
+        assert!(has_highlight, "expected at least one span with gray background");
         // And the highlighted content contains "P".
         let highlighted: String = line
             .spans
             .iter()
-            .filter(|s| s.style.bg == Some(ratatui::style::Color::Blue))
+            .filter(|s| s.style.bg == Some(ratatui::style::Color::DarkGray))
             .map(|s| s.content.clone())
             .collect();
         assert!(highlighted.contains('P'), "highlighted span should contain 'P'");
