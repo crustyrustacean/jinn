@@ -70,10 +70,6 @@ impl WorkflowPanelState {
         self.show_detail = !self.show_detail;
     }
 
-    /// Sets the vertical scroll offset.
-    pub fn set_scroll_offset(&mut self, offset: u16) {
-        self.scroll_offset = offset;
-    }
 }
 
 #[cfg(test)]

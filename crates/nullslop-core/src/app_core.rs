@@ -63,7 +63,7 @@ impl AppCore {
     ///
     /// The caller registers components on the returned bus via
     /// [`Bus::register_command_handler`] / [`Bus::register_event_handler`],
-    /// and optionally sets the actor host via [`Self::set_actor_host`].
+    /// and optionally sets the actor host directly on the public field.
     #[must_use]
     pub fn new(services: nullslop_services::Services) -> Self {
         let (sender, receiver) = kanal::unbounded();
@@ -81,14 +81,6 @@ impl AppCore {
     #[must_use]
     pub fn sender(&self) -> Sender<AppMsg> {
         self.sender.clone()
-    }
-
-    /// Sets the actor host service.
-    ///
-    /// `AppCore` holds its own [`ActorHostService`] so that [`tick()`](Self::tick)
-    /// can forward processed messages without depending on the [`Services`](nullslop_services::Services) container.
-    pub fn set_actor_host(&mut self, svc: ActorHostService) {
-        self.actor_host = Some(svc);
     }
 
     /// Returns a reference to the actor host, if set.
