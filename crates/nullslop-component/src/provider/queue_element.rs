@@ -10,6 +10,8 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
+use unicode_segmentation::UnicodeSegmentation as _;
+
 use crate::AppState;
 
 /// Displays queued messages as dimmed entries.
@@ -32,7 +34,7 @@ impl UiElement<AppState> for QueueDisplayElement {
             .map(|msg| {
                 let first_line = msg.lines().next().unwrap_or("");
                 let display = if first_line.len() > 60 {
-                    let truncated: String = first_line.chars().take(59).collect();
+                    let truncated: String = first_line.graphemes(true).take(59).collect();
                     format!("QUEUED: {truncated}…")
                 } else {
                     format!("QUEUED: {first_line}")

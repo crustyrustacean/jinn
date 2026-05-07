@@ -117,10 +117,11 @@ mod tests {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
-        let mut state = AppState::default();
-
         // Pre-populate with show_all flag set.
-        state.keymap_picker_show_all = true;
+        let mut state = AppState {
+            keymap_picker_show_all: true,
+            ..Default::default()
+        };
 
         // When processing OpenPicker { kind: Keymap }.
         bus.submit_command(nullslop_protocol::Command::OpenPicker {

@@ -16,7 +16,10 @@ pub struct PromptStrategyId(String);
 impl PromptStrategyId {
     /// Create a new strategy ID.
     #[must_use]
-    pub fn new<S: Into<String>>(id: S) -> Self {
+    pub fn new<S>(id: S) -> Self
+    where
+        S: Into<String>,
+    {
         Self(id.into())
     }
 

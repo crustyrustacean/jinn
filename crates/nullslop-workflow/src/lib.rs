@@ -20,7 +20,6 @@
 
 pub mod builder;
 pub mod definition;
-pub mod error;
 pub mod guard;
 pub mod hash;
 pub mod state;
@@ -28,7 +27,7 @@ pub mod template;
 
 pub use builder::WorkflowBuilder;
 pub use definition::{ModelHint, StepDef, StepOutputDef, WorkflowDef};
-pub use error::{WorkflowError, WorkflowErrorKind};
+pub use builder::{WorkflowError, WorkflowErrorKind};
 pub use guard::{
     DefaultGuardEvaluator, GuardEvaluator, GuardExpr, GuardFailure, GuardFileSystem,
     GuardPredicate, GuardResult, GuardShell, RealFileSystem, RealShell,
