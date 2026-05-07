@@ -283,6 +283,12 @@ impl ToolOrchestratorActor {
         tool_calls: Vec<ToolCall>,
         ctx: &ActorContext,
     ) {
+        tracing::trace!(
+            session_id = ?session_id,
+            tool_call_count = tool_calls.len(),
+            "handle_execute_tool_batch"
+        );
+
         if tool_calls.is_empty() {
             if let Err(e) = ctx.send_event(Event::ToolBatchCompleted {
                 payload: ToolBatchCompleted {
@@ -334,6 +340,18 @@ impl ToolOrchestratorActor {
 
     /// Dispatches a single tool call to the appropriate handler.
     fn dispatch_tool_call(&self, session_id: SessionId, tool_call: ToolCall, ctx: &ActorContext) {
+        tracing::trace!(
+            session_id = ?session_id,
+            tool = %tool_call.name,
+            reg_type = match self.tools.get(&tool_call.name) {
+                Some(ToolRegistration::Builtin { .. }) => "builtin",
+                Some(ToolRegistration::Actor { .. }) => "actor",
+                Some(ToolRegistration::Workflow { .. }) => "workflow",
+                None => "unknown",
+            },
+            "dispatch_tool_call"
+        );
+
         match self.tools.get(&tool_call.name) {
             Some(ToolRegistration::Builtin { execute, .. }) => {
                 let sink = ctx.sink();
@@ -427,6 +445,12 @@ impl ToolOrchestratorActor {
         batch.results.push(result);
         batch.remaining -= 1;
 
+        tracing::trace!(
+            session_id = ?session_id,
+            remaining = batch.remaining,
+            "handle_tool_execution_completed"
+        );
+
         if batch.remaining == 0 {
             // unwrap: we just checked the entry exists above.
             let results = self
@@ -434,6 +458,12 @@ impl ToolOrchestratorActor {
                 .remove(&session_id)
                 .map(|b| b.results)
                 .unwrap_or_default();
+
+            tracing::trace!(
+                session_id = ?session_id,
+                result_count = results.len(),
+                "emitting ToolBatchCompleted"
+            );
 
             if let Err(e) = ctx.send_event(Event::ToolBatchCompleted {
                 payload: ToolBatchCompleted {

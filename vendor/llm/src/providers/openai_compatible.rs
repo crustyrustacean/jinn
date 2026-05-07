@@ -913,8 +913,12 @@ fn create_openai_tool_stream(
     let stream = response
         .bytes_stream()
         .scan(
-            (String::new(), HashMap::<usize, OpenAIToolUseState>::new()),
-            move |(buffer, tool_states), chunk| {
+            (
+                String::new(),
+                HashMap::<usize, OpenAIToolUseState>::new(),
+                false, // done_emitted
+            ),
+            move |(buffer, tool_states, done_emitted), chunk| {
                 let result = match chunk {
                     Ok(bytes) => {
                         let text = String::from_utf8_lossy(&bytes);
@@ -933,7 +937,7 @@ fn create_openai_tool_stream(
                                 continue;
                             }
 
-                            match parse_openai_sse_chunk_with_tools(event, tool_states) {
+                            match parse_openai_sse_chunk_with_tools(event, tool_states, done_emitted) {
                                 Ok(chunks) => results.extend(chunks.into_iter().map(Ok)),
                                 Err(e) => results.push(Err(e)),
                             }
@@ -963,6 +967,7 @@ fn create_openai_tool_stream(
 fn parse_openai_sse_chunk_with_tools(
     event: &str,
     tool_states: &mut HashMap<usize, OpenAIToolUseState>,
+    done_emitted: &mut bool,
 ) -> Result<Vec<ChatStreamChunk>, LLMError> {
     let mut results = Vec::new();
 
@@ -970,8 +975,8 @@ fn parse_openai_sse_chunk_with_tools(
         let line = line.trim();
         if let Some(data) = line.strip_prefix("data: ") {
             if data == "[DONE]" {
-                let has_tool_calls = !tool_states.is_empty();
-                // Emit any remaining tool completions
+                // Emit any remaining tool completions that weren't already drained
+                // by a finish_reason path (defensive — should be empty after finish_reason).
                 for (index, state) in tool_states.drain() {
                     if state.started {
                         results.push(ChatStreamChunk::ToolUseComplete {
@@ -987,13 +992,20 @@ fn parse_openai_sse_chunk_with_tools(
                         });
                     }
                 }
-                results.push(ChatStreamChunk::Done {
-                    stop_reason: if has_tool_calls {
-                        "tool_use".to_string()
-                    } else {
-                        "end_turn".to_string()
-                    },
-                });
+
+                // Skip emitting Done if finish_reason already emitted one.
+                // This prevents duplicate Done events when OpenRouter sends
+                // finish_reason: "tool_calls" before the [DONE] marker.
+                if !*done_emitted {
+                    let has_remaining_tools = !results.is_empty();
+                    results.push(ChatStreamChunk::Done {
+                        stop_reason: if has_remaining_tools {
+                            "tool_use".to_string()
+                        } else {
+                            "end_turn".to_string()
+                        },
+                    });
+                }
                 return Ok(results);
             }
 
@@ -1068,6 +1080,7 @@ fn parse_openai_sse_chunk_with_tools(
                         results.push(ChatStreamChunk::Done {
                             stop_reason: stop_reason.to_string(),
                         });
+                        *done_emitted = true;
                     }
                 }
             }
@@ -1333,7 +1346,8 @@ mod tests {
     fn test_parse_openai_stream_text_delta() {
         let event = r#"data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}"#;
         let mut tool_states = HashMap::new();
-        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states, &mut done_emitted).unwrap();
 
         assert_eq!(results.len(), 1);
         match &results[0] {
@@ -1346,7 +1360,8 @@ mod tests {
     fn test_parse_openai_stream_tool_call_start() {
         let event = r#"data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc123","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}"#;
         let mut tool_states = HashMap::new();
-        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states, &mut done_emitted).unwrap();
 
         assert_eq!(results.len(), 1);
         match &results[0] {
@@ -1380,7 +1395,8 @@ mod tests {
         );
 
         let event = r#"data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\":"}}]},"finish_reason":null}]}"#;
-        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states, &mut done_emitted).unwrap();
 
         assert_eq!(results.len(), 1);
         match &results[0] {
@@ -1412,7 +1428,8 @@ mod tests {
         );
 
         let event = r#"data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
-        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states, &mut done_emitted).unwrap();
 
         // Should have ToolUseComplete and Done
         assert_eq!(results.len(), 2);
@@ -1442,7 +1459,8 @@ mod tests {
     fn test_parse_openai_stream_finish_reason_stop() {
         let event = r#"data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
         let mut tool_states = HashMap::new();
-        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states, &mut done_emitted).unwrap();
 
         assert_eq!(results.len(), 1);
         match &results[0] {
@@ -1457,7 +1475,8 @@ mod tests {
     fn test_parse_openai_stream_done_marker() {
         let event = "data: [DONE]";
         let mut tool_states = HashMap::new();
-        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states, &mut done_emitted).unwrap();
 
         assert_eq!(results.len(), 1);
         match &results[0] {
@@ -1482,7 +1501,8 @@ mod tests {
         );
 
         let event = "data: [DONE]";
-        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states, &mut done_emitted).unwrap();
 
         // Should emit ToolUseComplete before Done
         assert_eq!(results.len(), 2);
@@ -1504,25 +1524,29 @@ mod tests {
 
         // 1. Tool call start with name
         let start_event = r#"data: {"id":"chatcmpl-123","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}"#;
-        let results = parse_openai_sse_chunk_with_tools(start_event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(start_event, &mut tool_states, &mut done_emitted).unwrap();
         assert!(
             matches!(&results[0], ChatStreamChunk::ToolUseStart { name, .. } if name == "get_weather")
         );
 
         // 2. Arguments delta 1
         let delta1 = r#"data: {"id":"chatcmpl-123","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"loc"}}]},"finish_reason":null}]}"#;
-        let _ = parse_openai_sse_chunk_with_tools(delta1, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let _ = parse_openai_sse_chunk_with_tools(delta1, &mut tool_states, &mut done_emitted).unwrap();
 
         // 3. Arguments delta 2
         let delta2 = r#"data: {"id":"chatcmpl-123","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ation\":\"Tokyo\"}"}}]},"finish_reason":null}]}"#;
-        let _ = parse_openai_sse_chunk_with_tools(delta2, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let _ = parse_openai_sse_chunk_with_tools(delta2, &mut tool_states, &mut done_emitted).unwrap();
 
         // Verify accumulated arguments
         assert_eq!(tool_states[&0].arguments_buffer, "{\"location\":\"Tokyo\"}");
 
         // 4. Finish reason
         let finish_event = r#"data: {"id":"chatcmpl-123","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
-        let results = parse_openai_sse_chunk_with_tools(finish_event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(finish_event, &mut tool_states, &mut done_emitted).unwrap();
 
         assert_eq!(results.len(), 2);
         match &results[0] {
@@ -1543,7 +1567,8 @@ mod tests {
 
         // Two tool calls in one chunk
         let event = r#"data: {"id":"chatcmpl-123","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_weather","arguments":""}},{"index":1,"id":"call_2","type":"function","function":{"name":"get_time","arguments":""}}]},"finish_reason":null}]}"#;
-        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states, &mut done_emitted).unwrap();
 
         assert_eq!(results.len(), 2);
         assert!(
@@ -1562,7 +1587,8 @@ mod tests {
     fn test_parse_openai_stream_ignores_empty_content() {
         let event = r#"data: {"id":"chatcmpl-123","choices":[{"index":0,"delta":{"content":""},"finish_reason":null}]}"#;
         let mut tool_states = HashMap::new();
-        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(event, &mut tool_states, &mut done_emitted).unwrap();
 
         assert!(results.is_empty());
     }
@@ -1574,12 +1600,14 @@ mod tests {
 
         // First chunk from vLLM - just role, empty content
         let first_chunk = r#"data: {"id":"chatcmpl-be8d6d925ff14741","object":"chat.completion.chunk","created":1765374283,"model":"Qwen/Qwen2.5-Coder-7B-Instruct-AWQ","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning_content":null},"logprobs":null,"finish_reason":null}],"prompt_token_ids":null}"#;
-        let results = parse_openai_sse_chunk_with_tools(first_chunk, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(first_chunk, &mut tool_states, &mut done_emitted).unwrap();
         assert!(results.is_empty(), "First chunk should produce no results");
 
         // Second chunk - tool call start with id, type, index, function.name and function.arguments
         let tool_start = r#"data: {"id":"chatcmpl-be8d6d925ff14741","object":"chat.completion.chunk","created":1765374283,"model":"Qwen/Qwen2.5-Coder-7B-Instruct-AWQ","choices":[{"index":0,"delta":{"reasoning_content":null,"tool_calls":[{"id":"chatcmpl-tool-a331788bab1045a8","type":"function","index":0,"function":{"name":"db_list_databases","arguments":"{\"catalog\":"}}]},"logprobs":null,"finish_reason":null,"token_ids":null}]}"#;
-        let results = parse_openai_sse_chunk_with_tools(tool_start, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(tool_start, &mut tool_states, &mut done_emitted).unwrap();
 
         // Should have ToolUseStart and ToolUseInputDelta
         assert!(
@@ -1595,7 +1623,8 @@ mod tests {
 
         // Arguments delta
         let args_delta = r#"data: {"id":"chatcmpl-be8d6d925ff14741","object":"chat.completion.chunk","created":1765374283,"model":"Qwen/Qwen2.5-Coder-7B-Instruct-AWQ","choices":[{"index":0,"delta":{"reasoning_content":null,"tool_calls":[{"index":0,"function":{"arguments":"\"default\"}"}}]},"logprobs":null,"finish_reason":null,"token_ids":null}]}"#;
-        let results = parse_openai_sse_chunk_with_tools(args_delta, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(args_delta, &mut tool_states, &mut done_emitted).unwrap();
         assert!(
             matches!(&results[0], ChatStreamChunk::ToolUseInputDelta { partial_json, .. } if partial_json == "\"default\"}"),
             "Expected ToolUseInputDelta, got {:?}",
@@ -1604,7 +1633,8 @@ mod tests {
 
         // Finish with stop reason
         let finish = r#"data: {"id":"chatcmpl-be8d6d925ff14741","object":"chat.completion.chunk","created":1765374283,"model":"Qwen/Qwen2.5-Coder-7B-Instruct-AWQ","choices":[{"index":0,"delta":{"reasoning_content":null,"tool_calls":[{"index":0,"function":{"arguments":""}}]},"logprobs":null,"finish_reason":"stop","stop_reason":null,"token_ids":null}]}"#;
-        let results = parse_openai_sse_chunk_with_tools(finish, &mut tool_states).unwrap();
+        let mut done_emitted = false;
+        let results = parse_openai_sse_chunk_with_tools(finish, &mut tool_states, &mut done_emitted).unwrap();
 
         // Should have ToolUseComplete and Done
         assert!(
@@ -1616,6 +1646,57 @@ mod tests {
             matches!(&results[0], ChatStreamChunk::ToolUseComplete { tool_call, .. } if tool_call.function.name == "db_list_databases"),
             "Expected ToolUseComplete, got {:?}",
             results[0]
+        );
+    }
+
+    /// Regression test: OpenRouter sends `finish_reason: "tool_calls"` followed by
+    /// `[DONE]`. Without deduplication, this produces two `Done` events — the first
+    /// triggers tool execution, and the second removes the LLM session before tools
+    /// complete.
+    #[test]
+    fn test_openrouter_duplicate_done_deduplicated() {
+        let mut tool_states = HashMap::new();
+        let mut done_emitted = false;
+
+        // Set up a tool call in progress (as if prior chunks started it).
+        tool_states.insert(
+            0,
+            OpenAIToolUseState {
+                id: "call_or_123".to_string(),
+                name: "file_read".to_string(),
+                arguments_buffer: r#"{"path":"/tmp/x"}"#.to_string(),
+                started: true,
+            },
+        );
+
+        // 1. OpenRouter sends finish_reason: "tool_calls" → emits ToolUseComplete + Done.
+        let finish_event = r#"data: {"id":"chatcmpl-or","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
+        let results1 =
+            parse_openai_sse_chunk_with_tools(finish_event, &mut tool_states, &mut done_emitted)
+                .unwrap();
+
+        assert_eq!(results1.len(), 2, "finish_reason should emit ToolUseComplete + Done");
+        assert!(
+            matches!(&results1[0], ChatStreamChunk::ToolUseComplete { .. }),
+            "first result should be ToolUseComplete"
+        );
+        assert!(
+            matches!(&results1[1], ChatStreamChunk::Done { stop_reason } if stop_reason == "tool_use"),
+            "second result should be Done(tool_use)"
+        );
+        assert!(done_emitted, "done_emitted flag should be set");
+        assert!(tool_states.is_empty(), "tool_states should be drained");
+
+        // 2. OpenRouter then sends [DONE] → must NOT emit a second Done.
+        let done_event = "data: [DONE]";
+        let results2 =
+            parse_openai_sse_chunk_with_tools(done_event, &mut tool_states, &mut done_emitted)
+                .unwrap();
+
+        assert!(
+            results2.is_empty(),
+            "[DONE] after finish_reason should produce no events, got {:?}",
+            results2
         );
     }
 }
