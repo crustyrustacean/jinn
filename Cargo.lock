@@ -2094,6 +2094,7 @@ dependencies = [
  "error-stack",
  "futures",
  "jiff",
+ "llm",
  "nullslop-protocol",
  "parking_lot",
  "rand 0.9.4",
