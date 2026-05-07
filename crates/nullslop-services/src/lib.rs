@@ -64,6 +64,12 @@ pub struct Services {
     pub strategy_registry: StrategyRegistryService,
 }
 
+impl Default for Services {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Services {
     /// Creates a new `Services` with all fake/noop implementations.
     ///
