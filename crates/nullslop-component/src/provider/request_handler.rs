@@ -234,7 +234,7 @@ mod tests {
     use nullslop_protocol::Command;
     use nullslop_protocol::provider::StreamCompletedReason;
     use nullslop_services::Services;
-    use nullslop_services::test_services::TestServices;
+
 
     /// Creates a test bus with `MessageQueueHandler` registered.
     fn test_bus() -> Bus<crate::AppState, Services> {
@@ -245,7 +245,7 @@ mod tests {
 
     /// Creates test services.
     fn test_services() -> Services {
-        TestServices::builder().build()
+        Services::new()
     }
 
     #[test]

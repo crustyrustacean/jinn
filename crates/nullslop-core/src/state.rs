@@ -86,7 +86,7 @@ mod tests {
     use super::*;
 
     fn _test_services() -> nullslop_services::Services {
-        nullslop_services::test_services::TestServices::builder().build()
+        nullslop_services::Services::new()
     }
 
     #[test]

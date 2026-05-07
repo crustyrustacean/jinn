@@ -155,13 +155,13 @@ fn highlight_text<'a>(
 
 /// Loads strategy entries from the strategy registry, marking the active one.
 ///
-/// Reads available strategies from `services.strategy_registry()`, maps them to
+/// Reads available strategies from `services.strategy_registry`, maps them to
 /// [`StrategyEntry`], and marks the one matching `active_strategy` as `is_active: true`.
 pub fn load_strategy_entries(
     services: &Services,
     active_strategy: &PromptStrategyId,
 ) -> Vec<StrategyEntry> {
-    let strategies = services.strategy_registry().list();
+    let strategies = services.strategy_registry.list();
     strategies
         .into_iter()
         .map(|info| {

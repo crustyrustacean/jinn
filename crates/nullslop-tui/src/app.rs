@@ -443,7 +443,7 @@ mod tests {
 
     /// Creates a minimal `TuiApp` for testing.
     fn test_app() -> TuiApp {
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         TuiApp::new(services)
     }
 
@@ -628,7 +628,7 @@ mod tests {
     #[test]
     fn mouse_events_not_handled_when_mouse_selection_disabled() {
         // Given an app with mouse selection disabled and a registered selectable rect.
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut app = TuiApp::new_with_config(services, crate::config::TuiConfig::new(false));
         let rect = Rect::new(5, 5, 20, 10);
         app.selectable_rects.rebuild(vec![rect]);

@@ -71,7 +71,7 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
         .attach("failed to create terminal")?;
 
     // Start the event stream task.
-    let handle = app.services.handle().clone();
+    let handle = app.services.handle.clone();
     app.event_task = Some(app.events.event_task(&handle));
 
     let result = run_main_loop(&mut terminal, &mut app, &handle);
@@ -83,7 +83,7 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
 
     // Shut down actor host — coordinated shutdown.
     app.core.coordinated_shutdown(
-        app.services.actor_host().backend(),
+        app.services.actor_host.backend(),
         nullslop_core::SHUTDOWN_TIMEOUT,
     );
 

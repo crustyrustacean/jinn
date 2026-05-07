@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use cucumber::World;
-use nullslop_actor_host::FakeActorHost;
+use nullslop_actor_host::{ActorHostService, FakeActorHost};
 use nullslop_component::AppState;
 use nullslop_component_core::Bus;
 use nullslop_context::DefaultStrategyDiscovery;
@@ -89,16 +89,16 @@ impl BusWorld {
         let config_storage = ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
 
         let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
-        Services::new(
+        Services {
             handle,
-            actor_host,
-            llm,
-            registry,
+            actor_host: nullslop_actor_host::ActorHostService::new(actor_host),
+            llm_service: llm,
+            provider_registry: registry,
             api_keys,
             config_storage,
-            Self::test_session_store(),
+            session_store: Self::test_session_store(),
             strategy_registry,
-        )
+        }
     }
 
     /// Creates test services with an ollama provider.
@@ -129,16 +129,16 @@ impl BusWorld {
         let config_storage = ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
 
         let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
-        Services::new(
+        Services {
             handle,
-            actor_host,
-            llm,
-            registry,
+            actor_host: nullslop_actor_host::ActorHostService::new(actor_host),
+            llm_service: llm,
+            provider_registry: registry,
             api_keys,
             config_storage,
-            Self::test_session_store(),
+            session_store: Self::test_session_store(),
             strategy_registry,
-        )
+        }
     }
 
     /// Creates test services with an unavailable (key-required) provider.
@@ -169,16 +169,16 @@ impl BusWorld {
         let config_storage = ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
 
         let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
-        Services::new(
+        Services {
             handle,
-            actor_host,
-            llm,
-            registry,
+            actor_host: nullslop_actor_host::ActorHostService::new(actor_host),
+            llm_service: llm,
+            provider_registry: registry,
             api_keys,
             config_storage,
-            Self::test_session_store(),
+            session_store: Self::test_session_store(),
             strategy_registry,
-        )
+        }
     }
 
     /// Submits a command and processes it.

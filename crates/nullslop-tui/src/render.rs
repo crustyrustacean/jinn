@@ -761,7 +761,7 @@ mod tests {
 
     /// Helper to create a state with strategy entries loaded.
     fn strategy_picker_state() -> (nullslop_component::AppState, nullslop_services::Services) {
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut state = nullslop_component::AppState::default();
         nullslop_component::context_strategy_picker::entries::load_strategy_picker_items(
             &services, &mut state,
@@ -1051,7 +1051,7 @@ mod tests {
         buf.cell_mut((15, 8)).unwrap().set_bg(Color::Green);
 
         // And an app with an Active selection covering (2,2) to (5,4).
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut app = crate::TuiApp::new(services);
         app.selection = SelectionState::Active {
             anchor: (2, 2),
@@ -1091,7 +1091,7 @@ mod tests {
         // anchor=(0,0) is outside bounds, focus=(8,8) is inside.
         // selection_rect() should clamp to (5,5)-(8,8).
         let bounds = Rect::new(5, 5, 10, 10);
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut app = crate::TuiApp::new(services);
         app.selection = SelectionState::Active {
             anchor: (0, 0),
@@ -1122,7 +1122,7 @@ mod tests {
         buf.cell_mut((5, 5)).unwrap().set_bg(Color::Blue);
 
         // And an app with an Idle selection.
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut app = crate::TuiApp::new(services);
         app.selection = SelectionState::Idle;
 
@@ -1149,7 +1149,7 @@ mod tests {
         buf.cell_mut((4, 3)).unwrap().set_fg(Color::Cyan);
 
         // And an Active selection covering both cells.
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut app = crate::TuiApp::new(services);
         app.selection = SelectionState::Active {
             anchor: (2, 2),
@@ -1176,7 +1176,7 @@ mod tests {
     #[test]
     fn clipboard_copy_clears_pending_flag_on_idle_selection() {
         // Given an app with pending_clipboard set but Idle selection.
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut app = crate::TuiApp::new(services);
         app.selection = SelectionState::Idle;
         app.pending_clipboard = true;
@@ -1197,7 +1197,7 @@ mod tests {
         let area = Rect::new(0, 0, 20, 5);
         let buf = ratatui::buffer::Buffer::empty(area);
 
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut app = crate::TuiApp::new(services);
         app.selection = SelectionState::Active {
             anchor: (0, 0),
@@ -1226,7 +1226,7 @@ mod tests {
                 .set_symbol(&ch.to_string());
         }
 
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut app = crate::TuiApp::new(services);
         app.selection = SelectionState::Active {
             anchor: (2, 2),
@@ -1257,7 +1257,7 @@ mod tests {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut app = crate::TuiApp::new(services);
         // Default tab is Chat.
 
@@ -1290,7 +1290,7 @@ mod tests {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
-        let services = nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let mut app = crate::TuiApp::new(services);
         // Switch to Picker mode with an active provider picker.
         app.core.state.write().mode = nullslop_protocol::Mode::Picker;

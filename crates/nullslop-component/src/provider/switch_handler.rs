@@ -39,8 +39,8 @@ impl SwitchHandler {
         // Validate and create factory while holding read guards.
         // Extract the provider name for the confirmation event.
         let provider_name = {
-            let registry = services.provider_registry().read();
-            let api_keys = services.api_keys().read();
+            let registry = services.provider_registry.read();
+            let api_keys = services.api_keys.read();
 
             // Try static registry first.
             if let Some(entry) = registry.get(&id) {
@@ -65,14 +65,14 @@ impl SwitchHandler {
                 };
 
                 // Swap the factory while still in scope.
-                services.llm_service().swap(Arc::from(new_factory));
+                services.llm_service.swap(Arc::from(new_factory));
 
                 entry.name.clone()
             } else {
                 // Not in static registry — try as a remote model.
                 match Self::create_remote_factory(&cmd.provider_id, &registry, &api_keys) {
                     Ok((factory, name)) => {
-                        services.llm_service().swap(Arc::from(factory));
+                        services.llm_service.swap(Arc::from(factory));
                         name
                     }
                     Err(msg) => {
@@ -92,10 +92,10 @@ impl SwitchHandler {
 
         // Persist the selection to config (best-effort).
         services
-            .provider_registry()
+            .provider_registry
             .set_default_provider(Some(cmd.provider_id.clone()));
-        let config = services.provider_registry().config_snapshot();
-        if let Err(e) = services.config_storage().save(&config) {
+        let config = services.provider_registry.config_snapshot();
+        if let Err(e) = services.config_storage.save(&config) {
             tracing::warn!("failed to persist provider selection: {e:?}");
         }
 

@@ -494,16 +494,16 @@ fn create_core_with_actor_host(
     // Build services with the actor host.
     let strategy_registry =
         StrategyRegistryService::new(Arc::new(nullslop_context::DefaultStrategyDiscovery));
-    let services = Services::new(
-        handle.clone(),
-        host_arc.clone(),
+    let services = Services {
+        handle: handle.clone(),
+        actor_host: ActorHostService::new(host_arc.clone()),
         llm_service,
         provider_registry,
         api_keys,
         config_storage,
-        session_store_service.clone(),
+        session_store: session_store_service.clone(),
         strategy_registry,
-    );
+    };
 
     // Build AppCore with services stored separately from state.
     let mut core = AppCore {
@@ -518,7 +518,7 @@ fn create_core_with_actor_host(
     nullslop_component::register_all(&mut core.bus, &mut registry);
 
     // Load the most recently updated session from disk.
-    load_sessions(&core, services.session_store());
+    load_sessions(&core, &services.session_store);
 
     (core, services)
 }
@@ -668,8 +668,7 @@ mod tests {
             "+++\nname = \"test\"\ndescription = \"Test template\"\n+++\nTest body.";
         std::fs::write(dir.path().join("test.md"), template_content).expect("write template");
 
-        let services =
-            nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let core = AppCore::new(services);
 
         // When loading prompt templates from the temp directory.
@@ -699,8 +698,7 @@ mod tests {
         };
         cache.save(&cache_path).expect("save cache");
 
-        let services =
-            nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let core = AppCore::new(services);
 
         // When loading the model cache from the temp file.
@@ -720,8 +718,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let cache_path = dir.path().join("nonexistent.json");
 
-        let services =
-            nullslop_services::test_services::TestServices::builder().build();
+        let services = nullslop_services::Services::new();
         let core = AppCore::new(services);
 
         // When loading the model cache from a missing file.
