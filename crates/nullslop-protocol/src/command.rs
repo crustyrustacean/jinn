@@ -449,7 +449,8 @@ impl Command {
             | Self::WorkflowToggleDetail
             | Self::WorkflowTogglePane
             | Self::WorkflowFocusChat
-            | Self::WorkflowFocusWorkflow => None,
+            | Self::WorkflowFocusWorkflow
+            | Self::ToggleKeymapScopeFilter => None,
             Self::SwitchTab { .. } => Some(SwitchTab::NAME),
             Self::SendMessage { .. } => Some(SendMessage::NAME),
             Self::CancelStream { .. } => Some(CancelStream::NAME),
@@ -474,7 +475,6 @@ impl Command {
             Self::PickerMoveCursorLeft => Some(PickerMoveCursorLeft::NAME),
             Self::PickerMoveCursorRight => Some(PickerMoveCursorRight::NAME),
             Self::OpenPicker { .. } => Some(OpenPicker::NAME),
-            Self::ToggleKeymapScopeFilter => None,
             Self::RegisterTools { .. } => Some(RegisterTools::NAME),
             Self::ExecuteToolBatch { .. } => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool { .. } => Some(ExecuteTool::NAME),
