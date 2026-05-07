@@ -25,3 +25,6 @@ pub use nullslop_core::{ActorHost, ActorHostService, AppCore, AppMsg};
 pub use nullslop_services::Services;
 pub use run::{TuiRunError, run};
 pub use scope::Scope;
+
+#[cfg(test)]
+mod keymap_tests;
