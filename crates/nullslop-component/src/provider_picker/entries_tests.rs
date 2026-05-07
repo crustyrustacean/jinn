@@ -1,4 +1,5 @@
 use nullslop_providers::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
+use std::ops::Range;
 
 use super::*;
 
@@ -713,7 +714,9 @@ fn render_row_with_highlight_applies_gray_bg_to_matched_model_chars() {
     let entry = make_picker_entry("llama3", "ollama", true, false);
 
     // When highlighting with match at byte 0 (the "l").
-    let line = entry.render_row_with_highlight(false, &[0..1]);
+    #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+    let highlights: &[Range<usize>] = &[0..1];
+    let line = entry.render_row_with_highlight(false, highlights);
 
     // Then at least one span has gray background.
     let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::DarkGray));
@@ -740,7 +743,9 @@ fn render_row_with_highlight_preserves_provider_name_suffix() {
     let entry = make_picker_entry("gpt-4", "openrouter", true, false);
 
     // When highlighting with match at byte 0.
-    let line = entry.render_row_with_highlight(false, &[0..1]);
+    #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+    let highlights: &[Range<usize>] = &[0..1];
+    let line = entry.render_row_with_highlight(false, highlights);
 
     // Then the full text still contains provider name.
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
