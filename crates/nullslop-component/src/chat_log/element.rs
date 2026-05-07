@@ -33,6 +33,16 @@ impl UiElement<AppState> for ChatLogElement {
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+        // Show loading indicator when a session is being loaded.
+        if state.session_loading {
+            let loading = Paragraph::new("Loading session...")
+                .alignment(ratatui::layout::Alignment::Center)
+                .style(Style::default().fg(Color::DarkGray))
+                .block(Block::default().borders(Borders::NONE));
+            frame.render_widget(loading, area);
+            return;
+        }
+
         let lines: Vec<Line> = state
             .active_session()
             .history()

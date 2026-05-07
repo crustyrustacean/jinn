@@ -24,7 +24,7 @@ use crate::context::StrategyStateUpdated;
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::custom::EventMsg;
 use crate::provider::{ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted};
-use crate::session::SessionSaveRequested;
+use crate::session::{SessionLoadRequested, SessionSaveRequested};
 use crate::system::{KeyDown, KeyUp, ModeChanged};
 use crate::tool::{ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered};
 use crate::workflow::{
@@ -207,6 +207,13 @@ pub enum Event {
         #[serde(flatten)]
         payload: SessionSaveRequested,
     },
+    /// Request to load a full session from disk.
+    #[serde(rename = "session_load_requested")]
+    SessionLoadRequested {
+        /// The session load request payload.
+        #[serde(flatten)]
+        payload: SessionLoadRequested,
+    },
 }
 
 impl Event {
@@ -238,6 +245,7 @@ impl Event {
             Self::StepAwaitingInput { .. } => Some(StepAwaitingInput::TYPE_NAME),
             Self::WorkflowCompleted => Some(WorkflowCompleted::TYPE_NAME),
             Self::SessionSaveRequested { .. } => Some(SessionSaveRequested::TYPE_NAME),
+            Self::SessionLoadRequested { .. } => Some(SessionLoadRequested::TYPE_NAME),
         }
     }
 }
@@ -319,6 +327,10 @@ mod tests {
         history: vec![ChatEntry::user("hello")],
         active_strategy: crate::PromptStrategyId::passthrough(),
         blobs: std::collections::HashMap::new(),
+    } })]
+    #[case::session_load_requested(Event::SessionLoadRequested { payload: crate::session::SessionLoadRequested {
+        session_id: SessionId::new(),
+        byte_offset: 42,
     } })]
     fn event_roundtrip_all_variants(#[case] event: Event) {
         // Given an event variant.
@@ -489,6 +501,12 @@ mod tests {
         assert_eq!(
             SessionSaveRequested::TYPE_NAME,
             "session::SessionSaveRequested"
+        );
+
+        // Then SessionLoadRequested has the correct TYPE_NAME.
+        assert_eq!(
+            crate::session::SessionLoadRequested::TYPE_NAME,
+            "session::SessionLoadRequested"
         );
     }
 }

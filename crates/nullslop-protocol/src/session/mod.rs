@@ -5,12 +5,21 @@
 //!
 //! [`SessionSaveRequested`] is emitted by the message queue handler to
 //! trigger asynchronous session persistence via the actor system.
+//! [`SessionLoadRequested`] is emitted when the user picks a session from
+//! the session browser. [`SessionLoadCompleted`] carries the loaded data back.
+//! [`SessionNew`] closes the session picker and starts a fresh session.
 
+pub mod session_load_completed;
+pub mod session_load_requested;
+pub mod session_new;
 pub mod session_save_requested;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub use session_load_completed::SessionLoadCompleted;
+pub use session_load_requested::SessionLoadRequested;
+pub use session_new::SessionNew;
 pub use session_save_requested::SessionSaveRequested;
 
 /// A unique identifier for a chat session.

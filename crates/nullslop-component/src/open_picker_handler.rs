@@ -8,6 +8,7 @@
 use crate::AppState;
 use crate::context_strategy_picker::entries::load_strategy_picker_items;
 use crate::provider_picker::handler::load_provider_picker_items;
+use crate::session_picker::entries::load_session_picker_items;
 use npr::CommandAction;
 use npr::PickerKind;
 use npr::system::OpenPicker;
@@ -45,6 +46,10 @@ impl OpenPickerHandler {
             PickerKind::Keymap => {
                 ctx.state.keymap_picker.reset();
                 ctx.state.keymap_picker_show_all = false;
+            }
+            PickerKind::Session => {
+                load_session_picker_items(ctx.services, ctx.state);
+                ctx.state.session_picker.reset();
             }
         }
 

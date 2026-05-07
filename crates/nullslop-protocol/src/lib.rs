@@ -54,6 +54,9 @@ pub use provider_picker::{
     PickerBackspace, PickerConfirm, PickerInsertChar, PickerMoveDown, PickerMoveUp,
 };
 pub use session::SessionId;
+pub use session::SessionLoadCompleted;
+pub use session::SessionLoadRequested;
+pub use session::SessionNew;
 pub use session::SessionSaveRequested;
 pub use system::OpenPicker;
 pub use tab::ActiveTab;

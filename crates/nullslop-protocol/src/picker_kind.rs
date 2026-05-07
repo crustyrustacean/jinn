@@ -16,6 +16,8 @@ pub enum PickerKind {
     ContextAssembly,
     /// Keymap search picker.
     Keymap,
+    /// Session browser picker.
+    Session,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -24,6 +26,7 @@ impl std::fmt::Display for PickerKind {
             Self::Provider => write!(f, "provider"),
             Self::ContextAssembly => write!(f, "context-assembly"),
             Self::Keymap => write!(f, "keymap"),
+            Self::Session => write!(f, "session"),
         }
     }
 }

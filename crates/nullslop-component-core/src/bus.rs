@@ -641,6 +641,14 @@ impl<S, Sv> Bus<S, Sv> {
                 let cmd = ToggleKeymapScopeFilter;
                 self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
             }
+            Command::SessionLoadCompleted { payload } => {
+                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
+            }
+            Command::SessionNew => {
+                use nullslop_protocol::SessionNew;
+                let cmd = SessionNew;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
             Command::AutocompleteConfirm => {
                 let cmd = AutocompleteConfirm;
                 self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
@@ -751,6 +759,9 @@ impl<S, Sv> Bus<S, Sv> {
                 self.dispatch_event_to_handlers(&evt, state, services, &mut out);
             }
             Event::SessionSaveRequested { payload } => {
+                self.dispatch_event_to_handlers(&payload, state, services, &mut out);
+            }
+            Event::SessionLoadRequested { payload } => {
                 self.dispatch_event_to_handlers(&payload, state, services, &mut out);
             }
         }
