@@ -122,13 +122,12 @@ sync-github:
    git config user.name "Jayson Lennon"
    git config user.email "jayson@jaysonlennon.dev"
 
-   EXPORT_ARGS="--repository $FOSSIL_REPO --git"
+   EXPORT_ARGS="--repository $FOSSIL_REPO --git --export-marks $TMPDIR/new-marks"
    if [ -f "$MARKS_FILE" ]; then
        echo "Incremental export (marks file found)..."
-       EXPORT_ARGS="$EXPORT_ARGS --import-marks $MARKS_FILE --export-marks $MARKS_FILE"
+       EXPORT_ARGS="$EXPORT_ARGS --import-marks $MARKS_FILE"
    else
        echo "Full export (no marks file yet)..."
-       EXPORT_ARGS="$EXPORT_ARGS --export-marks $MARKS_FILE"
    fi
 
    echo "Exporting from Fossil..."
@@ -136,7 +135,9 @@ sync-github:
 
    echo "Pushing to GitHub..."
    git remote add origin "$GITHUB_REMOTE"
-   git push --force origin master
+   git push --force origin trunk
 
+   # Only persist marks after successful push
+   mv "$TMPDIR/new-marks" "$MARKS_FILE"
    echo "Sync complete."
 
