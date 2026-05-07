@@ -25,7 +25,10 @@ use crate::PickerItem;
 /// assert_eq!(state.filtered_count(), 1);
 /// ```
 #[derive(Debug)]
-pub struct SelectionState<T: PickerItem> {
+pub struct SelectionState<T>
+where
+    T: PickerItem,
+{
     /// Current filter text typed by the user.
     filter: String,
     /// Cursor position as a grapheme-cluster index within `filter` (0 = before first grapheme).
@@ -43,13 +46,19 @@ pub struct SelectionState<T: PickerItem> {
     filtered_match_indices: Vec<Vec<usize>>,
 }
 
-impl<T: PickerItem> Default for SelectionState<T> {
+impl<T> Default for SelectionState<T>
+where
+    T: PickerItem,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: PickerItem> SelectionState<T> {
+impl<T> SelectionState<T>
+where
+    T: PickerItem,
+{
     /// Creates a new, empty selection state with no items.
     #[must_use]
     pub fn new() -> Self {

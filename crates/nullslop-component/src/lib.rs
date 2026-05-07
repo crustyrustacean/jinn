@@ -25,6 +25,7 @@ pub mod context_strategy_picker;
 pub mod dashboard;
 pub mod keymap_picker;
 pub mod open_picker_handler;
+pub mod picker_highlight;
 pub mod prompt_template;
 pub mod provider;
 pub mod provider_picker;

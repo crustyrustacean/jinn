@@ -158,7 +158,7 @@ fn render_keymap_row(
 }
 
 /// Splits a text segment into spans, applying the highlight style to characters
-/// whose search_text byte offset falls within `match_indices`.
+/// whose `search_text` byte offset falls within `match_indices`.
 ///
 /// Matched characters get [`PICKER_HIGHLIGHT_STYLE`] patched onto the base style
 /// (preserving the base foreground color).
@@ -166,8 +166,12 @@ fn render_keymap_row(
 /// `text` is the rendered string. `base_style` is applied to non-highlighted chars.
 /// `match_indices` are the fuzzy match ranges (byte offsets into `display_label`).
 /// `rendered_offset` is where we start consuming characters from `text` (usually 0).
-/// `search_range` is the byte range in search_text that this `text` maps to.
+/// `search_range` is the byte range in `search_text` that this `text` maps to.
 /// `searchable_len` is how many chars at the start of `text` correspond to searchable text.
+#[expect(
+    clippy::string_slice,
+    reason = "byte_off comes from char_indices(), always a valid UTF-8 boundary"
+)]
 fn highlight_text_segment(
     text: &str,
     base_style: Style,
@@ -190,7 +194,7 @@ fn highlight_text_segment(
         if char_idx >= searchable_len {
             // Past the searchable portion — flush remaining and break.
             if current_start < text.len() {
-                let rest: String = text[current_start..].chars().collect();
+                let rest = text[current_start..].to_owned();
                 spans.push(Span::styled(
                     rest,
                     if in_highlight { highlight_style } else { base_style },
@@ -205,7 +209,7 @@ fn highlight_text_segment(
 
         if is_matched != in_highlight {
             // Transition — emit accumulated text.
-            let segment: String = text[current_start..byte_off].chars().collect();
+            let segment = text[current_start..byte_off].to_owned();
             if !segment.is_empty() {
                 spans.push(Span::styled(
                     segment,
@@ -219,7 +223,7 @@ fn highlight_text_segment(
 
     // Flush remaining.
     if current_start < text.len() {
-        let rest: String = text[current_start..].chars().collect();
+        let rest = text[current_start..].to_owned();
         spans.push(Span::styled(
             rest,
             if in_highlight { highlight_style } else { base_style },
@@ -377,7 +381,9 @@ mod tests {
         let entry = make_entry("q", "quit", "Normal", "General");
 
         // When highlighting with match at byte 0 (the "q" in key_sequence).
-        let line = entry.render_row_with_highlight(false, &[0..1]);
+        #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+        let highlights: &[Range<usize>] = &[0..1];
+        let line = entry.render_row_with_highlight(false, highlights);
 
         // Then at least one span has gray background (the matched "q").
         let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::DarkGray));
@@ -390,7 +396,9 @@ mod tests {
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
         // When highlighting with match at bytes 0..1 (the first "g").
-        let line = entry.render_row_with_highlight(false, &[0..1]);
+        #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+        let highlights: &[Range<usize>] = &[0..1];
+        let line = entry.render_row_with_highlight(false, highlights);
 
         // Then the full text is preserved.
         let text: String = line.spans.iter().map(|s| &*s.content).collect();
@@ -405,7 +413,9 @@ mod tests {
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
         // When highlighting with match at byte 3 (the "s" in "scroll").
-        let line = entry.render_row_with_highlight(false, &[3..4]);
+        #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+        let highlights: &[Range<usize>] = &[3..4];
+        let line = entry.render_row_with_highlight(false, highlights);
 
         // Then at least one span has gray background.
         let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::DarkGray));

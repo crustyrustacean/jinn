@@ -92,7 +92,10 @@ pub fn compute_popup_rect(area: Rect) -> Rect {
 ///     .footer(Line::from("CTRL+R to refresh"));
 /// widget.render(frame, area);
 /// ```
-pub struct SelectionWidget<'a, T: PickerItem> {
+pub struct SelectionWidget<'a, T>
+where
+    T: PickerItem,
+{
     /// Title displayed in the popup border (e.g., `" Model "`).
     title: Line<'a>,
     /// The selection state to render.
@@ -101,7 +104,10 @@ pub struct SelectionWidget<'a, T: PickerItem> {
     footer: Option<Line<'a>>,
 }
 
-impl<'a, T: PickerItem> SelectionWidget<'a, T> {
+impl<'a, T> SelectionWidget<'a, T>
+where
+    T: PickerItem,
+{
     /// Creates a new widget rendering the given selection state.
     pub fn new(state: &'a SelectionState<T>) -> Self {
         Self {

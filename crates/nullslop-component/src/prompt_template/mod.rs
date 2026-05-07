@@ -22,28 +22,32 @@ pub mod rescan_handler;
 /// This is a pure function with no side effects.
 #[must_use]
 pub fn expand_tokens(text: &str, store: &PromptTemplateStore) -> String {
+    use unicode_segmentation::UnicodeSegmentation as _;
+
     let mut result = String::with_capacity(text.len());
-    let chars: Vec<char> = text.chars().collect();
-    let len = chars.len();
+    let graphemes: Vec<&str> = text.graphemes(true).collect();
+    let len = graphemes.len();
     let mut i = 0;
 
     while i < len {
-        let is_dollar = chars.get(i) == Some(&'$');
-        let preceded_by_boundary = i == 0 || chars.get(i.wrapping_sub(1)) == Some(&' ');
-        let next_char = chars.get(i + 1);
-        let has_valid_name_start = next_char.is_some() && next_char != Some(&' ') && next_char != Some(&'$');
+        let is_dollar = graphemes.get(i) == Some(&"$");
+        let preceded_by_boundary = i == 0 || graphemes.get(i.wrapping_sub(1)) == Some(&" ");
+        let next_grapheme = graphemes.get(i + 1);
+        let has_valid_name_start =
+            next_grapheme.is_some() && next_grapheme != Some(&" ") && next_grapheme != Some(&"$");
 
         if is_dollar && preceded_by_boundary && has_valid_name_start {
             let name_start = i + 1;
             let mut name_end = name_start;
             while name_end < len {
-                let ch = chars.get(name_end);
-                if ch.is_none() || ch.is_some_and(|c| c.is_whitespace() || c == &'$') { break; }
+                let g = graphemes.get(name_end);
+                if g.is_none() || g.is_some_and(|c| c.trim().is_empty() || *c == "$") {
+                    break;
+                }
                 name_end += 1;
             }
-            let name: String = chars.get(name_start..name_end)
-                .map(|s| s.iter().collect::<String>())
-                .unwrap_or_default();
+            let name: String =
+                graphemes.get(name_start..name_end).map(|s| s.join("")).unwrap_or_default();
             if let Some(template) = store.find_by_name(&name) {
                 result.push_str(&template.body);
             } else {
@@ -51,8 +55,8 @@ pub fn expand_tokens(text: &str, store: &PromptTemplateStore) -> String {
                 result.push_str(&name);
             }
             i = name_end;
-        } else if let Some(&ch) = chars.get(i) {
-            result.push(ch);
+        } else if let Some(&grapheme) = graphemes.get(i) {
+            result.push_str(grapheme);
             i += 1;
         } else {
             i += 1;

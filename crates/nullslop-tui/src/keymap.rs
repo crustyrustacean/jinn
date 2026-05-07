@@ -201,7 +201,7 @@ pub fn collect_bindings_for_scope(
     scope: &Scope,
 ) -> Vec<nullslop_component::keymap_picker::KeymapEntry> {
     let mut entries = Vec::new();
-    collect_leaf_bindings(keymap.bindings(), scope, String::new(), &mut entries);
+    collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries);
     entries
 }
 
@@ -213,7 +213,7 @@ pub fn collect_all_bindings(
 ) -> Vec<nullslop_component::keymap_picker::KeymapEntry> {
     let mut entries = Vec::new();
     for scope in &[Scope::Normal, Scope::Dashboard, Scope::Picker, Scope::Input] {
-        collect_leaf_bindings(keymap.bindings(), scope, String::new(), &mut entries);
+        collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries);
     }
     entries
 }
@@ -226,8 +226,8 @@ pub fn collect_all_bindings(
 /// (those represent keys that are both a prefix and a terminal in different scopes).
 fn collect_leaf_bindings(
     children: &[ratatui_which_key::KeyChild<KeyEvent, Scope, Command, KeyCategory>],
-    scope: &Scope,
-    prefix: String,
+    scope: Scope,
+    prefix: &str,
     out: &mut Vec<nullslop_component::keymap_picker::KeymapEntry>,
 ) {
     for child in children {
@@ -241,7 +241,7 @@ fn collect_leaf_bindings(
         match &child.node {
             ratatui_which_key::KeyNode::Leaf(entries) => {
                 for entry in entries {
-                    if entry.scope == *scope {
+                    if entry.scope == scope {
                         out.push(nullslop_component::keymap_picker::KeymapEntry {
                             key_sequence: full_sequence.clone(),
                             description: entry.description.clone(),
@@ -266,10 +266,9 @@ fn collect_leaf_bindings(
                 // These represent keys that act as both a prefix and a terminal action
                 // in different scopes.
                 for entry in leaf_entries {
-                    if entry.scope == *scope {
-                        let cat = branch_category
-                            .clone()
-                            .unwrap_or_else(|| entry.category.clone());
+                    if entry.scope == scope {
+                        let cat = (*branch_category)
+                            .unwrap_or(entry.category);
                         out.push(nullslop_component::keymap_picker::KeymapEntry {
                             key_sequence: full_sequence.clone(),
                             description: entry.description.clone(),
@@ -285,7 +284,7 @@ fn collect_leaf_bindings(
                 }
 
                 // Recurse into children.
-                collect_leaf_bindings(branch_children, scope, full_sequence, out);
+                collect_leaf_bindings(branch_children, scope, &full_sequence, out);
             }
         }
     }
