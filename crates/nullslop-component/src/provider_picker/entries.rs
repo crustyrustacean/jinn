@@ -10,7 +10,7 @@
 
 use std::ops::Range;
 
-use crate::PICKER_HIGHLIGHT_STYLE;
+use crate::picker_highlight::highlight_text;
 use nullslop_selection_widget::PickerItem;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -170,67 +170,6 @@ fn highlight_model_in_label<'a>(
     spans
 }
 
-/// Splits `text` into spans, applying the highlight style to characters whose
-/// byte offset falls within one of `match_indices`.
-///
-/// Matched characters get [`PICKER_HIGHLIGHT_STYLE`] patched onto the base style
-/// (preserving the base foreground color).
-fn highlight_text<'a>(
-    text: &str,
-    base_style: Style,
-    match_indices: &[Range<usize>],
-) -> Vec<Span<'a>> {
-    if match_indices.is_empty() || text.is_empty() {
-        return vec![Span::styled(text.to_owned(), base_style)];
-    }
-
-    let highlight_style = base_style.patch(PICKER_HIGHLIGHT_STYLE);
-
-    let mut spans = Vec::new();
-    let mut current_start = 0;
-    let mut in_highlight = false;
-
-    for (byte_off, _ch) in text.char_indices() {
-        let is_matched = match_indices.iter().any(|r| r.contains(&byte_off));
-
-        if is_matched != in_highlight {
-            // Transition — emit accumulated text.
-            let segment = text[current_start..byte_off].to_owned();
-            if !segment.is_empty() {
-                spans.push(Span::styled(
-                    segment,
-                    if in_highlight {
-                        highlight_style
-                    } else {
-                        base_style
-                    },
-                ));
-            }
-            current_start = byte_off;
-            in_highlight = is_matched;
-        }
-    }
-
-    // Flush remaining.
-    if current_start < text.len() {
-        let rest = text[current_start..].to_owned();
-        spans.push(Span::styled(
-            rest,
-            if in_highlight {
-                highlight_style
-            } else {
-                base_style
-            },
-        ));
-    }
-
-    if spans.is_empty() {
-        spans.push(Span::styled(text.to_owned(), base_style));
-    }
-
-    spans
-}
-
 /// Reorders entries so that available entries appear first (sorted by model name),
 /// followed by unavailable entries (sorted by model name). When `filter` is empty,
 /// the entry matching `active_provider` is promoted to the very top and marked active.
@@ -356,17 +295,18 @@ pub fn truncate_line(
     width: usize,
 ) -> ratatui::text::Line<'static> {
     use ratatui::text::{Line, Span};
+    use unicode_segmentation::UnicodeSegmentation as _;
 
-    let total_len: usize = line.spans.iter().map(|s| s.content.chars().count()).sum();
+    let total_len: usize = line.spans.iter().map(|s| s.content.graphemes(true).count()).sum();
     if total_len <= width {
         return line;
     }
 
-    // Rebuild spans, trimming characters that overflow.
+    // Rebuild spans, trimming graphemes that overflow.
     let mut remaining = width;
     let mut spans = Vec::new();
     for span in line.spans {
-        let char_count = span.content.chars().count();
+        let char_count = span.content.graphemes(true).count();
         if remaining == 0 {
             break;
         }
@@ -374,7 +314,7 @@ pub fn truncate_line(
             spans.push(span);
             remaining -= char_count;
         } else {
-            let truncated: String = span.content.chars().take(remaining).collect();
+            let truncated: String = span.content.graphemes(true).take(remaining).collect();
             spans.push(Span::styled(truncated, span.style));
             remaining = 0;
         }
