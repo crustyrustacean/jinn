@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 nullslop-protocol = { workspace = true }
+llm = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
 wherror = { workspace = true }
