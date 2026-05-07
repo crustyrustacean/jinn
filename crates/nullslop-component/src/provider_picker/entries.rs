@@ -170,8 +170,11 @@ fn highlight_model_in_label<'a>(
     spans
 }
 
-/// Splits `text` into spans, applying [`PICKER_HIGHLIGHT_STYLE`] to characters whose
+/// Splits `text` into spans, applying the highlight style to characters whose
 /// byte offset falls within one of `match_indices`.
+///
+/// Matched characters get [`PICKER_HIGHLIGHT_STYLE`] patched onto the base style
+/// (preserving the base foreground color).
 fn highlight_text<'a>(
     text: &str,
     base_style: Style,
@@ -180,6 +183,8 @@ fn highlight_text<'a>(
     if match_indices.is_empty() || text.is_empty() {
         return vec![Span::styled(text.to_owned(), base_style)];
     }
+
+    let highlight_style = base_style.patch(PICKER_HIGHLIGHT_STYLE);
 
     let mut spans = Vec::new();
     let mut current_start = 0;
@@ -195,7 +200,7 @@ fn highlight_text<'a>(
                 spans.push(Span::styled(
                     segment,
                     if in_highlight {
-                        PICKER_HIGHLIGHT_STYLE
+                        highlight_style
                     } else {
                         base_style
                     },
@@ -212,7 +217,7 @@ fn highlight_text<'a>(
         spans.push(Span::styled(
             rest,
             if in_highlight {
-                PICKER_HIGHLIGHT_STYLE
+                highlight_style
             } else {
                 base_style
             },
@@ -1202,24 +1207,24 @@ mod tests {
     }
 
     #[test]
-    fn render_row_with_highlight_applies_cyan_bg_to_matched_model_chars() {
+    fn render_row_with_highlight_applies_gray_bg_to_matched_model_chars() {
         // Given a provider entry with model "llama3".
         let entry = make_picker_entry("llama3", "ollama", true, false);
 
         // When highlighting with match at byte 0 (the "l").
         let line = entry.render_row_with_highlight(false, &[0..1]);
 
-        // Then at least one span has cyan background.
-        let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::Blue));
+        // Then at least one span has gray background.
+        let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::DarkGray));
         assert!(
             has_highlight,
-            "expected at least one span with cyan background"
+            "expected at least one span with gray background"
         );
         // And the highlighted content contains "l".
         let highlighted: String = line
             .spans
             .iter()
-            .filter(|s| s.style.bg == Some(Color::Blue))
+            .filter(|s| s.style.bg == Some(Color::DarkGray))
             .map(|s| s.content.clone())
             .collect();
         assert!(

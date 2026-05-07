@@ -63,13 +63,13 @@ pub type AppBus = Bus<AppState, Services>;
 /// Standard UI registry type for the nullslop application.
 pub type AppUiRegistry = UiRegistry<AppState>;
 
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 /// Highlight style for fuzzy-matched characters in picker rows.
 ///
 /// Shared across all picker entry types so the look is consistent.
-/// Black foreground on dark blue background.
-pub const PICKER_HIGHLIGHT_STYLE: Style = Style::new().fg(Color::White).bg(Color::Blue);
+/// Dark gray background with underline; foreground is inherited from the base style.
+pub const PICKER_HIGHLIGHT_STYLE: Style = Style::new().bg(Color::DarkGray).add_modifier(Modifier::UNDERLINED);
 
 /// Register all built-in components with the bus and UI registry.
 ///

@@ -160,6 +160,9 @@ fn render_keymap_row(
 /// Splits a text segment into spans, applying the highlight style to characters
 /// whose search_text byte offset falls within `match_indices`.
 ///
+/// Matched characters get [`PICKER_HIGHLIGHT_STYLE`] patched onto the base style
+/// (preserving the base foreground color).
+///
 /// `text` is the rendered string. `base_style` is applied to non-highlighted chars.
 /// `match_indices` are the fuzzy match ranges (byte offsets into `display_label`).
 /// `rendered_offset` is where we start consuming characters from `text` (usually 0).
@@ -177,6 +180,8 @@ fn highlight_text_segment(
         return vec![Span::styled(text.to_owned(), base_style)];
     }
 
+    let highlight_style = base_style.patch(PICKER_HIGHLIGHT_STYLE);
+
     let mut spans = Vec::new();
     let mut current_start = 0;
     let mut in_highlight = false;
@@ -188,7 +193,7 @@ fn highlight_text_segment(
                 let rest: String = text[current_start..].chars().collect();
                 spans.push(Span::styled(
                     rest,
-                    if in_highlight { PICKER_HIGHLIGHT_STYLE } else { base_style },
+                    if in_highlight { highlight_style } else { base_style },
                 ));
             }
             return spans;
@@ -204,7 +209,7 @@ fn highlight_text_segment(
             if !segment.is_empty() {
                 spans.push(Span::styled(
                     segment,
-                    if in_highlight { PICKER_HIGHLIGHT_STYLE } else { base_style },
+                    if in_highlight { highlight_style } else { base_style },
                 ));
             }
             current_start = byte_off;
@@ -217,7 +222,7 @@ fn highlight_text_segment(
         let rest: String = text[current_start..].chars().collect();
         spans.push(Span::styled(
             rest,
-            if in_highlight { PICKER_HIGHLIGHT_STYLE } else { base_style },
+            if in_highlight { highlight_style } else { base_style },
         ));
     }
 
@@ -367,16 +372,16 @@ mod tests {
     }
 
     #[test]
-    fn render_row_with_highlight_applies_cyan_bg_to_matched_chars() {
+    fn render_row_with_highlight_applies_gray_bg_to_matched_chars() {
         // Given a keymap entry with search_text "q quit".
         let entry = make_entry("q", "quit", "Normal", "General");
 
         // When highlighting with match at byte 0 (the "q" in key_sequence).
         let line = entry.render_row_with_highlight(false, &[0..1]);
 
-        // Then at least one span has cyan background (the matched "q").
-        let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::Blue));
-        assert!(has_highlight, "expected at least one span with cyan background");
+        // Then at least one span has gray background (the matched "q").
+        let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::DarkGray));
+        assert!(has_highlight, "expected at least one span with gray background");
     }
 
     #[test]
@@ -402,14 +407,14 @@ mod tests {
         // When highlighting with match at byte 3 (the "s" in "scroll").
         let line = entry.render_row_with_highlight(false, &[3..4]);
 
-        // Then at least one span has cyan background.
-        let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::Blue));
+        // Then at least one span has gray background.
+        let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::DarkGray));
         assert!(has_highlight, "expected highlight on description char");
         // And the highlighted content contains "s".
         let highlighted_content: String = line
             .spans
             .iter()
-            .filter(|s| s.style.bg == Some(Color::Blue))
+            .filter(|s| s.style.bg == Some(Color::DarkGray))
             .map(|s| s.content.clone())
             .collect();
         assert!(highlighted_content.contains('s'), "highlighted span should contain 's'");
