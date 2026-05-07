@@ -10,7 +10,7 @@ use error_stack::Report;
 use serde::{Deserialize, Serialize};
 
 use crate::definition::{StepDef, WorkflowDef};
-use crate::error::{WorkflowError, WorkflowErrorKind};
+use crate::builder::{WorkflowError, WorkflowErrorKind};
 use crate::hash::file_content_hash;
 
 /// The current status of a workflow step.
