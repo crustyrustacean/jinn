@@ -7,7 +7,6 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::session_conversion::persisted_into_session;
 use error_stack::{Report, ResultExt};
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use nullslop_actor_host::{ActorHostService, InMemoryActorHost, spawn_actor};
@@ -22,6 +21,7 @@ use nullslop_llm::LlmActor;
 use nullslop_llm_discover::DiscoverActor;
 use nullslop_prompt_scan::PromptScanActor;
 use nullslop_protocol::Event;
+use nullslop_protocol::PickerKind;
 use nullslop_protocol::actor::{ActorStarted, ActorStarting};
 use nullslop_providers::ApiKeys;
 use nullslop_providers::ApiKeysService;
@@ -517,49 +517,31 @@ fn create_core_with_actor_host(
     let mut registry = nullslop_component::AppUiRegistry::new();
     nullslop_component::register_all(&mut core.bus, &mut registry);
 
-    // Load the most recently updated session from disk.
-    load_sessions(&core, &services.session_store);
+    // Open the session picker at startup if saved sessions exist.
+    if has_saved_sessions(&services.session_store) {
+        let _ = core.sender().send(AppMsg::Command {
+            command: nullslop_protocol::Command::OpenPicker {
+                payload: nullslop_protocol::system::OpenPicker {
+                    kind: PickerKind::Session,
+                },
+            },
+            source: None,
+        });
+    }
 
     (core, services)
 }
 
-/// Loads the most recently updated session from the store into `AppState`.
+/// Checks whether any saved sessions exist in the store.
 ///
-/// Called once at startup before the event loop begins. Failures are logged
-/// but not fatal — the app starts with the default empty session.
-fn load_sessions(core: &AppCore, store: &SessionStoreService) {
-    let summaries: Vec<_> = match store.load_summaries() {
-        Ok(s) => s,
+/// Called once at startup to decide whether to open the session picker.
+/// Failures are logged and treated as "no sessions".
+fn has_saved_sessions(store: &SessionStoreService) -> bool {
+    match store.load_summaries() {
+        Ok(summaries) => !summaries.is_empty(),
         Err(e) => {
             tracing::warn!(err = ?e, "failed to load session summaries");
-            return;
-        }
-    };
-
-    if summaries.is_empty() {
-        return;
-    }
-
-    // Load the most recently updated session.
-    let (_, _, latest_offset) = summaries
-        .iter()
-        .max_by_key(|(_, s, _)| s.updated_at)
-        .expect("summaries is non-empty");
-
-    match store.load_full(*latest_offset) {
-        Ok(Some(persisted)) => {
-            let session_id = persisted.session_id.clone();
-            let restored = persisted_into_session(persisted);
-
-            let mut state = core.state.write();
-            state.sessions.insert(session_id.clone(), restored);
-            state.active_session = session_id;
-        }
-        Ok(None) => {
-            tracing::warn!("latest session summary found but full load returned None");
-        }
-        Err(e) => {
-            tracing::warn!(err = ?e, "failed to load full session");
+            false
         }
     }
 }

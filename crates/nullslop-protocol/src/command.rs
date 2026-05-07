@@ -36,6 +36,7 @@ use crate::provider_picker::{
     PickerBackspace, PickerConfirm, PickerInsertChar, PickerMoveCursorLeft, PickerMoveCursorRight,
     PickerMoveDown, PickerMoveUp,
 };
+use crate::session::SessionLoadCompleted;
 use crate::system::OpenPicker;
 use crate::system::SetMode;
 use crate::tab::SwitchTab;
@@ -342,6 +343,17 @@ pub enum Command {
     /// Toggle the keymap picker scope filter (current scope ↔ all scopes).
     #[serde(rename = "toggle_keymap_scope_filter")]
     ToggleKeymapScopeFilter,
+    // --- Session ---
+    /// Session data loaded from disk by the persistence actor.
+    #[serde(rename = "session_load_completed")]
+    SessionLoadCompleted {
+        /// The loaded session data.
+        #[serde(flatten)]
+        payload: SessionLoadCompleted,
+    },
+    /// Close the session picker and start a fresh empty session.
+    #[serde(rename = "session_new")]
+    SessionNew,
     // --- Workflow ---
     /// Load a workflow definition and start it.
     #[serde(rename = "load_workflow")]
@@ -450,7 +462,8 @@ impl Command {
             | Self::WorkflowTogglePane
             | Self::WorkflowFocusChat
             | Self::WorkflowFocusWorkflow
-            | Self::ToggleKeymapScopeFilter => None,
+            | Self::ToggleKeymapScopeFilter
+            | Self::SessionNew => None,
             Self::SwitchTab { .. } => Some(SwitchTab::NAME),
             Self::SendMessage { .. } => Some(SendMessage::NAME),
             Self::CancelStream { .. } => Some(CancelStream::NAME),
@@ -475,6 +488,7 @@ impl Command {
             Self::PickerMoveCursorLeft => Some(PickerMoveCursorLeft::NAME),
             Self::PickerMoveCursorRight => Some(PickerMoveCursorRight::NAME),
             Self::OpenPicker { .. } => Some(OpenPicker::NAME),
+            Self::SessionLoadCompleted { .. } => Some(SessionLoadCompleted::NAME),
             Self::RegisterTools { .. } => Some(RegisterTools::NAME),
             Self::ExecuteToolBatch { .. } => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool { .. } => Some(ExecuteTool::NAME),
@@ -623,6 +637,8 @@ impl std::fmt::Display for Command {
             Command::WorkflowTogglePane => write!(f, "toggle workflow pane"),
             Command::WorkflowFocusChat => write!(f, "focus chat pane"),
             Command::WorkflowFocusWorkflow => write!(f, "focus workflow pane"),
+            Command::SessionLoadCompleted { .. } => write!(f, "session load completed"),
+            Command::SessionNew => write!(f, "session new"),
         }
     }
 }
@@ -758,6 +774,14 @@ mod tests {
     #[case::open_picker(Command::OpenPicker { payload: OpenPicker { kind: PickerKind::ContextAssembly } })]
     #[case::open_picker_keymap(Command::OpenPicker { payload: OpenPicker { kind: PickerKind::Keymap } })]
     #[case::toggle_keymap_scope_filter(Command::ToggleKeymapScopeFilter)]
+    #[case::session_load_completed(Command::SessionLoadCompleted { payload: SessionLoadCompleted {
+        session_id: SessionId::new(),
+        title: "Test".to_owned(),
+        history: vec![],
+        active_strategy: crate::PromptStrategyId::passthrough(),
+        blobs: std::collections::HashMap::new(),
+    } })]
+    #[case::session_new(Command::SessionNew)]
     #[case::load_workflow(Command::LoadWorkflow { payload: LoadWorkflow { definition: make_test_workflow(2) } })]
     #[case::advance_step(Command::AdvanceStep)]
     #[case::jump_to_step(Command::JumpToStep { payload: JumpToStep { step_id: "step-0".to_owned() } })]
@@ -839,6 +863,7 @@ mod tests {
     #[case::provider(PickerKind::Provider, "provider")]
     #[case::context_assembly(PickerKind::ContextAssembly, "context-assembly")]
     #[case::keymap(PickerKind::Keymap, "keymap")]
+    #[case::session(PickerKind::Session, "session")]
     fn picker_kind_display(#[case] kind: PickerKind, #[case] expected: &str) {
         // Given a picker kind.
         // When formatting it.

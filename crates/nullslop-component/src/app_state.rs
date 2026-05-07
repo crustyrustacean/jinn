@@ -17,6 +17,7 @@ use crate::dashboard::DashboardState;
 use crate::keymap_picker::entries::KeymapEntry;
 use crate::prompt_template::PromptTemplateStore;
 use crate::provider_picker::entries::PickerEntry;
+use crate::session_picker::entries::SessionEntry;
 use crate::shutdown_tracker::ShutdownTrackerState;
 use crate::workflow_panel::WorkflowPanelState;
 
@@ -88,6 +89,14 @@ pub struct AppState {
     /// Used to filter back to the originating scope when toggling the filter.
     /// `None` when the keymap picker is not open.
     pub keymap_picker_origin_scope: Option<String>,
+
+    /// Session picker state (items, filter text, selection index).
+    pub session_picker: nullslop_selection_widget::SelectionState<SessionEntry>,
+
+    /// Whether a session is currently being loaded from disk.
+    /// When `true`, the chat log shows a centered "Loading session..." indicator
+    /// instead of the conversation history.
+    pub session_loading: bool,
 }
 
 impl Default for AppState {
@@ -116,6 +125,8 @@ impl Default for AppState {
             keymap_picker: nullslop_selection_widget::SelectionState::new(),
             keymap_picker_show_all: false,
             keymap_picker_origin_scope: None,
+            session_picker: nullslop_selection_widget::SelectionState::new(),
+            session_loading: false,
         }
     }
 }

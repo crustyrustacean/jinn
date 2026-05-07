@@ -6,6 +6,7 @@
 
 use npr::CommandAction;
 use npr::PickerKind;
+use npr::SessionLoadRequested;
 use npr::context::SwitchPromptStrategy;
 use npr::provider::ProviderSwitch;
 use npr::provider_picker::{
@@ -48,6 +49,7 @@ impl PickerHandler {
                 ctx.state.context_strategy_picker.insert_char(cmd.ch);
             }
             Some(PickerKind::Keymap) => ctx.state.keymap_picker.insert_char(cmd.ch),
+            Some(PickerKind::Session) => ctx.state.session_picker.insert_char(cmd.ch),
             None => {}
         }
         CommandAction::Continue
@@ -64,6 +66,7 @@ impl PickerHandler {
                 ctx.state.context_strategy_picker.backspace();
             }
             Some(PickerKind::Keymap) => ctx.state.keymap_picker.backspace(),
+            Some(PickerKind::Session) => ctx.state.session_picker.backspace(),
             None => {}
         }
         CommandAction::Continue
@@ -78,6 +81,7 @@ impl PickerHandler {
             Some(PickerKind::Provider) => Self::confirm_provider(ctx),
             Some(PickerKind::ContextAssembly) => Self::confirm_strategy(ctx),
             Some(PickerKind::Keymap) => Self::confirm_keymap(ctx),
+            Some(PickerKind::Session) => Self::confirm_session(ctx),
             None => {}
         }
         CommandAction::Continue
@@ -94,6 +98,7 @@ impl PickerHandler {
                 ctx.state.context_strategy_picker.move_up(PICKER_MAX_VISIBLE);
             }
             Some(PickerKind::Keymap) => ctx.state.keymap_picker.move_up(PICKER_MAX_VISIBLE),
+            Some(PickerKind::Session) => ctx.state.session_picker.move_up(PICKER_MAX_VISIBLE),
             None => {}
         }
         CommandAction::Continue
@@ -110,6 +115,7 @@ impl PickerHandler {
                 ctx.state.context_strategy_picker.move_down(PICKER_MAX_VISIBLE);
             }
             Some(PickerKind::Keymap) => ctx.state.keymap_picker.move_down(PICKER_MAX_VISIBLE),
+            Some(PickerKind::Session) => ctx.state.session_picker.move_down(PICKER_MAX_VISIBLE),
             None => {}
         }
         CommandAction::Continue
@@ -126,6 +132,7 @@ impl PickerHandler {
                 ctx.state.context_strategy_picker.move_cursor_left();
             }
             Some(PickerKind::Keymap) => ctx.state.keymap_picker.move_cursor_left(),
+            Some(PickerKind::Session) => ctx.state.session_picker.move_cursor_left(),
             None => {}
         }
         CommandAction::Continue
@@ -142,6 +149,7 @@ impl PickerHandler {
                 ctx.state.context_strategy_picker.move_cursor_right();
             }
             Some(PickerKind::Keymap) => ctx.state.keymap_picker.move_cursor_right(),
+            Some(PickerKind::Session) => ctx.state.session_picker.move_cursor_right(),
             None => {}
         }
         CommandAction::Continue
@@ -214,6 +222,32 @@ impl PickerHandler {
 
         // Then submit the stored command.
         ctx.out.submit_command(command);
+    }
+
+    /// Session-specific confirm: submits a load request and closes the picker.
+    fn confirm_session(ctx: &mut HandlerContext<'_, AppState, Services>) {
+        let Some(entry) = ctx.state.session_picker.selected_item() else {
+            return;
+        };
+        let session_id = entry.session_id.clone();
+        let byte_offset = entry.byte_offset;
+
+        ctx.state.session_loading = true;
+
+        // Submit event for the actor to pick up.
+        ctx.out.submit_event(npr::Event::SessionLoadRequested {
+            payload: SessionLoadRequested {
+                session_id,
+                byte_offset,
+            },
+        });
+
+        // Close picker.
+        ctx.out.submit_command(npr::Command::SetMode {
+            payload: SetMode {
+                mode: npr::Mode::Normal,
+            },
+        });
     }
 }
 

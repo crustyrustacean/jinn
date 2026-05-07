@@ -6,7 +6,8 @@
 
 use jiff::Timestamp;
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use nullslop_protocol::{Event, SessionSaveRequested};
+use nullslop_protocol::{Event, PromptStrategyId, SessionSaveRequested};
+use nullslop_protocol::session::SessionLoadRequested;
 use nullslop_session::{PersistedSession, SessionStoreService};
 
 /// Direct message type (unused — the actor only responds to bus events).
@@ -27,13 +28,14 @@ impl Actor for SessionPersistenceActor {
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<SessionSaveRequested>();
+        ctx.subscribe_event::<SessionLoadRequested>();
         let store = ctx.take_data::<SessionStoreService>();
         Self { store }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::Event(event) => self.handle_event(&event),
+            ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
             ActorEnvelope::System(SystemMessage::ApplicationReady) => {
                 ctx.announce_started();
             }
@@ -48,10 +50,12 @@ impl Actor for SessionPersistenceActor {
 }
 
 impl SessionPersistenceActor {
-    /// Processes a bus event, saving session data on `SessionSaveRequested`.
-    fn handle_event(&mut self, event: &Event) {
+    /// Processes a bus event, saving session data on `SessionSaveRequested`
+    /// and loading session data on `SessionLoadRequested`.
+    fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
             Event::SessionSaveRequested { payload } => self.on_save_requested(payload),
+            Event::SessionLoadRequested { payload } => self.on_load_requested(payload, ctx),
             _ => {}
         }
     }
@@ -81,6 +85,61 @@ impl SessionPersistenceActor {
                 err = ?e,
                 "failed to persist session"
             );
+        }
+    }
+
+    /// Loads a full session from disk and sends back a `SessionLoadCompleted` command.
+    ///
+    /// Seeks to the byte offset from the event payload, reads the session data,
+    /// and sends the result back via `send_command`. Errors are logged and produce
+    /// an empty `SessionLoadCompleted` to clear the loading state.
+    fn on_load_requested(&mut self, evt: &SessionLoadRequested, ctx: &ActorContext) {
+        use nullslop_protocol::session::SessionLoadCompleted;
+
+        let Some(store) = &self.store else {
+            tracing::warn!("session persistence actor has no store — dropping load request");
+            return;
+        };
+
+        match store.load_full(evt.byte_offset) {
+            Ok(Some(persisted)) => {
+                let _ = ctx.send_command(nullslop_protocol::Command::SessionLoadCompleted {
+                    payload: SessionLoadCompleted {
+                        session_id: persisted.session_id,
+                        title: persisted.title,
+                        history: persisted.history,
+                        active_strategy: persisted.active_strategy,
+                        blobs: persisted.blobs,
+                    },
+                });
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    byte_offset = evt.byte_offset,
+                    "session load returned None at offset"
+                );
+                let _ = ctx.send_command(nullslop_protocol::Command::SessionLoadCompleted {
+                    payload: SessionLoadCompleted {
+                        session_id: evt.session_id.clone(),
+                        title: String::new(),
+                        history: vec![],
+                        active_strategy: PromptStrategyId::passthrough(),
+                        blobs: std::collections::HashMap::new(),
+                    },
+                });
+            }
+            Err(e) => {
+                tracing::warn!(err = ?e, "failed to load session");
+                let _ = ctx.send_command(nullslop_protocol::Command::SessionLoadCompleted {
+                    payload: SessionLoadCompleted {
+                        session_id: evt.session_id.clone(),
+                        title: String::new(),
+                        history: vec![],
+                        active_strategy: PromptStrategyId::passthrough(),
+                        blobs: std::collections::HashMap::new(),
+                    },
+                });
+            }
         }
     }
 }
