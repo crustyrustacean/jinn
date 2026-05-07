@@ -313,6 +313,7 @@ fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::
             render_context_strategy_picker(frame, area, state);
         }
         Some(PickerKind::Keymap) => render_keymap_picker(frame, area, state),
+        Some(PickerKind::Session) => render_session_picker(frame, area, state),
         None => {}
     }
 }
@@ -380,6 +381,24 @@ fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_comp
     };
     let widget = SelectionWidget::new(&state.keymap_picker)
         .title(Line::from(" Keymaps "))
+        .footer(footer);
+    widget.render(frame, area);
+}
+
+/// Renders the session picker overlay using [`SelectionWidget`].
+///
+/// Telescope-style layout: bordered popup with filter input at top,
+/// horizontal separator, scrollable session entries, and a footer showing
+/// the CTRL+N shortcut.
+fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
+    use nullslop_selection_widget::SelectionWidget;
+
+    let footer = Line::styled(
+        "CTRL+N to create a new session",
+        Style::default().fg(Color::Rgb(255, 165, 0)),
+    );
+    let widget = SelectionWidget::new(&state.session_picker)
+        .title(Line::from(" Sessions "))
         .footer(footer);
     widget.render(frame, area);
 }

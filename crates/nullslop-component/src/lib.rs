@@ -29,6 +29,7 @@ pub mod picker_highlight;
 pub mod prompt_template;
 pub mod provider;
 pub mod provider_picker;
+pub mod session_picker;
 pub mod shutdown_tracker;
 pub mod status_bar;
 pub mod tab_nav;
@@ -85,6 +86,7 @@ pub fn register_all(bus: &mut AppBus, registry: &mut AppUiRegistry) {
     tab_nav::register(bus, registry);
     provider::register(bus, registry);
     provider_picker::register(bus, registry);
+    session_picker::register(bus, registry);
     workflow::register(bus, registry);
     workflow_panel::register(bus, registry);
     status_bar::register(bus, registry);
