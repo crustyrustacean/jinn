@@ -166,6 +166,17 @@ impl LlmActor {
         messages: Vec<LlmMessage>,
         ctx: &ActorContext,
     ) {
+        // Collect current tool definitions.
+        let tools: Vec<ToolDefinition> = self.tool_definitions.values().cloned().collect();
+
+        let message_count = messages.len();
+        tracing::trace!(
+            session_id = ?session_id,
+            message_count,
+            tool_count = tools.len(),
+            "start_stream"
+        );
+
         // Abort any existing stream for this session.
         if let Some(handle) = self.tasks.remove(&session_id) {
             handle.abort();
@@ -177,9 +188,6 @@ impl LlmActor {
         let messages_for_stream = messages.clone();
         let session = SessionData::new(messages);
         self.sessions.insert(session_id.clone(), session);
-
-        // Collect current tool definitions.
-        let tools: Vec<ToolDefinition> = self.tool_definitions.values().cloned().collect();
 
         let factory = self.factory.clone();
         let sink = ctx.sink();
@@ -285,6 +293,12 @@ impl LlmActor {
                             });
                         }
                         StreamEvent::Done { stop_reason } => {
+                            tracing::trace!(
+                                session_id = ?sid,
+                                stop_reason = %stop_reason,
+                                tool_call_count = accumulated_tool_calls.len(),
+                                "stream Done"
+                            );
                             if stop_reason == "tool_use" {
                                 // Emit ExecuteToolBatch for the orchestrator.
                                 let _ = sink.send_command(Command::ExecuteToolBatch {
@@ -355,9 +369,30 @@ impl LlmActor {
                     session.accumulated_tool_calls.clone_from(calls);
                 }
                 session.state = SessionState::AwaitingToolResults;
+                tracing::trace!(
+                    session_id = ?payload.session_id,
+                    reason = "ToolUse",
+                    new_state = ?session.state,
+                    "handle_stream_completed"
+                );
             }
             StreamCompletedReason::Finished => {
+                // Defensive guard: if the session is awaiting tool results, a
+                // duplicate Done from the provider should not remove the session.
+                if session.state == SessionState::AwaitingToolResults {
+                    tracing::warn!(
+                        session_id = ?payload.session_id,
+                        state = ?session.state,
+                        "received StreamCompleted(Finished) while awaiting tool results — ignoring duplicate Done"
+                    );
+                    return;
+                }
                 // Clean up the completed session.
+                tracing::trace!(
+                    session_id = ?payload.session_id,
+                    reason = "Finished",
+                    "handle_stream_completed — removing session"
+                );
                 self.sessions.remove(&payload.session_id);
             }
             StreamCompletedReason::Canceled => {
@@ -389,6 +424,12 @@ impl LlmActor {
             );
             return;
         }
+
+        tracing::trace!(
+            session_id = ?session_id,
+            result_count = results.len(),
+            "handle_tool_batch_completed"
+        );
 
         // Emit PushToolResult for each result.
         for result in results {
@@ -995,5 +1036,74 @@ mod tests {
         // fail, so we test the stream error path by not starting a stream.
         // Instead, let's verify the session state is correctly tracked.
         // This is covered by other tests.
+    }
+
+    // --- Defensive guard tests ---
+
+    #[tokio::test]
+    async fn duplicate_done_finished_while_awaiting_tool_results_ignores() {
+        // Given an actor with a tool_use stream that transitioned to AwaitingToolResults.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let mut actor = actor_with_tool_calls(
+            &sink,
+            &mut ctx,
+            vec!["Let me check".to_owned()],
+            vec![tool_call.clone()],
+        );
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // When processing the StreamCompleted(ToolUse) event from the stream task.
+        let events_from_stream = sink.take_events();
+        for event in events_from_stream {
+            actor.handle_event(&event, &ctx);
+        }
+
+        // Then the session is in AwaitingToolResults.
+        let session = actor
+            .sessions
+            .get(&session_id)
+            .expect("session should exist");
+        assert_eq!(session.state, SessionState::AwaitingToolResults);
+
+        // When receiving a duplicate StreamCompleted(Finished) — simulates OpenRouter bug.
+        let duplicate_finished = Event::StreamCompleted {
+            payload: StreamCompleted {
+                session_id: session_id.clone(),
+                reason: StreamCompletedReason::Finished,
+                assistant_content: None,
+                tool_calls: None,
+            },
+        };
+        actor.handle_event(&duplicate_finished, &ctx);
+
+        // Then the session still exists and is still AwaitingToolResults.
+        let session = actor
+            .sessions
+            .get(&session_id)
+            .expect("session should still exist after duplicate Finished");
+        assert_eq!(
+            session.state,
+            SessionState::AwaitingToolResults,
+            "session should remain in AwaitingToolResults"
+        );
     }
 }
