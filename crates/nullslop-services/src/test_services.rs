@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use error_stack::Report;
-use nullslop_actor_host::FakeActorHost;
+use nullslop_actor_host::{ActorHostService, FakeActorHost};
 use nullslop_context::{DefaultStrategyDiscovery, StrategyDiscovery};
 use nullslop_protocol::SessionId;
 use nullslop_providers::{
@@ -27,7 +27,7 @@ use crate::strategy_registry::StrategyRegistryService;
 /// All operations succeed with empty results. Suitable for tests that
 /// need a [`Services`] but don't test session persistence.
 #[derive(Debug)]
-struct FakeSessionStore;
+pub struct FakeSessionStore;
 
 impl SessionStore for FakeSessionStore {
     fn name(&self) -> &'static str {
@@ -167,37 +167,29 @@ impl TestServices {
             rt.handle().clone()
         });
 
-        let actor_host = self
-            .actor_host
-            .unwrap_or_else(|| Arc::new(FakeActorHost::new()));
-        let llm = self.llm_service.unwrap_or_else(|| {
-            LlmServiceFactoryService::new(Arc::new(nullslop_providers::FakeLlmServiceFactory::new(
-                vec![],
-            )))
-        });
-        let registry = ProviderRegistryService::new(
-            ProviderRegistry::from_config(self.providers).expect("test registry"),
-        );
-        let api_keys = ApiKeysService::new(ApiKeys::new());
-        let config_storage = ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
-        let session_store = self
-            .session_store
-            .unwrap_or_else(|| SessionStoreService::new(Arc::new(FakeSessionStore)));
-
-        let strategy_registry = match self.strategy_discovery {
-            Some(d) => StrategyRegistryService::new(d),
-            None => StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery)),
-        };
-
-        Services::new(
+        Services {
             handle,
-            actor_host,
-            llm,
-            registry,
-            api_keys,
-            config_storage,
-            session_store,
-            strategy_registry,
-        )
+            actor_host: ActorHostService::new(
+                self.actor_host
+                    .unwrap_or_else(|| Arc::new(FakeActorHost::new())),
+            ),
+            llm_service: self.llm_service.unwrap_or_else(|| {
+                LlmServiceFactoryService::new(Arc::new(
+                    nullslop_providers::FakeLlmServiceFactory::new(vec![]),
+                ))
+            }),
+            provider_registry: ProviderRegistryService::new(
+                ProviderRegistry::from_config(self.providers).expect("test registry"),
+            ),
+            api_keys: ApiKeysService::new(ApiKeys::new()),
+            config_storage: ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new())),
+            session_store: self
+                .session_store
+                .unwrap_or_else(|| SessionStoreService::new(Arc::new(FakeSessionStore))),
+            strategy_registry: match self.strategy_discovery {
+                Some(d) => StrategyRegistryService::new(d),
+                None => StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery)),
+            },
+        }
     }
 }

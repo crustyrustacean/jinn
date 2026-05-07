@@ -7,9 +7,11 @@
 use std::sync::Arc;
 
 use nullslop_actor_host::ActorHostService;
+use nullslop_context::DefaultStrategyDiscovery;
 pub use nullslop_providers as providers;
 use nullslop_providers::{
-    ApiKeysService, ConfigStorageService, LlmServiceFactoryService, ProviderRegistryService,
+    ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
+    ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 use nullslop_session::SessionStoreService;
 use tokio::runtime::Handle;
@@ -23,97 +25,84 @@ use crate::strategy_registry::StrategyRegistryService;
 ///
 /// Holds references to all services, enabling dependency injection
 /// and making it easy to swap implementations for testing.
+///
+/// Production code should construct this via struct initialization syntax
+/// to get compiler-verified completeness:
+///
+/// ```ignore
+/// let services = Services {
+///     handle: handle.clone(),
+///     actor_host: ActorHostService::new(host),
+///     llm_service,
+///     provider_registry,
+///     api_keys,
+///     config_storage,
+///     session_store,
+///     strategy_registry,
+/// };
+/// ```
+///
+/// Tests can use [`Services::new()`] which provides all-fake defaults,
+/// or [`test_services::TestServices::builder()`] to customize specific services.
 #[derive(Debug, Clone)]
 pub struct Services {
     /// Async runtime handle for spawning background tasks.
-    handle: Handle,
+    pub handle: Handle,
     /// Actor host service.
-    actor_host: ActorHostService,
+    pub actor_host: ActorHostService,
     /// LLM service factory for creating streaming chat instances.
-    llm_service: LlmServiceFactoryService,
+    pub llm_service: LlmServiceFactoryService,
     /// Provider registry for looking up and validating provider configs.
-    provider_registry: ProviderRegistryService,
+    pub provider_registry: ProviderRegistryService,
     /// Resolved API keys for provider availability checks and factory creation.
-    api_keys: ApiKeysService,
+    pub api_keys: ApiKeysService,
     /// Config storage for persisting provider configuration.
-    config_storage: ConfigStorageService,
+    pub config_storage: ConfigStorageService,
     /// Session store for persisting chat session data.
-    session_store: SessionStoreService,
+    pub session_store: SessionStoreService,
     /// Strategy discovery for listing available prompt assembly strategies.
-    strategy_registry: StrategyRegistryService,
+    pub strategy_registry: StrategyRegistryService,
 }
 
 impl Services {
-    /// Creates a new `Services` with the given components.
+    /// Creates a new `Services` with all fake/noop implementations.
+    ///
+    /// Suitable for unit tests that need a `Services` but don't test
+    /// specific service behavior. Leaks a tokio runtime — acceptable for tests.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tokio runtime fails to create (extremely unlikely).
     #[must_use]
-    #[expect(clippy::too_many_arguments, reason = "service container needs all dependencies")]
-    pub fn new(
-        handle: Handle,
-        actor_host: Arc<dyn nullslop_actor_host::ActorHost>,
-        llm_service: LlmServiceFactoryService,
-        provider_registry: ProviderRegistryService,
-        api_keys: ApiKeysService,
-        config_storage: ConfigStorageService,
-        session_store: SessionStoreService,
-        strategy_registry: StrategyRegistryService,
-    ) -> Self {
+    #[expect(clippy::expect_used, reason = "test-only defaults, panics are acceptable")]
+    pub fn new() -> Self {
+        let rt = Box::leak(Box::new(
+            tokio::runtime::Runtime::new().expect("test runtime"),
+        ));
+        let handle = rt.handle().clone();
+
         Self {
             handle,
-            actor_host: ActorHostService::new(actor_host),
-            llm_service,
-            provider_registry,
-            api_keys,
-            config_storage,
-            session_store,
-            strategy_registry,
+            actor_host: ActorHostService::new(Arc::new(
+                nullslop_actor_host::FakeActorHost::new(),
+            )),
+            llm_service: LlmServiceFactoryService::new(Arc::new(
+                nullslop_providers::FakeLlmServiceFactory::new(vec![]),
+            )),
+            provider_registry: ProviderRegistryService::new(
+                ProviderRegistry::from_config(ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                })
+                .expect("empty config is valid"),
+            ),
+            api_keys: ApiKeysService::new(ApiKeys::new()),
+            config_storage: ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new())),
+            session_store: SessionStoreService::new(Arc::new(
+                test_services::FakeSessionStore,
+            )),
+            strategy_registry: StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery)),
         }
-    }
-
-    /// Returns a reference to the async runtime handle.
-    #[must_use]
-    pub fn handle(&self) -> &Handle {
-        &self.handle
-    }
-
-    /// Returns a reference to the actor host service.
-    #[must_use]
-    pub fn actor_host(&self) -> &ActorHostService {
-        &self.actor_host
-    }
-
-    /// Returns a reference to the LLM service factory.
-    #[must_use]
-    pub fn llm_service(&self) -> &LlmServiceFactoryService {
-        &self.llm_service
-    }
-
-    /// Returns a reference to the provider registry service.
-    #[must_use]
-    pub fn provider_registry(&self) -> &ProviderRegistryService {
-        &self.provider_registry
-    }
-
-    /// Returns a reference to the resolved API keys service.
-    #[must_use]
-    pub fn api_keys(&self) -> &ApiKeysService {
-        &self.api_keys
-    }
-
-    /// Returns a reference to the config storage service.
-    #[must_use]
-    pub fn config_storage(&self) -> &ConfigStorageService {
-        &self.config_storage
-    }
-
-    /// Returns a reference to the session store service.
-    #[must_use]
-    pub fn session_store(&self) -> &SessionStoreService {
-        &self.session_store
-    }
-
-    /// Returns a reference to the strategy registry service.
-    #[must_use]
-    pub fn strategy_registry(&self) -> &StrategyRegistryService {
-        &self.strategy_registry
     }
 }

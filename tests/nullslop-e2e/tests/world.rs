@@ -41,24 +41,24 @@ impl TuiWorld {
             default_provider: None,
         };
         let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
-        let services = nullslop_services::Services::new(
+        let services = nullslop_services::Services {
             handle,
-            actor_host,
-            llm,
-            nullslop_providers::ProviderRegistryService::new(
+            actor_host: nullslop_actor_host::ActorHostService::new(actor_host),
+            llm_service: llm,
+            provider_registry: nullslop_providers::ProviderRegistryService::new(
                 nullslop_providers::ProviderRegistry::from_config(config).expect("test registry"),
             ),
-            nullslop_providers::ApiKeysService::new(nullslop_providers::ApiKeys::new()),
-            nullslop_providers::ConfigStorageService::new(Arc::new(
+            api_keys: nullslop_providers::ApiKeysService::new(nullslop_providers::ApiKeys::new()),
+            config_storage: nullslop_providers::ConfigStorageService::new(Arc::new(
                 nullslop_providers::InMemoryConfigStorage::new(),
             )),
-            nullslop_session::SessionStoreService::new(Arc::new(
+            session_store: nullslop_session::SessionStoreService::new(Arc::new(
                 nullslop_session::JsonlSessionStore::new_in(
                     tempfile::tempdir().expect("temp dir").path().to_path_buf(),
                 ),
             )),
             strategy_registry,
-        );
+        };
         Self {
             app: TuiApp::new(services),
         }

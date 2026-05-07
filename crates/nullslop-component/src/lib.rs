@@ -49,7 +49,7 @@ pub use workflow_panel::WorkflowPanelState;
 pub(crate) mod test_utils {
     /// Create a [`nullslop_services::Services`] with fake implementations for tests.
     pub fn test_services() -> nullslop_services::Services {
-        nullslop_services::test_services::TestServices::builder().build()
+        nullslop_services::Services::new()
     }
 }
 

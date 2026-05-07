@@ -173,7 +173,7 @@ impl HeadlessApp {
     /// Shuts down the actor host gracefully.
     pub fn shutdown(&mut self) {
         self.core.coordinated_shutdown(
-            self.services.actor_host().backend(),
+            self.services.actor_host.backend(),
             nullslop_core::SHUTDOWN_TIMEOUT,
         );
     }

@@ -229,8 +229,8 @@ const PICKER_MAX_VISIBLE: usize = 100;
 /// sorting and active-provider promotion, then stores the entries via
 /// [`SelectionState::set_items`].
 pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
-    let registry = services.provider_registry().read();
-    let api_keys = services.api_keys().read();
+    let registry = services.provider_registry.read();
+    let api_keys = services.api_keys.read();
     let all = load_provider_entries(&registry, &api_keys, state.model_cache.as_ref());
     let entries = sorted_entries(&all, "", &state.active_provider);
     state.provider_picker.set_items(entries);
