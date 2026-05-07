@@ -103,3 +103,40 @@ apply-license:
 
    echo "Done!"
 
+# Mirror trunk history to GitHub (one-way, force push)
+sync-github:
+   #!/bin/bash
+   set -euo pipefail
+
+   FOSSIL_REPO="/mnt/zed/repos/nullslop2/nullslop.fossil"
+   MARKS_FILE="/mnt/zed/repos/nullslop2/.git-fossil-marks"
+   GITHUB_REMOTE="git@github.com:jayson-lennon/nullslop.git"
+
+   TMPDIR=$(mktemp -d)
+   trap "rm -rf $TMPDIR" EXIT
+
+   echo "Initializing temp bare repo..."
+   git init --bare "$TMPDIR/repo"
+   cd "$TMPDIR/repo"
+
+   git config user.name "Jayson Lennon"
+   git config user.email "jayson@jaysonlennon.dev"
+
+   EXPORT_ARGS="--repository $FOSSIL_REPO --git"
+   if [ -f "$MARKS_FILE" ]; then
+       echo "Incremental export (marks file found)..."
+       EXPORT_ARGS="$EXPORT_ARGS --import-marks $MARKS_FILE --export-marks $MARKS_FILE"
+   else
+       echo "Full export (no marks file yet)..."
+       EXPORT_ARGS="$EXPORT_ARGS --export-marks $MARKS_FILE"
+   fi
+
+   echo "Exporting from Fossil..."
+   fossil export $EXPORT_ARGS | git fast-import
+
+   echo "Pushing to GitHub..."
+   git remote add origin "$GITHUB_REMOTE"
+   git push --force origin master
+
+   echo "Sync complete."
+
