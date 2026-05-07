@@ -1,0 +1,244 @@
+//! Prompt templates — reusable prompts loaded from `~/.config/nullslop/prompts/`.
+//!
+//! Re-exports types from [`nullslop_prompt_template`]. Provides component-specific
+//! operations like [`expand_tokens`].
+
+// Re-export from the standalone crate.
+pub use nullslop_prompt_template::{
+    PromptTemplateParseError, PromptTemplateStore, PromptTemplateStoreError, prompts_dir,
+};
+// Re-export PromptTemplate from protocol (also available through the standalone crate).
+pub use nullslop_protocol::PromptTemplate;
+
+pub mod rescan_handler;
+
+/// Expands `$name` tokens in `text` using templates from the store.
+///
+/// A valid token is a `$` followed by one or more non-whitespace, non-`$`
+/// characters. The `$` must be at the start of the string or preceded by a
+/// space. On exact name match, `$name` is replaced with the template body.
+/// Unknown names are left as literal `$name` text.
+///
+/// This is a pure function with no side effects.
+#[must_use]
+pub fn expand_tokens(text: &str, store: &PromptTemplateStore) -> String {
+    let mut result = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        let is_dollar = chars.get(i) == Some(&'$');
+        let preceded_by_boundary = i == 0 || chars.get(i.wrapping_sub(1)) == Some(&' ');
+        let next_char = chars.get(i + 1);
+        let has_valid_name_start = next_char.is_some() && next_char != Some(&' ') && next_char != Some(&'$');
+
+        if is_dollar && preceded_by_boundary && has_valid_name_start {
+            let name_start = i + 1;
+            let mut name_end = name_start;
+            while name_end < len {
+                let ch = chars.get(name_end);
+                if ch.is_none() || ch.is_some_and(|c| c.is_whitespace() || c == &'$') { break; }
+                name_end += 1;
+            }
+            let name: String = chars.get(name_start..name_end)
+                .map(|s| s.iter().collect::<String>())
+                .unwrap_or_default();
+            if let Some(template) = store.find_by_name(&name) {
+                result.push_str(&template.body);
+            } else {
+                result.push('$');
+                result.push_str(&name);
+            }
+            i = name_end;
+        } else if let Some(&ch) = chars.get(i) {
+            result.push(ch);
+            i += 1;
+        } else {
+            i += 1;
+        }
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod expand_tokens_tests {
+    use super::*;
+
+    fn make_store(templates: Vec<(&str, &str, &str)>) -> PromptTemplateStore {
+        PromptTemplateStore::from_vec(
+            templates.into_iter()
+                .map(|(name, description, body)| nullslop_protocol::PromptTemplate {
+                    name: name.to_owned(), description: description.to_owned(), body: body.to_owned(),
+                })
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn expand_tokens_replaces_known_name() {
+        // Given a store with a "greeting" template.
+        let store = make_store(vec![("greeting", "A greeting", "Hello, world!")]);
+
+        // When expanding tokens in "$greeting".
+        let result = expand_tokens("$greeting", &store);
+
+        // Then the token is replaced with the template body.
+        assert_eq!(result, "Hello, world!");
+    }
+
+    #[test]
+    fn expand_tokens_leaves_unknown_name() {
+        // Given an empty store.
+        let store = make_store(vec![]);
+
+        // When expanding tokens in "$unknown".
+        let result = expand_tokens("$unknown", &store);
+
+        // Then the token is left as-is.
+        assert_eq!(result, "$unknown");
+    }
+
+    #[test]
+    fn expand_tokens_multiple_tokens() {
+        // Given a store with two templates.
+        let store = make_store(vec![
+            ("a", "First", "AAA"),
+            ("b", "Second", "BBB"),
+        ]);
+
+        // When expanding "$a and $b".
+        let result = expand_tokens("$a and $b", &store);
+
+        // Then both tokens are replaced.
+        assert_eq!(result, "AAA and BBB");
+    }
+
+    #[test]
+    fn expand_tokens_at_start() {
+        // Given a store with a "hi" template.
+        let store = make_store(vec![("hi", "Greeting", "Hello")]);
+
+        // When expanding "$hi there".
+        let result = expand_tokens("$hi there", &store);
+
+        // Then only the start token is replaced.
+        assert_eq!(result, "Hello there");
+    }
+
+    #[test]
+    fn expand_tokens_in_middle() {
+        // Given a store with a "name" template.
+        let store = make_store(vec![("name", "Name", "Alice")]);
+
+        // When expanding "hello $name bye".
+        let result = expand_tokens("hello $name bye", &store);
+
+        // Then the middle token is replaced.
+        assert_eq!(result, "hello Alice bye");
+    }
+
+    #[test]
+    fn expand_tokens_at_end() {
+        // Given a store with an "end" template.
+        let store = make_store(vec![("end", "Ending", "DONE")]);
+
+        // When expanding "start $end".
+        let result = expand_tokens("start $end", &store);
+
+        // Then the end token is replaced.
+        assert_eq!(result, "start DONE");
+    }
+
+    #[test]
+    fn expand_tokens_adjacent_tokens() {
+        // Given a store with "a" and "b" templates.
+        let store = make_store(vec![
+            ("a", "A", "X"),
+            ("b", "B", "Y"),
+        ]);
+
+        // When expanding "$a $b".
+        let result = expand_tokens("$a $b", &store);
+
+        // Then both tokens are replaced.
+        assert_eq!(result, "X Y");
+    }
+
+    #[test]
+    fn expand_tokens_empty_body() {
+        // Given a store with a template that has an empty body.
+        let store = make_store(vec![("empty", "Empty", "")]);
+
+        // When expanding "$empty".
+        let result = expand_tokens("before $empty after", &store);
+
+        // Then the token is replaced with nothing.
+        assert_eq!(result, "before  after");
+    }
+
+    #[test]
+    fn expand_tokens_midword_dollar_ignored() {
+        // Given a store with a "foo" template.
+        let store = make_store(vec![("foo", "Foo", "BAR")]);
+
+        // When expanding "abc$foo".
+        let result = expand_tokens("abc$foo", &store);
+
+        // Then the midword dollar is left as-is.
+        assert_eq!(result, "abc$foo");
+    }
+
+    #[test]
+    fn expand_tokens_dollar_at_end_of_string() {
+        // Given a store with templates.
+        let store = make_store(vec![("foo", "Foo", "BAR")]);
+
+        // When expanding a trailing "$".
+        let result = expand_tokens("test$", &store);
+
+        // Then it's left as-is.
+        assert_eq!(result, "test$");
+    }
+
+    #[test]
+    fn expand_tokens_bare_dollar() {
+        // Given a store with templates.
+        let store = make_store(vec![]);
+
+        // When expanding a lone "$".
+        let result = expand_tokens("$", &store);
+
+        // Then it's left as-is.
+        assert_eq!(result, "$");
+    }
+
+    #[test]
+    fn expand_tokens_double_dollar_passthrough() {
+        // Given a store with templates.
+        let store = make_store(vec![("foo", "Foo", "BAR")]);
+
+        // When expanding "$$foo".
+        let result = expand_tokens("$$foo", &store);
+
+        // Then the first $ triggers expansion of "$foo" (second $ is not a valid
+        // name start since next char is $).
+        // Actually: chars[0]='$', chars[1]='$' → has_valid_name_start is false
+        // because next_char is Some('$'). So first $ is literal, then second $
+        // at i=1 is preceded by non-space → midword → literal.
+        assert_eq!(result, "$$foo");
+    }
+
+    #[test]
+    fn expand_tokens_empty_text() {
+        // Given a store.
+        let store = make_store(vec![]);
+
+        // When expanding empty text.
+        let result = expand_tokens("", &store);
+
+        // Then result is empty.
+        assert_eq!(result, "");
+    }
+}

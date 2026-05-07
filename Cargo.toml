@@ -1,0 +1,245 @@
+[package]
+name = "nullslop"
+version = "0.1.0"
+edition = "2024"
+resolver = "3"
+default-run = "nullslop"
+
+[workspace]
+members = ["crates/*", "actors/*", "tests/*"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+nullslop-cli = { workspace = true }
+nullslop-tui = { workspace = true }
+nullslop-core = { workspace = true }
+nullslop-services = { workspace = true }
+nullslop-providers = { workspace = true }
+nullslop-component = { workspace = true }
+nullslop-component-core = { workspace = true }
+nullslop-actor-host = { workspace = true }
+nullslop-actor = { workspace = true }
+nullslop-echo = { workspace = true }
+nullslop-llm = { workspace = true }
+nullslop-llm-discover = { workspace = true }
+nullslop-prompt-scan = { workspace = true }
+nullslop-prompt-template = { workspace = true }
+nullslop-context-actor = { workspace = true }
+nullslop-context = { workspace = true }
+nullslop-tool-orchestrator = { workspace = true }
+nullslop-workflow-executor = { workspace = true }
+nullslop-session = { workspace = true }
+nullslop-session-actor = { workspace = true }
+nullslop-workflow = { workspace = true }
+nullslop-workflow-store = { workspace = true }
+tokio = { workspace = true }
+kanal = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+serde_json = { workspace = true }
+jiff = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+clap-verbosity-flag = { workspace = true }
+ratatui-which-key = { workspace = true }
+nullslop-protocol = { workspace = true, features = ["which-key"] }
+tempfile = { workspace = true }
+dotenvy = { workspace = true }
+
+[workspace.dependencies]
+# Internal
+nullslop-prompt-scan = { path = "actors/nullslop-prompt-scan" }
+nullslop-prompt-template = { path = "crates/nullslop-prompt-template" }
+nullslop-protocol = { path = "crates/nullslop-protocol" }
+nullslop-context = { path = "crates/nullslop-context" }
+nullslop-core = { path = "crates/nullslop-core" }
+nullslop-tui = { path = "crates/nullslop-tui" }
+nullslop-component-core = { path = "crates/nullslop-component-core" }
+nullslop-component-ui = { path = "crates/nullslop-component-ui" }
+nullslop-component = { path = "crates/nullslop-component" }
+nullslop-cli = { path = "crates/nullslop-cli" }
+nullslop-services = { path = "crates/nullslop-services" }
+nullslop-echo = { path = "actors/nullslop-echo" }
+nullslop-llm = { path = "actors/nullslop-llm" }
+nullslop-llm-discover = { path = "actors/nullslop-llm-discover" }
+nullslop-context-actor = { path = "actors/nullslop-context-actor" }
+nullslop-tool-orchestrator = { path = "actors/nullslop-tool-orchestrator" }
+nullslop-actor = { path = "crates/nullslop-actor" }
+nullslop-actor-host = { path = "crates/nullslop-actor-host" }
+nullslop-providers = { path = "crates/nullslop-providers" }
+nullslop-protocol-derive = { path = "crates/nullslop-protocol-derive" }
+nullslop-selection-widget = { path = "crates/nullslop-selection-widget" }
+nullslop-workflow = { path = "crates/nullslop-workflow" }
+nullslop-workflow-executor = { path = "actors/nullslop-workflow-executor" }
+nullslop-session = { path = "crates/nullslop-session" }
+nullslop-session-actor = { path = "actors/nullslop-session-actor" }
+nullslop-workflow-store = { path = "crates/nullslop-workflow-store" }
+
+# Error handling
+wherror = "2.3.1"
+error-stack = { version = "0.7", features = ["serde"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async / channels
+tokio = { version = "1", features = ["full"] }
+kanal = "0.1"
+futures = "0.3"
+
+# UI
+ratatui = "0.30.0"
+crossterm = { version = "0.29", features = ["event-stream"] }
+ratatui-which-key = "0.11.0"
+ratatui-tabs = "0.2.0"
+ratatui-spatial-splits = "0.2.0"
+throbber-widgets-tui = "0.11"
+
+# State
+parking_lot = "0.12"
+
+# Time
+jiff = { version = "0.2", features = ["serde"] }
+humantime = "2"
+
+# DX
+derive_more = { version = "2", features = ["debug", "display"] }
+rstest = "0.26"
+tempfile = "3"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+clap-verbosity-flag = "3"
+
+# LLM
+llm = { version = "1.3", default-features = false, features = [
+    "default-tls",
+    "openrouter",
+    "openai",
+    "anthropic",
+    "ollama",
+    "deepseek",
+    "xai",
+    "phind",
+    "google",
+    "groq",
+    "cohere",
+    "mistral",
+    "huggingface",
+    "elevenlabs",
+] }
+
+# Other
+dirs = "6"
+toml = "0.8"
+dotenvy = "0.15"
+unicode-segmentation = "1"
+fuzzy-matcher = "0.3"
+async-trait = "0.1"
+dialoguer = "0.12"
+arboard = "3"
+sha2 = "0.10"
+glob = "0.3"
+rand = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Proc-macro
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+
+# UUID
+uuid = { version = "1.23.1", features = ["v4", "serde"] }
+
+# Testing (e2e)
+cucumber = "0.23"
+
+[workspace.lints.rust]
+missing_docs = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+struct_excessive_bools = "allow"
+wildcard_imports = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_possible_wrap = "allow"
+float_cmp = "allow"
+implicit_hasher = "allow"
+single_match = "allow"
+min_ident_chars = "allow"
+rest_pat_in_fully_bound_structs = "allow"
+
+allow_attributes = "warn"
+allow_attributes_without_reason = "deny"
+as_underscore = "deny"
+clone_on_ref_ptr = "allow"
+create_dir = "deny"
+dbg_macro = "warn"
+else_if_without_else = "warn"
+empty_drop = "warn"
+empty_enum_variants_with_brackets = "deny"
+empty_structs_with_brackets = "deny"
+error_impl_error = "deny"
+exit = "deny"
+expect_used = "warn"
+field_scoped_visibility_modifiers = "warn"
+filetype_is_file = "warn"
+float_cmp_const = "deny"
+get_unwrap = "deny"
+if_then_some_else_none = "warn"
+impl_trait_in_params = "deny"
+integer_division = "warn"
+large_include_file = "deny"
+let_underscore_must_use = "allow"
+lossy_float_literal = "deny"
+map_err_ignore = "deny"
+map_with_unused_argument_over_ranges = "warn"
+missing_assert_message = "warn"
+missing_docs_in_private_items = "warn"
+mixed_read_write_in_expression = "warn"
+multiple_unsafe_ops_per_block = "deny"
+mutex_atomic = "deny"
+mutex_integer = "deny"
+needless_raw_strings = "warn"
+non_zero_suggestions = "deny"
+panic = "warn"
+panic_in_result_fn = "deny"
+partial_pub_fields = "deny"
+pathbuf_init_then_push = "warn"
+print_stderr = "warn"
+print_stdout = "warn"
+pub_with_shorthand = "allow"
+rc_buffer = "warn"
+rc_mutex = "deny"
+redundant_test_prefix = "deny"
+redundant_type_annotations = "deny"
+renamed_function_params = "warn"
+return_and_then = "warn"
+same_name_method = "warn"
+str_to_string = "warn"
+string_add = "warn"
+string_slice = "deny"
+todo = "warn"
+undocumented_unsafe_blocks = "warn"
+unimplemented = "warn"
+unnecessary_safety_comment = "deny"
+unnecessary_safety_doc = "deny"
+unneeded_field_pattern = "warn"
+unreachable = "warn"
+unused_result_ok = "warn"
+unused_trait_names = "deny"
+unwrap_in_result = "deny"
+use_debug = "warn"
+verbose_file_reads = "warn"
+
+indexing_slicing = "deny"
+

@@ -1,0 +1,1104 @@
+//! Handles user interactions with the chat input box.
+//!
+//! Responds to typing, deleting, clearing, and submitting messages, as well as
+//! switching between normal (browsing) and input (typing) modes.
+//!
+//! When a message is submitted, it is enqueued via `EnqueueUserMessage` for
+//! the message queue handler to dispatch. The input buffer is cleared immediately.
+//!
+//! Autocomplete: typing `$` at a valid position (start of buffer or preceded by a
+//! space) activates prompt-template autocomplete. The popup shows fuzzy-matched
+//! templates. Tab/Enter completes the name. Typing a closing `$` after an exact
+//! match triggers double-`$` expansion.
+
+use crate::AppState;
+use crate::chat_input_box::AutocompleteMatch;
+use crate::prompt_template::PromptTemplateStore;
+use npr::CommandAction;
+use npr::chat_input::{
+    AutocompleteConfirm, Clear, DeleteGrapheme, DeleteGraphemeForward, InsertChar, Interrupt,
+    MoveCursorDown, MoveCursorLeft, MoveCursorRight, MoveCursorToEnd, MoveCursorToStart,
+    MoveCursorUp, MoveCursorWordLeft, MoveCursorWordRight, SubmitMessage,
+};
+use npr::system::SetMode;
+use npr::tab::{SwitchTab, TabDirection};
+use nullslop_component_core::{HandlerContext, define_handler};
+use nullslop_protocol as npr;
+use nullslop_services::Services;
+use unicode_segmentation::UnicodeSegmentation as _;
+
+define_handler! {
+    pub(crate) struct ChatInputBoxHandler;
+
+    commands {
+        InsertChar: on_insert_char,
+        DeleteGrapheme: on_delete_grapheme,
+        DeleteGraphemeForward: on_delete_grapheme_forward,
+        SubmitMessage: on_submit_message,
+        Clear: on_clear,
+        Interrupt: on_interrupt,
+        MoveCursorLeft: on_move_cursor_left,
+        MoveCursorRight: on_move_cursor_right,
+        MoveCursorToStart: on_move_cursor_to_start,
+        MoveCursorToEnd: on_move_cursor_to_end,
+        MoveCursorWordLeft: on_move_cursor_word_left,
+        MoveCursorWordRight: on_move_cursor_word_right,
+        MoveCursorUp: on_move_cursor_up,
+        MoveCursorDown: on_move_cursor_down,
+        AutocompleteConfirm: on_autocomplete_confirm,
+        SetMode: on_set_mode,
+    }
+
+    events {}
+}
+
+impl ChatInputBoxHandler {
+    /// Inserts a character at the cursor position.
+    ///
+    /// Also handles `$` detection for autocomplete activation, space dismissal,
+    /// and double-`$` expansion.
+    fn on_insert_char(
+        cmd: &InsertChar,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        let is_autocomplete_active = ctx.state.active_chat_input().autocomplete().is_some();
+
+        if is_autocomplete_active {
+            // Autocomplete is active — insert the character first.
+            ctx.state
+                .active_chat_input_mut()
+                .insert_grapheme_at_cursor(cmd.ch);
+
+            match cmd.ch {
+                ' ' => {
+                    // Space dismisses autocomplete.
+                    ctx.state.active_chat_input_mut().deactivate_autocomplete();
+                }
+                '$' => {
+                    // Check for double-$ expansion.
+                    // The filter is the text BEFORE the just-inserted $,
+                    // so we use cursor_pos - 1 as the end.
+                    let Some(token_start) = ctx
+                        .state
+                        .active_chat_input()
+                        .autocomplete_token_start()
+                    else {
+                        // Autocomplete was deactivated between checks.
+                        return CommandAction::Continue;
+                    };
+                    let cursor_before_insert = ctx.state.active_chat_input().cursor_pos() - 1;
+                    let filter: String = ctx
+                        .state
+                        .active_chat_input()
+                        .text()
+                        .graphemes(true)
+                        .enumerate()
+                        .skip_while(|(i, _)| *i < token_start + 1)
+                        .take_while(|(i, _)| *i < cursor_before_insert)
+                        .map(|(_, g)| g)
+                        .collect();
+                    if let Some(template) = ctx.state.prompt_templates.find_by_name(&filter) {
+                        let body = template.body.clone();
+                        ctx.state.active_chat_input_mut().expand_autocomplete(&body);
+                    } else {
+                        // No exact match — treat as literal, deactivate.
+                        ctx.state.active_chat_input_mut().deactivate_autocomplete();
+                    }
+                }
+                _ => {
+                    // Regular character — update filter and recompute matches.
+                    let filter = ctx
+                        .state
+                        .active_chat_input()
+                        .autocomplete_filter()
+                        .unwrap_or_default();
+                    let matches = compute_matches(&ctx.state.prompt_templates, &filter);
+                    ctx.state
+                        .active_chat_input_mut()
+                        .update_autocomplete_matches(matches);
+                }
+            }
+        } else {
+            // No autocomplete — just insert, then check if `$` triggers activation.
+            ctx.state
+                .active_chat_input_mut()
+                .insert_grapheme_at_cursor(cmd.ch);
+
+            if cmd.ch == '$' {
+                let input = ctx.state.active_chat_input();
+                if is_valid_trigger_position(input) {
+                    let token_start = input.cursor_pos() - 1;
+                    let matches = compute_matches(&ctx.state.prompt_templates, "");
+                    ctx.state
+                        .active_chat_input_mut()
+                        .activate_autocomplete(token_start, matches);
+                }
+            }
+        }
+
+        CommandAction::Continue
+    }
+
+    /// Deletes the grapheme before the cursor.
+    ///
+    /// If autocomplete is active and the delete removes the `$` trigger,
+    /// deactivates autocomplete. Otherwise updates the filter.
+    fn on_delete_grapheme(
+        _cmd: &DeleteGrapheme,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        let should_deactivate = if let Some(token_start) =
+            ctx.state.active_chat_input().autocomplete_token_start()
+        {
+            ctx.state.active_chat_input().cursor_pos() <= token_start + 1
+        } else {
+            false
+        };
+
+        if should_deactivate {
+            ctx.state.active_chat_input_mut().deactivate_autocomplete();
+            ctx.state
+                .active_chat_input_mut()
+                .delete_grapheme_before_cursor();
+        } else if ctx.state.active_chat_input().autocomplete().is_some() {
+            // Within the filter region — delete and recompute.
+            ctx.state
+                .active_chat_input_mut()
+                .delete_grapheme_before_cursor();
+            let filter = ctx
+                .state
+                .active_chat_input()
+                .autocomplete_filter()
+                .unwrap_or_default();
+            let matches = compute_matches(&ctx.state.prompt_templates, &filter);
+            ctx.state
+                .active_chat_input_mut()
+                .update_autocomplete_matches(matches);
+        } else {
+            ctx.state
+                .active_chat_input_mut()
+                .delete_grapheme_before_cursor();
+        }
+
+        CommandAction::Continue
+    }
+
+    /// Submits the current input as a user message.
+    ///
+    /// If autocomplete is active, performs completion instead of submitting.
+    fn on_submit_message(
+        _cmd: &SubmitMessage,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        // If autocomplete is active, complete instead of submit.
+        if ctx.state.active_chat_input().autocomplete().is_some() {
+            if let Some(selected) = ctx.state.active_chat_input().autocomplete_selected() {
+                let name = selected.name.clone();
+                ctx.state
+                    .active_chat_input_mut()
+                    .complete_autocomplete(&name);
+                let filter = ctx
+                    .state
+                    .active_chat_input()
+                    .autocomplete_filter()
+                    .unwrap_or_default();
+                let matches = compute_matches(&ctx.state.prompt_templates, &filter);
+                ctx.state
+                    .active_chat_input_mut()
+                    .update_autocomplete_matches(matches);
+            }
+            return CommandAction::Continue;
+        }
+
+        let text = ctx.state.active_chat_input().text().to_owned();
+        if !text.is_empty() {
+            let session_id = ctx.state.active_session.clone();
+            ctx.state.active_chat_input_mut().reset();
+
+            ctx.out.submit_command(npr::Command::EnqueueUserMessage {
+                payload: npr::chat_input::EnqueueUserMessage { session_id, text },
+            });
+        }
+        CommandAction::Continue
+    }
+
+    /// Clears the input buffer and resets the cursor.
+    ///
+    /// Deactivates autocomplete if active.
+    fn on_clear(_cmd: &Clear, ctx: &mut HandlerContext<'_, AppState, Services>) -> CommandAction {
+        ctx.state.active_chat_input_mut().deactivate_autocomplete();
+        ctx.state.active_chat_input_mut().reset();
+        CommandAction::Continue
+    }
+
+    /// Context-sensitive interrupt: clears the input buffer if non-empty, otherwise quits.
+    ///
+    /// Deactivates autocomplete if active.
+    fn on_interrupt(
+        _cmd: &Interrupt,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        ctx.state.active_chat_input_mut().deactivate_autocomplete();
+        if ctx.state.active_chat_input().is_empty() {
+            ctx.out.submit_command(npr::Command::Quit);
+        } else {
+            ctx.state.active_chat_input_mut().reset();
+        }
+        CommandAction::Continue
+    }
+
+    /// Sets the application input mode, cancelling active streams when leaving Input mode.
+    fn on_set_mode(
+        cmd: &SetMode,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        // When leaving Input mode during active streaming, cancel the stream.
+        if ctx.state.mode == npr::Mode::Input
+            && cmd.mode == npr::Mode::Normal
+            && !ctx.state.active_session().is_idle()
+        {
+            let session_id = ctx.state.active_session.clone();
+            ctx.out.submit_command(npr::Command::CancelStream {
+                payload: npr::provider::CancelStream { session_id },
+            });
+        }
+
+        // When leaving picker mode, clear the kind.
+        if ctx.state.mode == npr::Mode::Picker && cmd.mode != npr::Mode::Picker {
+            ctx.state.active_picker_kind = None;
+        }
+
+        ctx.state.mode = cmd.mode;
+        CommandAction::Continue
+    }
+
+    /// Moves the cursor left one grapheme.
+    ///
+    /// If autocomplete is active and the cursor leaves the token region,
+    /// deactivates autocomplete.
+    fn on_move_cursor_left(
+        _cmd: &MoveCursorLeft,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        ctx.state.active_chat_input_mut().move_cursor_left();
+        let should_deactivate = {
+            let input = ctx.state.active_chat_input();
+            should_deactivate_on_cursor_move(input)
+        };
+        if should_deactivate {
+            ctx.state.active_chat_input_mut().deactivate_autocomplete();
+        }
+        CommandAction::Continue
+    }
+
+    /// Moves the cursor right one grapheme.
+    ///
+    /// If autocomplete is active and the cursor leaves the token region,
+    /// deactivates autocomplete.
+    fn on_move_cursor_right(
+        _cmd: &MoveCursorRight,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        ctx.state.active_chat_input_mut().move_cursor_right();
+        let should_deactivate = {
+            let input = ctx.state.active_chat_input();
+            should_deactivate_on_cursor_move(input)
+        };
+        if should_deactivate {
+            ctx.state.active_chat_input_mut().deactivate_autocomplete();
+        }
+        CommandAction::Continue
+    }
+
+    /// Moves the cursor to the beginning of the input.
+    ///
+    /// Deactivates autocomplete if active (cursor always leaves token region).
+    fn on_move_cursor_to_start(
+        _cmd: &MoveCursorToStart,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        ctx.state.active_chat_input_mut().deactivate_autocomplete();
+        ctx.state.active_chat_input_mut().move_cursor_to_start();
+        CommandAction::Continue
+    }
+
+    /// Moves the cursor to the end of the input.
+    ///
+    /// Deactivates autocomplete if active (cursor always leaves token region
+    /// unless the token happens to be at the very end, but we still deactivate
+    /// since the user explicitly moved to end).
+    fn on_move_cursor_to_end(
+        _cmd: &MoveCursorToEnd,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        ctx.state.active_chat_input_mut().deactivate_autocomplete();
+        ctx.state.active_chat_input_mut().move_cursor_to_end();
+        CommandAction::Continue
+    }
+
+    /// Deletes the grapheme after the cursor (forward delete).
+    ///
+    /// If autocomplete is active and the delete removes the `$` or goes
+    /// beyond the filter region, deactivates autocomplete.
+    fn on_delete_grapheme_forward(
+        _cmd: &DeleteGraphemeForward,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        let token_start = ctx.state.active_chat_input().autocomplete_token_start();
+        let cursor = ctx.state.active_chat_input().cursor_pos();
+
+        if let Some(token_start) = token_start {
+            if cursor == token_start {
+                // Would delete the $ itself — deactivate and delete.
+                ctx.state.active_chat_input_mut().deactivate_autocomplete();
+                ctx.state
+                    .active_chat_input_mut()
+                    .delete_grapheme_after_cursor();
+            } else {
+                // Within or past filter — perform delete.
+                ctx.state
+                    .active_chat_input_mut()
+                    .delete_grapheme_after_cursor();
+                // Check if cursor is still in the token region.
+                let should_deactivate = {
+                    let input = ctx.state.active_chat_input();
+                    should_deactivate_on_cursor_move(input)
+                };
+                if should_deactivate {
+                    ctx.state.active_chat_input_mut().deactivate_autocomplete();
+                } else {
+                    let filter = ctx
+                        .state
+                        .active_chat_input()
+                        .autocomplete_filter()
+                        .unwrap_or_default();
+                    let matches = compute_matches(&ctx.state.prompt_templates, &filter);
+                    ctx.state
+                        .active_chat_input_mut()
+                        .update_autocomplete_matches(matches);
+                }
+            }
+        } else {
+            ctx.state
+                .active_chat_input_mut()
+                .delete_grapheme_after_cursor();
+        }
+
+        CommandAction::Continue
+    }
+
+    /// Moves the cursor left one word.
+    ///
+    /// Deactivates autocomplete (word-left always leaves the token region).
+    fn on_move_cursor_word_left(
+        _cmd: &MoveCursorWordLeft,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        ctx.state.active_chat_input_mut().deactivate_autocomplete();
+        ctx.state.active_chat_input_mut().move_cursor_word_left();
+        CommandAction::Continue
+    }
+
+    /// Moves the cursor right one word.
+    ///
+    /// Deactivates autocomplete (word-right always leaves the token region).
+    fn on_move_cursor_word_right(
+        _cmd: &MoveCursorWordRight,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        ctx.state.active_chat_input_mut().deactivate_autocomplete();
+        ctx.state.active_chat_input_mut().move_cursor_word_right();
+        CommandAction::Continue
+    }
+
+    /// Moves the cursor up one visual line.
+    ///
+    /// If autocomplete is active, navigates the match list instead.
+    fn on_move_cursor_up(
+        _cmd: &MoveCursorUp,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        if ctx.state.active_chat_input().autocomplete().is_some() {
+            ctx.state.active_chat_input_mut().autocomplete_move_up();
+        } else {
+            ctx.state.active_chat_input_mut().move_cursor_up();
+        }
+        CommandAction::Continue
+    }
+
+    /// Moves the cursor down one visual line.
+    ///
+    /// If autocomplete is active, navigates the match list instead.
+    fn on_move_cursor_down(
+        _cmd: &MoveCursorDown,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        if ctx.state.active_chat_input().autocomplete().is_some() {
+            ctx.state.active_chat_input_mut().autocomplete_move_down();
+        } else {
+            ctx.state.active_chat_input_mut().move_cursor_down();
+        }
+        CommandAction::Continue
+    }
+
+    /// Confirms the autocomplete selection (Tab key in Input scope).
+    ///
+    /// When autocomplete is active, completes the selected template name.
+    /// When inactive, falls back to `SwitchTab` so Tab still switches tabs.
+    fn on_autocomplete_confirm(
+        _cmd: &AutocompleteConfirm,
+        ctx: &mut HandlerContext<'_, AppState, Services>,
+    ) -> CommandAction {
+        if ctx.state.active_chat_input().autocomplete().is_some() {
+            if let Some(selected) = ctx.state.active_chat_input().autocomplete_selected() {
+                let name = selected.name.clone();
+                ctx.state
+                    .active_chat_input_mut()
+                    .complete_autocomplete(&name);
+                let filter = ctx
+                    .state
+                    .active_chat_input()
+                    .autocomplete_filter()
+                    .unwrap_or_default();
+                let matches = compute_matches(&ctx.state.prompt_templates, &filter);
+                ctx.state
+                    .active_chat_input_mut()
+                    .update_autocomplete_matches(matches);
+            }
+        } else {
+            // Fallback: switch tab when autocomplete is inactive.
+            ctx.out.submit_command(npr::Command::SwitchTab {
+                payload: SwitchTab {
+                    direction: TabDirection::Next,
+                },
+            });
+        }
+        CommandAction::Continue
+    }
+}
+
+// --- Helper functions ---
+
+/// Checks whether a `$` just typed at the current cursor position is at a valid
+/// trigger position: start of buffer or preceded by a space.
+///
+/// The `$` is at `cursor_pos - 1` (just inserted, cursor advanced by 1).
+fn is_valid_trigger_position(input: &crate::chat_input_box::ChatInputBoxState) -> bool {
+    let dollar_pos = input.cursor_pos() - 1;
+    if dollar_pos == 0 {
+        return true;
+    }
+    input.grapheme_at(dollar_pos - 1) == Some(" ")
+}
+
+/// Computes autocomplete matches from the store for the given filter.
+fn compute_matches(store: &PromptTemplateStore, filter: &str) -> Vec<AutocompleteMatch> {
+    store
+        .fuzzy_search(filter)
+        .into_iter()
+        .map(|t| AutocompleteMatch {
+            name: t.name.clone(),
+            description: t.description.clone(),
+        })
+        .collect()
+}
+
+/// Returns `true` if the cursor has moved outside the `$`-token region
+/// and autocomplete should be deactivated.
+///
+/// Deactivates when `cursor <= token_start`.
+fn should_deactivate_on_cursor_move(input: &crate::chat_input_box::ChatInputBoxState) -> bool {
+    let Some(ac) = input.autocomplete() else {
+        return false;
+    };
+    input.cursor_pos() <= ac.token_start()
+}
+
+#[cfg(test)]
+#[expect(unused_imports, reason = "command structs used via Command enum in tests")] mod tests {
+    use crate::test_utils;
+    use crate::chat_input_box::ChatInputBoxHandler;
+    use crate::prompt_template::{PromptTemplate, PromptTemplateStore};
+    use crate::{AppState, AppBus};
+    use nullslop_component_core::Bus;
+    use nullslop_protocol::chat_input::{
+        AutocompleteConfirm, Clear, DeleteGrapheme, DeleteGraphemeForward, InsertChar, Interrupt,
+        MoveCursorDown, MoveCursorLeft, MoveCursorRight, MoveCursorToEnd, MoveCursorToStart,
+        MoveCursorUp, SubmitMessage,
+    };
+    use nullslop_protocol::{Command, SessionId};
+    use nullslop_services::Services;
+
+    /// Helper: create a bus with `ChatInputBoxHandler` registered and a store populated.
+    fn setup_bus_with_templates() -> (AppBus, AppState, PromptTemplateStore) {
+        let mut bus: AppBus = Bus::new();
+        ChatInputBoxHandler.register(&mut bus);
+
+        let store = PromptTemplateStore::from_vec(vec![
+            PromptTemplate {
+                name: "code-review".into(),
+                description: "Review code".into(),
+                body: "You are a code reviewer.".into(),
+            },
+            PromptTemplate {
+                name: "commit-message".into(),
+                description: "Write commit".into(),
+                body: "Write a commit message.".into(),
+            },
+            PromptTemplate {
+                name: "codellama".into(),
+                description: "Codellama model".into(),
+                body: "You are codellama.".into(),
+            },
+        ]);
+
+        let state = AppState::default();
+        (bus, state, store)
+    }
+
+    fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: char) {
+        bus.submit_command(Command::InsertChar {
+            payload: InsertChar { ch },
+        });
+        bus.process_commands(state, services);
+    }
+
+    // --- Test 1: Typing $ at start activates autocomplete ---
+
+    #[test]
+    fn typing_dollar_at_start_activates_autocomplete() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing $ at start of buffer.
+        insert_char(&mut bus, &mut state, &services, '$');
+
+        // Then autocomplete is active with matches.
+        let ac = state.active_chat_input().autocomplete();
+        assert!(ac.is_some(), "autocomplete should be active after $");
+        let ac = ac.as_ref().unwrap();
+        assert_eq!(ac.token_start(), 0);
+        assert!(!ac.matches().is_empty(), "should have matches");
+    }
+
+    // --- Test 2: Typing $ after space activates autocomplete ---
+
+    #[test]
+    fn typing_dollar_after_space_activates_autocomplete() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "foo $".
+        for ch in "foo $".chars() {
+            insert_char(&mut bus, &mut state, &services, ch);
+        }
+
+        // Then autocomplete is active.
+        assert!(
+            state.active_chat_input().autocomplete().is_some(),
+            "autocomplete should activate after space then $"
+        );
+    }
+
+    // --- Test 3: Typing $ midword does NOT activate autocomplete ---
+
+    #[test]
+    fn typing_dollar_midword_does_not_activate() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "foo$".
+        for ch in "foo$".chars() {
+            insert_char(&mut bus, &mut state, &services, ch);
+        }
+
+        // Then autocomplete is NOT active.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "autocomplete should NOT activate midword"
+        );
+    }
+
+    // --- Test 4: Typing space after $ deactivates autocomplete ---
+
+    #[test]
+    fn typing_space_after_dollar_deactivates_autocomplete() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$ ".
+        insert_char(&mut bus, &mut state, &services, '$');
+        assert!(state.active_chat_input().autocomplete().is_some());
+        insert_char(&mut bus, &mut state, &services, ' ');
+
+        // Then autocomplete is deactivated.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "space should deactivate autocomplete"
+        );
+    }
+
+    // --- Test 5: Completing a name replaces the token ---
+
+    #[test]
+    fn completing_name_replaces_token() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$co" then submitting (Enter).
+        insert_char(&mut bus, &mut state, &services, '$');
+        insert_char(&mut bus, &mut state, &services, 'c');
+        insert_char(&mut bus, &mut state, &services, 'o');
+
+        // Submit should complete instead of enqueueing.
+        bus.submit_command(Command::SubmitMessage {
+            payload: SubmitMessage {
+                session_id: SessionId::new(),
+                text: String::new(),
+            },
+        });
+        bus.process_commands(&mut state, &services);
+
+        // Then the buffer contains $<exactname>.
+        let text = state.active_chat_input().text();
+        assert!(
+            text.starts_with('$'),
+            "buffer should start with $, got: {text}"
+        );
+        assert!(
+            text.contains("code-review")
+                || text.contains("commit-message")
+                || text.contains("codellama"),
+            "buffer should contain a matched name, got: {text}"
+        );
+    }
+
+    // --- Test 6: Double-$ expands template body ---
+
+    #[test]
+    fn double_dollar_expands_template_body() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$code-review$" (exact name match + closing $).
+        for ch in "$code-review$".chars() {
+            insert_char(&mut bus, &mut state, &services, ch);
+        }
+
+        // Then the buffer contains the template body and autocomplete is deactivated.
+        let text = state.active_chat_input().text();
+        assert!(
+            text.contains("You are a code reviewer."),
+            "buffer should contain the template body, got: {text}"
+        );
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "autocomplete should be deactivated after expansion"
+        );
+    }
+
+    // --- Test 7: Double-$ with unknown name leaves literal ---
+
+    #[test]
+    fn double_dollar_with_unknown_name_leaves_literal() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$unknown$" (no matching template).
+        for ch in "$unknown$".chars() {
+            insert_char(&mut bus, &mut state, &services, ch);
+        }
+
+        // Then the buffer contains "$unknown$" as literal text.
+        let text = state.active_chat_input().text();
+        assert!(
+            text.contains("$unknown$"),
+            "buffer should contain literal $unknown$, got: {text}"
+        );
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "autocomplete should be deactivated"
+        );
+    }
+
+    // --- Test 8: Backspace removing $ deactivates ---
+
+    #[test]
+    fn backspace_removing_dollar_deactivates() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$" then backspace.
+        insert_char(&mut bus, &mut state, &services, '$');
+        assert!(state.active_chat_input().autocomplete().is_some());
+
+        bus.submit_command(Command::DeleteGrapheme);
+        bus.process_commands(&mut state, &services);
+
+        // Then autocomplete is deactivated and $ is removed.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "backspace on $ should deactivate autocomplete"
+        );
+        assert!(
+            state.active_chat_input().text().is_empty(),
+            "buffer should be empty after backspace on $"
+        );
+    }
+
+    // --- Test 9: Backspace within filter updates matches ---
+
+    #[test]
+    fn backspace_within_filter_updates_matches() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$co" then backspace.
+        insert_char(&mut bus, &mut state, &services, '$');
+        insert_char(&mut bus, &mut state, &services, 'c');
+        insert_char(&mut bus, &mut state, &services, 'o');
+
+        bus.submit_command(Command::DeleteGrapheme);
+        bus.process_commands(&mut state, &services);
+
+        // Then autocomplete is still active with filter "c".
+        let ac = state.active_chat_input().autocomplete();
+        assert!(ac.is_some(), "autocomplete should still be active");
+        let filter = state.active_chat_input().autocomplete_filter().unwrap();
+        assert_eq!(filter, "c", "filter should be 'c' after backspace");
+    }
+
+    // --- Test 10: Cursor left leaving token deactivates ---
+
+    #[test]
+    fn cursor_left_leaving_token_deactivates() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$" then moving cursor left past $.
+        insert_char(&mut bus, &mut state, &services, '$');
+        bus.submit_command(Command::MoveCursorLeft);
+        bus.process_commands(&mut state, &services);
+
+        // Then autocomplete is deactivated.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "moving left past $ should deactivate autocomplete"
+        );
+    }
+
+    // --- Test 11: Clear deactivates autocomplete ---
+
+    #[test]
+    fn clear_deactivates_autocomplete() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$" then clearing.
+        insert_char(&mut bus, &mut state, &services, '$');
+        bus.submit_command(Command::Clear);
+        bus.process_commands(&mut state, &services);
+
+        // Then autocomplete is deactivated.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "clear should deactivate autocomplete"
+        );
+    }
+
+    // --- Test 12: Interrupt deactivates autocomplete ---
+
+    #[test]
+    fn interrupt_deactivates_autocomplete() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$foo" then interrupting.
+        insert_char(&mut bus, &mut state, &services, '$');
+        insert_char(&mut bus, &mut state, &services, 'f');
+        insert_char(&mut bus, &mut state, &services, 'o');
+        insert_char(&mut bus, &mut state, &services, 'o');
+
+        bus.submit_command(Command::Interrupt);
+        bus.process_commands(&mut state, &services);
+
+        // Then autocomplete is deactivated and buffer is cleared.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "interrupt should deactivate autocomplete"
+        );
+        assert!(
+            state.active_chat_input().text().is_empty(),
+            "interrupt should clear the buffer"
+        );
+    }
+
+    // --- Test 13: Arrow up/down navigate matches ---
+
+    #[test]
+    fn arrow_up_down_navigate_matches() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$" to activate (multiple matches).
+        insert_char(&mut bus, &mut state, &services, '$');
+
+        let initial_idx = state
+            .active_chat_input()
+            .autocomplete()
+            .as_ref()
+            .unwrap()
+            .selected_index();
+
+        // When pressing up (toward less relevant).
+        bus.submit_command(Command::MoveCursorUp);
+        bus.process_commands(&mut state, &services);
+        let after_up = state
+            .active_chat_input()
+            .autocomplete()
+            .as_ref()
+            .unwrap()
+            .selected_index();
+        assert!(
+            after_up <= initial_idx,
+            "up should decrease or maintain index"
+        );
+
+        // When pressing down (toward more relevant).
+        bus.submit_command(Command::MoveCursorDown);
+        bus.process_commands(&mut state, &services);
+        let after_down = state
+            .active_chat_input()
+            .autocomplete()
+            .as_ref()
+            .unwrap()
+            .selected_index();
+        assert!(
+            after_down >= after_up,
+            "down should increase or maintain index"
+        );
+    }
+
+    // --- Test 14: Tab completes when autocomplete active ---
+
+    #[test]
+    fn tab_completes_when_autocomplete_active() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$co" then pressing Tab.
+        insert_char(&mut bus, &mut state, &services, '$');
+        insert_char(&mut bus, &mut state, &services, 'c');
+        insert_char(&mut bus, &mut state, &services, 'o');
+
+        bus.submit_command(Command::AutocompleteConfirm);
+        bus.process_commands(&mut state, &services);
+
+        // Then the buffer contains $<matched_name>.
+        let text = state.active_chat_input().text();
+        assert!(
+            text.starts_with('$'),
+            "buffer should start with $, got: {text}"
+        );
+        assert!(
+            text.len() > 1,
+            "buffer should have content after $, got: {text}"
+        );
+    }
+
+    // --- Test 15: Tab switches tab when autocomplete inactive ---
+
+    #[test]
+    fn tab_switches_tab_when_autocomplete_inactive() {
+        // Given a bus with handler (no templates needed).
+        let mut bus: AppBus = Bus::new();
+        ChatInputBoxHandler.register(&mut bus);
+
+        let state = AppState::default();
+        let services = test_utils::test_services();
+        let mut state = state;
+
+        // Tab without autocomplete should submit SwitchTab without crash.
+        bus.submit_command(Command::AutocompleteConfirm);
+        bus.process_commands(&mut state, &services);
+
+        // No crash, autocomplete is still None.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "autocomplete should remain inactive"
+        );
+    }
+
+    // --- Test 16: Empty matches selected_index safe ---
+
+    #[test]
+    fn empty_matches_selected_index_safe() {
+        // Given a bus with handler and no matching templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$zzzzzz" (filter matches nothing).
+        for ch in "$zzzzzz".chars() {
+            insert_char(&mut bus, &mut state, &services, ch);
+        }
+
+        // Then autocomplete is active with 0 matches and selected_index 0, no panic.
+        let ac = state.active_chat_input().autocomplete();
+        assert!(ac.is_some(), "autocomplete should be active");
+        let ac = ac.as_ref().unwrap();
+        assert_eq!(ac.matches().len(), 0, "should have no matches");
+        assert_eq!(ac.selected_index(), 0, "selected_index should be 0");
+
+        // When navigating up/down with empty matches, no panic.
+        bus.submit_command(Command::MoveCursorUp);
+        bus.process_commands(&mut state, &services);
+        bus.submit_command(Command::MoveCursorDown);
+        bus.process_commands(&mut state, &services);
+
+        // Still safe.
+        let ac = state.active_chat_input().autocomplete().as_ref().unwrap();
+        assert_eq!(ac.selected_index(), 0);
+    }
+
+    // --- Test: Delete forward within filter updates matches ---
+
+    #[test]
+    fn delete_forward_within_filter_updates_matches() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$co" then moving cursor left, then forward delete.
+        insert_char(&mut bus, &mut state, &services, '$');
+        insert_char(&mut bus, &mut state, &services, 'c');
+        insert_char(&mut bus, &mut state, &services, 'o');
+        // cursor at 3
+
+        // Move cursor left (still within filter, cursor now at 2).
+        bus.submit_command(Command::MoveCursorLeft);
+        bus.process_commands(&mut state, &services);
+        // cursor at 2, token_start=0, cursor > token_start → still active
+        assert!(
+            state.active_chat_input().autocomplete().is_some(),
+            "autocomplete should remain active"
+        );
+
+        // Forward delete removes 'o'.
+        bus.submit_command(Command::DeleteGraphemeForward);
+        bus.process_commands(&mut state, &services);
+
+        // Then filter should be "c".
+        assert!(
+            state.active_chat_input().autocomplete().is_some(),
+            "autocomplete should remain active"
+        );
+        let filter = state.active_chat_input().autocomplete_filter().unwrap();
+        assert_eq!(filter, "c");
+    }
+
+    // --- Test: Multiple $ references in one buffer ---
+
+    #[test]
+    fn multiple_dollar_references_in_one_buffer() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$co" then space, then "$co".
+        insert_char(&mut bus, &mut state, &services, '$');
+        insert_char(&mut bus, &mut state, &services, 'c');
+        insert_char(&mut bus, &mut state, &services, 'o');
+        insert_char(&mut bus, &mut state, &services, ' '); // deactivates
+        assert!(state.active_chat_input().autocomplete().is_none());
+
+        insert_char(&mut bus, &mut state, &services, '$');
+        insert_char(&mut bus, &mut state, &services, 'c');
+        insert_char(&mut bus, &mut state, &services, 'o');
+
+        // Then autocomplete is active for the second token.
+        let ac = state.active_chat_input().autocomplete();
+        assert!(ac.is_some(), "second $ should reactivate autocomplete");
+        let ac = ac.as_ref().unwrap();
+        assert_eq!(ac.token_start(), 4, "second $ should be at position 4");
+    }
+
+    // --- Test: Word-left deactivates autocomplete ---
+
+    #[test]
+    fn word_left_deactivates_autocomplete() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "foo $co" then word-left.
+        for ch in "foo $co".chars() {
+            insert_char(&mut bus, &mut state, &services, ch);
+        }
+        assert!(state.active_chat_input().autocomplete().is_some());
+
+        bus.submit_command(Command::MoveCursorWordLeft);
+        bus.process_commands(&mut state, &services);
+
+        // Then autocomplete is deactivated.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "word-left should deactivate autocomplete"
+        );
+    }
+
+    // --- Test: Word-right deactivates autocomplete ---
+
+    #[test]
+    fn word_right_deactivates_autocomplete() {
+        // Given a bus with handler and templates.
+        let (mut bus, mut state, store) = setup_bus_with_templates();
+        let services = test_utils::test_services();
+        state.prompt_templates = store;
+
+        // When typing "$co" then word-right.
+        insert_char(&mut bus, &mut state, &services, '$');
+        insert_char(&mut bus, &mut state, &services, 'c');
+        insert_char(&mut bus, &mut state, &services, 'o');
+
+        bus.submit_command(Command::MoveCursorWordRight);
+        bus.process_commands(&mut state, &services);
+
+        // Then autocomplete is deactivated.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "word-right should deactivate autocomplete"
+        );
+    }
+}

@@ -1,0 +1,69 @@
+//! Shared protocol types for communication between the nullslop host and actors.
+//!
+//! This crate defines the common language of commands, events, key representations,
+//! interaction modes, and chat data that the host and all actors agree on.
+//! Every type here is serializable and travels across the actor boundary.
+//!
+//! Runtime-mutable state types ([`AppState`], [`ShutdownTracker`], [`ChatInputBoxState`])
+//! live in `nullslop-component`.
+//!
+//! [`AppState`]: nullslop_component::AppState
+//! [`ShutdownTracker`]: nullslop_component::ShutdownTracker
+//! [`ChatInputBoxState`]: nullslop_component::ChatInputBoxState
+
+pub mod action;
+pub mod actor;
+pub mod actor_name;
+pub mod chat;
+pub mod chat_input;
+pub mod command;
+pub mod context;
+pub mod custom;
+pub mod event;
+pub mod key;
+pub mod mode;
+pub mod picker_kind;
+pub mod provider;
+pub mod provider_picker;
+pub mod prompt_template;
+pub mod session;
+pub mod system;
+pub mod tab;
+pub mod tool;
+pub mod workflow;
+
+// Re-export primary types
+pub use action::CommandAction;
+pub use actor::{ActorShutdownCompleted, ActorStarted, ActorStarting};
+pub use actor_name::ActorName;
+pub use chat::{ChatEntry, ChatEntryId, ChatEntryKind};
+pub use command::Command;
+pub use context::{
+    AssemblePrompt, PromptAssembled, PromptStrategyId, PromptStrategySwitched, SwitchPromptStrategy,
+};
+pub use custom::{CommandMsg, CommandName, EventMsg, EventTypeName};
+pub use event::Event;
+pub use key::{Key, KeyEvent, Modifiers};
+pub use mode::Mode;
+pub use nullslop_protocol_derive::{CommandMsg, EventMsg};
+pub use picker_kind::PickerKind;
+pub use prompt_template::PromptTemplate;
+pub use provider::LlmMessage;
+pub use provider::entries_to_messages;
+pub use provider_picker::{
+    PickerBackspace, PickerConfirm, PickerInsertChar, PickerMoveDown, PickerMoveUp,
+};
+pub use session::SessionId;
+pub use session::SessionSaveRequested;
+pub use system::OpenPicker;
+pub use tab::ActiveTab;
+pub use tab::TabDirection;
+pub use tool::{
+    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools, ToolBatchCompleted, ToolCall,
+    ToolCallReceived, ToolCallStreaming, ToolDefinition, ToolExecutionCompleted, ToolResult,
+    ToolUseStarted, ToolsRegistered,
+};
+pub use workflow::{
+    AbortWorkflow, AdvanceStep, CompleteStep, JumpToStep, LoadWorkflow, StepAwaitingInput,
+    StepCompleted, StepStale, StepStarted, WorkflowCompleted, WorkflowLoaded,
+};

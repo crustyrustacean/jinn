@@ -1,0 +1,848 @@
+//! Command types for the component command pipeline.
+//!
+//! The [`Command`] enum is the unified type the host uses to receive and
+//! dispatch instructions from both internal handlers and actors.
+//!
+//! Individual command structs live in domain modules ([`chat_input`], [`system`],
+//! [`custom`], [`actor`], [`provider`], [`tab`]). Consumers import structs
+//! directly from those modules — this facade only re-exports infrastructure types.
+//!
+//! # When adding a new command
+//!
+//! Every new command struct **must** be added as a variant on the [`Command`] enum
+//! below. Creating the struct alone is not enough — the bus dispatches based on
+//! enum variants, so a missing variant means the command is invisible to the system.
+
+use serde::{Deserialize, Serialize};
+
+// Internal imports for enum definition and Display impl.
+use crate::actor::ProceedWithShutdown;
+use crate::chat_input::{
+    Clear, DeleteGrapheme, DeleteGraphemeForward, EnqueueUserMessage, InsertChar, Interrupt,
+    MoveCursorDown, MoveCursorToEnd, MoveCursorToStart, MoveCursorUp, MoveCursorWordLeft,
+    MoveCursorWordRight, PushChatEntry, SetChatInputText, SubmitMessage,
+};
+use crate::chat_input::{AutocompleteConfirm, MoveCursorLeft, MoveCursorRight};
+use crate::context::AssemblePrompt;
+use crate::context::RestoreStrategyState;
+use crate::context::SwitchPromptStrategy;
+// Re-export infrastructure types only. Domain structs are imported from their modules.
+pub use crate::custom::CommandMsg;
+use crate::provider::{
+    CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
+    SendToLlmProvider, StreamToken,
+};
+use crate::provider_picker::{
+    PickerBackspace, PickerConfirm, PickerInsertChar, PickerMoveCursorLeft, PickerMoveCursorRight,
+    PickerMoveDown, PickerMoveUp,
+};
+use crate::system::OpenPicker;
+use crate::system::SetMode;
+use crate::tab::SwitchTab;
+use crate::tool::{
+    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools, ToolCallReceived,
+    ToolCallStreaming, ToolUseStarted,
+};
+use crate::workflow::{AbortWorkflow, AdvanceStep, CompleteStep, JumpToStep, LoadWorkflow};
+
+/// Every command the host can receive.
+///
+/// Actors and internal handlers produce these; the host dispatches
+/// them to the appropriate domain handler.
+///
+/// **When adding a new command struct**, you must add a corresponding variant to
+/// this enum. A command struct defined in a domain module without an enum variant
+/// here will not be dispatched by the bus.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Command {
+    /// Insert a character into the chat input buffer.
+    #[serde(rename = "insert_char")]
+    InsertChar {
+        /// Details of the character to insert.
+        #[serde(flatten)]
+        payload: InsertChar,
+    },
+    /// Delete the last grapheme from the chat input buffer.
+    #[serde(rename = "delete_grapheme")]
+    DeleteGrapheme,
+    /// Submit the chat input buffer as a message.
+    #[serde(rename = "submit_message")]
+    SubmitMessage {
+        /// The message being submitted.
+        #[serde(flatten)]
+        payload: SubmitMessage,
+    },
+    /// Clear the chat input buffer.
+    #[serde(rename = "clear")]
+    Clear,
+    /// Context-sensitive interrupt: clear input if non-empty, otherwise quit.
+    #[serde(rename = "interrupt")]
+    Interrupt,
+    /// Move the cursor one grapheme to the left.
+    #[serde(rename = "move_cursor_left")]
+    MoveCursorLeft,
+    /// Move the cursor one grapheme to the right.
+    #[serde(rename = "move_cursor_right")]
+    MoveCursorRight,
+    /// Move the cursor to the beginning of the input buffer.
+    #[serde(rename = "move_cursor_to_start")]
+    MoveCursorToStart,
+    /// Move the cursor to the end of the input buffer.
+    #[serde(rename = "move_cursor_to_end")]
+    MoveCursorToEnd,
+    /// Delete the grapheme after the cursor (forward delete).
+    #[serde(rename = "delete_grapheme_forward")]
+    DeleteGraphemeForward,
+    /// Move the cursor one word to the left.
+    #[serde(rename = "move_cursor_word_left")]
+    MoveCursorWordLeft,
+    /// Move the cursor one word to the right.
+    #[serde(rename = "move_cursor_word_right")]
+    MoveCursorWordRight,
+    /// Move the cursor up one visual line.
+    #[serde(rename = "move_cursor_up")]
+    MoveCursorUp,
+    /// Move the cursor down one visual line.
+    #[serde(rename = "move_cursor_down")]
+    MoveCursorDown,
+    /// Set the application interaction mode.
+    #[serde(rename = "set_mode")]
+    SetMode {
+        /// The target mode.
+        #[serde(flatten)]
+        payload: SetMode,
+    },
+    /// Quit the application.
+    #[serde(rename = "quit")]
+    Quit,
+    /// Open an external editor for the input buffer.
+    #[serde(rename = "edit_input")]
+    EditInput,
+    /// Toggle the which-key popup.
+    #[serde(rename = "toggle_which_key")]
+    ToggleWhichKey,
+    /// Switch to a different tab.
+    #[serde(rename = "switch_tab")]
+    SwitchTab {
+        /// The tab to switch to.
+        #[serde(flatten)]
+        payload: SwitchTab,
+    },
+    /// Send a message to the AI provider.
+    #[serde(rename = "send_message")]
+    SendMessage {
+        /// The message to send.
+        #[serde(flatten)]
+        payload: SendMessage,
+    },
+    /// Cancel the active provider stream.
+    #[serde(rename = "cancel_stream")]
+    CancelStream {
+        /// The cancel stream command.
+        #[serde(flatten)]
+        payload: CancelStream,
+    },
+    /// Send conversation context to the LLM provider.
+    #[serde(rename = "send_to_llm_provider")]
+    SendToLlmProvider {
+        /// The full conversation history as LLM messages.
+        #[serde(flatten)]
+        payload: SendToLlmProvider,
+    },
+    /// A single token from a streaming LLM response.
+    #[serde(rename = "stream_token")]
+    StreamToken {
+        /// The stream token.
+        #[serde(flatten)]
+        payload: StreamToken,
+    },
+    /// Request prompt assembly from the context actor.
+    #[serde(rename = "assemble_prompt")]
+    AssemblePrompt {
+        /// The assembly request.
+        #[serde(flatten)]
+        payload: AssemblePrompt,
+    },
+    /// Switch the prompt assembly strategy for a session.
+    #[serde(rename = "switch_prompt_strategy")]
+    SwitchPromptStrategy {
+        /// The switch request.
+        #[serde(flatten)]
+        payload: SwitchPromptStrategy,
+    },
+    /// Restore a strategy's persisted state for a session.
+    #[serde(rename = "restore_strategy_state")]
+    RestoreStrategyState {
+        /// The state to restore.
+        #[serde(flatten)]
+        payload: RestoreStrategyState,
+    },
+    /// Push a chat entry into the conversation history.
+    #[serde(rename = "push_chat_entry")]
+    PushChatEntry {
+        /// The chat entry to add.
+        #[serde(flatten)]
+        payload: PushChatEntry,
+    },
+    /// Enqueue a user message for queued processing.
+    #[serde(rename = "enqueue_user_message")]
+    EnqueueUserMessage {
+        /// The message to enqueue.
+        #[serde(flatten)]
+        payload: EnqueueUserMessage,
+    },
+    /// Set the chat input buffer text directly.
+    #[serde(rename = "set_chat_input_text")]
+    SetChatInputText {
+        /// The new input text.
+        #[serde(flatten)]
+        payload: SetChatInputText,
+    },
+    /// Confirm the autocomplete selection (Tab in Input scope).
+    #[serde(rename = "autocomplete_confirm")]
+    AutocompleteConfirm,
+    /// Proceed with shutdown after actor coordination.
+    #[serde(rename = "proceed_with_shutdown")]
+    ProceedWithShutdown {
+        /// Which actors finished or timed out.
+        #[serde(flatten)]
+        payload: ProceedWithShutdown,
+    },
+    /// Switch the active LLM provider.
+    #[serde(rename = "provider_switch")]
+    ProviderSwitch {
+        /// The provider switch details.
+        #[serde(flatten)]
+        payload: ProviderSwitch,
+    },
+    /// Scroll the chat log up (toward older messages).
+    #[serde(rename = "scroll_up")]
+    ScrollUp,
+    /// Scroll the chat log down (toward newer messages).
+    #[serde(rename = "scroll_down")]
+    ScrollDown,
+    /// Scroll the chat log up by a small amount (mouse wheel).
+    #[serde(rename = "mouse_scroll_up")]
+    MouseScrollUp,
+    /// Scroll the chat log down by a small amount (mouse wheel).
+    #[serde(rename = "mouse_scroll_down")]
+    MouseScrollDown,
+    /// Scroll the chat log up by one line.
+    #[serde(rename = "scroll_line_up")]
+    ScrollLineUp,
+    /// Scroll the chat log down by one line.
+    #[serde(rename = "scroll_line_down")]
+    ScrollLineDown,
+    /// Scroll the chat log to the very top.
+    #[serde(rename = "scroll_to_top")]
+    ScrollToTop,
+    /// Scroll the chat log to the very bottom.
+    #[serde(rename = "scroll_to_bottom")]
+    ScrollToBottom,
+    /// Refresh the model list from all providers.
+    #[serde(rename = "refresh_models")]
+    RefreshModels,
+    /// Rescan the prompt templates directory.
+    #[serde(rename = "rescan_prompt_templates")]
+    RescanPromptTemplates,
+    /// Register tools that an actor can execute.
+    #[serde(rename = "register_tools")]
+    RegisterTools {
+        /// The registration payload.
+        #[serde(flatten)]
+        payload: RegisterTools,
+    },
+    /// Request execution of a batch of tool calls.
+    #[serde(rename = "execute_tool_batch")]
+    ExecuteToolBatch {
+        /// The batch execution payload.
+        #[serde(flatten)]
+        payload: ExecuteToolBatch,
+    },
+    /// Execute a single tool call (routed to provider actor).
+    #[serde(rename = "execute_tool")]
+    ExecuteTool {
+        /// The single tool execution payload.
+        #[serde(flatten)]
+        payload: ExecuteTool,
+    },
+    /// A tool call has started in the LLM stream.
+    #[serde(rename = "tool_use_started")]
+    ToolUseStarted {
+        /// The tool use started payload.
+        #[serde(flatten)]
+        payload: ToolUseStarted,
+    },
+    /// A complete tool call was received from the LLM stream.
+    #[serde(rename = "tool_call_received")]
+    ToolCallReceived {
+        /// The received tool call payload.
+        #[serde(flatten)]
+        payload: ToolCallReceived,
+    },
+    /// Streaming update for a tool call's arguments being assembled.
+    #[serde(rename = "tool_call_streaming")]
+    ToolCallStreaming {
+        /// The streaming tool call payload.
+        #[serde(flatten)]
+        payload: ToolCallStreaming,
+    },
+    /// Push a tool result into the chat log.
+    #[serde(rename = "push_tool_result")]
+    PushToolResult {
+        /// The tool result payload.
+        #[serde(flatten)]
+        payload: PushToolResult,
+    },
+    /// Move the dashboard selection down one entry.
+    #[serde(rename = "dashboard_select_down")]
+    DashboardSelectDown,
+    /// Move the dashboard selection up one entry.
+    #[serde(rename = "dashboard_select_up")]
+    DashboardSelectUp,
+    /// Move the dashboard selection to the first entry.
+    #[serde(rename = "dashboard_select_first")]
+    DashboardSelectFirst,
+    /// Move the dashboard selection to the last entry.
+    #[serde(rename = "dashboard_select_last")]
+    DashboardSelectLast,
+    /// Insert a character into the picker filter.
+    #[serde(rename = "picker_insert_char")]
+    PickerInsertChar {
+        /// The character to insert.
+        #[serde(flatten)]
+        payload: PickerInsertChar,
+    },
+    /// Delete the last character from the picker filter.
+    #[serde(rename = "picker_backspace")]
+    PickerBackspace,
+    /// Confirm the current picker selection.
+    #[serde(rename = "picker_confirm")]
+    PickerConfirm,
+    /// Move the picker selection up.
+    #[serde(rename = "picker_move_up")]
+    PickerMoveUp,
+    /// Move the picker selection down.
+    #[serde(rename = "picker_move_down")]
+    PickerMoveDown,
+    /// Move the picker filter cursor left.
+    #[serde(rename = "picker_move_cursor_left")]
+    PickerMoveCursorLeft,
+    /// Move the picker filter cursor right.
+    #[serde(rename = "picker_move_cursor_right")]
+    PickerMoveCursorRight,
+    /// Open a picker of the specified kind.
+    #[serde(rename = "open_picker")]
+    OpenPicker {
+        /// Which picker to open.
+        #[serde(flatten)]
+        payload: OpenPicker,
+    },
+    /// Toggle the keymap picker scope filter (current scope ↔ all scopes).
+    #[serde(rename = "toggle_keymap_scope_filter")]
+    ToggleKeymapScopeFilter,
+    // --- Workflow ---
+    /// Load a workflow definition and start it.
+    #[serde(rename = "load_workflow")]
+    LoadWorkflow {
+        /// The workflow definition to load.
+        #[serde(flatten)]
+        payload: LoadWorkflow,
+    },
+    /// Advance to the next workflow step.
+    #[serde(rename = "advance_step")]
+    AdvanceStep,
+    /// Jump to a specific workflow step.
+    #[serde(rename = "jump_to_step")]
+    JumpToStep {
+        /// The jump request.
+        #[serde(flatten)]
+        payload: JumpToStep,
+    },
+    /// Abort the active workflow.
+    #[serde(rename = "abort_workflow")]
+    AbortWorkflow,
+    /// Complete a step, recording output hashes and resolved values.
+    #[serde(rename = "complete_step")]
+    CompleteStep {
+        /// The step completion payload.
+        #[serde(flatten)]
+        payload: CompleteStep,
+    },
+    /// Move the workflow panel selection down one step.
+    #[serde(rename = "workflow_select_down")]
+    WorkflowSelectDown,
+    /// Move the workflow panel selection up one step.
+    #[serde(rename = "workflow_select_up")]
+    WorkflowSelectUp,
+    /// Move the workflow panel selection to the first step.
+    #[serde(rename = "workflow_select_first")]
+    WorkflowSelectFirst,
+    /// Move the workflow panel selection to the last step.
+    #[serde(rename = "workflow_select_last")]
+    WorkflowSelectLast,
+    /// Restart the currently selected workflow step.
+    #[serde(rename = "workflow_restart_step")]
+    WorkflowRestartStep,
+    /// Approve the currently active workflow step.
+    #[serde(rename = "workflow_approve_step")]
+    WorkflowApproveStep,
+    /// Toggle the workflow step detail view.
+    #[serde(rename = "workflow_toggle_detail")]
+    WorkflowToggleDetail,
+    /// Toggle the workflow sidebar pane visibility.
+    #[serde(rename = "workflow_toggle_pane")]
+    WorkflowTogglePane,
+    /// Focus the chat pane in the split layout.
+    #[serde(rename = "workflow_focus_chat")]
+    WorkflowFocusChat,
+    /// Focus the workflow pane in the split layout.
+    #[serde(rename = "workflow_focus_workflow")]
+    WorkflowFocusWorkflow,
+}
+
+impl Command {
+    /// Returns the routing name for this command, if it has one.
+    ///
+    /// Analogous to [`Event::type_name()`]. Returns `None` for commands
+    /// that are not routed to actors (e.g., internal UI commands).
+    #[must_use]
+    pub fn command_name(&self) -> Option<&'static str> {
+        match self {
+            Self::InsertChar { .. } => Some(InsertChar::NAME),
+            Self::DeleteGrapheme => Some(DeleteGrapheme::NAME),
+            Self::SubmitMessage { .. } => Some(SubmitMessage::NAME),
+            Self::Clear => Some(Clear::NAME),
+            Self::Interrupt => Some(Interrupt::NAME),
+            Self::MoveCursorLeft => Some(MoveCursorLeft::NAME),
+            Self::MoveCursorRight => Some(MoveCursorRight::NAME),
+            Self::MoveCursorToStart => Some(MoveCursorToStart::NAME),
+            Self::MoveCursorToEnd => Some(MoveCursorToEnd::NAME),
+            Self::DeleteGraphemeForward => Some(DeleteGraphemeForward::NAME),
+            Self::MoveCursorWordLeft => Some(MoveCursorWordLeft::NAME),
+            Self::MoveCursorWordRight => Some(MoveCursorWordRight::NAME),
+            Self::MoveCursorUp => Some(MoveCursorUp::NAME),
+            Self::MoveCursorDown => Some(MoveCursorDown::NAME),
+            Self::SetMode { .. } => Some(SetMode::NAME),
+            Self::Quit
+            | Self::EditInput
+            | Self::ToggleWhichKey
+            | Self::ScrollUp
+            | Self::ScrollDown
+            | Self::MouseScrollUp
+            | Self::MouseScrollDown
+            | Self::ScrollLineUp
+            | Self::ScrollLineDown
+            | Self::ScrollToTop
+            | Self::ScrollToBottom
+            | Self::DashboardSelectDown
+            | Self::DashboardSelectUp
+            | Self::DashboardSelectFirst
+            | Self::DashboardSelectLast
+            | Self::WorkflowSelectDown
+            | Self::WorkflowSelectUp
+            | Self::WorkflowSelectFirst
+            | Self::WorkflowSelectLast
+            | Self::WorkflowRestartStep
+            | Self::WorkflowApproveStep
+            | Self::WorkflowToggleDetail
+            | Self::WorkflowTogglePane
+            | Self::WorkflowFocusChat
+            | Self::WorkflowFocusWorkflow => None,
+            Self::SwitchTab { .. } => Some(SwitchTab::NAME),
+            Self::SendMessage { .. } => Some(SendMessage::NAME),
+            Self::CancelStream { .. } => Some(CancelStream::NAME),
+            Self::SendToLlmProvider { .. } => Some(SendToLlmProvider::NAME),
+            Self::AssemblePrompt { .. } => Some(AssemblePrompt::NAME),
+            Self::SwitchPromptStrategy { .. } => Some(SwitchPromptStrategy::NAME),
+            Self::RestoreStrategyState { .. } => Some(RestoreStrategyState::NAME),
+            Self::StreamToken { .. } => Some(StreamToken::NAME),
+            Self::PushChatEntry { .. } => Some(PushChatEntry::NAME),
+            Self::EnqueueUserMessage { .. } => Some(EnqueueUserMessage::NAME),
+            Self::SetChatInputText { .. } => Some(SetChatInputText::NAME),
+            Self::AutocompleteConfirm => Some(AutocompleteConfirm::NAME),
+            Self::ProceedWithShutdown { .. } => Some(ProceedWithShutdown::NAME),
+            Self::ProviderSwitch { .. } => Some(ProviderSwitch::NAME),
+            Self::RefreshModels => Some(RefreshModels::NAME),
+            Self::RescanPromptTemplates => Some(RescanPromptTemplates::NAME),
+            Self::PickerInsertChar { .. } => Some(PickerInsertChar::NAME),
+            Self::PickerBackspace => Some(PickerBackspace::NAME),
+            Self::PickerConfirm => Some(PickerConfirm::NAME),
+            Self::PickerMoveUp => Some(PickerMoveUp::NAME),
+            Self::PickerMoveDown => Some(PickerMoveDown::NAME),
+            Self::PickerMoveCursorLeft => Some(PickerMoveCursorLeft::NAME),
+            Self::PickerMoveCursorRight => Some(PickerMoveCursorRight::NAME),
+            Self::OpenPicker { .. } => Some(OpenPicker::NAME),
+            Self::ToggleKeymapScopeFilter => None,
+            Self::RegisterTools { .. } => Some(RegisterTools::NAME),
+            Self::ExecuteToolBatch { .. } => Some(ExecuteToolBatch::NAME),
+            Self::ExecuteTool { .. } => Some(ExecuteTool::NAME),
+            Self::ToolUseStarted { .. } => Some(ToolUseStarted::NAME),
+            Self::ToolCallReceived { .. } => Some(ToolCallReceived::NAME),
+            Self::ToolCallStreaming { .. } => Some(ToolCallStreaming::NAME),
+            Self::PushToolResult { .. } => Some(PushToolResult::NAME),
+            Self::LoadWorkflow { .. } => Some(LoadWorkflow::NAME),
+            Self::AdvanceStep => Some(AdvanceStep::NAME),
+            Self::JumpToStep { .. } => Some(JumpToStep::NAME),
+            Self::AbortWorkflow => Some(AbortWorkflow::NAME),
+            Self::CompleteStep { .. } => Some(CompleteStep::NAME),
+        }
+    }
+}
+
+impl std::fmt::Display for Command {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive match on all Command variants"
+    )]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Command::InsertChar { payload } => write!(f, "insert '{}'", payload.ch),
+            Command::DeleteGrapheme => write!(f, "delete"),
+            Command::SubmitMessage { .. } => write!(f, "submit chat"),
+            Command::Clear => write!(f, "clear"),
+            Command::Interrupt => write!(f, "interrupt"),
+            Command::MoveCursorLeft => write!(f, "cursor left"),
+            Command::MoveCursorRight => write!(f, "cursor right"),
+            Command::MoveCursorToStart => write!(f, "cursor home"),
+            Command::MoveCursorToEnd => write!(f, "cursor end"),
+            Command::DeleteGraphemeForward => write!(f, "forward delete"),
+            Command::MoveCursorWordLeft => write!(f, "cursor word left"),
+            Command::MoveCursorWordRight => write!(f, "cursor word right"),
+            Command::MoveCursorUp => write!(f, "cursor up"),
+            Command::MoveCursorDown => write!(f, "cursor down"),
+            Command::SetMode { payload } => write!(f, "set mode {}", payload.mode),
+            Command::Quit => write!(f, "quit"),
+            Command::EditInput => write!(f, "edit in $EDITOR"),
+            Command::ToggleWhichKey => write!(f, "toggle which-key"),
+            Command::SwitchTab { payload } => write!(f, "switch tab {}", payload.direction),
+            Command::SendMessage { .. } => write!(f, "send message"),
+            Command::CancelStream { .. } => write!(f, "cancel stream"),
+            Command::SendToLlmProvider { .. } => write!(f, "send to LLM provider"),
+            Command::AssemblePrompt { .. } => write!(f, "assemble prompt"),
+            Command::SwitchPromptStrategy { .. } => write!(f, "switch prompt strategy"),
+            Command::RestoreStrategyState { .. } => write!(f, "restore strategy state"),
+            Command::StreamToken { payload } => {
+                write!(
+                    f,
+                    "stream token '{}' (idx {})",
+                    payload.token, payload.index
+                )
+            }
+            Command::PushChatEntry { .. } => write!(f, "push chat entry"),
+            Command::EnqueueUserMessage { .. } => write!(f, "enqueue user message"),
+            Command::SetChatInputText { .. } => write!(f, "set chat input text"),
+            Command::AutocompleteConfirm => write!(f, "autocomplete confirm"),
+            Command::ProceedWithShutdown { payload } => {
+                write!(
+                    f,
+                    "proceed with shutdown ({} completed, {} timed out)",
+                    payload.completed.len(),
+                    payload.timed_out.len()
+                )
+            }
+            Command::ProviderSwitch { payload } => {
+                write!(f, "provider switch to '{}'", payload.provider_id)
+            }
+            Command::ScrollUp => write!(f, "scroll up"),
+            Command::ScrollDown => write!(f, "scroll down"),
+            Command::MouseScrollUp => write!(f, "mouse scroll up"),
+            Command::MouseScrollDown => write!(f, "mouse scroll down"),
+            Command::ScrollLineUp => write!(f, "scroll line up"),
+            Command::ScrollLineDown => write!(f, "scroll line down"),
+            Command::ScrollToTop => write!(f, "scroll to top"),
+            Command::ScrollToBottom => write!(f, "scroll to bottom"),
+            Command::RefreshModels => write!(f, "refresh models"),
+            Command::RescanPromptTemplates => write!(f, "rescan prompt templates"),
+            Command::PickerInsertChar { payload } => write!(f, "picker insert '{}'", payload.ch),
+            Command::PickerBackspace => write!(f, "picker backspace"),
+            Command::PickerConfirm => write!(f, "picker confirm"),
+            Command::PickerMoveUp => write!(f, "picker move up"),
+            Command::PickerMoveDown => write!(f, "picker move down"),
+            Command::PickerMoveCursorLeft => write!(f, "picker cursor left"),
+            Command::PickerMoveCursorRight => write!(f, "picker cursor right"),
+            Command::OpenPicker { payload } => write!(f, "open {} picker", payload.kind),
+            Command::RegisterTools { payload } => {
+                write!(
+                    f,
+                    "register {} tools from '{}'",
+                    payload.definitions.len(),
+                    payload.provider
+                )
+            }
+            Command::ExecuteToolBatch { payload } => {
+                write!(f, "execute {} tool calls", payload.tool_calls.len())
+            }
+            Command::ExecuteTool { payload } => {
+                write!(
+                    f,
+                    "execute tool '{}' ({})",
+                    payload.tool_call.name, payload.tool_call.id
+                )
+            }
+            Command::ToolUseStarted { payload } => {
+                write!(f, "tool use started '{}' ({})", payload.name, payload.id)
+            }
+            Command::ToolCallReceived { payload } => {
+                write!(
+                    f,
+                    "tool call received '{}' ({})",
+                    payload.tool_call.name, payload.tool_call.id
+                )
+            }
+            Command::ToolCallStreaming { payload } => {
+                write!(f, "tool call streaming idx {}", payload.index)
+            }
+            Command::PushToolResult { payload } => {
+                write!(
+                    f,
+                    "push tool result '{}' ({})",
+                    payload.result.name, payload.result.tool_call_id
+                )
+            }
+            Command::DashboardSelectDown => write!(f, "dashboard select down"),
+            Command::DashboardSelectUp => write!(f, "dashboard select up"),
+            Command::DashboardSelectFirst => write!(f, "dashboard select first"),
+            Command::DashboardSelectLast => write!(f, "dashboard select last"),
+            Command::ToggleKeymapScopeFilter => write!(f, "toggle keymap scope filter"),
+            Command::LoadWorkflow { .. } => write!(f, "load workflow"),
+            Command::AdvanceStep => write!(f, "advance step"),
+            Command::JumpToStep { payload } => write!(f, "jump to step '{}'", payload.step_id),
+            Command::AbortWorkflow => write!(f, "abort workflow"),
+            Command::CompleteStep { payload } => {
+                write!(f, "complete step '{}'", payload.step_id)
+            }
+            Command::WorkflowSelectDown => write!(f, "workflow select down"),
+            Command::WorkflowSelectUp => write!(f, "workflow select up"),
+            Command::WorkflowSelectFirst => write!(f, "workflow select first"),
+            Command::WorkflowSelectLast => write!(f, "workflow select last"),
+            Command::WorkflowRestartStep => write!(f, "workflow restart step"),
+            Command::WorkflowApproveStep => write!(f, "workflow approve step"),
+            Command::WorkflowToggleDetail => write!(f, "workflow toggle detail"),
+            Command::WorkflowTogglePane => write!(f, "toggle workflow pane"),
+            Command::WorkflowFocusChat => write!(f, "focus chat pane"),
+            Command::WorkflowFocusWorkflow => write!(f, "focus workflow pane"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use nullslop_workflow::{GuardExpr, ModelHint, StepDef, WorkflowDef as WorkflowDefType};
+
+    use super::*;
+    use crate::Mode;
+    use crate::OpenPicker;
+    use crate::PickerKind;
+    use crate::SessionId;
+    use crate::workflow::{JumpToStep, LoadWorkflow};
+
+    /// Creates a minimal workflow definition for testing.
+    fn make_test_workflow(step_count: usize) -> WorkflowDefType {
+        let steps: Vec<StepDef> = (0..step_count)
+            .map(|i| StepDef {
+                id: format!("step-{i}"),
+                title: format!("Step {i}"),
+                instructions: format!("Instructions for step {i}"),
+                model_hint: ModelHint::Small,
+                checkpoint: false,
+                requires_user_input: false,
+                tools: vec![],
+                guards: GuardExpr::None,
+                outputs: vec![],
+                depends_on: vec![],
+            })
+            .collect();
+
+        WorkflowDefType {
+            version: 1,
+            name: "test-workflow".to_owned(),
+            description: "A test workflow".to_owned(),
+            model_overrides: HashMap::new(),
+            globals: HashMap::new(),
+            steps,
+        }
+    }
+
+    #[test]
+    fn command_insert_char_serialization() {
+        // Given an InsertChar command.
+        let cmd = Command::InsertChar {
+            payload: InsertChar { ch: 'a' },
+        };
+
+        // When serialized.
+        let json = serde_json::to_string(&cmd).expect("serialize");
+
+        // Then it contains the type tag and the character.
+        assert!(json.contains(r#""type":"insert_char""#));
+        assert!(json.contains(r#""ch":"a""#));
+    }
+
+    #[test]
+    fn command_app_quit_serialization() {
+        // Given a Quit command.
+        let cmd = Command::Quit;
+
+        // When serialized.
+        let json = serde_json::to_string(&cmd).expect("serialize");
+
+        // Then it is {"type":"quit"}.
+        assert_eq!(json, r#"{"type":"quit"}"#);
+    }
+
+    #[rstest::rstest]
+    #[case::insert_char(Command::InsertChar { payload: InsertChar { ch: 'x' } })]
+    #[case::delete_grapheme(Command::DeleteGrapheme)]
+    #[case::submit_message(Command::SubmitMessage { payload: SubmitMessage { session_id: SessionId::new(), text: "hello".into() } })]
+    #[case::clear(Command::Clear)]
+    #[case::interrupt(Command::Interrupt)]
+    #[case::set_mode(Command::SetMode { payload: SetMode { mode: Mode::Input } })]
+    #[case::quit(Command::Quit)]
+    #[case::edit_input(Command::EditInput)]
+    #[case::toggle_which_key(Command::ToggleWhichKey)]
+    #[case::switch_tab(Command::SwitchTab { payload: SwitchTab { direction: crate::TabDirection::Next } })]
+    #[case::send_message(Command::SendMessage { payload: SendMessage { session_id: SessionId::new(), text: "hi".into() } })]
+    #[case::cancel_stream(Command::CancelStream { payload: CancelStream { session_id: SessionId::new() } })]
+    #[case::send_to_llm_provider(Command::SendToLlmProvider { payload: SendToLlmProvider { session_id: SessionId::new(), messages: vec![], provider_id: None } })]
+    #[case::assemble_prompt(Command::AssemblePrompt { payload: AssemblePrompt { session_id: SessionId::new(), history: vec![], tools: vec![], model_name: "test".to_owned() } })]
+    #[case::switch_prompt_strategy(Command::SwitchPromptStrategy { payload: SwitchPromptStrategy { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::sliding_window() } })]
+    #[case::restore_strategy_state(Command::RestoreStrategyState { payload: RestoreStrategyState { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::compaction(), blob: serde_json::json!({}) } })]
+    #[case::stream_token(Command::StreamToken { payload: StreamToken { session_id: SessionId::new(), index: 0, token: "hello".into() } })]
+    #[case::push_chat_entry(Command::PushChatEntry { payload: PushChatEntry { session_id: SessionId::new(), entry: crate::ChatEntry::user("hi") } })]
+    #[case::proceed_with_shutdown(Command::ProceedWithShutdown { payload: ProceedWithShutdown { completed: vec!["ext-a".into()], timed_out: vec!["ext-b".into()] } })]
+    #[case::move_cursor_left(Command::MoveCursorLeft)]
+    #[case::move_cursor_right(Command::MoveCursorRight)]
+    #[case::move_cursor_to_start(Command::MoveCursorToStart)]
+    #[case::move_cursor_to_end(Command::MoveCursorToEnd)]
+    #[case::delete_forward(Command::DeleteGraphemeForward)]
+    #[case::move_cursor_word_left(Command::MoveCursorWordLeft)]
+    #[case::move_cursor_word_right(Command::MoveCursorWordRight)]
+    #[case::enqueue_user_message(Command::EnqueueUserMessage { payload: EnqueueUserMessage { session_id: SessionId::new(), text: "hello".into() } })]
+    #[case::set_chat_input_text(Command::SetChatInputText { payload: SetChatInputText { session_id: SessionId::new(), text: "restored".into() } })]
+    #[case::autocomplete_confirm(Command::AutocompleteConfirm)]
+    #[case::provider_switch(Command::ProviderSwitch { payload: ProviderSwitch { provider_id: "ollama".into() } })]
+    #[case::scroll_up(Command::ScrollUp)]
+    #[case::scroll_down(Command::ScrollDown)]
+    #[case::mouse_scroll_up(Command::MouseScrollUp)]
+    #[case::mouse_scroll_down(Command::MouseScrollDown)]
+    #[case::scroll_line_up(Command::ScrollLineUp)]
+    #[case::scroll_line_down(Command::ScrollLineDown)]
+    #[case::scroll_to_top(Command::ScrollToTop)]
+    #[case::scroll_to_bottom(Command::ScrollToBottom)]
+    #[case::move_cursor_up(Command::MoveCursorUp)]
+    #[case::move_cursor_down(Command::MoveCursorDown)]
+    #[case::picker_insert_char(Command::PickerInsertChar { payload: PickerInsertChar { ch: 'x' } })]
+    #[case::picker_backspace(Command::PickerBackspace)]
+    #[case::picker_confirm(Command::PickerConfirm)]
+    #[case::picker_move_up(Command::PickerMoveUp)]
+    #[case::picker_move_down(Command::PickerMoveDown)]
+    #[case::picker_move_cursor_left(Command::PickerMoveCursorLeft)]
+    #[case::picker_move_cursor_right(Command::PickerMoveCursorRight)]
+    #[case::refresh_models(Command::RefreshModels)]
+    #[case::rescan_prompt_templates(Command::RescanPromptTemplates)]
+    #[case::register_tools(Command::RegisterTools { payload: RegisterTools { provider: "echo-actor".into(), definitions: vec![crate::ToolDefinition { name: "echo".into(), description: "echo".into(), parameters: serde_json::json!({}) }] } })]
+    #[case::execute_tool_batch(Command::ExecuteToolBatch { payload: ExecuteToolBatch { session_id: SessionId::new(), tool_calls: vec![crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() }] } })]
+    #[case::execute_tool(Command::ExecuteTool { payload: ExecuteTool { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
+    #[case::tool_use_started(Command::ToolUseStarted { payload: ToolUseStarted { session_id: SessionId::new(), index: 0, id: "call_1".into(), name: "echo".into() } })]
+    #[case::tool_call_received(Command::ToolCallReceived { payload: ToolCallReceived { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
+    #[case::tool_call_streaming(Command::ToolCallStreaming { payload: ToolCallStreaming { session_id: SessionId::new(), index: 0, partial_json: "{\"a\":".into() } })]
+    #[case::push_tool_result(Command::PushToolResult { payload: PushToolResult { session_id: SessionId::new(), result: crate::ToolResult { tool_call_id: "call_1".into(), name: "echo".into(), content: "hi".into(), success: true } } })]
+    #[case::dashboard_select_down(Command::DashboardSelectDown)]
+    #[case::dashboard_select_up(Command::DashboardSelectUp)]
+    #[case::dashboard_select_first(Command::DashboardSelectFirst)]
+    #[case::dashboard_select_last(Command::DashboardSelectLast)]
+    #[case::open_picker(Command::OpenPicker { payload: OpenPicker { kind: PickerKind::ContextAssembly } })]
+    #[case::open_picker_keymap(Command::OpenPicker { payload: OpenPicker { kind: PickerKind::Keymap } })]
+    #[case::toggle_keymap_scope_filter(Command::ToggleKeymapScopeFilter)]
+    #[case::load_workflow(Command::LoadWorkflow { payload: LoadWorkflow { definition: make_test_workflow(2) } })]
+    #[case::advance_step(Command::AdvanceStep)]
+    #[case::jump_to_step(Command::JumpToStep { payload: JumpToStep { step_id: "step-0".to_owned() } })]
+    #[case::abort_workflow(Command::AbortWorkflow)]
+    #[case::complete_step(Command::CompleteStep { payload: CompleteStep { step_id: "step-0".to_owned(), resolved_outputs: std::collections::HashMap::new() } })]
+    #[case::workflow_select_down(Command::WorkflowSelectDown)]
+    #[case::workflow_select_up(Command::WorkflowSelectUp)]
+    #[case::workflow_select_first(Command::WorkflowSelectFirst)]
+    #[case::workflow_select_last(Command::WorkflowSelectLast)]
+    #[case::workflow_restart_step(Command::WorkflowRestartStep)]
+    #[case::workflow_approve_step(Command::WorkflowApproveStep)]
+    #[case::workflow_toggle_detail(Command::WorkflowToggleDetail)]
+    #[case::workflow_toggle_pane(Command::WorkflowTogglePane)]
+    #[case::workflow_focus_chat(Command::WorkflowFocusChat)]
+    #[case::workflow_focus_workflow(Command::WorkflowFocusWorkflow)]
+    fn command_roundtrip_all_variants(#[case] cmd: Command) {
+        // Given a command variant.
+        let json = serde_json::to_string(&cmd).expect("serialize");
+
+        // When deserialized.
+        let back: Command = serde_json::from_str(&json).expect("deserialize");
+
+        // Then it matches the original when re-serialized.
+        let back_json = serde_json::to_string(&back).expect("re-serialize");
+        assert_eq!(json, back_json);
+    }
+
+    #[test]
+    fn command_name_returns_name_for_routable_commands() {
+        // Given routable command variants.
+        // When calling command_name().
+        // Then they return their routing name.
+        assert_eq!(
+            Command::PushChatEntry {
+                payload: PushChatEntry {
+                    session_id: SessionId::new(),
+                    entry: crate::ChatEntry::user("test"),
+                },
+            }
+            .command_name(),
+            Some(PushChatEntry::NAME)
+        );
+        assert_eq!(
+            Command::CancelStream {
+                payload: CancelStream {
+                    session_id: SessionId::new(),
+                },
+            }
+            .command_name(),
+            Some(CancelStream::NAME)
+        );
+    }
+
+    #[test]
+    fn command_name_returns_none_for_internal_commands() {
+        // Given internal UI commands.
+        // When calling command_name().
+        // Then they return None (not routed to actors).
+        assert_eq!(Command::Quit.command_name(), None);
+        assert_eq!(Command::EditInput.command_name(), None);
+        assert_eq!(Command::ToggleWhichKey.command_name(), None);
+    }
+
+    #[test]
+    fn open_picker_command_name() {
+        // Given an OpenPicker command.
+        let cmd = Command::OpenPicker {
+            payload: OpenPicker {
+                kind: PickerKind::ContextAssembly,
+            },
+        };
+
+        // When calling command_name().
+        // Then it returns the OpenPicker routing name.
+        assert_eq!(cmd.command_name(), Some(OpenPicker::NAME));
+    }
+
+    #[rstest::rstest]
+    #[case::provider(PickerKind::Provider, "provider")]
+    #[case::context_assembly(PickerKind::ContextAssembly, "context-assembly")]
+    #[case::keymap(PickerKind::Keymap, "keymap")]
+    fn picker_kind_display(#[case] kind: PickerKind, #[case] expected: &str) {
+        // Given a picker kind.
+        // When formatting it.
+        // Then it shows the expected string.
+        assert_eq!(kind.to_string(), expected);
+    }
+}
