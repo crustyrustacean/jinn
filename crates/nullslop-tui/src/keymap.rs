@@ -171,6 +171,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Command, KeyCategory> {
             .bind("<c-r>", Command::RefreshModels, KeyCategory::Model)
             .bind("<c-p>", Command::OpenPicker { payload: OpenPicker { kind: PickerKind::Keymap } }, KeyCategory::General)
             .bind("<c-a>", Command::ToggleKeymapScopeFilter, KeyCategory::General)
+            .bind("<c-n>", Command::SessionNew, KeyCategory::General)
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(c) = key.key {
                     Some(Command::PickerInsertChar {
