@@ -168,6 +168,10 @@ fn render_keymap_row(
 /// `rendered_offset` is where we start consuming characters from `text` (usually 0).
 /// `search_range` is the byte range in search_text that this `text` maps to.
 /// `searchable_len` is how many chars at the start of `text` correspond to searchable text.
+#[expect(
+    clippy::string_slice,
+    reason = "byte_off comes from char_indices(), always a valid UTF-8 boundary"
+)]
 fn highlight_text_segment(
     text: &str,
     base_style: Style,
@@ -190,7 +194,7 @@ fn highlight_text_segment(
         if char_idx >= searchable_len {
             // Past the searchable portion — flush remaining and break.
             if current_start < text.len() {
-                let rest: String = text[current_start..].chars().collect();
+                let rest = text[current_start..].to_owned();
                 spans.push(Span::styled(
                     rest,
                     if in_highlight { highlight_style } else { base_style },
@@ -205,7 +209,7 @@ fn highlight_text_segment(
 
         if is_matched != in_highlight {
             // Transition — emit accumulated text.
-            let segment: String = text[current_start..byte_off].chars().collect();
+            let segment = text[current_start..byte_off].to_owned();
             if !segment.is_empty() {
                 spans.push(Span::styled(
                     segment,
@@ -219,7 +223,7 @@ fn highlight_text_segment(
 
     // Flush remaining.
     if current_start < text.len() {
-        let rest: String = text[current_start..].chars().collect();
+        let rest = text[current_start..].to_owned();
         spans.push(Span::styled(
             rest,
             if in_highlight { highlight_style } else { base_style },
