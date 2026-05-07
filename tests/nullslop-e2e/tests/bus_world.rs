@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use cucumber::World;
-use nullslop_actor_host::{ActorHostService, FakeActorHost};
+use nullslop_actor_host::FakeActorHost;
 use nullslop_component::AppState;
 use nullslop_component_core::Bus;
 use nullslop_context::DefaultStrategyDiscovery;

@@ -1,4 +1,5 @@
 use nullslop_selection_widget::PickerItem as _;
+use std::ops::Range;
 
 use super::*;
 
@@ -224,7 +225,9 @@ fn render_row_with_highlight_applies_gray_bg_to_matched_name_chars() {
     let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
 
     // When highlighting with match at byte 0 (the "P").
-    let line = entry.render_row_with_highlight(false, &[0..1]);
+    #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+    let highlights: &[Range<usize>] = &[0..1];
+    let line = entry.render_row_with_highlight(false, highlights);
 
     // Then at least one span has gray background.
     let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(ratatui::style::Color::DarkGray));
@@ -245,7 +248,9 @@ fn render_row_with_highlight_preserves_description() {
     let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
 
     // When highlighting with match at byte 0.
-    let line = entry.render_row_with_highlight(false, &[0..1]);
+    #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+    let highlights: &[Range<usize>] = &[0..1];
+    let line = entry.render_row_with_highlight(false, highlights);
 
     // Then the full text still contains description.
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
