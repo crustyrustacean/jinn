@@ -4,9 +4,7 @@ COPYRIGHT_YEAR := "2026"
 test:
     cargo nextest run --workspace --all-features --exclude nullslop-e2e
     cargo test --workspace --doc
-    cargo test --test cucumber -p nullslop-e2e
-    cargo test --test bus_cucumber -p nullslop-e2e
-    cargo test --test actor_cucumber -p nullslop-e2e
+    cargo test --test e2e -p nullslop-e2e
 
 check:
     cargo check --workspace
@@ -30,16 +28,12 @@ lint:
 ci: lint
     cargo nextest run --workspace --all-features --exclude nullslop-e2e
     cargo test --workspace --doc
-    cargo test --test cucumber -p nullslop-e2e
-    cargo test --test bus_cucumber -p nullslop-e2e
-    cargo test --test actor_cucumber -p nullslop-e2e
+    cargo test --test e2e -p nullslop-e2e
     cargo doc --workspace --no-deps
 
 # Run all cucumber tests
 cucumber:
-    cargo test --test cucumber -p nullslop-e2e
-    cargo test --test bus_cucumber -p nullslop-e2e
-    cargo test --test actor_cucumber -p nullslop-e2e
+    cargo test --test e2e -p nullslop-e2e
 
 # Build and open documentation
 docs:

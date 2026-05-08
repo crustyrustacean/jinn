@@ -4,15 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [[test]]
-name = "cucumber"
-harness = false
-
-[[test]]
-name = "bus_cucumber"
-harness = false
-
-[[test]]
-name = "actor_cucumber"
+name = "e2e"
 harness = false
 
 [dependencies]
