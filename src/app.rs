@@ -21,7 +21,6 @@ use nullslop_llm::LlmActor;
 use nullslop_llm_discover::DiscoverActor;
 use nullslop_prompt_scan::PromptScanActor;
 use nullslop_protocol::Event;
-use nullslop_protocol::PickerKind;
 use nullslop_protocol::actor::{ActorStarted, ActorStarting};
 use nullslop_providers::ApiKeys;
 use nullslop_providers::ApiKeysService;
@@ -517,33 +516,9 @@ fn create_core_with_actor_host(
     let mut registry = nullslop_component::AppUiRegistry::new();
     nullslop_component::register_all(&mut core.bus, &mut registry);
 
-    // Open the session picker at startup if saved sessions exist.
-    if has_saved_sessions(&services.session_store) {
-        let _ = core.sender().send(AppMsg::Command {
-            command: nullslop_protocol::Command::OpenPicker {
-                payload: nullslop_protocol::system::OpenPicker {
-                    kind: PickerKind::Session,
-                },
-            },
-            source: None,
-        });
-    }
+
 
     (core, services)
-}
-
-/// Checks whether any saved sessions exist in the store.
-///
-/// Called once at startup to decide whether to open the session picker.
-/// Failures are logged and treated as "no sessions".
-fn has_saved_sessions(store: &SessionStoreService) -> bool {
-    match store.load_summaries() {
-        Ok(summaries) => !summaries.is_empty(),
-        Err(e) => {
-            tracing::warn!(err = ?e, "failed to load session summaries");
-            false
-        }
-    }
 }
 
 /// Loads the model cache from disk into the application state.
