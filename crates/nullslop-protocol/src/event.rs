@@ -289,8 +289,7 @@ mod tests {
     use crate::session::SessionSaveRequested;
     use crate::{ChatEntry, Key, KeyEvent, Mode, Modifiers, SessionId};
 
-    #[test]
-    fn event_chat_entry_submitted_preserves_entry() {
+    #[rstest::rstest]    fn event_chat_entry_submitted_preserves_entry() {
         // Given a ChatEntrySubmitted event with a user entry.
         let entry = ChatEntry::user("hello");
         let event = Event::ChatEntrySubmitted {

@@ -6,8 +6,7 @@ use crate::scope::Scope;
 
 // --- Normal scope: key sequence resolution ---
 
-#[test]
-fn g_shows_in_which_key_with_general_description() {
+#[rstest::rstest]fn g_shows_in_which_key_with_general_description() {
     // Given the keymap.
     let keymap = init();
 
@@ -28,8 +27,7 @@ fn g_shows_in_which_key_with_general_description() {
     assert_eq!(g_binding.unwrap().description, "general");
 }
 
-#[test]
-fn gmp_produces_open_picker_provider() {
+#[rstest::rstest]fn gmp_produces_open_picker_provider() {
     // Given the keymap.
     let keymap = init();
 
@@ -64,8 +62,7 @@ fn gmp_produces_open_picker_provider() {
     }
 }
 
-#[test]
-fn gmr_produces_refresh_models_command() {
+#[rstest::rstest]fn gmr_produces_refresh_models_command() {
     // Given the keymap.
     let keymap = init();
 
@@ -102,8 +99,7 @@ fn gmr_produces_refresh_models_command() {
 
 // --- New bindings: j/k line scroll, gg/G scroll to top/bottom ---
 
-#[test]
-fn j_produces_chat_entry_select_next() {
+#[rstest::rstest]fn j_produces_chat_entry_select_next() {
     // Given the keymap.
     let keymap = init();
 
@@ -125,8 +121,7 @@ fn j_produces_chat_entry_select_next() {
     }
 }
 
-#[test]
-fn k_produces_chat_entry_select_prev() {
+#[rstest::rstest]fn k_produces_chat_entry_select_prev() {
     // Given the keymap.
     let keymap = init();
 
@@ -148,8 +143,7 @@ fn k_produces_chat_entry_select_prev() {
     }
 }
 
-#[test]
-fn gg_produces_scroll_to_top() {
+#[rstest::rstest]fn gg_produces_scroll_to_top() {
     // Given the keymap.
     let keymap = init();
 
@@ -171,8 +165,7 @@ fn gg_produces_scroll_to_top() {
     }
 }
 
-#[test]
-fn uppercase_g_produces_scroll_to_bottom() {
+#[rstest::rstest]fn uppercase_g_produces_scroll_to_bottom() {
     // Given the keymap.
     let keymap = init();
 
@@ -196,8 +189,7 @@ fn uppercase_g_produces_scroll_to_bottom() {
 
 // --- Tab switching: Tab/Shift+Tab ---
 
-#[test]
-fn tab_produces_switch_tab_next() {
+#[rstest::rstest]fn tab_produces_switch_tab_next() {
     // Given the keymap.
     let keymap = init();
 
@@ -222,8 +214,7 @@ fn tab_produces_switch_tab_next() {
     }
 }
 
-#[test]
-fn shift_tab_produces_switch_tab_prev() {
+#[rstest::rstest]fn shift_tab_produces_switch_tab_prev() {
     // Given the keymap.
     let keymap = init();
 
@@ -250,8 +241,7 @@ fn shift_tab_produces_switch_tab_prev() {
 
 // --- Category assignments ---
 
-#[test]
-fn normal_scope_general_category_has_quit_and_help() {
+#[rstest::rstest]fn normal_scope_general_category_has_quit_and_help() {
     // Given the keymap.
     let keymap = init();
 
@@ -274,8 +264,7 @@ fn normal_scope_general_category_has_quit_and_help() {
     );
 }
 
-#[test]
-fn normal_scope_mode_category_contains_set_mode_input() {
+#[rstest::rstest]fn normal_scope_mode_category_contains_set_mode_input() {
     // Given the keymap.
     let keymap = init();
 
@@ -297,8 +286,7 @@ fn normal_scope_mode_category_contains_set_mode_input() {
     );
 }
 
-#[test]
-fn navigation_has_scroll_bindings() {
+#[rstest::rstest]fn navigation_has_scroll_bindings() {
     // Given the keymap.
     let keymap = init();
 
@@ -324,8 +312,7 @@ fn navigation_has_scroll_bindings() {
     );
 }
 
-#[test]
-fn navigation_has_tab_bindings() {
+#[rstest::rstest]fn navigation_has_tab_bindings() {
     // Given the keymap.
     let keymap = init();
 
@@ -347,8 +334,7 @@ fn navigation_has_tab_bindings() {
     );
 }
 
-#[test]
-fn gm_prefix_appears_under_model_category() {
+#[rstest::rstest]fn gm_prefix_appears_under_model_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -367,8 +353,7 @@ fn gm_prefix_appears_under_model_category() {
     assert_eq!(m_child.unwrap().1, "model");
 }
 
-#[test]
-fn g_prefix_appears_under_general_category() {
+#[rstest::rstest]fn g_prefix_appears_under_general_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -390,8 +375,7 @@ fn g_prefix_appears_under_general_category() {
     assert_eq!(g_binding.unwrap().description, "general");
 }
 
-#[test]
-fn gcr_produces_rescan_prompt_templates() {
+#[rstest::rstest]fn gcr_produces_rescan_prompt_templates() {
     // Given the keymap.
     let keymap = init();
 
@@ -426,8 +410,7 @@ fn gcr_produces_rescan_prompt_templates() {
     }
 }
 
-#[test]
-fn gc_prefix_appears_under_general_category() {
+#[rstest::rstest]fn gc_prefix_appears_under_general_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -446,8 +429,7 @@ fn gc_prefix_appears_under_general_category() {
     assert_eq!(c_child.unwrap().1, "context");
 }
 
-#[test]
-fn dashboard_j_produces_dashboard_select_down() {
+#[rstest::rstest]fn dashboard_j_produces_dashboard_select_down() {
     // Given the keymap.
     let keymap = init();
 
@@ -472,8 +454,7 @@ fn dashboard_j_produces_dashboard_select_down() {
     }
 }
 
-#[test]
-fn dashboard_k_produces_dashboard_select_up() {
+#[rstest::rstest]fn dashboard_k_produces_dashboard_select_up() {
     // Given the keymap.
     let keymap = init();
 
@@ -495,8 +476,7 @@ fn dashboard_k_produces_dashboard_select_up() {
     }
 }
 
-#[test]
-fn dashboard_gg_produces_dashboard_select_first() {
+#[rstest::rstest]fn dashboard_gg_produces_dashboard_select_first() {
     // Given the keymap.
     let keymap = init();
 
@@ -521,8 +501,7 @@ fn dashboard_gg_produces_dashboard_select_first() {
     }
 }
 
-#[test]
-fn dashboard_uppercase_g_produces_dashboard_select_last() {
+#[rstest::rstest]fn dashboard_uppercase_g_produces_dashboard_select_last() {
     // Given the keymap.
     let keymap = init();
 
@@ -547,8 +526,7 @@ fn dashboard_uppercase_g_produces_dashboard_select_last() {
     }
 }
 
-#[test]
-fn gcs_produces_open_picker_context_assembly() {
+#[rstest::rstest]fn gcs_produces_open_picker_context_assembly() {
     // Given the keymap.
     let keymap = init();
 
@@ -583,8 +561,7 @@ fn gcs_produces_open_picker_context_assembly() {
     }
 }
 
-#[test]
-fn gc_prefix_appears_under_context_category() {
+#[rstest::rstest]fn gc_prefix_appears_under_context_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -603,8 +580,7 @@ fn gc_prefix_appears_under_context_category() {
     assert_eq!(c_child.unwrap().1, "context");
 }
 
-#[test]
-fn input_scope_escape_appears_under_general_category() {
+#[rstest::rstest]fn input_scope_escape_appears_under_general_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -628,8 +604,7 @@ fn input_scope_escape_appears_under_general_category() {
 
 // --- Tree walker tests ---
 
-#[test]
-fn quit_binding_present_in_normal_scope() {
+#[rstest::rstest]fn quit_binding_present_in_normal_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -641,8 +616,7 @@ fn quit_binding_present_in_normal_scope() {
     assert!(q_entry.is_some(), "'q' should be in Normal scope bindings");
 }
 
-#[test]
-fn quit_binding_has_correct_key() {
+#[rstest::rstest]fn quit_binding_has_correct_key() {
     // Given the keymap.
     let keymap = init();
 
@@ -658,8 +632,7 @@ fn quit_binding_has_correct_key() {
     assert!(matches!(entry.command, Command::Quit));
 }
 
-#[test]
-fn collect_bindings_for_scope_finds_multi_key_sequence() {
+#[rstest::rstest]fn collect_bindings_for_scope_finds_multi_key_sequence() {
     // Given the keymap.
     let keymap = init();
 
@@ -672,8 +645,7 @@ fn collect_bindings_for_scope_finds_multi_key_sequence() {
     assert_eq!(gg_entry.unwrap().description, "scroll to top");
 }
 
-#[test]
-fn collect_bindings_for_scope_finds_three_key_sequence() {
+#[rstest::rstest]fn collect_bindings_for_scope_finds_three_key_sequence() {
     // Given the keymap.
     let keymap = init();
 
@@ -691,8 +663,7 @@ fn collect_bindings_for_scope_finds_three_key_sequence() {
     );
 }
 
-#[test]
-fn collect_bindings_for_scope_excludes_prefix_only_nodes() {
+#[rstest::rstest]fn collect_bindings_for_scope_excludes_prefix_only_nodes() {
     // Given the keymap.
     let keymap = init();
 
@@ -707,8 +678,7 @@ fn collect_bindings_for_scope_excludes_prefix_only_nodes() {
     );
 }
 
-#[test]
-fn collect_bindings_for_scope_includes_category() {
+#[rstest::rstest]fn collect_bindings_for_scope_includes_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -721,8 +691,7 @@ fn collect_bindings_for_scope_includes_category() {
     assert_eq!(q_entry.unwrap().category, "General");
 }
 
-#[test]
-fn collect_bindings_for_scope_separates_scopes() {
+#[rstest::rstest]fn collect_bindings_for_scope_separates_scopes() {
     // Given the keymap.
     let keymap = init();
 
@@ -735,8 +704,7 @@ fn collect_bindings_for_scope_separates_scopes() {
     assert_eq!(j_entry.unwrap().description, "dashboard select down");
 }
 
-#[test]
-fn bindings_include_normal_scope() {
+#[rstest::rstest]fn bindings_include_normal_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -751,8 +719,7 @@ fn bindings_include_normal_scope() {
     assert!(!dashboard_entries.is_empty(), "should have Dashboard entries");
 }
 
-#[test]
-fn bindings_include_input_scope() {
+#[rstest::rstest]fn bindings_include_input_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -769,8 +736,7 @@ fn bindings_include_input_scope() {
 
 // --- Keymap picker keybinding tests ---
 
-#[test]
-fn ctrl_p_produces_open_picker_keymap() {
+#[rstest::rstest]fn ctrl_p_produces_open_picker_keymap() {
     // Given the keymap.
     let keymap = init();
 
@@ -795,8 +761,7 @@ fn ctrl_p_produces_open_picker_keymap() {
     }
 }
 
-#[test]
-fn ctrl_p_produces_open_picker_keymap_in_input_scope() {
+#[rstest::rstest]fn ctrl_p_produces_open_picker_keymap_in_input_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -821,8 +786,7 @@ fn ctrl_p_produces_open_picker_keymap_in_input_scope() {
     }
 }
 
-#[test]
-fn ctrl_p_produces_open_picker_keymap_in_picker_scope() {
+#[rstest::rstest]fn ctrl_p_produces_open_picker_keymap_in_picker_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -847,8 +811,7 @@ fn ctrl_p_produces_open_picker_keymap_in_picker_scope() {
     }
 }
 
-#[test]
-fn ctrl_p_produces_open_picker_keymap_in_dashboard_scope() {
+#[rstest::rstest]fn ctrl_p_produces_open_picker_keymap_in_dashboard_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -873,8 +836,7 @@ fn ctrl_p_produces_open_picker_keymap_in_dashboard_scope() {
     }
 }
 
-#[test]
-fn leader_sk_produces_open_picker_keymap() {
+#[rstest::rstest]fn leader_sk_produces_open_picker_keymap() {
     // Given the keymap.
     let keymap = init();
 
@@ -908,8 +870,7 @@ fn leader_sk_produces_open_picker_keymap() {
     }
 }
 
-#[test]
-fn leader_sk_produces_open_picker_keymap_in_dashboard() {
+#[rstest::rstest]fn leader_sk_produces_open_picker_keymap_in_dashboard() {
     // Given the keymap.
     let keymap = init();
 
@@ -945,8 +906,7 @@ fn leader_sk_produces_open_picker_keymap_in_dashboard() {
 
 // --- Scope filter toggle binding ---
 
-#[test]
-fn ctrl_a_produces_toggle_keymap_scope_filter() {
+#[rstest::rstest]fn ctrl_a_produces_toggle_keymap_scope_filter() {
     // Given the keymap.
     let keymap = init();
 

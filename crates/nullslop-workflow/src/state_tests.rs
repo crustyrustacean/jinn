@@ -31,8 +31,7 @@ fn make_workflow(step_count: usize) -> WorkflowDef {
 
 // ---- new ----
 
-#[test]
-fn new_creates_all_steps_as_pending() {
+#[rstest::rstest]fn new_creates_all_steps_as_pending() {
     // Given a workflow definition with 3 steps.
     let def = make_workflow(3);
 
@@ -48,8 +47,7 @@ fn new_creates_all_steps_as_pending() {
 
 // ---- start ----
 
-#[test]
-fn start_activates_first_step() {
+#[rstest::rstest]fn start_activates_first_step() {
     // Given a workflow state with 3 steps.
     let mut state = WorkflowState::new(make_workflow(3));
 
@@ -61,8 +59,7 @@ fn start_activates_first_step() {
     assert_eq!(state.steps["step-0"].status.clone(), StepStatus::Active);
 }
 
-#[test]
-fn start_fails_with_no_steps() {
+#[rstest::rstest]fn start_fails_with_no_steps() {
     // Given a workflow with no steps.
     let mut state = WorkflowState::new(make_workflow(0));
 
@@ -75,8 +72,7 @@ fn start_fails_with_no_steps() {
 
 // ---- advance ----
 
-#[test]
-fn advance_moves_to_next_step() {
+#[rstest::rstest]fn advance_moves_to_next_step() {
     // Given a started workflow.
     let mut state = WorkflowState::new(make_workflow(3));
     state.start().unwrap();
@@ -90,8 +86,7 @@ fn advance_moves_to_next_step() {
     assert_eq!(state.steps["step-0"].status.clone(), StepStatus::Completed);
 }
 
-#[test]
-fn advance_on_last_step_returns_none() {
+#[rstest::rstest]fn advance_on_last_step_returns_none() {
     // Given a workflow on its last step.
     let mut state = WorkflowState::new(make_workflow(1));
     state.start().unwrap();
@@ -105,8 +100,7 @@ fn advance_on_last_step_returns_none() {
 
 // ---- jump_to ----
 
-#[test]
-fn jump_activates_target() {
+#[rstest::rstest]fn jump_activates_target() {
     // Given a workflow where steps 0 and 1 are completed.
     let mut state = WorkflowState::new(make_workflow(3));
     state.start().unwrap();
@@ -123,8 +117,7 @@ fn jump_activates_target() {
     assert_eq!(state.steps["step-0"].status.clone(), StepStatus::Active);
 }
 
-#[test]
-fn jump_marks_downstream_stale() {
+#[rstest::rstest]fn jump_marks_downstream_stale() {
     // Given a workflow where steps 0 and 1 are completed.
     let mut state = WorkflowState::new(make_workflow(3));
     state.start().unwrap();
@@ -143,8 +136,7 @@ fn jump_marks_downstream_stale() {
     assert_eq!(state.steps["step-2"].status.clone(), StepStatus::Stale);
 }
 
-#[test]
-fn jump_to_with_invalid_step_returns_error() {
+#[rstest::rstest]fn jump_to_with_invalid_step_returns_error() {
     let mut state = WorkflowState::new(make_workflow(2));
     state.start().unwrap();
 
@@ -154,8 +146,7 @@ fn jump_to_with_invalid_step_returns_error() {
 
 // ---- complete_step ----
 
-#[test]
-fn complete_step_sets_awaiting_input_and_records_outputs() {
+#[rstest::rstest]fn complete_step_sets_awaiting_input_and_records_outputs() {
     // Given an active step.
     let mut state = WorkflowState::new(make_workflow(1));
     state.start().unwrap();
@@ -173,8 +164,7 @@ fn complete_step_sets_awaiting_input_and_records_outputs() {
     );
 }
 
-#[test]
-fn complete_step_returns_error_for_unknown_step() {
+#[rstest::rstest]fn complete_step_returns_error_for_unknown_step() {
     let mut state = WorkflowState::new(make_workflow(1));
     let result = state.complete_step("nope", HashMap::new());
     assert!(result.is_err());
@@ -182,8 +172,7 @@ fn complete_step_returns_error_for_unknown_step() {
 
 // ---- finalize_step ----
 
-#[test]
-fn finalize_step_sets_completed() {
+#[rstest::rstest]fn finalize_step_sets_completed() {
     // Given a step in AwaitingInput status.
     let mut state = WorkflowState::new(make_workflow(1));
     state.start().unwrap();
@@ -197,8 +186,7 @@ fn finalize_step_sets_completed() {
     assert_eq!(state.steps["step-0"].status, StepStatus::Completed);
 }
 
-#[test]
-fn finalize_step_returns_error_for_unknown_step() {
+#[rstest::rstest]fn finalize_step_returns_error_for_unknown_step() {
     let mut state = WorkflowState::new(make_workflow(1));
     let result = state.finalize_step("nope");
     assert!(result.is_err());
@@ -206,8 +194,7 @@ fn finalize_step_returns_error_for_unknown_step() {
 
 // ---- downstream_steps ----
 
-#[test]
-fn downstream_steps_returns_correct_ids() {
+#[rstest::rstest]fn downstream_steps_returns_correct_ids() {
     let state = WorkflowState::new(make_workflow(4));
 
     let ds = state.downstream_steps("step-1");
@@ -219,8 +206,7 @@ fn downstream_steps_returns_correct_ids() {
 
 // ---- full lifecycle ----
 
-#[test]
-fn lifecycle_start_activates_first_step() {
+#[rstest::rstest]fn lifecycle_start_activates_first_step() {
     // Given a workflow with 2 steps.
     let mut state = WorkflowState::new(make_workflow(2));
 
@@ -231,8 +217,7 @@ fn lifecycle_start_activates_first_step() {
     assert_eq!(state.active_step.as_deref(), Some("step-0"));
 }
 
-#[test]
-fn complete_then_finalize_advances() {
+#[rstest::rstest]fn complete_then_finalize_advances() {
     // Given a started workflow with 2 steps.
     let mut state = WorkflowState::new(make_workflow(2));
     state.start().unwrap();
@@ -247,8 +232,7 @@ fn complete_then_finalize_advances() {
     assert_eq!(next.as_deref(), Some("step-1"));
 }
 
-#[test]
-fn lifecycle_advance_on_last_step_returns_none() {
+#[rstest::rstest]fn lifecycle_advance_on_last_step_returns_none() {
     // Given a workflow with 2 steps, both completed.
     let mut state = WorkflowState::new(make_workflow(2));
     state.start().unwrap();
@@ -267,8 +251,7 @@ fn lifecycle_advance_on_last_step_returns_none() {
 
 // ---- jump-back lifecycle ----
 
-#[test]
-fn jump_back_marks_downstream_as_stale() {
+#[rstest::rstest]fn jump_back_marks_downstream_as_stale() {
     let mut state = WorkflowState::new(make_workflow(3));
     state.start().unwrap();
     state.complete_step("step-0", HashMap::new()).unwrap();
@@ -287,16 +270,14 @@ fn jump_back_marks_downstream_as_stale() {
 
 // ---- step_order ----
 
-#[test]
-fn step_order_returns_definition_order() {
+#[rstest::rstest]fn step_order_returns_definition_order() {
     let state = WorkflowState::new(make_workflow(3));
     assert_eq!(state.step_order(), vec!["step-0", "step-1", "step-2"]);
 }
 
 // ---- WorkflowState roundtrip ----
 
-#[test]
-fn workflow_state_roundtrips_through_serde() {
+#[rstest::rstest]fn workflow_state_roundtrips_through_serde() {
     let mut state = WorkflowState::new(make_workflow(2));
     state.start().unwrap();
     state.complete_step("step-0", HashMap::new()).unwrap();
@@ -315,8 +296,7 @@ fn workflow_state_roundtrips_through_serde() {
 
 // ---- StepStatus roundtrip ----
 
-#[test]
-fn step_status_roundtrips() {
+#[rstest::rstest]fn step_status_roundtrips() {
     let statuses = vec![
         StepStatus::Pending,
         StepStatus::Active,

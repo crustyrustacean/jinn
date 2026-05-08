@@ -210,6 +210,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn save_event_creates_summary() {
         // Given a SessionPersistenceActor with a JsonlSessionStore in a temp directory.
@@ -232,6 +233,7 @@ mod tests {
         assert_eq!(summary.title, "Test Session");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn save_event_preserves_full_data() {
         // Given a SessionPersistenceActor with a JsonlSessionStore in a temp directory.
@@ -257,6 +259,7 @@ mod tests {
         assert_eq!(full.title, "Test Session");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_persistence_actor_saves_with_blobs() {
         // Given a SessionPersistenceActor with a store.
@@ -292,6 +295,7 @@ mod tests {
         assert_eq!(full.blobs["strategy_state"]["compaction_count"], 5);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_persistence_actor_ignores_other_events() {
         // Given a SessionPersistenceActor with a store.
@@ -310,6 +314,7 @@ mod tests {
         assert!(summaries.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_persistence_actor_handles_missing_store_gracefully() {
         // Given a SessionPersistenceActor WITHOUT a store injected.
@@ -325,6 +330,7 @@ mod tests {
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_persistence_actor_saves_multiple_sessions() {
         // Given a SessionPersistenceActor with a store.
@@ -352,6 +358,7 @@ mod tests {
         assert!(titles.contains(&"B"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_save_creates_summary() {
         // Given a SessionPersistenceActor with a store.
@@ -387,6 +394,7 @@ mod tests {
         assert_eq!(summaries[0].1.title, "Round Trip");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_load_restores_full_data() {
         // Given a SessionPersistenceActor with a store.

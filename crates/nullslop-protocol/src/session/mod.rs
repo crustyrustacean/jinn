@@ -47,8 +47,7 @@ impl Default for SessionId {
 mod tests {
     use super::*;
 
-    #[test]
-    fn session_id_new_generates_unique_ids() {
+    #[rstest::rstest]    fn session_id_new_generates_unique_ids() {
         // Given nothing.
         // When generating two session IDs.
         let a = SessionId::new();
@@ -58,8 +57,7 @@ mod tests {
         assert_ne!(a, b);
     }
 
-    #[test]
-    fn session_id_serialization_roundtrip() {
+    #[rstest::rstest]    fn session_id_serialization_roundtrip() {
         // Given a session ID.
         let id = SessionId::new();
 
@@ -71,8 +69,7 @@ mod tests {
         assert_eq!(id, back);
     }
 
-    #[test]
-    fn session_id_starts_with_prefix() {
+    #[rstest::rstest]    fn session_id_starts_with_prefix() {
         // Given a new session ID.
         let id = SessionId::new();
 

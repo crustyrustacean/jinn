@@ -248,8 +248,7 @@ mod tests {
         Services::new()
     }
 
-    #[test]
-    fn submit_emits_save_event() {
+    #[rstest::rstest]    fn submit_emits_save_event() {
         // Given a bus with MessageQueueHandler registered.
         let mut bus = test_bus();
         let services = test_services();
@@ -276,8 +275,7 @@ mod tests {
         assert_eq!(save_event.expect("should have save event").history.len(), 1);
     }
 
-    #[test]
-    fn save_event_matches_session_id() {
+    #[rstest::rstest]    fn save_event_matches_session_id() {
         // Given a bus with MessageQueueHandler registered.
         let mut bus = test_bus();
         let services = test_services();
@@ -304,8 +302,7 @@ mod tests {
         assert_eq!(save_event.title, "hello world");
     }
 
-    #[test]
-    fn stream_completed_with_finished_emits_session_save_requested() {
+    #[rstest::rstest]    fn stream_completed_with_finished_emits_session_save_requested() {
         // Given a bus with MessageQueueHandler registered, and a session with
         // a user message that's currently streaming.
         let mut bus = test_bus();
@@ -344,8 +341,7 @@ mod tests {
         assert_eq!(save_event.session_id, session_id);
     }
 
-    #[test]
-    fn stream_completed_with_cancel_does_not_emit_save() {
+    #[rstest::rstest]    fn stream_completed_with_cancel_does_not_emit_save() {
         // Given a bus with MessageQueueHandler registered, and a streaming session.
         let mut bus = test_bus();
         let services = test_services();
@@ -376,8 +372,7 @@ mod tests {
         assert!(!has_save, "should not emit SessionSaveRequested on cancel");
     }
 
-    #[test]
-    fn derive_title_returns_first_user_message_truncated() {
+    #[rstest::rstest]    fn derive_title_returns_first_user_message_truncated() {
         // Given a session with a long first user message (> 80 chars).
         let mut bus = test_bus();
         let services = test_services();
@@ -412,8 +407,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn derive_title_returns_default_when_no_messages() {
+    #[rstest::rstest]    fn derive_title_returns_default_when_no_messages() {
         // Given a session with no user messages (empty history).
         let session = crate::ChatSessionState::new();
 
@@ -424,8 +418,7 @@ mod tests {
         assert_eq!(title, "New Session");
     }
 
-    #[test]
-    fn derive_title_uses_first_user_message_not_assistant() {
+    #[rstest::rstest]    fn derive_title_uses_first_user_message_not_assistant() {
         // Given a session with an assistant message before the user message.
         let mut session = crate::ChatSessionState::new();
         session.push_entry(npr::ChatEntry::assistant("I am a helper"));
@@ -438,8 +431,7 @@ mod tests {
         assert_eq!(title, "my real question");
     }
 
-    #[test]
-    fn truncate_preserves_short_strings() {
+    #[rstest::rstest]    fn truncate_preserves_short_strings() {
         // Given a string shorter than max_len.
         // When truncating.
         let result = truncate_to_grapheme_boundary("hello", 80);
@@ -447,8 +439,7 @@ mod tests {
         assert_eq!(result, "hello");
     }
 
-    #[test]
-    fn truncate_handles_multibyte_graphemes() {
+    #[rstest::rstest]    fn truncate_handles_multibyte_graphemes() {
         // Given a string with multi-byte characters.
         let emoji_string = "\u{1F389}".repeat(200);
         // When truncating.
@@ -462,8 +453,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn enqueue_user_message_expands_tokens() {
+    #[rstest::rstest]    fn enqueue_user_message_expands_tokens() {
         // Given a bus with MessageQueueHandler registered and a store with a template.
         let mut bus: Bus<AppState, Services> = Bus::new();
         MessageQueueHandler.register(&mut bus);

@@ -211,8 +211,7 @@ mod tests {
 
     // --- parse_script unit tests ---
 
-    #[test]
-    fn parse_script_skips_comment_lines() {
+    #[rstest::rstest]    fn parse_script_skips_comment_lines() {
         // Given a script with comment lines.
         let content = "# This is a comment\nq\n# Another comment";
 
@@ -225,8 +224,7 @@ mod tests {
         assert_eq!(lines[0][0].key, Key::Char('q'));
     }
 
-    #[test]
-    fn parse_script_skips_blank_lines() {
+    #[rstest::rstest]    fn parse_script_skips_blank_lines() {
         // Given a script with blank and whitespace-only lines.
         let content = "\n   \nq\n\n";
 
@@ -238,8 +236,7 @@ mod tests {
         assert_eq!(lines[0][0].key, Key::Char('q'));
     }
 
-    #[test]
-    fn parse_script_parses_single_key() {
+    #[rstest::rstest]    fn parse_script_parses_single_key() {
         // Given a script with a single key.
         let content = "q";
 
@@ -252,8 +249,7 @@ mod tests {
         assert_eq!(lines[0][0].key, Key::Char('q'));
     }
 
-    #[test]
-    fn parse_script_parses_special_key() {
+    #[rstest::rstest]    fn parse_script_parses_special_key() {
         // Given a script with a special key name.
         let content = "<enter>";
 
@@ -266,8 +262,7 @@ mod tests {
         assert_eq!(lines[0][0].key, Key::Enter);
     }
 
-    #[test]
-    fn parse_script_multi_key_produces_correct_counts() {
+    #[rstest::rstest]    fn parse_script_multi_key_produces_correct_counts() {
         // Given a script with a multi-key sequence.
         let content = "ihello<enter>";
 
@@ -298,8 +293,7 @@ mod tests {
         assert_eq!(lines[0][index].key, expected);
     }
 
-    #[test]
-    fn parse_script_handles_multiple_lines() {
+    #[rstest::rstest]    fn parse_script_handles_multiple_lines() {
         // Given a multi-line script.
         let content = "i\nhello<enter>\nq";
 

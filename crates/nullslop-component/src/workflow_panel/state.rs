@@ -76,8 +76,7 @@ impl WorkflowPanelState {
 mod tests {
     use super::*;
 
-    #[test]
-    fn select_next_increments_index() {
+    #[rstest::rstest]    fn select_next_increments_index() {
         // Given a panel state with 3 steps at index 0.
         let mut state = WorkflowPanelState::default();
 
@@ -88,8 +87,7 @@ mod tests {
         assert_eq!(state.selected_index(), 1);
     }
 
-    #[test]
-    fn select_next_clamps_at_last() {
+    #[rstest::rstest]    fn select_next_clamps_at_last() {
         // Given a panel state with 3 steps at index 2.
         let mut state = WorkflowPanelState::default();
         state.select_next(3);
@@ -103,8 +101,7 @@ mod tests {
         assert_eq!(state.selected_index(), 2);
     }
 
-    #[test]
-    fn select_prev_decrements_index() {
+    #[rstest::rstest]    fn select_prev_decrements_index() {
         // Given a panel state with 3 steps at index 1.
         let mut state = WorkflowPanelState::default();
         state.select_next(3);
@@ -116,8 +113,7 @@ mod tests {
         assert_eq!(state.selected_index(), 0);
     }
 
-    #[test]
-    fn select_prev_clamps_at_zero() {
+    #[rstest::rstest]    fn select_prev_clamps_at_zero() {
         // Given a panel state with 2 steps at index 0.
         let mut state = WorkflowPanelState::default();
 
@@ -128,8 +124,7 @@ mod tests {
         assert_eq!(state.selected_index(), 0);
     }
 
-    #[test]
-    fn select_first_goes_to_index_zero() {
+    #[rstest::rstest]    fn select_first_goes_to_index_zero() {
         // Given a panel state with 3 steps at index 2.
         let mut state = WorkflowPanelState::default();
         state.select_next(3);
@@ -143,8 +138,7 @@ mod tests {
         assert_eq!(state.selected_index(), 0);
     }
 
-    #[test]
-    fn select_last_goes_to_last_index() {
+    #[rstest::rstest]    fn select_last_goes_to_last_index() {
         // Given a panel state with 3 steps at index 0.
         let mut state = WorkflowPanelState::default();
 
@@ -155,8 +149,7 @@ mod tests {
         assert_eq!(state.selected_index(), 2);
     }
 
-    #[test]
-    fn toggle_detail_turns_on() {
+    #[rstest::rstest]    fn toggle_detail_turns_on() {
         // Given a panel state with detail off.
         let mut state = WorkflowPanelState::default();
         assert!(!state.show_detail());
@@ -168,8 +161,7 @@ mod tests {
         assert!(state.show_detail());
     }
 
-    #[test]
-    fn toggle_detail_turns_off() {
+    #[rstest::rstest]    fn toggle_detail_turns_off() {
         // Given a panel state with detail on.
         let mut state = WorkflowPanelState::default();
         state.toggle_detail();
@@ -182,8 +174,7 @@ mod tests {
         assert!(!state.show_detail());
     }
 
-    #[test]
-    fn default_state_has_index_zero_no_detail() {
+    #[rstest::rstest]    fn default_state_has_index_zero_no_detail() {
         // Given a default panel state.
         let state = WorkflowPanelState::default();
 

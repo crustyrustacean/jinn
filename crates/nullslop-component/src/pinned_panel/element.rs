@@ -226,14 +226,12 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn name_returns_pinned_panel() {
+    #[rstest::rstest]    fn name_returns_pinned_panel() {
         let element = PinnedPanelElement;
         assert_eq!(element.name(), "pinned-panel");
     }
 
-    #[test]
-    fn render_no_entries_shows_message() {
+    #[rstest::rstest]    fn render_no_entries_shows_message() {
         let mut element = PinnedPanelElement;
         let state = AppState::default();
         let rows = render_rows(&mut element, &state, 40, 10);
@@ -241,8 +239,7 @@ mod tests {
         assert!(rows[1].contains("No pinned entries."));
     }
 
-    #[test]
-    fn render_shows_pinned_entries() {
+    #[rstest::rstest]    fn render_shows_pinned_entries() {
         let mut element = PinnedPanelElement;
         let state = state_with_pinned(2);
         let rows = render_rows(&mut element, &state, 60, 20);
@@ -257,8 +254,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn render_selected_entry_has_yellow_marker() {
+    #[rstest::rstest]    fn render_selected_entry_has_yellow_marker() {
         let mut element = PinnedPanelElement;
         let state = state_with_pinned(2);
 
@@ -280,15 +276,13 @@ mod tests {
         assert_eq!(cell0.fg, Color::Yellow);
     }
 
-    #[test]
-    fn pinned_panel_element_is_selectable() {
+    #[rstest::rstest]    fn pinned_panel_element_is_selectable() {
         let element = PinnedPanelElement;
         let selectable: &dyn UiElement<AppState> = &element;
         assert!(selectable.is_selectable());
     }
 
-    #[test]
-    fn render_sorts_entries_by_position() {
+    #[rstest::rstest]    fn render_sorts_entries_by_position() {
         // Given entries pinned with BOT, TOP, REL positions (added in that order).
         let mut element = PinnedPanelElement;
         let mut state = AppState::default();

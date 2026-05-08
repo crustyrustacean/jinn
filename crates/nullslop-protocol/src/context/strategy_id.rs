@@ -65,21 +65,18 @@ impl fmt::Display for PromptStrategyId {
 mod tests {
     use super::*;
 
-    #[test]
-    fn prompt_strategy_id_passthrough_is_passthrough() {
+    #[rstest::rstest]    fn prompt_strategy_id_passthrough_is_passthrough() {
         let id = PromptStrategyId::passthrough();
         assert_eq!(id.to_string(), "Passthrough");
     }
 
-    #[test]
-    fn prompt_strategy_id_equality() {
+    #[rstest::rstest]    fn prompt_strategy_id_equality() {
         let id1 = PromptStrategyId::new("sliding_window");
         let id2 = PromptStrategyId::new("sliding_window");
         assert_eq!(id1, id2);
     }
 
-    #[test]
-    fn prompt_strategy_id_serialization_roundtrip() {
+    #[rstest::rstest]    fn prompt_strategy_id_serialization_roundtrip() {
         let id = PromptStrategyId::passthrough();
         let json = serde_json::to_string(&id).expect("serialize");
         let back: PromptStrategyId = serde_json::from_str(&json).expect("deserialize");

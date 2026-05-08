@@ -151,6 +151,7 @@ mod tests {
         CompactionStrategy::new(max_tokens, Box::new(CharRatioEstimator))
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn returns_all_entries_when_under_threshold() {
         // Given entries that fit within the threshold.
@@ -171,6 +172,7 @@ mod tests {
         assert!(result.system_prompt.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn trims_entries_when_over_threshold() {
         // Given entries that exceed the threshold.
@@ -195,6 +197,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn empty_history_produces_no_messages() {
         // Given empty history.
@@ -211,6 +214,7 @@ mod tests {
         assert!(result.system_prompt.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn single_over_threshold_entry_is_included_anyway() {
         // Given one entry that far exceeds the threshold.
@@ -228,6 +232,7 @@ mod tests {
         assert!(result.system_prompt.is_some());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn compaction_system_prompt_differs_from_token_budget() {
         // Given entries that trigger compaction.
@@ -256,6 +261,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn preserves_chronological_order() {
         // Given 3 entries where trimming occurs.
@@ -282,6 +288,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn name_returns_compaction() {
         // Given a compaction strategy.
@@ -291,6 +298,7 @@ mod tests {
         assert_eq!(strategy.name(), "compaction");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pinned_entry_survives_compaction_trimming() {
         // Given 4 entries where the first (oldest) is pinned, over threshold.
@@ -320,6 +328,7 @@ mod tests {
         assert!(contents.contains(&"pinned"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pinned_entry_tokens_count_toward_compaction_budget() {
         // Given entries with a pinned entry in the middle, over threshold.
@@ -351,6 +360,7 @@ mod tests {
         assert!(!contents.contains(&"old"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pinned_entries_survive_when_over_threshold() {
         // Given 5 entries where entry 0 and entry 2 are pinned, over threshold.

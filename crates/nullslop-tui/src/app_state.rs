@@ -16,8 +16,7 @@ pub enum AppStatus {
 mod tests {
     use super::*;
 
-    #[test]
-    fn default_status_is_starting() {
+    #[rstest::rstest]    fn default_status_is_starting() {
         // Given a default AppStatus.
         let status = AppStatus::default();
 
@@ -27,8 +26,7 @@ mod tests {
         // Then it is Starting.
     }
 
-    #[test]
-    fn all_variants_are_distinct() {
+    #[rstest::rstest]    fn all_variants_are_distinct() {
         // Given all three variants.
         let variants = [
             AppStatus::Starting,

@@ -46,8 +46,7 @@ fn make_config(
         load_provider_entries(&registry, &api_keys, None)
     }
 
-    #[test]
-    fn load_provider_entries_returns_two_providers() {
+    #[rstest::rstest]    fn load_provider_entries_returns_two_providers() {
         // Given a registry with two providers.
         let entries = load_two_providers();
 
@@ -76,8 +75,7 @@ fn make_config(
         assert_eq!(entry.is_available, is_available);
     }
 
-#[test]
-fn load_provider_entries_includes_all_regardless_of_text() {
+#[rstest::rstest]fn load_provider_entries_includes_all_regardless_of_text() {
     // Given a registry with "ollama" and "openrouter".
     let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -90,8 +88,7 @@ fn load_provider_entries_includes_all_regardless_of_text() {
     assert_eq!(entries.len(), 2);
 }
 
-#[test]
-fn load_provider_entries_marks_key_required_unavailable_when_key_missing() {
+#[rstest::rstest]fn load_provider_entries_marks_key_required_unavailable_when_key_missing() {
     // Given a registry with a key-required provider and no API key.
     let config = make_config(vec![openrouter_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -105,8 +102,7 @@ fn load_provider_entries_marks_key_required_unavailable_when_key_missing() {
     assert!(!entries[0].is_available);
 }
 
-#[test]
-fn load_provider_entries_marks_key_required_available_when_key_present() {
+#[rstest::rstest]fn load_provider_entries_marks_key_required_available_when_key_present() {
     // Given a registry with a key-required provider and the key set.
     let config = make_config(vec![openrouter_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -121,8 +117,7 @@ fn load_provider_entries_marks_key_required_available_when_key_present() {
     assert!(entries[0].is_available);
 }
 
-#[test]
-fn load_provider_entries_marks_keyless_always_available() {
+#[rstest::rstest]fn load_provider_entries_marks_keyless_always_available() {
     // Given a registry with a keyless provider and no API keys.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -153,8 +148,7 @@ fn load_provider_entries_marks_keyless_always_available() {
         (entries, alias)
     }
 
-    #[test]
-    fn load_provider_entries_alias_count() {
+    #[rstest::rstest]    fn load_provider_entries_alias_count() {
         // Given a registry with one provider and one alias.
         let (entries, _) = load_entries_with_alias();
 
@@ -189,8 +183,7 @@ fn load_provider_entries_marks_keyless_always_available() {
         assert_eq!(actual, expected);
     }
 
-#[test]
-fn load_provider_entries_alias_inherits_availability() {
+#[rstest::rstest]fn load_provider_entries_alias_inherits_availability() {
     // Given a registry with an alias pointing to an available provider
     // and an alias pointing to an unavailable provider.
     let config = make_config(
@@ -222,8 +215,7 @@ fn load_provider_entries_alias_inherits_availability() {
 
 // --- Remote model cache tests ---
 
-#[test]
-fn static_entries_present_after_cache_merge() {
+#[rstest::rstest]fn static_entries_present_after_cache_merge() {
     // Given a registry with one keyless provider (ollama/llama3).
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -247,8 +239,7 @@ fn static_entries_present_after_cache_merge() {
     assert!(!static_entry.is_remote);
 }
 
-#[test]
-fn remote_entries_present_after_cache_merge() {
+#[rstest::rstest]fn remote_entries_present_after_cache_merge() {
     // Given a registry with one keyless provider (ollama/llama3).
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -273,8 +264,7 @@ fn remote_entries_present_after_cache_merge() {
     assert!(remote_entry.is_available); // Keyless provider
 }
 
-#[test]
-fn static_entry_not_duplicated_on_collision() {
+#[rstest::rstest]fn static_entry_not_duplicated_on_collision() {
     // Given a registry with ollama/llama3.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -296,8 +286,7 @@ fn static_entry_not_duplicated_on_collision() {
     assert!(!llama3_entries[0].is_remote);
 }
 
-#[test]
-fn new_remote_entry_added_on_collision() {
+#[rstest::rstest]fn new_remote_entry_added_on_collision() {
     // Given a registry with ollama/llama3.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -319,8 +308,7 @@ fn new_remote_entry_added_on_collision() {
     assert!(mistral_entries[0].is_remote);
 }
 
-#[test]
-fn remote_entry_present_when_key_missing() {
+#[rstest::rstest]fn remote_entry_present_when_key_missing() {
     // Given a registry with a key-required provider (openrouter).
     let config = make_config(vec![openrouter_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -343,8 +331,7 @@ fn remote_entry_present_when_key_missing() {
     assert!(remote.is_remote);
 }
 
-#[test]
-fn remote_entry_marked_unavailable_when_key_missing() {
+#[rstest::rstest]fn remote_entry_marked_unavailable_when_key_missing() {
     // Given a registry with a key-required provider (openrouter).
     let config = make_config(vec![openrouter_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -367,8 +354,7 @@ fn remote_entry_marked_unavailable_when_key_missing() {
     assert!(!remote.is_available);
 }
 
-#[test]
-fn load_provider_entries_includes_all_remote_models() {
+#[rstest::rstest]fn load_provider_entries_includes_all_remote_models() {
     // Given a registry and cache with remote models.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -389,8 +375,7 @@ fn load_provider_entries_includes_all_remote_models() {
 
 // --- sorted_entries tests ---
 
-#[test]
-fn active_provider_promoted_to_first() {
+#[rstest::rstest]fn active_provider_promoted_to_first() {
     // Given entries ["a/model", "b/model", "c/model"] with active_provider "c/model" and empty filter.
     let entries = vec![
         PickerEntry {
@@ -440,8 +425,7 @@ fn active_provider_promoted_to_first() {
     assert_eq!(result[2].provider_id, "b/model");
 }
 
-#[test]
-fn active_entry_marked_active() {
+#[rstest::rstest]fn active_entry_marked_active() {
     // Given entries ["a/model", "b/model", "c/model"] with active_provider "c/model" and empty filter.
     let entries = vec![
         PickerEntry {
@@ -491,8 +475,7 @@ fn active_entry_marked_active() {
     assert!(!result[2].is_active);
 }
 
-#[test]
-fn sorted_entries_preserves_order_when_filtering() {
+#[rstest::rstest]fn sorted_entries_preserves_order_when_filtering() {
     // Given entries ["a/model", "b/model"] with active_provider "b/model" and non-empty filter.
     let entries = vec![
         PickerEntry {
@@ -529,8 +512,7 @@ fn sorted_entries_preserves_order_when_filtering() {
     assert_eq!(result[1].provider_id, "b/model");
 }
 
-#[test]
-fn sorted_entries_preserves_order_when_no_active() {
+#[rstest::rstest]fn sorted_entries_preserves_order_when_no_active() {
     // Given entries with active_provider "__no_provider__" and empty filter.
     let entries = vec![
         PickerEntry {
@@ -567,8 +549,7 @@ fn sorted_entries_preserves_order_when_no_active() {
     assert_eq!(result[1].provider_id, "b/model");
 }
 
-#[test]
-fn available_entry_comes_first() {
+#[rstest::rstest]fn available_entry_comes_first() {
     // Given entries with mixed availability.
     let entries = vec![
         PickerEntry {
@@ -618,8 +599,7 @@ fn available_entry_comes_first() {
     assert!(result[0].is_available);
 }
 
-#[test]
-fn unavailable_entries_sorted_by_model() {
+#[rstest::rstest]fn unavailable_entries_sorted_by_model() {
     // Given entries with mixed availability.
     let entries = vec![
         PickerEntry {
@@ -668,8 +648,7 @@ fn unavailable_entries_sorted_by_model() {
     assert!(!result[2].is_available);
 }
 
-#[test]
-fn sorted_entries_sorts_by_model_name_within_blocks() {
+#[rstest::rstest]fn sorted_entries_sorts_by_model_name_within_blocks() {
     // Given entries with different model names.
     let entries = vec![
         PickerEntry {
@@ -708,8 +687,7 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
 
 // --- format_footer / age_color / truncate_line tests ---
 
-#[test]
-fn format_footer_without_timestamp_shows_never() {
+#[rstest::rstest]fn format_footer_without_timestamp_shows_never() {
     // Given no last_refreshed_at timestamp.
     // When formatting the footer.
     let line = format_footer(None, 80);
@@ -720,8 +698,7 @@ fn format_footer_without_timestamp_shows_never() {
     assert!(text.contains("CTRL+R to refresh"));
 }
 
-#[test]
-fn format_footer_with_timestamp_shows_age() {
+#[rstest::rstest]fn format_footer_with_timestamp_shows_age() {
     // Given a recent timestamp (1 second ago).
     let ts = jiff::Timestamp::now()
         .checked_sub(jiff::Span::new().try_seconds(1).unwrap())
@@ -737,8 +714,7 @@ fn format_footer_with_timestamp_shows_age() {
     assert!(text.contains("CTRL+R to refresh"));
 }
 
-#[test]
-fn format_footer_truncates_to_width() {
+#[rstest::rstest]fn format_footer_truncates_to_width() {
     // Given no timestamp and a very narrow width.
     // When formatting the footer with width 10.
     let line = format_footer(None, 10);
@@ -748,8 +724,7 @@ fn format_footer_truncates_to_width() {
     assert!(total_len <= 10);
 }
 
-#[test]
-fn age_color_returns_light_green_within_two_weeks() {
+#[rstest::rstest]fn age_color_returns_light_green_within_two_weeks() {
     // Given 1 second (well within 2 weeks).
     // When computing age color.
     let color = age_color(1);
@@ -758,8 +733,7 @@ fn age_color_returns_light_green_within_two_weeks() {
     assert_eq!(color, ratatui::style::Color::LightGreen);
 }
 
-#[test]
-fn age_color_returns_light_green_at_exactly_two_weeks() {
+#[rstest::rstest]fn age_color_returns_light_green_at_exactly_two_weeks() {
     // Given exactly 2 weeks in seconds.
     let two_weeks = 14 * 24 * 60 * 60;
 
@@ -770,8 +744,7 @@ fn age_color_returns_light_green_at_exactly_two_weeks() {
     assert_eq!(color, ratatui::style::Color::LightGreen);
 }
 
-#[test]
-fn age_color_returns_yellow_between_two_and_four_weeks() {
+#[rstest::rstest]fn age_color_returns_yellow_between_two_and_four_weeks() {
     // Given 3 weeks in seconds (between 2 and 4 weeks).
     let three_weeks = 21 * 24 * 60 * 60;
 
@@ -782,8 +755,7 @@ fn age_color_returns_yellow_between_two_and_four_weeks() {
     assert_eq!(color, ratatui::style::Color::Yellow);
 }
 
-#[test]
-fn age_color_returns_yellow_at_exactly_four_weeks() {
+#[rstest::rstest]fn age_color_returns_yellow_at_exactly_four_weeks() {
     // Given exactly 4 weeks in seconds.
     let four_weeks = 28 * 24 * 60 * 60;
 
@@ -794,8 +766,7 @@ fn age_color_returns_yellow_at_exactly_four_weeks() {
     assert_eq!(color, ratatui::style::Color::Yellow);
 }
 
-#[test]
-fn age_color_returns_red_beyond_four_weeks() {
+#[rstest::rstest]fn age_color_returns_red_beyond_four_weeks() {
     // Given 5 weeks in seconds (beyond 4 weeks).
     let five_weeks = 35 * 24 * 60 * 60;
 
@@ -806,8 +777,7 @@ fn age_color_returns_red_beyond_four_weeks() {
     assert_eq!(color, ratatui::style::Color::Red);
 }
 
-#[test]
-fn truncate_line_noop_when_fits() {
+#[rstest::rstest]fn truncate_line_noop_when_fits() {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
@@ -826,8 +796,7 @@ fn truncate_line_noop_when_fits() {
     assert_eq!(result.spans[1].content, "world");
 }
 
-#[test]
-fn truncate_line_fits_within_width() {
+#[rstest::rstest]fn truncate_line_fits_within_width() {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
@@ -845,8 +814,7 @@ fn truncate_line_fits_within_width() {
     assert_eq!(total_len, 8);
 }
 
-#[test]
-fn truncate_keeps_first_span_whole() {
+#[rstest::rstest]fn truncate_keeps_first_span_whole() {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
@@ -864,8 +832,7 @@ fn truncate_keeps_first_span_whole() {
     assert_eq!(result.spans[0].content, "hello ");
 }
 
-#[test]
-fn truncate_truncates_second_span() {
+#[rstest::rstest]fn truncate_truncates_second_span() {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
@@ -882,8 +849,7 @@ fn truncate_truncates_second_span() {
     assert_eq!(result.spans[1].content, "wo");
 }
 
-#[test]
-fn partial_span_retains_style() {
+#[rstest::rstest]fn partial_span_retains_style() {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
@@ -922,8 +888,7 @@ fn make_picker_entry(
     }
 }
 
-#[test]
-fn render_row_with_empty_match_indices_same_as_render_row() {
+#[rstest::rstest]fn render_row_with_empty_match_indices_same_as_render_row() {
     // Given a provider entry.
     let entry = make_picker_entry("llama3", "ollama", true, false);
 
@@ -939,8 +904,7 @@ fn render_row_with_empty_match_indices_same_as_render_row() {
     }
 }
 
-#[test]
-fn provider_highlight_applies_gray_bg() {
+#[rstest::rstest]fn provider_highlight_applies_gray_bg() {
     // Given a provider entry with model "llama3".
     let entry = make_picker_entry("llama3", "ollama", true, false);
 
@@ -957,8 +921,7 @@ fn provider_highlight_applies_gray_bg() {
     );
 }
 
-#[test]
-fn provider_highlight_contains_matched_char() {
+#[rstest::rstest]fn provider_highlight_contains_matched_char() {
     // Given a provider entry with model "llama3".
     let entry = make_picker_entry("llama3", "ollama", true, false);
 
@@ -980,8 +943,7 @@ fn provider_highlight_contains_matched_char() {
     );
 }
 
-#[test]
-fn render_row_with_highlight_preserves_provider_name_suffix() {
+#[rstest::rstest]fn render_row_with_highlight_preserves_provider_name_suffix() {
     // Given a provider entry with model "gpt-4" and provider "openrouter".
     let entry = make_picker_entry("gpt-4", "openrouter", true, false);
 

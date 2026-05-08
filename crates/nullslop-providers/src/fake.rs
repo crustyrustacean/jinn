@@ -279,8 +279,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn fake_factory_creates_service() {
+    #[rstest::rstest]    fn fake_factory_creates_service() {
         // Given a fake factory.
         let factory = FakeLlmServiceFactory::new(vec!["hello".to_owned()]);
 
@@ -291,8 +290,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn fake_factory_name() {
+    #[rstest::rstest]    fn fake_factory_name() {
         // Given a fake factory.
         let factory = FakeLlmServiceFactory::new(vec![]);
 
@@ -301,6 +299,7 @@ mod tests {
         assert_eq!(factory.name(), "FakeLlm");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn fake_service_yields_configured_tokens() {
         // Given a fake factory with specific tokens.
@@ -321,6 +320,7 @@ mod tests {
         assert_eq!(tokens, vec!["Hello", " world", "!"]);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn fake_service_empty_tokens() {
         // Given a fake factory with no tokens.
@@ -335,6 +335,7 @@ mod tests {
         assert!(tokens.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn fake_service_yields_text_events_and_done() {
         // Given a fake factory with no tool calls.
@@ -359,6 +360,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn fake_service_emits_text_events() {
         // Given a fake factory with tool calls.
@@ -384,6 +386,7 @@ mod tests {
         assert!(matches!(&events[0], StreamEvent::Text(t) if t == "Let me check"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn fake_service_emits_tool_events() {
         // Given a fake factory with tool calls.
@@ -420,6 +423,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn fake_service_emits_done_with_tool_use() {
         // Given a fake factory with tool calls.
@@ -452,6 +456,7 @@ mod tests {
 
     // --- Multi-turn tool loop tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_loop_emits_text_token() {
         // Given a tool loop factory.
@@ -481,6 +486,7 @@ mod tests {
         assert!(matches!(&events[0], StreamEvent::Text(t) if t == "Let me check"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_loop_emits_tool_use_start() {
         // Given a tool loop factory.
@@ -513,6 +519,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_loop_emits_tool_use_delta() {
         // Given a tool loop factory.
@@ -545,6 +552,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_loop_emits_tool_use_complete() {
         // Given a tool loop factory.
@@ -577,6 +585,7 @@ mod tests {
         ));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_loop_emits_done_with_tool_use() {
         // Given a tool loop factory.
@@ -611,6 +620,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_loop_second_call_returns_text_only() {
         // Given a tool loop factory.
@@ -659,6 +669,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn non_trigger_produces_default_events() {
         // Given a tool loop factory.
@@ -690,6 +701,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn non_trigger_does_not_enter_tool_loop() {
         // Given a tool loop factory.

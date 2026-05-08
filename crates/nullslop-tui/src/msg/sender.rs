@@ -35,8 +35,7 @@ impl MsgSender {
 mod tests {
     use super::*;
 
-    #[test]
-    fn msg_sender_sends_msg() {
+    #[rstest::rstest]    fn msg_sender_sends_msg() {
         // Given a MsgSender.
         let (tx, rx) = kanal::unbounded();
         let sender = MsgSender::new(tx);

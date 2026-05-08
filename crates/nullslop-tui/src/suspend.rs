@@ -61,8 +61,7 @@ impl Suspend {
 mod tests {
     use super::*;
 
-    #[test]
-    fn suspend_new_has_no_action() {
+    #[rstest::rstest]    fn suspend_new_has_no_action() {
         // Given a new Suspend.
         let mut suspend = Suspend::new();
 
@@ -73,8 +72,7 @@ mod tests {
         assert!(result.is_none());
     }
 
-    #[test]
-    fn suspend_request_then_take() {
+    #[rstest::rstest]    fn suspend_request_then_take() {
         // Given a Suspend.
         let mut suspend = Suspend::new();
         let action = SuspendAction::Edit {
@@ -90,8 +88,7 @@ mod tests {
         assert!(result.is_some());
     }
 
-    #[test]
-    fn suspend_take_action_clears() {
+    #[rstest::rstest]    fn suspend_take_action_clears() {
         // Given a Suspend with a pending action.
         let mut suspend = Suspend::new();
         suspend.request(SuspendAction::Edit {
@@ -108,8 +105,7 @@ mod tests {
         assert!(second.is_none());
     }
 
-    #[test]
-    fn suspend_request_replaces() {
+    #[rstest::rstest]    fn suspend_request_replaces() {
         // Given a Suspend with a pending action.
         let mut suspend = Suspend::new();
         suspend.request(SuspendAction::Edit {

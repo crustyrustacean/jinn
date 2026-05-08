@@ -452,8 +452,7 @@ mod tests {
 
     // --- Activation tests ---
 
-    #[test]
-    fn activate_subscribes_to_events() {
+    #[rstest::rstest]    fn activate_subscribes_to_events() {
         // Given a fresh actor context.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -469,6 +468,7 @@ mod tests {
 
     // --- StepStarted always starts stream ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn step_started_always_starts_stream() {
         // Given an active executor.
@@ -499,6 +499,7 @@ mod tests {
 
     // --- Stream completion evaluates guards and completes (no auto-advance) ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stream_completion_completes_step_without_advancing() {
         // Given an executor with an active step.
@@ -551,6 +552,7 @@ mod tests {
 
     // --- All steps pause after completion (checkpoint no longer special) ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn checkpoint_step_completes_without_advancing() {
         // Given an executor with a checkpoint step.
@@ -604,8 +606,7 @@ mod tests {
 
     // --- Context assembly tests ---
 
-    #[test]
-    fn assembly_produces_system_message() {
+    #[rstest::rstest]    fn assembly_produces_system_message() {
         // Given a StepStarted with instructions.
         let started = StepStarted {
             step_id: "step-0".to_owned(),
@@ -634,8 +635,7 @@ mod tests {
         assert!(system_content.contains("Ask the user for the directory name"));
     }
 
-    #[test]
-    fn assembly_produces_user_message() {
+    #[rstest::rstest]    fn assembly_produces_user_message() {
         // Given a StepStarted with instructions.
         let started = StepStarted {
             step_id: "step-0".to_owned(),
@@ -664,8 +664,7 @@ mod tests {
         assert_eq!(user_content, "Execute this step now.");
     }
 
-    #[test]
-    fn assemble_step_context_includes_completed_outputs() {
+    #[rstest::rstest]    fn assemble_step_context_includes_completed_outputs() {
         // Given a StepStarted with completed outputs from a previous step.
         let started = StepStarted {
             step_id: "step-1".to_owned(),
@@ -700,8 +699,7 @@ mod tests {
 
     // --- Output resolution tests ---
 
-    #[test]
-    fn resolve_outputs_handles_summary_output() {
+    #[rstest::rstest]    fn resolve_outputs_handles_summary_output() {
         // Given a StepStarted with a summary output.
         let started = StepStarted {
             step_id: "step-0".to_owned(),
@@ -728,8 +726,7 @@ mod tests {
         assert_eq!(resolved.get("status"), Some(&"All done".to_owned()));
     }
 
-    #[test]
-    fn resolve_outputs_resolves_template_variables() {
+    #[rstest::rstest]    fn resolve_outputs_resolves_template_variables() {
         // Given a StepStarted with template variables in outputs.
         let started = StepStarted {
             step_id: "step-0".to_owned(),
@@ -758,6 +755,7 @@ mod tests {
 
     // --- Guard evaluation tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn evaluate_guards_returns_passed_for_none() {
         // Given a StepStarted with no guards.
@@ -772,6 +770,7 @@ mod tests {
 
     // --- Ignore non-matching StreamCompleted ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn ignores_non_matching_stream_completed() {
         // Given an executor with an active step.

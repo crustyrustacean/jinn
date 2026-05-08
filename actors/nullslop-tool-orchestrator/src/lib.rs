@@ -1465,6 +1465,7 @@ mod tests {
 
     // --- Activation tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn activate_registers_echo_tool() {
         // Given a fresh actor context.
@@ -1478,6 +1479,7 @@ mod tests {
         assert!(actor.tools.contains_key("echo"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn activate_registers_get_time_tool() {
         // Given a fresh actor context.
@@ -1491,6 +1493,7 @@ mod tests {
         assert!(actor.tools.contains_key("get_time"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn activate_registers_file_read_tool() {
         // Given a fresh actor context.
@@ -1504,6 +1507,7 @@ mod tests {
         assert!(actor.tools.contains_key("file_read"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn activate_registers_file_write_tool() {
         // Given a fresh actor context.
@@ -1517,6 +1521,7 @@ mod tests {
         assert!(actor.tools.contains_key("file_write"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn activate_emits_tools_registered_for_builtins() {
         // Given a fresh actor context with a recording sink.
@@ -1549,6 +1554,7 @@ mod tests {
         assert_eq!(workflow_evt.definitions.len(), 9);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn activate_registers_workflow_tools() {
         // Given a fresh actor context.
@@ -1584,6 +1590,7 @@ mod tests {
 
     // --- RegisterTools command tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn register_tools_stores_actor_tools() {
         // Given an activated actor.
@@ -1621,6 +1628,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn register_tools_emits_event() {
         // Given an activated actor.
@@ -1655,6 +1663,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn register_tools_records_tool_count() {
         // Given an activated actor.
@@ -1692,6 +1701,7 @@ mod tests {
 
     // --- Built-in tool execution tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_builtin_echo_tool() {
         // Given an echo tool call.
@@ -1711,6 +1721,7 @@ mod tests {
         assert!(result.success);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_builtin_echo_tool_returns_error_on_bad_json() {
         // Given an echo tool call with invalid JSON.
@@ -1729,6 +1740,7 @@ mod tests {
         assert!(result.content.contains("failed to parse arguments"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_builtin_get_time_tool() {
         // Given a get_time tool call.
@@ -1747,6 +1759,7 @@ mod tests {
         assert!(!result.content.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_builtin_file_read_tool() {
         // Given a temp file with known content.
@@ -1772,6 +1785,7 @@ mod tests {
         assert_eq!(result.content, "file contents here");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_builtin_file_read_tool_returns_error_on_missing_file() {
         // Given a file_read call for a nonexistent file.
@@ -1795,6 +1809,7 @@ mod tests {
 
     // --- Batch execution tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_batch_with_echo_tool_emits_completion() {
         // Given an activated actor.
@@ -1827,6 +1842,7 @@ mod tests {
         assert!(completed[0].result.success);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn completion_event_triggers_batch_completed() {
         // Given an activated actor with a single echo batch executed.
@@ -1870,6 +1886,7 @@ mod tests {
         assert_eq!(batch_completed[0].results[0].content, "hello");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_batch_with_two_tools_emits_two_completions() {
         // Given an activated actor.
@@ -1907,6 +1924,7 @@ mod tests {
         assert_eq!(completed.len(), 2);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn first_completion_does_not_complete_batch() {
         // Given an activated actor with a batch of two echo calls executed.
@@ -1956,6 +1974,7 @@ mod tests {
         assert!(find_batch_completed(&events).is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn second_completion_emits_batch_completed() {
         // Given an activated actor with a batch of two echo calls where first completion was fed back.
@@ -2018,6 +2037,7 @@ mod tests {
         assert_eq!(batch_completed[0].results.len(), 2);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_batch_with_unknown_tool_emits_error_completion() {
         // Given an activated actor.
@@ -2049,6 +2069,7 @@ mod tests {
         assert!(completed[0].result.content.contains("unknown tool"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn error_completion_triggers_batch_completed() {
         // Given an activated actor with an unknown tool batch executed.
@@ -2093,6 +2114,7 @@ mod tests {
         assert!(!batch_completed[0].results[0].success);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_batch_with_no_tool_calls_emits_empty_batch_completed() {
         // Given an activated actor.
@@ -2119,6 +2141,7 @@ mod tests {
         assert!(batch_completed[0].results.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn file_write_returns_success() {
         // Given a temp directory.
@@ -2144,6 +2167,7 @@ mod tests {
         assert!(result.content.contains("wrote 21 bytes"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn file_write_creates_file_with_content() {
         // Given a temp directory.
@@ -2168,6 +2192,7 @@ mod tests {
         assert_eq!(content, "hello from file_write");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn file_write_creates_parent_dirs_returns_success() {
         // Given a temp directory.
@@ -2192,6 +2217,7 @@ mod tests {
         assert!(result.success, "expected success, got: {}", result.content);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn file_write_creates_parent_dirs_and_file() {
         // Given a temp directory.
@@ -2216,6 +2242,7 @@ mod tests {
         assert_eq!(content, "nested content");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn file_write_overwrite_returns_success() {
         // Given a temp file with existing content.
@@ -2240,6 +2267,7 @@ mod tests {
         assert!(result.success);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn file_write_overwrites_content() {
         // Given a temp file with existing content.
@@ -2265,6 +2293,7 @@ mod tests {
         assert_eq!(content, "new content");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn execute_builtin_file_write_tool_returns_error_on_bad_json() {
         // Given a file_write call with invalid JSON.
@@ -2283,6 +2312,7 @@ mod tests {
         assert!(result.content.contains("failed to parse arguments"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_execution_completed_for_unknown_session_is_ignored() {
         // Given an activated actor with no pending batches.
@@ -2315,6 +2345,7 @@ mod tests {
 
     // --- Workflow tool tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_create_returns_success() {
         // Given an activated actor.
@@ -2342,6 +2373,7 @@ mod tests {
         assert_eq!(batch[0].results[0].content, "Draft workflow created.");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_create_starts_draft_state() {
         // Given an activated actor.
@@ -2382,6 +2414,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_create_rejects_empty_name() {
         // Given an activated actor.
@@ -2412,6 +2445,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_create_rejects_existing_draft() {
         // Given an activated actor with an existing draft.
@@ -2454,6 +2488,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_add_step_succeeds() {
         // Given an activated actor with a draft workflow.
@@ -2491,6 +2526,7 @@ mod tests {
         assert_eq!(batch[0].results[0].content, "Step 'step-1' added.");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_add_step_rejects_duplicate_id() {
         // Given an activated actor with a draft workflow and a step.
@@ -2537,6 +2573,7 @@ mod tests {
         assert!(batch[0].results[0].content.contains("Failed to add step"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_add_step_rejects_without_draft() {
         // Given an activated actor with no draft.
@@ -2562,6 +2599,7 @@ mod tests {
         assert!(batch[0].results[0].content.contains("no draft workflow"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_add_guard_succeeds() {
         // Given an activated actor with a draft workflow and a step.
@@ -2609,6 +2647,7 @@ mod tests {
         assert_eq!(batch[0].results[0].content, "Guard added to step 'step-1'.");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_add_guard_rejects_unknown_step() {
         // Given an activated actor with a draft workflow but no step with that ID.
@@ -2647,6 +2686,7 @@ mod tests {
         assert!(batch[0].results[0].content.contains("Failed to add guard"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_add_guard_rejects_unknown_predicate() {
         // Given an activated actor with a draft workflow and a step.
@@ -2698,6 +2738,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_add_output_succeeds() {
         // Given an activated actor with a draft workflow and a step.
@@ -2748,6 +2789,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_add_output_rejects_unknown_step() {
         // Given an activated actor with a draft workflow but no matching step.
@@ -2786,6 +2828,7 @@ mod tests {
         assert!(batch[0].results[0].content.contains("Failed to add output"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_add_global_succeeds() {
         // Given an activated actor with a draft workflow.
@@ -2824,6 +2867,7 @@ mod tests {
         assert_eq!(batch[0].results[0].content, "Global 'base_dir' set.");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_set_model_overrides_succeeds() {
         // Given an activated actor with a draft workflow.
@@ -2862,6 +2906,7 @@ mod tests {
         assert_eq!(batch[0].results[0].content, "2 model override(s) set.");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_preview_returns_formatted_summary() {
         // Given an activated actor with a draft workflow and a step.
@@ -2908,6 +2953,7 @@ mod tests {
         assert!(content.contains("step-1"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_preview_rejects_without_draft() {
         // Given an activated actor with no draft.
@@ -2931,6 +2977,7 @@ mod tests {
         assert!(batch[0].results[0].content.contains("no draft workflow"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_returns_success() {
         // Given an activated actor with a complete draft workflow.
@@ -2979,6 +3026,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_emits_load_workflow_command() {
         // Given an activated actor with a complete draft workflow.
@@ -3023,6 +3071,7 @@ mod tests {
         assert_eq!(load_cmds[0].definition.steps.len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_with_empty_steps_returns_validation_failure() {
         // Given an activated actor with a draft workflow but no steps.
@@ -3058,6 +3107,7 @@ mod tests {
         assert!(batch[0].results[0].content.contains("Validation failed"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_with_empty_steps_does_not_send_load_command() {
         // Given an activated actor with a draft workflow but no steps.
@@ -3090,6 +3140,7 @@ mod tests {
         assert!(find_load_workflow(&commands).is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_clears_draft() {
         // Given an activated actor with a committed workflow.
@@ -3145,6 +3196,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_rejects_without_draft() {
         // Given an activated actor with no draft.
@@ -3172,6 +3224,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_abort_returns_success() {
         // Given an activated actor with a draft workflow.
@@ -3207,6 +3260,7 @@ mod tests {
         assert_eq!(batch[0].results[0].content, "Draft workflow discarded.");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_abort_clears_preview() {
         // Given an activated actor with a draft workflow.
@@ -3248,6 +3302,7 @@ mod tests {
         assert!(!batch[0].results[0].success);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_abort_succeeds_even_without_draft() {
         // Given an activated actor with no draft.
@@ -3275,6 +3330,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_preview_shows_all_steps() {
         // Given an activated actor with a fully built workflow.
@@ -3356,6 +3412,7 @@ mod tests {
         assert!(preview.contains("Globals: dir"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_loads_definition() {
         // Given an activated actor with a fully built workflow.
@@ -3446,6 +3503,7 @@ mod tests {
 
     // --- Mixed batch tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn batch_with_only_workflow_tools() {
         // Given an activated actor.
@@ -3482,6 +3540,7 @@ mod tests {
         assert!(batch[0].results[1].content.contains("test-wf"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn batch_with_mixed_tools_emits_echo_completion() {
         // Given an activated actor.
@@ -3513,6 +3572,7 @@ mod tests {
         assert!(find_batch_completed(&events).is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn echo_completion_triggers_batch_completed_with_both_results() {
         // Given an activated actor with a batch of workflow and echo tools executed.
@@ -3570,6 +3630,7 @@ mod tests {
 
     // --- Workflow persistence integration tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_succeeds() {
         // Given an activated actor with a workflow store injected.
@@ -3616,6 +3677,7 @@ mod tests {
         assert!(batch[0].results[0].success);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_sends_load_command() {
         // Given an activated actor with a workflow store injected.
@@ -3661,6 +3723,7 @@ mod tests {
         assert_eq!(load_cmds[0].definition.name, "persisted-wf");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_persists_to_store() {
         // Given an activated actor with a workflow store injected.
@@ -3710,6 +3773,7 @@ mod tests {
         assert_eq!(loaded.steps.len(), 1);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_without_store_succeeds() {
         // Given an activated actor with NO workflow store injected.
@@ -3755,6 +3819,7 @@ mod tests {
         assert!(batch[0].results[0].success);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn workflow_commit_without_store_sends_load_command() {
         // Given an activated actor with NO workflow store injected.

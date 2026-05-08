@@ -130,8 +130,7 @@ mod tests {
     #[derive(Debug, Default)]
     struct TestState;
 
-    #[test]
-    fn fake_command_handler_records_call() {
+    #[rstest::rstest]    fn fake_command_handler_records_call() {
         // Given a continuing fake handler.
         let (handler, calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
         let mut state = TestState;
@@ -147,8 +146,7 @@ mod tests {
         assert_eq!(calls.borrow().len(), 1);
     }
 
-    #[test]
-    fn fake_command_handler_stopping() {
+    #[rstest::rstest]    fn fake_command_handler_stopping() {
         // Given a stopping fake handler.
         let (handler, calls) = FakeCommandHandler::<Quit, TestState, ()>::stopping();
         let mut state = TestState;
@@ -164,8 +162,7 @@ mod tests {
         assert_eq!(calls.borrow().len(), 1);
     }
 
-    #[test]
-    fn fake_command_handler_shared_call_log() {
+    #[rstest::rstest]    fn fake_command_handler_shared_call_log() {
         // Given a handler whose call_log is cloned.
         let (handler, calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
         let calls_clone = Rc::clone(&calls);
@@ -177,8 +174,7 @@ mod tests {
         assert!(calls_clone.borrow().is_empty());
     }
 
-    #[test]
-    fn fake_event_handler_records_call() {
+    #[rstest::rstest]    fn fake_event_handler_records_call() {
         // Given a fake event handler for KeyDown.
         use npr::system::KeyDown;
         let (handler, calls) = FakeEventHandler::<KeyDown, TestState, ()>::new();

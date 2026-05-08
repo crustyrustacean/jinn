@@ -83,8 +83,7 @@ mod tests {
         (state, session_id, entry_id)
     }
 
-    #[test]
-    fn pin_handler_sets_position() {
+    #[rstest::rstest]    fn pin_handler_sets_position() {
         // Given a bus with ContextPinHandler registered and a session with one entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -106,8 +105,7 @@ mod tests {
         assert_eq!(entry.pin_position, Some(PinPosition::Top));
     }
 
-    #[test]
-    fn pin_handler_selects_newly_pinned_entry() {
+    #[rstest::rstest]    fn pin_handler_selects_newly_pinned_entry() {
         // Given a bus with ContextPinHandler registered and a session with one entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -128,8 +126,7 @@ mod tests {
         assert_eq!(state.pinned_panel.selected_id(), Some(&entry_id));
     }
 
-    #[test]
-    fn unpin_clears_pin_position() {
+    #[rstest::rstest]    fn unpin_clears_pin_position() {
         // Given a bus with ContextPinHandler registered and two pinned entries.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -162,8 +159,7 @@ mod tests {
         assert_eq!(state.active_session().history()[0].pin_position, None);
     }
 
-    #[test]
-    fn unpin_moves_selection_to_nearest_remaining() {
+    #[rstest::rstest]    fn unpin_moves_selection_to_nearest_remaining() {
         // Given a bus with ContextPinHandler registered and two pinned entries.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -196,8 +192,7 @@ mod tests {
         assert_eq!(state.pinned_panel.selected_id(), Some(&entry1_id));
     }
 
-    #[test]
-    fn pin_nonexistent_leaves_existing_unchanged() {
+    #[rstest::rstest]    fn pin_nonexistent_leaves_existing_unchanged() {
         // Given a bus with ContextPinHandler registered and a session with one entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -220,8 +215,7 @@ mod tests {
         assert_eq!(entry.pin_position, None);
     }
 
-    #[test]
-    fn pin_nonexistent_sets_selection_to_id() {
+    #[rstest::rstest]    fn pin_nonexistent_sets_selection_to_id() {
         // Given a bus with ContextPinHandler registered and a session with one entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -243,8 +237,7 @@ mod tests {
         assert_eq!(state.pinned_panel.selected_id(), Some(&missing_id));
     }
 
-    #[test]
-    fn unpin_nonexistent_leaves_existing_pins_unchanged() {
+    #[rstest::rstest]    fn unpin_nonexistent_leaves_existing_pins_unchanged() {
         // Given a bus with ContextPinHandler registered and a pinned entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -270,8 +263,7 @@ mod tests {
         assert_eq!(entry.pin_position, Some(PinPosition::Top));
     }
 
-    #[test]
-    fn unpin_nonexistent_preserves_selection() {
+    #[rstest::rstest]    fn unpin_nonexistent_preserves_selection() {
         // Given a bus with ContextPinHandler registered and a pinned entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);

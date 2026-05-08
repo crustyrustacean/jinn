@@ -577,8 +577,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn dispatch_headless_script_completes_successfully() {
+    #[rstest::rstest]    fn dispatch_headless_script_completes_successfully() {
         // Given a script file containing "q".
         let dir = tempfile::tempdir().expect("temp dir");
         let script_path = dir.path().join("test.script");
@@ -599,8 +598,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn dispatch_headless_script_returns_error_for_missing_file() {
+    #[rstest::rstest]    fn dispatch_headless_script_returns_error_for_missing_file() {
         // Given a nonexistent script path.
         let mut app = App::new().expect("create app");
         let cli = test_cli(Some(Commands::Headless {
@@ -617,8 +615,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn load_prompt_templates_sets_count() {
+    #[rstest::rstest]    fn load_prompt_templates_sets_count() {
         // Given a temp directory with a template file.
         let dir = tempfile::tempdir().expect("temp dir");
         let template_content =
@@ -636,8 +633,7 @@ mod tests {
         assert_eq!(state.prompt_templates.len(), 1);
     }
 
-    #[test]
-    fn load_prompt_templates_contains_template() {
+    #[rstest::rstest]    fn load_prompt_templates_contains_template() {
         // Given a temp directory with a template file.
         let dir = tempfile::tempdir().expect("temp dir");
         let template_content =
@@ -655,8 +651,7 @@ mod tests {
         assert!(state.prompt_templates.find_by_name("test").is_some());
     }
 
-    #[test]
-    fn load_model_cache_populates_state_from_file() {
+    #[rstest::rstest]    fn load_model_cache_populates_state_from_file() {
         // Given a temp directory with a model cache file.
         let dir = tempfile::tempdir().expect("temp dir");
         let cache_path = dir.path().join("model_cache.json");
@@ -687,8 +682,7 @@ mod tests {
         assert_eq!(cached.entries["ollama"].len(), 2);
     }
 
-    #[test]
-    fn load_model_cache_uses_empty_when_file_missing() {
+    #[rstest::rstest]    fn load_model_cache_uses_empty_when_file_missing() {
         // Given a path to a nonexistent file.
         let dir = tempfile::tempdir().expect("temp dir");
         let cache_path = dir.path().join("nonexistent.json");

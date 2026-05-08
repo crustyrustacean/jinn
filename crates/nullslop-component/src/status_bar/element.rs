@@ -59,8 +59,7 @@ mod tests {
     use super::*;
     use crate::AppState;
 
-    #[test]
-    fn name_returns_status_bar() {
+    #[rstest::rstest]    fn name_returns_status_bar() {
         // Given a StatusBarElement.
         let element = StatusBarElement;
 
@@ -71,8 +70,7 @@ mod tests {
         assert_eq!(name, "status-bar");
     }
 
-    #[test]
-    fn render_shows_no_model_selected_when_unset() {
+    #[rstest::rstest]    fn render_shows_no_model_selected_when_unset() {
         // Given a StatusBarElement with default (no provider) state.
         let mut element = StatusBarElement;
         let state = AppState::default();
@@ -97,8 +95,7 @@ mod tests {
         assert!(row.contains("no model selected"), "should show 'no model selected' on the right, got: {row}");
     }
 
-    #[test]
-    fn render_shows_provider_and_model() {
+    #[rstest::rstest]    fn render_shows_provider_and_model() {
         // Given a StatusBarElement with active_provider = "ollama/llama3".
         let mut element = StatusBarElement;
         let state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
@@ -123,8 +120,7 @@ mod tests {
         assert!(row.contains("(ollama)/llama3"), "should show '(ollama)/llama3' on the right, got: {row}");
     }
 
-    #[test]
-    fn render_right_aligns_text() {
+    #[rstest::rstest]    fn render_right_aligns_text() {
         // Given a StatusBarElement with a short provider string in a wide area.
         let mut element = StatusBarElement;
         let state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
@@ -150,8 +146,7 @@ mod tests {
         assert_eq!(last.symbol(), "3", "model should end at column 49");
     }
 
-    #[test]
-    fn render_uses_gray_color() {
+    #[rstest::rstest]    fn render_uses_gray_color() {
         // Given a StatusBarElement with a provider set.
         let mut element = StatusBarElement;
         let state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
@@ -177,8 +172,7 @@ mod tests {
         assert_eq!(text_cell.fg, Color::DarkGray, "text should be dark gray");
     }
 
-    #[test]
-    fn render_shows_provider_with_slash_in_model() {
+    #[rstest::rstest]    fn render_shows_provider_with_slash_in_model() {
         // Given a StatusBarElement with active_provider = "openrouter/anthropic/claude-sonnet-4".
         let mut element = StatusBarElement;
         let state = AppState { active_provider: "openrouter/anthropic/claude-sonnet-4".to_owned(), ..AppState::default() };
@@ -203,8 +197,7 @@ mod tests {
         assert!(row.contains("(openrouter)/anthropic/claude-sonnet-4"), "should show '(openrouter)/anthropic/claude-sonnet-4' on the right, got: {row}");
     }
 
-    #[test]
-    fn render_shows_non_default_strategy() {
+    #[rstest::rstest]    fn render_shows_non_default_strategy() {
         // Given a session with sliding_window strategy and an active provider.
         let mut element = StatusBarElement;
         let mut state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
@@ -230,8 +223,7 @@ mod tests {
         assert!(row.contains("(ollama)/llama3"), "should show '(ollama)/llama3' on the right, got: {row}");
     }
 
-    #[test]
-    fn render_strategy_surrounded_by_parens() {
+    #[rstest::rstest]    fn render_strategy_surrounded_by_parens() {
         // Given default state with no provider.
         let mut element = StatusBarElement;
         let state = AppState::default();
@@ -256,8 +248,7 @@ mod tests {
         assert_eq!(closing.symbol(), ")", "strategy should end with ')'");
     }
 
-    #[test]
-    fn render_shows_pinned_count_when_entries_pinned() {
+    #[rstest::rstest]    fn render_shows_pinned_count_when_entries_pinned() {
         // Given a session with a pinned entry.
         let mut element = StatusBarElement;
         let mut state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
@@ -287,8 +278,7 @@ mod tests {
         assert!(row.contains("1"), "should show pin count, got: {row}");
     }
 
-    #[test]
-    fn render_hides_pinned_count_when_no_entries_pinned() {
+    #[rstest::rstest]    fn render_hides_pinned_count_when_no_entries_pinned() {
         // Given a session with no pinned entries.
         let mut element = StatusBarElement;
         let state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };

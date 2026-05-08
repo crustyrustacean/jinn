@@ -414,8 +414,7 @@ mod tests {
         (result, received)
     }
 
-    #[test]
-    fn host_routes_subscribed_event() {
+    #[rstest::rstest]    fn host_routes_subscribed_event() {
         // Given a host with a recording actor subscribed to ChatEntrySubmitted.
         let runtime = rt();
         let _guard = runtime.enter();
@@ -455,8 +454,7 @@ mod tests {
             .expect("shutdown");
     }
 
-    #[test]
-    fn system_message_delivered_to_all() {
+    #[rstest::rstest]    fn system_message_delivered_to_all() {
         // Given two actors with different subscriptions.
         let runtime = rt();
         let _guard = runtime.enter();
@@ -492,8 +490,7 @@ mod tests {
             .expect("shutdown");
     }
 
-    #[test]
-    fn host_routes_registered_command() {
+    #[rstest::rstest]    fn host_routes_registered_command() {
         // Given a host with a recording actor registered for PushChatEntry.
         let runtime = rt();
         let _guard = runtime.enter();
@@ -535,8 +532,7 @@ mod tests {
             .expect("shutdown");
     }
 
-    #[test]
-    fn host_skips_unregistered_command() {
+    #[rstest::rstest]    fn host_skips_unregistered_command() {
         // Given a host with a recording actor registered for PushChatEntry only.
         let runtime = rt();
         let _guard = runtime.enter();
@@ -566,8 +562,7 @@ mod tests {
             .expect("shutdown");
     }
 
-    #[test]
-    fn host_shutdown_joins_tasks() {
+    #[rstest::rstest]    fn host_shutdown_joins_tasks() {
         // Given a running host with two actors.
         let runtime = rt();
         let _guard = runtime.enter();
@@ -586,8 +581,7 @@ mod tests {
         assert!(lifecycle.tasks.is_empty());
     }
 
-    #[test]
-    fn source_filtering_skips_originating_actor() {
+    #[rstest::rstest]    fn source_filtering_skips_originating_actor() {
         // Given two actors subscribed to the same event.
         let runtime = rt();
         let _guard = runtime.enter();
@@ -632,8 +626,7 @@ mod tests {
             .expect("shutdown");
     }
 
-    #[test]
-    fn system_shutdown_delivered_to_all() {
+    #[rstest::rstest]    fn system_shutdown_delivered_to_all() {
         // Given two actors with different subscriptions.
         let runtime = rt();
         let _guard = runtime.enter();
@@ -675,8 +668,7 @@ mod tests {
             .expect("shutdown");
     }
 
-    #[test]
-    fn actor_to_actor_direct_message() {
+    #[rstest::rstest]    fn actor_to_actor_direct_message() {
         // Define a minimal actor for direct message testing.
         struct DirectActor;
         impl Actor for DirectActor {

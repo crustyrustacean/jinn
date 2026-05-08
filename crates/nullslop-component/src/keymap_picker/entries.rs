@@ -260,8 +260,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn display_label_returns_search_text() {
+    #[rstest::rstest]    fn display_label_returns_search_text() {
         // Given a keymap entry with key_sequence "gg".
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -272,8 +271,7 @@ mod tests {
         assert_eq!(label, "gg scroll to top");
     }
 
-    #[test]
-    fn render_row_contains_key() {
+    #[rstest::rstest]    fn render_row_contains_key() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -285,8 +283,7 @@ mod tests {
         assert!(text.contains("gg"), "should contain key sequence");
     }
 
-    #[test]
-    fn render_row_contains_description() {
+    #[rstest::rstest]    fn render_row_contains_description() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -298,8 +295,7 @@ mod tests {
         assert!(text.contains("scroll to top"), "should contain description");
     }
 
-    #[test]
-    fn render_row_contains_scope() {
+    #[rstest::rstest]    fn render_row_contains_scope() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -311,8 +307,7 @@ mod tests {
         assert!(text.contains("[Normal]"), "should contain scope");
     }
 
-    #[test]
-    fn render_row_contains_category() {
+    #[rstest::rstest]    fn render_row_contains_category() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -324,8 +319,7 @@ mod tests {
         assert!(text.contains("Navigation"), "should contain category");
     }
 
-    #[test]
-    fn render_row_selected_has_dark_gray_background() {
+    #[rstest::rstest]    fn render_row_selected_has_dark_gray_background() {
         // Given a keymap entry.
         let entry = make_entry("q", "quit", "Normal", "General");
 
@@ -337,8 +331,7 @@ mod tests {
         assert_eq!(key_span.style.bg, Some(Color::DarkGray));
     }
 
-    #[test]
-    fn render_row_unselected_has_reset_background() {
+    #[rstest::rstest]    fn render_row_unselected_has_reset_background() {
         // Given a keymap entry.
         let entry = make_entry("q", "quit", "Normal", "General");
 
@@ -350,8 +343,7 @@ mod tests {
         assert_eq!(key_span.style.bg, Some(Color::Reset));
     }
 
-    #[test]
-    fn render_row_key_is_yellow_bold() {
+    #[rstest::rstest]    fn render_row_key_is_yellow_bold() {
         // Given a keymap entry.
         let entry = make_entry("q", "quit", "Normal", "General");
 
@@ -364,8 +356,7 @@ mod tests {
         assert!(key_span.style.add_modifier.contains(Modifier::BOLD));
     }
 
-    #[test]
-    fn render_row_pads_short_key_sequences() {
+    #[rstest::rstest]    fn render_row_pads_short_key_sequences() {
         // Given a keymap entry with a single-char key "q".
         let entry = make_entry("q", "quit", "Normal", "General");
 
@@ -379,8 +370,7 @@ mod tests {
 
     // --- Fuzzy matching via search_text tests ---
 
-    #[test]
-    fn search_text_combines_key_sequence_and_description() {
+    #[rstest::rstest]    fn search_text_combines_key_sequence_and_description() {
         // Given a keymap entry.
         let entry = make_entry("<c-p>", "open picker keymap", "Normal", "General");
 
@@ -391,8 +381,7 @@ mod tests {
 
     // --- Highlight tests ---
 
-    #[test]
-    fn render_row_with_empty_match_indices_same_as_render_row() {
+    #[rstest::rstest]    fn render_row_with_empty_match_indices_same_as_render_row() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -408,8 +397,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn render_row_with_highlight_applies_gray_bg_to_matched_chars() {
+    #[rstest::rstest]    fn render_row_with_highlight_applies_gray_bg_to_matched_chars() {
         // Given a keymap entry with search_text "q quit".
         let entry = make_entry("q", "quit", "Normal", "General");
 
@@ -423,8 +411,7 @@ mod tests {
         assert!(has_highlight, "expected at least one span with gray background");
     }
 
-    #[test]
-    fn render_row_with_highlight_preserves_unmatched_chars() {
+    #[rstest::rstest]    fn render_row_with_highlight_preserves_unmatched_chars() {
         // Given a keymap entry with search_text "gg scroll to top".
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -439,8 +426,7 @@ mod tests {
         assert!(text.contains("scroll to top"), "should still contain description");
     }
 
-    #[test]
-    fn keymap_highlight_applies_gray_bg() {
+    #[rstest::rstest]    fn keymap_highlight_applies_gray_bg() {
         // Given a keymap entry with search_text "gg scroll to top".
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -454,8 +440,7 @@ mod tests {
         assert!(has_highlight, "expected highlight on description char");
     }
 
-    #[test]
-    fn keymap_highlight_contains_matched_char() {
+    #[rstest::rstest]    fn keymap_highlight_contains_matched_char() {
         // Given a keymap entry with search_text "gg scroll to top".
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 

@@ -2,8 +2,7 @@ use nullslop_protocol::{ChatEntry, ChatEntryKind, ChatEntryId, PinPosition};
 
 use super::*;
 
-#[test]
-fn push_entry_adds_to_history() {
+#[rstest::rstest]fn push_entry_adds_to_history() {
     // Given a new ChatSessionState.
     let mut session = ChatSessionState::new();
 
@@ -15,8 +14,7 @@ fn push_entry_adds_to_history() {
     assert_eq!(session.history().len(), 1);
 }
 
-#[test]
-fn begin_streaming_creates_assistant_entry() {
+#[rstest::rstest]fn begin_streaming_creates_assistant_entry() {
     // Given a session with one entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
@@ -33,8 +31,7 @@ fn begin_streaming_creates_assistant_entry() {
     ));
 }
 
-#[test]
-fn begin_streaming_sets_is_streaming() {
+#[rstest::rstest]fn begin_streaming_sets_is_streaming() {
     // Given a session with one entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
@@ -46,8 +43,7 @@ fn begin_streaming_sets_is_streaming() {
     assert!(session.is_streaming());
 }
 
-#[test]
-fn append_stream_token_appends_to_assistant_entry() {
+#[rstest::rstest]fn append_stream_token_appends_to_assistant_entry() {
     // Given a session that is streaming.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -63,8 +59,7 @@ fn append_stream_token_appends_to_assistant_entry() {
     );
 }
 
-#[test]
-fn finish_streaming_clears_streaming_state() {
+#[rstest::rstest]fn finish_streaming_clears_streaming_state() {
     // Given a session that is streaming with some tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -81,8 +76,7 @@ fn finish_streaming_clears_streaming_state() {
     );
 }
 
-#[test]
-fn cancel_streaming_keeps_partial_text() {
+#[rstest::rstest]fn cancel_streaming_keeps_partial_text() {
     // Given a session that is streaming with partial tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -99,8 +93,7 @@ fn cancel_streaming_keeps_partial_text() {
     );
 }
 
-#[test]
-#[should_panic(expected = "begin_streaming called while already streaming")]
+#[rstest::rstest]#[should_panic(expected = "begin_streaming called while already streaming")]
 fn begin_streaming_twice_panics() {
     // Given a session that is already streaming.
     let mut session = ChatSessionState::new();
@@ -111,8 +104,7 @@ fn begin_streaming_twice_panics() {
     session.begin_streaming();
 }
 
-#[test]
-#[should_panic(expected = "append_stream_token called while not streaming")]
+#[rstest::rstest]#[should_panic(expected = "append_stream_token called while not streaming")]
 fn append_stream_token_when_not_streaming_panics() {
     // Given a session that is not streaming.
     let mut session = ChatSessionState::new();
@@ -122,8 +114,7 @@ fn append_stream_token_when_not_streaming_panics() {
     session.append_stream_token("oops");
 }
 
-#[test]
-fn scroll_up_from_bottom_decrements_offset() {
+#[rstest::rstest]fn scroll_up_from_bottom_decrements_offset() {
     // Given a session at the bottom with last_max_offset = 100.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
@@ -137,8 +128,7 @@ fn scroll_up_from_bottom_decrements_offset() {
     assert_eq!(session.scroll_offset(), Some(90));
 }
 
-#[test]
-fn scroll_up_from_known_offset_decrements() {
+#[rstest::rstest]fn scroll_up_from_known_offset_decrements() {
     // Given a session with scroll_offset = 50 and last_max_offset = 100.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
@@ -151,8 +141,7 @@ fn scroll_up_from_known_offset_decrements() {
     assert_eq!(session.scroll_offset(), Some(40));
 }
 
-#[test]
-fn scroll_up_saturates_at_zero() {
+#[rstest::rstest]fn scroll_up_saturates_at_zero() {
     // Given a session with scroll_offset = 5 and last_max_offset = 100.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
@@ -165,8 +154,7 @@ fn scroll_up_saturates_at_zero() {
     assert_eq!(session.scroll_offset(), Some(0));
 }
 
-#[test]
-fn scroll_down_increments_offset() {
+#[rstest::rstest]fn scroll_down_increments_offset() {
     // Given a session with scroll_offset = 0 and last_max_offset = 100.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
@@ -179,8 +167,7 @@ fn scroll_down_increments_offset() {
     assert_eq!(session.scroll_offset(), Some(10));
 }
 
-#[test]
-fn scroll_down_past_bottom_resets_to_auto() {
+#[rstest::rstest]fn scroll_down_past_bottom_resets_to_auto() {
     // Given a session with scroll_offset = 95 and last_max_offset = 100.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
@@ -193,8 +180,7 @@ fn scroll_down_past_bottom_resets_to_auto() {
     assert!(session.scroll_offset().is_none());
 }
 
-#[test]
-fn scroll_to_top_sets_offset_to_zero() {
+#[rstest::rstest]fn scroll_to_top_sets_offset_to_zero() {
     // Given a session scrolled to the middle.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
@@ -207,8 +193,7 @@ fn scroll_to_top_sets_offset_to_zero() {
     assert_eq!(session.scroll_offset(), Some(0));
 }
 
-#[test]
-fn scroll_to_bottom_resets_to_auto_scroll() {
+#[rstest::rstest]fn scroll_to_bottom_resets_to_auto_scroll() {
     // Given a session scrolled to the top.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
@@ -221,8 +206,7 @@ fn scroll_to_bottom_resets_to_auto_scroll() {
     assert!(session.scroll_offset().is_none());
 }
 
-#[test]
-fn reset_scroll_clears_offset() {
+#[rstest::rstest]fn reset_scroll_clears_offset() {
     // Given a session with scroll_offset = 50.
     let mut session = ChatSessionState::new();
     session.scroll_offset = Some(50);
@@ -234,8 +218,7 @@ fn reset_scroll_clears_offset() {
     assert!(session.scroll_offset().is_none());
 }
 
-#[test]
-fn push_entry_resets_scroll() {
+#[rstest::rstest]fn push_entry_resets_scroll() {
     // Given a session with scroll_offset = 50.
     let mut session = ChatSessionState::new();
     session.scroll_offset = Some(50);
@@ -247,8 +230,7 @@ fn push_entry_resets_scroll() {
     assert!(session.scroll_offset().is_none());
 }
 
-#[test]
-fn is_at_bottom_true_when_auto_scroll() {
+#[rstest::rstest]fn is_at_bottom_true_when_auto_scroll() {
     // Given a new session (auto-scroll to bottom).
     let session = ChatSessionState::new();
 
@@ -256,8 +238,7 @@ fn is_at_bottom_true_when_auto_scroll() {
     assert!(session.is_at_bottom());
 }
 
-#[test]
-fn is_at_bottom_false_when_scrolled_up() {
+#[rstest::rstest]fn is_at_bottom_false_when_scrolled_up() {
     // Given a session scrolled to offset 50.
     let mut session = ChatSessionState::new();
     session.scroll_offset = Some(50);
@@ -268,8 +249,7 @@ fn is_at_bottom_false_when_scrolled_up() {
 
 // --- Queue tests ---
 
-#[test]
-fn enqueue_message_adds_to_queue() {
+#[rstest::rstest]fn enqueue_message_adds_to_queue() {
     // Given a new session with an empty queue.
     let mut session = ChatSessionState::new();
     assert_eq!(session.queue_len(), 0);
@@ -282,8 +262,7 @@ fn enqueue_message_adds_to_queue() {
     assert_eq!(session.queue()[0], "hello");
 }
 
-#[test]
-fn dequeue_message_returns_first_in_order() {
+#[rstest::rstest]fn dequeue_message_returns_first_in_order() {
     // Given a session with two queued messages.
     let mut session = ChatSessionState::new();
     session.enqueue_message("first".to_owned());
@@ -297,8 +276,7 @@ fn dequeue_message_returns_first_in_order() {
     assert_eq!(session.queue_len(), 1);
 }
 
-#[test]
-fn dequeue_message_returns_none_when_empty() {
+#[rstest::rstest]fn dequeue_message_returns_none_when_empty() {
     // Given a session with an empty queue.
     let mut session = ChatSessionState::new();
 
@@ -309,8 +287,7 @@ fn dequeue_message_returns_none_when_empty() {
     assert!(msg.is_none());
 }
 
-#[test]
-fn drain_returns_all_in_order() {
+#[rstest::rstest]fn drain_returns_all_in_order() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
     session.enqueue_message("a".to_owned());
@@ -327,8 +304,7 @@ fn drain_returns_all_in_order() {
     assert_eq!(drained[2], "c");
 }
 
-#[test]
-fn drain_empties_queue() {
+#[rstest::rstest]fn drain_empties_queue() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
     session.enqueue_message("a".to_owned());
@@ -344,8 +320,7 @@ fn drain_empties_queue() {
 
 // --- Sending tests ---
 
-#[test]
-fn begin_sending_sets_is_sending() {
+#[rstest::rstest]fn begin_sending_sets_is_sending() {
     // Given a new session (idle).
     let mut session = ChatSessionState::new();
     assert!(!session.is_sending());
@@ -357,8 +332,7 @@ fn begin_sending_sets_is_sending() {
     assert!(session.is_sending());
 }
 
-#[test]
-#[should_panic(expected = "begin_sending called while already sending or streaming")]
+#[rstest::rstest]#[should_panic(expected = "begin_sending called while already sending or streaming")]
 fn begin_sending_panics_when_already_sending() {
     // Given a session that is already sending.
     let mut session = ChatSessionState::new();
@@ -369,8 +343,7 @@ fn begin_sending_panics_when_already_sending() {
     session.begin_sending();
 }
 
-#[test]
-#[should_panic(expected = "begin_sending called while already sending or streaming")]
+#[rstest::rstest]#[should_panic(expected = "begin_sending called while already sending or streaming")]
 fn begin_sending_panics_when_streaming() {
     // Given a session that is streaming.
     let mut session = ChatSessionState::new();
@@ -381,8 +354,7 @@ fn begin_sending_panics_when_streaming() {
     session.begin_sending();
 }
 
-#[test]
-fn finish_sending_clears_flag() {
+#[rstest::rstest]fn finish_sending_clears_flag() {
     // Given a session that is sending.
     let mut session = ChatSessionState::new();
     session.begin_sending();
@@ -394,8 +366,7 @@ fn finish_sending_clears_flag() {
     assert!(!session.is_sending());
 }
 
-#[test]
-#[should_panic(expected = "finish_sending called while not sending")]
+#[rstest::rstest]#[should_panic(expected = "finish_sending called while not sending")]
 fn finish_sending_panics_when_not_sending() {
     // Given a session that is not sending.
     let mut session = ChatSessionState::new();
@@ -407,8 +378,7 @@ fn finish_sending_panics_when_not_sending() {
 
 // --- Combined status tests ---
 
-#[test]
-fn is_idle_true_when_not_sending_or_streaming() {
+#[rstest::rstest]fn is_idle_true_when_not_sending_or_streaming() {
     // Given a fresh session.
     let session = ChatSessionState::new();
 
@@ -416,8 +386,7 @@ fn is_idle_true_when_not_sending_or_streaming() {
     assert!(session.is_idle());
 }
 
-#[test]
-fn is_idle_false_when_sending() {
+#[rstest::rstest]fn is_idle_false_when_sending() {
     // Given a session that is sending.
     let mut session = ChatSessionState::new();
     session.begin_sending();
@@ -426,8 +395,7 @@ fn is_idle_false_when_sending() {
     assert!(!session.is_idle());
 }
 
-#[test]
-fn is_idle_false_when_streaming() {
+#[rstest::rstest]fn is_idle_false_when_streaming() {
     // Given a session that is streaming.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -436,8 +404,7 @@ fn is_idle_false_when_streaming() {
     assert!(!session.is_idle());
 }
 
-#[test]
-fn cancel_streaming_clears_is_streaming() {
+#[rstest::rstest]fn cancel_streaming_clears_is_streaming() {
     // Given a session that was sending before streaming started.
     let mut session = ChatSessionState::new();
     session.begin_sending();
@@ -451,8 +418,7 @@ fn cancel_streaming_clears_is_streaming() {
     assert!(!session.is_streaming());
 }
 
-#[test]
-fn cancel_streaming_clears_is_sending() {
+#[rstest::rstest]fn cancel_streaming_clears_is_sending() {
     // Given a session that was sending before streaming started.
     let mut session = ChatSessionState::new();
     session.begin_sending();
@@ -466,8 +432,7 @@ fn cancel_streaming_clears_is_sending() {
     assert!(!session.is_sending());
 }
 
-#[test]
-fn finish_streaming_clears_sending_too() {
+#[rstest::rstest]fn finish_streaming_clears_sending_too() {
     // Given a session that was sending before streaming started.
     let mut session = ChatSessionState::new();
     session.begin_sending();
@@ -485,8 +450,7 @@ fn finish_streaming_clears_sending_too() {
 
 // --- Tool call streaming tests ---
 
-#[test]
-fn begin_tool_call_creates_entry_with_empty_arguments() {
+#[rstest::rstest]fn begin_tool_call_creates_entry_with_empty_arguments() {
     // Given a streaming session.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -510,8 +474,7 @@ fn begin_tool_call_creates_entry_with_empty_arguments() {
     );
 }
 
-#[test]
-fn append_tool_call_delta_accumulates_arguments() {
+#[rstest::rstest]fn append_tool_call_delta_accumulates_arguments() {
     // Given a streaming session with a tool call entry.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -532,8 +495,7 @@ fn append_tool_call_delta_accumulates_arguments() {
     );
 }
 
-#[test]
-fn finalize_tool_call_overwrites_arguments() {
+#[rstest::rstest]fn finalize_tool_call_overwrites_arguments() {
     // Given a streaming session with a tool call that has partial arguments.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -554,8 +516,7 @@ fn finalize_tool_call_overwrites_arguments() {
     );
 }
 
-#[test]
-fn finalize_tool_call_pushes_new_entry_when_not_found() {
+#[rstest::rstest]fn finalize_tool_call_pushes_new_entry_when_not_found() {
     // Given a streaming session with no tool call entry for the given ID.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -575,8 +536,7 @@ fn finalize_tool_call_pushes_new_entry_when_not_found() {
     );
 }
 
-#[test]
-fn multiple_tool_calls_track_independently() {
+#[rstest::rstest]fn multiple_tool_calls_track_independently() {
     // Given a streaming session.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -607,8 +567,7 @@ fn multiple_tool_calls_track_independently() {
     );
 }
 
-#[test]
-fn finish_streaming_clears_tool_call_indices() {
+#[rstest::rstest]fn finish_streaming_clears_tool_call_indices() {
     // Given a streaming session with a tool call entry.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -622,8 +581,7 @@ fn finish_streaming_clears_tool_call_indices() {
     assert_eq!(session.history().len(), 2); // assistant + tool call still there
 }
 
-#[test]
-fn cancel_streaming_clears_tool_call_indices() {
+#[rstest::rstest]fn cancel_streaming_clears_tool_call_indices() {
     // Given a streaming session with a tool call entry.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
@@ -639,8 +597,7 @@ fn cancel_streaming_clears_tool_call_indices() {
 
 // --- Strategy switching tests ---
 
-#[test]
-fn default_strategy_is_passthrough() {
+#[rstest::rstest]fn default_strategy_is_passthrough() {
     // Given a new session.
     let session = ChatSessionState::new();
 
@@ -651,8 +608,7 @@ fn default_strategy_is_passthrough() {
     );
 }
 
-#[test]
-fn switch_strategy_updates_active_strategy() {
+#[rstest::rstest]fn switch_strategy_updates_active_strategy() {
     // Given a new session.
     let mut session = ChatSessionState::new();
 
@@ -666,8 +622,7 @@ fn switch_strategy_updates_active_strategy() {
     );
 }
 
-#[test]
-fn new_with_strategy_sets_active_strategy() {
+#[rstest::rstest]fn new_with_strategy_sets_active_strategy() {
     // Given a strategy ID.
     let strategy = nullslop_protocol::PromptStrategyId::sliding_window();
 
@@ -678,8 +633,7 @@ fn new_with_strategy_sets_active_strategy() {
     assert_eq!(session.active_strategy(), &strategy);
 }
 
-#[test]
-fn new_with_strategy_creates_empty_history() {
+#[rstest::rstest]fn new_with_strategy_creates_empty_history() {
     // Given any strategy.
     let strategy = nullslop_protocol::PromptStrategyId::compaction();
 
@@ -692,8 +646,7 @@ fn new_with_strategy_creates_empty_history() {
 
 // --- Pinning tests ---
 
-#[test]
-fn pin_state_sets_position() {
+#[rstest::rstest]fn pin_state_sets_position() {
     // Given a session with two entries.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("first"));
@@ -707,8 +660,7 @@ fn pin_state_sets_position() {
     assert_eq!(session.history()[0].pin_position, Some(PinPosition::Top));
 }
 
-#[test]
-fn pin_state_does_not_affect_other_entries() {
+#[rstest::rstest]fn pin_state_does_not_affect_other_entries() {
     // Given a session with two entries.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("first"));
@@ -722,8 +674,7 @@ fn pin_state_does_not_affect_other_entries() {
     assert_eq!(session.history()[1].pin_position, None);
 }
 
-#[test]
-fn pin_entry_is_noop_for_nonexistent_id() {
+#[rstest::rstest]fn pin_entry_is_noop_for_nonexistent_id() {
     // Given a session with one entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
@@ -736,8 +687,7 @@ fn pin_entry_is_noop_for_nonexistent_id() {
     assert_eq!(session.history()[0].pin_position, None);
 }
 
-#[test]
-fn unpin_entry_clears_position() {
+#[rstest::rstest]fn unpin_entry_clears_position() {
     // Given a session with a pinned entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("test"));
@@ -752,8 +702,7 @@ fn unpin_entry_clears_position() {
     assert_eq!(session.history()[0].pin_position, None);
 }
 
-#[test]
-fn unpin_entry_is_noop_for_nonexistent_id() {
+#[rstest::rstest]fn unpin_entry_is_noop_for_nonexistent_id() {
     // Given a session with one entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
@@ -766,8 +715,7 @@ fn unpin_entry_is_noop_for_nonexistent_id() {
     assert_eq!(session.history()[0].pin_position, None);
 }
 
-#[test]
-fn pinned_entries_returns_only_pinned() {
+#[rstest::rstest]fn pinned_entries_returns_only_pinned() {
     // Given a session with three entries, two pinned.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("first"));
@@ -787,8 +735,7 @@ fn pinned_entries_returns_only_pinned() {
     assert_eq!(pinned[1].id, id2);
 }
 
-#[test]
-fn pinned_entries_returns_correct_count() {
+#[rstest::rstest]fn pinned_entries_returns_correct_count() {
     // Given a session with five entries, three pinned at indices 0, 2, 4.
     let mut session = ChatSessionState::new();
     for i in 0..5 {
@@ -808,8 +755,7 @@ fn pinned_entries_returns_correct_count() {
     assert_eq!(pinned.len(), 3);
 }
 
-#[test]
-fn pinned_entries_returns_in_order() {
+#[rstest::rstest]fn pinned_entries_returns_in_order() {
     // Given a session with five entries, three pinned at indices 0, 2, 4.
     let mut session = ChatSessionState::new();
     for i in 0..5 {
@@ -832,8 +778,7 @@ fn pinned_entries_returns_in_order() {
     assert_eq!(pinned[2].id, id4);
 }
 
-#[test]
-fn pinned_entries_returns_empty_when_none_pinned() {
+#[rstest::rstest]fn pinned_entries_returns_empty_when_none_pinned() {
     // Given a session with entries, none pinned.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -846,8 +791,7 @@ fn pinned_entries_returns_empty_when_none_pinned() {
     assert!(pinned.is_empty());
 }
 
-#[test]
-fn pin_entry_can_change_position() {
+#[rstest::rstest]fn pin_entry_can_change_position() {
     // Given a session with a pinned entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("test"));
@@ -862,8 +806,7 @@ fn pin_entry_can_change_position() {
     assert_eq!(session.history()[0].pin_position, Some(PinPosition::Bottom));
 }
 
-#[test]
-fn pin_position_survives_restore_history() {
+#[rstest::rstest]fn pin_position_survives_restore_history() {
     // Given a history with pinned entries.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a").with_pin(PinPosition::Top));
@@ -885,8 +828,7 @@ fn pin_position_survives_restore_history() {
 
 // --- Selection tests ---
 
-#[test]
-fn select_next_entry_starts_at_first_when_no_selection() {
+#[rstest::rstest]fn select_next_entry_starts_at_first_when_no_selection() {
     // Given a session with 3 entries and no selection.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -901,8 +843,7 @@ fn select_next_entry_starts_at_first_when_no_selection() {
     assert_eq!(session.selected_entry_index(), Some(0));
 }
 
-#[test]
-fn select_next_entry_increments_from_current() {
+#[rstest::rstest]fn select_next_entry_increments_from_current() {
     // Given a session with 3 entries and selection at index 1.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -918,8 +859,7 @@ fn select_next_entry_increments_from_current() {
     assert_eq!(session.selected_entry_index(), Some(2));
 }
 
-#[test]
-fn select_next_entry_clamps_at_last_index() {
+#[rstest::rstest]fn select_next_entry_clamps_at_last_index() {
     // Given a session with 3 entries and selection at last index.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -936,8 +876,7 @@ fn select_next_entry_clamps_at_last_index() {
     assert_eq!(session.selected_entry_index(), Some(2));
 }
 
-#[test]
-fn select_prev_entry_starts_at_last_when_no_selection() {
+#[rstest::rstest]fn select_prev_entry_starts_at_last_when_no_selection() {
     // Given a session with 3 entries and no selection.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -951,8 +890,7 @@ fn select_prev_entry_starts_at_last_when_no_selection() {
     assert_eq!(session.selected_entry_index(), Some(2));
 }
 
-#[test]
-fn select_prev_entry_decrements_from_current() {
+#[rstest::rstest]fn select_prev_entry_decrements_from_current() {
     // Given a session with 3 entries and selection at index 2.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -967,8 +905,7 @@ fn select_prev_entry_decrements_from_current() {
     assert_eq!(session.selected_entry_index(), Some(1));
 }
 
-#[test]
-fn select_prev_entry_clamps_at_zero() {
+#[rstest::rstest]fn select_prev_entry_clamps_at_zero() {
     // Given a session with 3 entries and selection at index 0.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -983,8 +920,7 @@ fn select_prev_entry_clamps_at_zero() {
     assert_eq!(session.selected_entry_index(), Some(0));
 }
 
-#[test]
-fn select_next_is_noop_on_empty_history() {
+#[rstest::rstest]fn select_next_is_noop_on_empty_history() {
     // Given an empty session.
     let mut session = ChatSessionState::new();
 
@@ -995,8 +931,7 @@ fn select_next_is_noop_on_empty_history() {
     assert_eq!(session.selected_entry_index(), None);
 }
 
-#[test]
-fn select_prev_is_noop_on_empty_history() {
+#[rstest::rstest]fn select_prev_is_noop_on_empty_history() {
     // Given an empty session.
     let mut session = ChatSessionState::new();
 
@@ -1007,8 +942,7 @@ fn select_prev_is_noop_on_empty_history() {
     assert_eq!(session.selected_entry_index(), None);
 }
 
-#[test]
-fn clear_selection_resets_to_none() {
+#[rstest::rstest]fn clear_selection_resets_to_none() {
     // Given a session with a selection.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
@@ -1022,8 +956,7 @@ fn clear_selection_resets_to_none() {
     assert_eq!(session.selected_entry_index(), None);
 }
 
-#[test]
-fn selected_entry_returns_entry_at_index() {
+#[rstest::rstest]fn selected_entry_returns_entry_at_index() {
     // Given a session with entries, second selected.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -1043,8 +976,7 @@ fn selected_entry_returns_entry_at_index() {
     );
 }
 
-#[test]
-fn selected_entry_id_returns_id_at_index() {
+#[rstest::rstest]fn selected_entry_id_returns_id_at_index() {
     // Given a session with a selected entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
@@ -1058,8 +990,7 @@ fn selected_entry_id_returns_id_at_index() {
     assert_eq!(id, Some(&expected_id));
 }
 
-#[test]
-fn push_entry_clears_selection() {
+#[rstest::rstest]fn push_entry_clears_selection() {
     // Given a session with a selected entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -1073,8 +1004,7 @@ fn push_entry_clears_selection() {
     assert_eq!(session.selected_entry_index(), None);
 }
 
-#[test]
-fn restore_history_clears_selection() {
+#[rstest::rstest]fn restore_history_clears_selection() {
     // Given a session with a selected entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));

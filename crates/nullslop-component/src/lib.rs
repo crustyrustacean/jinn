@@ -154,8 +154,7 @@ mod macro_tests {
         }
     }
 
-    #[test]
-    fn command_handler_returning_stop_prevents_later_handlers() {
+    #[rstest::rstest]    fn command_handler_returning_stop_prevents_later_handlers() {
         // Given a StopHandler and a fake handler both registered for Quit.
         let mut bus: Bus<AppState, Services> = Bus::new();
         StopHandler.register(&mut bus);
@@ -191,8 +190,7 @@ mod macro_tests {
         }
     }
 
-    #[test]
-    fn event_handler_mutates_state() {
+    #[rstest::rstest]    fn event_handler_mutates_state() {
         // Given an EventHandlerTest registered with the bus.
         let mut bus: Bus<AppState, Services> = Bus::new();
         EventHandlerTest.register(&mut bus);
@@ -251,8 +249,7 @@ mod macro_tests {
         }
     }
 
-    #[test]
-    fn insert_char_handler_updates_input() {
+    #[rstest::rstest]    fn insert_char_handler_updates_input() {
         // Given a MultiHandler with command handlers registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         MultiHandler.register(&mut bus);
@@ -271,8 +268,7 @@ mod macro_tests {
         assert!(!state.should_quit);
     }
 
-    #[test]
-    fn quit_handler_sets_should_quit() {
+    #[rstest::rstest]    fn quit_handler_sets_should_quit() {
         // Given a MultiHandler with command handlers registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         MultiHandler.register(&mut bus);
@@ -288,8 +284,7 @@ mod macro_tests {
         assert!(state.should_quit);
     }
 
-    #[test]
-    fn mode_changed_handler_updates_input() {
+    #[rstest::rstest]    fn mode_changed_handler_updates_input() {
         // Given a MultiHandler with event handlers registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         MultiHandler.register(&mut bus);

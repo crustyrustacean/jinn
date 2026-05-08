@@ -4,8 +4,7 @@ use nullslop_protocol::Command;
 use nullslop_selection_widget::compute_popup_rect;
 use ratatui::style::Modifier;
 
-#[test]
-fn app_layout_meets_min_size() {
+#[rstest::rstest]fn app_layout_meets_min_size() {
     // Given a 40x14 area.
     let area = Rect::new(0, 0, 40, 14);
 
@@ -16,8 +15,7 @@ fn app_layout_meets_min_size() {
     assert!(result);
 }
 
-#[test]
-fn app_layout_too_small() {
+#[rstest::rstest]fn app_layout_too_small() {
     // Given a 10x5 area.
     let area = Rect::new(0, 0, 10, 5);
 
@@ -28,8 +26,7 @@ fn app_layout_too_small() {
     assert!(!result);
 }
 
-#[test]
-fn init_tab_manager_has_two_tabs() {
+#[rstest::rstest]fn init_tab_manager_has_two_tabs() {
     // Given a default tab manager.
     let mgr = init_tab_manager();
 
@@ -40,8 +37,7 @@ fn init_tab_manager_has_two_tabs() {
     assert_eq!(mgr.active_tab().unwrap().name, "Chat");
 }
 
-#[test]
-fn app_layout_includes_indicator_row() {
+#[rstest::rstest]fn app_layout_includes_indicator_row() {
     // Given a 40x14 area.
     let area = Rect::new(0, 0, 40, 14);
     let layout = AppLayout::new(area, 1, 0);
@@ -52,8 +48,7 @@ fn app_layout_includes_indicator_row() {
     assert!(layout.indicator.y < layout.counter.y);
 }
 
-#[test]
-fn app_layout_queue_area_has_dynamic_height() {
+#[rstest::rstest]fn app_layout_queue_area_has_dynamic_height() {
     // Given a 40x20 area with 3 queued messages.
     let area = Rect::new(0, 0, 40, 20);
     let layout = AppLayout::new(area, 1, 3);
@@ -64,8 +59,7 @@ fn app_layout_queue_area_has_dynamic_height() {
     assert!(layout.queue.y < layout.counter.y);
 }
 
-#[test]
-fn app_layout_queue_area_zero_height_when_empty() {
+#[rstest::rstest]fn app_layout_queue_area_zero_height_when_empty() {
     // Given a 40x14 area with no queued messages.
     let area = Rect::new(0, 0, 40, 14);
     let layout = AppLayout::new(area, 1, 0);
@@ -74,8 +68,7 @@ fn app_layout_queue_area_zero_height_when_empty() {
     assert_eq!(layout.queue.height, 0);
 }
 
-#[test]
-fn app_layout_includes_status_bar() {
+#[rstest::rstest]fn app_layout_includes_status_bar() {
     // Given a 40x14 area.
     let area = Rect::new(0, 0, 40, 14);
     let layout = AppLayout::new(area, 1, 0);
@@ -116,8 +109,7 @@ fn load_picker_items(
     nullslop_component::provider_picker::load_provider_picker_items(services, state);
 }
 
-#[test]
-fn render_provider_picker_shows_telescope_layout() {
+#[rstest::rstest]fn render_provider_picker_shows_telescope_layout() {
     // Given a terminal area and picker state with filter "ol".
     use nullslop_selection_widget::compute_popup_rect;
     use ratatui::Terminal;
@@ -155,8 +147,7 @@ fn render_provider_picker_shows_telescope_layout() {
     assert_eq!(sep_cell.symbol(), "\u{2500}");
 }
 
-#[test]
-fn larger_terminal_gets_taller_popup() {
+#[rstest::rstest]fn larger_terminal_gets_taller_popup() {
     // Given two terminal sizes.
     use nullslop_selection_widget::compute_popup_rect;
 
@@ -171,8 +162,7 @@ fn larger_terminal_gets_taller_popup() {
     assert!(large_popup.height > small_popup.height);
 }
 
-#[test]
-fn small_terminal_uses_75_percent_height() {
+#[rstest::rstest]fn small_terminal_uses_75_percent_height() {
     // Given two terminal sizes.
     use nullslop_selection_widget::compute_popup_rect;
 
@@ -188,8 +178,7 @@ fn small_terminal_uses_75_percent_height() {
     assert_eq!(small_popup.height, 22);
 }
 
-#[test]
-fn render_provider_picker_uses_dark_gray_border() {
+#[rstest::rstest]fn render_provider_picker_uses_dark_gray_border() {
     // Given a picker render.
     use nullslop_selection_widget::compute_popup_rect;
     use ratatui::Terminal;
@@ -215,8 +204,7 @@ fn render_provider_picker_uses_dark_gray_border() {
     assert_eq!(border_cell.fg, Color::DarkGray);
 }
 
-#[test]
-fn render_provider_picker_shows_active_model_marker() {
+#[rstest::rstest]fn render_provider_picker_shows_active_model_marker() {
     // Given a state with active_provider set to "ollama/llama3" and items loaded.
     use nullslop_selection_widget::compute_popup_rect;
     use ratatui::Terminal;
@@ -261,8 +249,7 @@ fn strategy_picker_state() -> (nullslop_component::AppState, nullslop_services::
     (state, services)
 }
 
-#[test]
-fn render_context_strategy_picker_shows_telescope_layout() {
+#[rstest::rstest]fn render_context_strategy_picker_shows_telescope_layout() {
     // Given a terminal area and picker state with entries loaded.
     use nullslop_selection_widget::compute_popup_rect;
     use ratatui::Terminal;
@@ -297,8 +284,7 @@ fn render_context_strategy_picker_shows_telescope_layout() {
     assert_eq!(sep_cell.symbol(), "\u{2500}");
 }
 
-#[test]
-fn render_context_strategy_picker_shows_active_marker() {
+#[rstest::rstest]fn render_context_strategy_picker_shows_active_marker() {
     // Given a state with entries (default is passthrough active).
     use nullslop_selection_widget::compute_popup_rect;
     use ratatui::Terminal;
@@ -329,8 +315,7 @@ fn render_context_strategy_picker_shows_active_marker() {
     assert_eq!(marker_cell.fg, Color::Green);
 }
 
-#[test]
-fn render_context_strategy_picker_shows_footer_with_current_strategy() {
+#[rstest::rstest]fn render_context_strategy_picker_shows_footer_with_current_strategy() {
     // Given a state with entries (default is passthrough active).
     use nullslop_selection_widget::compute_popup_rect;
     use ratatui::Terminal;
@@ -412,8 +397,7 @@ fn keymap_picker_state() -> nullslop_component::AppState {
     state
 }
 
-#[test]
-fn render_keymap_picker_shows_telescope_layout() {
+#[rstest::rstest]fn render_keymap_picker_shows_telescope_layout() {
     // Given a terminal area with keymap picker state.
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -454,8 +438,7 @@ fn render_keymap_picker_shows_telescope_layout() {
     assert_eq!(filter_cell.symbol(), ">");
 }
 
-#[test]
-fn render_keymap_picker_footer_shows_current_scope() {
+#[rstest::rstest]fn render_keymap_picker_footer_shows_current_scope() {
     // Given a keymap picker state with show_all = false and origin scope "Normal".
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -491,8 +474,7 @@ fn render_keymap_picker_footer_shows_current_scope() {
     );
 }
 
-#[test]
-fn render_keymap_picker_footer_shows_all_scopes() {
+#[rstest::rstest]fn render_keymap_picker_footer_shows_all_scopes() {
     // Given a keymap picker state with show_all = true and origin scope "Normal".
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -530,8 +512,7 @@ fn render_keymap_picker_footer_shows_all_scopes() {
 
 // --- Selection highlight tests ---
 
-#[test]
-fn cell_inside_selection_is_inverted() {
+#[rstest::rstest]fn cell_inside_selection_is_inverted() {
     // Given a buffer with distinctively colored cells and an active selection.
     let area = Rect::new(0, 0, 20, 10);
     let mut buf = ratatui::buffer::Buffer::empty(area);
@@ -560,8 +541,7 @@ fn cell_inside_selection_is_inverted() {
     assert_eq!(inside.bg, Color::Yellow); // was fg
 }
 
-#[test]
-fn cell_outside_selection_is_unchanged() {
+#[rstest::rstest]fn cell_outside_selection_is_unchanged() {
     // Given a buffer with distinctively colored cells and an active selection.
     let area = Rect::new(0, 0, 20, 10);
     let mut buf = ratatui::buffer::Buffer::empty(area);
@@ -590,8 +570,7 @@ fn cell_outside_selection_is_unchanged() {
     assert_eq!(outside.bg, Color::Green);
 }
 
-#[test]
-fn cell_inside_clamped_selection_is_inverted() {
+#[rstest::rstest]fn cell_inside_clamped_selection_is_inverted() {
     // Given a buffer covering a large area and a selection where the raw anchor
     // extends beyond the selection's constraining bounds.
     let full_area = Rect::new(0, 0, 30, 30);
@@ -625,8 +604,7 @@ fn cell_inside_clamped_selection_is_inverted() {
     assert_eq!(inside.bg, Color::Cyan); // was fg
 }
 
-#[test]
-fn cell_at_raw_anchor_not_inverted() {
+#[rstest::rstest]fn cell_at_raw_anchor_not_inverted() {
     // Given a buffer covering a large area and a selection where the raw anchor
     // extends beyond the selection's constraining bounds.
     let full_area = Rect::new(0, 0, 30, 30);
@@ -660,8 +638,7 @@ fn cell_at_raw_anchor_not_inverted() {
     assert_eq!(outside.bg, Color::Black); // unchanged
 }
 
-#[test]
-fn selection_highlight_does_nothing_when_idle() {
+#[rstest::rstest]fn selection_highlight_does_nothing_when_idle() {
     // Given a buffer with distinctly colored cells and an Idle selection.
     let area = Rect::new(0, 0, 20, 10);
     let mut buf = ratatui::buffer::Buffer::empty(area);
@@ -682,8 +659,7 @@ fn selection_highlight_does_nothing_when_idle() {
     assert_eq!(cell.bg, Color::Blue); // unchanged
 }
 
-#[test]
-fn reset_bg_cell_gets_explicit_colors() {
+#[rstest::rstest]fn reset_bg_cell_gets_explicit_colors() {
     // Given a buffer where cells have matching fg and bg (e.g. both Reset,
     // as with user messages rendered with Style::default().bold()).
     let area = Rect::new(0, 0, 20, 10);
@@ -713,8 +689,7 @@ fn reset_bg_cell_gets_explicit_colors() {
     assert_eq!(reset_cell.bg, Color::White);
 }
 
-#[test]
-fn distinct_color_cell_gets_swapped() {
+#[rstest::rstest]fn distinct_color_cell_gets_swapped() {
     // Given a buffer where cells have matching fg and bg (e.g. both Reset,
     // as with user messages rendered with Style::default().bold()).
     let area = Rect::new(0, 0, 20, 10);
@@ -746,8 +721,7 @@ fn distinct_color_cell_gets_swapped() {
 
 // --- Clipboard flush tests ---
 
-#[test]
-fn clipboard_copy_clears_pending_flag_on_idle_selection() {
+#[rstest::rstest]fn clipboard_copy_clears_pending_flag_on_idle_selection() {
     // Given an app with pending_clipboard set but Idle selection.
     let services = nullslop_services::Services::new();
     let mut app = crate::TuiApp::new(services);
@@ -764,8 +738,7 @@ fn clipboard_copy_clears_pending_flag_on_idle_selection() {
     assert!(!app.pending_clipboard);
 }
 
-#[test]
-fn clipboard_copy_skips_empty_selection() {
+#[rstest::rstest]fn clipboard_copy_skips_empty_selection() {
     // Given an app with pending_clipboard and an Active selection over empty cells.
     let area = Rect::new(0, 0, 20, 5);
     let buf = ratatui::buffer::Buffer::empty(area);
@@ -786,8 +759,7 @@ fn clipboard_copy_skips_empty_selection() {
     assert!(!app.pending_clipboard);
 }
 
-#[test]
-fn clipboard_clears_pending_flag_immediately() {
+#[rstest::rstest]fn clipboard_clears_pending_flag_immediately() {
     // Given a buffer with known text and an active selection.
     let area = Rect::new(0, 0, 20, 5);
     let mut buf = ratatui::buffer::Buffer::empty(area);
@@ -814,8 +786,7 @@ fn clipboard_clears_pending_flag_immediately() {
     assert!(!app.pending_clipboard);
 }
 
-#[test]
-#[ignore = "requires clipboard access (run with --ignored)"]
+#[rstest::rstest]#[ignore = "requires clipboard access (run with --ignored)"]
 fn clipboard_contains_selected_text() {
     // Given a buffer with known text and an active selection.
     let area = Rect::new(0, 0, 20, 5);
@@ -849,8 +820,7 @@ fn clipboard_contains_selected_text() {
 
 // --- Element-driven selectable rect tests ---
 
-#[test]
-fn render_registers_content_rect_for_selectable_chat_log() {
+#[rstest::rstest]fn render_registers_content_rect_for_selectable_chat_log() {
     // Given a TuiApp rendered in Chat tab with a 80x24 terminal.
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -882,8 +852,7 @@ fn render_registers_content_rect_for_selectable_chat_log() {
     assert_eq!(found.unwrap(), layout.content);
 }
 
-#[test]
-fn picker_popup_rect_is_selectable() {
+#[rstest::rstest]fn picker_popup_rect_is_selectable() {
     // Given a TuiApp rendered with Mode::Picker.
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -915,8 +884,7 @@ fn picker_popup_rect_is_selectable() {
     assert_eq!(found.unwrap(), popup_rect);
 }
 
-#[test]
-fn content_area_rect_is_selectable() {
+#[rstest::rstest]fn content_area_rect_is_selectable() {
     // Given a TuiApp rendered with Mode::Picker.
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -983,8 +951,7 @@ fn buffer_line(buf: &ratatui::buffer::Buffer, y: u16, start_x: u16, max_len: u16
     s.trim_end().to_owned()
 }
 
-#[test]
-fn render_autocomplete_popup_shows_matches() {
+#[rstest::rstest]fn render_autocomplete_popup_shows_matches() {
     // Given an AppState with autocomplete active and 3 matches.
     use nullslop_component::chat_input_box::state::AutocompleteMatch;
     use ratatui::Terminal;
@@ -1029,8 +996,7 @@ fn render_autocomplete_popup_shows_matches() {
     assert!(line3.contains("test-gen"), "third match should contain 'test-gen', got: {line3}");
 }
 
-#[test]
-fn render_autocomplete_popup_highlights_selected() {
+#[rstest::rstest]fn render_autocomplete_popup_highlights_selected() {
     // Given an AppState with 2 matches and the second (most-relevant) selected.
     use nullslop_component::chat_input_box::state::AutocompleteMatch;
     use ratatui::Terminal;
@@ -1080,8 +1046,7 @@ fn render_autocomplete_popup_highlights_selected() {
     );
 }
 
-#[test]
-fn render_autocomplete_popup_shows_no_matches_message() {
+#[rstest::rstest]fn render_autocomplete_popup_shows_no_matches_message() {
     // Given an AppState with autocomplete active but 0 matches.
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -1108,8 +1073,7 @@ fn render_autocomplete_popup_shows_no_matches_message() {
     );
 }
 
-#[test]
-fn render_autocomplete_popup_positioned_above_input() {
+#[rstest::rstest]fn render_autocomplete_popup_positioned_above_input() {
     // Given a known input area at row 20.
     use nullslop_component::chat_input_box::state::AutocompleteMatch;
     use ratatui::Terminal;
@@ -1145,8 +1109,7 @@ fn render_autocomplete_popup_positioned_above_input() {
     );
 }
 
-#[test]
-fn render_autocomplete_popup_anchored_at_dollar() {
+#[rstest::rstest]fn render_autocomplete_popup_anchored_at_dollar() {
     // Given a buffer "foo $co" — the $ is at grapheme index 4.
     use nullslop_component::chat_input_box::state::AutocompleteMatch;
     use ratatui::Terminal;
@@ -1185,8 +1148,7 @@ fn render_autocomplete_popup_anchored_at_dollar() {
     );
 }
 
-#[test]
-fn render_autocomplete_popup_width_based_on_content() {
+#[rstest::rstest]fn render_autocomplete_popup_width_based_on_content() {
     // Given matches with varying name lengths.
     use nullslop_component::chat_input_box::state::AutocompleteMatch;
     use ratatui::Terminal;
@@ -1226,8 +1188,7 @@ fn render_autocomplete_popup_width_based_on_content() {
     );
 }
 
-#[test]
-fn render_autocomplete_popup_does_not_render_when_inactive() {
+#[rstest::rstest]fn render_autocomplete_popup_does_not_render_when_inactive() {
     // Given an AppState with autocomplete inactive.
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;

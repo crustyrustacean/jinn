@@ -343,8 +343,7 @@ mod tests {
 
     // --- Test 1: LoadWorkflow creates state and activates first step ---
 
-    #[test]
-    fn load_workflow_activates_first_step() {
+    #[rstest::rstest]    fn load_workflow_activates_first_step() {
         // Given a bus with WorkflowHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -375,8 +374,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn load_workflow_emits_loaded_and_started_events() {
+    #[rstest::rstest]    fn load_workflow_emits_loaded_and_started_events() {
         // Given a bus with WorkflowHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -404,8 +402,7 @@ mod tests {
 
     // --- Test 2: LoadWorkflow does not emit StepAwaitingInput ---
 
-    #[test]
-    fn load_workflow_emits_events_for_first_step() {
+    #[rstest::rstest]    fn load_workflow_emits_events_for_first_step() {
         // Given a bus with WorkflowHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -433,8 +430,7 @@ mod tests {
 
     // --- Test 3: AdvanceStep finalizes and moves to next step ---
 
-    #[test]
-    fn advance_finalizes_current_step() {
+    #[rstest::rstest]    fn advance_finalizes_current_step() {
         // Given a loaded workflow where step-0 has been completed (AwaitingInput).
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -471,8 +467,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn advance_activates_next_step() {
+    #[rstest::rstest]    fn advance_activates_next_step() {
         // Given a loaded workflow where step-0 has been completed (AwaitingInput).
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -514,8 +509,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn advance_emits_step_completed_and_started_events() {
+    #[rstest::rstest]    fn advance_emits_step_completed_and_started_events() {
         // Given a loaded workflow where step-0 has been completed (AwaitingInput).
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -555,8 +549,7 @@ mod tests {
 
     // --- Test 4: AdvanceStep emits WorkflowCompleted when done ---
 
-    #[test]
-    fn advance_step_emits_workflow_completed_when_done() {
+    #[rstest::rstest]    fn advance_step_emits_workflow_completed_when_done() {
         // Given a single-step workflow that has been completed (AwaitingInput).
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -591,8 +584,7 @@ mod tests {
 
     // --- Test 5: Workflow completion posts system message to chat ---
 
-    #[test]
-    fn workflow_completion_posts_system_entry() {
+    #[rstest::rstest]    fn workflow_completion_posts_system_entry() {
         // Given a two-step workflow advanced to completion.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -636,8 +628,7 @@ mod tests {
         assert_eq!(system_entries.len(), 1);
     }
 
-    #[test]
-    fn system_message_contains_workflow_name_and_step_count() {
+    #[rstest::rstest]    fn system_message_contains_workflow_name_and_step_count() {
         // Given a two-step workflow advanced to completion.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -688,8 +679,7 @@ mod tests {
 
     // --- Test 6: AdvanceStep does nothing when no workflow ---
 
-    #[test]
-    fn advance_step_does_nothing_when_no_workflow() {
+    #[rstest::rstest]    fn advance_step_does_nothing_when_no_workflow() {
         // Given a bus with WorkflowHandler but no workflow loaded.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -705,8 +695,7 @@ mod tests {
 
     // --- Test 7: JumpToStep activates target and marks downstream stale ---
 
-    #[test]
-    fn jump_activates_target_step() {
+    #[rstest::rstest]    fn jump_activates_target_step() {
         // Given a multi-step workflow advanced past step 0.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -747,8 +736,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn jump_marks_downstream_as_stale() {
+    #[rstest::rstest]    fn jump_marks_downstream_as_stale() {
         // Given a multi-step workflow advanced past step 0.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -784,8 +772,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn jump_emits_stale_and_started_events() {
+    #[rstest::rstest]    fn jump_emits_stale_and_started_events() {
         // Given a multi-step workflow advanced past step 0.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -820,8 +807,7 @@ mod tests {
 
     // --- Test 8: JumpToStep emits StepStarted only (no StepAwaitingInput) ---
 
-    #[test]
-    fn jump_to_step_emits_step_started_without_awaiting_input() {
+    #[rstest::rstest]    fn jump_to_step_emits_step_started_without_awaiting_input() {
         // Given a workflow where step-0 is completed and step-1 is active.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -871,8 +857,7 @@ mod tests {
 
     // --- Test 10: AbortWorkflow removes state ---
 
-    #[test]
-    fn abort_workflow_removes_state() {
+    #[rstest::rstest]    fn abort_workflow_removes_state() {
         // Given a loaded workflow.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -896,8 +881,7 @@ mod tests {
 
     // --- Test 11: WorkflowState persists through serde ---
 
-    #[test]
-    fn workflow_state_persists_through_serde() {
+    #[rstest::rstest]    fn workflow_state_persists_through_serde() {
         // Given a workflow state in mid-progress.
         let def = make_workflow(3);
         let mut ws = WorkflowState::new(def);
@@ -915,8 +899,7 @@ mod tests {
 
     // --- Test 12: CompleteStep records outputs ---
 
-    #[test]
-    fn complete_step_sets_awaiting_input_with_outputs() {
+    #[rstest::rstest]    fn complete_step_sets_awaiting_input_with_outputs() {
         // Given a loaded workflow with step-0 active.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -956,8 +939,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn complete_step_emits_awaiting_input_event() {
+    #[rstest::rstest]    fn complete_step_emits_awaiting_input_event() {
         // Given a loaded workflow with step-0 active.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -992,8 +974,7 @@ mod tests {
 
     // --- Test 13: StepStarted event includes context ---
 
-    #[test]
-    fn step_started_contains_step_id() {
+    #[rstest::rstest]    fn step_started_contains_step_id() {
         // Given a bus with WorkflowHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -1012,8 +993,7 @@ mod tests {
         assert_eq!(started.step_id, "step-0");
     }
 
-    #[test]
-    fn step_started_contains_instructions() {
+    #[rstest::rstest]    fn step_started_contains_instructions() {
         // Given a bus with WorkflowHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -1031,8 +1011,7 @@ mod tests {
         assert_eq!(started.instructions, "Instructions for step 0");
     }
 
-    #[test]
-    fn step_started_contains_requires_user_input() {
+    #[rstest::rstest]    fn step_started_contains_requires_user_input() {
         // Given a bus with WorkflowHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -1051,8 +1030,7 @@ mod tests {
         assert!(!started.checkpoint);
     }
 
-    #[test]
-    fn step_started_contains_empty_completed_outputs() {
+    #[rstest::rstest]    fn step_started_contains_empty_completed_outputs() {
         // Given a bus with WorkflowHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();

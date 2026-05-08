@@ -31,8 +31,7 @@ impl std::fmt::Display for Mode {
 mod tests {
     use super::*;
 
-    #[test]
-    fn mode_serialization_roundtrip() {
+    #[rstest::rstest]    fn mode_serialization_roundtrip() {
         // Given both mode variants.
         for mode in [Mode::Normal, Mode::Input, Mode::Picker] {
             // When serialized and deserialized.

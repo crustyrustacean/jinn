@@ -132,6 +132,7 @@ mod tests {
         TokenBudgetStrategy::new(max_tokens, Box::new(CharRatioEstimator))
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn truncates_history_to_fit_budget() {
         // Given 5 entries with ~100-char content each (~26 tokens each, ~130 total)
@@ -155,6 +156,7 @@ mod tests {
         assert!(result.system_prompt.is_some());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn returns_all_entries_when_under_budget() {
         // Given 3 short entries that easily fit in a large budget.
@@ -175,6 +177,7 @@ mod tests {
         assert!(result.system_prompt.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn empty_history_produces_no_messages() {
         // Given empty history.
@@ -191,6 +194,7 @@ mod tests {
         assert!(result.system_prompt.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn single_over_budget_entry_is_included_anyway() {
         // Given one entry that far exceeds the budget.
@@ -207,6 +211,7 @@ mod tests {
         assert!(result.system_prompt.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn system_prompt_set_when_trimmed() {
         // Given entries that exceed the budget.
@@ -230,6 +235,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn no_system_prompt_when_nothing_trimmed() {
         // Given entries that fit within the budget.
@@ -245,6 +251,7 @@ mod tests {
         assert!(result.system_prompt.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn preserves_chronological_order() {
         // Given 3 entries where the first exceeds the budget when combined.
@@ -272,6 +279,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn name_returns_token_budget() {
         // Given a token budget strategy.
@@ -281,6 +289,7 @@ mod tests {
         assert_eq!(strategy.name(), "token_budget");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn skips_system_and_actor_entries() {
         // Given entries including system and actor types.
@@ -302,6 +311,7 @@ mod tests {
         assert!(result.system_prompt.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn newest_entry_included_when_rest_trimmed() {
         // Given many entries where only the newest fits.
@@ -329,6 +339,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pinned_entry_survives_token_budget_trimming() {
         // Given 4 entries where the first (oldest) is pinned, and a tight budget.
@@ -359,6 +370,7 @@ mod tests {
         assert!(contents.contains(&"recent"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pinned_entry_tokens_count_toward_budget() {
         // Given entries with a pinned entry in the middle, and a tight budget.
@@ -391,6 +403,7 @@ mod tests {
         assert!(!contents.contains(&"old"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn multiple_pinned_entries_survive_budget_trimming() {
         // Given 5 entries where entry 0 and entry 2 are pinned.
@@ -421,6 +434,7 @@ mod tests {
         assert!(contents.contains(&"pinned-mid"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pinned_entry_does_not_prevent_newest_entry() {
         // Given a pinned entry and a most recent entry, both exceeding budget.

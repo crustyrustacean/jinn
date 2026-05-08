@@ -96,8 +96,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn load_workflow_serialization_roundtrip() {
+    #[rstest::rstest]    fn load_workflow_serialization_roundtrip() {
         // Given a LoadWorkflow command.
         let cmd = LoadWorkflow {
             definition: make_workflow(2),
@@ -112,13 +111,11 @@ mod tests {
         assert_eq!(back.definition.steps.len(), 2);
     }
 
-    #[test]
-    fn load_workflow_has_command_name() {
+    #[rstest::rstest]    fn load_workflow_has_command_name() {
         assert_eq!(LoadWorkflow::NAME, "workflow::LoadWorkflow");
     }
 
-    #[test]
-    fn advance_step_serialization_roundtrip() {
+    #[rstest::rstest]    fn advance_step_serialization_roundtrip() {
         // Given an AdvanceStep command.
         let cmd = AdvanceStep;
 
@@ -131,13 +128,11 @@ mod tests {
         assert_eq!(json, json2);
     }
 
-    #[test]
-    fn advance_step_has_command_name() {
+    #[rstest::rstest]    fn advance_step_has_command_name() {
         assert_eq!(AdvanceStep::NAME, "workflow::AdvanceStep");
     }
 
-    #[test]
-    fn jump_to_step_serialization_roundtrip() {
+    #[rstest::rstest]    fn jump_to_step_serialization_roundtrip() {
         // Given a JumpToStep command.
         let cmd = JumpToStep {
             step_id: "create-directory".to_owned(),
@@ -151,13 +146,11 @@ mod tests {
         assert_eq!(back.step_id, "create-directory");
     }
 
-    #[test]
-    fn jump_to_step_has_command_name() {
+    #[rstest::rstest]    fn jump_to_step_has_command_name() {
         assert_eq!(JumpToStep::NAME, "workflow::JumpToStep");
     }
 
-    #[test]
-    fn abort_workflow_serialization_roundtrip() {
+    #[rstest::rstest]    fn abort_workflow_serialization_roundtrip() {
         let cmd = AbortWorkflow;
         let json = serde_json::to_string(&cmd).expect("serialize");
         let back: AbortWorkflow = serde_json::from_str(&json).expect("deserialize");
@@ -165,13 +158,11 @@ mod tests {
         assert_eq!(json, json2);
     }
 
-    #[test]
-    fn abort_workflow_has_command_name() {
+    #[rstest::rstest]    fn abort_workflow_has_command_name() {
         assert_eq!(AbortWorkflow::NAME, "workflow::AbortWorkflow");
     }
 
-    #[test]
-    fn complete_step_serialization_roundtrip() {
+    #[rstest::rstest]    fn complete_step_serialization_roundtrip() {
         // Given a CompleteStep command.
         let cmd = CompleteStep {
             step_id: "step-0".to_owned(),
@@ -187,8 +178,7 @@ mod tests {
         assert_eq!(back.resolved_outputs["output_a"], "value_a");
     }
 
-    #[test]
-    fn complete_step_has_command_name() {
+    #[rstest::rstest]    fn complete_step_has_command_name() {
         assert_eq!(CompleteStep::NAME, "workflow::CompleteStep");
     }
 }

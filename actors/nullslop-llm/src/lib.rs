@@ -605,8 +605,7 @@ mod tests {
 
     // --- Activation tests ---
 
-    #[test]
-    fn activate_subscribes_to_commands_and_events() {
+    #[rstest::rstest]    fn activate_subscribes_to_commands_and_events() {
         // Given a fresh actor context.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -623,6 +622,7 @@ mod tests {
 
     // --- Text-only streaming tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn text_stream_emits_tokens() {
         // Given an actor with text tokens.
@@ -660,6 +660,7 @@ mod tests {
         assert_eq!(tokens[1].token, " world");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn text_stream_emits_completed_with_finished() {
         // Given an actor with text tokens.
@@ -703,6 +704,7 @@ mod tests {
 
     // --- Tool use streaming tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_stream_emits_tool_use_events() {
         // Given an actor configured with tool calls.
@@ -765,6 +767,7 @@ mod tests {
         assert!(has_tool_call_received, "expected ToolCallReceived event");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_stream_emits_execute_batch_command() {
         // Given an actor configured with tool calls.
@@ -812,6 +815,7 @@ mod tests {
         assert!(has_execute_batch, "expected ExecuteToolBatch command");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_stream_emits_stream_completed_with_tool_use() {
         // Given an actor configured with tool calls.
@@ -861,6 +865,7 @@ mod tests {
 
     // --- Tool batch completed → new stream tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_results_received_sets_awaiting_state() {
         // Given an actor configured with tool calls.
@@ -910,6 +915,7 @@ mod tests {
         assert_eq!(session.state, SessionState::AwaitingToolResults);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tool_batch_completed_starts_new_stream() {
         // Given an actor in AwaitingToolResults state after a tool_use stream.
@@ -986,6 +992,7 @@ mod tests {
 
     // --- Cancel tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn cancel_stream_emits_canceled_event() {
         // Given an actor with a stream in progress.
@@ -1020,6 +1027,7 @@ mod tests {
         assert_eq!(completed[0].reason, StreamCompletedReason::Canceled);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn cancel_stream_removes_task() {
         // Given an actor with a stream in progress.
@@ -1053,8 +1061,7 @@ mod tests {
 
     // --- ToolsRegistered event tests ---
 
-    #[test]
-    fn tools_registered_updates_definitions() {
+    #[rstest::rstest]    fn tools_registered_updates_definitions() {
         // Given an activated actor.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -1083,6 +1090,7 @@ mod tests {
 
     // --- Session state tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn session_transitions_to_streaming_on_send() {
         // Given an activated actor.
@@ -1111,6 +1119,7 @@ mod tests {
         assert_eq!(session.state, SessionState::Streaming);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stream_completed_transitions_to_awaiting_tool_results() {
         // Given an actor with a tool_use stream that completed.
@@ -1156,6 +1165,7 @@ mod tests {
         assert_eq!(session.state, SessionState::AwaitingToolResults);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stream_completed_stores_accumulated_data() {
         // Given an actor with a tool_use stream that completed.
@@ -1202,6 +1212,7 @@ mod tests {
         assert_eq!(session.accumulated_tool_calls, vec![tool_call]);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stream_completed_finished_removes_session() {
         // Given an actor with a text-only stream that completed.
@@ -1238,6 +1249,7 @@ mod tests {
 
     // --- Error handling tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stream_error_emits_system_entry_and_completed() {
         // Given an actor — we can't easily make FakeLlmServiceFactory::create()
@@ -1248,6 +1260,7 @@ mod tests {
 
     // --- Defensive guard tests ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn stream_completed_preserves_awaiting_tool_results_state() {
         // Given an actor with a tool_use stream.
@@ -1293,6 +1306,7 @@ mod tests {
         assert_eq!(session.state, SessionState::AwaitingToolResults);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn duplicate_finished_while_awaiting_tool_results_is_ignored() {
         // Given an actor in AwaitingToolResults state after a tool_use stream.

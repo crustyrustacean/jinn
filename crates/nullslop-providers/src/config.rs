@@ -214,8 +214,7 @@ target = "ollama/llama3"
         load_config_from(&path).expect("load")
     }
 
-    #[test]
-    fn load_config_parses_provider_count_and_models() {
+    #[rstest::rstest]    fn load_config_parses_provider_count_and_models() {
         // Given a well-formed TOML config.
         let config = load_test_config();
 
@@ -252,8 +251,7 @@ target = "ollama/llama3"
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    fn load_config_creates_default_when_missing() {
+    #[rstest::rstest]    fn load_config_creates_default_when_missing() {
         // Given a temp directory with no config file.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
@@ -269,8 +267,7 @@ target = "ollama/llama3"
         assert!(!config.providers.is_empty());
     }
 
-    #[test]
-    fn save_config_writes_valid_toml() {
+    #[rstest::rstest]    fn save_config_writes_valid_toml() {
         // Given a config with providers.
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
@@ -298,8 +295,7 @@ target = "ollama/llama3"
         assert_eq!(reloaded.default_provider.as_deref(), Some("test/gpt-4"));
     }
 
-    #[test]
-    fn config_path_uses_dirs_config_dir() {
+    #[rstest::rstest]    fn config_path_uses_dirs_config_dir() {
         // Given the standard config path.
         let path = config_path();
 

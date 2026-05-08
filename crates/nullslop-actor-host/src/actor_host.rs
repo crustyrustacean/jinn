@@ -98,8 +98,7 @@ impl ActorHostService {
 mod tests {
     use super::*;
 
-    #[test]
-    fn actor_host_error_has_debug_display() {
+    #[rstest::rstest]    fn actor_host_error_has_debug_display() {
         // Given an ActorHostError.
         let err = ActorHostError;
 
@@ -109,8 +108,7 @@ mod tests {
         // Then it can be formatted for debug and display.
     }
 
-    #[test]
-    fn service_returns_backend_name() {
+    #[rstest::rstest]    fn service_returns_backend_name() {
         // Given a FakeActorHost wrapped in a service.
         let host = Arc::new(crate::fake::FakeActorHost::new());
         let service = ActorHostService::new(host);
@@ -120,8 +118,7 @@ mod tests {
         assert_eq!(service.backend().name(), "FakeActorHost");
     }
 
-    #[test]
-    fn service_send_does_not_panic() {
+    #[rstest::rstest]    fn service_send_does_not_panic() {
         // Given a FakeActorHost wrapped in a service.
         let host = Arc::new(crate::fake::FakeActorHost::new());
         let service = ActorHostService::new(host);
@@ -143,8 +140,7 @@ mod tests {
         service.send_system(nullslop_actor::SystemMessage::ApplicationReady);
     }
 
-    #[test]
-    fn service_shutdown_ok() {
+    #[rstest::rstest]    fn service_shutdown_ok() {
         // Given a FakeActorHost wrapped in a service.
         let host = Arc::new(crate::fake::FakeActorHost::new());
         let service = ActorHostService::new(host);

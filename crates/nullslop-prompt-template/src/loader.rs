@@ -121,8 +121,7 @@ pub(crate) fn parse_template_content(content: &str) -> Result<PromptTemplate, Re
 mod tests {
     use super::*;
 
-    #[test]
-    fn parses_valid_template() {
+    #[rstest::rstest]    fn parses_valid_template() {
         // Given a well-formed template file.
         let content = "+++\nname = \"hello\"\ndescription = \"Say hello\"\n+++\nHello, world!";
 
@@ -135,8 +134,7 @@ mod tests {
         assert_eq!(template.body, "Hello, world!");
     }
 
-    #[test]
-    fn parses_template_without_description() {
+    #[rstest::rstest]    fn parses_template_without_description() {
         // Given a template with no description field.
         let content = "+++\nname = \"minimal\"\n+++\nJust the body.";
 
@@ -149,8 +147,7 @@ mod tests {
         assert_eq!(template.body, "Just the body.");
     }
 
-    #[test]
-    fn parses_template_with_multiline_body() {
+    #[rstest::rstest]    fn parses_template_with_multiline_body() {
         // Given a template with a multi-line body.
         let content = "+++\nname = \"review\"\ndescription = \"Code review\"\n+++\nLine one.\nLine two.\nLine three.";
 
@@ -164,8 +161,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn fails_without_opening_delimiter() {
+    #[rstest::rstest]    fn fails_without_opening_delimiter() {
         // Given content without frontmatter.
         let content = "name = \"hello\"\n+++\nBody";
 
@@ -176,8 +172,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn fails_without_closing_delimiter() {
+    #[rstest::rstest]    fn fails_without_closing_delimiter() {
         // Given content with only an opening delimiter.
         let content = "+++\nname = \"hello\"";
 
@@ -188,8 +183,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn fails_with_invalid_toml() {
+    #[rstest::rstest]    fn fails_with_invalid_toml() {
         // Given content with invalid TOML in the frontmatter.
         let content = "+++\nname = invalid\n+++\nBody";
 
@@ -200,8 +194,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn handles_leading_whitespace() {
+    #[rstest::rstest]    fn handles_leading_whitespace() {
         // Given content with leading whitespace before +++.
         let content = "\n\n+++\nname = \"hello\"\n+++\nBody here.";
 
@@ -213,8 +206,7 @@ mod tests {
         assert_eq!(template.body, "Body here.");
     }
 
-    #[test]
-    fn handles_empty_body() {
+    #[rstest::rstest]    fn handles_empty_body() {
         // Given a template with no body after the closing delimiter.
         let content = "+++\nname = \"empty\"\n+++\n";
 
@@ -226,8 +218,7 @@ mod tests {
         assert_eq!(template.body, "");
     }
 
-    #[test]
-    fn render_then_parse_round_trips() {
+    #[rstest::rstest]    fn render_then_parse_round_trips() {
         // Given a template with all fields populated.
         let original = PromptTemplate {
             name: "example".to_owned(),
@@ -245,8 +236,7 @@ mod tests {
         assert_eq!(parsed.body, original.body);
     }
 
-    #[test]
-    fn render_includes_all_frontmatter_fields() {
+    #[rstest::rstest]    fn render_includes_all_frontmatter_fields() {
         // Given a template.
         let template = PromptTemplate {
             name: "test".to_owned(),

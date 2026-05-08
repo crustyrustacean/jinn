@@ -128,8 +128,7 @@ pub trait StrategyDiscovery: Send + Sync {
 mod tests {
     use super::*;
 
-    #[test]
-    fn assembled_prompt_with_system_message() {
+    #[rstest::rstest]    fn assembled_prompt_with_system_message() {
         // Given an assembled prompt with a system prompt and messages.
         let prompt = AssembledPrompt {
             system_prompt: Some("You are helpful.".to_owned()),
@@ -143,8 +142,7 @@ mod tests {
         assert_eq!(prompt.messages.len(), 1);
     }
 
-    #[test]
-    fn assembled_prompt_without_system_message() {
+    #[rstest::rstest]    fn assembled_prompt_without_system_message() {
         // Given an assembled prompt without a system prompt.
         let prompt = AssembledPrompt {
             system_prompt: None,
@@ -156,8 +154,7 @@ mod tests {
         assert!(prompt.messages.is_empty());
     }
 
-    #[test]
-    fn strategy_info_holds_metadata() {
+    #[rstest::rstest]    fn strategy_info_holds_metadata() {
         // Given a strategy info with all fields.
         let info = StrategyInfo {
             id: PromptStrategyId::passthrough(),
@@ -171,8 +168,7 @@ mod tests {
         assert_eq!(info.description, "Send conversation history as-is");
     }
 
-    #[test]
-    fn strategy_info_equality() {
+    #[rstest::rstest]    fn strategy_info_equality() {
         // Given two strategy infos with the same fields.
         let a = StrategyInfo {
             id: PromptStrategyId::passthrough(),

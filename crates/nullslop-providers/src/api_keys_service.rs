@@ -72,8 +72,7 @@ impl ApiKeysService {
 mod tests {
     use crate::api_keys_service::ApiKeysService;
 
-    #[test]
-    fn clone_shares_data() {
+    #[rstest::rstest]    fn clone_shares_data() {
         // Given a service with a key.
         let mut keys = crate::api_keys::ApiKeys::new();
         keys.insert("MY_KEY".to_owned(), "sk-secret".to_owned());
@@ -86,8 +85,7 @@ mod tests {
         assert_eq!(clone.get("MY_KEY"), Some("sk-secret".to_owned()));
     }
 
-    #[test]
-    fn insert_updates_all_clones() {
+    #[rstest::rstest]    fn insert_updates_all_clones() {
         // Given two clones of the same service.
         let keys = crate::api_keys::ApiKeys::new();
         let service = ApiKeysService::new(keys);

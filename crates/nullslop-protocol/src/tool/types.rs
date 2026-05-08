@@ -45,8 +45,7 @@ pub struct ToolResult {
 mod tests {
     use super::*;
 
-    #[test]
-    fn tool_definition_roundtrip() {
+    #[rstest::rstest]    fn tool_definition_roundtrip() {
         // Given a tool definition.
         let def = ToolDefinition {
             name: "echo".into(),
@@ -62,8 +61,7 @@ mod tests {
         assert_eq!(back, def);
     }
 
-    #[test]
-    fn tool_call_roundtrip() {
+    #[rstest::rstest]    fn tool_call_roundtrip() {
         // Given a tool call.
         let call = ToolCall {
             id: "call_123".into(),
@@ -79,8 +77,7 @@ mod tests {
         assert_eq!(back, call);
     }
 
-    #[test]
-    fn tool_result_roundtrip() {
+    #[rstest::rstest]    fn tool_result_roundtrip() {
         // Given a tool result.
         let result = ToolResult {
             tool_call_id: "call_123".into(),
@@ -97,8 +94,7 @@ mod tests {
         assert_eq!(back, result);
     }
 
-    #[test]
-    fn tool_result_equality() {
+    #[rstest::rstest]    fn tool_result_equality() {
         // Given two identical tool results.
         let a = ToolResult {
             tool_call_id: "call_1".into(),

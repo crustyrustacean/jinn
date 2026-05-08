@@ -157,8 +157,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn factory_name_is_sample() {
+    #[rstest::rstest]    fn factory_name_is_sample() {
         // Given a SampleLlmServiceFactory.
         let factory = SampleLlmServiceFactory;
 
@@ -167,8 +166,7 @@ mod tests {
         assert_eq!(factory.name(), "Sample");
     }
 
-    #[test]
-    fn factory_creates_service() {
+    #[rstest::rstest]    fn factory_creates_service() {
         // Given a SampleLlmServiceFactory.
         let factory = SampleLlmServiceFactory;
 
@@ -179,6 +177,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn response_command_streams_canned_text() {
         tokio::time::pause();
@@ -200,6 +199,7 @@ mod tests {
         assert_eq!(output, RESPONSE_TEXT);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn think_output_starts_with_think_tag() {
         tokio::time::pause();
@@ -223,6 +223,7 @@ mod tests {
         assert!(output.contains(THINK_TEXT));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn think_output_contains_closing_tag() {
         tokio::time::pause();
@@ -246,6 +247,7 @@ mod tests {
         assert!(output.contains(THINK_RESPONSE_TEXT));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn unknown_input_streams_help() {
         // Given a sample service.
@@ -266,6 +268,7 @@ mod tests {
         assert_eq!(output, HELP_TEXT);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn empty_input_streams_help() {
         // Given a sample service with no messages.
@@ -283,6 +286,7 @@ mod tests {
         assert_eq!(output, HELP_TEXT);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn response_command_produces_more_than_one_token() {
         tokio::time::pause();
@@ -301,8 +305,7 @@ mod tests {
         assert!(tokens.len() > 1);
     }
 
-    #[test]
-    fn tokenize_splits_on_spaces() {
+    #[rstest::rstest]    fn tokenize_splits_on_spaces() {
         // Given a simple sentence.
         // When tokenizing.
         let tokens = tokenize("Hello world!");
@@ -311,8 +314,7 @@ mod tests {
         assert_eq!(tokens, vec!["Hello", " world!"]);
     }
 
-    #[test]
-    fn tokenize_single_word() {
+    #[rstest::rstest]    fn tokenize_single_word() {
         // Given a single word.
         // When tokenizing.
         let tokens = tokenize("Hello");
@@ -321,8 +323,7 @@ mod tests {
         assert_eq!(tokens, vec!["Hello"]);
     }
 
-    #[test]
-    fn joined_starts_with_think() {
+    #[rstest::rstest]    fn joined_starts_with_think() {
         // Given the think tokenizer.
         // When producing tokens.
         let tokens = tokenize_think();
@@ -333,8 +334,7 @@ mod tests {
         assert!(joined.contains(THINK_TEXT));
     }
 
-    #[test]
-    fn joined_contains_closing_think() {
+    #[rstest::rstest]    fn joined_contains_closing_think() {
         // Given the think tokenizer.
         // When producing tokens.
         let tokens = tokenize_think();
@@ -345,6 +345,7 @@ mod tests {
         assert!(joined.contains(THINK_RESPONSE_TEXT));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn command_matching_is_case_insensitive() {
         tokio::time::pause();

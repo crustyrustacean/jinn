@@ -50,8 +50,7 @@ impl StrategyDiscovery for DefaultStrategyDiscovery {
 mod tests {
     use super::*;
 
-    #[test]
-    fn discovery_returns_four_strategies() {
+    #[rstest::rstest]    fn discovery_returns_four_strategies() {
         // Given the default discovery.
         let discovery = DefaultStrategyDiscovery;
 
@@ -79,8 +78,7 @@ mod tests {
         assert!(ids.contains(&&expected_id), "missing strategy: {expected_id:?}");
     }
 
-    #[test]
-    fn discovery_strategies_have_names_and_descriptions() {
+    #[rstest::rstest]    fn discovery_strategies_have_names_and_descriptions() {
         // Given the default discovery.
         let discovery = DefaultStrategyDiscovery;
 
@@ -98,8 +96,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn discovery_name() {
+    #[rstest::rstest]    fn discovery_name() {
         // Given the default discovery.
         let discovery = DefaultStrategyDiscovery;
 

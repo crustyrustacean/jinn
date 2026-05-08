@@ -62,8 +62,7 @@ pub struct PushToolResult {
 mod tests {
     use super::*;
 
-    #[test]
-    fn register_tools_roundtrip() {
+    #[rstest::rstest]    fn register_tools_roundtrip() {
         // Given a RegisterTools command.
         let cmd = RegisterTools {
             provider: "echo".into(),
@@ -83,13 +82,11 @@ mod tests {
         assert_eq!(back.definitions.len(), 1);
     }
 
-    #[test]
-    fn register_tools_name() {
+    #[rstest::rstest]    fn register_tools_name() {
         assert_eq!(RegisterTools::NAME, "tool::RegisterTools");
     }
 
-    #[test]
-    fn execute_tool_batch_roundtrip() {
+    #[rstest::rstest]    fn execute_tool_batch_roundtrip() {
         // Given an ExecuteToolBatch command.
         let cmd = ExecuteToolBatch {
             session_id: SessionId::new(),
@@ -108,13 +105,11 @@ mod tests {
         assert_eq!(back.tool_calls.len(), 1);
     }
 
-    #[test]
-    fn execute_tool_batch_name() {
+    #[rstest::rstest]    fn execute_tool_batch_name() {
         assert_eq!(ExecuteToolBatch::NAME, "tool::ExecuteToolBatch");
     }
 
-    #[test]
-    fn execute_tool_roundtrip() {
+    #[rstest::rstest]    fn execute_tool_roundtrip() {
         // Given an ExecuteTool command.
         let cmd = ExecuteTool {
             session_id: SessionId::new(),
@@ -133,13 +128,11 @@ mod tests {
         assert_eq!(back.tool_call.name, "echo");
     }
 
-    #[test]
-    fn execute_tool_name() {
+    #[rstest::rstest]    fn execute_tool_name() {
         assert_eq!(ExecuteTool::NAME, "tool::ExecuteTool");
     }
 
-    #[test]
-    fn push_tool_result_roundtrip() {
+    #[rstest::rstest]    fn push_tool_result_roundtrip() {
         // Given a PushToolResult command.
         let cmd = PushToolResult {
             session_id: SessionId::new(),
@@ -160,8 +153,7 @@ mod tests {
         assert!(back.result.success);
     }
 
-    #[test]
-    fn push_tool_result_name() {
+    #[rstest::rstest]    fn push_tool_result_name() {
         assert_eq!(PushToolResult::NAME, "tool::PushToolResult");
     }
 }

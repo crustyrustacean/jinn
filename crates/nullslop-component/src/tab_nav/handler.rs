@@ -41,8 +41,7 @@ mod tests {
     use crate::AppState;
     use crate::test_utils;
 
-    #[test]
-    fn switch_tab_next_from_chat_goes_to_dashboard() {
+    #[rstest::rstest]    fn switch_tab_next_from_chat_goes_to_dashboard() {
         // Given a bus with TabNavHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         TabNavHandler.register(&mut bus);
@@ -61,8 +60,7 @@ mod tests {
         assert_eq!(state.active_tab, ActiveTab::Dashboard);
     }
 
-    #[test]
-    fn switch_tab_next_wraps_from_dashboard_to_chat() {
+    #[rstest::rstest]    fn switch_tab_next_wraps_from_dashboard_to_chat() {
         // Given a bus with TabNavHandler registered and state on Dashboard.
         let mut bus: Bus<AppState, Services> = Bus::new();
         TabNavHandler.register(&mut bus);
@@ -84,8 +82,7 @@ mod tests {
         assert_eq!(state.active_tab, ActiveTab::Chat);
     }
 
-    #[test]
-    fn switch_tab_prev_from_chat_wraps_to_dashboard() {
+    #[rstest::rstest]    fn switch_tab_prev_from_chat_wraps_to_dashboard() {
         // Given a bus with TabNavHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         TabNavHandler.register(&mut bus);

@@ -66,8 +66,7 @@ mod tests {
     use crate::AppState;
     use crate::test_utils;
 
-    #[test]
-    fn select_next_command_increments_index() {
+    #[rstest::rstest]    fn select_next_command_increments_index() {
         // Given a bus with ChatEntrySelectionHandler registered and a session with 3 entries.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ChatEntrySelectionHandler.register(&mut bus);
@@ -89,8 +88,7 @@ mod tests {
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
     }
 
-    #[test]
-    fn select_prev_command_decrements_index() {
+    #[rstest::rstest]    fn select_prev_command_decrements_index() {
         // Given a bus with handler registered and selection at last entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ChatEntrySelectionHandler.register(&mut bus);
@@ -112,8 +110,7 @@ mod tests {
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
     }
 
-    #[test]
-    fn select_cancel_command_clears_selection() {
+    #[rstest::rstest]    fn select_cancel_command_clears_selection() {
         // Given a bus with handler registered and an active selection.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ChatEntrySelectionHandler.register(&mut bus);

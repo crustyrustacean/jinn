@@ -137,8 +137,7 @@ fn tool_definition_to_llm(def: &ToolDefinition) -> Tool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn convert_user_message_to_chat_message() {
+    #[rstest::rstest]    fn convert_user_message_to_chat_message() {
         // Given a protocol user message.
         let msg = LlmMessage::User {
             content: "hello".to_owned(),
@@ -152,8 +151,7 @@ mod tests {
         assert_eq!(chat_msg.role, ChatRole::User);
     }
 
-    #[test]
-    fn convert_assistant_message_to_chat_message() {
+    #[rstest::rstest]    fn convert_assistant_message_to_chat_message() {
         // Given a protocol assistant message without tool calls.
         let msg = LlmMessage::Assistant {
             content: "hi there".to_owned(),
@@ -168,8 +166,7 @@ mod tests {
         assert_eq!(chat_msg.role, ChatRole::Assistant);
     }
 
-    #[test]
-    fn convert_assistant_message_with_tool_calls_to_chat_message() {
+    #[rstest::rstest]    fn convert_assistant_message_with_tool_calls_to_chat_message() {
         // Given a protocol assistant message with tool calls.
         let msg = LlmMessage::Assistant {
             content: String::new(),
@@ -188,8 +185,7 @@ mod tests {
         assert!(matches!(chat_msg.message_type, MessageType::ToolUse(_)));
     }
 
-    #[test]
-    fn convert_tool_result_message_to_chat_message() {
+    #[rstest::rstest]    fn convert_tool_result_message_to_chat_message() {
         // Given a protocol tool result message.
         let msg = LlmMessage::Tool {
             tool_call_id: "call_1".to_owned(),
@@ -205,8 +201,7 @@ mod tests {
         assert!(matches!(chat_msg.message_type, MessageType::ToolResult(_)));
     }
 
-    #[test]
-    fn messages_to_llm_converts_list() {
+    #[rstest::rstest]    fn messages_to_llm_converts_list() {
         // Given a list of protocol messages.
         let messages = vec![
             LlmMessage::User {
@@ -227,8 +222,7 @@ mod tests {
         assert_eq!(result[1].role, ChatRole::Assistant);
     }
 
-    #[test]
-    fn tool_definitions_to_llm_converts_all() {
+    #[rstest::rstest]    fn tool_definitions_to_llm_converts_all() {
         // Given tool definitions.
         let defs = vec![
             ToolDefinition {
@@ -252,8 +246,7 @@ mod tests {
         assert_eq!(result[1].function.name, "get_time");
     }
 
-    #[test]
-    fn tool_call_to_llm_preserves_fields() {
+    #[rstest::rstest]    fn tool_call_to_llm_preserves_fields() {
         // Given a protocol tool call.
         let tc = ToolCall {
             id: "call_123".to_owned(),
@@ -271,8 +264,7 @@ mod tests {
         assert_eq!(llm_tc.call_type, "function");
     }
 
-    #[test]
-    fn llm_tool_call_to_protocol_roundtrip() {
+    #[rstest::rstest]    fn llm_tool_call_to_protocol_roundtrip() {
         // Given a protocol tool call.
         let original = ToolCall {
             id: "call_abc".to_owned(),
@@ -290,8 +282,7 @@ mod tests {
         assert_eq!(back.arguments, original.arguments);
     }
 
-    #[test]
-    fn stream_chunk_to_event_text() {
+    #[rstest::rstest]    fn stream_chunk_to_event_text() {
         // Given an llm StreamChunk::Text.
         let chunk = StreamChunk::Text("hello".to_owned());
 
@@ -302,8 +293,7 @@ mod tests {
         assert_eq!(event, StreamEvent::Text("hello".to_owned()));
     }
 
-    #[test]
-    fn stream_chunk_to_event_tool_use_start() {
+    #[rstest::rstest]    fn stream_chunk_to_event_tool_use_start() {
         // Given an llm StreamChunk::ToolUseStart.
         let chunk = StreamChunk::ToolUseStart {
             index: 0,
@@ -325,8 +315,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn stream_chunk_to_event_tool_use_complete() {
+    #[rstest::rstest]    fn stream_chunk_to_event_tool_use_complete() {
         // Given an llm StreamChunk::ToolUseComplete.
         let chunk = StreamChunk::ToolUseComplete {
             index: 0,
@@ -357,8 +346,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn stream_chunk_to_event_done() {
+    #[rstest::rstest]    fn stream_chunk_to_event_done() {
         // Given an llm StreamChunk::Done.
         let chunk = StreamChunk::Done {
             stop_reason: "tool_use".to_owned(),

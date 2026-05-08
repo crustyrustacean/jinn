@@ -46,8 +46,7 @@ impl From<String> for ProviderId {
 mod tests {
     use super::*;
 
-    #[test]
-    fn display_returns_inner() {
+    #[rstest::rstest]    fn display_returns_inner() {
         // Given a ProviderId.
         let id = ProviderId::new("openrouter-gpt".to_owned());
 
@@ -56,8 +55,7 @@ mod tests {
         assert_eq!(id.to_string(), "openrouter-gpt");
     }
 
-    #[test]
-    fn equality_works() {
+    #[rstest::rstest]    fn equality_works() {
         // Given two ProviderIds with the same name.
         let a = ProviderId::new("fast".to_owned());
         let b = ProviderId::new("fast".to_owned());
@@ -66,8 +64,7 @@ mod tests {
         assert_eq!(a, b);
     }
 
-    #[test]
-    fn from_string_creates_id() {
+    #[rstest::rstest]    fn from_string_creates_id() {
         // Given a String.
         let s = String::from("ollama");
 

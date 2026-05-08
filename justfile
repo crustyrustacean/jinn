@@ -1,9 +1,10 @@
 COPYRIGHT_NAME := "Jayson Lennon"
 COPYRIGHT_YEAR := "2026"
 
+export RSTEST_TIMEOUT := "3"
+
 test:
     cargo nextest run --workspace --all-features --exclude nullslop-e2e --exclude llm
-    cargo test --workspace --doc --exclude llm
     cargo test --test e2e -p nullslop-e2e
 
 check:
@@ -25,10 +26,8 @@ lint:
     cargo fmt -- --check
 
 # Full CI pipeline (lint + test + docs)
-ci: lint
-    cargo nextest run --workspace --all-features --exclude nullslop-e2e --exclude llm
+ci: lint test
     cargo test --workspace --doc --exclude llm
-    cargo test --test e2e -p nullslop-e2e
     cargo doc --workspace --no-deps
 
 # Run all cucumber tests
