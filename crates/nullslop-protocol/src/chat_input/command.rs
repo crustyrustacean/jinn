@@ -130,3 +130,100 @@ pub struct SetChatInputText {
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("chat_input")]
 pub struct AutocompleteConfirm;
+
+/// Select the next chat entry (toward newer messages).
+///
+/// If no entry is selected, selects the first.
+/// Used by `j` key in Normal mode for entry targeting.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("chat_input")]
+pub struct ChatEntrySelectNext {
+    /// The session to navigate.
+    pub session_id: SessionId,
+}
+
+/// Select the previous chat entry (toward older messages).
+///
+/// If no entry is selected, selects the last.
+/// Used by `k` key in Normal mode for entry targeting.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("chat_input")]
+pub struct ChatEntrySelectPrev {
+    /// The session to navigate.
+    pub session_id: SessionId,
+}
+
+/// Cancel entry selection in the chat log.
+///
+/// Clears the selection highlight. Used by `Escape` key in Normal mode.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("chat_input")]
+pub struct ChatEntrySelectCancel {
+    /// The session to clear selection on.
+    pub session_id: SessionId,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chat_entry_select_next_serialization_roundtrip() {
+        // Given a ChatEntrySelectNext command.
+        let cmd = ChatEntrySelectNext {
+            session_id: SessionId::new(),
+        };
+
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&cmd).expect("serialize");
+        let back: ChatEntrySelectNext = serde_json::from_str(&json).expect("deserialize");
+
+        // Then fields are preserved.
+        assert_eq!(back.session_id, cmd.session_id);
+    }
+
+    #[test]
+    fn chat_entry_select_next_has_command_name() {
+        assert_eq!(ChatEntrySelectNext::NAME, "chat_input::ChatEntrySelectNext");
+    }
+
+    #[test]
+    fn chat_entry_select_prev_serialization_roundtrip() {
+        // Given a ChatEntrySelectPrev command.
+        let cmd = ChatEntrySelectPrev {
+            session_id: SessionId::new(),
+        };
+
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&cmd).expect("serialize");
+        let back: ChatEntrySelectPrev = serde_json::from_str(&json).expect("deserialize");
+
+        // Then fields are preserved.
+        assert_eq!(back.session_id, cmd.session_id);
+    }
+
+    #[test]
+    fn chat_entry_select_prev_has_command_name() {
+        assert_eq!(ChatEntrySelectPrev::NAME, "chat_input::ChatEntrySelectPrev");
+    }
+
+    #[test]
+    fn chat_entry_select_cancel_serialization_roundtrip() {
+        // Given a ChatEntrySelectCancel command.
+        let cmd = ChatEntrySelectCancel {
+            session_id: SessionId::new(),
+        };
+
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&cmd).expect("serialize");
+        let back: ChatEntrySelectCancel = serde_json::from_str(&json).expect("deserialize");
+
+        // Then fields are preserved.
+        assert_eq!(back.session_id, cmd.session_id);
+    }
+
+    #[test]
+    fn chat_entry_select_cancel_has_command_name() {
+        assert_eq!(ChatEntrySelectCancel::NAME, "chat_input::ChatEntrySelectCancel");
+    }
+}

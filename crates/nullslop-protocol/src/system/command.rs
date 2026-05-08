@@ -154,3 +154,50 @@ pub struct WorkflowFocusChat;
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("workflow_panel")]
 pub struct WorkflowFocusWorkflow;
+
+/// Toggle the pinned context panel visibility.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct PinnedPanelToggle;
+
+/// Open the pinned context panel.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct PinnedPanelOpen;
+
+/// Close the pinned context panel.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct PinnedPanelClose;
+
+/// Move the pinned panel selection down one entry.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct PinnedPanelSelectDown;
+
+/// Move the pinned panel selection up one entry.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct PinnedPanelSelectUp;
+
+/// Unpin the currently selected pinned entry from the pinned panel.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct PinnedPanelUnpin;
+
+/// Pin the currently selected chat entry (from chat entry selection).
+///
+/// TuiApp-level command — `route_command()` reads the selected entry ID
+/// from state, constructs a `PinChatEntry`, and submits it to the bus.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct ChatEntryPinSelected;
+
+/// Escape key in Normal mode: cancel selection and close pinned panel.
+///
+/// TuiApp-level command — `route_command()` cancels entry selection
+/// (submitting `ChatEntrySelectCancel` with the real session ID) and
+/// closes the pinned panel if visible.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct NormalEscape;

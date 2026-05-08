@@ -19,6 +19,7 @@ use crate::prompt_template::PromptTemplateStore;
 use crate::provider_picker::entries::PickerEntry;
 use crate::session_picker::entries::SessionEntry;
 use crate::shutdown_tracker::ShutdownTrackerState;
+use crate::pinned_panel::PinnedPanelState;
 use crate::workflow_panel::WorkflowPanelState;
 
 /// A snapshot of everything the application is doing right now.
@@ -63,6 +64,9 @@ pub struct AppState {
 
     /// Workflow panel state — selection index, scroll offset, detail toggle.
     pub workflow_panel: WorkflowPanelState,
+
+    /// Pinned panel state — selection index within the pinned entries list.
+    pub pinned_panel: PinnedPanelState,
 
     /// Persisted strategy state blobs, keyed by (`session_id`, `strategy_id`).
     /// Stored as `serde_json::Value` — the host doesn't interpret the blobs.
@@ -118,6 +122,7 @@ impl Default for AppState {
             model_cache: None,
             last_refreshed_at: None,
             workflow_panel: WorkflowPanelState::default(),
+            pinned_panel: PinnedPanelState::default(),
             strategy_state: HashMap::new(),
             context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
             default_strategy: PromptStrategyId::passthrough(),

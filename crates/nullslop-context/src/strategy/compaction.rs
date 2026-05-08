@@ -4,7 +4,9 @@
 //! this strategy behaves like passthrough (all entries, no system prompt).
 //! When it exceeds the budget, it trims newest-to-oldest (like
 //! [`TokenBudgetStrategy`](super::token_budget::TokenBudgetStrategy)) and
-//! sets a compaction-specific system prompt.
+//! sets a compaction-specific system prompt. Pinned entries are always
+//! included regardless of budget, but their tokens still count toward
+//! the accumulated total.
 //!
 //! The full implementation (LLM-based summarization, summary storage,
 //! incremental compaction) is a follow-up task. This stub validates the
@@ -65,8 +67,10 @@ impl PromptAssembly for CompactionStrategy {
             .map(|entry| estimate_entry_tokens(self.estimator.as_ref(), entry))
             .sum();
 
+        let effective_budget = self.max_tokens.saturating_sub(context.budget_offset);
+
         // If everything fits, delegate to passthrough behavior.
-        if total_tokens <= self.max_tokens {
+        if total_tokens <= effective_budget {
             let messages = entries_to_messages(context.history);
             return Ok(AssembledPrompt {
                 system_prompt: None,
@@ -75,15 +79,24 @@ impl PromptAssembly for CompactionStrategy {
         }
 
         // Over threshold — trim newest-to-oldest (stub behavior).
+        // Pinned entries are always included regardless of budget.
         let mut included_indices = Vec::new();
         let mut used_tokens = 0usize;
 
         for (i, entry) in context.history.iter().enumerate().rev() {
             let entry_tokens = estimate_entry_tokens(self.estimator.as_ref(), entry);
 
-            // Always include at least the most recent entry.
-            if !included_indices.is_empty() && used_tokens + entry_tokens > self.max_tokens {
-                break;
+            // Pinned entries are always included, tokens count toward budget.
+            if entry.is_pinned() {
+                used_tokens += entry_tokens;
+                included_indices.push(i);
+                continue;
+            }
+
+            // Skip unpinned entries when budget is exceeded, but continue walking
+            // to find pinned entries at older indices.
+            if !included_indices.is_empty() && used_tokens + entry_tokens > effective_budget {
+                continue;
             }
 
             used_tokens += entry_tokens;
@@ -116,7 +129,7 @@ impl PromptAssembly for CompactionStrategy {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::{ChatEntry, SessionId};
+    use nullslop_protocol::{ChatEntry, PinPosition, SessionId};
 
     use super::*;
     use crate::strategy::token_estimator::CharRatioEstimator;
@@ -130,6 +143,7 @@ mod tests {
             tools: &[],
             model_name: "test-model",
             session_id,
+            budget_offset: 0,
         }
     }
 
@@ -275,5 +289,96 @@ mod tests {
 
         // Then its name is "compaction".
         assert_eq!(strategy.name(), "compaction");
+    }
+
+    #[tokio::test]
+    async fn pinned_entry_survives_compaction_trimming() {
+        // Given 4 entries where the first (oldest) is pinned, over threshold.
+        let history = vec![
+            ChatEntry::user("pinned").with_pin(PinPosition::Top),
+            ChatEntry::user("a".repeat(100)),
+            ChatEntry::user("b".repeat(100)),
+            ChatEntry::user("recent"),
+        ];
+        let strategy = make_strategy(10);
+        let session_id = SessionId::new();
+        let context = test_context(&history, &session_id);
+
+        // When assembling.
+        let result = strategy.assemble(&context).await.expect("assemble");
+
+        // Then the pinned entry survives trimming.
+        assert!(result.system_prompt.is_some());
+        let contents: Vec<&str> = result
+            .messages
+            .iter()
+            .map(|m| match m {
+                nullslop_protocol::LlmMessage::User { content } => content.as_str(),
+                other => panic!("expected User, got {other:?}"),
+            })
+            .collect();
+        assert!(contents.contains(&"pinned"));
+    }
+
+    #[tokio::test]
+    async fn pinned_entry_tokens_count_toward_compaction_budget() {
+        // Given entries with a pinned entry in the middle, over threshold.
+        let pinned_text = "x".repeat(100);
+        let history = vec![
+            ChatEntry::user("old"),
+            ChatEntry::user(pinned_text.clone()).with_pin(PinPosition::Relative),
+            ChatEntry::user("mid"),
+            ChatEntry::user("recent"),
+        ];
+        let strategy = make_strategy(28);
+        let session_id = SessionId::new();
+        let context = test_context(&history, &session_id);
+
+        // When assembling.
+        let result = strategy.assemble(&context).await.expect("assemble");
+
+        // Then the pinned entry consumes budget, reducing space for unpinned.
+        assert!(result.messages.len() < 4);
+        let contents: Vec<&str> = result
+            .messages
+            .iter()
+            .map(|m| match m {
+                nullslop_protocol::LlmMessage::User { content } => content.as_str(),
+                other => panic!("expected User, got {other:?}"),
+            })
+            .collect();
+        assert!(contents.contains(&pinned_text.as_str()));
+        assert!(!contents.contains(&"old"));
+    }
+
+    #[tokio::test]
+    async fn pinned_entries_survive_when_over_threshold() {
+        // Given 5 entries where entry 0 and entry 2 are pinned, over threshold.
+        let history = vec![
+            ChatEntry::user("pinned-early").with_pin(PinPosition::Top),
+            ChatEntry::user("a".repeat(100)),
+            ChatEntry::user("pinned-mid").with_pin(PinPosition::Relative),
+            ChatEntry::user("b".repeat(100)),
+            ChatEntry::user("recent"),
+        ];
+        let strategy = make_strategy(30);
+        let session_id = SessionId::new();
+        let context = test_context(&history, &session_id);
+
+        // When assembling.
+        let result = strategy.assemble(&context).await.expect("assemble");
+
+        // Then both pinned entries survive compaction trimming.
+        assert!(result.system_prompt.is_some());
+        let contents: Vec<&str> = result
+            .messages
+            .iter()
+            .map(|m| match m {
+                nullslop_protocol::LlmMessage::User { content } => content.as_str(),
+                other => panic!("expected User, got {other:?}"),
+            })
+            .collect();
+        assert!(contents.contains(&"pinned-early"));
+        assert!(contents.contains(&"pinned-mid"));
     }
 }

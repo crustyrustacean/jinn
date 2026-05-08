@@ -209,3 +209,124 @@ fn tool_result_entry_serialization_roundtrip() {
     assert_eq!(back.kind, entry.kind);
     assert_eq!(back.timestamp, entry.timestamp);
 }
+
+// --- PinPosition tests ---
+
+#[test]
+fn pin_position_defaults_to_none() {
+    // Given all six constructors.
+    let user = ChatEntry::user("u");
+    let system = ChatEntry::system("s");
+    let assistant = ChatEntry::assistant("a");
+    let actor = ChatEntry::actor("src", "t");
+    let tool_call = ChatEntry::tool_call("id", "name", "args");
+    let tool_result = ChatEntry::tool_result("id", "name", "content", true);
+
+    // Then all have pin_position = None.
+    assert_eq!(user.pin_position, None);
+    assert_eq!(system.pin_position, None);
+    assert_eq!(assistant.pin_position, None);
+    assert_eq!(actor.pin_position, None);
+    assert_eq!(tool_call.pin_position, None);
+    assert_eq!(tool_result.pin_position, None);
+}
+
+#[test]
+fn with_pin_sets_position() {
+    // Given a user entry.
+    let entry = ChatEntry::user("test").with_pin(PinPosition::Top);
+
+    // Then pin_position is Some(Top).
+    assert_eq!(entry.pin_position, Some(PinPosition::Top));
+}
+
+#[test]
+fn is_pinned_returns_true_when_pinned() {
+    // Given a pinned entry.
+    let entry = ChatEntry::user("test").with_pin(PinPosition::Top);
+
+    // Then is_pinned returns true.
+    assert!(entry.is_pinned());
+}
+
+#[test]
+fn is_pinned_returns_false_when_unpinned() {
+    // Given a default entry.
+    let entry = ChatEntry::user("test");
+
+    // Then is_pinned returns false.
+    assert!(!entry.is_pinned());
+}
+
+#[test]
+fn pin_position_returns_some_when_pinned() {
+    // Given a pinned entry.
+    let entry = ChatEntry::user("test").with_pin(PinPosition::Bottom);
+
+    // Then pin_position() returns the correct variant.
+    assert_eq!(entry.pin_position(), Some(PinPosition::Bottom));
+}
+
+#[test]
+fn pin_position_returns_none_when_unpinned() {
+    // Given an unpinned entry.
+    let entry = ChatEntry::user("test");
+
+    // Then pin_position() returns None.
+    assert_eq!(entry.pin_position(), None);
+}
+
+#[test]
+fn pin_position_serialization_roundtrip() {
+    // Given a pinned entry.
+    let entry = ChatEntry::user("instruction").with_pin(PinPosition::Top);
+
+    // When serialized and deserialized.
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the pin position is preserved.
+    assert_eq!(back.pin_position, Some(PinPosition::Top));
+}
+
+#[test]
+fn pin_position_deserializes_old_format() {
+    // Given JSON without pin_position field (old format).
+    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"User":"hello"}}"#;
+
+    // When deserializing.
+    let entry: ChatEntry = serde_json::from_str(json).expect("deserialize old format");
+
+    // Then pin_position is None (backward compat via #[serde(default)]).
+    assert_eq!(entry.pin_position, None);
+}
+
+#[test]
+fn pin_position_enum_serialization() {
+    // Given each PinPosition variant.
+    for (label, position) in [
+        ("Top", PinPosition::Top),
+        ("Bottom", PinPosition::Bottom),
+        ("Relative", PinPosition::Relative),
+    ] {
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&position).expect("serialize");
+        let back: PinPosition = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the variant roundtrips correctly.
+        assert_eq!(back, position, "roundtrip failed for {label}");
+    }
+}
+
+#[test]
+fn with_pin_does_not_mutate_original() {
+    // Given a cloned user entry.
+    let original = ChatEntry::user("test");
+    let clone = original.clone();
+
+    // When calling with_pin on the clone.
+    let _pinned = clone.with_pin(PinPosition::Top);
+
+    // Then the original is unchanged (pin_position still None).
+    assert_eq!(original.pin_position, None);
+}

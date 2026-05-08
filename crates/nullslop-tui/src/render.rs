@@ -10,7 +10,7 @@ use ratatui_tabs::{TabManager, TabsBar, TabsStyle};
 use ratatui_which_key::{PopupPosition, WhichKey};
 
 use crate::TuiApp;
-use crate::app::{CHAT_PANE, PaneFocus, WORKFLOW_PANE};
+use crate::app::{CHAT_PANE, PaneFocus, PINNED_PANE, WORKFLOW_PANE};
 
 /// Minimum terminal width.
 pub const MIN_WIDTH: u16 = 40;
@@ -122,20 +122,37 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
     match state.active_tab {
         nullslop_protocol::ActiveTab::Chat => {
-            let content_area = if app.workflow_pane_visible {
+            let content_area = if app.workflow_pane_visible || app.pinned_pane_visible {
                 app.split_manager.set_viewport(layout.content);
                 let areas = app.split_manager.areas();
                 let result = crate::split_borders::compute_split_borders(areas);
                 let chat_rect = result.rect_for(CHAT_PANE).unwrap_or(layout.content);
-                let workflow_rect = result
-                    .rect_for(WORKFLOW_PANE)
-.unwrap_or_default();
 
-                // Render workflow panel into sidebar.
-                if let Some(element) = app.ui_registry.get_mut("workflow-panel") {
-                    element.render(frame, workflow_rect, &state);
-                    if element.is_selectable() && app.pane_focus == PaneFocus::Workflow {
-                        rects.push(workflow_rect);
+                if app.workflow_pane_visible {
+                    let workflow_rect = result
+                        .rect_for(WORKFLOW_PANE)
+                        .unwrap_or_default();
+
+                    // Render workflow panel into sidebar.
+                    if let Some(element) = app.ui_registry.get_mut("workflow-panel") {
+                        element.render(frame, workflow_rect, &state);
+                        if element.is_selectable() && app.pane_focus == PaneFocus::Workflow {
+                            rects.push(workflow_rect);
+                        }
+                    }
+                }
+
+                if app.pinned_pane_visible {
+                    let pinned_rect = result
+                        .rect_for(PINNED_PANE)
+                        .unwrap_or_default();
+
+                    // Render pinned panel into sidebar.
+                    if let Some(element) = app.ui_registry.get_mut("pinned-panel") {
+                        element.render(frame, pinned_rect, &state);
+                        if element.is_selectable() && app.pane_focus == PaneFocus::Pinned {
+                            rects.push(pinned_rect);
+                        }
                     }
                 }
 
