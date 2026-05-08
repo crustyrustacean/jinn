@@ -50,6 +50,7 @@ mod tests {
             tools: &[],
             model_name: "test-model",
             session_id,
+            budget_offset: 0,
         }
     }
 

@@ -14,6 +14,8 @@ pub enum Scope {
     Dashboard,
     /// Workflow mode — workflow step list navigation.
     Workflow,
+    /// Pinned panel mode — pinned entry navigation and management.
+    Pinned,
     /// Picker mode — filtering and selecting a provider.
     Picker,
     /// Input mode — typing into the input buffer.
@@ -26,6 +28,7 @@ impl std::fmt::Display for Scope {
             Self::Normal => write!(f, "Normal"),
             Self::Dashboard => write!(f, "Dashboard"),
             Self::Workflow => write!(f, "Workflow"),
+            Self::Pinned => write!(f, "Pinned"),
             Self::Picker => write!(f, "Picker"),
             Self::Input => write!(f, "Input"),
         }
@@ -40,6 +43,7 @@ impl std::str::FromStr for Scope {
             "Normal" => Ok(Self::Normal),
             "Dashboard" => Ok(Self::Dashboard),
             "Workflow" => Ok(Self::Workflow),
+            "Pinned" => Ok(Self::Pinned),
             "Picker" => Ok(Self::Picker),
             "Input" => Ok(Self::Input),
             _ => Err(()),
@@ -61,12 +65,13 @@ mod tests {
 
     #[test]
     fn picker_is_between_normal_and_input() {
-        // Given the four scopes.
+        // Given the six scopes.
         // When comparing.
-        // Then Normal < Dashboard < Picker < Input (derived from declaration order).
+        // Then Normal < Dashboard < Workflow < Pinned < Picker < Input (derived from declaration order).
         assert!(Scope::Normal < Scope::Dashboard);
         assert!(Scope::Dashboard < Scope::Workflow);
-        assert!(Scope::Workflow < Scope::Picker);
+        assert!(Scope::Workflow < Scope::Pinned);
+        assert!(Scope::Pinned < Scope::Picker);
         assert!(Scope::Picker < Scope::Input);
     }
 }

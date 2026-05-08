@@ -7,9 +7,10 @@ mod command;
 mod event;
 
 pub use command::{
-    AutocompleteConfirm, Clear, DeleteGrapheme, DeleteGraphemeForward, EnqueueUserMessage,
-    InsertChar, Interrupt, MoveCursorDown, MoveCursorLeft, MoveCursorRight, MoveCursorToEnd,
-    MoveCursorToStart, MoveCursorUp, MoveCursorWordLeft, MoveCursorWordRight, PushChatEntry,
-    SetChatInputText, SubmitMessage,
+    AutocompleteConfirm, ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev, Clear,
+    DeleteGrapheme, DeleteGraphemeForward, EnqueueUserMessage, InsertChar, Interrupt,
+    MoveCursorDown, MoveCursorLeft, MoveCursorRight, MoveCursorToEnd, MoveCursorToStart,
+    MoveCursorUp, MoveCursorWordLeft, MoveCursorWordRight, PushChatEntry, SetChatInputText,
+    SubmitMessage,
 };
 pub use event::ChatEntrySubmitted;

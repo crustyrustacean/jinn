@@ -1,4 +1,4 @@
-use nullslop_protocol::ChatEntry;
+use nullslop_protocol::{ChatEntry, ChatEntryKind, ChatEntryId, PinPosition};
 
 use super::*;
 
@@ -652,4 +652,369 @@ fn new_with_strategy_creates_empty_history() {
 
     // Then the history is empty.
     assert!(session.history().is_empty());
+}
+
+// --- Pinning tests ---
+
+#[test]
+fn pin_entry_sets_position_on_matching_entry() {
+    // Given a session with two entries.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("first"));
+    let id0 = session.history()[0].id.clone();
+    session.push_entry(ChatEntry::user("second"));
+
+    // When pinning the first entry as Top.
+    session.pin_entry(&id0, PinPosition::Top);
+
+    // Then the first entry has pin_position set to Top.
+    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Top));
+    // And the second entry is still unpinned.
+    assert_eq!(session.history()[1].pin_position, None);
+}
+
+#[test]
+fn pin_entry_is_noop_for_nonexistent_id() {
+    // Given a session with one entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+
+    // When pinning a random ID.
+    let fake_id = ChatEntryId::new();
+    session.pin_entry(&fake_id, PinPosition::Top);
+
+    // Then no entries changed.
+    assert_eq!(session.history()[0].pin_position, None);
+}
+
+#[test]
+fn unpin_entry_clears_position() {
+    // Given a session with a pinned entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("test"));
+    let id = session.history()[0].id.clone();
+    session.pin_entry(&id, PinPosition::Top);
+    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Top));
+
+    // When unpinning.
+    session.unpin_entry(&id);
+
+    // Then the pin position is cleared.
+    assert_eq!(session.history()[0].pin_position, None);
+}
+
+#[test]
+fn unpin_entry_is_noop_for_nonexistent_id() {
+    // Given a session with one entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+
+    // When unpinning a random ID.
+    let fake_id = ChatEntryId::new();
+    session.unpin_entry(&fake_id);
+
+    // Then no panic and no entries changed.
+    assert_eq!(session.history()[0].pin_position, None);
+}
+
+#[test]
+fn pinned_entries_returns_only_pinned() {
+    // Given a session with three entries, two pinned.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("first"));
+    session.push_entry(ChatEntry::user("second"));
+    session.push_entry(ChatEntry::user("third"));
+    let id0 = session.history()[0].id.clone();
+    let id2 = session.history()[2].id.clone();
+    session.pin_entry(&id0, PinPosition::Top);
+    session.pin_entry(&id2, PinPosition::Bottom);
+
+    // When getting pinned entries.
+    let pinned = session.pinned_entries();
+
+    // Then only the pinned entries are returned.
+    assert_eq!(pinned.len(), 2);
+    assert_eq!(pinned[0].id, id0);
+    assert_eq!(pinned[1].id, id2);
+}
+
+#[test]
+fn pinned_entries_returns_in_history_order() {
+    // Given a session with five entries, three pinned at indices 0, 2, 4.
+    let mut session = ChatSessionState::new();
+    for i in 0..5 {
+        session.push_entry(ChatEntry::user(format!("msg {i}")));
+    }
+    let id0 = session.history()[0].id.clone();
+    let id2 = session.history()[2].id.clone();
+    let id4 = session.history()[4].id.clone();
+    // Pin in reverse order to verify ordering is by history, not pin order.
+    session.pin_entry(&id4, PinPosition::Relative);
+    session.pin_entry(&id0, PinPosition::Top);
+    session.pin_entry(&id2, PinPosition::Bottom);
+
+    // When getting pinned entries.
+    let pinned = session.pinned_entries();
+
+    // Then they are in history order (0, 2, 4).
+    assert_eq!(pinned.len(), 3);
+    assert_eq!(pinned[0].id, id0);
+    assert_eq!(pinned[1].id, id2);
+    assert_eq!(pinned[2].id, id4);
+}
+
+#[test]
+fn pinned_entries_returns_empty_when_none_pinned() {
+    // Given a session with entries, none pinned.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+
+    // When getting pinned entries.
+    let pinned = session.pinned_entries();
+
+    // Then the result is empty.
+    assert!(pinned.is_empty());
+}
+
+#[test]
+fn pin_entry_can_change_position() {
+    // Given a session with a pinned entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("test"));
+    let id = session.history()[0].id.clone();
+    session.pin_entry(&id, PinPosition::Top);
+    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Top));
+
+    // When re-pinning with a different position.
+    session.pin_entry(&id, PinPosition::Bottom);
+
+    // Then the position is updated.
+    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Bottom));
+}
+
+#[test]
+fn pin_position_survives_restore_history() {
+    // Given a history with pinned entries.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a").with_pin(PinPosition::Top));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c").with_pin(PinPosition::Bottom));
+
+    let original_history = session.history().to_vec();
+
+    // When restoring history from a snapshot.
+    let mut new_session = ChatSessionState::new();
+    new_session.restore_history(original_history);
+
+    // Then pinned entries survive.
+    let pinned = new_session.pinned_entries();
+    assert_eq!(pinned.len(), 2);
+    assert_eq!(pinned[0].pin_position, Some(PinPosition::Top));
+    assert_eq!(pinned[1].pin_position, Some(PinPosition::Bottom));
+}
+
+// --- Selection tests ---
+
+#[test]
+fn select_next_entry_starts_at_first_when_no_selection() {
+    // Given a session with 3 entries and no selection.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    assert_eq!(session.selected_entry_index(), None);
+
+    // When selecting next.
+    session.select_next_entry();
+
+    // Then the first entry (index 0) is selected.
+    assert_eq!(session.selected_entry_index(), Some(0));
+}
+
+#[test]
+fn select_next_entry_increments_from_current() {
+    // Given a session with 3 entries and selection at index 1.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    session.select_next_entry(); // 0
+    session.select_next_entry(); // 1
+
+    // When selecting next again.
+    session.select_next_entry();
+
+    // Then the index is 2.
+    assert_eq!(session.selected_entry_index(), Some(2));
+}
+
+#[test]
+fn select_next_entry_clamps_at_last_index() {
+    // Given a session with 3 entries and selection at last index.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    session.select_next_entry(); // 0
+    session.select_next_entry(); // 1
+    session.select_next_entry(); // 2
+
+    // When selecting next again.
+    session.select_next_entry();
+
+    // Then the index stays at 2.
+    assert_eq!(session.selected_entry_index(), Some(2));
+}
+
+#[test]
+fn select_prev_entry_starts_at_last_when_no_selection() {
+    // Given a session with 3 entries and no selection.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+
+    // When selecting prev.
+    session.select_prev_entry();
+
+    // Then the last entry (index 2) is selected.
+    assert_eq!(session.selected_entry_index(), Some(2));
+}
+
+#[test]
+fn select_prev_entry_decrements_from_current() {
+    // Given a session with 3 entries and selection at index 2.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    session.select_prev_entry(); // 2
+
+    // When selecting prev again.
+    session.select_prev_entry();
+
+    // Then the index is 1.
+    assert_eq!(session.selected_entry_index(), Some(1));
+}
+
+#[test]
+fn select_prev_entry_clamps_at_zero() {
+    // Given a session with 3 entries and selection at index 0.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    session.select_next_entry(); // 0
+
+    // When selecting prev.
+    session.select_prev_entry();
+
+    // Then the index stays at 0.
+    assert_eq!(session.selected_entry_index(), Some(0));
+}
+
+#[test]
+fn select_next_is_noop_on_empty_history() {
+    // Given an empty session.
+    let mut session = ChatSessionState::new();
+
+    // When selecting next.
+    session.select_next_entry();
+
+    // Then no selection is set.
+    assert_eq!(session.selected_entry_index(), None);
+}
+
+#[test]
+fn select_prev_is_noop_on_empty_history() {
+    // Given an empty session.
+    let mut session = ChatSessionState::new();
+
+    // When selecting prev.
+    session.select_prev_entry();
+
+    // Then no selection is set.
+    assert_eq!(session.selected_entry_index(), None);
+}
+
+#[test]
+fn clear_selection_resets_to_none() {
+    // Given a session with a selection.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.select_next_entry();
+    assert_eq!(session.selected_entry_index(), Some(0));
+
+    // When clearing selection.
+    session.clear_selection();
+
+    // Then selection is None.
+    assert_eq!(session.selected_entry_index(), None);
+}
+
+#[test]
+fn selected_entry_returns_entry_at_index() {
+    // Given a session with entries, second selected.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    session.select_next_entry(); // 0
+    session.select_next_entry(); // 1
+
+    // When getting the selected entry.
+    let entry = session.selected_entry();
+
+    // Then it returns the entry at index 1.
+    assert!(entry.is_some());
+    assert_eq!(
+        entry.unwrap().kind,
+        ChatEntryKind::User("b".to_owned())
+    );
+}
+
+#[test]
+fn selected_entry_id_returns_id_at_index() {
+    // Given a session with a selected entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let expected_id = session.history()[0].id.clone();
+    session.select_next_entry();
+
+    // When getting the selected entry ID.
+    let id = session.selected_entry_id();
+
+    // Then it matches the first entry's ID.
+    assert_eq!(id, Some(&expected_id));
+}
+
+#[test]
+fn push_entry_clears_selection() {
+    // Given a session with a selected entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.select_next_entry();
+    assert_eq!(session.selected_entry_index(), Some(0));
+
+    // When pushing a new entry.
+    session.push_entry(ChatEntry::user("b"));
+
+    // Then the selection is cleared.
+    assert_eq!(session.selected_entry_index(), None);
+}
+
+#[test]
+fn restore_history_clears_selection() {
+    // Given a session with a selected entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.select_next_entry();
+    assert_eq!(session.selected_entry_index(), Some(0));
+
+    // When restoring history.
+    session.restore_history(vec![ChatEntry::user("new")]);
+
+    // Then the selection is cleared.
+    assert_eq!(session.selected_entry_index(), None);
 }

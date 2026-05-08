@@ -38,6 +38,31 @@ impl std::fmt::Display for ChatEntryId {
     }
 }
 
+/// Where a pinned entry should appear in the assembled prompt.
+///
+/// Entries with a pin position are never discarded by prompt assembly strategies
+/// (sliding window, token budget, compaction). The position controls *where*
+/// they appear in the final assembled prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PinPosition {
+    /// Always appear at the very beginning of the assembled prompt.
+    Top,
+    /// Always appear just before the most recent message.
+    Bottom,
+    /// Stay at this entry's original position in history.
+    Relative,
+}
+
+impl std::fmt::Display for PinPosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Top => write!(f, "TOP"),
+            Self::Bottom => write!(f, "BOTTOM"),
+            Self::Relative => write!(f, "RELATIVE"),
+        }
+    }
+}
+
 /// A single entry in the chat history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatEntry {
@@ -47,6 +72,12 @@ pub struct ChatEntry {
     pub timestamp: jiff::Timestamp,
     /// What kind of entry this is.
     pub kind: ChatEntryKind,
+    /// Whether this entry is pinned to the context, and where.
+    ///
+    /// Pinned entries are never discarded by prompt assembly strategies.
+    /// `None` (default) means the entry is not pinned.
+    #[serde(default)]
+    pub pin_position: Option<PinPosition>,
 }
 
 /// The kind of chat entry.
@@ -98,6 +129,7 @@ impl ChatEntry {
             id: ChatEntryId::new(),
             timestamp: jiff::Timestamp::now(),
             kind: ChatEntryKind::User(text.into()),
+            pin_position: None,
         }
     }
 
@@ -111,6 +143,7 @@ impl ChatEntry {
             id: ChatEntryId::new(),
             timestamp: jiff::Timestamp::now(),
             kind: ChatEntryKind::System(text.into()),
+            pin_position: None,
         }
     }
 
@@ -124,6 +157,7 @@ impl ChatEntry {
             id: ChatEntryId::new(),
             timestamp: jiff::Timestamp::now(),
             kind: ChatEntryKind::Assistant(text.into()),
+            pin_position: None,
         }
     }
 
@@ -141,6 +175,7 @@ impl ChatEntry {
                 source: source.into(),
                 text: text.into(),
             },
+            pin_position: None,
         }
     }
 
@@ -160,6 +195,7 @@ impl ChatEntry {
                 name: name.into(),
                 arguments: arguments.into(),
             },
+            pin_position: None,
         }
     }
 
@@ -180,7 +216,27 @@ impl ChatEntry {
                 content: content.into(),
                 success,
             },
+            pin_position: None,
         }
+    }
+
+    /// Set the pin position on this entry, returning the modified entry.
+    ///
+    /// Used as a builder: `ChatEntry::user("instruction").with_pin(PinPosition::Top)`
+    #[must_use]
+    pub fn with_pin(mut self, position: PinPosition) -> Self {
+        self.pin_position = Some(position);
+        self
+    }
+
+    /// Whether this entry is pinned to the context.
+    pub fn is_pinned(&self) -> bool {
+        self.pin_position.is_some()
+    }
+
+    /// The pin position, if this entry is pinned.
+    pub fn pin_position(&self) -> Option<PinPosition> {
+        self.pin_position
     }
 }
 

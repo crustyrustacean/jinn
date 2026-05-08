@@ -3,7 +3,7 @@
 use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 
-use nullslop_protocol::{ChatEntry, ChatEntryKind};
+use nullslop_protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
 use nullslop_workflow::WorkflowState;
 use serde_json::Value as JsonValue;
 
@@ -40,6 +40,11 @@ pub struct ChatSessionState {
     /// `None` means "show the bottom of the conversation" (auto-scroll).
     /// `Some(n)` means the user has manually scrolled to offset `n`.
     scroll_offset: Option<u16>,
+    /// The index of the currently selected chat entry, if any.
+    ///
+    /// Used by j/k navigation in Normal mode for targeting entries
+    /// for actions like pinning. `None` means no entry is selected.
+    selected_entry_index: Option<usize>,
     /// The maximum scroll offset computed during the last render.
     ///
     /// Used by scroll handlers to resolve the "at bottom" sentinel into
@@ -68,6 +73,7 @@ impl ChatSessionState {
             active_strategy: nullslop_protocol::PromptStrategyId::passthrough(),
             streaming_tool_call_indices: HashMap::new(),
             scroll_offset: None,
+            selected_entry_index: None,
             last_max_offset: Cell::new(0),
             workflow: None,
             strategy_state: None,
@@ -88,6 +94,7 @@ impl ChatSessionState {
             active_strategy: strategy_id,
             streaming_tool_call_indices: HashMap::new(),
             scroll_offset: None,
+            selected_entry_index: None,
             last_max_offset: Cell::new(0),
             workflow: None,
             strategy_state: None,
@@ -116,6 +123,7 @@ impl ChatSessionState {
         let index = self.history.len();
         self.history.push(entry);
         self.reset_scroll();
+        self.clear_selection();
         index
     }
 
@@ -442,6 +450,7 @@ impl ChatSessionState {
     /// persistence to rehydrate a session from disk.
     pub fn restore_history(&mut self, entries: Vec<ChatEntry>) {
         self.history = entries;
+        self.clear_selection();
     }
 
     // --- Workflow ---
@@ -469,6 +478,79 @@ impl ChatSessionState {
     /// Clear the active workflow.
     pub fn clear_workflow(&mut self) {
         self.workflow = None;
+    }
+
+    // --- Pinning ---
+
+    /// Pin an entry by ID, setting its pin position.
+    ///
+    /// If no entry with the given ID exists, this is a no-op.
+    pub fn pin_entry(&mut self, id: &ChatEntryId, position: PinPosition) {
+        if let Some(entry) = self.history.iter_mut().find(|e| e.id == *id) {
+            entry.pin_position = Some(position);
+        }
+    }
+
+    /// Unpin an entry by ID, clearing its pin position.
+    ///
+    /// If no entry with the given ID exists, this is a no-op.
+    pub fn unpin_entry(&mut self, id: &ChatEntryId) {
+        if let Some(entry) = self.history.iter_mut().find(|e| e.id == *id) {
+            entry.pin_position = None;
+        }
+    }
+
+    /// Returns all pinned entries in history order.
+    pub fn pinned_entries(&self) -> Vec<&ChatEntry> {
+        self.history.iter().filter(|e| e.is_pinned()).collect()
+    }
+
+    // --- Selection ---
+
+    /// Select the next entry (moving toward newer messages).
+    ///
+    /// If nothing is selected, selects the first entry.
+    /// Clamps to the last entry index.
+    /// No-op if history is empty.
+    pub fn select_next_entry(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+        let max = self.history.len() - 1;
+        self.selected_entry_index = Some(self.selected_entry_index.map_or(0, |i| i.saturating_add(1).min(max)));
+    }
+
+    /// Select the previous entry (moving toward older messages).
+    ///
+    /// If nothing is selected, selects the last entry.
+    /// Clamps to 0.
+    /// No-op if history is empty.
+    pub fn select_prev_entry(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+        self.selected_entry_index = Some(self.selected_entry_index.map_or(self.history.len() - 1, |i| i.saturating_sub(1)));
+    }
+
+    /// Clear the entry selection.
+    pub fn clear_selection(&mut self) {
+        self.selected_entry_index = None;
+    }
+
+    /// The index of the currently selected entry, if any.
+    pub fn selected_entry_index(&self) -> Option<usize> {
+        self.selected_entry_index
+    }
+
+    /// The currently selected entry, if any.
+    pub fn selected_entry(&self) -> Option<&ChatEntry> {
+        let i = self.selected_entry_index?;
+        self.history.get(i)
+    }
+
+    /// The ID of the currently selected entry, if any.
+    pub fn selected_entry_id(&self) -> Option<&ChatEntryId> {
+        self.selected_entry().map(|e| &e.id)
     }
 
     // --- Strategy state ---

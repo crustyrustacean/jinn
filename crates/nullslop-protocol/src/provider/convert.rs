@@ -8,8 +8,14 @@ use crate::tool::ToolCall;
 /// Convert chat history entries to LLM messages.
 ///
 /// Includes `User`, `Assistant`, `ToolCall`, and `ToolResult` entries.
-/// System and actor entries are skipped since they are not part of the
-/// conversation context for the LLM.
+///
+/// System and Actor entries are **skipped unless pinned**. When pinned:
+/// - Pinned `System` entries produce [`LlmMessage::System`] messages.
+/// - Pinned `Actor` entries produce [`LlmMessage::User`] messages with a
+///   `[Actor: source]` prefix to identify the origin.
+///
+/// Unpinned System and Actor entries are excluded from the LLM conversation
+/// context since they represent internal application state.
 ///
 /// Assistant entries that follow a `ToolCall` + `ToolResult` sequence are
 /// produced with their `tool_calls` field populated.
@@ -63,8 +69,22 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     content: content.clone(),
                 });
             }
-            // System and Actor entries are not sent to the LLM.
-            ChatEntryKind::System(_) | ChatEntryKind::Actor { .. } => {}
+            // System entries are only sent to the LLM when pinned.
+            ChatEntryKind::System(content) => {
+                if entry.is_pinned() {
+                    messages.push(LlmMessage::System {
+                        content: content.clone(),
+                    });
+                }
+            }
+            // Actor entries are only sent to the LLM when pinned.
+            ChatEntryKind::Actor { source, text } => {
+                if entry.is_pinned() {
+                    messages.push(LlmMessage::User {
+                        content: format!("[Actor: {source}] {text}"),
+                    });
+                }
+            }
         }
     }
 
@@ -74,6 +94,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::PinPosition;
 
     #[test]
     fn entries_to_messages_converts_user_entries() {
@@ -313,5 +334,159 @@ mod tests {
         assert!(matches!(&messages[0], LlmMessage::User { .. }));
         assert!(matches!(&messages[1], LlmMessage::Assistant { .. }));
         assert!(matches!(&messages[2], LlmMessage::Tool { .. }));
+    }
+
+    #[test]
+    fn pinned_system_entry_produces_system_message() {
+        // Given a pinned System entry.
+        let entries = vec![ChatEntry::system("important instruction").with_pin(PinPosition::Top)];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then a System message is produced.
+        assert_eq!(messages.len(), 1);
+        assert_eq!(
+            messages[0],
+            LlmMessage::System {
+                content: "important instruction".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn pinned_actor_entry_produces_user_message() {
+        // Given a pinned Actor entry.
+        let entries = vec![
+            ChatEntry::actor("echo", "HELLO").with_pin(PinPosition::Relative),
+        ];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then a User message with the actor prefix is produced.
+        assert_eq!(messages.len(), 1);
+        assert_eq!(
+            messages[0],
+            LlmMessage::User {
+                content: "[Actor: echo] HELLO".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn unpinned_system_entry_still_skipped() {
+        // Given an unpinned System entry.
+        let entries = vec![ChatEntry::system("ready")];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then no messages are produced.
+        assert!(messages.is_empty());
+    }
+
+    #[test]
+    fn unpinned_actor_entry_still_skipped() {
+        // Given an unpinned Actor entry.
+        let entries = vec![ChatEntry::actor("echo", "HELLO")];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then no messages are produced.
+        assert!(messages.is_empty());
+    }
+
+    #[test]
+    fn mixed_pinned_and_unpinned_entries() {
+        // Given a mix of pinned and unpinned System/Actor entries.
+        let entries = vec![
+            ChatEntry::system("unpinned system"),
+            ChatEntry::system("pinned system").with_pin(PinPosition::Top),
+            ChatEntry::actor("a", "unpinned actor"),
+            ChatEntry::actor("b", "pinned actor").with_pin(PinPosition::Bottom),
+        ];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then only the pinned entries appear.
+        assert_eq!(messages.len(), 2);
+        assert_eq!(
+            messages[0],
+            LlmMessage::System {
+                content: "pinned system".into(),
+            }
+        );
+        assert_eq!(
+            messages[1],
+            LlmMessage::User {
+                content: "[Actor: b] pinned actor".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn pinned_system_with_other_entries() {
+        // Given a pinned System entry alongside User and Assistant entries.
+        let entries = vec![
+            ChatEntry::system("always include").with_pin(PinPosition::Top),
+            ChatEntry::user("hello"),
+            ChatEntry::assistant("hi"),
+        ];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then the pinned System entry appears first, followed by User and Assistant.
+        assert_eq!(messages.len(), 3);
+        assert_eq!(
+            messages[0],
+            LlmMessage::System {
+                content: "always include".into(),
+            }
+        );
+        assert_eq!(
+            messages[1],
+            LlmMessage::User {
+                content: "hello".into(),
+            }
+        );
+        assert_eq!(
+            messages[2],
+            LlmMessage::Assistant {
+                content: "hi".into(),
+                tool_calls: None,
+            }
+        );
+    }
+
+    #[test]
+    fn pinned_user_and_assistant_entries_unaffected() {
+        // Given pinned User and Assistant entries.
+        let entries = vec![
+            ChatEntry::user("hello").with_pin(PinPosition::Relative),
+            ChatEntry::assistant("hi").with_pin(PinPosition::Relative),
+        ];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then pinning does not change their conversion — they are included as normal.
+        assert_eq!(messages.len(), 2);
+        assert_eq!(
+            messages[0],
+            LlmMessage::User {
+                content: "hello".into(),
+            }
+        );
+        assert_eq!(
+            messages[1],
+            LlmMessage::Assistant {
+                content: "hi".into(),
+                tool_calls: None,
+            }
+        );
     }
 }

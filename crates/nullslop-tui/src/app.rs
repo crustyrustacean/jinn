@@ -7,6 +7,9 @@ use derive_more::Debug;
 use nullslop_component::AppUiRegistry;
 use nullslop_core::{AppCore, AppMsg};
 use nullslop_protocol::{ActiveTab, Command, Mode};
+use nullslop_protocol::context::PinChatEntry;
+use nullslop_protocol::chat_input::ChatEntrySelectCancel;
+use nullslop_protocol::PinPosition;
 use ratatui::Frame;
 use ratatui_spatial_splits::{AreaId, SplitManager};
 use ratatui_tabs::TabManager;
@@ -25,6 +28,8 @@ use crate::{AppStatus, MsgHandler};
 pub(crate) const CHAT_PANE: AreaId = AreaId(1);
 /// Well-known area ID for the workflow sidebar pane in the split layout.
 pub(crate) const WORKFLOW_PANE: AreaId = AreaId(2);
+/// Well-known area ID for the pinned context sidebar pane in the split layout.
+pub(crate) const PINNED_PANE: AreaId = AreaId(3);
 
 /// Which pane currently has keyboard focus in the Chat tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +38,8 @@ pub enum PaneFocus {
     Chat,
     /// The workflow sidebar pane (right side).
     Workflow,
+    /// The pinned context sidebar pane (right side).
+    Pinned,
 }
 
 /// Type alias for the which-key state parameterized for nullslop.
@@ -85,6 +92,8 @@ pub struct TuiApp {
     pub(crate) pane_focus: PaneFocus,
     /// Whether the workflow sidebar pane is visible.
     pub(crate) workflow_pane_visible: bool,
+    /// Whether the pinned context sidebar pane is visible.
+    pub(crate) pinned_pane_visible: bool,
 }
 
 impl TuiApp {
@@ -120,6 +129,7 @@ impl TuiApp {
             split_manager: SplitManager::new(),
             pane_focus: PaneFocus::Chat,
             workflow_pane_visible: false,
+            pinned_pane_visible: false,
         }
     }
 
@@ -167,6 +177,7 @@ impl TuiApp {
             split_manager: SplitManager::new(),
             pane_focus: PaneFocus::Chat,
             workflow_pane_visible: false,
+            pinned_pane_visible: false,
         }
     }
 
@@ -350,6 +361,49 @@ impl TuiApp {
             }
             Command::WorkflowFocusChat => self.focus_chat_pane(),
             Command::WorkflowFocusWorkflow => self.focus_workflow_pane(),
+            Command::PinnedPanelToggle => self.toggle_pinned_pane(),
+            Command::PinnedPanelOpen => self.open_pinned_pane(),
+            Command::PinnedPanelClose => self.close_pinned_pane(),
+            Command::ChatEntryPinSelected => {
+                let (session_id, entry_id) = {
+                    let state = self.core.state.read();
+                    match state.active_session().selected_entry_id() {
+                        Some(id) => (state.active_session.clone(), id.clone()),
+                        None => return,
+                    }
+                };
+                let _ = self.core.sender().send(AppMsg::Command {
+                    command: Command::PinChatEntry {
+                        payload: PinChatEntry {
+                            session_id,
+                            entry_id,
+                            position: PinPosition::Relative,
+                        },
+                    },
+                    source: None,
+                });
+            }
+            Command::NormalEscape => {
+                let session_id = self.core.state.read().active_session.clone();
+                let has_selection = self
+                    .core
+                    .state
+                    .read()
+                    .active_session()
+                    .selected_entry_index()
+                    .is_some();
+                if has_selection {
+                    let _ = self.core.sender().send(AppMsg::Command {
+                        command: Command::ChatEntrySelectCancel {
+                            payload: ChatEntrySelectCancel { session_id },
+                        },
+                        source: None,
+                    });
+                }
+                if self.pinned_pane_visible {
+                    self.close_pinned_pane();
+                }
+            }
             _ => {
                 let _ = self.core.sender().send(AppMsg::Command {
                     command: cmd,
@@ -368,6 +422,10 @@ impl TuiApp {
     pub fn open_workflow_pane(&mut self) {
         if self.workflow_pane_visible {
             return;
+        }
+        // Pinned and workflow panels are mutually exclusive.
+        if self.pinned_pane_visible {
+            self.close_pinned_pane();
         }
         self.split_manager.split_vertical_with_ratio(CHAT_PANE, 0.7);
         self.workflow_pane_visible = true;
@@ -409,6 +467,41 @@ impl TuiApp {
             self.pane_focus = PaneFocus::Workflow;
         }
     }
+
+    /// Opens the pinned context sidebar pane by splitting the chat area vertically.
+    pub fn open_pinned_pane(&mut self) {
+        // Close workflow pane first if visible (mutually exclusive).
+        if self.workflow_pane_visible {
+            self.close_workflow_pane();
+        }
+        if self.pinned_pane_visible {
+            // Already visible — just ensure focus is set.
+            self.pane_focus = PaneFocus::Pinned;
+            return;
+        }
+        self.split_manager.split_vertical_with_ratio(CHAT_PANE, 0.7);
+        self.pinned_pane_visible = true;
+        self.pane_focus = PaneFocus::Pinned;
+    }
+
+    /// Closes the pinned context sidebar pane.
+    pub fn close_pinned_pane(&mut self) {
+        if !self.pinned_pane_visible {
+            return;
+        }
+        self.split_manager.close(PINNED_PANE);
+        self.pinned_pane_visible = false;
+        self.pane_focus = PaneFocus::Chat;
+    }
+
+    /// Toggles the pinned context sidebar pane.
+    pub fn toggle_pinned_pane(&mut self) {
+        if self.pinned_pane_visible {
+            self.close_pinned_pane();
+        } else {
+            self.open_pinned_pane();
+        }
+    }
 }
 
 /// Returns the scope corresponding to the given mode, active tab, pane focus, and workflow visibility.
@@ -424,6 +517,8 @@ pub fn scope_for_mode(
             ActiveTab::Chat => {
                 if workflow_visible && pane_focus == PaneFocus::Workflow {
                     Scope::Workflow
+                } else if pane_focus == PaneFocus::Pinned {
+                    Scope::Pinned
                 } else {
                     Scope::Normal
                 }
@@ -474,6 +569,11 @@ mod tests {
         assert_eq!(
             scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, true),
             Scope::Normal
+        );
+        // Pinned scope when pinned pane is focused.
+        assert_eq!(
+            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, false),
+            Scope::Pinned
         );
         assert_eq!(
             scope_for_mode(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, false),
