@@ -83,7 +83,8 @@ mod tests {
     use super::*;
     use crate::AppState;
 
-    #[rstest::rstest]    fn name_returns_streaming_indicator() {
+    #[rstest::rstest]
+    fn name_returns_streaming_indicator() {
         // Given a StreamingIndicatorElement.
         let element = StreamingIndicatorElement::new();
 
@@ -94,7 +95,8 @@ mod tests {
         assert_eq!(name, "streaming-indicator");
     }
 
-    #[rstest::rstest]    fn render_shows_sending_indicator() {
+    #[rstest::rstest]
+    fn render_shows_sending_indicator() {
         // Given a StreamingIndicatorElement and a sending session.
         let mut element = StreamingIndicatorElement::new();
         let mut state = AppState::default();
@@ -117,7 +119,8 @@ mod tests {
         assert_ne!(cell.symbol(), " ");
     }
 
-    #[rstest::rstest]    fn render_shows_streaming_indicator() {
+    #[rstest::rstest]
+    fn render_shows_streaming_indicator() {
         // Given a StreamingIndicatorElement and a streaming session.
         let mut element = StreamingIndicatorElement::new();
         let mut state = AppState::default();
@@ -140,7 +143,8 @@ mod tests {
         assert_ne!(cell.symbol(), " ");
     }
 
-    #[rstest::rstest]    fn render_shows_nothing_when_idle() {
+    #[rstest::rstest]
+    fn render_shows_nothing_when_idle() {
         // Given a StreamingIndicatorElement and an idle session.
         let mut element = StreamingIndicatorElement::new();
         let state = AppState::default();

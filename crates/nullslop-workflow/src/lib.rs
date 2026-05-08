@@ -26,8 +26,8 @@ pub mod state;
 pub mod template;
 
 pub use builder::WorkflowBuilder;
-pub use definition::{ModelHint, StepDef, StepOutputDef, WorkflowDef};
 pub use builder::{WorkflowError, WorkflowErrorKind};
+pub use definition::{ModelHint, StepDef, StepOutputDef, WorkflowDef};
 pub use guard::{
     DefaultGuardEvaluator, GuardEvaluator, GuardExpr, GuardFailure, GuardFileSystem,
     GuardPredicate, GuardResult, GuardShell, RealFileSystem, RealShell,

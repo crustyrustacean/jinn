@@ -18,8 +18,8 @@
 pub mod app_quit;
 pub mod app_state;
 pub mod char_counter;
-pub mod chat_input_box;
 pub mod chat_entry_selection;
+pub mod chat_input_box;
 pub mod chat_log;
 pub mod chat_session;
 pub mod context_pin;
@@ -58,7 +58,6 @@ pub(crate) mod test_utils {
     pub fn test_services() -> Services {
         Services::new()
     }
-
 }
 
 use nullslop_component_core::Bus;
@@ -77,7 +76,9 @@ use ratatui::style::{Color, Modifier, Style};
 ///
 /// Shared across all picker entry types so the look is consistent.
 /// Dark gray background with underline; foreground is inherited from the base style.
-pub const PICKER_HIGHLIGHT_STYLE: Style = Style::new().bg(Color::DarkGray).add_modifier(Modifier::UNDERLINED);
+pub const PICKER_HIGHLIGHT_STYLE: Style = Style::new()
+    .bg(Color::DarkGray)
+    .add_modifier(Modifier::UNDERLINED);
 
 /// Register all built-in components with the bus and UI registry.
 ///
@@ -154,7 +155,8 @@ mod macro_tests {
         }
     }
 
-    #[rstest::rstest]    fn command_handler_returning_stop_prevents_later_handlers() {
+    #[rstest::rstest]
+    fn command_handler_returning_stop_prevents_later_handlers() {
         // Given a StopHandler and a fake handler both registered for Quit.
         let mut bus: Bus<AppState, Services> = Bus::new();
         StopHandler.register(&mut bus);
@@ -190,7 +192,8 @@ mod macro_tests {
         }
     }
 
-    #[rstest::rstest]    fn event_handler_mutates_state() {
+    #[rstest::rstest]
+    fn event_handler_mutates_state() {
         // Given an EventHandlerTest registered with the bus.
         let mut bus: Bus<AppState, Services> = Bus::new();
         EventHandlerTest.register(&mut bus);
@@ -249,7 +252,8 @@ mod macro_tests {
         }
     }
 
-    #[rstest::rstest]    fn insert_char_handler_updates_input() {
+    #[rstest::rstest]
+    fn insert_char_handler_updates_input() {
         // Given a MultiHandler with command handlers registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         MultiHandler.register(&mut bus);
@@ -268,7 +272,8 @@ mod macro_tests {
         assert!(!state.should_quit);
     }
 
-    #[rstest::rstest]    fn quit_handler_sets_should_quit() {
+    #[rstest::rstest]
+    fn quit_handler_sets_should_quit() {
         // Given a MultiHandler with command handlers registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         MultiHandler.register(&mut bus);
@@ -284,7 +289,8 @@ mod macro_tests {
         assert!(state.should_quit);
     }
 
-    #[rstest::rstest]    fn mode_changed_handler_updates_input() {
+    #[rstest::rstest]
+    fn mode_changed_handler_updates_input() {
         // Given a MultiHandler with event handlers registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         MultiHandler.register(&mut bus);

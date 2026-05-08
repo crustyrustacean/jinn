@@ -16,7 +16,8 @@ pub enum CommandAction {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn command_action_variants_are_distinct() {
+    #[rstest::rstest]
+    fn command_action_variants_are_distinct() {
         // Given both variants.
         let actions = [CommandAction::Continue, CommandAction::Stop];
 

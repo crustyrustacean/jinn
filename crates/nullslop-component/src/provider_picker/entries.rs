@@ -297,7 +297,11 @@ pub fn truncate_line(
     use ratatui::text::{Line, Span};
     use unicode_segmentation::UnicodeSegmentation as _;
 
-    let total_len: usize = line.spans.iter().map(|s| s.content.graphemes(true).count()).sum();
+    let total_len: usize = line
+        .spans
+        .iter()
+        .map(|s| s.content.graphemes(true).count())
+        .sum();
     if total_len <= width {
         return line;
     }
@@ -438,4 +442,3 @@ pub fn load_provider_entries(
 #[cfg(test)]
 #[path = "entries_tests.rs"]
 mod entries_tests;
-

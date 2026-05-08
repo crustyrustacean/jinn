@@ -6,10 +6,10 @@ use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
 use nullslop_component::AppUiRegistry;
 use nullslop_core::{AppCore, AppMsg};
-use nullslop_protocol::{ActiveTab, Command, Mode};
-use nullslop_protocol::context::PinChatEntry;
-use nullslop_protocol::chat_input::ChatEntrySelectCancel;
 use nullslop_protocol::PinPosition;
+use nullslop_protocol::chat_input::ChatEntrySelectCancel;
+use nullslop_protocol::context::PinChatEntry;
+use nullslop_protocol::{ActiveTab, Command, Mode};
 use ratatui::Frame;
 use ratatui_spatial_splits::{AreaId, SplitManager};
 use ratatui_tabs::TabManager;
@@ -90,9 +90,9 @@ pub struct TuiApp {
     pub(crate) workflow_pane_visible: bool,
     /// Whether the pinned context sidebar pane is visible.
     pub(crate) pinned_pane_visible: bool,
-    /// Tracked AreaId for the workflow sidebar pane (set when opened, cleared when closed).
+    /// Tracked [`AreaId`] for the workflow sidebar pane (set when opened, cleared when closed).
     pub(crate) workflow_pane_id: Option<AreaId>,
-    /// Tracked AreaId for the pinned context sidebar pane (set when opened, cleared when closed).
+    /// Tracked [`AreaId`] for the pinned context sidebar pane (set when opened, cleared when closed).
     pub(crate) pinned_pane_id: Option<AreaId>,
 }
 
@@ -285,6 +285,10 @@ impl TuiApp {
     ///
     /// Commands that need `TuiApp`-level state (which-key toggle, editor suspend)
     /// are handled directly. All other commands go through the core channel.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "command routing is inherently a large match"
+    )]
     fn route_command(&mut self, cmd: Command) {
         match cmd {
             Command::ToggleWhichKey => {
@@ -332,21 +336,19 @@ impl TuiApp {
                 });
             }
             Command::ToggleKeymapScopeFilter => {
-                {
-                    let mut state = self.core.state.write();
-                    state.keymap_picker_show_all = !state.keymap_picker_show_all;
-                    let scope: Scope = state
-                        .keymap_picker_origin_scope
-                        .as_deref()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(*self.which_key.scope());
-                    let entries = if state.keymap_picker_show_all {
-                        keymap::collect_all_bindings(self.which_key.keymap())
-                    } else {
-                        keymap::collect_bindings_for_scope(self.which_key.keymap(), &scope)
-                    };
-                    state.keymap_picker.set_items(entries);
-                }
+                let mut state = self.core.state.write();
+                state.keymap_picker_show_all = !state.keymap_picker_show_all;
+                let scope: Scope = state
+                    .keymap_picker_origin_scope
+                    .as_deref()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(*self.which_key.scope());
+                let entries = if state.keymap_picker_show_all {
+                    keymap::collect_all_bindings(self.which_key.keymap())
+                } else {
+                    keymap::collect_bindings_for_scope(self.which_key.keymap(), &scope)
+                };
+                state.keymap_picker.set_items(entries);
             }
             Command::WorkflowTogglePane => {
                 let state = self.core.state.read();
@@ -423,6 +425,14 @@ impl TuiApp {
     }
 
     /// Opens the workflow sidebar pane by splitting the chat area vertically.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `CHAT_PANE` is not a valid leaf in the split manager.
+    #[expect(
+        clippy::expect_used,
+        reason = "CHAT_PANE invariant maintained by split manager"
+    )]
     pub fn open_workflow_pane(&mut self) {
         if self.workflow_pane_visible {
             return;
@@ -432,12 +442,12 @@ impl TuiApp {
             self.close_pinned_pane();
         }
         // Defensive: if we have a stale tracked ID in the tree, reuse it.
-        if let Some(id) = self.workflow_pane_id {
-            if self.split_manager.contains(id) {
-                self.workflow_pane_visible = true;
-                self.pane_focus = PaneFocus::Workflow;
-                return;
-            }
+        if let Some(id) = self.workflow_pane_id
+            && self.split_manager.contains(id)
+        {
+            self.workflow_pane_visible = true;
+            self.pane_focus = PaneFocus::Workflow;
+            return;
         }
         let result = self
             .split_manager
@@ -488,6 +498,14 @@ impl TuiApp {
     }
 
     /// Opens the pinned context sidebar pane by splitting the chat area vertically.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `CHAT_PANE` is not a valid leaf in the split manager.
+    #[expect(
+        clippy::expect_used,
+        reason = "CHAT_PANE invariant maintained by split manager"
+    )]
     pub fn open_pinned_pane(&mut self) {
         // Close workflow pane first if visible (mutually exclusive).
         if self.workflow_pane_visible {
@@ -499,12 +517,12 @@ impl TuiApp {
             return;
         }
         // Defensive: if we have a stale tracked ID in the tree, reuse it.
-        if let Some(id) = self.pinned_pane_id {
-            if self.split_manager.contains(id) {
-                self.pinned_pane_visible = true;
-                self.pane_focus = PaneFocus::Pinned;
-                return;
-            }
+        if let Some(id) = self.pinned_pane_id
+            && self.split_manager.contains(id)
+        {
+            self.pinned_pane_visible = true;
+            self.pane_focus = PaneFocus::Pinned;
+            return;
         }
         let result = self
             .split_manager
@@ -578,10 +596,34 @@ mod tests {
 
     #[rstest::rstest]
     #[case::normal_chat(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Normal)]
-    #[case::normal_dashboard(Mode::Normal, ActiveTab::Dashboard, PaneFocus::Chat, false, Scope::Dashboard)]
-    #[case::workflow_visible(Mode::Normal, ActiveTab::Chat, PaneFocus::Workflow, true, Scope::Workflow)]
-    #[case::workflow_not_visible(Mode::Normal, ActiveTab::Chat, PaneFocus::Workflow, false, Scope::Normal)]
-    #[case::pane_visible_chat_focused(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, true, Scope::Normal)]
+    #[case::normal_dashboard(
+        Mode::Normal,
+        ActiveTab::Dashboard,
+        PaneFocus::Chat,
+        false,
+        Scope::Dashboard
+    )]
+    #[case::workflow_visible(
+        Mode::Normal,
+        ActiveTab::Chat,
+        PaneFocus::Workflow,
+        true,
+        Scope::Workflow
+    )]
+    #[case::workflow_not_visible(
+        Mode::Normal,
+        ActiveTab::Chat,
+        PaneFocus::Workflow,
+        false,
+        Scope::Normal
+    )]
+    #[case::pane_visible_chat_focused(
+        Mode::Normal,
+        ActiveTab::Chat,
+        PaneFocus::Chat,
+        true,
+        Scope::Normal
+    )]
     #[case::pinned(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, false, Scope::Pinned)]
     #[case::input(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Input)]
     #[case::picker(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Picker)]
@@ -598,7 +640,8 @@ mod tests {
         assert_eq!(scope_for_mode(mode, tab, focus, pane_visible), expected);
     }
 
-    #[rstest::rstest]    fn mouse_down_left_in_selectable_rect_starts_dragging() {
+    #[rstest::rstest]
+    fn mouse_down_left_in_selectable_rect_starts_dragging() {
         // Given an app with a registered selectable rect.
         let mut app = test_app();
         let rect = Rect::new(5, 5, 20, 10);
@@ -624,7 +667,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn mouse_down_left_outside_selectable_rect_does_not_start_dragging() {
+    #[rstest::rstest]
+    fn mouse_down_left_outside_selectable_rect_does_not_start_dragging() {
         // Given an app with a registered selectable rect.
         let mut app = test_app();
         app.selectable_rects.rebuild(vec![Rect::new(5, 5, 10, 10)]);
@@ -642,7 +686,8 @@ mod tests {
         assert_eq!(app.selection, SelectionState::Idle);
     }
 
-    #[rstest::rstest]    fn mouse_drag_updates_focus_while_dragging() {
+    #[rstest::rstest]
+    fn mouse_drag_updates_focus_while_dragging() {
         // Given an app with an active drag.
         let mut app = test_app();
         let rect = Rect::new(0, 0, 40, 24);
@@ -669,7 +714,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn mouse_up_left_finalizes_selection() {
+    #[rstest::rstest]
+    fn mouse_up_left_finalizes_selection() {
         // Given an app with an active drag.
         let mut app = test_app();
         let rect = Rect::new(0, 0, 40, 24);
@@ -695,7 +741,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn mouse_down_right_cancels_selection() {
+    #[rstest::rstest]
+    fn mouse_down_right_cancels_selection() {
         // Given an app with an active selection.
         let mut app = test_app();
         let rect = Rect::new(0, 0, 40, 24);
@@ -714,7 +761,8 @@ mod tests {
         assert_eq!(app.selection, SelectionState::Idle);
     }
 
-    #[rstest::rstest]    fn scroll_events_still_route_to_keymap() {
+    #[rstest::rstest]
+    fn scroll_events_still_route_to_keymap() {
         // Given an app in Normal scope.
         let mut app = test_app();
         let initial_selection = app.selection.clone();
@@ -732,7 +780,8 @@ mod tests {
         assert_eq!(app.selection, initial_selection);
     }
 
-    #[rstest::rstest]    fn mouse_events_not_handled_when_mouse_selection_disabled() {
+    #[rstest::rstest]
+    fn mouse_events_not_handled_when_mouse_selection_disabled() {
         // Given an app with mouse selection disabled and a registered selectable rect.
         let services = nullslop_services::Services::new();
         let mut app = TuiApp::new_with_config(services, crate::config::TuiConfig::new(false));
@@ -754,7 +803,8 @@ mod tests {
 
     // --- Keymap scope toggle tests ---
 
-    #[rstest::rstest]    fn toggle_scope_filter_to_show_all_includes_multiple_scopes() {
+    #[rstest::rstest]
+    fn toggle_scope_filter_to_show_all_includes_multiple_scopes() {
         // Given an app in Normal scope with keymap picker entries.
         let mut app = test_app();
         app.which_key.set_scope(Scope::Normal);
@@ -783,7 +833,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn toggle_scope_filter_back_to_false_limits_to_normal_scope() {
+    #[rstest::rstest]
+    fn toggle_scope_filter_back_to_false_limits_to_normal_scope() {
         // Given an app in Normal scope with keymap picker entries.
         let mut app = test_app();
         app.which_key.set_scope(Scope::Normal);
@@ -801,7 +852,10 @@ mod tests {
         // Then show_all is false and entries are Normal-scope only (the origin scope).
         {
             let state = app.core.state.read();
-            assert!(!state.keymap_picker_show_all, "should be false after second toggle");
+            assert!(
+                !state.keymap_picker_show_all,
+                "should be false after second toggle"
+            );
             let scope_entries = state.keymap_picker.items();
             assert!(!scope_entries.is_empty(), "should have Normal entries");
             for entry in scope_entries {
@@ -814,7 +868,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn toggle_keymap_scope_filter_preserves_filter_text() {
+    #[rstest::rstest]
+    fn toggle_keymap_scope_filter_preserves_filter_text() {
         // Given an app with keymap picker open and filter text entered.
         let mut app = test_app();
         app.which_key.set_scope(Scope::Normal);
@@ -846,7 +901,8 @@ mod tests {
 
     // --- Pinned pane tracking tests ---
 
-    #[rstest::rstest]    fn open_pinned_sets_tracked_id() {
+    #[rstest::rstest]
+    fn open_pinned_sets_tracked_id() {
         // Given a fresh app.
         let mut app = test_app();
         assert!(app.pinned_pane_id.is_none());
@@ -860,7 +916,8 @@ mod tests {
         assert_eq!(app.pane_focus, PaneFocus::Pinned);
     }
 
-    #[rstest::rstest]    fn open_pinned_adds_split() {
+    #[rstest::rstest]
+    fn open_pinned_adds_split() {
         // Given a fresh app.
         let mut app = test_app();
         assert!(app.pinned_pane_id.is_none());
@@ -873,7 +930,8 @@ mod tests {
         assert!(app.split_manager.contains(id));
     }
 
-    #[rstest::rstest]    fn open_pinned_has_two_leaves() {
+    #[rstest::rstest]
+    fn open_pinned_has_two_leaves() {
         // Given a fresh app.
         let mut app = test_app();
         assert!(app.pinned_pane_id.is_none());
@@ -885,7 +943,8 @@ mod tests {
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
-    #[rstest::rstest]    fn opening_pinned_pane_twice_is_idempotent() {
+    #[rstest::rstest]
+    fn opening_pinned_pane_twice_is_idempotent() {
         // Given an app with the pinned pane already open.
         let mut app = test_app();
         app.open_pinned_pane();
@@ -899,7 +958,8 @@ mod tests {
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
-    #[rstest::rstest]    fn close_pinned_clears_tracked_id() {
+    #[rstest::rstest]
+    fn close_pinned_clears_tracked_id() {
         // Given an app with the pinned pane open.
         let mut app = test_app();
         app.open_pinned_pane();
@@ -913,7 +973,8 @@ mod tests {
         assert_eq!(app.pane_focus, PaneFocus::Chat);
     }
 
-    #[rstest::rstest]    fn close_pinned_removes_split() {
+    #[rstest::rstest]
+    fn close_pinned_removes_split() {
         // Given an app with the pinned pane open.
         let mut app = test_app();
         app.open_pinned_pane();
@@ -927,7 +988,8 @@ mod tests {
         assert_eq!(app.split_manager.leaves().len(), 1);
     }
 
-    #[rstest::rstest]    fn reopen_assigns_new_id() {
+    #[rstest::rstest]
+    fn reopen_assigns_new_id() {
         // Given an app where the pinned pane is opened, closed, then reopened.
         let mut app = test_app();
         app.open_pinned_pane();
@@ -943,7 +1005,8 @@ mod tests {
         assert!(app.split_manager.contains(second_id));
     }
 
-    #[rstest::rstest]    fn reopen_has_two_leaves() {
+    #[rstest::rstest]
+    fn reopen_has_two_leaves() {
         // Given an app where the pinned pane is opened, closed, then reopened.
         let mut app = test_app();
         app.open_pinned_pane();
@@ -956,7 +1019,8 @@ mod tests {
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
-    #[rstest::rstest]    fn open_close_reopen_pinned_pane_many_times_no_orphans() {
+    #[rstest::rstest]
+    fn open_close_reopen_pinned_pane_many_times_no_orphans() {
         // Given an app.
         let mut app = test_app();
 
@@ -974,7 +1038,8 @@ mod tests {
 
     // --- Workflow pane tracking tests ---
 
-    #[rstest::rstest]    fn workflow_sets_tracked_id() {
+    #[rstest::rstest]
+    fn workflow_sets_tracked_id() {
         // Given a fresh app.
         let mut app = test_app();
         assert!(app.workflow_pane_id.is_none());
@@ -988,7 +1053,8 @@ mod tests {
         assert_eq!(app.pane_focus, PaneFocus::Workflow);
     }
 
-    #[rstest::rstest]    fn workflow_creates_split() {
+    #[rstest::rstest]
+    fn workflow_creates_split() {
         // Given a fresh app.
         let mut app = test_app();
         assert!(app.workflow_pane_id.is_none());
@@ -1000,7 +1066,8 @@ mod tests {
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
-    #[rstest::rstest]    fn opening_workflow_pane_twice_is_idempotent() {
+    #[rstest::rstest]
+    fn opening_workflow_pane_twice_is_idempotent() {
         // Given an app with the workflow pane already open.
         let mut app = test_app();
         app.open_workflow_pane();
@@ -1014,7 +1081,8 @@ mod tests {
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
-    #[rstest::rstest]    fn close_and_reopen_workflow_pane_works_cleanly() {
+    #[rstest::rstest]
+    fn close_and_reopen_workflow_pane_works_cleanly() {
         // Given an app where the workflow pane is opened, closed, then reopened.
         let mut app = test_app();
         app.open_workflow_pane();
@@ -1030,7 +1098,8 @@ mod tests {
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
-    #[rstest::rstest]    fn opening_pinned_closes_workflow() {
+    #[rstest::rstest]
+    fn opening_pinned_closes_workflow() {
         // Given an app with the workflow pane open.
         let mut app = test_app();
         app.open_workflow_pane();
@@ -1046,7 +1115,8 @@ mod tests {
         assert!(app.pinned_pane_id.is_some());
     }
 
-    #[rstest::rstest]    fn no_orphan_leaves_remain() {
+    #[rstest::rstest]
+    fn no_orphan_leaves_remain() {
         // Given an app with the workflow pane open.
         let mut app = test_app();
         app.open_workflow_pane();

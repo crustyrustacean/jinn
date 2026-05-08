@@ -401,7 +401,8 @@ mod tests {
 
     // ── compute_split_borders tests ──────────────────────────────
 
-    #[rstest::rstest]    fn vertical_split_produces_border() {
+    #[rstest::rstest]
+    fn vertical_split_produces_border() {
         // Given a vertical split: left(1) at (0,0,50,100), right(2) at (50,0,50,100).
         let areas = vec![
             area(1, Rect::new(0, 0, 50, 100)),
@@ -419,7 +420,8 @@ mod tests {
         assert_eq!(result.lines[0].end, 100);
     }
 
-    #[rstest::rstest]    fn vertical_split_shrinks_left() {
+    #[rstest::rstest]
+    fn vertical_split_shrinks_left() {
         // Given a vertical split: left(1) at (0,0,50,100), right(2) at (50,0,50,100).
         let areas = vec![
             area(1, Rect::new(0, 0, 50, 100)),
@@ -434,7 +436,8 @@ mod tests {
         assert_eq!(result.rect_for(AreaId(2)), Some(Rect::new(50, 0, 50, 100)));
     }
 
-    #[rstest::rstest]    fn horizontal_split_produces_border() {
+    #[rstest::rstest]
+    fn horizontal_split_produces_border() {
         // Given a horizontal split: top(1) at (0,0,100,50), bottom(2) at (0,50,100,50).
         let areas = vec![
             area(1, Rect::new(0, 0, 100, 50)),
@@ -452,7 +455,8 @@ mod tests {
         assert_eq!(result.lines[0].end, 100);
     }
 
-    #[rstest::rstest]    fn horizontal_split_shrinks_top() {
+    #[rstest::rstest]
+    fn horizontal_split_shrinks_top() {
         // Given a horizontal split: top(1) at (0,0,100,50), bottom(2) at (0,50,100,50).
         let areas = vec![
             area(1, Rect::new(0, 0, 100, 50)),
@@ -467,7 +471,8 @@ mod tests {
         assert_eq!(result.rect_for(AreaId(2)), Some(Rect::new(0, 50, 100, 50)));
     }
 
-    #[rstest::rstest]    fn grid_produces_two_border_lines() {
+    #[rstest::rstest]
+    fn grid_produces_two_border_lines() {
         // Given a 4-way grid layout.
         let areas = vec![
             area(1, Rect::new(0, 0, 50, 50)),   // top-left
@@ -506,7 +511,8 @@ mod tests {
         assert_eq!(horizontals[0].end, 100);
     }
 
-    #[rstest::rstest]    fn top_left_shrunk_both_ways() {
+    #[rstest::rstest]
+    fn top_left_shrunk_both_ways() {
         // Given a 4-way grid layout.
         let areas = vec![
             area(1, Rect::new(0, 0, 50, 50)),   // top-left
@@ -526,7 +532,8 @@ mod tests {
         assert_eq!(result.rect_for(AreaId(4)), Some(Rect::new(50, 50, 50, 50)));
     }
 
-    #[rstest::rstest]    fn single_area_produces_no_borders() {
+    #[rstest::rstest]
+    fn single_area_produces_no_borders() {
         // Given a single area.
         let areas = vec![area(1, Rect::new(0, 0, 100, 100))];
 
@@ -540,7 +547,8 @@ mod tests {
 
     // ── render_borders tests ─────────────────────────────────────
 
-    #[rstest::rstest]    fn render_vertical_border_draws_line_character() {
+    #[rstest::rstest]
+    fn render_vertical_border_draws_line_character() {
         // Given a terminal buffer and a vertical border line.
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
@@ -571,7 +579,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn render_horizontal_border_draws_dash_character() {
+    #[rstest::rstest]
+    fn render_horizontal_border_draws_dash_character() {
         // Given a terminal buffer and a horizontal border line.
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
@@ -602,7 +611,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn crossing_point_is_cross_char() {
+    #[rstest::rstest]
+    fn crossing_point_is_cross_char() {
         // Given a 4-way grid with crossing borders.
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
@@ -638,7 +648,8 @@ mod tests {
         assert_eq!(cross.symbol(), "┼");
     }
 
-    #[rstest::rstest]    fn vertical_border_above_crossing() {
+    #[rstest::rstest]
+    fn vertical_border_above_crossing() {
         // Given a 4-way grid with crossing borders.
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
@@ -673,7 +684,8 @@ mod tests {
         assert_eq!(buf.cell((50, 0)).expect("above").symbol(), "│");
     }
 
-    #[rstest::rstest]    fn horizontal_border_on_sides() {
+    #[rstest::rstest]
+    fn horizontal_border_on_sides() {
         // Given a 4-way grid with crossing borders.
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
@@ -709,7 +721,8 @@ mod tests {
         assert_eq!(buf.cell((75, 50)).expect("right h").symbol(), "─");
     }
 
-    #[rstest::rstest]    fn render_asymmetric_split_produces_tee_junction() {
+    #[rstest::rstest]
+    fn render_asymmetric_split_produces_tee_junction() {
         // Given a layout where only one side is split horizontally:
         // left column is whole, right column split top/bottom.
         // Vertical border at x=50 spans full height.

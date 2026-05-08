@@ -49,7 +49,8 @@ impl From<&str> for ActorName {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn deref_gives_str() {
+    #[rstest::rstest]
+    fn deref_gives_str() {
         // Given an ActorName.
         let name = ActorName::new("test-actor");
 
@@ -57,7 +58,8 @@ mod tests {
         assert_eq!(&*name, "test-actor");
     }
 
-    #[rstest::rstest]    fn from_string_and_str() {
+    #[rstest::rstest]
+    fn from_string_and_str() {
         // Given string conversions.
         let from_string = ActorName::from(String::from("actor"));
         let from_str = ActorName::from("actor");

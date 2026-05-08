@@ -44,10 +44,7 @@ fn ensure_streaming(session: &mut crate::ChatSessionState) {
 
 impl ProviderHandler {
     /// Appends a streaming LLM token to the session, transitioning to streaming on the first token.
-    fn on_stream_token(
-        evt: &StreamToken,
-        ctx: &mut HandlerContext<'_, AppState, Services>,
-    ) {
+    fn on_stream_token(evt: &StreamToken, ctx: &mut HandlerContext<'_, AppState, Services>) {
         let session = ctx.state.session_mut_or_create(&evt.session_id);
 
         if evt.index == 0 && !session.is_streaming() {
@@ -58,10 +55,7 @@ impl ProviderHandler {
     }
 
     /// Creates a placeholder `ToolCall` entry when a tool use begins in the stream.
-    fn on_tool_use_started(
-        evt: &ToolUseStarted,
-        ctx: &mut HandlerContext<'_, AppState, Services>,
-    ) {
+    fn on_tool_use_started(evt: &ToolUseStarted, ctx: &mut HandlerContext<'_, AppState, Services>) {
         let session = ctx.state.session_mut_or_create(&evt.session_id);
         ensure_streaming(session);
         session.begin_tool_call(evt.index, &evt.id, &evt.name);
@@ -127,7 +121,8 @@ mod tests {
         state.active_session.clone()
     }
 
-    #[rstest::rstest]    fn first_stream_token_creates_assistant_entry() {
+    #[rstest::rstest]
+    fn first_stream_token_creates_assistant_entry() {
         // Given a bus with ProviderHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);
@@ -154,7 +149,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn subsequent_stream_token_appends_to_existing_entry() {
+    #[rstest::rstest]
+    fn subsequent_stream_token_appends_to_existing_entry() {
         // Given a bus with ProviderHandler registered and a first token already processed.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);
@@ -189,7 +185,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn stream_token_clears_sending_on_first_token() {
+    #[rstest::rstest]
+    fn stream_token_clears_sending_on_first_token() {
         // Given a bus with ProviderHandler registered and a session that is sending.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);
@@ -217,7 +214,8 @@ mod tests {
 
     // --- Tool call handler tests ---
 
-    #[rstest::rstest]    fn tool_use_started_creates_tool_call_entry() {
+    #[rstest::rstest]
+    fn tool_use_started_creates_tool_call_entry() {
         // Given a bus with ProviderHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);
@@ -250,7 +248,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn tool_use_started_starts_streaming_if_not_active() {
+    #[rstest::rstest]
+    fn tool_use_started_starts_streaming_if_not_active() {
         // Given a bus with ProviderHandler registered and a session that is sending (not streaming).
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);
@@ -277,7 +276,8 @@ mod tests {
         assert!(!state.session(&sid).is_sending());
     }
 
-    #[rstest::rstest]    fn tool_call_streaming_appends_arguments() {
+    #[rstest::rstest]
+    fn tool_call_streaming_appends_arguments() {
         // Given a bus with ProviderHandler registered and a session with a tool call started.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);
@@ -326,7 +326,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn tool_call_received_finalizes_entry() {
+    #[rstest::rstest]
+    fn tool_call_received_finalizes_entry() {
         // Given a bus with ProviderHandler registered and a session with streamed tool call.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);
@@ -378,7 +379,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn push_tool_result_adds_entry_to_history() {
+    #[rstest::rstest]
+    fn push_tool_result_adds_entry_to_history() {
         // Given a bus with ProviderHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);
@@ -414,7 +416,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn tool_calls_and_text_interleaved() {
+    #[rstest::rstest]
+    fn tool_calls_and_text_interleaved() {
         // Given a bus with ProviderHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);
@@ -468,7 +471,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn push_tool_result_with_failed_execution() {
+    #[rstest::rstest]
+    fn push_tool_result_with_failed_execution() {
         // Given a bus with ProviderHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);

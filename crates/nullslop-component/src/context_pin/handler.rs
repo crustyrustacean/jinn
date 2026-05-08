@@ -2,8 +2,8 @@
 //!
 //! Delegates to [`ChatSessionState::pin_entry`] and [`ChatSessionState::unpin_entry`].
 
-use npr::context::{PinChatEntry, UnpinChatEntry};
 use npr::CommandAction;
+use npr::context::{PinChatEntry, UnpinChatEntry};
 use nullslop_component_core::{HandlerContext, define_handler};
 use nullslop_protocol as npr;
 use nullslop_services::Services;
@@ -51,7 +51,9 @@ impl ContextPinHandler {
 
         // Clamp selection to nearest remaining entry.
         let sorted_ids_after = ctx.state.sorted_pinned_ids();
-        ctx.state.pinned_panel.clamp_to_nearest(&sorted_ids_after, old_index);
+        ctx.state
+            .pinned_panel
+            .clamp_to_nearest(&sorted_ids_after, old_index);
         CommandAction::Continue
     }
 }
@@ -71,7 +73,7 @@ mod tests {
     use crate::AppState;
     use crate::test_utils;
 
-    /// Helper: create an AppState with a session containing a single user entry.
+    /// Helper: create an `AppState` with a session containing a single user entry.
     ///
     /// Returns `(state, session_id, entry_id)`.
     fn state_with_entry(content: &str) -> (AppState, SessionId, ChatEntryId) {
@@ -83,7 +85,8 @@ mod tests {
         (state, session_id, entry_id)
     }
 
-    #[rstest::rstest]    fn pin_handler_sets_position() {
+    #[rstest::rstest]
+    fn pin_handler_sets_position() {
         // Given a bus with ContextPinHandler registered and a session with one entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -105,7 +108,8 @@ mod tests {
         assert_eq!(entry.pin_position, Some(PinPosition::Top));
     }
 
-    #[rstest::rstest]    fn pin_handler_selects_newly_pinned_entry() {
+    #[rstest::rstest]
+    fn pin_handler_selects_newly_pinned_entry() {
         // Given a bus with ContextPinHandler registered and a session with one entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -126,7 +130,8 @@ mod tests {
         assert_eq!(state.pinned_panel.selected_id(), Some(&entry_id));
     }
 
-    #[rstest::rstest]    fn unpin_clears_pin_position() {
+    #[rstest::rstest]
+    fn unpin_clears_pin_position() {
         // Given a bus with ContextPinHandler registered and two pinned entries.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -136,12 +141,16 @@ mod tests {
         let entry0 = ChatEntry::user("first");
         let entry0_id = entry0.id.clone();
         state.active_session_mut().push_entry(entry0);
-        state.active_session_mut().pin_entry(&entry0_id, PinPosition::Top);
+        state
+            .active_session_mut()
+            .pin_entry(&entry0_id, PinPosition::Top);
 
         let entry1 = ChatEntry::user("second");
         let entry1_id = entry1.id.clone();
         state.active_session_mut().push_entry(entry1);
-        state.active_session_mut().pin_entry(&entry1_id, PinPosition::Top);
+        state
+            .active_session_mut()
+            .pin_entry(&entry1_id, PinPosition::Top);
 
         state.pinned_panel.select_by_id(entry0_id.clone());
         let services = test_utils::test_services();
@@ -159,7 +168,8 @@ mod tests {
         assert_eq!(state.active_session().history()[0].pin_position, None);
     }
 
-    #[rstest::rstest]    fn unpin_moves_selection_to_nearest_remaining() {
+    #[rstest::rstest]
+    fn unpin_moves_selection_to_nearest_remaining() {
         // Given a bus with ContextPinHandler registered and two pinned entries.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -169,12 +179,16 @@ mod tests {
         let entry0 = ChatEntry::user("first");
         let entry0_id = entry0.id.clone();
         state.active_session_mut().push_entry(entry0);
-        state.active_session_mut().pin_entry(&entry0_id, PinPosition::Top);
+        state
+            .active_session_mut()
+            .pin_entry(&entry0_id, PinPosition::Top);
 
         let entry1 = ChatEntry::user("second");
         let entry1_id = entry1.id.clone();
         state.active_session_mut().push_entry(entry1);
-        state.active_session_mut().pin_entry(&entry1_id, PinPosition::Top);
+        state
+            .active_session_mut()
+            .pin_entry(&entry1_id, PinPosition::Top);
 
         state.pinned_panel.select_by_id(entry0_id.clone());
         let services = test_utils::test_services();
@@ -192,7 +206,8 @@ mod tests {
         assert_eq!(state.pinned_panel.selected_id(), Some(&entry1_id));
     }
 
-    #[rstest::rstest]    fn pin_nonexistent_leaves_existing_unchanged() {
+    #[rstest::rstest]
+    fn pin_nonexistent_leaves_existing_unchanged() {
         // Given a bus with ContextPinHandler registered and a session with one entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -215,7 +230,8 @@ mod tests {
         assert_eq!(entry.pin_position, None);
     }
 
-    #[rstest::rstest]    fn pin_nonexistent_sets_selection_to_id() {
+    #[rstest::rstest]
+    fn pin_nonexistent_sets_selection_to_id() {
         // Given a bus with ContextPinHandler registered and a session with one entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -237,7 +253,8 @@ mod tests {
         assert_eq!(state.pinned_panel.selected_id(), Some(&missing_id));
     }
 
-    #[rstest::rstest]    fn unpin_nonexistent_leaves_existing_pins_unchanged() {
+    #[rstest::rstest]
+    fn unpin_nonexistent_leaves_existing_pins_unchanged() {
         // Given a bus with ContextPinHandler registered and a pinned entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
@@ -263,7 +280,8 @@ mod tests {
         assert_eq!(entry.pin_position, Some(PinPosition::Top));
     }
 
-    #[rstest::rstest]    fn unpin_nonexistent_preserves_selection() {
+    #[rstest::rstest]
+    fn unpin_nonexistent_preserves_selection() {
         // Given a bus with ContextPinHandler registered and a pinned entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);

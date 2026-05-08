@@ -60,8 +60,8 @@ impl OpenPickerHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils;
     use crate::AppState;
+    use crate::test_utils;
     use nullslop_component_core::Bus;
     use nullslop_protocol::PickerKind;
     use nullslop_protocol::system::OpenPicker;
@@ -75,7 +75,8 @@ mod tests {
         bus
     }
 
-    #[rstest::rstest]    fn open_provider_sets_kind() {
+    #[rstest::rstest]
+    fn open_provider_sets_kind() {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -93,7 +94,8 @@ mod tests {
         assert_eq!(state.active_picker_kind, Some(PickerKind::Provider));
     }
 
-    #[rstest::rstest]    fn open_provider_sets_mode_to_picker() {
+    #[rstest::rstest]
+    fn open_provider_sets_mode_to_picker() {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -111,7 +113,8 @@ mod tests {
         assert_eq!(state.mode, nullslop_protocol::Mode::Picker);
     }
 
-    #[rstest::rstest]    fn open_context_assembly_sets_kind() {
+    #[rstest::rstest]
+    fn open_context_assembly_sets_kind() {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -129,7 +132,8 @@ mod tests {
         assert_eq!(state.active_picker_kind, Some(PickerKind::ContextAssembly));
     }
 
-    #[rstest::rstest]    fn open_context_assembly_sets_mode_to_picker() {
+    #[rstest::rstest]
+    fn open_context_assembly_sets_mode_to_picker() {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -147,7 +151,8 @@ mod tests {
         assert_eq!(state.mode, nullslop_protocol::Mode::Picker);
     }
 
-    #[rstest::rstest]    fn open_keymap_sets_kind() {
+    #[rstest::rstest]
+    fn open_keymap_sets_kind() {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -168,7 +173,8 @@ mod tests {
         assert_eq!(state.active_picker_kind, Some(PickerKind::Keymap));
     }
 
-    #[rstest::rstest]    fn open_keymap_sets_mode_to_picker() {
+    #[rstest::rstest]
+    fn open_keymap_sets_mode_to_picker() {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -189,7 +195,8 @@ mod tests {
         assert_eq!(state.mode, nullslop_protocol::Mode::Picker);
     }
 
-    #[rstest::rstest]    fn open_keymap_resets_show_all() {
+    #[rstest::rstest]
+    fn open_keymap_resets_show_all() {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();

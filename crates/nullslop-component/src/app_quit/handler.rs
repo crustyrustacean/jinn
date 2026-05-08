@@ -40,7 +40,8 @@ mod tests {
     use crate::AppState;
     use crate::test_utils;
 
-    #[rstest::rstest]    fn quit_sets_should_quit() {
+    #[rstest::rstest]
+    fn quit_sets_should_quit() {
         // Given a bus with AppQuitHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         AppQuitHandler.register(&mut bus);

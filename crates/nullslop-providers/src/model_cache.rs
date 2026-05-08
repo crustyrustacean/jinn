@@ -112,7 +112,8 @@ pub fn cache_path() -> PathBuf {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn new_cache_is_empty() {
+    #[rstest::rstest]
+    fn new_cache_is_empty() {
         // Given a new ModelCache.
         let cache = ModelCache::new();
 
@@ -121,7 +122,8 @@ mod tests {
         assert!(cache.last_updated_at.is_none());
     }
 
-    #[rstest::rstest]    fn loaded_matches_original_entries() {
+    #[rstest::rstest]
+    fn loaded_matches_original_entries() {
         // Given a cache with entries and a timestamp.
         let mut cache = ModelCache::new();
         cache.entries.insert(
@@ -144,7 +146,8 @@ mod tests {
         assert_eq!(loaded.entries["ollama"].len(), 2);
     }
 
-    #[rstest::rstest]    fn loaded_matches_original_timestamp() {
+    #[rstest::rstest]
+    fn loaded_matches_original_timestamp() {
         // Given a cache with entries and a timestamp.
         let mut cache = ModelCache::new();
         cache.entries.insert(
@@ -166,7 +169,8 @@ mod tests {
         assert!(loaded.last_updated_at.is_some());
     }
 
-    #[rstest::rstest]    fn load_accepts_cache_without_timestamp() {
+    #[rstest::rstest]
+    fn load_accepts_cache_without_timestamp() {
         // Given a cache JSON file without last_updated_at.
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("model_cache.json");
@@ -183,7 +187,8 @@ mod tests {
         assert!(cache.last_updated_at.is_none());
     }
 
-    #[rstest::rstest]    fn load_returns_none_when_file_missing() {
+    #[rstest::rstest]
+    fn load_returns_none_when_file_missing() {
         // Given a path to a nonexistent file.
         let path = PathBuf::from("/tmp/nullslop_test_nonexistent_cache.json");
 

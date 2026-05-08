@@ -62,7 +62,9 @@ pub fn ensure_prompts_dir_with_example() -> Result<(), Report<EnsureExampleError
 }
 
 /// Testable version that writes to an explicit directory.
-pub(crate) fn ensure_prompts_dir_with_example_to(dir: &Path) -> Result<(), Report<EnsureExampleError>> {
+pub(crate) fn ensure_prompts_dir_with_example_to(
+    dir: &Path,
+) -> Result<(), Report<EnsureExampleError>> {
     std::fs::create_dir_all(dir)
         .change_context(EnsureExampleError::Io)
         .attach("failed to create prompts directory")?;
@@ -93,7 +95,8 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    #[rstest::rstest]    fn ensure_creates_directory() {
+    #[rstest::rstest]
+    fn ensure_creates_directory() {
         // Given a nonexistent directory.
         let dir = TempDir::new().expect("temp dir");
         let prompts = dir.path().join("prompts");
@@ -106,7 +109,8 @@ mod tests {
         assert!(prompts.exists());
     }
 
-    #[rstest::rstest]    fn ensure_creates_example_file() {
+    #[rstest::rstest]
+    fn ensure_creates_example_file() {
         // Given a nonexistent directory.
         let dir = TempDir::new().expect("temp dir");
         let prompts = dir.path().join("prompts");
@@ -119,7 +123,8 @@ mod tests {
         assert!(example.exists());
     }
 
-    #[rstest::rstest]    fn example_file_is_valid_template() {
+    #[rstest::rstest]
+    fn example_file_is_valid_template() {
         // Given a nonexistent directory.
         let dir = TempDir::new().expect("temp dir");
         let prompts = dir.path().join("prompts");
@@ -134,7 +139,8 @@ mod tests {
         assert_eq!(template.name, "example");
     }
 
-    #[rstest::rstest]    fn ensure_does_not_overwrite_existing_file() {
+    #[rstest::rstest]
+    fn ensure_does_not_overwrite_existing_file() {
         // Given a directory that already has an example file.
         let dir = TempDir::new().expect("temp dir");
         let prompts = dir.path().join("prompts");
@@ -149,7 +155,8 @@ mod tests {
         assert_eq!(content, "custom content");
     }
 
-    #[rstest::rstest]    fn ensure_is_idempotent() {
+    #[rstest::rstest]
+    fn ensure_is_idempotent() {
         // Given a prompts directory.
         let dir = TempDir::new().expect("temp dir");
         let prompts = dir.path().join("prompts");

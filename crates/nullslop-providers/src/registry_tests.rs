@@ -36,7 +36,8 @@ fn openrouter_entry() -> ProviderEntry {
     }
 }
 
-#[rstest::rstest]fn rejects_duplicate_provider_names() {
+#[rstest::rstest]
+fn rejects_duplicate_provider_names() {
     // Given a config with duplicate provider names.
     let config = make_config(vec![ollama_entry(), ollama_entry()], vec![], None);
 
@@ -47,7 +48,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(result.is_err());
 }
 
-#[rstest::rstest]fn rejects_unknown_alias_target() {
+#[rstest::rstest]
+fn rejects_unknown_alias_target() {
     // Given a config with an alias pointing to a non-existent expanded ID.
     let config = make_config(
         vec![ollama_entry()],
@@ -65,7 +67,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(result.is_err());
 }
 
-#[rstest::rstest]fn rejects_invalid_backend_string() {
+#[rstest::rstest]
+fn rejects_invalid_backend_string() {
     // Given a config with an invalid backend string.
     let config = make_config(
         vec![ProviderEntry {
@@ -87,7 +90,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(result.is_err());
 }
 
-#[rstest::rstest]fn rejects_empty_models_list() {
+#[rstest::rstest]
+fn rejects_empty_models_list() {
     // Given a config with a provider that has an empty models list.
     let config = make_config(
         vec![ProviderEntry {
@@ -109,7 +113,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(result.is_err());
 }
 
-#[rstest::rstest]fn rejects_duplicate_expanded_ids() {
+#[rstest::rstest]
+fn rejects_duplicate_expanded_ids() {
     // Given two providers whose {name}/{model} collide.
     let config = make_config(
         vec![
@@ -142,7 +147,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(result.is_err());
 }
 
-#[rstest::rstest]fn registry_has_two_entries() {
+#[rstest::rstest]
+fn registry_has_two_entries() {
     // Given a config with one provider that has two models.
     let config = make_config(
         vec![ProviderEntry {
@@ -165,7 +171,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert_eq!(providers.len(), 2);
 }
 
-#[rstest::rstest]fn entries_have_correct_ids() {
+#[rstest::rstest]
+fn entries_have_correct_ids() {
     // Given a config with one provider that has two models.
     let config = make_config(
         vec![ProviderEntry {
@@ -194,7 +201,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert_eq!(providers[1].model, "mistral");
 }
 
-#[rstest::rstest]fn entries_are_individually_lookupable() {
+#[rstest::rstest]
+fn entries_are_individually_lookupable() {
     // Given a config with one provider that has two models.
     let config = make_config(
         vec![ProviderEntry {
@@ -225,7 +233,8 @@ fn openrouter_entry() -> ProviderEntry {
     );
 }
 
-#[rstest::rstest]fn is_available_returns_true_for_keyless_provider() {
+#[rstest::rstest]
+fn is_available_returns_true_for_keyless_provider() {
     // Given a registry with a keyless provider (Ollama).
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -236,7 +245,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(registry.is_available(&ProviderId::new("ollama/llama3".to_owned()), &api_keys));
 }
 
-#[rstest::rstest]fn is_available_returns_true_when_key_resolved() {
+#[rstest::rstest]
+fn is_available_returns_true_when_key_resolved() {
     // Given a registry with a key-required provider and a resolved key.
     let config = make_config(vec![openrouter_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -247,7 +257,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(registry.is_available(&ProviderId::new("openrouter/gpt-4".to_owned()), &api_keys));
 }
 
-#[rstest::rstest]fn is_available_returns_false_when_key_missing() {
+#[rstest::rstest]
+fn is_available_returns_false_when_key_missing() {
     // Given a registry with a key-required provider and no resolved key.
     let config = make_config(vec![openrouter_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -257,7 +268,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(!registry.is_available(&ProviderId::new("openrouter/gpt-4".to_owned()), &api_keys));
 }
 
-#[rstest::rstest]fn available_providers_filters_correctly() {
+#[rstest::rstest]
+fn available_providers_filters_correctly() {
     // Given a registry with one keyless and one key-required provider (no key).
     let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -272,7 +284,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert_eq!(available[0].model, "llama3");
 }
 
-#[rstest::rstest]fn resolve_alias_finds_target() {
+#[rstest::rstest]
+fn resolve_alias_finds_target() {
     // Given a registry with an alias pointing to a full expanded ID.
     let config = make_config(
         vec![ollama_entry()],
@@ -294,7 +307,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert_eq!(resolved.model, "llama3");
 }
 
-#[rstest::rstest]fn resolve_alias_returns_none_for_unknown() {
+#[rstest::rstest]
+fn resolve_alias_returns_none_for_unknown() {
     // Given a registry with no matching alias.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -303,7 +317,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(registry.resolve_alias("missing").is_none());
 }
 
-#[rstest::rstest]fn create_factory_succeeds_for_sample_backend() {
+#[rstest::rstest]
+fn create_factory_succeeds_for_sample_backend() {
     // Given a registry with a sample provider.
     let config = make_config(
         vec![ProviderEntry {
@@ -321,15 +336,15 @@ fn openrouter_entry() -> ProviderEntry {
     let api_keys = ApiKeys::new();
 
     // When creating a factory.
-    let factory =
-        registry.create_factory(&ProviderId::new("sample/sample".to_owned()), &api_keys);
+    let factory = registry.create_factory(&ProviderId::new("sample/sample".to_owned()), &api_keys);
 
     // Then it succeeds and returns a factory named "Sample".
     assert!(factory.is_ok());
     assert_eq!(factory.unwrap().name(), "Sample");
 }
 
-#[rstest::rstest]fn create_factory_succeeds_for_keyless_openai_backend() {
+#[rstest::rstest]
+fn create_factory_succeeds_for_keyless_openai_backend() {
     // Given a registry with an LMStudio-like provider (OpenAI backend, no key required).
     let config = make_config(
         vec![ProviderEntry {
@@ -357,7 +372,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(factory.is_ok());
 }
 
-#[rstest::rstest]fn default_provider_id_returns_configured() {
+#[rstest::rstest]
+fn default_provider_id_returns_configured() {
     // Given a config with a default provider.
     let config = make_config(vec![ollama_entry()], vec![], Some("ollama/llama3"));
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -369,7 +385,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert_eq!(id.as_ref().map(ProviderId::as_str), Some("ollama/llama3"));
 }
 
-#[rstest::rstest]fn default_provider_id_returns_none_when_unset() {
+#[rstest::rstest]
+fn default_provider_id_returns_none_when_unset() {
     // Given a config with no default provider.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -378,7 +395,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(registry.default_provider_id().is_none());
 }
 
-#[rstest::rstest]fn default_provider_id_returns_none_for_invalid_target() {
+#[rstest::rstest]
+fn default_provider_id_returns_none_for_invalid_target() {
     // Given a config with a default that doesn't match any expanded ID.
     let config = make_config(vec![ollama_entry()], vec![], Some("ollama"));
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -388,7 +406,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(registry.default_provider_id().is_none());
 }
 
-#[rstest::rstest]fn set_default_provider_updates_config() {
+#[rstest::rstest]
+fn set_default_provider_updates_config() {
     // Given a registry with a provider.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
@@ -401,7 +420,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert_eq!(id.as_ref().map(ProviderId::as_str), Some("ollama/llama3"));
 }
 
-#[rstest::rstest]fn set_default_provider_clears_when_none() {
+#[rstest::rstest]
+fn set_default_provider_clears_when_none() {
     // Given a registry with a default provider.
     let config = make_config(vec![ollama_entry()], vec![], Some("ollama/llama3"));
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
@@ -414,7 +434,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert!(registry.default_provider_id().is_none());
 }
 
-#[rstest::rstest]fn config_accessor_returns_config() {
+#[rstest::rstest]
+fn config_accessor_returns_config() {
     // Given a registry with providers.
     let config = make_config(
         vec![ollama_entry(), openrouter_entry()],
@@ -431,7 +452,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert_eq!(config.default_provider.as_deref(), Some("ollama/llama3"));
 }
 
-#[rstest::rstest]fn create_factory_for_model_succeeds_for_known_provider() {
+#[rstest::rstest]
+fn create_factory_for_model_succeeds_for_known_provider() {
     // Given a registry with ollama.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -445,7 +467,8 @@ fn openrouter_entry() -> ProviderEntry {
     assert_eq!(factory.unwrap().name(), "ollama");
 }
 
-#[rstest::rstest]fn create_factory_for_model_fails_for_unknown_provider() {
+#[rstest::rstest]
+fn create_factory_for_model_fails_for_unknown_provider() {
     // Given a registry with ollama.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");

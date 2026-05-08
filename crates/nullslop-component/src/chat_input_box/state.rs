@@ -194,7 +194,8 @@ impl ChatInputBoxState {
         if start >= end {
             return Some(String::new());
         }
-        let filter: String = self.input_buffer
+        let filter: String = self
+            .input_buffer
             .graphemes(true)
             .enumerate()
             .skip_while(|(i, _)| *i < start)
@@ -574,4 +575,3 @@ impl Default for ChatInputBoxState {
 #[cfg(test)]
 #[path = "state_tests.rs"]
 mod state_tests;
-

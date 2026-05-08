@@ -14,21 +14,24 @@ struct TestEvent;
 #[cmd("test_mod")]
 struct TestCommand;
 
-#[rstest::rstest]fn event_msg_type_name_is_module_scoped() {
+#[rstest::rstest]
+fn event_msg_type_name_is_module_scoped() {
     // Given a struct with #[derive(EventMsg)] and #[event_msg("test_mod")].
     // When accessing TYPE_NAME.
     // Then the value is "test_mod::TestEvent".
     assert_eq!(TestEvent::TYPE_NAME, "test_mod::TestEvent");
 }
 
-#[rstest::rstest]fn command_msg_name_is_module_scoped() {
+#[rstest::rstest]
+fn command_msg_name_is_module_scoped() {
     // Given a struct with #[derive(CommandMsg)] and #[cmd("test_mod")].
     // When accessing NAME.
     // Then the value is "test_mod::TestCommand".
     assert_eq!(TestCommand::NAME, "test_mod::TestCommand");
 }
 
-#[rstest::rstest]fn event_msg_type_name_is_static_str() {
+#[rstest::rstest]
+fn event_msg_type_name_is_static_str() {
     // Given a derived EventMsg implementation.
     // When binding TYPE_NAME to a local.
     // Then it has the correct type and value.
@@ -36,7 +39,8 @@ struct TestCommand;
     assert_eq!(name, "test_mod::TestEvent");
 }
 
-#[rstest::rstest]fn command_msg_name_is_static_str() {
+#[rstest::rstest]
+fn command_msg_name_is_static_str() {
     // Given a derived CommandMsg implementation.
     // When binding NAME to a local.
     // Then it has the correct type and value.
@@ -54,7 +58,8 @@ struct ChatEntrySubmitted;
 #[cmd("chat_input")]
 struct InsertChar;
 
-#[rstest::rstest]fn event_msg_different_module_scopes() {
+#[rstest::rstest]
+fn event_msg_different_module_scopes() {
     // Given two structs in different module scopes.
     // When comparing their TYPE_NAME values.
     // Then they include the correct module prefix.
@@ -65,7 +70,8 @@ struct InsertChar;
     assert_eq!(TestEvent::TYPE_NAME, "test_mod::TestEvent");
 }
 
-#[rstest::rstest]fn command_msg_different_module_scopes() {
+#[rstest::rstest]
+fn command_msg_different_module_scopes() {
     // Given two structs in different module scopes.
     // When comparing their NAME values.
     // Then they include the correct module prefix.

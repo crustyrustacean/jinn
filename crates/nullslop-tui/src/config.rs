@@ -38,7 +38,8 @@ impl Default for TuiConfig {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn default_config_has_mouse_selection_enabled() {
+    #[rstest::rstest]
+    fn default_config_has_mouse_selection_enabled() {
         // Given no explicit config.
         let config = TuiConfig::default();
 
@@ -46,7 +47,8 @@ mod tests {
         assert!(config.mouse_selection);
     }
 
-    #[rstest::rstest]    fn new_config_with_false_disables_mouse_selection() {
+    #[rstest::rstest]
+    fn new_config_with_false_disables_mouse_selection() {
         // Given an explicit config with mouse selection disabled.
         let config = TuiConfig::new(false);
 
@@ -54,7 +56,8 @@ mod tests {
         assert!(!config.mouse_selection);
     }
 
-    #[rstest::rstest]    fn new_config_with_true_enables_mouse_selection() {
+    #[rstest::rstest]
+    fn new_config_with_true_enables_mouse_selection() {
         // Given an explicit config with mouse selection enabled.
         let config = TuiConfig::new(true);
 

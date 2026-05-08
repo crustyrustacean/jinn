@@ -59,7 +59,8 @@ mod tests {
 
     use super::*;
 
-    #[rstest::rstest]    fn new_out_is_empty() {
+    #[rstest::rstest]
+    fn new_out_is_empty() {
         // Given a new Out.
         let out = Out::new();
 
@@ -69,7 +70,8 @@ mod tests {
         // Then it is empty.
     }
 
-    #[rstest::rstest]    fn submit_command_buffers_item() {
+    #[rstest::rstest]
+    fn submit_command_buffers_item() {
         // Given an empty Out.
         let mut out = Out::new();
 
@@ -83,7 +85,8 @@ mod tests {
         assert_eq!(out.commands.len(), 1);
     }
 
-    #[rstest::rstest]    fn submit_event_buffers_item() {
+    #[rstest::rstest]
+    fn submit_event_buffers_item() {
         // Given an empty Out.
         let mut out = Out::new();
 
@@ -102,7 +105,8 @@ mod tests {
         assert_eq!(out.events.len(), 1);
     }
 
-    #[rstest::rstest]    fn drain_commands_takes_and_clears() {
+    #[rstest::rstest]
+    fn drain_commands_takes_and_clears() {
         // Given an Out with a command.
         let mut out = Out::new();
         out.submit_command(Command::Quit);
@@ -115,7 +119,8 @@ mod tests {
         assert!(out.is_empty());
     }
 
-    #[rstest::rstest]    fn drain_events_takes_and_clears() {
+    #[rstest::rstest]
+    fn drain_events_takes_and_clears() {
         // Given an Out with a KeyDown event.
         let mut out = Out::new();
         out.submit_event(Event::KeyDown {
@@ -135,7 +140,8 @@ mod tests {
         assert!(out.is_empty());
     }
 
-    #[rstest::rstest]    fn drain_on_empty_returns_empty_vec() {
+    #[rstest::rstest]
+    fn drain_on_empty_returns_empty_vec() {
         // Given an empty Out.
         let mut out = Out::new();
 
@@ -148,7 +154,8 @@ mod tests {
         assert!(evts.is_empty());
     }
 
-    #[rstest::rstest]    fn mixed_commands_and_events() {
+    #[rstest::rstest]
+    fn mixed_commands_and_events() {
         // Given an Out.
         let mut out = Out::new();
 

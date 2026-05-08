@@ -18,10 +18,7 @@ impl PinnedPanelState {
     pub fn selection_index(&self, sorted_ids: &[ChatEntryId]) -> usize {
         match &self.selected_id {
             None => 0,
-            Some(id) => sorted_ids
-                .iter()
-                .position(|sid| sid == id)
-                .unwrap_or(0),
+            Some(id) => sorted_ids.iter().position(|sid| sid == id).unwrap_or(0),
         }
     }
 
@@ -32,6 +29,10 @@ impl PinnedPanelState {
     }
 
     /// Moves the selection to the next pinned entry in the sorted list.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "indices are bounds-checked above via .is_empty() and .min()"
+    )]
     pub fn select_next(&mut self, sorted_ids: &[ChatEntryId]) {
         if sorted_ids.is_empty() {
             return;
@@ -42,6 +43,10 @@ impl PinnedPanelState {
     }
 
     /// Moves the selection to the previous pinned entry in the sorted list.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "indices are bounds-checked above via .is_empty() and current > 0"
+    )]
     pub fn select_prev(&mut self, sorted_ids: &[ChatEntryId]) {
         if sorted_ids.is_empty() {
             return;
@@ -65,16 +70,20 @@ impl PinnedPanelState {
     ///
     /// `old_index` should be the index of the previously selected entry in the
     /// *pre-mutation* sorted list. Callers should resolve this before mutating state.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "indices are bounds-checked above via .is_empty() and .min()"
+    )]
     pub fn clamp_to_nearest(&mut self, sorted_ids: &[ChatEntryId], old_index: usize) {
         if sorted_ids.is_empty() {
             self.selected_id = None;
             return;
         }
         // If the current ID is still in the list, keep it.
-        if let Some(id) = &self.selected_id {
-            if sorted_ids.iter().any(|sid| sid == id) {
-                return;
-            }
+        if let Some(id) = &self.selected_id
+            && sorted_ids.iter().any(|sid| sid == id)
+        {
+            return;
         }
         // Otherwise, clamp the old index to the new list bounds.
         let clamped = old_index.min(sorted_ids.len() - 1);
@@ -93,12 +102,13 @@ mod tests {
 
     use super::*;
 
-    /// Helper: create a list of unique ChatEntryIds.
+    /// Helper: create a list of unique `ChatEntryIds`.
     fn make_ids(n: usize) -> Vec<ChatEntryId> {
-        (0..n).map(|_| ChatEntryId::new()).collect()
+        std::iter::repeat_with(ChatEntryId::new).take(n).collect()
     }
 
-    #[rstest::rstest]    fn default_has_no_selection() {
+    #[rstest::rstest]
+    fn default_has_no_selection() {
         // Given a default panel state.
         let state = PinnedPanelState::default();
 
@@ -106,7 +116,8 @@ mod tests {
         assert!(state.selected_id().is_none());
     }
 
-    #[rstest::rstest]    fn selection_index_returns_zero_when_none_selected() {
+    #[rstest::rstest]
+    fn selection_index_returns_zero_when_none_selected() {
         // Given a default panel state and sorted IDs.
         let ids = make_ids(2);
         let state = PinnedPanelState::default();
@@ -118,7 +129,8 @@ mod tests {
         assert_eq!(index, 0);
     }
 
-    #[rstest::rstest]    fn selection_index_resolves_id_to_position() {
+    #[rstest::rstest]
+    fn selection_index_resolves_id_to_position() {
         // Given sorted IDs [A, B, C] with B selected.
         let ids = make_ids(3);
         let mut state = PinnedPanelState::default();
@@ -131,7 +143,8 @@ mod tests {
         assert_eq!(index, 1);
     }
 
-    #[rstest::rstest]    fn selection_index_returns_zero_when_id_not_found() {
+    #[rstest::rstest]
+    fn selection_index_returns_zero_when_id_not_found() {
         // Given sorted IDs [A, B] with an unknown ID selected.
         let ids = make_ids(2);
         let mut state = PinnedPanelState::default();
@@ -144,7 +157,8 @@ mod tests {
         assert_eq!(index, 0);
     }
 
-    #[rstest::rstest]    fn select_next_advances_to_second_id() {
+    #[rstest::rstest]
+    fn select_next_advances_to_second_id() {
         // Given sorted IDs [A, B, C] with A selected.
         let ids = make_ids(3);
         let mut state = PinnedPanelState::default();
@@ -157,7 +171,8 @@ mod tests {
         assert_eq!(state.selected_id(), Some(&ids[1]));
     }
 
-    #[rstest::rstest]    fn select_next_clamps_at_last() {
+    #[rstest::rstest]
+    fn select_next_clamps_at_last() {
         // Given sorted IDs [A, B, C] with C selected.
         let ids = make_ids(3);
         let mut state = PinnedPanelState::default();
@@ -170,7 +185,8 @@ mod tests {
         assert_eq!(state.selected_id(), Some(&ids[2]));
     }
 
-    #[rstest::rstest]    fn select_next_is_noop_when_empty() {
+    #[rstest::rstest]
+    fn select_next_is_noop_when_empty() {
         // Given an empty sorted ID list.
         let mut state = PinnedPanelState::default();
 
@@ -181,7 +197,8 @@ mod tests {
         assert!(state.selected_id().is_none());
     }
 
-    #[rstest::rstest]    fn select_prev_decrements() {
+    #[rstest::rstest]
+    fn select_prev_decrements() {
         // Given sorted IDs [A, B, C] with B selected.
         let ids = make_ids(3);
         let mut state = PinnedPanelState::default();
@@ -194,7 +211,8 @@ mod tests {
         assert_eq!(state.selected_id(), Some(&ids[0]));
     }
 
-    #[rstest::rstest]    fn select_prev_clamps_at_zero() {
+    #[rstest::rstest]
+    fn select_prev_clamps_at_zero() {
         // Given sorted IDs [A, B, C] with A selected.
         let ids = make_ids(3);
         let mut state = PinnedPanelState::default();
@@ -207,7 +225,8 @@ mod tests {
         assert_eq!(state.selected_id(), Some(&ids[0]));
     }
 
-    #[rstest::rstest]    fn select_by_id_sets_selection() {
+    #[rstest::rstest]
+    fn select_by_id_sets_selection() {
         // Given a default panel state.
         let mut state = PinnedPanelState::default();
         let id = ChatEntryId::new();
@@ -219,7 +238,8 @@ mod tests {
         assert_eq!(state.selected_id(), Some(&id));
     }
 
-    #[rstest::rstest]    fn clear_selection_sets_none() {
+    #[rstest::rstest]
+    fn clear_selection_sets_none() {
         // Given a panel state with a selection.
         let mut state = PinnedPanelState::default();
         state.select_by_id(ChatEntryId::new());
@@ -232,7 +252,8 @@ mod tests {
         assert!(state.selected_id().is_none());
     }
 
-    #[rstest::rstest]    fn clamp_to_nearest_keeps_valid_id() {
+    #[rstest::rstest]
+    fn clamp_to_nearest_keeps_valid_id() {
         // Given sorted IDs [A, B, C] with B selected.
         let ids = make_ids(3);
         let mut state = PinnedPanelState::default();
@@ -245,7 +266,8 @@ mod tests {
         assert_eq!(state.selected_id(), Some(&ids[1]));
     }
 
-    #[rstest::rstest]    fn clamp_to_nearest_moves_to_nearest_when_id_removed() {
+    #[rstest::rstest]
+    fn clamp_to_nearest_moves_to_nearest_when_id_removed() {
         // Given sorted IDs [A, B, C] with B selected at old_index 1.
         let ids = make_ids(3);
         let mut state = PinnedPanelState::default();
@@ -259,7 +281,8 @@ mod tests {
         assert_eq!(state.selected_id(), Some(&ids[2]));
     }
 
-    #[rstest::rstest]    fn clamp_to_nearest_sets_none_when_empty() {
+    #[rstest::rstest]
+    fn clamp_to_nearest_sets_none_when_empty() {
         // Given sorted IDs [A] with A selected at old_index 0.
         let ids = make_ids(1);
         let mut state = PinnedPanelState::default();

@@ -95,11 +95,7 @@ impl PromptTemplateStore {
         let mut scored: Vec<(i64, &PromptTemplate)> = self
             .templates
             .iter()
-            .filter_map(|t| {
-                matcher
-                    .fuzzy_match(&t.name, query)
-                    .map(|score| (score, t))
-            })
+            .filter_map(|t| matcher.fuzzy_match(&t.name, query).map(|score| (score, t)))
             .collect();
 
         // Sort by score ascending (least relevant first, most relevant last).
@@ -189,7 +185,8 @@ mod tests {
         std::fs::write(dir.join(filename), content).expect("write template file");
     }
 
-    #[rstest::rstest]    fn load_from_dir_returns_empty_when_missing() {
+    #[rstest::rstest]
+    fn load_from_dir_returns_empty_when_missing() {
         // Given a path that does not exist.
         let path = Path::new("/tmp/nullslop-nonexistent-test-dir");
 
@@ -200,7 +197,8 @@ mod tests {
         assert!(store.is_empty());
     }
 
-    #[rstest::rstest]    fn load_from_dir_parses_templates() {
+    #[rstest::rstest]
+    fn load_from_dir_parses_templates() {
         // Given a directory with two template files.
         let dir = TempDir::new().expect("temp dir");
         write_template(
@@ -223,7 +221,8 @@ mod tests {
         assert!(store.find_by_name("review").is_some());
     }
 
-    #[rstest::rstest]    fn load_from_dir_scans_subdirectories() {
+    #[rstest::rstest]
+    fn load_from_dir_scans_subdirectories() {
         // Given a directory with a subdirectory containing a template.
         let dir = TempDir::new().expect("temp dir");
         let sub = dir.path().join("subdir");
@@ -242,7 +241,8 @@ mod tests {
         assert!(store.find_by_name("nested").is_some());
     }
 
-    #[rstest::rstest]    fn load_from_dir_skips_non_md_files() {
+    #[rstest::rstest]
+    fn load_from_dir_skips_non_md_files() {
         // Given a directory with a non-markdown file.
         let dir = TempDir::new().expect("temp dir");
         write_template(dir.path(), "ignore.txt", "this is not a template");
@@ -254,7 +254,8 @@ mod tests {
         assert!(store.is_empty());
     }
 
-    #[rstest::rstest]    fn load_from_dir_handles_duplicate_names() {
+    #[rstest::rstest]
+    fn load_from_dir_handles_duplicate_names() {
         // Given two files with the same name in their frontmatter.
         let dir = TempDir::new().expect("temp dir");
         write_template(
@@ -279,7 +280,8 @@ mod tests {
         assert!(tmpl.description == "First" || tmpl.description == "Second");
     }
 
-    #[rstest::rstest]    fn find_by_name_returns_none_for_missing() {
+    #[rstest::rstest]
+    fn find_by_name_returns_none_for_missing() {
         // Given an empty store.
         let store = PromptTemplateStore::new();
 
@@ -288,7 +290,8 @@ mod tests {
         assert!(store.find_by_name("nonexistent").is_none());
     }
 
-    #[rstest::rstest]    fn fuzzy_search_returns_matching_templates() {
+    #[rstest::rstest]
+    fn fuzzy_search_returns_matching_templates() {
         // Given a store with templates.
         let store = PromptTemplateStore::from_vec(vec![
             PromptTemplate {
@@ -318,7 +321,8 @@ mod tests {
         assert!(names.contains(&"commit-message"));
     }
 
-    #[rstest::rstest]    fn fuzzy_search_returns_empty_for_no_match() {
+    #[rstest::rstest]
+    fn fuzzy_search_returns_empty_for_no_match() {
         // Given a store with templates.
         let store = PromptTemplateStore::from_vec(vec![PromptTemplate {
             name: "hello".to_owned(),
@@ -333,7 +337,8 @@ mod tests {
         assert!(results.is_empty());
     }
 
-    #[rstest::rstest]    fn fuzzy_search_orders_by_relevance() {
+    #[rstest::rstest]
+    fn fuzzy_search_orders_by_relevance() {
         // Given a store with templates that have different relevance.
         let store = PromptTemplateStore::from_vec(vec![
             PromptTemplate {
@@ -367,7 +372,8 @@ mod tests {
         assert!(last.name.starts_with("code"));
     }
 
-    #[rstest::rstest]    fn fuzzy_search_caps_at_max_results() {
+    #[rstest::rstest]
+    fn fuzzy_search_caps_at_max_results() {
         // Given a store with many templates that all match.
         let templates: Vec<PromptTemplate> = (0..30)
             .map(|i| PromptTemplate {

@@ -98,7 +98,8 @@ async fn run_event_loop(sender: MsgSender) {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn msg_handler_send_recv() {
+    #[rstest::rstest]
+    fn msg_handler_send_recv() {
         // Given a MsgHandler.
         let handler = MsgHandler::new();
 
@@ -110,7 +111,8 @@ mod tests {
         assert!(matches!(msg, Msg::Tick));
     }
 
-    #[rstest::rstest]    fn msg_handler_try_recv_empty() {
+    #[rstest::rstest]
+    fn msg_handler_try_recv_empty() {
         // Given an empty handler.
         let handler = MsgHandler::new();
 
@@ -121,7 +123,8 @@ mod tests {
         assert!(result.is_none());
     }
 
-    #[rstest::rstest]    fn msg_handler_drain() {
+    #[rstest::rstest]
+    fn msg_handler_drain() {
         // Given a handler with 3 messages.
         let handler = MsgHandler::new();
         handler.sender().send(Msg::Tick);

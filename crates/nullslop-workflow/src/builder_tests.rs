@@ -15,7 +15,8 @@ fn make_step(id: &str) -> StepDef {
     }
 }
 
-#[rstest::rstest]fn create_with_valid_name_succeeds() {
+#[rstest::rstest]
+fn create_with_valid_name_succeeds() {
     // Given a new builder.
     let mut builder = WorkflowBuilder::new();
 
@@ -26,13 +27,15 @@ fn make_step(id: &str) -> StepDef {
     assert!(result.is_ok());
 }
 
-#[rstest::rstest]fn create_with_empty_name_fails() {
+#[rstest::rstest]
+fn create_with_empty_name_fails() {
     let mut builder = WorkflowBuilder::new();
     let result = builder.create(String::new(), "desc".to_owned());
     assert!(result.is_err());
 }
 
-#[rstest::rstest]fn add_step_with_unique_id_succeeds() {
+#[rstest::rstest]
+fn add_step_with_unique_id_succeeds() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -42,7 +45,8 @@ fn make_step(id: &str) -> StepDef {
     assert!(result.is_ok());
 }
 
-#[rstest::rstest]fn add_step_with_duplicate_id_fails() {
+#[rstest::rstest]
+fn add_step_with_duplicate_id_fails() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -53,7 +57,8 @@ fn make_step(id: &str) -> StepDef {
     assert!(result.is_err());
 }
 
-#[rstest::rstest]fn add_guard_for_existing_step_succeeds() {
+#[rstest::rstest]
+fn add_guard_for_existing_step_succeeds() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -69,7 +74,8 @@ fn make_step(id: &str) -> StepDef {
     assert!(result.is_ok());
 }
 
-#[rstest::rstest]fn add_guard_for_unknown_step_fails() {
+#[rstest::rstest]
+fn add_guard_for_unknown_step_fails() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -84,7 +90,8 @@ fn make_step(id: &str) -> StepDef {
     assert!(result.is_err());
 }
 
-#[rstest::rstest]fn add_output_for_existing_step_succeeds() {
+#[rstest::rstest]
+fn add_output_for_existing_step_succeeds() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -101,7 +108,8 @@ fn make_step(id: &str) -> StepDef {
     assert!(result.is_ok());
 }
 
-#[rstest::rstest]fn add_output_for_unknown_step_fails() {
+#[rstest::rstest]
+fn add_output_for_unknown_step_fails() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -117,7 +125,8 @@ fn make_step(id: &str) -> StepDef {
     assert!(result.is_err());
 }
 
-#[rstest::rstest]fn build_with_empty_steps_fails() {
+#[rstest::rstest]
+fn build_with_empty_steps_fails() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -128,83 +137,85 @@ fn make_step(id: &str) -> StepDef {
 }
 
 /// Builds a valid workflow def for field checks.
-    fn build_valid_workflow_def() -> WorkflowDef {
-        let mut builder = WorkflowBuilder::new();
-        builder
-            .create("my-workflow".to_owned(), "A test workflow".to_owned())
-            .unwrap();
-        builder.add_global("base_dir".to_owned(), "/tmp".to_owned());
-        builder.add_step(make_step("step-1")).unwrap();
-        builder.build().unwrap()
-    }
+fn build_valid_workflow_def() -> WorkflowDef {
+    let mut builder = WorkflowBuilder::new();
+    builder
+        .create("my-workflow".to_owned(), "A test workflow".to_owned())
+        .unwrap();
+    builder.add_global("base_dir".to_owned(), "/tmp".to_owned());
+    builder.add_step(make_step("step-1")).unwrap();
+    builder.build().unwrap()
+}
 
-    #[rstest::rstest]
-    #[case::name("name", "my-workflow")]
-    #[case::description("description", "A test workflow")]
-    fn build_with_valid_data_string_field_matches(#[case] field: &str, #[case] expected: &str) {
-        // Given a valid workflow definition.
-        let def = build_valid_workflow_def();
+#[rstest::rstest]
+#[case::name("name", "my-workflow")]
+#[case::description("description", "A test workflow")]
+fn build_with_valid_data_string_field_matches(#[case] field: &str, #[case] expected: &str) {
+    // Given a valid workflow definition.
+    let def = build_valid_workflow_def();
 
-        // Then the field matches the expected value.
-        let actual = match field {
-            "name" => &def.name,
-            "description" => &def.description,
-            _ => panic!("unknown field: {field}"),
-        };
-        assert_eq!(actual, expected);
-    }
+    // Then the field matches the expected value.
+    let actual = match field {
+        "name" => &def.name,
+        "description" => &def.description,
+        _ => panic!("unknown field: {field}"),
+    };
+    assert_eq!(actual, expected);
+}
 
-    #[rstest::rstest]    fn build_with_valid_data_has_correct_globals_and_steps() {
-        // Given a valid workflow definition.
-        let def = build_valid_workflow_def();
+#[rstest::rstest]
+fn build_with_valid_data_has_correct_globals_and_steps() {
+    // Given a valid workflow definition.
+    let def = build_valid_workflow_def();
 
-        // Then globals and steps are correct.
-        assert_eq!(def.globals.get("base_dir"), Some(&"/tmp".to_owned()));
-        assert_eq!(def.steps.len(), 1);
-        assert_eq!(def.steps.first().unwrap().id, "step-1");
-    }
+    // Then globals and steps are correct.
+    assert_eq!(def.globals.get("base_dir"), Some(&"/tmp".to_owned()));
+    assert_eq!(def.steps.len(), 1);
+    assert_eq!(def.steps.first().unwrap().id, "step-1");
+}
 
-#[rstest::rstest]fn build_without_name_fails() {
+#[rstest::rstest]
+fn build_without_name_fails() {
     let builder = WorkflowBuilder::new();
     let result = builder.build();
     assert!(result.is_err());
 }
 
 /// Builds a workflow preview with checkpoint, user-input, guard, output, globals, and model overrides.
-    fn build_preview_workflow() -> String {
-        let mut builder = WorkflowBuilder::new();
-        builder
-            .create("test-workflow".to_owned(), "A test".to_owned())
-            .unwrap();
-        builder.add_global("dir".to_owned(), "/tmp".to_owned());
-        builder.set_model_override("small".to_owned(), "ollama/phi3".to_owned());
+fn build_preview_workflow() -> String {
+    let mut builder = WorkflowBuilder::new();
+    builder
+        .create("test-workflow".to_owned(), "A test".to_owned())
+        .unwrap();
+    builder.add_global("dir".to_owned(), "/tmp".to_owned());
+    builder.set_model_override("small".to_owned(), "ollama/phi3".to_owned());
 
-        let mut step = make_step("create-dir");
-        step.checkpoint = true;
-        step.requires_user_input = true;
-        builder.add_step(step).unwrap();
+    let mut step = make_step("create-dir");
+    step.checkpoint = true;
+    step.requires_user_input = true;
+    builder.add_step(step).unwrap();
 
-        builder
-            .add_guard(
-                "create-dir",
-                GuardPredicate::FileExists {
-                    path: "{{dir}}/notes.md".to_owned(),
-                },
-            )
-            .unwrap();
+    builder
+        .add_guard(
+            "create-dir",
+            GuardPredicate::FileExists {
+                path: "{{dir}}/notes.md".to_owned(),
+            },
+        )
+        .unwrap();
 
-        builder
-            .add_output(
-                "create-dir",
-                StepOutputDef::File {
-                    label: "Notes".to_owned(),
-                    path: "{{dir}}/notes.md".to_owned(),
-                },
-            )
-            .unwrap();
+    builder
+        .add_output(
+            "create-dir",
+            StepOutputDef::File {
+                label: "Notes".to_owned(),
+                path: "{{dir}}/notes.md".to_owned(),
+            },
+        )
+        .unwrap();
 
-        builder.preview()
-    }
+    builder.preview()
+}
 
 #[rstest::rstest]
 #[case::workflow_name("Workflow: test-workflow")]
@@ -226,7 +237,8 @@ fn preview_produces_expected_format(#[case] expected: &str) {
     );
 }
 
-#[rstest::rstest]fn preview_shows_all_pieces() {
+#[rstest::rstest]
+fn preview_shows_all_pieces() {
     // Given a builder.
     let mut builder = WorkflowBuilder::new();
 
@@ -272,7 +284,8 @@ fn preview_produces_expected_format(#[case] expected: &str) {
     assert!(preview.contains("Config (summary)"));
 }
 
-#[rstest::rstest]fn build_produces_valid_def() {
+#[rstest::rstest]
+fn build_produces_valid_def() {
     // Given a builder.
     let mut builder = WorkflowBuilder::new();
 
@@ -321,7 +334,8 @@ fn preview_produces_expected_format(#[case] expected: &str) {
     );
 }
 
-#[rstest::rstest]fn adding_multiple_guards_combines_with_all() {
+#[rstest::rstest]
+fn adding_multiple_guards_combines_with_all() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -358,7 +372,8 @@ fn preview_produces_expected_format(#[case] expected: &str) {
     }
 }
 
-#[rstest::rstest]fn abort_consumes_builder() {
+#[rstest::rstest]
+fn abort_consumes_builder() {
     let builder = WorkflowBuilder::new();
     builder.abort();
     // Builder is consumed; this test just verifies it compiles.
@@ -366,7 +381,8 @@ fn preview_produces_expected_format(#[case] expected: &str) {
 
 // --- validate() tests ---
 
-#[rstest::rstest]fn validate_succeeds_for_valid_draft() {
+#[rstest::rstest]
+fn validate_succeeds_for_valid_draft() {
     // Given a builder with name, description, and a step.
     let mut builder = WorkflowBuilder::new();
     builder
@@ -381,7 +397,8 @@ fn preview_produces_expected_format(#[case] expected: &str) {
     assert!(result.is_ok());
 }
 
-#[rstest::rstest]fn validate_fails_without_name() {
+#[rstest::rstest]
+fn validate_fails_without_name() {
     // Given a builder with no name.
     let builder = WorkflowBuilder::new();
 
@@ -394,7 +411,8 @@ fn preview_produces_expected_format(#[case] expected: &str) {
     assert_eq!(*kind, WorkflowErrorKind::MissingField("name".to_owned()));
 }
 
-#[rstest::rstest]fn validate_fails_without_description() {
+#[rstest::rstest]
+fn validate_fails_without_description() {
     // Given a builder with no description.
     let builder = WorkflowBuilder::new();
 
@@ -409,7 +427,8 @@ fn preview_produces_expected_format(#[case] expected: &str) {
     ));
 }
 
-#[rstest::rstest]fn validate_fails_with_no_steps() {
+#[rstest::rstest]
+fn validate_fails_with_no_steps() {
     // Given a builder with name and description but no steps.
     let mut builder = WorkflowBuilder::new();
     builder
@@ -427,7 +446,8 @@ fn preview_produces_expected_format(#[case] expected: &str) {
     );
 }
 
-#[rstest::rstest]fn validate_does_not_consume_builder() {
+#[rstest::rstest]
+fn validate_does_not_consume_builder() {
     // Given a builder with name, description, and a step.
     let mut builder = WorkflowBuilder::new();
     builder

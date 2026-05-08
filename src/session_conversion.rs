@@ -124,7 +124,8 @@ mod tests {
 
     // --- Test: Missing workflow blob produces None ---
 
-    #[rstest::rstest]    fn workflow_state_is_none_when_blob_missing() {
+    #[rstest::rstest]
+    fn workflow_state_is_none_when_blob_missing() {
         // Given a PersistedSession with empty blobs map.
         let persisted = PersistedSession {
             session_id: SessionId::new(),
@@ -144,7 +145,8 @@ mod tests {
 
     // --- Test: Missing strategy blob produces None ---
 
-    #[rstest::rstest]    fn strategy_state_is_none_when_blob_missing() {
+    #[rstest::rstest]
+    fn strategy_state_is_none_when_blob_missing() {
         // Given a PersistedSession with empty blobs map.
         let persisted = PersistedSession {
             session_id: SessionId::new(),
@@ -164,7 +166,8 @@ mod tests {
 
     // --- Test: Session has defaults when blobs are missing ---
 
-    #[rstest::rstest]    fn session_has_defaults_when_blobs_missing() {
+    #[rstest::rstest]
+    fn session_has_defaults_when_blobs_missing() {
         // Given a PersistedSession with empty blobs map.
         let persisted = PersistedSession {
             session_id: SessionId::new(),
@@ -186,7 +189,8 @@ mod tests {
 
     // --- Test: Ephemeral fields reset to defaults on round-trip ---
 
-    #[rstest::rstest]    fn ephemeral_fields_reset_to_defaults() {
+    #[rstest::rstest]
+    fn ephemeral_fields_reset_to_defaults() {
         // Given a ChatSessionState with history entries.
         let mut runtime = ChatSessionState::new();
         runtime.push_entry(ChatEntry::user("hello"));
@@ -207,7 +211,8 @@ mod tests {
 
     // --- Test: Durable fields survive round-trip ---
 
-    #[rstest::rstest]    fn durable_fields_preserved_after_roundtrip() {
+    #[rstest::rstest]
+    fn durable_fields_preserved_after_roundtrip() {
         // Given a ChatSessionState with history entries.
         let mut runtime = ChatSessionState::new();
         runtime.push_entry(ChatEntry::user("hello"));
@@ -224,7 +229,8 @@ mod tests {
 
     // --- Test: Workflow state round-trips through blob ---
 
-    #[rstest::rstest]    fn workflow_state_round_trips_through_persisted_session_blob() {
+    #[rstest::rstest]
+    fn workflow_state_round_trips_through_persisted_session_blob() {
         // Given a ChatSessionState with a workflow set.
         let mut runtime = ChatSessionState::new();
         let def = make_workflow(2);
@@ -245,7 +251,8 @@ mod tests {
 
     // --- Test: Strategy state round-trips through blob ---
 
-    #[rstest::rstest]    fn strategy_state_round_trips_through_persisted_session_blob() {
+    #[rstest::rstest]
+    fn strategy_state_round_trips_through_persisted_session_blob() {
         // Given a ChatSessionState with strategy state set.
         let mut runtime = ChatSessionState::new();
         runtime.set_strategy_state(serde_json::json!({"compaction_count": 7}));
@@ -264,7 +271,8 @@ mod tests {
 
     // --- Test: Malformed workflow blob produces None ---
 
-    #[rstest::rstest]    fn malformed_workflow_blob_produces_none() {
+    #[rstest::rstest]
+    fn malformed_workflow_blob_produces_none() {
         // Given a PersistedSession JSON with a malformed workflow_state blob.
         let json = r#"{
             "session_id": "s-00000000-0000-0000-0000-000000000001",
@@ -287,7 +295,8 @@ mod tests {
 
     // --- Test: Missing strategy blob means strategy_state is None ---
 
-    #[rstest::rstest]    fn missing_strategy_blob_means_no_strategy_state() {
+    #[rstest::rstest]
+    fn missing_strategy_blob_means_no_strategy_state() {
         // Given a PersistedSession with no strategy_state blob.
         let persisted = PersistedSession {
             session_id: SessionId::new(),

@@ -39,7 +39,8 @@ mod tests {
         (ActorRef::new(tx), rx)
     }
 
-    #[rstest::rstest]    fn send_event_closure_wraps_and_delivers() {
+    #[rstest::rstest]
+    fn send_event_closure_wraps_and_delivers() {
         // Given a RoutingEntry built from an ActorRef<String>.
         let (actor_ref, rx) = make_actor_ref_and_rx();
         let ref_clone = actor_ref.clone();
@@ -74,7 +75,8 @@ mod tests {
         ));
     }
 
-    #[rstest::rstest]    fn send_command_closure_wraps_and_delivers() {
+    #[rstest::rstest]
+    fn send_command_closure_wraps_and_delivers() {
         // Given a RoutingEntry built from an ActorRef<String>.
         let (actor_ref, rx) = make_actor_ref_and_rx();
         let ref_clone = actor_ref.clone();
@@ -104,7 +106,8 @@ mod tests {
         ));
     }
 
-    #[rstest::rstest]    fn send_shutdown_closure_sends_shutdown() {
+    #[rstest::rstest]
+    fn send_shutdown_closure_sends_shutdown() {
         // Given a RoutingEntry built from an ActorRef<String>.
         let (actor_ref, rx) = make_actor_ref_and_rx();
         let ref_clone = actor_ref.clone();
@@ -131,7 +134,8 @@ mod tests {
         assert!(matches!(msg, ActorEnvelope::Shutdown));
     }
 
-    #[rstest::rstest]    fn send_system_closure_wraps_and_delivers() {
+    #[rstest::rstest]
+    fn send_system_closure_wraps_and_delivers() {
         // Given a RoutingEntry built from an ActorRef<String>.
         let (actor_ref, rx) = make_actor_ref_and_rx();
         let ref_clone = actor_ref.clone();

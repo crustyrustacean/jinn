@@ -78,10 +78,8 @@ impl ChatInputBoxHandler {
                     // Check for double-$ expansion.
                     // The filter is the text BEFORE the just-inserted $,
                     // so we use cursor_pos - 1 as the end.
-                    let Some(token_start) = ctx
-                        .state
-                        .active_chat_input()
-                        .autocomplete_token_start()
+                    let Some(token_start) =
+                        ctx.state.active_chat_input().autocomplete_token_start()
                     else {
                         // Autocomplete was deactivated between checks.
                         return CommandAction::Continue;
@@ -147,13 +145,12 @@ impl ChatInputBoxHandler {
         _cmd: &DeleteGrapheme,
         ctx: &mut HandlerContext<'_, AppState, Services>,
     ) -> CommandAction {
-        let should_deactivate = if let Some(token_start) =
-            ctx.state.active_chat_input().autocomplete_token_start()
-        {
-            ctx.state.active_chat_input().cursor_pos() <= token_start + 1
-        } else {
-            false
-        };
+        let should_deactivate =
+            if let Some(token_start) = ctx.state.active_chat_input().autocomplete_token_start() {
+                ctx.state.active_chat_input().cursor_pos() <= token_start + 1
+            } else {
+                false
+            };
 
         if should_deactivate {
             ctx.state.active_chat_input_mut().deactivate_autocomplete();

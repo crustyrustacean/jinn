@@ -1,6 +1,7 @@
 use super::*;
 
-#[rstest::rstest]fn grapheme_count_returns_cluster_count() {
+#[rstest::rstest]
+fn grapheme_count_returns_cluster_count() {
     // Given a state with "éNoël" inserted.
     let mut state = ChatInputBoxState::new();
     for ch in "éNoël".chars() {
@@ -12,7 +13,8 @@ use super::*;
     assert_eq!(state.grapheme_count(), 5);
 }
 
-#[rstest::rstest]fn delete_grapheme_before_cursor_handles_unicode() {
+#[rstest::rstest]
+fn delete_grapheme_before_cursor_handles_unicode() {
     // Given "é" with cursor at end (1).
     let mut state = ChatInputBoxState::new();
     state.insert_grapheme_at_cursor('é');
@@ -25,7 +27,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 0);
 }
 
-#[rstest::rstest]fn move_cursor_left_right_with_unicode() {
+#[rstest::rstest]
+fn move_cursor_left_right_with_unicode() {
     // Given "écafé" with cursor at end (5).
     let mut state = ChatInputBoxState::new();
     for ch in "écafé".chars() {
@@ -42,7 +45,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 4);
 }
 
-#[rstest::rstest]fn word_right_skips_past_unicode_word() {
+#[rstest::rstest]
+fn word_right_skips_past_unicode_word() {
     // Given "café au lait" with cursor at start (0).
     let mut state = ChatInputBoxState::new();
     for ch in "café au lait".chars() {
@@ -57,7 +61,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 5);
 }
 
-#[rstest::rstest]fn word_right_twice_skips_two_words() {
+#[rstest::rstest]
+fn word_right_twice_skips_two_words() {
     // Given "café au lait" with cursor at start (0).
     let mut state = ChatInputBoxState::new();
     for ch in "café au lait".chars() {
@@ -73,7 +78,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 8);
 }
 
-#[rstest::rstest]fn visual_line_count_single_line() {
+#[rstest::rstest]
+fn visual_line_count_single_line() {
     // Given "hello".
     let mut state = ChatInputBoxState::new();
     for ch in "hello".chars() {
@@ -85,7 +91,8 @@ use super::*;
     assert_eq!(state.visual_line_count(), 1);
 }
 
-#[rstest::rstest]fn visual_line_count_two_lines() {
+#[rstest::rstest]
+fn visual_line_count_two_lines() {
     // Given "hello\nworld".
     let mut state = ChatInputBoxState::new();
     for ch in "hello\nworld".chars() {
@@ -97,7 +104,8 @@ use super::*;
     assert_eq!(state.visual_line_count(), 2);
 }
 
-#[rstest::rstest]fn visual_line_count_empty() {
+#[rstest::rstest]
+fn visual_line_count_empty() {
     // Given an empty buffer.
     let state = ChatInputBoxState::new();
 
@@ -106,7 +114,8 @@ use super::*;
     assert_eq!(state.visual_line_count(), 1);
 }
 
-#[rstest::rstest]fn visual_line_count_trailing_newline() {
+#[rstest::rstest]
+fn visual_line_count_trailing_newline() {
     // Given "hello\n".
     let mut state = ChatInputBoxState::new();
     for ch in "hello\n".chars() {
@@ -118,7 +127,8 @@ use super::*;
     assert_eq!(state.visual_line_count(), 2);
 }
 
-#[rstest::rstest]fn cursor_row_col_on_first_line() {
+#[rstest::rstest]
+fn cursor_row_col_on_first_line() {
     // Given "hello" with cursor at end.
     let mut state = ChatInputBoxState::new();
     for ch in "hello".chars() {
@@ -130,7 +140,8 @@ use super::*;
     assert_eq!(state.cursor_row_col(), (0, 5));
 }
 
-#[rstest::rstest]fn cursor_row_col_on_second_line() {
+#[rstest::rstest]
+fn cursor_row_col_on_second_line() {
     // Given "hello\nworld" with cursor at end.
     let mut state = ChatInputBoxState::new();
     for ch in "hello\nworld".chars() {
@@ -142,7 +153,8 @@ use super::*;
     assert_eq!(state.cursor_row_col(), (1, 5));
 }
 
-#[rstest::rstest]fn cursor_row_col_at_start_of_second_line() {
+#[rstest::rstest]
+fn cursor_row_col_at_start_of_second_line() {
     // Given "hello\nworld" with cursor right after the newline.
     let mut state = ChatInputBoxState::new();
     for ch in "hello\nworld".chars() {
@@ -161,7 +173,8 @@ use super::*;
     assert_eq!(state.cursor_row_col(), (1, 0));
 }
 
-#[rstest::rstest]fn cursor_row_col_empty_buffer() {
+#[rstest::rstest]
+fn cursor_row_col_empty_buffer() {
     // Given an empty buffer.
     let state = ChatInputBoxState::new();
 
@@ -170,7 +183,8 @@ use super::*;
     assert_eq!(state.cursor_row_col(), (0, 0));
 }
 
-#[rstest::rstest]fn move_cursor_up_is_noop_on_first_line() {
+#[rstest::rstest]
+fn move_cursor_up_is_noop_on_first_line() {
     // Given "hello" with cursor at end (single line).
     let mut state = ChatInputBoxState::new();
     for ch in "hello".chars() {
@@ -184,7 +198,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 5);
 }
 
-#[rstest::rstest]fn move_cursor_down_is_noop_on_last_line() {
+#[rstest::rstest]
+fn move_cursor_down_is_noop_on_last_line() {
     // Given "hello" with cursor at start (single line).
     let mut state = ChatInputBoxState::new();
     for ch in "hello".chars() {
@@ -199,7 +214,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 0);
 }
 
-#[rstest::rstest]fn move_cursor_up_goes_to_previous_line() {
+#[rstest::rstest]
+fn move_cursor_up_goes_to_previous_line() {
     // Given "hello\nworld" with cursor at end of line 2.
     let mut state = ChatInputBoxState::new();
     for ch in "hello\nworld".chars() {
@@ -215,7 +231,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 5);
 }
 
-#[rstest::rstest]fn move_cursor_down_goes_to_next_line() {
+#[rstest::rstest]
+fn move_cursor_down_goes_to_next_line() {
     // Given "hello\nworld" with cursor at start of line 1.
     let mut state = ChatInputBoxState::new();
     for ch in "hello\nworld".chars() {
@@ -232,7 +249,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 6);
 }
 
-#[rstest::rstest]fn move_cursor_up_clamps_col_to_shorter_line() {
+#[rstest::rstest]
+fn move_cursor_up_clamps_col_to_shorter_line() {
     // Given "hello\nxy" with cursor at end of line 2 (col=2).
     let mut state = ChatInputBoxState::new();
     for ch in "hello\nxy".chars() {
@@ -250,7 +268,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 2);
 }
 
-#[rstest::rstest]fn move_cursor_up_preserves_col_on_equal_length_lines() {
+#[rstest::rstest]
+fn move_cursor_up_preserves_col_on_equal_length_lines() {
     // Given "abcd\nefgh" with cursor at col 3 on line 2.
     let mut state = ChatInputBoxState::new();
     for ch in "abcd\nefgh".chars() {
@@ -267,7 +286,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 3);
 }
 
-#[rstest::rstest]fn move_cursor_down_clamps_col_to_shorter_line() {
+#[rstest::rstest]
+fn move_cursor_down_clamps_col_to_shorter_line() {
     // Given "xy\nhello" with cursor at col 4 on line 1.
     let mut state = ChatInputBoxState::new();
     for ch in "xy\nhello".chars() {
@@ -286,7 +306,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 4);
 }
 
-#[rstest::rstest]fn move_cursor_up_on_empty_line() {
+#[rstest::rstest]
+fn move_cursor_up_on_empty_line() {
     // Given "a\n\nb" with cursor on line 2 (after 'b').
     let mut state = ChatInputBoxState::new();
     for ch in "a\n\nb".chars() {
@@ -302,7 +323,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 2);
 }
 
-#[rstest::rstest]fn move_cursor_down_on_empty_line() {
+#[rstest::rstest]
+fn move_cursor_down_on_empty_line() {
     // Given "a\n\nb" with cursor at start of line 1 (empty middle line).
     let mut state = ChatInputBoxState::new();
     for ch in "a\n\nb".chars() {
@@ -320,7 +342,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 3);
 }
 
-#[rstest::rstest]fn move_cursor_up_empty_buffer_is_noop() {
+#[rstest::rstest]
+fn move_cursor_up_empty_buffer_is_noop() {
     // Given an empty buffer.
     let mut state = ChatInputBoxState::new();
 
@@ -331,7 +354,8 @@ use super::*;
     assert_eq!(state.cursor_pos(), 0);
 }
 
-#[rstest::rstest]fn move_cursor_down_empty_buffer_is_noop() {
+#[rstest::rstest]
+fn move_cursor_down_empty_buffer_is_noop() {
     // Given an empty buffer.
     let mut state = ChatInputBoxState::new();
 
@@ -344,7 +368,8 @@ use super::*;
 
 // --- desired column tests ---
 
-#[rstest::rstest]fn desired_col_preserved_across_shorter_intermediate_line_down() {
+#[rstest::rstest]
+fn desired_col_preserved_across_shorter_intermediate_line_down() {
     // Given "abcdefghijkl\nxy\nmnopqrstuvwx" with cursor at col 10 on line 0.
     let mut state = ChatInputBoxState::new();
     for ch in "abcdefghijkl\nxy\nmnopqrstuvwx".chars() {
@@ -366,7 +391,8 @@ use super::*;
     assert_eq!(state.cursor_row_col(), (2, 10));
 }
 
-#[rstest::rstest]fn desired_col_preserved_across_shorter_intermediate_line_up() {
+#[rstest::rstest]
+fn desired_col_preserved_across_shorter_intermediate_line_up() {
     // Given "abcdefghijkl\nxy\nmnopqrstuvwx" with cursor at col 10 on line 2.
     let mut state = ChatInputBoxState::new();
     for ch in "abcdefghijkl\nxy\nmnopqrstuvwx".chars() {
@@ -386,7 +412,8 @@ use super::*;
     assert_eq!(state.cursor_row_col(), (0, 10));
 }
 
-#[rstest::rstest]fn desired_col_cleared_by_horizontal_move() {
+#[rstest::rstest]
+fn desired_col_cleared_by_horizontal_move() {
     // Given "abcd\nef\nghij" with cursor at col 3 on line 1.
     let mut state = ChatInputBoxState::new();
     for ch in "abcd\nef\nghij".chars() {
@@ -426,7 +453,8 @@ use super::*;
     assert_eq!(state.cursor_row_col(), (2, 1)); // col 1 on "world" = 'o'
 }
 
-#[rstest::rstest]fn desired_col_cleared_by_insert() {
+#[rstest::rstest]
+fn desired_col_cleared_by_insert() {
     // Given "abc\nxy\ndef" with cursor at col 2 on line 1.
     let mut state = ChatInputBoxState::new();
     for ch in "abc\nxy\ndef".chars() {
@@ -448,7 +476,8 @@ use super::*;
     assert_eq!(state.cursor_row_col(), (2, 3)); // actual col is 3 after insert
 }
 
-#[rstest::rstest]fn desired_col_cleared_by_delete() {
+#[rstest::rstest]
+fn desired_col_cleared_by_delete() {
     // Given "abcde\nxy\nfghij" with cursor at col 4 on line 0.
     let mut state = ChatInputBoxState::new();
     for ch in "abcde\nxy\nfghij".chars() {

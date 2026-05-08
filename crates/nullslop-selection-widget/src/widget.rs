@@ -181,10 +181,7 @@ where
             let entry_idx = scroll_offset + row;
             if let Some(item) = self.state.filtered_item(entry_idx) {
                 let is_selected = entry_idx == selection;
-                let match_indices = self
-                    .state
-                    .filtered_match_indices(entry_idx)
-                    .unwrap_or(&[]);
+                let match_indices = self.state.filtered_match_indices(entry_idx).unwrap_or(&[]);
                 let ranges = fuzzy_bytes_to_ranges(match_indices);
                 result_lines.push(item.render_row_with_highlight(is_selected, &ranges));
             } else {
@@ -249,7 +246,8 @@ mod tests {
     // Ported from render.rs provider picker tests
     // =========================================================================
 
-    #[rstest::rstest]    fn render_shows_telescope_layout() {
+    #[rstest::rstest]
+    fn render_shows_telescope_layout() {
         // Given a selection state with filter text.
         let mut state = SelectionState::with_items(make_items(&["ollama"]));
         state.insert_char('o');
@@ -280,7 +278,8 @@ mod tests {
         assert_eq!(sep_cell.symbol(), "\u{2500}");
     }
 
-    #[rstest::rstest]    fn larger_terminal_taller_popup() {
+    #[rstest::rstest]
+    fn larger_terminal_taller_popup() {
         // Given two terminal sizes.
         let small_area = Rect::new(0, 0, 80, 24);
         let large_area = Rect::new(0, 0, 80, 42);
@@ -293,7 +292,8 @@ mod tests {
         assert!(large_popup.height > small_popup.height);
     }
 
-    #[rstest::rstest]    fn small_terminal_uses_75_percent() {
+    #[rstest::rstest]
+    fn small_terminal_uses_75_percent() {
         // Given a small terminal.
         let small_area = Rect::new(0, 0, 80, 24);
 
@@ -305,7 +305,8 @@ mod tests {
         assert_eq!(small_popup.height, 22);
     }
 
-    #[rstest::rstest]    fn render_uses_dark_gray_border() {
+    #[rstest::rstest]
+    fn render_uses_dark_gray_border() {
         // Given a widget with default state.
         let state = SelectionState::with_items(make_items(&["test"]));
 
@@ -327,7 +328,8 @@ mod tests {
         assert_eq!(border_cell.fg, Color::DarkGray);
     }
 
-    #[rstest::rstest]    fn render_calls_render_row_for_selected_item() {
+    #[rstest::rstest]
+    fn render_calls_render_row_for_selected_item() {
         // Given a selection state with items where the first is selected.
         let state = SelectionState::with_items(make_items(&["alpha", "bravo"]));
 
@@ -355,7 +357,8 @@ mod tests {
     // New widget-specific tests
     // =========================================================================
 
-    #[rstest::rstest]    fn render_shows_title() {
+    #[rstest::rstest]
+    fn render_shows_title() {
         // Given a widget with a custom title.
         let state = SelectionState::with_items(make_items(&["test"]));
         let backend = TestBackend::new(80, 24);
@@ -391,7 +394,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn render_shows_footer_when_provided() {
+    #[rstest::rstest]
+    fn render_shows_footer_when_provided() {
         // Given a widget with a footer.
         let state = SelectionState::with_items(make_items(&["test"]));
         let backend = TestBackend::new(80, 24);
@@ -432,7 +436,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn render_no_footer_shows_empty_row() {
+    #[rstest::rstest]
+    fn render_no_footer_shows_empty_row() {
         // Given a widget without a footer.
         let state = SelectionState::with_items(make_items(&["test"]));
         let backend = TestBackend::new(80, 24);
@@ -470,7 +475,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn render_pads_empty_result_rows() {
+    #[rstest::rstest]
+    fn render_pads_empty_result_rows() {
         // Given a selection state with only 1 item but many visible rows.
         let state = SelectionState::with_items(make_items(&["solo"]));
         let backend = TestBackend::new(80, 24);
@@ -520,7 +526,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn render_positions_cursor_correctly() {
+    #[rstest::rstest]
+    fn render_positions_cursor_correctly() {
         // Given a selection state with filter text and cursor in the middle.
         let mut state = SelectionState::with_items(make_items(&["test"]));
         state.insert_char('a');
@@ -561,7 +568,8 @@ mod tests {
         assert_eq!(cursor_cell.symbol(), "b");
     }
 
-    #[rstest::rstest]    fn compute_popup_rect_width_clamps_to_min() {
+    #[rstest::rstest]
+    fn compute_popup_rect_width_clamps_to_min() {
         // Given a very narrow terminal (width 20, less than PICKER_MIN_WIDTH).
         let area = Rect::new(0, 0, 20, 24);
 
@@ -576,7 +584,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn popup_width_does_not_exceed_terminal() {
+    #[rstest::rstest]
+    fn popup_width_does_not_exceed_terminal() {
         // Given a terminal area.
         let area = Rect::new(0, 0, 80, 24);
 
@@ -587,7 +596,8 @@ mod tests {
         assert!(popup.width <= area.width, "popup width exceeds terminal");
     }
 
-    #[rstest::rstest]    fn popup_height_does_not_exceed_terminal() {
+    #[rstest::rstest]
+    fn popup_height_does_not_exceed_terminal() {
         // Given a terminal area.
         let area = Rect::new(0, 0, 80, 24);
 
@@ -598,7 +608,8 @@ mod tests {
         assert!(popup.height <= area.height, "popup height exceeds terminal");
     }
 
-    #[rstest::rstest]    fn compute_popup_rect_centers_horizontally() {
+    #[rstest::rstest]
+    fn compute_popup_rect_centers_horizontally() {
         // Given an 80-wide terminal.
         let area = Rect::new(0, 0, 80, 24);
 
@@ -615,7 +626,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn compute_popup_rect_biased_to_top_third() {
+    #[rstest::rstest]
+    fn compute_popup_rect_biased_to_top_third() {
         // Given a tall terminal.
         let area = Rect::new(0, 0, 80, 60);
 

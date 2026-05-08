@@ -50,14 +50,13 @@ use nullslop_protocol::provider_picker::{
 };
 use nullslop_protocol::system::{
     ChatEntryPinSelected, DashboardSelectDown, DashboardSelectFirst, DashboardSelectLast,
-    DashboardSelectUp, EditInput, MouseScrollDown, MouseScrollUp, NormalEscape,
-    PinnedPanelClose, PinnedPanelOpen, PinnedPanelPinBottom, PinnedPanelPinCycle,
-    PinnedPanelPinRelative, PinnedPanelPinTop, PinnedPanelSelectDown, PinnedPanelSelectUp,
-    PinnedPanelToggle, PinnedPanelUnpin, Quit, ScrollDown, ScrollLineDown, ScrollLineUp,
-    ScrollToBottom, ScrollToTop, ScrollUp, ToggleKeymapScopeFilter, ToggleWhichKey,
-    WorkflowApproveStep, WorkflowFocusChat, WorkflowFocusWorkflow, WorkflowRestartStep,
-    WorkflowSelectDown, WorkflowSelectFirst, WorkflowSelectLast, WorkflowSelectUp,
-    WorkflowToggleDetail, WorkflowTogglePane,
+    DashboardSelectUp, EditInput, MouseScrollDown, MouseScrollUp, NormalEscape, PinnedPanelClose,
+    PinnedPanelOpen, PinnedPanelPinBottom, PinnedPanelPinCycle, PinnedPanelPinRelative,
+    PinnedPanelPinTop, PinnedPanelSelectDown, PinnedPanelSelectUp, PinnedPanelToggle,
+    PinnedPanelUnpin, Quit, ScrollDown, ScrollLineDown, ScrollLineUp, ScrollToBottom, ScrollToTop,
+    ScrollUp, ToggleKeymapScopeFilter, ToggleWhichKey, WorkflowApproveStep, WorkflowFocusChat,
+    WorkflowFocusWorkflow, WorkflowRestartStep, WorkflowSelectDown, WorkflowSelectFirst,
+    WorkflowSelectLast, WorkflowSelectUp, WorkflowToggleDetail, WorkflowTogglePane,
 };
 use nullslop_protocol::workflow::{AbortWorkflow, AdvanceStep, WorkflowCompleted};
 use nullslop_protocol::{ActorName, Command, CommandAction, Event};

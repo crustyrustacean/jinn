@@ -71,7 +71,8 @@ mod tests {
 
     use super::*;
 
-    #[rstest::rstest]    fn factory_name_is_no_providers_available() {
+    #[rstest::rstest]
+    fn factory_name_is_no_providers_available() {
         // Given a NoProvidersAvailableFactory.
         let factory = NoProvidersAvailableFactory;
 
@@ -80,7 +81,8 @@ mod tests {
         assert_eq!(factory.name(), "NoProvidersAvailable");
     }
 
-    #[rstest::rstest]    fn factory_creates_service() {
+    #[rstest::rstest]
+    fn factory_creates_service() {
         // Given a NoProvidersAvailableFactory.
         let factory = NoProvidersAvailableFactory;
 

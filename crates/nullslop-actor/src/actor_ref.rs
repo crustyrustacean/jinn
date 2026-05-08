@@ -183,7 +183,8 @@ mod tests {
 
     use super::*;
 
-    #[rstest::rstest]    fn send_delivers_direct_message() {
+    #[rstest::rstest]
+    fn send_delivers_direct_message() {
         // Given an ActorRef with an unbounded channel.
         let (tx, rx) = kanal::unbounded::<ActorEnvelope<String>>();
         let actor_ref = ActorRef::new(tx);
@@ -201,7 +202,8 @@ mod tests {
         assert!(matches!(msg, ActorEnvelope::Direct(ref s) if s == "hello"));
     }
 
-    #[rstest::rstest]    fn send_event_delivers_event() {
+    #[rstest::rstest]
+    fn send_event_delivers_event() {
         // Given an ActorRef with an unbounded channel.
         let (tx, rx) = kanal::unbounded::<ActorEnvelope<()>>();
         let actor_ref = ActorRef::new(tx);
@@ -226,7 +228,8 @@ mod tests {
         assert!(matches!(msg, ActorEnvelope::Event(Event::KeyDown { .. })));
     }
 
-    #[rstest::rstest]    fn send_command_delivers_command() {
+    #[rstest::rstest]
+    fn send_command_delivers_command() {
         // Given an ActorRef with an unbounded channel.
         let (tx, rx) = kanal::unbounded::<ActorEnvelope<()>>();
         let actor_ref = ActorRef::new(tx);
@@ -244,7 +247,8 @@ mod tests {
         assert!(matches!(msg, ActorEnvelope::Command(Command::Quit)));
     }
 
-    #[rstest::rstest]    fn send_system_delivers_system_message() {
+    #[rstest::rstest]
+    fn send_system_delivers_system_message() {
         // Given an ActorRef with an unbounded channel.
         let (tx, rx) = kanal::unbounded::<ActorEnvelope<()>>();
         let actor_ref = ActorRef::new(tx);
@@ -265,7 +269,8 @@ mod tests {
         ));
     }
 
-    #[rstest::rstest]    fn shutdown_sends_shutdown_envelope() {
+    #[rstest::rstest]
+    fn shutdown_sends_shutdown_envelope() {
         // Given an ActorRef with an unbounded channel.
         let (tx, rx) = kanal::unbounded::<ActorEnvelope<()>>();
         let actor_ref = ActorRef::new(tx);
@@ -281,7 +286,8 @@ mod tests {
         assert!(matches!(msg, ActorEnvelope::Shutdown));
     }
 
-    #[rstest::rstest]    fn swap_sends_to_new_channel() {
+    #[rstest::rstest]
+    fn swap_sends_to_new_channel() {
         // Given an ActorRef wired to channel A.
         let (tx_a, _rx_a) = kanal::unbounded::<ActorEnvelope<String>>();
         let actor_ref = ActorRef::new(tx_a);
@@ -303,7 +309,8 @@ mod tests {
         assert!(matches!(msg, ActorEnvelope::Direct(ref s) if s == "after-swap"));
     }
 
-    #[rstest::rstest]    fn swap_does_not_send_to_old_channel() {
+    #[rstest::rstest]
+    fn swap_does_not_send_to_old_channel() {
         // Given an ActorRef wired to channel A.
         let (tx_a, rx_a) = kanal::unbounded::<ActorEnvelope<String>>();
         let actor_ref = ActorRef::new(tx_a);
@@ -321,7 +328,8 @@ mod tests {
         assert!(rx_a.try_recv().expect("recv should succeed").is_none());
     }
 
-    #[rstest::rstest]    fn clone_shares_cell() {
+    #[rstest::rstest]
+    fn clone_shares_cell() {
         // Given an ActorRef.
         let (tx, rx) = kanal::unbounded::<ActorEnvelope<String>>();
         let actor_ref = ActorRef::new(tx);
@@ -340,7 +348,8 @@ mod tests {
         assert!(matches!(msg, ActorEnvelope::Direct(ref s) if s == "from-clone"));
     }
 
-    #[rstest::rstest]    fn swap_on_original_routes_clone_to_new_channel() {
+    #[rstest::rstest]
+    fn swap_on_original_routes_clone_to_new_channel() {
         // Given an ActorRef and its clone.
         let (tx_a, _) = kanal::unbounded::<ActorEnvelope<String>>();
         let actor_ref = ActorRef::new(tx_a);
@@ -363,7 +372,8 @@ mod tests {
         assert!(matches!(msg, ActorEnvelope::Direct(ref s) if s == "via-clone"));
     }
 
-    #[rstest::rstest]    fn send_returns_error_when_channel_closed() {
+    #[rstest::rstest]
+    fn send_returns_error_when_channel_closed() {
         // Given an ActorRef with a dropped receiver.
         let (tx, rx) = kanal::unbounded::<ActorEnvelope<String>>();
         let actor_ref = ActorRef::new(tx);

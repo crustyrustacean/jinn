@@ -17,8 +17,8 @@ use nullslop_protocol::system::{
 };
 use nullslop_services::Services;
 
-use crate::app_state::pin_sort_key;
 use crate::AppState;
+use crate::app_state::pin_sort_key;
 
 define_handler! {
     pub(crate) struct PinnedPanelHandler;
@@ -88,10 +88,14 @@ impl PinnedPanelHandler {
         _cmd: &PinnedPanelUnpin,
         ctx: &mut HandlerContext<'_, AppState, Services>,
     ) -> CommandAction {
-        if let Some((session_id, entry_id)) = resolve_selected_entry_id(&ctx.state) {
-            ctx.out.submit_command(nullslop_protocol::Command::UnpinChatEntry {
-                payload: UnpinChatEntry { session_id, entry_id },
-            });
+        if let Some((session_id, entry_id)) = resolve_selected_entry_id(ctx.state) {
+            ctx.out
+                .submit_command(nullslop_protocol::Command::UnpinChatEntry {
+                    payload: UnpinChatEntry {
+                        session_id,
+                        entry_id,
+                    },
+                });
         }
         CommandAction::Continue
     }
@@ -101,14 +105,15 @@ impl PinnedPanelHandler {
         _cmd: &PinnedPanelPinTop,
         ctx: &mut HandlerContext<'_, AppState, Services>,
     ) -> CommandAction {
-        if let Some((session_id, entry_id)) = resolve_selected_entry_id(&ctx.state) {
-            ctx.out.submit_command(nullslop_protocol::Command::PinChatEntry {
-                payload: PinChatEntry {
-                    session_id,
-                    entry_id,
-                    position: PinPosition::Top,
-                },
-            });
+        if let Some((session_id, entry_id)) = resolve_selected_entry_id(ctx.state) {
+            ctx.out
+                .submit_command(nullslop_protocol::Command::PinChatEntry {
+                    payload: PinChatEntry {
+                        session_id,
+                        entry_id,
+                        position: PinPosition::Top,
+                    },
+                });
         }
         CommandAction::Continue
     }
@@ -118,14 +123,15 @@ impl PinnedPanelHandler {
         _cmd: &PinnedPanelPinBottom,
         ctx: &mut HandlerContext<'_, AppState, Services>,
     ) -> CommandAction {
-        if let Some((session_id, entry_id)) = resolve_selected_entry_id(&ctx.state) {
-            ctx.out.submit_command(nullslop_protocol::Command::PinChatEntry {
-                payload: PinChatEntry {
-                    session_id,
-                    entry_id,
-                    position: PinPosition::Bottom,
-                },
-            });
+        if let Some((session_id, entry_id)) = resolve_selected_entry_id(ctx.state) {
+            ctx.out
+                .submit_command(nullslop_protocol::Command::PinChatEntry {
+                    payload: PinChatEntry {
+                        session_id,
+                        entry_id,
+                        position: PinPosition::Bottom,
+                    },
+                });
         }
         CommandAction::Continue
     }
@@ -135,14 +141,15 @@ impl PinnedPanelHandler {
         _cmd: &PinnedPanelPinRelative,
         ctx: &mut HandlerContext<'_, AppState, Services>,
     ) -> CommandAction {
-        if let Some((session_id, entry_id)) = resolve_selected_entry_id(&ctx.state) {
-            ctx.out.submit_command(nullslop_protocol::Command::PinChatEntry {
-                payload: PinChatEntry {
-                    session_id,
-                    entry_id,
-                    position: PinPosition::Relative,
-                },
-            });
+        if let Some((session_id, entry_id)) = resolve_selected_entry_id(ctx.state) {
+            ctx.out
+                .submit_command(nullslop_protocol::Command::PinChatEntry {
+                    payload: PinChatEntry {
+                        session_id,
+                        entry_id,
+                        position: PinPosition::Relative,
+                    },
+                });
         }
         CommandAction::Continue
     }
@@ -167,13 +174,14 @@ impl PinnedPanelHandler {
         let session_id = ctx.state.active_session.clone();
         let entry_id = entry.id.clone();
 
-        ctx.out.submit_command(nullslop_protocol::Command::PinChatEntry {
-            payload: PinChatEntry {
-                session_id,
-                entry_id,
-                position: next,
-            },
-        });
+        ctx.out
+            .submit_command(nullslop_protocol::Command::PinChatEntry {
+                payload: PinChatEntry {
+                    session_id,
+                    entry_id,
+                    position: next,
+                },
+            });
         CommandAction::Continue
     }
 }
@@ -181,9 +189,9 @@ impl PinnedPanelHandler {
 #[cfg(test)]
 mod tests {
     use nullslop_component_core::Bus;
+    use nullslop_protocol::ChatEntry;
     use nullslop_protocol::Command;
     use nullslop_protocol::PinPosition;
-    use nullslop_protocol::ChatEntry;
     use nullslop_services::Services;
 
     use super::*;
@@ -209,7 +217,8 @@ mod tests {
         state
     }
 
-    #[rstest::rstest]    fn select_down_increments_index() {
+    #[rstest::rstest]
+    fn select_down_increments_index() {
         // Given a bus with PinnedPanelHandler and a session with 3 pinned entries.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -224,7 +233,8 @@ mod tests {
         assert_eq!(state.pinned_panel.selected_id(), Some(&sorted_ids[1]));
     }
 
-    #[rstest::rstest]    fn select_up_decrements_index() {
+    #[rstest::rstest]
+    fn select_up_decrements_index() {
         // Given a bus with PinnedPanelHandler and a session with 3 pinned entries.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -243,7 +253,8 @@ mod tests {
         assert_eq!(state.pinned_panel.selected_id(), Some(&sorted_ids[0]));
     }
 
-    #[rstest::rstest]    fn unpin_submits_unpin_command() {
+    #[rstest::rstest]
+    fn unpin_submits_unpin_command() {
         // Given a bus with PinnedPanelHandler and a session with 2 pinned entries.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -255,15 +266,16 @@ mod tests {
 
         // Then an UnpinChatEntry command was submitted.
         let processed = bus.drain_processed_commands();
-        let has_unpin = processed.iter().any(|p| {
-            matches!(&p.command, Command::UnpinChatEntry { .. })
-        });
+        let has_unpin = processed
+            .iter()
+            .any(|p| matches!(&p.command, Command::UnpinChatEntry { .. }));
         assert!(has_unpin, "expected UnpinChatEntry command to be submitted");
     }
 
     // --- Position-set tests ---
 
-    #[rstest::rstest]    fn pin_top_submits_pin_command() {
+    #[rstest::rstest]
+    fn pin_top_submits_pin_command() {
         // Given a bus with PinnedPanelHandler and a session with a pinned entry.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -285,7 +297,8 @@ mod tests {
         assert_eq!(position, Some(PinPosition::Top));
     }
 
-    #[rstest::rstest]    fn pin_bottom_submits_pin_command() {
+    #[rstest::rstest]
+    fn pin_bottom_submits_pin_command() {
         // Given a bus with PinnedPanelHandler and a session with a pinned entry.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -307,7 +320,8 @@ mod tests {
         assert_eq!(position, Some(PinPosition::Bottom));
     }
 
-    #[rstest::rstest]    fn pin_relative_submits_pin_command() {
+    #[rstest::rstest]
+    fn pin_relative_submits_pin_command() {
         // Given a bus with PinnedPanelHandler and a session with a pinned entry.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -331,7 +345,8 @@ mod tests {
 
     // --- Cycle position tests ---
 
-    #[rstest::rstest]    fn pin_cycle_rotates_top_to_bottom() {
+    #[rstest::rstest]
+    fn pin_cycle_rotates_top_to_bottom() {
         // Given a pinned entry at TOP.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -339,7 +354,9 @@ mod tests {
         let entry = ChatEntry::user("entry");
         let entry_id = entry.id.clone();
         state.active_session_mut().push_entry(entry);
-        state.active_session_mut().pin_entry(&entry_id, PinPosition::Top);
+        state
+            .active_session_mut()
+            .pin_entry(&entry_id, PinPosition::Top);
         // Select it.
         let sorted_ids = state.sorted_pinned_ids();
         state.pinned_panel.select_by_id(sorted_ids[0].clone());
@@ -360,7 +377,8 @@ mod tests {
         assert_eq!(position, Some(PinPosition::Bottom));
     }
 
-    #[rstest::rstest]    fn pin_cycle_rotates_bottom_to_relative() {
+    #[rstest::rstest]
+    fn pin_cycle_rotates_bottom_to_relative() {
         // Given a pinned entry at BOTTOM.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -368,7 +386,9 @@ mod tests {
         let entry = ChatEntry::user("entry");
         let entry_id = entry.id.clone();
         state.active_session_mut().push_entry(entry);
-        state.active_session_mut().pin_entry(&entry_id, PinPosition::Bottom);
+        state
+            .active_session_mut()
+            .pin_entry(&entry_id, PinPosition::Bottom);
         let sorted_ids = state.sorted_pinned_ids();
         state.pinned_panel.select_by_id(sorted_ids[0].clone());
 
@@ -388,7 +408,8 @@ mod tests {
         assert_eq!(position, Some(PinPosition::Relative));
     }
 
-    #[rstest::rstest]    fn pin_cycle_rotates_relative_to_top() {
+    #[rstest::rstest]
+    fn pin_cycle_rotates_relative_to_top() {
         // Given a pinned entry at RELATIVE.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -396,7 +417,9 @@ mod tests {
         let entry = ChatEntry::user("entry");
         let entry_id = entry.id.clone();
         state.active_session_mut().push_entry(entry);
-        state.active_session_mut().pin_entry(&entry_id, PinPosition::Relative);
+        state
+            .active_session_mut()
+            .pin_entry(&entry_id, PinPosition::Relative);
         let sorted_ids = state.sorted_pinned_ids();
         state.pinned_panel.select_by_id(sorted_ids[0].clone());
 
@@ -418,7 +441,8 @@ mod tests {
 
     // --- Noop tests ---
 
-    #[rstest::rstest]    fn pin_top_is_noop_when_empty() {
+    #[rstest::rstest]
+    fn pin_top_is_noop_when_empty() {
         // Given a bus with PinnedPanelHandler and an empty session.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -430,13 +454,17 @@ mod tests {
 
         // Then no PinChatEntry command was submitted.
         let processed = bus.drain_processed_commands();
-        let has_pin = processed.iter().any(|p| {
-            matches!(&p.command, Command::PinChatEntry { .. })
-        });
-        assert!(!has_pin, "expected no PinChatEntry command when pinned panel is empty");
+        let has_pin = processed
+            .iter()
+            .any(|p| matches!(&p.command, Command::PinChatEntry { .. }));
+        assert!(
+            !has_pin,
+            "expected no PinChatEntry command when pinned panel is empty"
+        );
     }
 
-    #[rstest::rstest]    fn pin_cycle_is_noop_when_empty() {
+    #[rstest::rstest]
+    fn pin_cycle_is_noop_when_empty() {
         // Given a bus with PinnedPanelHandler and an empty session.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -448,9 +476,12 @@ mod tests {
 
         // Then no PinChatEntry command was submitted.
         let processed = bus.drain_processed_commands();
-        let has_pin = processed.iter().any(|p| {
-            matches!(&p.command, Command::PinChatEntry { .. })
-        });
-        assert!(!has_pin, "expected no PinChatEntry command when pinned panel is empty");
+        let has_pin = processed
+            .iter()
+            .any(|p| matches!(&p.command, Command::PinChatEntry { .. }));
+        assert!(
+            !has_pin,
+            "expected no PinChatEntry command when pinned panel is empty"
+        );
     }
 }

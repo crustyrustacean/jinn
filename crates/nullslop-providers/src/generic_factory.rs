@@ -138,7 +138,8 @@ impl LlmService for GenericLlmService {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn name_returns_configured_name() {
+    #[rstest::rstest]
+    fn name_returns_configured_name() {
         // Given a generic factory with a custom name.
         let factory = GenericLlmServiceFactory::new(
             "my-provider".to_owned(),
@@ -153,7 +154,8 @@ mod tests {
         assert_eq!(factory.name(), "my-provider");
     }
 
-    #[rstest::rstest]    fn create_returns_error_when_no_key_for_keyed_backend() {
+    #[rstest::rstest]
+    fn create_returns_error_when_no_key_for_keyed_backend() {
         // Given a factory with no API key targeting a key-required backend.
         let factory = GenericLlmServiceFactory::new(
             "openai".to_owned(),

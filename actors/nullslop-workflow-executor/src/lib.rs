@@ -452,7 +452,8 @@ mod tests {
 
     // --- Activation tests ---
 
-    #[rstest::rstest]    fn activate_subscribes_to_events() {
+    #[rstest::rstest]
+    fn activate_subscribes_to_events() {
         // Given a fresh actor context.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -606,7 +607,8 @@ mod tests {
 
     // --- Context assembly tests ---
 
-    #[rstest::rstest]    fn assembly_produces_system_message() {
+    #[rstest::rstest]
+    fn assembly_produces_system_message() {
         // Given a StepStarted with instructions.
         let started = StepStarted {
             step_id: "step-0".to_owned(),
@@ -635,7 +637,8 @@ mod tests {
         assert!(system_content.contains("Ask the user for the directory name"));
     }
 
-    #[rstest::rstest]    fn assembly_produces_user_message() {
+    #[rstest::rstest]
+    fn assembly_produces_user_message() {
         // Given a StepStarted with instructions.
         let started = StepStarted {
             step_id: "step-0".to_owned(),
@@ -664,7 +667,8 @@ mod tests {
         assert_eq!(user_content, "Execute this step now.");
     }
 
-    #[rstest::rstest]    fn assemble_step_context_includes_completed_outputs() {
+    #[rstest::rstest]
+    fn assemble_step_context_includes_completed_outputs() {
         // Given a StepStarted with completed outputs from a previous step.
         let started = StepStarted {
             step_id: "step-1".to_owned(),
@@ -699,7 +703,8 @@ mod tests {
 
     // --- Output resolution tests ---
 
-    #[rstest::rstest]    fn resolve_outputs_handles_summary_output() {
+    #[rstest::rstest]
+    fn resolve_outputs_handles_summary_output() {
         // Given a StepStarted with a summary output.
         let started = StepStarted {
             step_id: "step-0".to_owned(),
@@ -726,7 +731,8 @@ mod tests {
         assert_eq!(resolved.get("status"), Some(&"All done".to_owned()));
     }
 
-    #[rstest::rstest]    fn resolve_outputs_resolves_template_variables() {
+    #[rstest::rstest]
+    fn resolve_outputs_resolves_template_variables() {
         // Given a StepStarted with template variables in outputs.
         let started = StepStarted {
             step_id: "step-0".to_owned(),

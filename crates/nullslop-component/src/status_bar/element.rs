@@ -41,11 +41,12 @@ impl UiElement<AppState> for StatusBarElement {
 
         let style = Style::default().fg(Color::DarkGray);
 
-        let strategy_widget =
-            Paragraph::new(left).style(style).alignment(Alignment::Left);
+        let strategy_widget = Paragraph::new(left).style(style).alignment(Alignment::Left);
         frame.render_widget(strategy_widget, area);
 
-        let model_widget = Paragraph::new(model).style(style).alignment(Alignment::Right);
+        let model_widget = Paragraph::new(model)
+            .style(style)
+            .alignment(Alignment::Right);
         frame.render_widget(model_widget, area);
     }
 }
@@ -59,7 +60,8 @@ mod tests {
     use super::*;
     use crate::AppState;
 
-    #[rstest::rstest]    fn name_returns_status_bar() {
+    #[rstest::rstest]
+    fn name_returns_status_bar() {
         // Given a StatusBarElement.
         let element = StatusBarElement;
 
@@ -70,7 +72,8 @@ mod tests {
         assert_eq!(name, "status-bar");
     }
 
-    #[rstest::rstest]    fn render_shows_no_model_selected_when_unset() {
+    #[rstest::rstest]
+    fn render_shows_no_model_selected_when_unset() {
         // Given a StatusBarElement with default (no provider) state.
         let mut element = StatusBarElement;
         let state = AppState::default();
@@ -91,14 +94,24 @@ mod tests {
         let row: String = (0..50)
             .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
             .collect();
-        assert!(row.starts_with("(Passthrough)"), "should show '(Passthrough)' on the left, got: {row}");
-        assert!(row.contains("no model selected"), "should show 'no model selected' on the right, got: {row}");
+        assert!(
+            row.starts_with("(Passthrough)"),
+            "should show '(Passthrough)' on the left, got: {row}"
+        );
+        assert!(
+            row.contains("no model selected"),
+            "should show 'no model selected' on the right, got: {row}"
+        );
     }
 
-    #[rstest::rstest]    fn render_shows_provider_and_model() {
+    #[rstest::rstest]
+    fn render_shows_provider_and_model() {
         // Given a StatusBarElement with active_provider = "ollama/llama3".
         let mut element = StatusBarElement;
-        let state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
+        let state = AppState {
+            active_provider: "ollama/llama3".to_owned(),
+            ..AppState::default()
+        };
 
         let backend = TestBackend::new(50, 1);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -116,14 +129,24 @@ mod tests {
         let row: String = (0..50)
             .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
             .collect();
-        assert!(row.starts_with("(Passthrough)"), "should show '(Passthrough)' on the left, got: {row}");
-        assert!(row.contains("(ollama)/llama3"), "should show '(ollama)/llama3' on the right, got: {row}");
+        assert!(
+            row.starts_with("(Passthrough)"),
+            "should show '(Passthrough)' on the left, got: {row}"
+        );
+        assert!(
+            row.contains("(ollama)/llama3"),
+            "should show '(ollama)/llama3' on the right, got: {row}"
+        );
     }
 
-    #[rstest::rstest]    fn render_right_aligns_text() {
+    #[rstest::rstest]
+    fn render_right_aligns_text() {
         // Given a StatusBarElement with a short provider string in a wide area.
         let mut element = StatusBarElement;
-        let state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
+        let state = AppState {
+            active_provider: "ollama/llama3".to_owned(),
+            ..AppState::default()
+        };
 
         let backend = TestBackend::new(50, 1);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -146,10 +169,14 @@ mod tests {
         assert_eq!(last.symbol(), "3", "model should end at column 49");
     }
 
-    #[rstest::rstest]    fn render_uses_gray_color() {
+    #[rstest::rstest]
+    fn render_uses_gray_color() {
         // Given a StatusBarElement with a provider set.
         let mut element = StatusBarElement;
-        let state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
+        let state = AppState {
+            active_provider: "ollama/llama3".to_owned(),
+            ..AppState::default()
+        };
 
         let backend = TestBackend::new(40, 1);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -172,10 +199,14 @@ mod tests {
         assert_eq!(text_cell.fg, Color::DarkGray, "text should be dark gray");
     }
 
-    #[rstest::rstest]    fn render_shows_provider_with_slash_in_model() {
+    #[rstest::rstest]
+    fn render_shows_provider_with_slash_in_model() {
         // Given a StatusBarElement with active_provider = "openrouter/anthropic/claude-sonnet-4".
         let mut element = StatusBarElement;
-        let state = AppState { active_provider: "openrouter/anthropic/claude-sonnet-4".to_owned(), ..AppState::default() };
+        let state = AppState {
+            active_provider: "openrouter/anthropic/claude-sonnet-4".to_owned(),
+            ..AppState::default()
+        };
 
         let backend = TestBackend::new(80, 1);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -193,15 +224,27 @@ mod tests {
         let row: String = (0..80)
             .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
             .collect();
-        assert!(row.starts_with("(Passthrough)"), "should show '(Passthrough)' on the left, got: {row}");
-        assert!(row.contains("(openrouter)/anthropic/claude-sonnet-4"), "should show '(openrouter)/anthropic/claude-sonnet-4' on the right, got: {row}");
+        assert!(
+            row.starts_with("(Passthrough)"),
+            "should show '(Passthrough)' on the left, got: {row}"
+        );
+        assert!(
+            row.contains("(openrouter)/anthropic/claude-sonnet-4"),
+            "should show '(openrouter)/anthropic/claude-sonnet-4' on the right, got: {row}"
+        );
     }
 
-    #[rstest::rstest]    fn render_shows_non_default_strategy() {
+    #[rstest::rstest]
+    fn render_shows_non_default_strategy() {
         // Given a session with sliding_window strategy and an active provider.
         let mut element = StatusBarElement;
-        let mut state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
-        state.active_session_mut().switch_strategy(nullslop_protocol::PromptStrategyId::sliding_window());
+        let mut state = AppState {
+            active_provider: "ollama/llama3".to_owned(),
+            ..AppState::default()
+        };
+        state
+            .active_session_mut()
+            .switch_strategy(nullslop_protocol::PromptStrategyId::sliding_window());
 
         let backend = TestBackend::new(50, 1);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -219,11 +262,18 @@ mod tests {
         let row: String = (0..50)
             .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
             .collect();
-        assert!(row.starts_with("(Sliding Window)"), "should show '(Sliding Window)' on the left, got: {row}");
-        assert!(row.contains("(ollama)/llama3"), "should show '(ollama)/llama3' on the right, got: {row}");
+        assert!(
+            row.starts_with("(Sliding Window)"),
+            "should show '(Sliding Window)' on the left, got: {row}"
+        );
+        assert!(
+            row.contains("(ollama)/llama3"),
+            "should show '(ollama)/llama3' on the right, got: {row}"
+        );
     }
 
-    #[rstest::rstest]    fn render_strategy_surrounded_by_parens() {
+    #[rstest::rstest]
+    fn render_strategy_surrounded_by_parens() {
         // Given default state with no provider.
         let mut element = StatusBarElement;
         let state = AppState::default();
@@ -248,15 +298,21 @@ mod tests {
         assert_eq!(closing.symbol(), ")", "strategy should end with ')'");
     }
 
-    #[rstest::rstest]    fn render_shows_pinned_count_when_entries_pinned() {
+    #[rstest::rstest]
+    fn render_shows_pinned_count_when_entries_pinned() {
         // Given a session with a pinned entry.
         let mut element = StatusBarElement;
-        let mut state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
-        let idx = state.active_session_mut().push_entry(
-            nullslop_protocol::ChatEntry::user("hello"),
-        );
+        let mut state = AppState {
+            active_provider: "ollama/llama3".to_owned(),
+            ..AppState::default()
+        };
+        let idx = state
+            .active_session_mut()
+            .push_entry(nullslop_protocol::ChatEntry::user("hello"));
         let entry_id = state.active_session().history()[idx].id.clone();
-        state.active_session_mut().pin_entry(&entry_id, nullslop_protocol::PinPosition::Relative);
+        state
+            .active_session_mut()
+            .pin_entry(&entry_id, nullslop_protocol::PinPosition::Relative);
 
         let backend = TestBackend::new(60, 1);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -274,14 +330,21 @@ mod tests {
         let row: String = (0..60)
             .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
             .collect();
-        assert!(row.contains("\u{1f4cc}"), "should show pin emoji, got: {row}");
-        assert!(row.contains("1"), "should show pin count, got: {row}");
+        assert!(
+            row.contains("\u{1f4cc}"),
+            "should show pin emoji, got: {row}"
+        );
+        assert!(row.contains('1'), "should show pin count, got: {row}");
     }
 
-    #[rstest::rstest]    fn render_hides_pinned_count_when_no_entries_pinned() {
+    #[rstest::rstest]
+    fn render_hides_pinned_count_when_no_entries_pinned() {
         // Given a session with no pinned entries.
         let mut element = StatusBarElement;
-        let state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
+        let state = AppState {
+            active_provider: "ollama/llama3".to_owned(),
+            ..AppState::default()
+        };
 
         let backend = TestBackend::new(60, 1);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -299,7 +362,13 @@ mod tests {
         let row: String = (0..60)
             .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
             .collect();
-        assert!(row.starts_with("(Passthrough) "), "should show '(Passthrough)' with no pin count, got: {row}");
-        assert!(!row.contains("\u{1f4cc}"), "should not show pin emoji when no entries pinned");
+        assert!(
+            row.starts_with("(Passthrough) "),
+            "should show '(Passthrough)' with no pin count, got: {row}"
+        );
+        assert!(
+            !row.contains("\u{1f4cc}"),
+            "should not show pin emoji when no entries pinned"
+        );
     }
 }

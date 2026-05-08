@@ -51,7 +51,8 @@ mod tests {
 
     use super::*;
 
-    #[rstest::rstest]    fn service_delegates_list() {
+    #[rstest::rstest]
+    fn service_delegates_list() {
         // Given a service wrapping the default discovery.
         let service = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
 
@@ -62,7 +63,8 @@ mod tests {
         assert_eq!(strategies.len(), DefaultStrategyDiscovery.list().len());
     }
 
-    #[rstest::rstest]    fn service_delegates_name() {
+    #[rstest::rstest]
+    fn service_delegates_name() {
         // Given a service wrapping the default discovery.
         let service = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
 

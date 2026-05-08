@@ -1143,7 +1143,8 @@ fn then_active_picker_kind_is(world: &mut BusWorld, expected: String) {
 
 #[cucumber::then(expr = "a SwitchPromptStrategy command should have been submitted")]
 fn then_switch_prompt_strategy_submitted(world: &mut BusWorld) {
-    let found = world.has_processed_command(|c| matches!(c, npr::Command::SwitchPromptStrategy { .. }));
+    let found =
+        world.has_processed_command(|c| matches!(c, npr::Command::SwitchPromptStrategy { .. }));
     assert!(found, "expected SwitchPromptStrategy command");
 }
 

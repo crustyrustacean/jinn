@@ -202,7 +202,8 @@ mod tests {
         state
     }
 
-    #[rstest::rstest]    fn select_down_increments_index() {
+    #[rstest::rstest]
+    fn select_down_increments_index() {
         // Given a bus with WorkflowPanelHandler and a 3-step workflow.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -216,7 +217,8 @@ mod tests {
         assert_eq!(state.workflow_panel.selected_index(), 1);
     }
 
-    #[rstest::rstest]    fn select_up_decrements_index() {
+    #[rstest::rstest]
+    fn select_up_decrements_index() {
         // Given a bus with WorkflowPanelHandler and a 3-step workflow at index 1.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -231,7 +233,8 @@ mod tests {
         assert_eq!(state.workflow_panel.selected_index(), 0);
     }
 
-    #[rstest::rstest]    fn select_first_moves_to_zero() {
+    #[rstest::rstest]
+    fn select_first_moves_to_zero() {
         // Given a bus with WorkflowPanelHandler and a 3-step workflow at index 2.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -248,7 +251,8 @@ mod tests {
         assert_eq!(state.workflow_panel.selected_index(), 0);
     }
 
-    #[rstest::rstest]    fn select_last_moves_to_end() {
+    #[rstest::rstest]
+    fn select_last_moves_to_end() {
         // Given a bus with WorkflowPanelHandler and a 3-step workflow.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -262,7 +266,8 @@ mod tests {
         assert_eq!(state.workflow_panel.selected_index(), 2);
     }
 
-    #[rstest::rstest]    fn restart_step_submits_jump_command() {
+    #[rstest::rstest]
+    fn restart_step_submits_jump_command() {
         // Given a bus with WorkflowPanelHandler and a 3-step workflow at index 1.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -283,7 +288,8 @@ mod tests {
         assert!(has_jump, "expected JumpToStep for step-1");
     }
 
-    #[rstest::rstest]    fn approve_step_submits_advance_command() {
+    #[rstest::rstest]
+    fn approve_step_submits_advance_command() {
         // Given a bus with WorkflowPanelHandler and a workflow.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -300,7 +306,8 @@ mod tests {
         assert!(has_advance, "expected AdvanceStep command");
     }
 
-    #[rstest::rstest]    fn toggle_detail_flips_state() {
+    #[rstest::rstest]
+    fn toggle_detail_flips_state() {
         // Given a bus with WorkflowPanelHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -315,7 +322,8 @@ mod tests {
         assert!(state.workflow_panel.show_detail());
     }
 
-    #[rstest::rstest]    fn commands_noop_without_active_workflow() {
+    #[rstest::rstest]
+    fn commands_noop_without_active_workflow() {
         // Given a bus with WorkflowPanelHandler but no workflow.
         let mut bus = setup_bus();
         let services = test_utils::test_services();

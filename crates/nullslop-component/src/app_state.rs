@@ -6,7 +6,9 @@
 
 use std::collections::HashMap;
 
-use nullslop_protocol::{ActiveTab, ChatEntryId, Mode, PinPosition, PickerKind, PromptStrategyId, SessionId};
+use nullslop_protocol::{
+    ActiveTab, ChatEntryId, Mode, PickerKind, PinPosition, PromptStrategyId, SessionId,
+};
 use nullslop_providers::NO_PROVIDER_ID;
 use serde_json::Value as JsonValue;
 
@@ -15,11 +17,11 @@ use crate::chat_session::ChatSessionState;
 use crate::context_strategy_picker::entries::StrategyEntry;
 use crate::dashboard::DashboardState;
 use crate::keymap_picker::entries::KeymapEntry;
+use crate::pinned_panel::PinnedPanelState;
 use crate::prompt_template::PromptTemplateStore;
 use crate::provider_picker::entries::PickerEntry;
 use crate::session_picker::entries::SessionEntry;
 use crate::shutdown_tracker::ShutdownTrackerState;
-use crate::pinned_panel::PinnedPanelState;
 use crate::workflow_panel::WorkflowPanelState;
 
 /// A snapshot of everything the application is doing right now.
@@ -256,9 +258,8 @@ impl AppState {
 pub fn pin_sort_key(position: Option<PinPosition>) -> u8 {
     match position {
         Some(PinPosition::Top) => 0,
-        Some(PinPosition::Relative) => 1,
+        Some(PinPosition::Relative) | None => 1,
         Some(PinPosition::Bottom) => 2,
-        None => 1,
     }
 }
 
@@ -268,7 +269,8 @@ mod tests {
 
     use super::*;
 
-    #[rstest::rstest]    fn app_state_default_has_empty_prompt_templates() {
+    #[rstest::rstest]
+    fn app_state_default_has_empty_prompt_templates() {
         // Given a default AppState.
         let state = AppState::default();
 
@@ -276,7 +278,8 @@ mod tests {
         assert!(state.prompt_templates.is_empty());
     }
 
-    #[rstest::rstest]    fn push_entry_adds_to_history() {
+    #[rstest::rstest]
+    fn push_entry_adds_to_history() {
         // Given a new AppState.
         let mut data = AppState::default();
         let entry = ChatEntry::user("hello");
@@ -289,7 +292,8 @@ mod tests {
         assert_eq!(data.active_session().history().len(), 1);
     }
 
-    #[rstest::rstest]    fn default_app_state_has_no_workflow() {
+    #[rstest::rstest]
+    fn default_app_state_has_no_workflow() {
         // Given a default AppState.
         let state = AppState::default();
 
@@ -297,7 +301,8 @@ mod tests {
         assert!(!state.active_session().has_workflow());
     }
 
-    #[rstest::rstest]    fn has_workflow_returns_true_when_set() {
+    #[rstest::rstest]
+    fn has_workflow_returns_true_when_set() {
         // Given a default AppState.
         let mut state = AppState::default();
 
@@ -310,7 +315,8 @@ mod tests {
         assert!(state.active_session().has_workflow());
     }
 
-    #[rstest::rstest]    fn workflow_state_roundtrips_through_serde() {
+    #[rstest::rstest]
+    fn workflow_state_roundtrips_through_serde() {
         // Given a workflow state in progress.
         let def = make_test_workflow(3);
         let mut ws = nullslop_workflow::WorkflowState::new(def);

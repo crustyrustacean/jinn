@@ -71,10 +71,9 @@ impl PromptScanActor {
     /// Scans the injected directory on a blocking thread and emits the result.
     async fn rescan(&self, ctx: &ActorContext) {
         let scan_path = self.scan_path.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            PromptTemplateStore::load_from_dir(&scan_path)
-        })
-        .await;
+        let result =
+            tokio::task::spawn_blocking(move || PromptTemplateStore::load_from_dir(&scan_path))
+                .await;
 
         match result {
             Ok(Ok(store)) => {

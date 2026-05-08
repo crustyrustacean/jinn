@@ -1606,8 +1606,7 @@ data: {"type": "ping"}
             cache_control: Some(serde_json::json!({"type": "ephemeral"})),
         }];
 
-        let (anthropic_tools, _) =
-            Anthropic::prepare_tools_and_choice(Some(&tools), None, &None);
+        let (anthropic_tools, _) = Anthropic::prepare_tools_and_choice(Some(&tools), None, &None);
 
         let anthropic_tools = anthropic_tools.expect("tools should be present");
         assert_eq!(anthropic_tools.len(), 1);
@@ -1629,8 +1628,7 @@ data: {"type": "ping"}
             cache_control: None,
         }];
 
-        let (anthropic_tools, _) =
-            Anthropic::prepare_tools_and_choice(Some(&tools), None, &None);
+        let (anthropic_tools, _) = Anthropic::prepare_tools_and_choice(Some(&tools), None, &None);
 
         let anthropic_tools = anthropic_tools.expect("tools should be present");
         assert!(anthropic_tools[0].cache_control.is_none());

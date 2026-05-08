@@ -67,7 +67,8 @@ mod tests {
     use super::UiRegistry;
     use crate::fake::FakeUiElement;
 
-    #[rstest::rstest]    fn register_and_retrieve_by_name() {
+    #[rstest::rstest]
+    fn register_and_retrieve_by_name() {
         // Given a registry with one element.
         let (element, _calls): (FakeUiElement<()>, _) = FakeUiElement::new("chat-input");
         let mut registry: UiRegistry<()> = UiRegistry::new();
@@ -81,7 +82,8 @@ mod tests {
         assert_eq!(found.unwrap().name(), "chat-input");
     }
 
-    #[rstest::rstest]    fn missing_element_returns_none() {
+    #[rstest::rstest]
+    fn missing_element_returns_none() {
         // Given a registry with one element.
         let (element, _calls): (FakeUiElement<()>, _) = FakeUiElement::new("chat-input");
         let mut registry: UiRegistry<()> = UiRegistry::new();
@@ -94,7 +96,8 @@ mod tests {
         assert!(found.is_none());
     }
 
-    #[rstest::rstest]    fn iterate_yields_in_registration_order() {
+    #[rstest::rstest]
+    fn iterate_yields_in_registration_order() {
         // Given a registry with three elements.
         let (e1, _c1): (FakeUiElement<()>, _) = FakeUiElement::new("first");
         let (e2, _c2): (FakeUiElement<()>, _) = FakeUiElement::new("second");
@@ -111,7 +114,8 @@ mod tests {
         assert_eq!(names, vec!["first", "second", "third"]);
     }
 
-    #[rstest::rstest]    fn default_creates_empty_registry() {
+    #[rstest::rstest]
+    fn default_creates_empty_registry() {
         // Given a default registry.
         let mut registry: UiRegistry<()> = UiRegistry::default();
 
@@ -122,7 +126,8 @@ mod tests {
         assert_eq!(count, 0);
     }
 
-    #[rstest::rstest]    fn multiple_elements_same_name_returns_first() {
+    #[rstest::rstest]
+    fn multiple_elements_same_name_returns_first() {
         // Given a registry with two elements sharing a name.
         let (e1, _c1): (FakeUiElement<()>, _) = FakeUiElement::new("duplicate");
         let (e2, _c2): (FakeUiElement<()>, _) = FakeUiElement::new("duplicate");
@@ -137,7 +142,8 @@ mod tests {
         assert!(found.is_some());
     }
 
-    #[rstest::rstest]    fn empty_registry_get_mut_returns_none() {
+    #[rstest::rstest]
+    fn empty_registry_get_mut_returns_none() {
         // Given an empty registry.
         let mut registry: UiRegistry<()> = UiRegistry::new();
 

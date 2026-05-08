@@ -157,7 +157,8 @@ mod tests {
 
     use super::*;
 
-    #[rstest::rstest]    fn factory_name_is_sample() {
+    #[rstest::rstest]
+    fn factory_name_is_sample() {
         // Given a SampleLlmServiceFactory.
         let factory = SampleLlmServiceFactory;
 
@@ -166,7 +167,8 @@ mod tests {
         assert_eq!(factory.name(), "Sample");
     }
 
-    #[rstest::rstest]    fn factory_creates_service() {
+    #[rstest::rstest]
+    fn factory_creates_service() {
         // Given a SampleLlmServiceFactory.
         let factory = SampleLlmServiceFactory;
 
@@ -305,7 +307,8 @@ mod tests {
         assert!(tokens.len() > 1);
     }
 
-    #[rstest::rstest]    fn tokenize_splits_on_spaces() {
+    #[rstest::rstest]
+    fn tokenize_splits_on_spaces() {
         // Given a simple sentence.
         // When tokenizing.
         let tokens = tokenize("Hello world!");
@@ -314,7 +317,8 @@ mod tests {
         assert_eq!(tokens, vec!["Hello", " world!"]);
     }
 
-    #[rstest::rstest]    fn tokenize_single_word() {
+    #[rstest::rstest]
+    fn tokenize_single_word() {
         // Given a single word.
         // When tokenizing.
         let tokens = tokenize("Hello");
@@ -323,7 +327,8 @@ mod tests {
         assert_eq!(tokens, vec!["Hello"]);
     }
 
-    #[rstest::rstest]    fn joined_starts_with_think() {
+    #[rstest::rstest]
+    fn joined_starts_with_think() {
         // Given the think tokenizer.
         // When producing tokens.
         let tokens = tokenize_think();
@@ -334,7 +339,8 @@ mod tests {
         assert!(joined.contains(THINK_TEXT));
     }
 
-    #[rstest::rstest]    fn joined_contains_closing_think() {
+    #[rstest::rstest]
+    fn joined_contains_closing_think() {
         // Given the think tokenizer.
         // When producing tokens.
         let tokens = tokenize_think();

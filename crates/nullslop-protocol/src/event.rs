@@ -23,10 +23,15 @@ use crate::context::PromptStrategySwitched;
 use crate::context::StrategyStateUpdated;
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::custom::EventMsg;
-use crate::provider::{ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken};
+use crate::provider::{
+    ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
+};
 use crate::session::{SessionLoadRequested, SessionSaveRequested};
 use crate::system::{KeyDown, KeyUp, ModeChanged};
-use crate::tool::{ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolsRegistered, ToolUseStarted};
+use crate::tool::{
+    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
+    ToolUseStarted, ToolsRegistered,
+};
 use crate::workflow::{
     StepAwaitingInput, StepCompleted, StepStale, StepStarted, WorkflowCompleted, WorkflowLoaded,
 };
@@ -289,7 +294,8 @@ mod tests {
     use crate::session::SessionSaveRequested;
     use crate::{ChatEntry, Key, KeyEvent, Mode, Modifiers, SessionId};
 
-    #[rstest::rstest]    fn event_chat_entry_submitted_preserves_entry() {
+    #[rstest::rstest]
+    fn event_chat_entry_submitted_preserves_entry() {
         // Given a ChatEntrySubmitted event with a user entry.
         let entry = ChatEntry::user("hello");
         let event = Event::ChatEntrySubmitted {
@@ -379,8 +385,8 @@ mod tests {
         assert_eq!(json, back_json);
     }
 
-    /// Checks that Event::type_name() delegates to the correct payload TYPE_NAME
-    /// for all event variants that have a meaningful type_name.
+    /// Checks that `Event::type_name()` delegates to the correct payload `TYPE_NAME`
+    /// for all event variants that have a meaningful `type_name`.
     #[rstest::rstest]
     #[case::chat_submitted(
         Event::ChatEntrySubmitted { payload: ChatEntrySubmitted { session_id: SessionId::new(), entry: ChatEntry::user("test") } },
@@ -421,12 +427,15 @@ mod tests {
         assert_eq!(event.type_name(), Some(expected));
     }
 
-    /// Checks that all TYPE_NAME constants have their expected module-scoped string values.
+    /// Checks that all `TYPE_NAME` constants have their expected module-scoped string values.
     #[rstest::rstest]
     #[case::chat_submitted(ChatEntrySubmitted::TYPE_NAME, "chat_input::ChatEntrySubmitted")]
     #[case::actor_starting(ActorStarting::TYPE_NAME, "actor::ActorStarting")]
     #[case::actor_started(ActorStarted::TYPE_NAME, "actor::ActorStarted")]
-    #[case::actor_shutdown_completed(ActorShutdownCompleted::TYPE_NAME, "actor::ActorShutdownCompleted")]
+    #[case::actor_shutdown_completed(
+        ActorShutdownCompleted::TYPE_NAME,
+        "actor::ActorShutdownCompleted"
+    )]
     #[case::key_down(KeyDown::TYPE_NAME, "system::KeyDown")]
     #[case::key_up(KeyUp::TYPE_NAME, "system::KeyUp")]
     #[case::mode_changed(ModeChanged::TYPE_NAME, "system::ModeChanged")]
@@ -437,22 +446,43 @@ mod tests {
     #[case::tool_call_streaming(ToolCallStreaming::TYPE_NAME, "tool::ToolCallStreaming")]
     #[case::provider_switched(ProviderSwitched::TYPE_NAME, "provider::ProviderSwitched")]
     #[case::models_refreshed(ModelsRefreshed::TYPE_NAME, "provider::ModelsRefreshed")]
-    #[case::prompt_templates_loaded(PromptTemplatesLoaded::TYPE_NAME, "provider::PromptTemplatesLoaded")]
+    #[case::prompt_templates_loaded(
+        PromptTemplatesLoaded::TYPE_NAME,
+        "provider::PromptTemplatesLoaded"
+    )]
     #[case::tool_batch_completed(ToolBatchCompleted::TYPE_NAME, "tool::ToolBatchCompleted")]
-    #[case::tool_execution_completed(ToolExecutionCompleted::TYPE_NAME, "tool::ToolExecutionCompleted")]
+    #[case::tool_execution_completed(
+        ToolExecutionCompleted::TYPE_NAME,
+        "tool::ToolExecutionCompleted"
+    )]
     #[case::tools_registered(ToolsRegistered::TYPE_NAME, "tool::ToolsRegistered")]
     #[case::prompt_assembled(PromptAssembled::TYPE_NAME, "context::PromptAssembled")]
-    #[case::prompt_strategy_switched(PromptStrategySwitched::TYPE_NAME, "context::PromptStrategySwitched")]
-    #[case::strategy_state_updated(StrategyStateUpdated::TYPE_NAME, "context::StrategyStateUpdated")]
+    #[case::prompt_strategy_switched(
+        PromptStrategySwitched::TYPE_NAME,
+        "context::PromptStrategySwitched"
+    )]
+    #[case::strategy_state_updated(
+        StrategyStateUpdated::TYPE_NAME,
+        "context::StrategyStateUpdated"
+    )]
     #[case::workflow_loaded(WorkflowLoaded::TYPE_NAME, "workflow::WorkflowLoaded")]
     #[case::step_started(StepStarted::TYPE_NAME, "workflow::StepStarted")]
     #[case::step_completed(StepCompleted::TYPE_NAME, "workflow::StepCompleted")]
     #[case::step_stale(StepStale::TYPE_NAME, "workflow::StepStale")]
     #[case::step_awaiting_input(StepAwaitingInput::TYPE_NAME, "workflow::StepAwaitingInput")]
     #[case::workflow_completed(WorkflowCompleted::TYPE_NAME, "workflow::WorkflowCompleted")]
-    #[case::session_save_requested(SessionSaveRequested::TYPE_NAME, "session::SessionSaveRequested")]
-    #[case::session_load_requested(crate::session::SessionLoadRequested::TYPE_NAME, "session::SessionLoadRequested")]
-    fn type_name_constant_matches_expected_module_path(#[case] actual: &str, #[case] expected: &str) {
+    #[case::session_save_requested(
+        SessionSaveRequested::TYPE_NAME,
+        "session::SessionSaveRequested"
+    )]
+    #[case::session_load_requested(
+        crate::session::SessionLoadRequested::TYPE_NAME,
+        "session::SessionLoadRequested"
+    )]
+    fn type_name_constant_matches_expected_module_path(
+        #[case] actual: &str,
+        #[case] expected: &str,
+    ) {
         // Given a TYPE_NAME constant from an event payload type.
         // When comparing to its expected module-scoped path.
         // Then the constant matches the expected value.

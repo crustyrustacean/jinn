@@ -69,7 +69,8 @@ mod tests {
     use crate::fake::FakeLlmServiceFactory;
     use crate::service_wrapper::LlmServiceFactoryService;
 
-    #[rstest::rstest]    fn service_wrapper_delegates_create() {
+    #[rstest::rstest]
+    fn service_wrapper_delegates_create() {
         // Given a service wrapper around a fake factory.
         let factory = FakeLlmServiceFactory::new(vec!["token".to_owned()]);
         let service = LlmServiceFactoryService::new(Arc::new(factory));
@@ -81,7 +82,8 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[rstest::rstest]    fn service_wrapper_delegates_name() {
+    #[rstest::rstest]
+    fn service_wrapper_delegates_name() {
         // Given a service wrapper around a fake factory.
         let factory = FakeLlmServiceFactory::new(vec![]);
         let service = LlmServiceFactoryService::new(Arc::new(factory));
@@ -91,7 +93,8 @@ mod tests {
         assert_eq!(service.name(), "FakeLlm");
     }
 
-    #[rstest::rstest]    fn service_wrapper_is_cloneable() {
+    #[rstest::rstest]
+    fn service_wrapper_is_cloneable() {
         // Given a service wrapper.
         let factory = FakeLlmServiceFactory::new(vec![]);
         let service = LlmServiceFactoryService::new(Arc::new(factory));
@@ -103,7 +106,8 @@ mod tests {
         assert_eq!(service.name(), cloned.name());
     }
 
-    #[rstest::rstest]    fn swap_updates_factory_for_all_clones() {
+    #[rstest::rstest]
+    fn swap_updates_factory_for_all_clones() {
         // Given two clones of the same service wrapper.
         let factory_a = FakeLlmServiceFactory::new(vec![]);
         let service = LlmServiceFactoryService::new(Arc::new(factory_a));

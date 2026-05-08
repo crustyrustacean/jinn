@@ -45,7 +45,8 @@ pub enum LlmMessage {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn user_variant_roundtrip() {
+    #[rstest::rstest]
+    fn user_variant_roundtrip() {
         // Given a User message.
         let msg = LlmMessage::User {
             content: "hello".into(),
@@ -59,7 +60,8 @@ mod tests {
         assert_eq!(back, msg);
     }
 
-    #[rstest::rstest]    fn assistant_variant_without_tool_calls_roundtrip() {
+    #[rstest::rstest]
+    fn assistant_variant_without_tool_calls_roundtrip() {
         // Given an Assistant message without tool calls.
         let msg = LlmMessage::Assistant {
             content: "hi".into(),
@@ -74,7 +76,8 @@ mod tests {
         assert_eq!(back, msg);
     }
 
-    #[rstest::rstest]    fn assistant_variant_with_tool_calls_roundtrip() {
+    #[rstest::rstest]
+    fn assistant_variant_with_tool_calls_roundtrip() {
         // Given an Assistant message with tool calls.
         let msg = LlmMessage::Assistant {
             content: String::new(),
@@ -93,7 +96,8 @@ mod tests {
         assert_eq!(back, msg);
     }
 
-    #[rstest::rstest]    fn tool_variant_roundtrip() {
+    #[rstest::rstest]
+    fn tool_variant_roundtrip() {
         // Given a Tool result message.
         let msg = LlmMessage::Tool {
             tool_call_id: "call_1".into(),
@@ -109,7 +113,8 @@ mod tests {
         assert_eq!(back, msg);
     }
 
-    #[rstest::rstest]    fn backward_compat_user_deserialization() {
+    #[rstest::rstest]
+    fn backward_compat_user_deserialization() {
         // Given old-format JSON for a user message.
         let json = r#"{"role":"user","content":"hello"}"#;
 
@@ -125,7 +130,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn backward_compat_assistant_deserialization() {
+    #[rstest::rstest]
+    fn backward_compat_assistant_deserialization() {
         // Given old-format JSON for an assistant message.
         let json = r#"{"role":"assistant","content":"hi"}"#;
 

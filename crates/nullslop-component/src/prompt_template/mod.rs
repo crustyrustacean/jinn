@@ -46,8 +46,10 @@ pub fn expand_tokens(text: &str, store: &PromptTemplateStore) -> String {
                 }
                 name_end += 1;
             }
-            let name: String =
-                graphemes.get(name_start..name_end).map(|s| s.join("")).unwrap_or_default();
+            let name: String = graphemes
+                .get(name_start..name_end)
+                .map(|s| s.join(""))
+                .unwrap_or_default();
             if let Some(template) = store.find_by_name(&name) {
                 result.push_str(&template.body);
             } else {
@@ -72,15 +74,21 @@ mod expand_tokens_tests {
 
     fn make_store(templates: Vec<(&str, &str, &str)>) -> PromptTemplateStore {
         PromptTemplateStore::from_vec(
-            templates.into_iter()
-                .map(|(name, description, body)| nullslop_protocol::PromptTemplate {
-                    name: name.to_owned(), description: description.to_owned(), body: body.to_owned(),
-                })
+            templates
+                .into_iter()
+                .map(
+                    |(name, description, body)| nullslop_protocol::PromptTemplate {
+                        name: name.to_owned(),
+                        description: description.to_owned(),
+                        body: body.to_owned(),
+                    },
+                )
                 .collect(),
         )
     }
 
-    #[rstest::rstest]    fn expand_tokens_replaces_known_name() {
+    #[rstest::rstest]
+    fn expand_tokens_replaces_known_name() {
         // Given a store with a "greeting" template.
         let store = make_store(vec![("greeting", "A greeting", "Hello, world!")]);
 
@@ -91,7 +99,8 @@ mod expand_tokens_tests {
         assert_eq!(result, "Hello, world!");
     }
 
-    #[rstest::rstest]    fn expand_tokens_leaves_unknown_name() {
+    #[rstest::rstest]
+    fn expand_tokens_leaves_unknown_name() {
         // Given an empty store.
         let store = make_store(vec![]);
 
@@ -102,12 +111,10 @@ mod expand_tokens_tests {
         assert_eq!(result, "$unknown");
     }
 
-    #[rstest::rstest]    fn expand_tokens_multiple_tokens() {
+    #[rstest::rstest]
+    fn expand_tokens_multiple_tokens() {
         // Given a store with two templates.
-        let store = make_store(vec![
-            ("a", "First", "AAA"),
-            ("b", "Second", "BBB"),
-        ]);
+        let store = make_store(vec![("a", "First", "AAA"), ("b", "Second", "BBB")]);
 
         // When expanding "$a and $b".
         let result = expand_tokens("$a and $b", &store);
@@ -116,7 +123,8 @@ mod expand_tokens_tests {
         assert_eq!(result, "AAA and BBB");
     }
 
-    #[rstest::rstest]    fn expand_tokens_at_start() {
+    #[rstest::rstest]
+    fn expand_tokens_at_start() {
         // Given a store with a "hi" template.
         let store = make_store(vec![("hi", "Greeting", "Hello")]);
 
@@ -127,7 +135,8 @@ mod expand_tokens_tests {
         assert_eq!(result, "Hello there");
     }
 
-    #[rstest::rstest]    fn expand_tokens_in_middle() {
+    #[rstest::rstest]
+    fn expand_tokens_in_middle() {
         // Given a store with a "name" template.
         let store = make_store(vec![("name", "Name", "Alice")]);
 
@@ -138,7 +147,8 @@ mod expand_tokens_tests {
         assert_eq!(result, "hello Alice bye");
     }
 
-    #[rstest::rstest]    fn expand_tokens_at_end() {
+    #[rstest::rstest]
+    fn expand_tokens_at_end() {
         // Given a store with an "end" template.
         let store = make_store(vec![("end", "Ending", "DONE")]);
 
@@ -149,12 +159,10 @@ mod expand_tokens_tests {
         assert_eq!(result, "start DONE");
     }
 
-    #[rstest::rstest]    fn expand_tokens_adjacent_tokens() {
+    #[rstest::rstest]
+    fn expand_tokens_adjacent_tokens() {
         // Given a store with "a" and "b" templates.
-        let store = make_store(vec![
-            ("a", "A", "X"),
-            ("b", "B", "Y"),
-        ]);
+        let store = make_store(vec![("a", "A", "X"), ("b", "B", "Y")]);
 
         // When expanding "$a $b".
         let result = expand_tokens("$a $b", &store);
@@ -163,7 +171,8 @@ mod expand_tokens_tests {
         assert_eq!(result, "X Y");
     }
 
-    #[rstest::rstest]    fn expand_tokens_empty_body() {
+    #[rstest::rstest]
+    fn expand_tokens_empty_body() {
         // Given a store with a template that has an empty body.
         let store = make_store(vec![("empty", "Empty", "")]);
 
@@ -174,7 +183,8 @@ mod expand_tokens_tests {
         assert_eq!(result, "before  after");
     }
 
-    #[rstest::rstest]    fn expand_tokens_midword_dollar_ignored() {
+    #[rstest::rstest]
+    fn expand_tokens_midword_dollar_ignored() {
         // Given a store with a "foo" template.
         let store = make_store(vec![("foo", "Foo", "BAR")]);
 
@@ -185,7 +195,8 @@ mod expand_tokens_tests {
         assert_eq!(result, "abc$foo");
     }
 
-    #[rstest::rstest]    fn expand_tokens_dollar_at_end_of_string() {
+    #[rstest::rstest]
+    fn expand_tokens_dollar_at_end_of_string() {
         // Given a store with templates.
         let store = make_store(vec![("foo", "Foo", "BAR")]);
 
@@ -196,7 +207,8 @@ mod expand_tokens_tests {
         assert_eq!(result, "test$");
     }
 
-    #[rstest::rstest]    fn expand_tokens_bare_dollar() {
+    #[rstest::rstest]
+    fn expand_tokens_bare_dollar() {
         // Given a store with templates.
         let store = make_store(vec![]);
 
@@ -207,7 +219,8 @@ mod expand_tokens_tests {
         assert_eq!(result, "$");
     }
 
-    #[rstest::rstest]    fn expand_tokens_double_dollar_passthrough() {
+    #[rstest::rstest]
+    fn expand_tokens_double_dollar_passthrough() {
         // Given a store with templates.
         let store = make_store(vec![("foo", "Foo", "BAR")]);
 
@@ -222,7 +235,8 @@ mod expand_tokens_tests {
         assert_eq!(result, "$$foo");
     }
 
-    #[rstest::rstest]    fn expand_tokens_empty_text() {
+    #[rstest::rstest]
+    fn expand_tokens_empty_text() {
         // Given a store.
         let store = make_store(vec![]);
 
