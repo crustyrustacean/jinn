@@ -26,10 +26,6 @@ use crate::{AppStatus, MsgHandler};
 
 /// Well-known area ID for the chat pane in the split layout.
 pub(crate) const CHAT_PANE: AreaId = AreaId(1);
-/// Well-known area ID for the workflow sidebar pane in the split layout.
-pub(crate) const WORKFLOW_PANE: AreaId = AreaId(2);
-/// Well-known area ID for the pinned context sidebar pane in the split layout.
-pub(crate) const PINNED_PANE: AreaId = AreaId(3);
 
 /// Which pane currently has keyboard focus in the Chat tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,6 +90,10 @@ pub struct TuiApp {
     pub(crate) workflow_pane_visible: bool,
     /// Whether the pinned context sidebar pane is visible.
     pub(crate) pinned_pane_visible: bool,
+    /// Tracked AreaId for the workflow sidebar pane (set when opened, cleared when closed).
+    pub(crate) workflow_pane_id: Option<AreaId>,
+    /// Tracked AreaId for the pinned context sidebar pane (set when opened, cleared when closed).
+    pub(crate) pinned_pane_id: Option<AreaId>,
 }
 
 impl TuiApp {
@@ -130,6 +130,8 @@ impl TuiApp {
             pane_focus: PaneFocus::Chat,
             workflow_pane_visible: false,
             pinned_pane_visible: false,
+            workflow_pane_id: None,
+            pinned_pane_id: None,
         }
     }
 
@@ -178,6 +180,8 @@ impl TuiApp {
             pane_focus: PaneFocus::Chat,
             workflow_pane_visible: false,
             pinned_pane_visible: false,
+            workflow_pane_id: None,
+            pinned_pane_id: None,
         }
     }
 
@@ -427,7 +431,19 @@ impl TuiApp {
         if self.pinned_pane_visible {
             self.close_pinned_pane();
         }
-        self.split_manager.split_vertical_with_ratio(CHAT_PANE, 0.7);
+        // Defensive: if we have a stale tracked ID in the tree, reuse it.
+        if let Some(id) = self.workflow_pane_id {
+            if self.split_manager.contains(id) {
+                self.workflow_pane_visible = true;
+                self.pane_focus = PaneFocus::Workflow;
+                return;
+            }
+        }
+        let result = self
+            .split_manager
+            .split_vertical_with_ratio(CHAT_PANE, 0.7)
+            .expect("CHAT_PANE should always be a valid leaf");
+        self.workflow_pane_id = Some(result.new);
         self.workflow_pane_visible = true;
         self.pane_focus = PaneFocus::Workflow;
     }
@@ -437,7 +453,10 @@ impl TuiApp {
         if !self.workflow_pane_visible {
             return;
         }
-        self.split_manager.close(WORKFLOW_PANE);
+        if let Some(id) = self.workflow_pane_id {
+            self.split_manager.close(id);
+            self.workflow_pane_id = None;
+        }
         self.workflow_pane_visible = false;
         self.pane_focus = PaneFocus::Chat;
     }
@@ -479,7 +498,19 @@ impl TuiApp {
             self.pane_focus = PaneFocus::Pinned;
             return;
         }
-        self.split_manager.split_vertical_with_ratio(CHAT_PANE, 0.7);
+        // Defensive: if we have a stale tracked ID in the tree, reuse it.
+        if let Some(id) = self.pinned_pane_id {
+            if self.split_manager.contains(id) {
+                self.pinned_pane_visible = true;
+                self.pane_focus = PaneFocus::Pinned;
+                return;
+            }
+        }
+        let result = self
+            .split_manager
+            .split_vertical_with_ratio(CHAT_PANE, 0.7)
+            .expect("CHAT_PANE should always be a valid leaf");
+        self.pinned_pane_id = Some(result.new);
         self.pinned_pane_visible = true;
         self.pane_focus = PaneFocus::Pinned;
     }
@@ -489,7 +520,10 @@ impl TuiApp {
         if !self.pinned_pane_visible {
             return;
         }
-        self.split_manager.close(PINNED_PANE);
+        if let Some(id) = self.pinned_pane_id {
+            self.split_manager.close(id);
+            self.pinned_pane_id = None;
+        }
         self.pinned_pane_visible = false;
         self.pane_focus = PaneFocus::Chat;
     }
@@ -836,5 +870,165 @@ mod tests {
             "q",
             "filter text should be preserved after toggle"
         );
+    }
+
+    // --- Pinned pane tracking tests ---
+
+    #[test]
+    fn open_pinned_pane_creates_split_and_tracks_id() {
+        // Given a fresh app.
+        let mut app = test_app();
+        assert!(app.pinned_pane_id.is_none());
+
+        // When opening the pinned pane.
+        app.open_pinned_pane();
+
+        // Then the tracked ID is set and the pane is visible.
+        assert!(app.pinned_pane_id.is_some());
+        assert!(app.pinned_pane_visible);
+        assert_eq!(app.pane_focus, PaneFocus::Pinned);
+        // And the split manager contains the tracked ID.
+        let id = app.pinned_pane_id.unwrap();
+        assert!(app.split_manager.contains(id));
+        // And there are exactly 2 leaves (chat + pinned).
+        assert_eq!(app.split_manager.leaves().len(), 2);
+    }
+
+    #[test]
+    fn opening_pinned_pane_twice_is_idempotent() {
+        // Given an app with the pinned pane already open.
+        let mut app = test_app();
+        app.open_pinned_pane();
+        let first_id = app.pinned_pane_id;
+
+        // When opening it again.
+        app.open_pinned_pane();
+
+        // Then the tracked ID is unchanged and no extra split is created.
+        assert_eq!(app.pinned_pane_id, first_id);
+        assert_eq!(app.split_manager.leaves().len(), 2);
+    }
+
+    #[test]
+    fn close_pinned_pane_removes_split() {
+        // Given an app with the pinned pane open.
+        let mut app = test_app();
+        app.open_pinned_pane();
+        let id = app.pinned_pane_id.unwrap();
+
+        // When closing the pinned pane.
+        app.close_pinned_pane();
+
+        // Then the tracked ID is cleared and the split is removed.
+        assert!(app.pinned_pane_id.is_none());
+        assert!(!app.pinned_pane_visible);
+        assert!(!app.split_manager.contains(id));
+        assert_eq!(app.split_manager.leaves().len(), 1);
+        assert_eq!(app.pane_focus, PaneFocus::Chat);
+    }
+
+    #[test]
+    fn close_and_reopen_pinned_pane_works_cleanly() {
+        // Given an app where the pinned pane is opened, closed, then reopened.
+        let mut app = test_app();
+        app.open_pinned_pane();
+        let first_id = app.pinned_pane_id.unwrap();
+        app.close_pinned_pane();
+
+        // When reopening.
+        app.open_pinned_pane();
+
+        // Then a new tracked ID is assigned.
+        let second_id = app.pinned_pane_id.unwrap();
+        assert_ne!(second_id, first_id);
+        assert!(app.split_manager.contains(second_id));
+        // And there are exactly 2 leaves (no orphans).
+        assert_eq!(app.split_manager.leaves().len(), 2);
+    }
+
+    #[test]
+    fn open_close_reopen_pinned_pane_many_times_no_orphans() {
+        // Given an app.
+        let mut app = test_app();
+
+        // When opening and closing the pinned pane 5 times.
+        for _ in 0..5 {
+            app.open_pinned_pane();
+            assert_eq!(app.split_manager.leaves().len(), 2);
+            app.close_pinned_pane();
+            assert_eq!(app.split_manager.leaves().len(), 1);
+        }
+
+        // Then there is still exactly 1 leaf (the chat pane).
+        assert_eq!(app.split_manager.leaves().len(), 1);
+    }
+
+    // --- Workflow pane tracking tests ---
+
+    #[test]
+    fn open_workflow_pane_creates_split_and_tracks_id() {
+        // Given a fresh app.
+        let mut app = test_app();
+        assert!(app.workflow_pane_id.is_none());
+
+        // When opening the workflow pane.
+        app.open_workflow_pane();
+
+        // Then the tracked ID is set and the pane is visible.
+        assert!(app.workflow_pane_id.is_some());
+        assert!(app.workflow_pane_visible);
+        assert_eq!(app.pane_focus, PaneFocus::Workflow);
+        assert_eq!(app.split_manager.leaves().len(), 2);
+    }
+
+    #[test]
+    fn opening_workflow_pane_twice_is_idempotent() {
+        // Given an app with the workflow pane already open.
+        let mut app = test_app();
+        app.open_workflow_pane();
+        let first_id = app.workflow_pane_id;
+
+        // When opening it again.
+        app.open_workflow_pane();
+
+        // Then the tracked ID is unchanged.
+        assert_eq!(app.workflow_pane_id, first_id);
+        assert_eq!(app.split_manager.leaves().len(), 2);
+    }
+
+    #[test]
+    fn close_and_reopen_workflow_pane_works_cleanly() {
+        // Given an app where the workflow pane is opened, closed, then reopened.
+        let mut app = test_app();
+        app.open_workflow_pane();
+        let first_id = app.workflow_pane_id.unwrap();
+        app.close_workflow_pane();
+
+        // When reopening.
+        app.open_workflow_pane();
+
+        // Then a new tracked ID is assigned and there are exactly 2 leaves.
+        let second_id = app.workflow_pane_id.unwrap();
+        assert_ne!(second_id, first_id);
+        assert_eq!(app.split_manager.leaves().len(), 2);
+    }
+
+    #[test]
+    fn pinned_and_workflow_panes_are_mutually_exclusive() {
+        // Given an app with the workflow pane open.
+        let mut app = test_app();
+        app.open_workflow_pane();
+        assert!(app.workflow_pane_visible);
+
+        // When opening the pinned pane.
+        app.open_pinned_pane();
+
+        // Then the workflow pane is closed and the pinned pane is open.
+        assert!(!app.workflow_pane_visible);
+        assert!(app.workflow_pane_id.is_none());
+        assert!(app.pinned_pane_visible);
+        assert!(app.pinned_pane_id.is_some());
+        // And there are exactly 2 leaves (chat + pinned, no orphan workflow).
+        assert_eq!(app.split_manager.leaves().len(), 2);
     }
 }

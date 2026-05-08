@@ -473,9 +473,9 @@ mod tests {
         actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
         sink.events().clear();
 
-        // When assembling with more than 50 entries.
+        // When assembling with more than 5 entries.
         let mut history = Vec::new();
-        for i in 0..60 {
+        for i in 0..10 {
             history.push(ChatEntry::user(format!("msg {i}")));
         }
         let cmd = nullslop_protocol::Command::AssemblePrompt {
@@ -488,10 +488,10 @@ mod tests {
         };
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
-        // Then only the last 50 entries are in the output.
+        // Then only the last 5 entries are in the output.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 50);
+        assert_eq!(assembled.messages.len(), 5);
     }
 
     #[tokio::test]
