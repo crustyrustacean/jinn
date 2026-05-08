@@ -170,6 +170,124 @@ Important:
 - Testing internal details is an _anti-pattern_.
 - Prefer testing observable behavior ONLY. If observable behavior cannot be tested, then an abstraction needs to be created. Ask the user how to proceed in this case.
 
+### One Test, One Behavior
+
+**Every test must assert exactly one semantic concept.** A test should answer a single question about the system. When it fails, the test name alone must tell you _what_ broke.
+
+This means each test has exactly **one** `// When` and **one** `// Then` block. A `// Then` may be followed by `// And` lines, but only when those lines elaborate on the same observable behavior — never when they describe a different behavior.
+
+**What counts as "one concept":**
+
+- Checking multiple fields of the _same result_ — fine. All confirms "the result is correct."
+- Checking that a serialization roundtrip preserved all fields — fine. All confirms "the roundtrip worked."
+- Checking that reset cleared all fields — fine. All confirms "everything was reset."
+- Checking that every item in a filtered list matches the filter — fine. All confirms "the filter worked."
+
+**What counts as separate concepts (split into separate tests):**
+
+- A handler that updates state **and** emits an event → two tests. State change and event emission are separate observable behaviors.
+- Processing a second input after a first → two tests. Each input triggers its own behavior.
+- Rendering multiple entry types from one widget → one test per entry type. Each entry type is a separate rendering behavior.
+- A multi-step lifecycle (start, complete, finalize, advance) → one test per step. Each step is a separate state transition.
+
+**Anti-patterns to avoid:**
+
+```rust
+// ❌ BAD — two When/Then blocks in one test
+#[test]
+fn stream_token_appends_to_assistant_entry() {
+    // ...setup...
+    // When processing the first token.
+    // Then the entry has "Hello".
+    // When processing a second token.
+    // Then the text is "Hello world".
+}
+```
+
+```rust
+// ✅ GOOD — split into two tests
+#[test]
+fn first_stream_token_creates_assistant_entry() {
+    // ...setup...
+    // When processing StreamToken("Hello").
+    // Then the session has an Assistant entry with "Hello".
+}
+
+#[test]
+fn subsequent_stream_token_appends_to_existing_entry() {
+    // ...setup with one token already processed...
+    // When processing another StreamToken(" world").
+    // Then the text is "Hello world".
+}
+```
+
+```rust
+// ❌ BAD — checking state change AND event emission in one test
+#[test]
+fn advance_step_finalizes_and_moves_to_next_step() {
+    // ...setup...
+    // When advancing.
+    // Then step-0 is completed and step-1 is active.
+    // And StepCompleted and StepStarted events were emitted.
+}
+```
+
+```rust
+// ✅ GOOD — split into separate tests
+#[test]
+fn advance_finalizes_current_step() {
+    // ...setup...
+    // When advancing.
+    // Then step-0 is Completed.
+}
+
+#[test]
+fn advance_activates_next_step() {
+    // ...setup...
+    // When advancing.
+    // Then step-1 is Active.
+}
+
+#[test]
+fn advance_emits_step_completed_and_started_events() {
+    // ...setup...
+    // When advancing.
+    // Then StepCompleted and StepStarted events were emitted.
+}
+```
+
+```rust
+// ❌ BAD — checking multiple entry type renders in one test
+#[test]
+fn render_mixed_entries() {
+    // Given system, user, actor, and assistant entries.
+    // When rendering.
+    // Then line 6 is system (dark gray).
+    // And line 7 is user (">" prefix, bold).
+    // And line 8 is actor (yellow).
+    // And line 9 is assistant (cyan).
+}
+```
+
+```rust
+// ✅ GOOD — one test per entry type
+#[test]
+fn render_system_entry_is_dark_gray() {
+    // Given a ChatLogElement with a system entry.
+    // When rendering.
+    // Then the system entry line has dark gray foreground.
+}
+
+#[test]
+fn render_user_entry_has_prefix() {
+    // Given a ChatLogElement with a user entry.
+    // When rendering.
+    // Then the user entry line starts with ">".
+}
+```
+
+**Duplicated test setup is acceptable.** Do not combine tests to avoid setup duplication.
+
 ### BDD-Style Tests (Given/When/Then)
 
 Structure tests with clear Given/When/Then sections, and name the test so it can be read as a standalone program behavior in the test report:
@@ -209,7 +327,7 @@ fn quit_command_sets_should_quit_in_state() {
 
 ### Parameterized Tests with rstest
 
-If a test has many inputs, the prefer parametrizing with `rstest`:
+If a test has many inputs, prefer parametrizing with `rstest`:
 
 ```rust
 #[rstest::rstest]
@@ -222,6 +340,8 @@ fn key_display(#[case] key: Key, #[case] expected: &str) {
 ```
 
 For edge cases that don't easily fit into "expected", prefer a BDD-styled test instead.
+
+Use rstest when you find yourself writing the same assertion logic against different inputs. Do _not_ use rstest to combine different behaviors into one test — each `#[case]` must test the same property.
 
 ### Async Tests
 
