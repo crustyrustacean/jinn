@@ -8,6 +8,7 @@ use nullslop_protocol as npr;
 use nullslop_protocol::{
     CommandAction, PickerKind, SessionId, SessionLoadCompleted, SessionNew,
 };
+use nullslop_protocol::context::{RestoreStrategyState, SwitchPromptStrategy};
 use nullslop_protocol::system::SetMode;
 use nullslop_session::{BLOB_STRATEGY_STATE, BLOB_WORKFLOW_STATE};
 use nullslop_services::Services;
@@ -90,6 +91,27 @@ impl SessionPickerHandler {
             .sessions
             .insert(cmd.session_id.clone(), session);
         ctx.state.active_session = cmd.session_id.clone();
+
+        // Notify the context actor of the loaded strategy so it doesn't
+        // default to passthrough on the next AssemblePrompt.
+        ctx.out.submit_command(npr::Command::SwitchPromptStrategy {
+            payload: SwitchPromptStrategy {
+                session_id: cmd.session_id.clone(),
+                strategy_id: cmd.active_strategy.clone(),
+            },
+        });
+
+        // Forward persisted strategy state to the context actor.
+        if let Some(strategy_blob) = cmd.blobs.get(BLOB_STRATEGY_STATE) {
+            ctx.out.submit_command(npr::Command::RestoreStrategyState {
+                payload: RestoreStrategyState {
+                    session_id: cmd.session_id.clone(),
+                    strategy_id: cmd.active_strategy.clone(),
+                    blob: strategy_blob.clone(),
+                },
+            });
+        }
+
         CommandAction::Continue
     }
 }
@@ -211,5 +233,116 @@ mod tests {
 
         // Then session_loading is false.
         assert!(!state.session_loading);
+    }
+
+    #[test]
+    fn session_load_completed_emits_switch_prompt_strategy() {
+        // Given a bus with SessionPickerHandler registered.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState {
+            session_loading: true,
+            ..crate::AppState::default()
+        };
+
+        let session_id = SessionId::new();
+        let cmd = SessionLoadCompleted {
+            session_id: session_id.clone(),
+            title: "Sliding Session".to_owned(),
+            history: vec![],
+            active_strategy: PromptStrategyId::sliding_window(),
+            blobs: HashMap::new(),
+        };
+
+        // When processing SessionLoadCompleted with sliding_window strategy.
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted {
+            payload: cmd,
+        });
+        bus.process_commands(&mut state, &services);
+
+        // Then a SwitchPromptStrategy command is emitted.
+        let commands = bus.drain_processed_commands();
+        let switch_cmd = commands.iter().find_map(|c| match &c.command {
+            nullslop_protocol::Command::SwitchPromptStrategy { payload } => Some(payload.clone()),
+            _ => None,
+        });
+        assert!(switch_cmd.is_some(), "expected SwitchPromptStrategy command");
+        let switch_cmd = switch_cmd.expect("should have SwitchPromptStrategy");
+        assert_eq!(switch_cmd.session_id, session_id);
+        assert_eq!(switch_cmd.strategy_id, PromptStrategyId::sliding_window());
+    }
+
+    #[test]
+    fn session_load_completed_emits_restore_strategy_state_when_blob_present() {
+        // Given a bus with SessionPickerHandler registered.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState {
+            session_loading: true,
+            ..crate::AppState::default()
+        };
+
+        let session_id = SessionId::new();
+        let blob = serde_json::json!({"compaction_count": 5});
+        let mut blobs = HashMap::new();
+        blobs.insert("strategy_state".to_owned(), blob.clone());
+
+        let cmd = SessionLoadCompleted {
+            session_id: session_id.clone(),
+            title: String::new(),
+            history: vec![],
+            active_strategy: PromptStrategyId::compaction(),
+            blobs,
+        };
+
+        // When processing SessionLoadCompleted with a strategy blob.
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted {
+            payload: cmd,
+        });
+        bus.process_commands(&mut state, &services);
+
+        // Then a RestoreStrategyState command is emitted.
+        let commands = bus.drain_processed_commands();
+        let restore_cmd = commands.iter().find_map(|c| match &c.command {
+            nullslop_protocol::Command::RestoreStrategyState { payload } => Some(payload.clone()),
+            _ => None,
+        });
+        assert!(restore_cmd.is_some(), "expected RestoreStrategyState command");
+        let restore_cmd = restore_cmd.expect("should have RestoreStrategyState");
+        assert_eq!(restore_cmd.session_id, session_id);
+        assert_eq!(restore_cmd.strategy_id, PromptStrategyId::compaction());
+        assert_eq!(restore_cmd.blob, blob);
+    }
+
+    #[test]
+    fn session_load_completed_skips_restore_when_no_strategy_blob() {
+        // Given a bus with SessionPickerHandler registered.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState {
+            session_loading: true,
+            ..crate::AppState::default()
+        };
+
+        let cmd = SessionLoadCompleted {
+            session_id: SessionId::new(),
+            title: String::new(),
+            history: vec![],
+            active_strategy: PromptStrategyId::passthrough(),
+            blobs: HashMap::new(),
+        };
+
+        // When processing SessionLoadCompleted with no blobs.
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted {
+            payload: cmd,
+        });
+        bus.process_commands(&mut state, &services);
+
+        // Then no RestoreStrategyState command is emitted.
+        let commands = bus.drain_processed_commands();
+        let has_restore = commands.iter().any(|c| {
+            matches!(&c.command, nullslop_protocol::Command::RestoreStrategyState { .. })
+        });
+        assert!(!has_restore, "should not emit RestoreStrategyState without blob");
     }
 }
