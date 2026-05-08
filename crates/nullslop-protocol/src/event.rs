@@ -380,181 +380,83 @@ mod tests {
         assert_eq!(json, back_json);
     }
 
-    #[test]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "exhaustive coverage of all Event variants"
+    /// Checks that Event::type_name() delegates to the correct payload TYPE_NAME
+    /// for all event variants that have a meaningful type_name.
+    #[rstest::rstest]
+    #[case::chat_submitted(
+        Event::ChatEntrySubmitted { payload: ChatEntrySubmitted { session_id: SessionId::new(), entry: ChatEntry::user("test") } },
+        ChatEntrySubmitted::TYPE_NAME
     )]
-    fn event_type_name_exhaustive_coverage() {
-        // Given all Event variants.
-        // When calling type_name() on each variant.
-        // Then subscribable events return their EventMsg TYPE_NAME.
-        assert_eq!(
-            Event::ChatEntrySubmitted {
-                payload: ChatEntrySubmitted {
-                    session_id: SessionId::new(),
-                    entry: ChatEntry::user("test"),
-                }
-            }
-            .type_name(),
-            Some(ChatEntrySubmitted::TYPE_NAME)
-        );
-        assert_eq!(
-            Event::ActorStarting {
-                payload: ActorStarting {
-                    name: "actor-a".into(),
-                    description: None,
-                }
-            }
-            .type_name(),
-            Some(ActorStarting::TYPE_NAME)
-        );
-        assert_eq!(
-            Event::ActorStarted {
-                payload: ActorStarted {
-                    name: "actor-a".into(),
-                    description: None,
-                }
-            }
-            .type_name(),
-            Some(ActorStarted::TYPE_NAME)
-        );
-        assert_eq!(
-            Event::ActorShutdownCompleted {
-                payload: ActorShutdownCompleted {
-                    name: "actor-a".into(),
-                }
-            }
-            .type_name(),
-            Some(ActorShutdownCompleted::TYPE_NAME)
-        );
+    #[case::actor_starting(
+        Event::ActorStarting { payload: ActorStarting { name: "actor-a".into(), description: None } },
+        ActorStarting::TYPE_NAME
+    )]
+    #[case::actor_started(
+        Event::ActorStarted { payload: ActorStarted { name: "actor-a".into(), description: None } },
+        ActorStarted::TYPE_NAME
+    )]
+    #[case::actor_shutdown_completed(
+        Event::ActorShutdownCompleted { payload: ActorShutdownCompleted { name: "actor-a".into() } },
+        ActorShutdownCompleted::TYPE_NAME
+    )]
+    #[case::key_down(
+        Event::KeyDown { payload: KeyDown { key: KeyEvent { key: Key::Enter, modifiers: Modifiers::none() } } },
+        KeyDown::TYPE_NAME
+    )]
+    #[case::key_up(
+        Event::KeyUp { payload: KeyUp { key: KeyEvent { key: Key::Char('a'), modifiers: Modifiers::none() } } },
+        KeyUp::TYPE_NAME
+    )]
+    #[case::mode_changed(
+        Event::ModeChanged { payload: ModeChanged { from: Mode::Normal, to: Mode::Input } },
+        ModeChanged::TYPE_NAME
+    )]
+    #[case::prompt_templates_loaded(
+        Event::PromptTemplatesLoaded { payload: PromptTemplatesLoaded { templates: vec![], error: None } },
+        PromptTemplatesLoaded::TYPE_NAME
+    )]
+    fn event_type_name_returns_payload_type_name(#[case] event: Event, #[case] expected: &str) {
+        // Given an Event variant with a payload.
+        // When calling type_name().
+        // Then it returns Some of the payload's TYPE_NAME.
+        assert_eq!(event.type_name(), Some(expected));
+    }
 
-        // Then key and mode events return their TYPE_NAME.
-        assert_eq!(
-            Event::KeyDown {
-                payload: KeyDown {
-                    key: KeyEvent {
-                        key: Key::Enter,
-                        modifiers: Modifiers::none(),
-                    },
-                }
-            }
-            .type_name(),
-            Some(KeyDown::TYPE_NAME)
-        );
-        assert_eq!(
-            Event::KeyUp {
-                payload: KeyUp {
-                    key: KeyEvent {
-                        key: Key::Char('a'),
-                        modifiers: Modifiers::none(),
-                    },
-                }
-            }
-            .type_name(),
-            Some(KeyUp::TYPE_NAME)
-        );
-        assert_eq!(
-            Event::ModeChanged {
-                payload: ModeChanged {
-                    from: Mode::Normal,
-                    to: Mode::Input,
-                }
-            }
-            .type_name(),
-            Some(ModeChanged::TYPE_NAME)
-        );
-
-        // Then TYPE_NAME constants match the expected module-scoped values.
-        assert_eq!(
-            ChatEntrySubmitted::TYPE_NAME,
-            "chat_input::ChatEntrySubmitted"
-        );
-        assert_eq!(ActorStarting::TYPE_NAME, "actor::ActorStarting");
-        assert_eq!(ActorStarted::TYPE_NAME, "actor::ActorStarted");
-        assert_eq!(
-            ActorShutdownCompleted::TYPE_NAME,
-            "actor::ActorShutdownCompleted"
-        );
-        assert_eq!(KeyDown::TYPE_NAME, "system::KeyDown");
-        assert_eq!(KeyUp::TYPE_NAME, "system::KeyUp");
-        assert_eq!(ModeChanged::TYPE_NAME, "system::ModeChanged");
-
-        // Then StreamCompleted has the correct TYPE_NAME.
-        assert_eq!(StreamCompleted::TYPE_NAME, "provider::StreamCompleted");
-
-        // Then StreamToken has the correct TYPE_NAME.
-        assert_eq!(StreamToken::TYPE_NAME, "provider::StreamToken");
-
-        // Then ToolUseStarted has the correct TYPE_NAME.
-        assert_eq!(ToolUseStarted::TYPE_NAME, "tool::ToolUseStarted");
-
-        // Then ToolCallReceived has the correct TYPE_NAME.
-        assert_eq!(ToolCallReceived::TYPE_NAME, "tool::ToolCallReceived");
-
-        // Then ToolCallStreaming has the correct TYPE_NAME.
-        assert_eq!(ToolCallStreaming::TYPE_NAME, "tool::ToolCallStreaming");
-
-        // Then ProviderSwitched has the correct TYPE_NAME.
-        assert_eq!(ProviderSwitched::TYPE_NAME, "provider::ProviderSwitched");
-
-        // Then ModelsRefreshed has the correct TYPE_NAME.
-        assert_eq!(ModelsRefreshed::TYPE_NAME, "provider::ModelsRefreshed");
-
-        // Then PromptTemplatesLoaded has the correct TYPE_NAME.
-        assert_eq!(
-            Event::PromptTemplatesLoaded {
-                payload: PromptTemplatesLoaded {
-                    templates: vec![],
-                    error: None,
-                },
-            }
-            .type_name(),
-            Some(PromptTemplatesLoaded::TYPE_NAME)
-        );
-        assert_eq!(PromptTemplatesLoaded::TYPE_NAME, "provider::PromptTemplatesLoaded");
-
-        // Then tool events have the correct TYPE_NAME.
-        assert_eq!(ToolBatchCompleted::TYPE_NAME, "tool::ToolBatchCompleted");
-        assert_eq!(
-            ToolExecutionCompleted::TYPE_NAME,
-            "tool::ToolExecutionCompleted"
-        );
-        assert_eq!(ToolsRegistered::TYPE_NAME, "tool::ToolsRegistered");
-
-        // Then PromptAssembled has the correct TYPE_NAME.
-        assert_eq!(PromptAssembled::TYPE_NAME, "context::PromptAssembled");
-
-        // Then PromptStrategySwitched has the correct TYPE_NAME.
-        assert_eq!(
-            PromptStrategySwitched::TYPE_NAME,
-            "context::PromptStrategySwitched"
-        );
-
-        // Then StrategyStateUpdated has the correct TYPE_NAME.
-        assert_eq!(
-            StrategyStateUpdated::TYPE_NAME,
-            "context::StrategyStateUpdated"
-        );
-
-        // Then workflow events have the correct TYPE_NAME.
-        assert_eq!(WorkflowLoaded::TYPE_NAME, "workflow::WorkflowLoaded");
-        assert_eq!(StepStarted::TYPE_NAME, "workflow::StepStarted");
-        assert_eq!(StepCompleted::TYPE_NAME, "workflow::StepCompleted");
-        assert_eq!(StepStale::TYPE_NAME, "workflow::StepStale");
-        assert_eq!(StepAwaitingInput::TYPE_NAME, "workflow::StepAwaitingInput");
-        assert_eq!(WorkflowCompleted::TYPE_NAME, "workflow::WorkflowCompleted");
-
-        // Then SessionSaveRequested has the correct TYPE_NAME.
-        assert_eq!(
-            SessionSaveRequested::TYPE_NAME,
-            "session::SessionSaveRequested"
-        );
-
-        // Then SessionLoadRequested has the correct TYPE_NAME.
-        assert_eq!(
-            crate::session::SessionLoadRequested::TYPE_NAME,
-            "session::SessionLoadRequested"
-        );
+    /// Checks that all TYPE_NAME constants have their expected module-scoped string values.
+    #[rstest::rstest]
+    #[case::chat_submitted(ChatEntrySubmitted::TYPE_NAME, "chat_input::ChatEntrySubmitted")]
+    #[case::actor_starting(ActorStarting::TYPE_NAME, "actor::ActorStarting")]
+    #[case::actor_started(ActorStarted::TYPE_NAME, "actor::ActorStarted")]
+    #[case::actor_shutdown_completed(ActorShutdownCompleted::TYPE_NAME, "actor::ActorShutdownCompleted")]
+    #[case::key_down(KeyDown::TYPE_NAME, "system::KeyDown")]
+    #[case::key_up(KeyUp::TYPE_NAME, "system::KeyUp")]
+    #[case::mode_changed(ModeChanged::TYPE_NAME, "system::ModeChanged")]
+    #[case::stream_completed(StreamCompleted::TYPE_NAME, "provider::StreamCompleted")]
+    #[case::stream_token(StreamToken::TYPE_NAME, "provider::StreamToken")]
+    #[case::tool_use_started(ToolUseStarted::TYPE_NAME, "tool::ToolUseStarted")]
+    #[case::tool_call_received(ToolCallReceived::TYPE_NAME, "tool::ToolCallReceived")]
+    #[case::tool_call_streaming(ToolCallStreaming::TYPE_NAME, "tool::ToolCallStreaming")]
+    #[case::provider_switched(ProviderSwitched::TYPE_NAME, "provider::ProviderSwitched")]
+    #[case::models_refreshed(ModelsRefreshed::TYPE_NAME, "provider::ModelsRefreshed")]
+    #[case::prompt_templates_loaded(PromptTemplatesLoaded::TYPE_NAME, "provider::PromptTemplatesLoaded")]
+    #[case::tool_batch_completed(ToolBatchCompleted::TYPE_NAME, "tool::ToolBatchCompleted")]
+    #[case::tool_execution_completed(ToolExecutionCompleted::TYPE_NAME, "tool::ToolExecutionCompleted")]
+    #[case::tools_registered(ToolsRegistered::TYPE_NAME, "tool::ToolsRegistered")]
+    #[case::prompt_assembled(PromptAssembled::TYPE_NAME, "context::PromptAssembled")]
+    #[case::prompt_strategy_switched(PromptStrategySwitched::TYPE_NAME, "context::PromptStrategySwitched")]
+    #[case::strategy_state_updated(StrategyStateUpdated::TYPE_NAME, "context::StrategyStateUpdated")]
+    #[case::workflow_loaded(WorkflowLoaded::TYPE_NAME, "workflow::WorkflowLoaded")]
+    #[case::step_started(StepStarted::TYPE_NAME, "workflow::StepStarted")]
+    #[case::step_completed(StepCompleted::TYPE_NAME, "workflow::StepCompleted")]
+    #[case::step_stale(StepStale::TYPE_NAME, "workflow::StepStale")]
+    #[case::step_awaiting_input(StepAwaitingInput::TYPE_NAME, "workflow::StepAwaitingInput")]
+    #[case::workflow_completed(WorkflowCompleted::TYPE_NAME, "workflow::WorkflowCompleted")]
+    #[case::session_save_requested(SessionSaveRequested::TYPE_NAME, "session::SessionSaveRequested")]
+    #[case::session_load_requested(crate::session::SessionLoadRequested::TYPE_NAME, "session::SessionLoadRequested")]
+    fn type_name_constant_matches_expected_module_path(#[case] actual: &str, #[case] expected: &str) {
+        // Given a TYPE_NAME constant from an event payload type.
+        // When comparing to its expected module-scoped path.
+        // Then the constant matches the expected value.
+        assert_eq!(actual, expected);
     }
 }
