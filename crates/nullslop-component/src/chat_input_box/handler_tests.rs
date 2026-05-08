@@ -438,7 +438,7 @@ fn tab_switches_tab_when_autocomplete_inactive() {
 // --- Test 16: Empty matches selected_index safe ---
 
 #[test]
-fn empty_matches_selected_index_safe() {
+fn empty_autocomplete_matches_has_zero_count() {
     // Given a bus with handler and no matching templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -449,12 +449,24 @@ fn empty_matches_selected_index_safe() {
         insert_char(&mut bus, &mut state, &services, ch);
     }
 
-    // Then autocomplete is active with 0 matches and selected_index 0, no panic.
+    // Then autocomplete is active with 0 matches and selected_index 0.
     let ac = state.active_chat_input().autocomplete();
     assert!(ac.is_some(), "autocomplete should be active");
     let ac = ac.as_ref().unwrap();
     assert_eq!(ac.matches().len(), 0, "should have no matches");
     assert_eq!(ac.selected_index(), 0, "selected_index should be 0");
+}
+
+#[test]
+fn navigating_with_empty_matches_does_not_panic() {
+    // Given a bus with handler and no matching templates.
+    let (mut bus, mut state, store) = setup_bus_with_templates();
+    let services = test_utils::test_services();
+    state.prompt_templates = store;
+
+    for ch in "$zzzzzz".chars() {
+        insert_char(&mut bus, &mut state, &services, ch);
+    }
 
     // When navigating up/down with empty matches, no panic.
     bus.submit_command(Command::MoveCursorUp);
@@ -462,7 +474,7 @@ fn empty_matches_selected_index_safe() {
     bus.submit_command(Command::MoveCursorDown);
     bus.process_commands(&mut state, &services);
 
-    // Still safe.
+    // Then still safe with selected_index 0.
     let ac = state.active_chat_input().autocomplete().as_ref().unwrap();
     assert_eq!(ac.selected_index(), 0);
 }

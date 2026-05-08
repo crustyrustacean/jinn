@@ -764,8 +764,8 @@ mod tests {
     // --- Tool batch completed → new stream tests ---
 
     #[tokio::test]
-    async fn tool_batch_completed_starts_new_stream() {
-        // Given an actor configured with tool calls, after a tool_use stream.
+    async fn tool_results_received_sets_awaiting_state() {
+        // Given an actor configured with tool calls.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
 
@@ -785,7 +785,7 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        // When sending SendToLlmProvider.
+        // When sending SendToLlmProvider and routing stream events back.
         let cmd = Command::SendToLlmProvider {
             payload: SendToLlmProvider {
                 session_id: session_id.clone(),
@@ -799,13 +799,10 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // Feed the StreamCompleted(ToolUse) event back to the actor
-        // (simulates bus routing).
         let events_from_stream = sink.take_events();
         for event in events_from_stream {
             actor.handle_event(&event, &ctx);
         }
-        sink.clear();
 
         // Then the session is in AwaitingToolResults state.
         let session = actor
@@ -813,6 +810,48 @@ mod tests {
             .get(&session_id)
             .expect("session should exist");
         assert_eq!(session.state, SessionState::AwaitingToolResults);
+    }
+
+    #[tokio::test]
+    async fn tool_batch_completed_starts_new_stream() {
+        // Given an actor in AwaitingToolResults state after a tool_use stream.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let factory = FakeLlmServiceFactory::with_tool_calls(
+            vec!["Let me check".to_owned()],
+            vec![tool_call.clone()],
+        );
+        let factory_service = nullslop_providers::LlmServiceFactoryService::new(Arc::new(factory));
+        ctx.set_data(factory_service);
+        let mut actor = LlmActor::activate(&mut ctx);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![LlmMessage::User {
+                    content: "hi".to_owned(),
+                }],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let events_from_stream = sink.take_events();
+        for event in events_from_stream {
+            actor.handle_event(&event, &ctx);
+        }
+        sink.clear();
 
         // When receiving ToolBatchCompleted.
         let tool_result = ToolResult {
@@ -1042,8 +1081,8 @@ mod tests {
     // --- Defensive guard tests ---
 
     #[tokio::test]
-    async fn duplicate_done_finished_while_awaiting_tool_results_ignores() {
-        // Given an actor with a tool_use stream that transitioned to AwaitingToolResults.
+    async fn stream_completed_preserves_awaiting_tool_results_state() {
+        // Given an actor with a tool_use stream.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
         let tool_call = ToolCall {
@@ -1084,6 +1123,43 @@ mod tests {
             .get(&session_id)
             .expect("session should exist");
         assert_eq!(session.state, SessionState::AwaitingToolResults);
+    }
+
+    #[tokio::test]
+    async fn duplicate_finished_while_awaiting_tool_results_is_ignored() {
+        // Given an actor in AwaitingToolResults state after a tool_use stream.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let mut actor = actor_with_tool_calls(
+            &sink,
+            &mut ctx,
+            vec!["Let me check".to_owned()],
+            vec![tool_call.clone()],
+        );
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let events_from_stream = sink.take_events();
+        for event in events_from_stream {
+            actor.handle_event(&event, &ctx);
+        }
 
         // When receiving a duplicate StreamCompleted(Finished) — simulates OpenRouter bug.
         let duplicate_finished = Event::StreamCompleted {

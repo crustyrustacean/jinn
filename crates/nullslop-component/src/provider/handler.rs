@@ -128,7 +128,7 @@ mod tests {
     }
 
     #[test]
-    fn stream_token_appends_to_assistant_entry() {
+    fn first_stream_token_creates_assistant_entry() {
         // Given a bus with ProviderHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ProviderHandler.register(&mut bus);
@@ -153,6 +153,26 @@ mod tests {
             state.active_session().history()[0].kind,
             ChatEntryKind::Assistant("Hello".to_owned())
         );
+    }
+
+    #[test]
+    fn subsequent_stream_token_appends_to_existing_entry() {
+        // Given a bus with ProviderHandler registered and a first token already processed.
+        let mut bus: Bus<AppState, Services> = Bus::new();
+        ProviderHandler.register(&mut bus);
+
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+        let sid = session_id(&state);
+
+        bus.submit_event(Event::StreamToken {
+            payload: StreamToken {
+                session_id: sid.clone(),
+                index: 0,
+                token: "Hello".to_owned(),
+            },
+        });
+        bus.process_events(&mut state, &services);
 
         // When processing another StreamToken(index=1, token=" world").
         bus.submit_event(Event::StreamToken {
