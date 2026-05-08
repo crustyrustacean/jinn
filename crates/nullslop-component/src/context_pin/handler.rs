@@ -30,7 +30,9 @@ impl ContextPinHandler {
         ctx.state
             .session_mut(&cmd.session_id)
             .pin_entry(&cmd.entry_id, cmd.position);
-        ctx.state.pinned_panel.reset_selection();
+
+        // Select the newly pinned entry.
+        ctx.state.pinned_panel.select_by_id(cmd.entry_id.clone());
         CommandAction::Continue
     }
 
@@ -39,10 +41,17 @@ impl ContextPinHandler {
         cmd: &UnpinChatEntry,
         ctx: &mut HandlerContext<'_, AppState, Services>,
     ) -> CommandAction {
+        // Resolve old index before mutation so we can clamp to nearest.
+        let sorted_ids_before = ctx.state.sorted_pinned_ids();
+        let old_index = ctx.state.pinned_panel.selection_index(&sorted_ids_before);
+
         ctx.state
             .session_mut(&cmd.session_id)
             .unpin_entry(&cmd.entry_id);
-        ctx.state.pinned_panel.reset_selection();
+
+        // Clamp selection to nearest remaining entry.
+        let sorted_ids_after = ctx.state.sorted_pinned_ids();
+        ctx.state.pinned_panel.clamp_to_nearest(&sorted_ids_after, old_index);
         CommandAction::Continue
     }
 }
@@ -86,7 +95,7 @@ mod tests {
         bus.submit_command(Command::PinChatEntry {
             payload: PinChatEntry {
                 session_id: session_id.clone(),
-                entry_id,
+                entry_id: entry_id.clone(),
                 position: PinPosition::Top,
             },
         });
@@ -95,31 +104,48 @@ mod tests {
         // Then the entry has a pin position set.
         let entry = &state.active_session().history()[0];
         assert_eq!(entry.pin_position, Some(PinPosition::Top));
+
+        // And the newly pinned entry is selected.
+        assert_eq!(state.pinned_panel.selected_id(), Some(&entry_id));
     }
 
     #[test]
     fn unpin_command_clears_pin_position() {
-        // Given a bus with ContextPinHandler registered and a pinned entry.
+        // Given a bus with ContextPinHandler registered and two pinned entries.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ContextPinHandler.register(&mut bus);
-        let (mut state, session_id, entry_id) = state_with_entry("hello");
-        state
-            .active_session_mut()
-            .pin_entry(&entry_id, PinPosition::Bottom);
+        let mut state = AppState::default();
+        let session_id = state.active_session.clone();
+
+        // Add two entries and pin both.
+        let entry0 = ChatEntry::user("first");
+        let entry0_id = entry0.id.clone();
+        state.active_session_mut().push_entry(entry0);
+        state.active_session_mut().pin_entry(&entry0_id, PinPosition::Top);
+
+        let entry1 = ChatEntry::user("second");
+        let entry1_id = entry1.id.clone();
+        state.active_session_mut().push_entry(entry1);
+        state.active_session_mut().pin_entry(&entry1_id, PinPosition::Top);
+
+        // Select the first entry.
+        state.pinned_panel.select_by_id(entry0_id.clone());
         let services = test_utils::test_services();
 
-        // When processing an UnpinChatEntry command.
+        // When processing an UnpinChatEntry command for the first entry.
         bus.submit_command(Command::UnpinChatEntry {
             payload: UnpinChatEntry {
                 session_id: session_id.clone(),
-                entry_id,
+                entry_id: entry0_id.clone(),
             },
         });
         bus.process_commands(&mut state, &services);
 
-        // Then the entry's pin position is cleared.
-        let entry = &state.active_session().history()[0];
-        assert_eq!(entry.pin_position, None);
+        // Then the first entry's pin position is cleared.
+        assert_eq!(state.active_session().history()[0].pin_position, None);
+
+        // And selection moves to the nearest remaining entry (the second one).
+        assert_eq!(state.pinned_panel.selected_id(), Some(&entry1_id));
     }
 
     #[test]
@@ -135,7 +161,7 @@ mod tests {
         bus.submit_command(Command::PinChatEntry {
             payload: PinChatEntry {
                 session_id: session_id.clone(),
-                entry_id: missing_id,
+                entry_id: missing_id.clone(),
                 position: PinPosition::Relative,
             },
         });
@@ -144,6 +170,9 @@ mod tests {
         // Then the existing entry is unaffected.
         let entry = &state.active_session().history()[0];
         assert_eq!(entry.pin_position, None);
+
+        // And the selection is set to the non-existent ID (handler doesn't validate).
+        assert_eq!(state.pinned_panel.selected_id(), Some(&missing_id));
     }
 
     #[test]
@@ -155,6 +184,8 @@ mod tests {
         state
             .active_session_mut()
             .pin_entry(&entry_id, PinPosition::Top);
+        // Select the pinned entry.
+        state.pinned_panel.select_by_id(entry_id.clone());
         let services = test_utils::test_services();
 
         // When unpinning a non-existent entry ID.
@@ -170,5 +201,8 @@ mod tests {
         // Then the existing pinned entry is unaffected.
         let entry = &state.active_session().history()[0];
         assert_eq!(entry.pin_position, Some(PinPosition::Top));
+
+        // And selection is still on the original entry.
+        assert_eq!(state.pinned_panel.selected_id(), Some(&entry_id));
     }
 }

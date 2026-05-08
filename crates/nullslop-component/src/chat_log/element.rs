@@ -149,33 +149,44 @@ impl UiElement<AppState> for ChatLogElement {
 /// The first line gets the entry-type prefix; continuation lines get indentation.
 /// When `is_selected` is true, the first line gets a `▶` prefix and `REVERSED` style.
 fn entry_to_lines(entry: &nullslop_protocol::ChatEntry, is_selected: bool) -> Vec<Line<'static>> {
+    let pinned = entry.pin_position.is_some();
+
     match &entry.kind {
-        ChatEntryKind::User(text) => multiline_styled(
-            text,
-            "> ",
-            "  ",
-            Style::default().add_modifier(Modifier::BOLD),
-            is_selected,
-        ),
+        ChatEntryKind::User(text) => {
+            let prefix = if pinned { "📌 > " } else { "> " };
+            multiline_styled(
+                text,
+                prefix,
+                "  ",
+                Style::default().add_modifier(Modifier::BOLD),
+                is_selected,
+            )
+        }
         ChatEntryKind::System(text) => {
-            multiline_styled(text, "  ", "  ", Style::default().fg(Color::DarkGray), is_selected)
+            let prefix = if pinned { "📌   " } else { "  " };
+            multiline_styled(text, prefix, "  ", Style::default().fg(Color::DarkGray), is_selected)
         }
         ChatEntryKind::Actor { source, text } => {
-            let prefix = format!("[actor] {source}: ");
+            let base = format!("[actor] {source}: ");
+            let prefix = if pinned { format!("📌 {base}") } else { base };
             multiline_styled(text, &prefix, "  ", Style::default().fg(Color::Yellow), is_selected)
         }
         ChatEntryKind::Assistant(text) => {
-            multiline_styled(text, "✦ ", "  ", Style::default().fg(Color::Cyan), is_selected)
+            let prefix = if pinned { "📌 ✦ " } else { "✦ " };
+            multiline_styled(text, prefix, "  ", Style::default().fg(Color::Cyan), is_selected)
         }
         ChatEntryKind::ToolCall {
             name, arguments, ..
-        } => multiline_styled(
-            format!("🔧 {name}({arguments})"),
-            "  ",
-            "  ",
-            Style::default().fg(Color::Magenta),
-            is_selected,
-        ),
+        } => {
+            let prefix = if pinned { "📌 " } else { "  " };
+            multiline_styled(
+                format!("🔧 {name}({arguments})"),
+                prefix,
+                "  ",
+                Style::default().fg(Color::Magenta),
+                is_selected,
+            )
+        }
         ChatEntryKind::ToolResult {
             name,
             content,
@@ -183,9 +194,10 @@ fn entry_to_lines(entry: &nullslop_protocol::ChatEntry, is_selected: bool) -> Ve
             ..
         } => {
             let icon = if *success { "✅" } else { "❌" };
+            let prefix = if pinned { "📌 " } else { "  " };
             multiline_styled(
                 format!("{icon} {name}: {content}"),
-                "  ",
+                prefix,
                 "  ",
                 if *success {
                     Style::default().fg(Color::Green)
@@ -654,6 +666,75 @@ mod tests {
         let cell = buffer.cell((0, 8)).expect("cell should exist");
         assert_eq!(cell.symbol(), ">");
         assert!(!cell.style().add_modifier.contains(Modifier::REVERSED));
+    }
+
+    #[test]
+    fn render_pinned_entry_shows_pin_icon() {
+        // Given a ChatLogElement with one pinned user entry.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::user("hello").with_pin(nullslop_protocol::PinPosition::Top));
+            s
+        };
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the pinned entry's line contains the 📌 character.
+        let buffer = terminal.backend().buffer().clone();
+        let has_pin = (0..10).any(|row| {
+            (0..40).any(|col| {
+                buffer
+                    .cell((col, row))
+                    .map(|c| c.symbol() == "\u{1F4CC}")
+                    .unwrap_or(false)
+            })
+        });
+        assert!(has_pin, "pinned entry should show \u{1F4CC} pin icon");
+    }
+
+    #[test]
+    fn render_unpinned_entry_has_no_pin_icon() {
+        // Given a ChatLogElement with one unpinned user entry.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::user("hello"));
+            s
+        };
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then no cell in the buffer contains the 📌 character.
+        let buffer = terminal.backend().buffer().clone();
+        let has_pin = (0..10).any(|row| {
+            (0..40).any(|col| {
+                buffer
+                    .cell((col, row))
+                    .map(|c| c.symbol() == "\u{1F4CC}")
+                    .unwrap_or(false)
+            })
+        });
+        assert!(!has_pin, "unpinned entry should not show \u{1F4CC} pin icon");
     }
 
     #[test]

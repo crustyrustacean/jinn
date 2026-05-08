@@ -185,6 +185,26 @@ pub struct PinnedPanelSelectUp;
 #[cmd("system")]
 pub struct PinnedPanelUnpin;
 
+/// Set the selected pinned entry's position to TOP.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct PinnedPanelPinTop;
+
+/// Set the selected pinned entry's position to BOTTOM.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct PinnedPanelPinBottom;
+
+/// Set the selected pinned entry's position to RELATIVE.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct PinnedPanelPinRelative;
+
+/// Cycle the selected pinned entry's position: TOP → BOTTOM → RELATIVE → TOP.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("system")]
+pub struct PinnedPanelPinCycle;
+
 /// Pin the currently selected chat entry (from chat entry selection).
 ///
 /// TuiApp-level command — `route_command()` reads the selected entry ID
