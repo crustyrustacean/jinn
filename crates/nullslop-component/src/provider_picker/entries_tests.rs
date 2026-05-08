@@ -37,28 +37,44 @@ fn make_config(
     }
 }
 
-#[test]
-fn load_provider_entries_returns_all_providers() {
-    // Given a registry with one keyless and one key-required provider (key present).
-    let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
-    let registry = ProviderRegistry::from_config(config).expect("registry");
-    let mut api_keys = ApiKeys::new();
-    api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
+/// Loads entries from a registry with ollama (keyless) and openrouter (key present).
+    fn load_two_providers() -> Vec<PickerEntry> {
+        let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
+        let registry = ProviderRegistry::from_config(config).expect("registry");
+        let mut api_keys = ApiKeys::new();
+        api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
+        load_provider_entries(&registry, &api_keys, None)
+    }
 
-    // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, None);
+    #[test]
+    fn load_provider_entries_returns_two_providers() {
+        // Given a registry with two providers.
+        let entries = load_two_providers();
 
-    // Then both providers are returned with correct availability.
-    assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].provider_id, "ollama/llama3");
-    assert_eq!(entries[0].provider_name, "ollama");
-    assert_eq!(entries[0].model, "llama3");
-    assert!(entries[0].is_available);
-    assert_eq!(entries[1].provider_id, "openrouter/gpt-4");
-    assert_eq!(entries[1].provider_name, "openrouter");
-    assert_eq!(entries[1].model, "gpt-4");
-    assert!(entries[1].is_available);
-}
+        // Then exactly two entries are returned.
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[rstest::rstest]
+    #[case::ollama(0, "ollama/llama3", "ollama", "llama3", true)]
+    #[case::openrouter(1, "openrouter/gpt-4", "openrouter", "gpt-4", true)]
+    fn load_provider_entries_returns_provider_with_correct_fields(
+        #[case] index: usize,
+        #[case] provider_id: &str,
+        #[case] provider_name: &str,
+        #[case] model: &str,
+        #[case] is_available: bool,
+    ) {
+        // Given a registry with two providers.
+        let entries = load_two_providers();
+
+        // Then the entry at the given index has the expected fields.
+        let entry = &entries[index];
+        assert_eq!(entry.provider_id, provider_id);
+        assert_eq!(entry.provider_name, provider_name);
+        assert_eq!(entry.model, model);
+        assert_eq!(entry.is_available, is_available);
+    }
 
 #[test]
 fn load_provider_entries_includes_all_regardless_of_text() {
@@ -120,33 +136,58 @@ fn load_provider_entries_marks_keyless_always_available() {
     assert!(entries[0].is_available);
 }
 
-#[test]
-fn load_provider_entries_includes_aliases() {
-    // Given a registry with a provider and an alias.
-    let config = make_config(
-        vec![ollama_entry()],
-        vec![nullslop_providers::AliasEntry {
-            name: "fast".to_owned(),
-            target: "ollama/llama3".to_owned(),
-        }],
-        None,
-    );
-    let registry = ProviderRegistry::from_config(config).expect("registry");
-    let api_keys = ApiKeys::new();
+/// Loads entries from a registry with ollama and a "fast" alias.
+    fn load_entries_with_alias() -> (Vec<PickerEntry>, PickerEntry) {
+        let config = make_config(
+            vec![ollama_entry()],
+            vec![nullslop_providers::AliasEntry {
+                name: "fast".to_owned(),
+                target: "ollama/llama3".to_owned(),
+            }],
+            None,
+        );
+        let registry = ProviderRegistry::from_config(config).expect("registry");
+        let api_keys = ApiKeys::new();
+        let entries = load_provider_entries(&registry, &api_keys, None);
+        let alias = entries.iter().find(|e| e.is_alias).expect("alias entry").clone();
+        (entries, alias)
+    }
 
-    // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, None);
+    #[test]
+    fn load_provider_entries_alias_count() {
+        // Given a registry with one provider and one alias.
+        let (entries, _) = load_entries_with_alias();
 
-    // Then both the provider and alias are present.
-    assert_eq!(entries.len(), 2);
-    let alias = entries.iter().find(|e| e.is_alias).expect("alias entry");
-    assert_eq!(alias.name, "fast");
-    assert_eq!(alias.provider_id, "ollama/llama3");
-    assert_eq!(alias.alias_target.as_deref(), Some("ollama/llama3"));
-    assert_eq!(alias.provider_name, "ollama");
-    assert_eq!(alias.backend, "ollama");
-    assert_eq!(alias.model, "llama3");
-}
+        // Then both entries are returned.
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[rstest::rstest]
+    #[case::name("name", "fast")]
+    #[case::provider_id("provider_id", "ollama/llama3")]
+    #[case::alias_target("alias_target", "ollama/llama3")]
+    #[case::provider_name("provider_name", "ollama")]
+    #[case::backend("backend", "ollama")]
+    #[case::model("model", "llama3")]
+    fn load_provider_entries_alias_field_matches(
+        #[case] field: &str,
+        #[case] expected: &str,
+    ) {
+        // Given a registry with one provider and one alias.
+        let (_, alias) = load_entries_with_alias();
+
+        // Then the alias entry has the expected field value.
+        let actual = match field {
+            "name" => alias.name.as_str(),
+            "provider_id" => alias.provider_id.as_str(),
+            "alias_target" => alias.alias_target.as_deref().unwrap_or(""),
+            "provider_name" => alias.provider_name.as_str(),
+            "backend" => alias.backend.as_str(),
+            "model" => alias.model.as_str(),
+            _ => panic!("unknown field: {field}"),
+        };
+        assert_eq!(actual, expected);
+    }
 
 #[test]
 fn load_provider_entries_alias_inherits_availability() {

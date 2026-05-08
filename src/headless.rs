@@ -267,23 +267,35 @@ mod tests {
     }
 
     #[test]
-    fn parse_script_parses_multi_key_sequence() {
+    fn parse_script_multi_key_produces_correct_counts() {
         // Given a script with a multi-key sequence.
         let content = "ihello<enter>";
 
         // When parsing.
         let lines = parse_script(content, &leader());
 
-        // Then 7 keys are produced: i, h, e, l, l, o, enter.
+        // Then 1 line with 7 keys is produced.
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].len(), 7);
-        assert_eq!(lines[0][0].key, Key::Char('i'));
-        assert_eq!(lines[0][1].key, Key::Char('h'));
-        assert_eq!(lines[0][2].key, Key::Char('e'));
-        assert_eq!(lines[0][3].key, Key::Char('l'));
-        assert_eq!(lines[0][4].key, Key::Char('l'));
-        assert_eq!(lines[0][5].key, Key::Char('o'));
-        assert_eq!(lines[0][6].key, Key::Enter);
+    }
+
+    #[rstest::rstest]
+    #[case::i(0, Key::Char('i'))]
+    #[case::h(1, Key::Char('h'))]
+    #[case::e(2, Key::Char('e'))]
+    #[case::l_1(3, Key::Char('l'))]
+    #[case::l_2(4, Key::Char('l'))]
+    #[case::o(5, Key::Char('o'))]
+    #[case::enter(6, Key::Enter)]
+    fn parse_script_multi_key_matches_expected_key(#[case] index: usize, #[case] expected: Key) {
+        // Given a script with a multi-key sequence.
+        let content = "ihello<enter>";
+
+        // When parsing.
+        let lines = parse_script(content, &leader());
+
+        // Then the key at the given index matches.
+        assert_eq!(lines[0][index].key, expected);
     }
 
     #[test]

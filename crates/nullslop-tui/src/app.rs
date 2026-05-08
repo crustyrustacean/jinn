@@ -576,47 +576,26 @@ mod tests {
         TuiApp::new(services)
     }
 
-    #[test]
-    fn scope_for_mode_maps_correctly() {
-        // Given all Mode variants.
-        // When mapping each mode to a scope.
-        // Then each mode maps to its corresponding scope.
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, false),
-            Scope::Normal
-        );
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Dashboard, PaneFocus::Chat, false),
-            Scope::Dashboard
-        );
-        // Workflow scope when pane is visible and focused.
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Workflow, true),
-            Scope::Workflow
-        );
-        // Workflow focus but pane not visible → Normal scope.
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Workflow, false),
-            Scope::Normal
-        );
-        // Pane visible but chat focused → Normal scope.
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, true),
-            Scope::Normal
-        );
-        // Pinned scope when pinned pane is focused.
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, false),
-            Scope::Pinned
-        );
-        assert_eq!(
-            scope_for_mode(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, false),
-            Scope::Input
-        );
-        assert_eq!(
-            scope_for_mode(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, false),
-            Scope::Picker
-        );
+    #[rstest::rstest]
+    #[case::normal_chat(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Normal)]
+    #[case::normal_dashboard(Mode::Normal, ActiveTab::Dashboard, PaneFocus::Chat, false, Scope::Dashboard)]
+    #[case::workflow_visible(Mode::Normal, ActiveTab::Chat, PaneFocus::Workflow, true, Scope::Workflow)]
+    #[case::workflow_not_visible(Mode::Normal, ActiveTab::Chat, PaneFocus::Workflow, false, Scope::Normal)]
+    #[case::pane_visible_chat_focused(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, true, Scope::Normal)]
+    #[case::pinned(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, false, Scope::Pinned)]
+    #[case::input(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Input)]
+    #[case::picker(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Picker)]
+    fn scope_for_mode_maps_correctly(
+        #[case] mode: Mode,
+        #[case] tab: ActiveTab,
+        #[case] focus: PaneFocus,
+        #[case] pane_visible: bool,
+        #[case] expected: Scope,
+    ) {
+        // Given a mode, tab, pane focus, and pane visibility.
+        // When mapping to a scope.
+        // Then the expected scope is returned.
+        assert_eq!(scope_for_mode(mode, tab, focus, pane_visible), expected);
     }
 
     #[test]

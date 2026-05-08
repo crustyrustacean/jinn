@@ -49,6 +49,9 @@ nullslop-protocol = { workspace = true, features = ["which-key"] }
 tempfile = { workspace = true }
 dotenvy = { workspace = true }
 
+[dev-dependencies]
+rstest = { workspace = true }
+
 [workspace.dependencies]
 # Internal
 nullslop-prompt-scan = { path = "actors/nullslop-prompt-scan" }

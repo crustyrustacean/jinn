@@ -136,23 +136,43 @@ fn build_with_empty_steps_fails() {
     assert!(result.is_err());
 }
 
-#[test]
-fn build_with_valid_data_produces_workflow_def() {
-    let mut builder = WorkflowBuilder::new();
-    builder
-        .create("my-workflow".to_owned(), "A test workflow".to_owned())
-        .unwrap();
-    builder.add_global("base_dir".to_owned(), "/tmp".to_owned());
-    builder.add_step(make_step("step-1")).unwrap();
+/// Builds a valid workflow def for field checks.
+    fn build_valid_workflow_def() -> WorkflowDef {
+        let mut builder = WorkflowBuilder::new();
+        builder
+            .create("my-workflow".to_owned(), "A test workflow".to_owned())
+            .unwrap();
+        builder.add_global("base_dir".to_owned(), "/tmp".to_owned());
+        builder.add_step(make_step("step-1")).unwrap();
+        builder.build().unwrap()
+    }
 
-    let def = builder.build().unwrap();
+    #[rstest::rstest]
+    #[case::name("name", "my-workflow")]
+    #[case::description("description", "A test workflow")]
+    fn build_with_valid_data_string_field_matches(#[case] field: &str, #[case] expected: &str) {
+        // Given a valid workflow definition.
+        let def = build_valid_workflow_def();
 
-    assert_eq!(def.name, "my-workflow");
-    assert_eq!(def.description, "A test workflow");
-    assert_eq!(def.globals.get("base_dir"), Some(&"/tmp".to_owned()));
-    assert_eq!(def.steps.len(), 1);
-    assert_eq!(def.steps.first().unwrap().id, "step-1");
-}
+        // Then the field matches the expected value.
+        let actual = match field {
+            "name" => &def.name,
+            "description" => &def.description,
+            _ => panic!("unknown field: {field}"),
+        };
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn build_with_valid_data_has_correct_globals_and_steps() {
+        // Given a valid workflow definition.
+        let def = build_valid_workflow_def();
+
+        // Then globals and steps are correct.
+        assert_eq!(def.globals.get("base_dir"), Some(&"/tmp".to_owned()));
+        assert_eq!(def.steps.len(), 1);
+        assert_eq!(def.steps.first().unwrap().id, "step-1");
+    }
 
 #[test]
 fn build_without_name_fails() {
@@ -161,49 +181,60 @@ fn build_without_name_fails() {
     assert!(result.is_err());
 }
 
-#[test]
-fn preview_produces_expected_format() {
-    let mut builder = WorkflowBuilder::new();
-    builder
-        .create("test-workflow".to_owned(), "A test".to_owned())
-        .unwrap();
-    builder.add_global("dir".to_owned(), "/tmp".to_owned());
-    builder.set_model_override("small".to_owned(), "ollama/phi3".to_owned());
+/// Builds a workflow preview with checkpoint, user-input, guard, output, globals, and model overrides.
+    fn build_preview_workflow() -> String {
+        let mut builder = WorkflowBuilder::new();
+        builder
+            .create("test-workflow".to_owned(), "A test".to_owned())
+            .unwrap();
+        builder.add_global("dir".to_owned(), "/tmp".to_owned());
+        builder.set_model_override("small".to_owned(), "ollama/phi3".to_owned());
 
-    let mut step = make_step("create-dir");
-    step.checkpoint = true;
-    step.requires_user_input = true;
-    builder.add_step(step).unwrap();
+        let mut step = make_step("create-dir");
+        step.checkpoint = true;
+        step.requires_user_input = true;
+        builder.add_step(step).unwrap();
 
-    builder
-        .add_guard(
-            "create-dir",
-            GuardPredicate::FileExists {
-                path: "{{dir}}/notes.md".to_owned(),
-            },
-        )
-        .unwrap();
+        builder
+            .add_guard(
+                "create-dir",
+                GuardPredicate::FileExists {
+                    path: "{{dir}}/notes.md".to_owned(),
+                },
+            )
+            .unwrap();
 
-    builder
-        .add_output(
-            "create-dir",
-            StepOutputDef::File {
-                label: "Notes".to_owned(),
-                path: "{{dir}}/notes.md".to_owned(),
-            },
-        )
-        .unwrap();
+        builder
+            .add_output(
+                "create-dir",
+                StepOutputDef::File {
+                    label: "Notes".to_owned(),
+                    path: "{{dir}}/notes.md".to_owned(),
+                },
+            )
+            .unwrap();
 
-    let preview = builder.preview();
+        builder.preview()
+    }
 
-    assert!(preview.contains("Workflow: test-workflow"));
-    assert!(preview.contains("create-dir"));
-    assert!(preview.contains("checkpoint"));
-    assert!(preview.contains("user-input"));
-    assert!(preview.contains("file_exists({{dir}}/notes.md)"));
-    assert!(preview.contains("Notes (file)"));
-    assert!(preview.contains("Globals: dir"));
-    assert!(preview.contains("Model overrides: small → ollama/phi3"));
+#[rstest::rstest]
+#[case::workflow_name("Workflow: test-workflow")]
+#[case::step_id("create-dir")]
+#[case::checkpoint("checkpoint")]
+#[case::user_input("user-input")]
+#[case::guard("file_exists({{dir}}/notes.md)")]
+#[case::output("Notes (file)")]
+#[case::globals("Globals: dir")]
+#[case::model_overrides("Model overrides: small → ollama/phi3")]
+fn preview_produces_expected_format(#[case] expected: &str) {
+    // Given a workflow builder with a checkpoint step, guard, output, globals, and model overrides.
+    let preview = build_preview_workflow();
+
+    // Then the preview contains the expected text.
+    assert!(
+        preview.contains(expected),
+        "preview should contain {expected:?}, got: {preview}"
+    );
 }
 
 #[test]
