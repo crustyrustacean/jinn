@@ -46,7 +46,7 @@ fn move_cursor_left_right_with_unicode() {
 }
 
 #[test]
-fn word_boundaries_with_unicode() {
+fn word_right_skips_past_unicode_word() {
     // Given "café au lait" with cursor at start (0).
     let mut state = ChatInputBoxState::new();
     for ch in "café au lait".chars() {
@@ -59,8 +59,19 @@ fn word_boundaries_with_unicode() {
 
     // Then cursor is at 5 (after "café ").
     assert_eq!(state.cursor_pos(), 5);
+}
 
-    // When moving word right again.
+#[test]
+fn word_right_twice_skips_two_words() {
+    // Given "café au lait" with cursor at start (0).
+    let mut state = ChatInputBoxState::new();
+    for ch in "café au lait".chars() {
+        state.insert_grapheme_at_cursor(ch);
+    }
+    state.move_cursor_to_start();
+
+    // When moving word right twice.
+    state.move_cursor_word_right();
     state.move_cursor_word_right();
 
     // Then cursor is at 8 (after "au ").

@@ -241,17 +241,31 @@ pub struct KeyEvent {
 mod tests {
     use super::*;
 
+    #[rstest::rstest]
+    #[case::ctrl(Modifiers::none(), "ctrl", false)]
+    #[case::alt(Modifiers::none(), "alt", false)]
+    #[case::shift(Modifiers::none(), "shift", false)]
+    fn modifiers_none_flag_is_false(#[case] mods: Modifiers, #[case] flag: &str, #[case] expected: bool) {
+        // Given modifiers created with none().
+        // When inspecting each flag.
+        // Then each individual flag is false.
+        let actual = match flag {
+            "ctrl" => mods.ctrl,
+            "alt" => mods.alt,
+            "shift" => mods.shift,
+            _ => panic!("unknown flag: {flag}"),
+        };
+        assert_eq!(actual, expected);
+    }
+
     #[test]
-    fn modifiers_none_is_all_false() {
-        // Given a new modifiers with none().
+    fn modifiers_none_is_none() {
+        // Given modifiers created with none().
         let mods = Modifiers::none();
 
-        // When inspecting flags.
+        // When checking is_none().
 
-        // Then all flags are false.
-        assert!(!mods.ctrl);
-        assert!(!mods.alt);
-        assert!(!mods.shift);
+        // Then is_none() returns true.
         assert!(mods.is_none());
     }
 

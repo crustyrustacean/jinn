@@ -41,19 +41,32 @@ fn subscribe_command_accumulates() {
 }
 
 #[test]
-fn take_registrations_clears() {
+fn first_take_returns_data() {
+    // Given a context with registrations.
+    let mut ctx = ActorContext::new("test", test_sink());
+    ctx.subscribe_command_by_name("echo");
+    ctx.subscribe_event_by_name("system::KeyDown");
+
+    // When taking registrations.
+    let first = ctx.take_registrations();
+
+    // Then first has data.
+    assert!(!first.0.is_empty());
+    assert!(!first.1.is_empty());
+}
+
+#[test]
+fn second_take_returns_empty() {
     // Given a context with registrations.
     let mut ctx = ActorContext::new("test", test_sink());
     ctx.subscribe_command_by_name("echo");
     ctx.subscribe_event_by_name("system::KeyDown");
 
     // When taking registrations twice.
-    let first = ctx.take_registrations();
+    let _first = ctx.take_registrations();
     let second = ctx.take_registrations();
 
-    // Then first has data and second is empty.
-    assert!(!first.0.is_empty());
-    assert!(!first.1.is_empty());
+    // Then second is empty.
     assert!(second.0.is_empty());
     assert!(second.1.is_empty());
 }

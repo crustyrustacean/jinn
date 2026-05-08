@@ -312,7 +312,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn passthrough_assembly_produces_messages() {
+    async fn passthrough_assembly_emits_prompt_assembled() {
         // Given an actor with a fresh context.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
@@ -331,13 +331,38 @@ mod tests {
         };
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
-        // Then a PromptAssembled event is emitted with the messages.
+        // Then a PromptAssembled event is emitted.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events);
         assert!(assembled.is_some());
         let assembled = assembled.expect("should have PromptAssembled");
         assert_eq!(assembled.session_id, session_id);
         assert!(assembled.system_prompt.is_none());
+    }
+
+    #[tokio::test]
+    async fn prompt_assembled_event_contains_messages() {
+        // Given an actor with a fresh context.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let mut actor = PromptAssemblyActor::activate(&mut ctx);
+
+        // When sending an AssemblePrompt with history.
+        let session_id = SessionId::new();
+        let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
+        let cmd = nullslop_protocol::Command::AssemblePrompt {
+            payload: AssemblePrompt {
+                session_id: session_id.clone(),
+                history,
+                tools: vec![],
+                model_name: "test".to_owned(),
+            },
+        };
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+
+        // Then the assembled event contains the expected messages.
+        let events = sink.events();
+        let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(assembled.messages.len(), 2);
     }
 
@@ -390,7 +415,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn switch_strategy_replaces_strategy() {
+    async fn switch_strategy_emits_switched_event() {
         // Given an actor with an existing session.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
@@ -425,6 +450,36 @@ mod tests {
         let switched = switched.expect("should have PromptStrategySwitched");
         assert_eq!(switched.session_id, session_id);
         assert_eq!(switched.strategy_id, PromptStrategyId::sliding_window());
+    }
+
+    #[tokio::test]
+    async fn switch_strategy_updates_active_strategy() {
+        // Given an actor with an existing session.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let mut actor = PromptAssemblyActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        // Initialize the session with an assemble.
+        let cmd = nullslop_protocol::Command::AssemblePrompt {
+            payload: AssemblePrompt {
+                session_id: session_id.clone(),
+                history: vec![ChatEntry::user("hello")],
+                tools: vec![],
+                model_name: "test".to_owned(),
+            },
+        };
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+        sink.events().clear();
+
+        // When switching to sliding_window strategy.
+        let switch_cmd = nullslop_protocol::Command::SwitchPromptStrategy {
+            payload: SwitchPromptStrategy {
+                session_id: session_id.clone(),
+                strategy_id: PromptStrategyId::sliding_window(),
+            },
+        };
+        actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
 
         // And the strategy is now sliding_window.
         let strategy = actor.strategies.get(&session_id).expect("should exist");
@@ -583,7 +638,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_strategy_state_accepted() {
+    async fn restore_strategy_state_does_not_panic() {
         // Given an actor.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
@@ -600,8 +655,27 @@ mod tests {
         };
         // Then the command is handled without error (no panic).
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+    }
 
-        // And no events are emitted (stub is a no-op).
+    #[tokio::test]
+    async fn restore_strategy_state_emits_no_events() {
+        // Given an actor.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let mut actor = PromptAssemblyActor::activate(&mut ctx);
+
+        // When sending a RestoreStrategyState command.
+        let session_id = SessionId::new();
+        let cmd = nullslop_protocol::Command::RestoreStrategyState {
+            payload: RestoreStrategyState {
+                session_id,
+                strategy_id: PromptStrategyId::compaction(),
+                blob: serde_json::json!({"compaction_count": 5}),
+            },
+        };
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+
+        // Then no events are emitted (stub is a no-op).
         let events = sink.events();
         assert!(events.is_empty());
     }
@@ -644,7 +718,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bottom_pinned_entries_appear_before_last_message() {
+    async fn bottom_pin_produces_three_messages() {
+        // Given history with BOTTOM-pinned entry plus regular entries.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let mut actor = PromptAssemblyActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        let history = vec![
+            ChatEntry::user("hello"),
+            ChatEntry::system("remember this").with_pin(PinPosition::Bottom),
+            ChatEntry::user("what is 2+2?"),
+        ];
+        let cmd = nullslop_protocol::Command::AssemblePrompt {
+            payload: AssemblePrompt {
+                session_id,
+                history,
+                tools: vec![],
+                model_name: "test".to_owned(),
+            },
+        };
+
+        // When assembling.
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+
+        // Then three messages are produced.
+        let events = sink.events();
+        let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
+        assert_eq!(assembled.messages.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn bottom_pin_precedes_final_user_message() {
         // Given history with BOTTOM-pinned entry plus regular entries.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
@@ -671,14 +776,12 @@ mod tests {
         // Then BOTTOM pin messages appear just before the final user message.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 3);
         assert_eq!(
             assembled.messages[0],
             nullslop_protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
-        // Bottom pin is before the last message.
         assert_eq!(
             assembled.messages[1],
             nullslop_protocol::LlmMessage::System {
@@ -694,7 +797,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn relative_pinned_entries_stay_in_strategy_output() {
+    async fn relative_pin_produces_three_messages() {
+        // Given history with RELATIVE-pinned entries (no TOP/BOTTOM).
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let mut actor = PromptAssemblyActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        let history = vec![
+            ChatEntry::user("hello"),
+            ChatEntry::system("keep me").with_pin(PinPosition::Relative),
+            ChatEntry::user("goodbye"),
+        ];
+        let cmd = nullslop_protocol::Command::AssemblePrompt {
+            payload: AssemblePrompt {
+                session_id,
+                history,
+                tools: vec![],
+                model_name: "test".to_owned(),
+            },
+        };
+
+        // When assembling.
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+
+        // Then three messages are produced.
+        let events = sink.events();
+        let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
+        assert_eq!(assembled.messages.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn relative_pin_stays_at_original_position() {
         // Given history with RELATIVE-pinned entries (no TOP/BOTTOM).
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
@@ -721,7 +855,6 @@ mod tests {
         // Then RELATIVE-pinned entries appear at their original positions in the output.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 3);
         assert_eq!(
             assembled.messages[0],
             nullslop_protocol::LlmMessage::User {
@@ -827,8 +960,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mixed_top_bottom_and_relative_pins() {
-        // Given history with all three pin position types.
+    async fn top_pins_appear_first_in_output() {
+        // Given history with TOP pin plus other entries.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
         let mut actor = PromptAssemblyActor::activate(&mut ctx);
@@ -854,10 +987,9 @@ mod tests {
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
-        // Then ordering is: TOP first, strategy output (with RELATIVE pins), BOTTOM before last msg.
+        // Then TOP pin appears as the first message.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        // Expected: [top_rule, "hello", relative_note, "middle", bottom_reminder, "latest question"]
         assert_eq!(assembled.messages.len(), 6);
         assert_eq!(
             assembled.messages[0],
@@ -865,13 +997,78 @@ mod tests {
                 content: "top rule".to_owned(),
             }
         );
-        // RELATIVE pin is at its original position within the working history output.
+    }
+
+    #[tokio::test]
+    async fn relative_pins_appear_in_strategy_output() {
+        // Given history with RELATIVE pin plus other entries.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let mut actor = PromptAssemblyActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        let history = vec![
+            ChatEntry::system("top rule").with_pin(PinPosition::Top),
+            ChatEntry::user("hello"),
+            ChatEntry::system("relative note").with_pin(PinPosition::Relative),
+            ChatEntry::user("middle"),
+            ChatEntry::system("bottom reminder").with_pin(PinPosition::Bottom),
+            ChatEntry::user("latest question"),
+        ];
+        let cmd = nullslop_protocol::Command::AssemblePrompt {
+            payload: AssemblePrompt {
+                session_id,
+                history,
+                tools: vec![],
+                model_name: "test".to_owned(),
+            },
+        };
+
+        // When assembling.
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+
+        // Then RELATIVE pin is at its original position within the working history output.
+        let events = sink.events();
+        let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
             assembled.messages[2],
             nullslop_protocol::LlmMessage::System {
                 content: "relative note".to_owned(),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn bottom_pins_appear_before_last_message() {
+        // Given history with BOTTOM pin plus other entries.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let mut actor = PromptAssemblyActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        let history = vec![
+            ChatEntry::system("top rule").with_pin(PinPosition::Top),
+            ChatEntry::user("hello"),
+            ChatEntry::system("relative note").with_pin(PinPosition::Relative),
+            ChatEntry::user("middle"),
+            ChatEntry::system("bottom reminder").with_pin(PinPosition::Bottom),
+            ChatEntry::user("latest question"),
+        ];
+        let cmd = nullslop_protocol::Command::AssemblePrompt {
+            payload: AssemblePrompt {
+                session_id,
+                history,
+                tools: vec![],
+                model_name: "test".to_owned(),
+            },
+        };
+
+        // When assembling.
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+
+        // Then BOTTOM pin appears before the last message.
+        let events = sink.events();
+        let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
             assembled.messages[4],
             nullslop_protocol::LlmMessage::System {
@@ -887,7 +1084,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn no_pins_produces_unchanged_output() {
+    async fn no_pins_produces_correct_message_count() {
+        // Given history with no pinned entries.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let mut actor = PromptAssemblyActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        let history = vec![
+            ChatEntry::user("hello"),
+            ChatEntry::assistant("hi"),
+            ChatEntry::user("how are you?"),
+        ];
+        let cmd = nullslop_protocol::Command::AssemblePrompt {
+            payload: AssemblePrompt {
+                session_id,
+                history,
+                tools: vec![],
+                model_name: "test".to_owned(),
+            },
+        };
+
+        // When assembling.
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+
+        // Then output has no system prompt and 3 messages.
+        let events = sink.events();
+        let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
+        assert!(assembled.system_prompt.is_none());
+        assert_eq!(assembled.messages.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn no_pins_produces_correct_message_content() {
         // Given history with no pinned entries.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
@@ -914,8 +1143,6 @@ mod tests {
         // Then output is identical to pre-Phase 4 behavior (regression test).
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert!(assembled.system_prompt.is_none());
-        assert_eq!(assembled.messages.len(), 3);
         assert_eq!(
             assembled.messages[0],
             nullslop_protocol::LlmMessage::User {

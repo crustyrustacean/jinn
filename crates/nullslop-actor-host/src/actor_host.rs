@@ -110,17 +110,24 @@ mod tests {
     }
 
     #[test]
-    fn actor_host_service_delegates_to_backend() {
+    fn service_returns_backend_name() {
         // Given a FakeActorHost wrapped in a service.
         let host = Arc::new(crate::fake::FakeActorHost::new());
         let service = ActorHostService::new(host);
 
         // When querying the backend name.
+        // Then backend returns the host name.
         assert_eq!(service.backend().name(), "FakeActorHost");
+    }
 
-        // Then backend returns the host.
+    #[test]
+    fn service_send_does_not_panic() {
+        // Given a FakeActorHost wrapped in a service.
+        let host = Arc::new(crate::fake::FakeActorHost::new());
+        let service = ActorHostService::new(host);
 
-        // And send_event/send_command/send_system don't panic.
+        // When sending events, commands, and system messages.
+        // Then none of them panic.
         service.send_event(
             &Event::KeyDown {
                 payload: nullslop_protocol::system::KeyDown {
@@ -134,8 +141,16 @@ mod tests {
         );
         service.send_command(&Command::Quit, None);
         service.send_system(nullslop_actor::SystemMessage::ApplicationReady);
+    }
 
-        // And shutdown returns Ok.
+    #[test]
+    fn service_shutdown_ok() {
+        // Given a FakeActorHost wrapped in a service.
+        let host = Arc::new(crate::fake::FakeActorHost::new());
+        let service = ActorHostService::new(host);
+
+        // When shutting down.
+        // Then shutdown returns Ok.
         service.shutdown().expect("shutdown should succeed");
     }
 }

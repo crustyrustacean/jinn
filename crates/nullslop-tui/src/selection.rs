@@ -317,7 +317,32 @@ mod tests {
     }
 
     #[test]
-    fn extract_text_reads_single_row() {
+    fn single_row_selection_returns_text() {
+        // Given a buffer with known text on row 2.
+        let area = Rect::new(0, 0, 10, 5);
+        let mut buffer = Buffer::empty(area);
+        // Write "Hello" starting at (2, 2).
+        for (i, ch) in "Hello".chars().enumerate() {
+            let cell = buffer.cell_mut((2 + i as u16, 2)).unwrap();
+            cell.set_symbol(&ch.to_string());
+        }
+
+        // And an Active selection covering cells (2,2) to (6,2).
+        let state = SelectionState::Active {
+            anchor: (2, 2),
+            focus: (6, 2),
+            bounds: area,
+        };
+
+        // When extracting text.
+        let text = state.extract_text(&buffer);
+
+        // Then text is returned (not None).
+        assert!(text.is_some());
+    }
+
+    #[test]
+    fn single_row_selection_returns_hello() {
         // Given a buffer with known text on row 2.
         let area = Rect::new(0, 0, 10, 5);
         let mut buffer = Buffer::empty(area);
@@ -342,7 +367,33 @@ mod tests {
     }
 
     #[test]
-    fn extract_text_reads_multiple_rows() {
+    fn multi_row_selection_spans_rows() {
+        // Given a buffer with text on two rows.
+        let area = Rect::new(0, 0, 10, 5);
+        let mut buffer = Buffer::empty(area);
+        // Row 1: "AB" at (0, 1) and (1, 1).
+        buffer.cell_mut((0, 1)).unwrap().set_symbol("A");
+        buffer.cell_mut((1, 1)).unwrap().set_symbol("B");
+        // Row 2: "CD" at (0, 2) and (1, 2).
+        buffer.cell_mut((0, 2)).unwrap().set_symbol("C");
+        buffer.cell_mut((1, 2)).unwrap().set_symbol("D");
+
+        // And an Active selection spanning rows 1 and 2.
+        let state = SelectionState::Active {
+            anchor: (0, 1),
+            focus: (1, 2),
+            bounds: area,
+        };
+
+        // When extracting text.
+        let text = state.extract_text(&buffer);
+
+        // Then text is returned (not None).
+        assert!(text.is_some());
+    }
+
+    #[test]
+    fn rows_joined_with_newline() {
         // Given a buffer with text on two rows.
         let area = Rect::new(0, 0, 10, 5);
         let mut buffer = Buffer::empty(area);

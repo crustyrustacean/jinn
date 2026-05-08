@@ -246,18 +246,31 @@ fn max_iterations_prevents_infinite_loop() {
 // --- has_pending tests ---
 
 #[test]
-fn has_pending_reflects_queue_state() {
+fn has_pending_is_false_before_command_submit() {
     // Given an empty bus.
     let mut bus: Bus<TestState, ()> = Bus::new();
 
     // Then the bus has no pending messages.
     assert!(!bus.has_pending());
+}
+
+#[test]
+fn has_pending_is_true_after_command_submit() {
+    // Given an empty bus.
+    let mut bus: Bus<TestState, ()> = Bus::new();
 
     // When submitting a command.
     bus.submit_command(Command::Quit);
 
     // Then the bus has pending messages.
     assert!(bus.has_pending());
+}
+
+#[test]
+fn has_pending_is_false_after_command_process() {
+    // Given a bus with a submitted command.
+    let mut bus: Bus<TestState, ()> = Bus::new();
+    bus.submit_command(Command::Quit);
 
     // When processing commands.
     let mut state = TestState;
@@ -269,12 +282,18 @@ fn has_pending_reflects_queue_state() {
 }
 
 #[test]
-fn has_pending_with_events() {
+fn has_pending_is_false_before_event_submit() {
     // Given an empty bus.
     let mut bus: Bus<TestState, ()> = Bus::new();
 
     // Then the bus has no pending messages.
     assert!(!bus.has_pending());
+}
+
+#[test]
+fn has_pending_is_true_after_event_submit() {
+    // Given an empty bus.
+    let mut bus: Bus<TestState, ()> = Bus::new();
 
     // When submitting an event.
     bus.submit_event(Event::ModeChanged {
@@ -286,6 +305,18 @@ fn has_pending_with_events() {
 
     // Then the bus has pending messages.
     assert!(bus.has_pending());
+}
+
+#[test]
+fn has_pending_is_false_after_event_process() {
+    // Given a bus with a submitted event.
+    let mut bus: Bus<TestState, ()> = Bus::new();
+    bus.submit_event(Event::ModeChanged {
+        payload: ModeChanged {
+            from: npr::Mode::Normal,
+            to: npr::Mode::Input,
+        },
+    });
 
     // When processing events.
     let mut state = TestState;
@@ -351,12 +382,12 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
 }
 
 #[test]
-fn command_handler_can_submit_events() {
+fn command_handler_submitted_event_queues_before_processing() {
     // Given a bus where Quit handler submits ModeChanged.
-    let (event_handler, event_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
+    let (_event_handler, _event_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
     bus.register_command_handler::<Quit, _>(CommandToEventHandler);
-    bus.register_event_handler::<ModeChanged, _>(event_handler);
+    bus.register_event_handler::<ModeChanged, _>(_event_handler);
 
     // When processing a command that submits an event.
     bus.submit_command(Command::Quit);
@@ -366,6 +397,20 @@ fn command_handler_can_submit_events() {
 
     // Then the event is in the event queue (not yet processed).
     assert!(bus.has_pending());
+}
+
+#[test]
+fn queued_events_reach_handler_on_process() {
+    // Given a bus where Quit handler submits ModeChanged.
+    let (event_handler, event_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
+    let mut bus: Bus<TestState, ()> = Bus::new();
+    bus.register_command_handler::<Quit, _>(CommandToEventHandler);
+    bus.register_event_handler::<ModeChanged, _>(event_handler);
+
+    bus.submit_command(Command::Quit);
+    let mut state = TestState;
+    let services = ();
+    bus.process_commands(&mut state, &services);
 
     // When processing events.
     bus.process_events(&mut state, &services);
@@ -377,7 +422,7 @@ fn command_handler_can_submit_events() {
 // --- Drain processed tests ---
 
 #[test]
-fn drain_processed_returns_dispatched_items() {
+fn drain_returns_command_and_event() {
     // Given a bus with a command and event handler.
     let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
@@ -398,19 +443,74 @@ fn drain_processed_returns_dispatched_items() {
     bus.process_commands(&mut state, &services);
     bus.process_events(&mut state, &services);
 
-    // Then drain returns both with no source.
+    // Then drain returns both.
     let events = bus.drain_processed_events();
     let commands = bus.drain_processed_commands();
     assert_eq!(events.len(), 1);
     assert!(matches!(events[0].event, Event::ModeChanged { .. }));
-    assert!(events[0].source.is_none());
     assert_eq!(commands.len(), 1);
     assert!(matches!(commands[0].command, Command::Quit));
+}
+
+#[test]
+fn drain_returns_items_without_source() {
+    // Given a bus with a command and event handler.
+    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
+    let mut bus: Bus<TestState, ()> = Bus::new();
+    bus.register_command_handler::<Quit, _>(cmd_handler);
+    bus.register_event_handler::<ModeChanged, _>(evt_handler);
+
+    bus.submit_command(Command::Quit);
+    bus.submit_event(Event::ModeChanged {
+        payload: ModeChanged {
+            from: npr::Mode::Normal,
+            to: npr::Mode::Input,
+        },
+    });
+    let mut state = TestState;
+    let services = ();
+    bus.process_commands(&mut state, &services);
+    bus.process_events(&mut state, &services);
+
+    // Then drain returns items with no source.
+    let events = bus.drain_processed_events();
+    let commands = bus.drain_processed_commands();
+    assert!(events[0].source.is_none());
     assert!(commands[0].source.is_none());
 }
 
 #[test]
-fn drain_processed_clears_buffers() {
+fn first_drain_returns_items() {
+    // Given a bus with a command and event handler.
+    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
+    let mut bus: Bus<TestState, ()> = Bus::new();
+    bus.register_command_handler::<Quit, _>(cmd_handler);
+    bus.register_event_handler::<ModeChanged, _>(evt_handler);
+    bus.submit_command(Command::Quit);
+    bus.submit_event(Event::ModeChanged {
+        payload: ModeChanged {
+            from: npr::Mode::Normal,
+            to: npr::Mode::Input,
+        },
+    });
+    let mut state = TestState;
+    let services = ();
+    bus.process_commands(&mut state, &services);
+    bus.process_events(&mut state, &services);
+
+    // When draining.
+    let first_events = bus.drain_processed_events();
+    let first_commands = bus.drain_processed_commands();
+
+    // Then first has items.
+    assert_eq!(first_events.len(), 1);
+    assert_eq!(first_commands.len(), 1);
+}
+
+#[test]
+fn second_drain_returns_empty() {
     // Given a bus with a command and event handler.
     let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
@@ -430,14 +530,12 @@ fn drain_processed_clears_buffers() {
     bus.process_events(&mut state, &services);
 
     // When draining twice.
-    let first_events = bus.drain_processed_events();
-    let first_commands = bus.drain_processed_commands();
+    bus.drain_processed_events();
+    bus.drain_processed_commands();
     let second_events = bus.drain_processed_events();
     let second_commands = bus.drain_processed_commands();
 
-    // Then first has items and second is empty.
-    assert_eq!(first_events.len(), 1);
-    assert_eq!(first_commands.len(), 1);
+    // Then second is empty.
     assert!(second_events.is_empty());
     assert!(second_commands.is_empty());
 }

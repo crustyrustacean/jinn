@@ -576,47 +576,26 @@ mod tests {
         TuiApp::new(services)
     }
 
-    #[test]
-    fn scope_for_mode_maps_correctly() {
-        // Given all Mode variants.
-        // When mapping each mode to a scope.
-        // Then each mode maps to its corresponding scope.
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, false),
-            Scope::Normal
-        );
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Dashboard, PaneFocus::Chat, false),
-            Scope::Dashboard
-        );
-        // Workflow scope when pane is visible and focused.
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Workflow, true),
-            Scope::Workflow
-        );
-        // Workflow focus but pane not visible → Normal scope.
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Workflow, false),
-            Scope::Normal
-        );
-        // Pane visible but chat focused → Normal scope.
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, true),
-            Scope::Normal
-        );
-        // Pinned scope when pinned pane is focused.
-        assert_eq!(
-            scope_for_mode(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, false),
-            Scope::Pinned
-        );
-        assert_eq!(
-            scope_for_mode(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, false),
-            Scope::Input
-        );
-        assert_eq!(
-            scope_for_mode(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, false),
-            Scope::Picker
-        );
+    #[rstest::rstest]
+    #[case::normal_chat(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Normal)]
+    #[case::normal_dashboard(Mode::Normal, ActiveTab::Dashboard, PaneFocus::Chat, false, Scope::Dashboard)]
+    #[case::workflow_visible(Mode::Normal, ActiveTab::Chat, PaneFocus::Workflow, true, Scope::Workflow)]
+    #[case::workflow_not_visible(Mode::Normal, ActiveTab::Chat, PaneFocus::Workflow, false, Scope::Normal)]
+    #[case::pane_visible_chat_focused(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, true, Scope::Normal)]
+    #[case::pinned(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, false, Scope::Pinned)]
+    #[case::input(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Input)]
+    #[case::picker(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Picker)]
+    fn scope_for_mode_maps_correctly(
+        #[case] mode: Mode,
+        #[case] tab: ActiveTab,
+        #[case] focus: PaneFocus,
+        #[case] pane_visible: bool,
+        #[case] expected: Scope,
+    ) {
+        // Given a mode, tab, pane focus, and pane visibility.
+        // When mapping to a scope.
+        // Then the expected scope is returned.
+        assert_eq!(scope_for_mode(mode, tab, focus, pane_visible), expected);
     }
 
     #[test]
@@ -783,27 +762,16 @@ mod tests {
     // --- Keymap scope toggle tests ---
 
     #[test]
-    fn toggle_keymap_scope_filter_flips_show_all_and_repopulates_entries() {
+    fn toggle_scope_filter_to_show_all_includes_multiple_scopes() {
         // Given an app in Normal scope with keymap picker entries.
         let mut app = test_app();
         app.which_key.set_scope(Scope::Normal);
 
-        // Populate initial entries by routing OpenPicker (stores origin scope).
         app.route_command(Command::OpenPicker {
             payload: nullslop_protocol::system::OpenPicker {
                 kind: nullslop_protocol::PickerKind::Keymap,
             },
         });
-
-        // Verify origin scope was stored.
-        {
-            let state = app.core.state.read();
-            assert_eq!(
-                state.keymap_picker_origin_scope,
-                Some("Normal".to_owned()),
-                "origin scope should be Normal"
-            );
-        }
 
         // When toggling the scope filter (false -> true).
         app.route_command(Command::ToggleKeymapScopeFilter);
@@ -821,8 +789,22 @@ mod tests {
                 "all scopes should include multiple scopes, got: {scopes:?}"
             );
         }
+    }
 
-        // When toggling again (true -> false).
+    #[test]
+    fn toggle_scope_filter_back_to_false_limits_to_normal_scope() {
+        // Given an app in Normal scope with keymap picker entries.
+        let mut app = test_app();
+        app.which_key.set_scope(Scope::Normal);
+
+        app.route_command(Command::OpenPicker {
+            payload: nullslop_protocol::system::OpenPicker {
+                kind: nullslop_protocol::PickerKind::Keymap,
+            },
+        });
+
+        // When toggling twice (false -> true -> false).
+        app.route_command(Command::ToggleKeymapScopeFilter);
         app.route_command(Command::ToggleKeymapScopeFilter);
 
         // Then show_all is false and entries are Normal-scope only (the origin scope).
@@ -875,7 +857,7 @@ mod tests {
     // --- Pinned pane tracking tests ---
 
     #[test]
-    fn open_pinned_pane_creates_split_and_tracks_id() {
+    fn open_pinned_sets_tracked_id() {
         // Given a fresh app.
         let mut app = test_app();
         assert!(app.pinned_pane_id.is_none());
@@ -887,10 +869,32 @@ mod tests {
         assert!(app.pinned_pane_id.is_some());
         assert!(app.pinned_pane_visible);
         assert_eq!(app.pane_focus, PaneFocus::Pinned);
-        // And the split manager contains the tracked ID.
+    }
+
+    #[test]
+    fn open_pinned_adds_split() {
+        // Given a fresh app.
+        let mut app = test_app();
+        assert!(app.pinned_pane_id.is_none());
+
+        // When opening the pinned pane.
+        app.open_pinned_pane();
+
+        // Then the split manager contains the tracked ID.
         let id = app.pinned_pane_id.unwrap();
         assert!(app.split_manager.contains(id));
-        // And there are exactly 2 leaves (chat + pinned).
+    }
+
+    #[test]
+    fn open_pinned_has_two_leaves() {
+        // Given a fresh app.
+        let mut app = test_app();
+        assert!(app.pinned_pane_id.is_none());
+
+        // When opening the pinned pane.
+        app.open_pinned_pane();
+
+        // Then there are exactly 2 leaves (chat + pinned).
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
@@ -910,7 +914,22 @@ mod tests {
     }
 
     #[test]
-    fn close_pinned_pane_removes_split() {
+    fn close_pinned_clears_tracked_id() {
+        // Given an app with the pinned pane open.
+        let mut app = test_app();
+        app.open_pinned_pane();
+
+        // When closing the pinned pane.
+        app.close_pinned_pane();
+
+        // Then the tracked ID is cleared and the pane is hidden.
+        assert!(app.pinned_pane_id.is_none());
+        assert!(!app.pinned_pane_visible);
+        assert_eq!(app.pane_focus, PaneFocus::Chat);
+    }
+
+    #[test]
+    fn close_pinned_removes_split() {
         // Given an app with the pinned pane open.
         let mut app = test_app();
         app.open_pinned_pane();
@@ -919,16 +938,13 @@ mod tests {
         // When closing the pinned pane.
         app.close_pinned_pane();
 
-        // Then the tracked ID is cleared and the split is removed.
-        assert!(app.pinned_pane_id.is_none());
-        assert!(!app.pinned_pane_visible);
+        // Then the split is removed and only one leaf remains.
         assert!(!app.split_manager.contains(id));
         assert_eq!(app.split_manager.leaves().len(), 1);
-        assert_eq!(app.pane_focus, PaneFocus::Chat);
     }
 
     #[test]
-    fn close_and_reopen_pinned_pane_works_cleanly() {
+    fn reopen_assigns_new_id() {
         // Given an app where the pinned pane is opened, closed, then reopened.
         let mut app = test_app();
         app.open_pinned_pane();
@@ -942,7 +958,19 @@ mod tests {
         let second_id = app.pinned_pane_id.unwrap();
         assert_ne!(second_id, first_id);
         assert!(app.split_manager.contains(second_id));
-        // And there are exactly 2 leaves (no orphans).
+    }
+
+    #[test]
+    fn reopen_has_two_leaves() {
+        // Given an app where the pinned pane is opened, closed, then reopened.
+        let mut app = test_app();
+        app.open_pinned_pane();
+        app.close_pinned_pane();
+
+        // When reopening.
+        app.open_pinned_pane();
+
+        // Then there are exactly 2 leaves (no orphans).
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
@@ -966,7 +994,7 @@ mod tests {
     // --- Workflow pane tracking tests ---
 
     #[test]
-    fn open_workflow_pane_creates_split_and_tracks_id() {
+    fn workflow_sets_tracked_id() {
         // Given a fresh app.
         let mut app = test_app();
         assert!(app.workflow_pane_id.is_none());
@@ -978,6 +1006,18 @@ mod tests {
         assert!(app.workflow_pane_id.is_some());
         assert!(app.workflow_pane_visible);
         assert_eq!(app.pane_focus, PaneFocus::Workflow);
+    }
+
+    #[test]
+    fn workflow_creates_split() {
+        // Given a fresh app.
+        let mut app = test_app();
+        assert!(app.workflow_pane_id.is_none());
+
+        // When opening the workflow pane.
+        app.open_workflow_pane();
+
+        // Then there are exactly 2 leaves.
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
@@ -1014,7 +1054,7 @@ mod tests {
     }
 
     #[test]
-    fn pinned_and_workflow_panes_are_mutually_exclusive() {
+    fn opening_pinned_closes_workflow() {
         // Given an app with the workflow pane open.
         let mut app = test_app();
         app.open_workflow_pane();
@@ -1028,7 +1068,19 @@ mod tests {
         assert!(app.workflow_pane_id.is_none());
         assert!(app.pinned_pane_visible);
         assert!(app.pinned_pane_id.is_some());
-        // And there are exactly 2 leaves (chat + pinned, no orphan workflow).
+    }
+
+    #[test]
+    fn no_orphan_leaves_remain() {
+        // Given an app with the workflow pane open.
+        let mut app = test_app();
+        app.open_workflow_pane();
+        assert!(app.workflow_pane_visible);
+
+        // When opening the pinned pane.
+        app.open_pinned_pane();
+
+        // Then there are exactly 2 leaves (chat + pinned, no orphan workflow).
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 }

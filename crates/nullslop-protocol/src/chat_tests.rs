@@ -212,23 +212,18 @@ fn tool_result_entry_serialization_roundtrip() {
 
 // --- PinPosition tests ---
 
-#[test]
-fn pin_position_defaults_to_none() {
-    // Given all six constructors.
-    let user = ChatEntry::user("u");
-    let system = ChatEntry::system("s");
-    let assistant = ChatEntry::assistant("a");
-    let actor = ChatEntry::actor("src", "t");
-    let tool_call = ChatEntry::tool_call("id", "name", "args");
-    let tool_result = ChatEntry::tool_result("id", "name", "content", true);
-
-    // Then all have pin_position = None.
-    assert_eq!(user.pin_position, None);
-    assert_eq!(system.pin_position, None);
-    assert_eq!(assistant.pin_position, None);
-    assert_eq!(actor.pin_position, None);
-    assert_eq!(tool_call.pin_position, None);
-    assert_eq!(tool_result.pin_position, None);
+#[rstest::rstest]
+#[case::user(ChatEntry::user("u"))]
+#[case::system(ChatEntry::system("s"))]
+#[case::assistant(ChatEntry::assistant("a"))]
+#[case::actor(ChatEntry::actor("src", "t"))]
+#[case::tool_call(ChatEntry::tool_call("id", "name", "args"))]
+#[case::tool_result(ChatEntry::tool_result("id", "name", "content", true))]
+fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
+    // Given an entry created with any ChatEntry constructor.
+    // When checking pin_position.
+    // Then pin_position is None by default.
+    assert_eq!(entry.pin_position, None);
 }
 
 #[test]

@@ -527,13 +527,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn render_status_indicators() {
-        // 4-step workflow: set each to a different status.
+    /// Renders a 4-step workflow with Completed, Active, Pending, and Stale statuses
+    /// and returns the combined buffer text for assertion.
+    fn render_workflow_with_all_statuses() -> String {
         let mut element = WorkflowPanelElement;
         let mut state = load_state(make_workflow(4));
 
-        // step-0 Completed, step-1 Active, step-2 Pending (default), step-3 Stale.
         if let Some(step) = state
             .active_session_mut()
             .workflow_mut()
@@ -567,7 +566,7 @@ mod tests {
             .unwrap();
 
         let buffer = terminal.backend().buffer().clone();
-        let combined: String = (0..24)
+        (0..24)
             .map(|y| {
                 (0..60)
                     .map(|x| {
@@ -578,13 +577,26 @@ mod tests {
                     .collect::<String>()
             })
             .collect::<Vec<_>>()
-            .join("\n");
+            .join("\n")
+    }
 
-        // Verify status indicators appear
-        assert!(combined.contains("✓"), "should contain ✓ for Completed");
-        assert!(combined.contains("▶"), "should contain ▶ for Active");
-        assert!(combined.contains("○"), "should contain ○ for Pending");
-        assert!(combined.contains("⚠"), "should contain ⚠ for Stale");
+    #[rstest::rstest]
+    #[case::completed("✓", StepStatus::Completed)]
+    #[case::active("▶", StepStatus::Active)]
+    #[case::pending("○", StepStatus::Pending)]
+    #[case::stale("⚠", StepStatus::Stale)]
+    fn render_status_indicator_appears_for_each_status(
+        #[case] indicator: &str,
+        #[case] _status: StepStatus,
+    ) {
+        // Given a rendered workflow with all four step statuses.
+        let combined = render_workflow_with_all_statuses();
+
+        // Then the expected indicator appears in the output.
+        assert!(
+            combined.contains(indicator),
+            "should contain {indicator} for {_status:?}, got: {combined}"
+        );
     }
 
     #[test]

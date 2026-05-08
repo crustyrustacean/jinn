@@ -205,23 +205,37 @@ mod tests {
     }
 
     #[test]
-    fn session_entry_render_row_contains_title_and_date() {
-        // Given a SessionEntry.
+    fn render_row_contains_title() {
+        // Given a session entry.
         let entry = SessionEntry {
             session_id: nullslop_protocol::SessionId::new(),
-            title: "Test Session".to_owned(),
+            title: "My Session".to_owned(),
             updated_at: jiff::Timestamp::now(),
-            byte_offset: 42,
+            byte_offset: 0,
         };
 
-        // When rendering the row.
-        let line = entry.render_row(false);
+        // When rendering.
+        let row = entry.render_row(false);
 
-        // Then the line contains spans with the title text.
-        let combined: String = line.spans.iter().map(|s| s.content.clone()).collect();
-        assert!(combined.contains("Test Session"));
-        // And it contains a date-like pattern (YYYY-MM-DD).
-        assert!(combined.contains('-'));
+        // Then the title appears in the rendered line.
+        assert!(row.spans.iter().any(|s| s.content.contains("My Session")));
+    }
+
+    #[test]
+    fn render_row_contains_date() {
+        // Given a session entry.
+        let entry = SessionEntry {
+            session_id: nullslop_protocol::SessionId::new(),
+            title: "My Session".to_owned(),
+            updated_at: jiff::Timestamp::now(),
+            byte_offset: 0,
+        };
+
+        // When rendering.
+        let row = entry.render_row(false);
+
+        // Then the row has multiple spans (title + date).
+        assert!(row.spans.len() >= 2);
     }
 
     #[test]

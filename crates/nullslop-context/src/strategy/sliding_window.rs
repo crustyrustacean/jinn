@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn multiple_pinned_entries_survive_at_original_positions() {
+    async fn sliding_window_keeps_both_pinned_entries() {
         // Given 6 entries where entry 0 and entry 2 are pinned, and a window of 3.
         let history = vec![
             ChatEntry::user("pinned-early").with_pin(PinPosition::Relative),
@@ -231,7 +231,7 @@ mod tests {
         // When assembling.
         let result = strategy.assemble(&context).await.expect("assemble");
 
-        // Then both pinned entries survive at their original positions, plus the window.
+        // Then both pinned entries survive plus the window.
         // Window: [msg4, msg5, msg6] + pinned: [pinned-early, pinned-mid]
         // Result: [pinned-early, pinned-mid, msg4, msg5, msg6]
         assert_eq!(result.messages.len(), 5);
@@ -242,15 +242,42 @@ mod tests {
             }
         );
         assert_eq!(
-            result.messages[1],
-            nullslop_protocol::LlmMessage::User {
-                content: "pinned-mid".to_owned(),
-            }
-        );
-        assert_eq!(
             result.messages[4],
             nullslop_protocol::LlmMessage::User {
                 content: "msg6".to_owned(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn sliding_window_keeps_pinned_at_original_positions() {
+        // Given 6 entries where entry 0 and entry 2 are pinned, and a window of 3.
+        let history = vec![
+            ChatEntry::user("pinned-early").with_pin(PinPosition::Relative),
+            ChatEntry::user("msg2"),
+            ChatEntry::user("pinned-mid").with_pin(PinPosition::Top),
+            ChatEntry::user("msg4"),
+            ChatEntry::user("msg5"),
+            ChatEntry::user("msg6"),
+        ];
+        let strategy = SlidingWindowStrategy::new(3);
+        let session_id = SessionId::new();
+        let context = test_context(&history, &session_id);
+
+        // When assembling.
+        let result = strategy.assemble(&context).await.expect("assemble");
+
+        // Then pinned entries remain at their original positions.
+        assert_eq!(
+            result.messages[0],
+            nullslop_protocol::LlmMessage::User {
+                content: "pinned-early".to_owned(),
+            }
+        );
+        assert_eq!(
+            result.messages[1],
+            nullslop_protocol::LlmMessage::User {
+                content: "pinned-mid".to_owned(),
             }
         );
     }

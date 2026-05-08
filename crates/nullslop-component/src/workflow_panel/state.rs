@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn toggle_detail_flips_show_detail() {
+    fn toggle_detail_turns_on() {
         // Given a panel state with detail off.
         let mut state = WorkflowPanelState::default();
         assert!(!state.show_detail());
@@ -165,6 +165,14 @@ mod tests {
         state.toggle_detail();
 
         // Then detail is on.
+        assert!(state.show_detail());
+    }
+
+    #[test]
+    fn toggle_detail_turns_off() {
+        // Given a panel state with detail on.
+        let mut state = WorkflowPanelState::default();
+        state.toggle_detail();
         assert!(state.show_detail());
 
         // When toggling again.

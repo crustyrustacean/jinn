@@ -629,7 +629,7 @@ mod tests {
     // --- Text-only streaming tests ---
 
     #[tokio::test]
-    async fn text_only_stream_emits_tokens_and_completed() {
+    async fn text_stream_emits_tokens() {
         // Given an actor with text tokens.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -663,8 +663,39 @@ mod tests {
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].token, "Hello");
         assert_eq!(tokens[1].token, " world");
+    }
 
-        // And a StreamCompleted event was emitted with Finished reason.
+    #[tokio::test]
+    async fn text_stream_emits_completed_with_finished() {
+        // Given an actor with text tokens.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let mut actor = actor_with_tokens(
+            &sink,
+            &mut ctx,
+            vec!["Hello".to_owned(), " world".to_owned()],
+        );
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        // When sending SendToLlmProvider.
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![LlmMessage::User {
+                    content: "hi".to_owned(),
+                }],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        // Wait for the stream task to complete.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then a StreamCompleted event was emitted with Finished reason.
+        let events = sink.take_events();
         let completed = find_stream_completed(&events);
         assert_eq!(completed.len(), 1);
         assert_eq!(completed[0].reason, StreamCompletedReason::Finished);
@@ -678,7 +709,7 @@ mod tests {
     // --- Tool use streaming tests ---
 
     #[tokio::test]
-    async fn tool_use_stream_emits_tool_events_and_execute_batch() {
+    async fn tool_stream_emits_tool_use_events() {
         // Given an actor configured with tool calls.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -737,8 +768,44 @@ mod tests {
             "expected ToolCallStreaming event"
         );
         assert!(has_tool_call_received, "expected ToolCallReceived event");
+    }
 
-        // And an ExecuteToolBatch command was emitted.
+    #[tokio::test]
+    async fn tool_stream_emits_execute_batch_command() {
+        // Given an actor configured with tool calls.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let mut actor = actor_with_tool_calls(
+            &sink,
+            &mut ctx,
+            vec!["Let me check".to_owned()],
+            vec![tool_call.clone()],
+        );
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        // When sending SendToLlmProvider.
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![LlmMessage::User {
+                    content: "hi".to_owned(),
+                }],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        // Wait for the stream task to complete.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then an ExecuteToolBatch command was emitted.
         let commands = sink.commands();
         let has_execute_batch = commands.iter().any(|c| {
             matches!(
@@ -748,8 +815,44 @@ mod tests {
             )
         });
         assert!(has_execute_batch, "expected ExecuteToolBatch command");
+    }
 
-        // And a StreamCompleted event with ToolUse reason.
+    #[tokio::test]
+    async fn tool_stream_emits_stream_completed_with_tool_use() {
+        // Given an actor configured with tool calls.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let mut actor = actor_with_tool_calls(
+            &sink,
+            &mut ctx,
+            vec!["Let me check".to_owned()],
+            vec![tool_call.clone()],
+        );
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        // When sending SendToLlmProvider.
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![LlmMessage::User {
+                    content: "hi".to_owned(),
+                }],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        // Wait for the stream task to complete.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then a StreamCompleted event with ToolUse reason.
         let events = sink.events();
         let completed = find_stream_completed(&events);
         assert_eq!(completed.len(), 1);
@@ -764,8 +867,8 @@ mod tests {
     // --- Tool batch completed → new stream tests ---
 
     #[tokio::test]
-    async fn tool_batch_completed_starts_new_stream() {
-        // Given an actor configured with tool calls, after a tool_use stream.
+    async fn tool_results_received_sets_awaiting_state() {
+        // Given an actor configured with tool calls.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
 
@@ -785,7 +888,7 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        // When sending SendToLlmProvider.
+        // When sending SendToLlmProvider and routing stream events back.
         let cmd = Command::SendToLlmProvider {
             payload: SendToLlmProvider {
                 session_id: session_id.clone(),
@@ -799,13 +902,10 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // Feed the StreamCompleted(ToolUse) event back to the actor
-        // (simulates bus routing).
         let events_from_stream = sink.take_events();
         for event in events_from_stream {
             actor.handle_event(&event, &ctx);
         }
-        sink.clear();
 
         // Then the session is in AwaitingToolResults state.
         let session = actor
@@ -813,6 +913,48 @@ mod tests {
             .get(&session_id)
             .expect("session should exist");
         assert_eq!(session.state, SessionState::AwaitingToolResults);
+    }
+
+    #[tokio::test]
+    async fn tool_batch_completed_starts_new_stream() {
+        // Given an actor in AwaitingToolResults state after a tool_use stream.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let factory = FakeLlmServiceFactory::with_tool_calls(
+            vec!["Let me check".to_owned()],
+            vec![tool_call.clone()],
+        );
+        let factory_service = nullslop_providers::LlmServiceFactoryService::new(Arc::new(factory));
+        ctx.set_data(factory_service);
+        let mut actor = LlmActor::activate(&mut ctx);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![LlmMessage::User {
+                    content: "hi".to_owned(),
+                }],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let events_from_stream = sink.take_events();
+        for event in events_from_stream {
+            actor.handle_event(&event, &ctx);
+        }
+        sink.clear();
 
         // When receiving ToolBatchCompleted.
         let tool_result = ToolResult {
@@ -850,7 +992,7 @@ mod tests {
     // --- Cancel tests ---
 
     #[tokio::test]
-    async fn cancel_stream_aborts_task_and_emits_canceled() {
+    async fn cancel_stream_emits_canceled_event() {
         // Given an actor with a stream in progress.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -881,8 +1023,36 @@ mod tests {
         let completed = find_stream_completed(&events);
         assert_eq!(completed.len(), 1);
         assert_eq!(completed[0].reason, StreamCompletedReason::Canceled);
+    }
 
-        // And the task was removed.
+    #[tokio::test]
+    async fn cancel_stream_removes_task() {
+        // Given an actor with a stream in progress.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let mut actor = actor_with_tokens(&sink, &mut ctx, vec!["Hello".to_owned()]);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        // When cancelling the stream.
+        let cancel_cmd = Command::CancelStream {
+            payload: CancelStream {
+                session_id: session_id.clone(),
+            },
+        };
+        actor.handle_command(&cancel_cmd, &ctx);
+
+        // Then the task was removed.
         assert!(!actor.tasks.contains_key(&session_id));
     }
 
@@ -947,7 +1117,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stream_completed_tool_use_transitions_to_awaiting_tool_results() {
+    async fn stream_completed_transitions_to_awaiting_tool_results() {
         // Given an actor with a tool_use stream that completed.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -989,8 +1159,50 @@ mod tests {
             .get(&session_id)
             .expect("session should exist");
         assert_eq!(session.state, SessionState::AwaitingToolResults);
+    }
 
-        // And the accumulated data was stored in the session.
+    #[tokio::test]
+    async fn stream_completed_stores_accumulated_data() {
+        // Given an actor with a tool_use stream that completed.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let mut actor = actor_with_tool_calls(
+            &sink,
+            &mut ctx,
+            vec!["Let me check".to_owned()],
+            vec![tool_call.clone()],
+        );
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // When processing the StreamCompleted(ToolUse) event from the stream task.
+        let events_from_stream = sink.take_events();
+        for event in events_from_stream {
+            actor.handle_event(&event, &ctx);
+        }
+
+        // Then the accumulated data was stored in the session.
+        let session = actor
+            .sessions
+            .get(&session_id)
+            .expect("session should exist");
         assert_eq!(session.accumulated_text, "Let me check");
         assert_eq!(session.accumulated_tool_calls, vec![tool_call]);
     }
@@ -1042,8 +1254,8 @@ mod tests {
     // --- Defensive guard tests ---
 
     #[tokio::test]
-    async fn duplicate_done_finished_while_awaiting_tool_results_ignores() {
-        // Given an actor with a tool_use stream that transitioned to AwaitingToolResults.
+    async fn stream_completed_preserves_awaiting_tool_results_state() {
+        // Given an actor with a tool_use stream.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
         let tool_call = ToolCall {
@@ -1084,6 +1296,43 @@ mod tests {
             .get(&session_id)
             .expect("session should exist");
         assert_eq!(session.state, SessionState::AwaitingToolResults);
+    }
+
+    #[tokio::test]
+    async fn duplicate_finished_while_awaiting_tool_results_is_ignored() {
+        // Given an actor in AwaitingToolResults state after a tool_use stream.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let mut actor = actor_with_tool_calls(
+            &sink,
+            &mut ctx,
+            vec!["Let me check".to_owned()],
+            vec![tool_call.clone()],
+        );
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let events_from_stream = sink.take_events();
+        for event in events_from_stream {
+            actor.handle_event(&event, &ctx);
+        }
 
         // When receiving a duplicate StreamCompleted(Finished) — simulates OpenRouter bug.
         let duplicate_finished = Event::StreamCompleted {
