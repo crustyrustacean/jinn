@@ -43,6 +43,9 @@ impl SessionPickerHandler {
             return CommandAction::Continue;
         }
 
+        // Evict the previous session before creating a new one.
+        ctx.state.sessions.remove(&ctx.state.active_session);
+
         let new_id = SessionId::new();
         ctx.state
             .sessions
@@ -68,6 +71,9 @@ impl SessionPickerHandler {
         ctx: &mut HandlerContext<'_, AppState, Services>,
     ) -> CommandAction {
         ctx.state.session_loading = false;
+
+        // Evict the previous session before loading the new one.
+        ctx.state.sessions.remove(&ctx.state.active_session);
 
         let mut session = ChatSessionState::new();
         session.restore_history(cmd.history.clone());
@@ -159,6 +165,31 @@ mod tests {
     }
 
     #[test]
+    fn session_new_evicts_previous_session() {
+        // Given a bus with SessionPickerHandler and session picker active.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState {
+            active_picker_kind: Some(PickerKind::Session),
+            mode: Mode::Picker,
+            ..crate::AppState::default()
+        };
+        let old_session = state.active_session.clone();
+        assert!(state.sessions.contains_key(&old_session));
+
+        // When processing SessionNew.
+        bus.submit_command(nullslop_protocol::Command::SessionNew);
+        bus.process_commands(&mut state, &services);
+
+        // Then the old session is evicted from the sessions map.
+        assert!(!state.sessions.contains_key(&old_session));
+        // And the new session is present.
+        assert!(state.sessions.contains_key(&state.active_session));
+        // And only one session exists.
+        assert_eq!(state.sessions.len(), 1);
+    }
+
+    #[test]
     fn session_new_ignores_when_session_picker_not_active() {
         // Given a bus with SessionPickerHandler and no picker active.
         let mut bus = setup_bus();
@@ -205,6 +236,41 @@ mod tests {
         assert_eq!(state.active_session, session_id);
         // And history is restored.
         assert_eq!(state.active_session().history().len(), 2);
+    }
+
+    #[test]
+    fn session_load_completed_evicts_previous_session() {
+        // Given a bus with SessionPickerHandler and session_loading = true.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState {
+            session_loading: true,
+            ..crate::AppState::default()
+        };
+        let old_session = state.active_session.clone();
+        assert!(state.sessions.contains_key(&old_session));
+
+        let session_id = SessionId::new();
+        let cmd = SessionLoadCompleted {
+            session_id: session_id.clone(),
+            title: "Test Session".to_owned(),
+            history: vec![],
+            active_strategy: PromptStrategyId::passthrough(),
+            blobs: HashMap::new(),
+        };
+
+        // When processing SessionLoadCompleted.
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted {
+            payload: cmd,
+        });
+        bus.process_commands(&mut state, &services);
+
+        // Then the old session is evicted from the sessions map.
+        assert!(!state.sessions.contains_key(&old_session));
+        // And the loaded session is present.
+        assert!(state.sessions.contains_key(&session_id));
+        // And only one session exists.
+        assert_eq!(state.sessions.len(), 1);
     }
 
     #[test]
