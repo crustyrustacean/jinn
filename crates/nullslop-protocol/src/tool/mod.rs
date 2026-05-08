@@ -9,8 +9,10 @@ mod event;
 mod types;
 
 pub use command::{
-    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools, ToolCallReceived,
-    ToolCallStreaming, ToolUseStarted,
+    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools,
 };
-pub use event::{ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered};
+pub use event::{
+    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
+    ToolsRegistered, ToolUseStarted,
+};
 pub use types::{ToolCall, ToolDefinition, ToolResult};

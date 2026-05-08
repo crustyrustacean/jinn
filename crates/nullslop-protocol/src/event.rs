@@ -23,10 +23,10 @@ use crate::context::PromptStrategySwitched;
 use crate::context::StrategyStateUpdated;
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::custom::EventMsg;
-use crate::provider::{ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted};
+use crate::provider::{ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken};
 use crate::session::{SessionLoadRequested, SessionSaveRequested};
 use crate::system::{KeyDown, KeyUp, ModeChanged};
-use crate::tool::{ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered};
+use crate::tool::{ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolsRegistered, ToolUseStarted};
 use crate::workflow::{
     StepAwaitingInput, StepCompleted, StepStale, StepStarted, WorkflowCompleted, WorkflowLoaded,
 };
@@ -97,6 +97,34 @@ pub enum Event {
         /// The session whose stream completed.
         #[serde(flatten)]
         payload: StreamCompleted,
+    },
+    /// A single token from a streaming LLM response.
+    #[serde(rename = "stream_token")]
+    StreamToken {
+        /// The stream token.
+        #[serde(flatten)]
+        payload: StreamToken,
+    },
+    /// A tool call has started in the LLM stream.
+    #[serde(rename = "tool_use_started")]
+    ToolUseStarted {
+        /// The tool use started payload.
+        #[serde(flatten)]
+        payload: ToolUseStarted,
+    },
+    /// A complete tool call was received from the LLM stream.
+    #[serde(rename = "tool_call_received")]
+    ToolCallReceived {
+        /// The received tool call payload.
+        #[serde(flatten)]
+        payload: ToolCallReceived,
+    },
+    /// Streaming update for a tool call's arguments being assembled.
+    #[serde(rename = "tool_call_streaming")]
+    ToolCallStreaming {
+        /// The streaming tool call payload.
+        #[serde(flatten)]
+        payload: ToolCallStreaming,
     },
     /// The active provider was switched.
     #[serde(rename = "provider_switched")]
@@ -229,6 +257,10 @@ impl Event {
             Self::KeyUp { .. } => Some(KeyUp::TYPE_NAME),
             Self::ModeChanged { .. } => Some(ModeChanged::TYPE_NAME),
             Self::StreamCompleted { .. } => Some(StreamCompleted::TYPE_NAME),
+            Self::StreamToken { .. } => Some(StreamToken::TYPE_NAME),
+            Self::ToolUseStarted { .. } => Some(ToolUseStarted::TYPE_NAME),
+            Self::ToolCallReceived { .. } => Some(ToolCallReceived::TYPE_NAME),
+            Self::ToolCallStreaming { .. } => Some(ToolCallStreaming::TYPE_NAME),
             Self::ProviderSwitched { .. } => Some(ProviderSwitched::TYPE_NAME),
             Self::ModelsRefreshed { .. } => Some(ModelsRefreshed::TYPE_NAME),
             Self::PromptTemplatesLoaded { .. } => Some(PromptTemplatesLoaded::TYPE_NAME),
@@ -293,6 +325,10 @@ mod tests {
     #[case::actor_started(Event::ActorStarted { payload: ActorStarted { name: "actor-a".into(), description: None } })]
     #[case::actor_shutdown_completed(Event::ActorShutdownCompleted { payload: ActorShutdownCompleted { name: "actor-a".into() } })]
     #[case::stream_completed(Event::StreamCompleted { payload: StreamCompleted { session_id: SessionId::new(), reason: StreamCompletedReason::Finished, assistant_content: None, tool_calls: None } })]
+    #[case::stream_token(Event::StreamToken { payload: StreamToken { session_id: SessionId::new(), index: 0, token: "hello".into() } })]
+    #[case::tool_use_started(Event::ToolUseStarted { payload: ToolUseStarted { session_id: SessionId::new(), index: 0, id: "call_1".into(), name: "echo".into() } })]
+    #[case::tool_call_received(Event::ToolCallReceived { payload: ToolCallReceived { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
+    #[case::tool_call_streaming(Event::ToolCallStreaming { payload: ToolCallStreaming { session_id: SessionId::new(), index: 0, partial_json: "{\"a\":".into() } })]
     #[case::provider_switched(Event::ProviderSwitched { payload: ProviderSwitched { provider_name: "Ollama".into() } })]
     #[case::models_refreshed(Event::ModelsRefreshed { payload: ModelsRefreshed { results: std::collections::HashMap::new(), errors: std::collections::HashMap::new() } })]
     #[case::prompt_templates_loaded(Event::PromptTemplatesLoaded { payload: PromptTemplatesLoaded { templates: vec![], error: None } })]
@@ -446,6 +482,18 @@ mod tests {
 
         // Then StreamCompleted has the correct TYPE_NAME.
         assert_eq!(StreamCompleted::TYPE_NAME, "provider::StreamCompleted");
+
+        // Then StreamToken has the correct TYPE_NAME.
+        assert_eq!(StreamToken::TYPE_NAME, "provider::StreamToken");
+
+        // Then ToolUseStarted has the correct TYPE_NAME.
+        assert_eq!(ToolUseStarted::TYPE_NAME, "tool::ToolUseStarted");
+
+        // Then ToolCallReceived has the correct TYPE_NAME.
+        assert_eq!(ToolCallReceived::TYPE_NAME, "tool::ToolCallReceived");
+
+        // Then ToolCallStreaming has the correct TYPE_NAME.
+        assert_eq!(ToolCallStreaming::TYPE_NAME, "tool::ToolCallStreaming");
 
         // Then ProviderSwitched has the correct TYPE_NAME.
         assert_eq!(ProviderSwitched::TYPE_NAME, "provider::ProviderSwitched");

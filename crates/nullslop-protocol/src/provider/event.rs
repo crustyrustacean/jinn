@@ -35,6 +35,21 @@ pub struct StreamCompleted {
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
+/// A single token from a streaming LLM response.
+///
+/// Emitted by the LLM actor during streaming. Handlers append
+/// the token to the active session's assistant entry.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("provider")]
+pub struct StreamToken {
+    /// The session this token belongs to.
+    pub session_id: SessionId,
+    /// The zero-based index of this token in the stream.
+    pub index: usize,
+    /// The token text.
+    pub token: String,
+}
+
 /// The active provider was switched.
 ///
 /// Emitted after a successful [`ProviderSwitch`](super::ProviderSwitch) command.

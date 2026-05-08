@@ -1,9 +1,9 @@
 //! Handles streaming LLM tokens and tool call updates.
 //!
-//! Processes [`StreamToken`] commands to update session streaming state,
-//! and [`ToolUseStarted`], [`ToolCallStreaming`], [`ToolCallReceived`],
-//! and [`PushToolResult`] commands to manage in-progress tool call entries
-//! in the chat log.
+//! Processes [`StreamToken`] events to update session streaming state,
+//! and [`ToolUseStarted`], [`ToolCallStreaming`], [`ToolCallReceived`]
+//! events to manage in-progress tool call entries in the chat log.
+//! [`PushToolResult`] remains a command.
 
 use npr::CommandAction;
 use npr::provider::StreamToken;
@@ -18,14 +18,15 @@ define_handler! {
     pub(crate) struct ProviderHandler;
 
     commands {
+        PushToolResult: on_push_tool_result,
+    }
+
+    events {
         StreamToken: on_stream_token,
         ToolUseStarted: on_tool_use_started,
         ToolCallStreaming: on_tool_call_streaming,
         ToolCallReceived: on_tool_call_received,
-        PushToolResult: on_push_tool_result,
     }
-
-    events {}
 }
 
 /// Start streaming on the session if not already active.
@@ -44,52 +45,48 @@ fn ensure_streaming(session: &mut crate::ChatSessionState) {
 impl ProviderHandler {
     /// Appends a streaming LLM token to the session, transitioning to streaming on the first token.
     fn on_stream_token(
-        cmd: &StreamToken,
+        evt: &StreamToken,
         ctx: &mut HandlerContext<'_, AppState, Services>,
-    ) -> CommandAction {
-        let session = ctx.state.session_mut_or_create(&cmd.session_id);
+    ) {
+        let session = ctx.state.session_mut_or_create(&evt.session_id);
 
-        if cmd.index == 0 && !session.is_streaming() {
+        if evt.index == 0 && !session.is_streaming() {
             ensure_streaming(session);
         }
 
-        session.append_stream_token(&cmd.token);
-        CommandAction::Continue
+        session.append_stream_token(&evt.token);
     }
 
     /// Creates a placeholder `ToolCall` entry when a tool use begins in the stream.
     fn on_tool_use_started(
-        cmd: &ToolUseStarted,
+        evt: &ToolUseStarted,
         ctx: &mut HandlerContext<'_, AppState, Services>,
-    ) -> CommandAction {
-        let session = ctx.state.session_mut_or_create(&cmd.session_id);
+    ) {
+        let session = ctx.state.session_mut_or_create(&evt.session_id);
         ensure_streaming(session);
-        session.begin_tool_call(cmd.index, &cmd.id, &cmd.name);
-        CommandAction::Continue
+        session.begin_tool_call(evt.index, &evt.id, &evt.name);
     }
 
     /// Appends an incremental argument delta to an in-progress tool call entry.
     fn on_tool_call_streaming(
-        cmd: &ToolCallStreaming,
+        evt: &ToolCallStreaming,
         ctx: &mut HandlerContext<'_, AppState, Services>,
-    ) -> CommandAction {
-        let session = ctx.state.session_mut_or_create(&cmd.session_id);
-        session.append_tool_call_delta(cmd.index, &cmd.partial_json);
-        CommandAction::Continue
+    ) {
+        let session = ctx.state.session_mut_or_create(&evt.session_id);
+        session.append_tool_call_delta(evt.index, &evt.partial_json);
     }
 
     /// Finalizes a tool call entry by overwriting arguments with the complete value.
     fn on_tool_call_received(
-        cmd: &ToolCallReceived,
+        evt: &ToolCallReceived,
         ctx: &mut HandlerContext<'_, AppState, Services>,
-    ) -> CommandAction {
-        let session = ctx.state.session_mut_or_create(&cmd.session_id);
+    ) {
+        let session = ctx.state.session_mut_or_create(&evt.session_id);
         session.finalize_tool_call(
-            &cmd.tool_call.id,
-            &cmd.tool_call.name,
-            &cmd.tool_call.arguments,
+            &evt.tool_call.id,
+            &evt.tool_call.name,
+            &evt.tool_call.arguments,
         );
-        CommandAction::Continue
     }
 
     /// Adds a tool result entry to the session history.
@@ -112,6 +109,7 @@ impl ProviderHandler {
 #[cfg(test)]
 mod tests {
     use npr::Command;
+    use npr::Event;
     use npr::provider::StreamToken;
     use npr::tool::{
         PushToolResult, ToolCall, ToolCallReceived, ToolCallStreaming, ToolUseStarted,
@@ -140,14 +138,14 @@ mod tests {
         let sid = session_id(&state);
 
         // When processing StreamToken(index=0, token="Hello").
-        bus.submit_command(Command::StreamToken {
+        bus.submit_event(Event::StreamToken {
             payload: StreamToken {
                 session_id: sid.clone(),
                 index: 0,
                 token: "Hello".to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
         // Then the session has an Assistant entry with "Hello".
         assert!(state.active_session().is_streaming());
@@ -157,14 +155,14 @@ mod tests {
         );
 
         // When processing another StreamToken(index=1, token=" world").
-        bus.submit_command(Command::StreamToken {
+        bus.submit_event(Event::StreamToken {
             payload: StreamToken {
                 session_id: sid.clone(),
                 index: 1,
                 token: " world".to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
         // Then the text is "Hello world".
         assert_eq!(
@@ -186,14 +184,14 @@ mod tests {
         assert!(state.session(&sid).is_sending());
 
         // When processing the first StreamToken.
-        bus.submit_command(Command::StreamToken {
+        bus.submit_event(Event::StreamToken {
             payload: StreamToken {
                 session_id: sid.clone(),
                 index: 0,
                 token: "Hi".to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
         // Then is_sending is cleared and is_streaming is set.
         assert!(!state.session(&sid).is_sending());
@@ -212,8 +210,8 @@ mod tests {
         let mut state = AppState::default();
         let sid = session_id(&state);
 
-        // When processing a ToolUseStarted command.
-        bus.submit_command(Command::ToolUseStarted {
+        // When processing a ToolUseStarted event.
+        bus.submit_event(Event::ToolUseStarted {
             payload: ToolUseStarted {
                 session_id: sid.clone(),
                 index: 0,
@@ -221,7 +219,7 @@ mod tests {
                 name: "echo".to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
         // Then the session is streaming and has a ToolCall entry with empty arguments.
         assert!(state.session(&sid).is_streaming());
@@ -248,8 +246,8 @@ mod tests {
         state.session_mut(&sid).begin_sending();
         assert!(!state.session(&sid).is_streaming());
 
-        // When processing a ToolUseStarted command.
-        bus.submit_command(Command::ToolUseStarted {
+        // When processing a ToolUseStarted event.
+        bus.submit_event(Event::ToolUseStarted {
             payload: ToolUseStarted {
                 session_id: sid.clone(),
                 index: 0,
@@ -257,7 +255,7 @@ mod tests {
                 name: "echo".to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
         // Then the session is now streaming (transitioned from sending).
         assert!(state.session(&sid).is_streaming());
@@ -274,7 +272,7 @@ mod tests {
         let mut state = AppState::default();
         let sid = session_id(&state);
 
-        bus.submit_command(Command::ToolUseStarted {
+        bus.submit_event(Event::ToolUseStarted {
             payload: ToolUseStarted {
                 session_id: sid.clone(),
                 index: 0,
@@ -282,26 +280,26 @@ mod tests {
                 name: "echo".to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
         // When processing ToolCallStreaming deltas.
-        bus.submit_command(Command::ToolCallStreaming {
+        bus.submit_event(Event::ToolCallStreaming {
             payload: ToolCallStreaming {
                 session_id: sid.clone(),
                 index: 0,
                 partial_json: r#"{"input":"#.to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
-        bus.submit_command(Command::ToolCallStreaming {
+        bus.submit_event(Event::ToolCallStreaming {
             payload: ToolCallStreaming {
                 session_id: sid.clone(),
                 index: 0,
                 partial_json: r#""hello"}"#.to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
         // Then the tool call entry has accumulated the deltas.
         assert_eq!(
@@ -324,7 +322,7 @@ mod tests {
         let mut state = AppState::default();
         let sid = session_id(&state);
 
-        bus.submit_command(Command::ToolUseStarted {
+        bus.submit_event(Event::ToolUseStarted {
             payload: ToolUseStarted {
                 session_id: sid.clone(),
                 index: 0,
@@ -332,19 +330,19 @@ mod tests {
                 name: "echo".to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
-        bus.submit_command(Command::ToolCallStreaming {
+        bus.submit_event(Event::ToolCallStreaming {
             payload: ToolCallStreaming {
                 session_id: sid.clone(),
                 index: 0,
                 partial_json: r#"{"input":"#.to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
         // When processing ToolCallReceived with the final complete tool call.
-        bus.submit_command(Command::ToolCallReceived {
+        bus.submit_event(Event::ToolCallReceived {
             payload: ToolCallReceived {
                 session_id: sid.clone(),
                 tool_call: ToolCall {
@@ -354,7 +352,7 @@ mod tests {
                 },
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
         // Then the tool call entry has the final complete arguments.
         assert_eq!(
@@ -415,16 +413,16 @@ mod tests {
         let sid = session_id(&state);
 
         // When text tokens arrive first, then a tool call.
-        bus.submit_command(Command::StreamToken {
+        bus.submit_event(Event::StreamToken {
             payload: StreamToken {
                 session_id: sid.clone(),
                 index: 0,
                 token: "Let me check".to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
-        bus.submit_command(Command::ToolUseStarted {
+        bus.submit_event(Event::ToolUseStarted {
             payload: ToolUseStarted {
                 session_id: sid.clone(),
                 index: 0,
@@ -432,16 +430,16 @@ mod tests {
                 name: "get_time".to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
-        bus.submit_command(Command::ToolCallStreaming {
+        bus.submit_event(Event::ToolCallStreaming {
             payload: ToolCallStreaming {
                 session_id: sid.clone(),
                 index: 0,
                 partial_json: "{}".to_owned(),
             },
         });
-        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
 
         // Then history has assistant text followed by tool call.
         assert_eq!(state.session(&sid).history().len(), 2);
