@@ -8,6 +8,8 @@ mod command;
 mod event;
 pub mod strategy_id;
 
-pub use command::{AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry};
+pub use command::{
+    AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
+};
 pub use event::{PromptAssembled, PromptStrategySwitched, StrategyStateUpdated};
 pub use strategy_id::PromptStrategyId;

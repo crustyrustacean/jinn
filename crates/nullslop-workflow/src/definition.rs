@@ -139,14 +139,16 @@ pub struct WorkflowDef {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn model_hint_small_roundtrips() {
+    #[rstest::rstest]
+    fn model_hint_small_roundtrips() {
         let hint = ModelHint::Small;
         let json = serde_json::to_string(&hint).unwrap();
         let back: ModelHint = serde_json::from_str(&json).unwrap();
         assert_eq!(hint, back);
     }
 
-    #[rstest::rstest]    fn model_hint_exact_roundtrips() {
+    #[rstest::rstest]
+    fn model_hint_exact_roundtrips() {
         let hint = ModelHint::Exact {
             id: "ollama/phi3".to_owned(),
         };
@@ -155,7 +157,8 @@ mod tests {
         assert_eq!(hint, back);
     }
 
-    #[rstest::rstest]    fn step_output_def_file_roundtrips() {
+    #[rstest::rstest]
+    fn step_output_def_file_roundtrips() {
         let output = StepOutputDef::File {
             label: "Video description".to_owned(),
             path: "{{video_dir}}/notes.md".to_owned(),
@@ -165,7 +168,8 @@ mod tests {
         assert_eq!(output, back);
     }
 
-    #[rstest::rstest]    fn step_output_def_summary_roundtrips() {
+    #[rstest::rstest]
+    fn step_output_def_summary_roundtrips() {
         let output = StepOutputDef::Summary {
             label: "Directory".to_owned(),
             value: "{{video_dir_name}}".to_owned(),
@@ -175,7 +179,8 @@ mod tests {
         assert_eq!(output, back);
     }
 
-    #[rstest::rstest]    fn step_output_def_artifact_roundtrips() {
+    #[rstest::rstest]
+    fn step_output_def_artifact_roundtrips() {
         let output = StepOutputDef::Artifact {
             label: "Config".to_owned(),
             description: "Workflow configuration".to_owned(),
@@ -185,7 +190,8 @@ mod tests {
         assert_eq!(output, back);
     }
 
-    #[rstest::rstest]    fn step_def_roundtrips() {
+    #[rstest::rstest]
+    fn step_def_roundtrips() {
         let step = StepDef {
             id: "create-directory".to_owned(),
             title: "Create Directory".to_owned(),
@@ -213,7 +219,8 @@ mod tests {
         assert_eq!(step.title, back.title);
     }
 
-    #[rstest::rstest]    fn workflow_def_roundtrips() {
+    #[rstest::rstest]
+    fn workflow_def_roundtrips() {
         let def = WorkflowDef {
             version: 1,
             name: "test-workflow".to_owned(),
@@ -240,7 +247,7 @@ mod tests {
         assert_eq!(def.steps.len(), back.steps.len());
     }
 
-    /// Parses a minimal StepDef JSON (no optional fields) for default-checking tests.
+    /// Parses a minimal `StepDef` JSON (no optional fields) for default-checking tests.
     fn parse_minimal_step_def() -> StepDef {
         let json = r#"{
             "id": "step-1",
@@ -272,6 +279,9 @@ mod tests {
             "guards_none" => step.guards == GuardExpr::None,
             _ => panic!("unknown field: {field}"),
         };
-        assert_eq!(actual, expected, "field {field}: expected {expected}, got {actual}");
+        assert_eq!(
+            actual, expected,
+            "field {field}: expected {expected}, got {actual}"
+        );
     }
 }

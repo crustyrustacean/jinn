@@ -605,7 +605,8 @@ mod tests {
 
     // --- Activation tests ---
 
-    #[rstest::rstest]    fn activate_subscribes_to_commands_and_events() {
+    #[rstest::rstest]
+    fn activate_subscribes_to_commands_and_events() {
         // Given a fresh actor context.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -760,10 +761,7 @@ mod tests {
             )
         });
         assert!(has_tool_use_started, "expected ToolUseStarted event");
-        assert!(
-            has_tool_call_streaming,
-            "expected ToolCallStreaming event"
-        );
+        assert!(has_tool_call_streaming, "expected ToolCallStreaming event");
         assert!(has_tool_call_received, "expected ToolCallReceived event");
     }
 
@@ -1061,7 +1059,8 @@ mod tests {
 
     // --- ToolsRegistered event tests ---
 
-    #[rstest::rstest]    fn tools_registered_updates_definitions() {
+    #[rstest::rstest]
+    fn tools_registered_updates_definitions() {
         // Given an activated actor.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);

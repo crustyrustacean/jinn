@@ -84,32 +84,38 @@ mod tests {
             .collect()
     }
 
-    #[rstest::rstest]    fn single_variable_resolved() {
+    #[rstest::rstest]
+    fn single_variable_resolved() {
         let v = vars(&[("name", "world")]);
         assert_eq!(resolve_template("hello {{name}}", &v), "hello world");
     }
 
-    #[rstest::rstest]    fn multiple_variables_resolved() {
+    #[rstest::rstest]
+    fn multiple_variables_resolved() {
         let v = vars(&[("a", "1"), ("b", "2")]);
         assert_eq!(resolve_template("{{a}}+{{b}}", &v), "1+2");
     }
 
-    #[rstest::rstest]    fn unresolved_variable_left_as_is() {
+    #[rstest::rstest]
+    fn unresolved_variable_left_as_is() {
         let v = vars(&[("a", "1")]);
         assert_eq!(resolve_template("{{a}}+{{unknown}}", &v), "1+{{unknown}}");
     }
 
-    #[rstest::rstest]    fn empty_template_returned_unchanged() {
+    #[rstest::rstest]
+    fn empty_template_returned_unchanged() {
         let v = HashMap::new();
         assert_eq!(resolve_template("", &v), "");
     }
 
-    #[rstest::rstest]    fn adjacent_variables_resolved() {
+    #[rstest::rstest]
+    fn adjacent_variables_resolved() {
         let v = vars(&[("a", "hello"), ("b", "world")]);
         assert_eq!(resolve_template("{{a}}{{b}}", &v), "helloworld");
     }
 
-    #[rstest::rstest]    fn variable_in_middle_of_text() {
+    #[rstest::rstest]
+    fn variable_in_middle_of_text() {
         let v = vars(&[("dir", "/tmp")]);
         assert_eq!(
             resolve_template("file is at {{dir}}/out.txt", &v),
@@ -117,7 +123,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn build_variable_map_merges_globals_and_outputs() {
+    #[rstest::rstest]
+    fn build_variable_map_merges_globals_and_outputs() {
         let globals = vars(&[("base", "/opt"), ("mode", "prod")]);
         let outputs = vec![("mode".to_owned(), "dev".to_owned())];
         let map = build_variable_map(&globals, &outputs);

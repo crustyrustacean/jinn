@@ -167,7 +167,8 @@ pub struct ChatEntrySelectCancel {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn chat_entry_select_next_serialization_roundtrip() {
+    #[rstest::rstest]
+    fn chat_entry_select_next_serialization_roundtrip() {
         // Given a ChatEntrySelectNext command.
         let cmd = ChatEntrySelectNext {
             session_id: SessionId::new(),
@@ -181,11 +182,13 @@ mod tests {
         assert_eq!(back.session_id, cmd.session_id);
     }
 
-    #[rstest::rstest]    fn chat_entry_select_next_has_command_name() {
+    #[rstest::rstest]
+    fn chat_entry_select_next_has_command_name() {
         assert_eq!(ChatEntrySelectNext::NAME, "chat_input::ChatEntrySelectNext");
     }
 
-    #[rstest::rstest]    fn chat_entry_select_prev_serialization_roundtrip() {
+    #[rstest::rstest]
+    fn chat_entry_select_prev_serialization_roundtrip() {
         // Given a ChatEntrySelectPrev command.
         let cmd = ChatEntrySelectPrev {
             session_id: SessionId::new(),
@@ -199,11 +202,13 @@ mod tests {
         assert_eq!(back.session_id, cmd.session_id);
     }
 
-    #[rstest::rstest]    fn chat_entry_select_prev_has_command_name() {
+    #[rstest::rstest]
+    fn chat_entry_select_prev_has_command_name() {
         assert_eq!(ChatEntrySelectPrev::NAME, "chat_input::ChatEntrySelectPrev");
     }
 
-    #[rstest::rstest]    fn chat_entry_select_cancel_serialization_roundtrip() {
+    #[rstest::rstest]
+    fn chat_entry_select_cancel_serialization_roundtrip() {
         // Given a ChatEntrySelectCancel command.
         let cmd = ChatEntrySelectCancel {
             session_id: SessionId::new(),
@@ -217,7 +222,11 @@ mod tests {
         assert_eq!(back.session_id, cmd.session_id);
     }
 
-    #[rstest::rstest]    fn chat_entry_select_cancel_has_command_name() {
-        assert_eq!(ChatEntrySelectCancel::NAME, "chat_input::ChatEntrySelectCancel");
+    #[rstest::rstest]
+    fn chat_entry_select_cancel_has_command_name() {
+        assert_eq!(
+            ChatEntrySelectCancel::NAME,
+            "chat_input::ChatEntrySelectCancel"
+        );
     }
 }

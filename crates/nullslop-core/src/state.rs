@@ -89,7 +89,8 @@ mod tests {
         nullslop_services::Services::new()
     }
 
-    #[rstest::rstest]    fn state_read_returns_app_state() {
+    #[rstest::rstest]
+    fn state_read_returns_app_state() {
         // Given a State with a chat entry.
         let mut data = AppState::default();
         data.active_session_mut()
@@ -103,7 +104,8 @@ mod tests {
         assert_eq!(guard.active_session().history().len(), 1);
     }
 
-    #[rstest::rstest]    fn state_write_allows_mutation() {
+    #[rstest::rstest]
+    fn state_write_allows_mutation() {
         // Given a State.
         let state = State::new(AppState::default());
 
@@ -120,7 +122,8 @@ mod tests {
         assert_eq!(guard.active_session().history().len(), 1);
     }
 
-    #[rstest::rstest]    fn state_is_cloneable() {
+    #[rstest::rstest]
+    fn state_is_cloneable() {
         // Given a State.
         let state = State::new(AppState::default());
 

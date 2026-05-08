@@ -96,7 +96,8 @@ mod tests {
     use super::*;
     use crate::PinPosition;
 
-    #[rstest::rstest]    fn entries_to_messages_converts_user_entries() {
+    #[rstest::rstest]
+    fn entries_to_messages_converts_user_entries() {
         // Given a user chat entry.
         let entries = vec![ChatEntry::user("hello")];
 
@@ -113,7 +114,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn entries_to_messages_converts_assistant_entries() {
+    #[rstest::rstest]
+    fn entries_to_messages_converts_assistant_entries() {
         // Given an assistant chat entry.
         let entries = vec![ChatEntry::assistant("hi there")];
 
@@ -131,7 +133,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn entries_to_messages_skips_system_and_actor() {
+    #[rstest::rstest]
+    fn entries_to_messages_skips_system_and_actor() {
         // Given entries of all kinds.
         let entries = vec![
             ChatEntry::system("ready"),
@@ -160,7 +163,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn entries_to_messages_empty_input() {
+    #[rstest::rstest]
+    fn entries_to_messages_empty_input() {
         // Given no entries.
         let entries: Vec<ChatEntry> = vec![];
 
@@ -171,7 +175,8 @@ mod tests {
         assert!(messages.is_empty());
     }
 
-    #[rstest::rstest]    fn orphaned_tool_call_produces_assistant_message() {
+    #[rstest::rstest]
+    fn orphaned_tool_call_produces_assistant_message() {
         // Given a tool call entry (orphaned — no preceding assistant).
         let entries = vec![ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#)];
 
@@ -183,7 +188,8 @@ mod tests {
         assert!(matches!(&messages[0], LlmMessage::Assistant { .. }));
     }
 
-    #[rstest::rstest]    fn assistant_message_contains_tool_calls() {
+    #[rstest::rstest]
+    fn assistant_message_contains_tool_calls() {
         // Given a tool call entry (orphaned — no preceding assistant).
         let entries = vec![ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#)];
 
@@ -206,7 +212,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn entries_to_messages_attaches_tool_calls_to_assistant() {
+    #[rstest::rstest]
+    fn entries_to_messages_attaches_tool_calls_to_assistant() {
         // Given an assistant entry followed by a tool call entry.
         let entries = vec![
             ChatEntry::assistant("let me check"),
@@ -231,7 +238,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn entries_to_messages_converts_tool_result_entries() {
+    #[rstest::rstest]
+    fn entries_to_messages_converts_tool_result_entries() {
         // Given a tool result entry.
         let entries = vec![ChatEntry::tool_result("call_1", "echo", "hi", true)];
 
@@ -250,7 +258,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn tool_loop_produces_four_messages() {
+    #[rstest::rstest]
+    fn tool_loop_produces_four_messages() {
         // Given a full tool loop: user → assistant → tool call → tool result → assistant.
         let entries = vec![
             ChatEntry::user("what time is it?"),
@@ -267,7 +276,8 @@ mod tests {
         assert_eq!(messages.len(), 4);
     }
 
-    #[rstest::rstest]    fn tool_loop_message_types_match_expected_order() {
+    #[rstest::rstest]
+    fn tool_loop_message_types_match_expected_order() {
         // Given a full tool loop: user → assistant → tool call → tool result → assistant.
         let entries = vec![
             ChatEntry::user("what time is it?"),
@@ -304,7 +314,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn multiple_tool_calls_produce_one_assistant_message() {
+    #[rstest::rstest]
+    fn multiple_tool_calls_produce_one_assistant_message() {
         // Given an assistant entry followed by multiple tool call entries.
         let entries = vec![
             ChatEntry::assistant("checking both"),
@@ -320,7 +331,8 @@ mod tests {
         assert!(matches!(&messages[0], LlmMessage::Assistant { .. }));
     }
 
-    #[rstest::rstest]    fn assistant_message_has_two_tool_calls() {
+    #[rstest::rstest]
+    fn assistant_message_has_two_tool_calls() {
         // Given an assistant entry followed by multiple tool call entries.
         let entries = vec![
             ChatEntry::assistant("checking both"),
@@ -347,7 +359,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn system_entries_skipped_between_tools() {
+    #[rstest::rstest]
+    fn system_entries_skipped_between_tools() {
         // Given entries with system and actor entries between tool entries.
         let entries = vec![
             ChatEntry::user("go"),
@@ -368,7 +381,8 @@ mod tests {
         assert!(matches!(&messages[2], LlmMessage::Tool { .. }));
     }
 
-    #[rstest::rstest]    fn actor_entries_skipped_between_tools() {
+    #[rstest::rstest]
+    fn actor_entries_skipped_between_tools() {
         // Given entries with system and actor entries between tool entries.
         let entries = vec![
             ChatEntry::user("go"),
@@ -389,7 +403,8 @@ mod tests {
         assert!(matches!(&messages[2], LlmMessage::Tool { .. }));
     }
 
-    #[rstest::rstest]    fn pinned_system_entry_produces_system_message() {
+    #[rstest::rstest]
+    fn pinned_system_entry_produces_system_message() {
         // Given a pinned System entry.
         let entries = vec![ChatEntry::system("important instruction").with_pin(PinPosition::Top)];
 
@@ -406,11 +421,10 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn pinned_actor_entry_produces_user_message() {
+    #[rstest::rstest]
+    fn pinned_actor_entry_produces_user_message() {
         // Given a pinned Actor entry.
-        let entries = vec![
-            ChatEntry::actor("echo", "HELLO").with_pin(PinPosition::Relative),
-        ];
+        let entries = vec![ChatEntry::actor("echo", "HELLO").with_pin(PinPosition::Relative)];
 
         // When converting to messages.
         let messages = entries_to_messages(&entries);
@@ -425,7 +439,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn unpinned_system_entry_still_skipped() {
+    #[rstest::rstest]
+    fn unpinned_system_entry_still_skipped() {
         // Given an unpinned System entry.
         let entries = vec![ChatEntry::system("ready")];
 
@@ -436,7 +451,8 @@ mod tests {
         assert!(messages.is_empty());
     }
 
-    #[rstest::rstest]    fn unpinned_actor_entry_still_skipped() {
+    #[rstest::rstest]
+    fn unpinned_actor_entry_still_skipped() {
         // Given an unpinned Actor entry.
         let entries = vec![ChatEntry::actor("echo", "HELLO")];
 
@@ -447,7 +463,8 @@ mod tests {
         assert!(messages.is_empty());
     }
 
-    #[rstest::rstest]    fn mixed_pinned_and_unpinned_entries() {
+    #[rstest::rstest]
+    fn mixed_pinned_and_unpinned_entries() {
         // Given a mix of pinned and unpinned System/Actor entries.
         let entries = vec![
             ChatEntry::system("unpinned system"),
@@ -475,7 +492,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn pinned_system_appears_first() {
+    #[rstest::rstest]
+    fn pinned_system_appears_first() {
         // Given a pinned System entry alongside User and Assistant entries.
         let entries = vec![
             ChatEntry::system("always include").with_pin(PinPosition::Top),
@@ -496,7 +514,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn other_entries_follow_pinned() {
+    #[rstest::rstest]
+    fn other_entries_follow_pinned() {
         // Given a pinned System entry alongside User and Assistant entries.
         let entries = vec![
             ChatEntry::system("always include").with_pin(PinPosition::Top),
@@ -523,7 +542,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn pinned_user_and_assistant_entries_unaffected() {
+    #[rstest::rstest]
+    fn pinned_user_and_assistant_entries_unaffected() {
         // Given pinned User and Assistant entries.
         let entries = vec![
             ChatEntry::user("hello").with_pin(PinPosition::Relative),

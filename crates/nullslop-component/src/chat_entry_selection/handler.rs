@@ -4,8 +4,8 @@
 //! [`ChatSessionState::select_prev_entry`], and
 //! [`ChatSessionState::clear_selection`].
 
-use npr::chat_input::{ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev};
 use npr::CommandAction;
+use npr::chat_input::{ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev};
 use nullslop_component_core::{HandlerContext, define_handler};
 use nullslop_protocol as npr;
 use nullslop_services::Services;
@@ -57,7 +57,7 @@ impl ChatEntrySelectionHandler {
 mod tests {
     use npr::ChatEntry;
     use npr::Command;
-        use npr::chat_input::{ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev};
+    use npr::chat_input::{ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev};
     use nullslop_component_core::Bus;
     use nullslop_protocol as npr;
     use nullslop_services::Services;
@@ -66,7 +66,8 @@ mod tests {
     use crate::AppState;
     use crate::test_utils;
 
-    #[rstest::rstest]    fn select_next_command_increments_index() {
+    #[rstest::rstest]
+    fn select_next_command_increments_index() {
         // Given a bus with ChatEntrySelectionHandler registered and a session with 3 entries.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ChatEntrySelectionHandler.register(&mut bus);
@@ -88,7 +89,8 @@ mod tests {
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
     }
 
-    #[rstest::rstest]    fn select_prev_command_decrements_index() {
+    #[rstest::rstest]
+    fn select_prev_command_decrements_index() {
         // Given a bus with handler registered and selection at last entry.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ChatEntrySelectionHandler.register(&mut bus);
@@ -110,12 +112,15 @@ mod tests {
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
     }
 
-    #[rstest::rstest]    fn select_cancel_command_clears_selection() {
+    #[rstest::rstest]
+    fn select_cancel_command_clears_selection() {
         // Given a bus with handler registered and an active selection.
         let mut bus: Bus<AppState, Services> = Bus::new();
         ChatEntrySelectionHandler.register(&mut bus);
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
         state.active_session_mut().select_next_entry();
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
         let services = test_utils::test_services();

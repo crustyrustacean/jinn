@@ -149,7 +149,8 @@ mod tests {
     use crate::config::ProvidersConfig;
     use crate::registry_service::ProviderRegistryService;
 
-    #[rstest::rstest]    fn clone_sees_same_providers() {
+    #[rstest::rstest]
+    fn clone_sees_same_providers() {
         // Given a service with one provider.
         let config = ProvidersConfig {
             providers: vec![crate::config::ProviderEntry {
@@ -178,7 +179,8 @@ mod tests {
         assert_eq!(cloned_providers[0].name, "ollama");
     }
 
-    #[rstest::rstest]    fn clone_sees_same_default() {
+    #[rstest::rstest]
+    fn clone_sees_same_default() {
         // Given a service with one provider.
         let config = ProvidersConfig {
             providers: vec![crate::config::ProviderEntry {
@@ -235,7 +237,8 @@ mod tests {
         ProviderRegistryService::new(registry)
     }
 
-    #[rstest::rstest]    fn providers_returns_first_model() {
+    #[rstest::rstest]
+    fn providers_returns_first_model() {
         // Given a service with two providers.
         let service = service_with_providers();
 
@@ -248,7 +251,8 @@ mod tests {
         assert_eq!(providers[0].model, "llama3");
     }
 
-    #[rstest::rstest]    fn providers_returns_second_model() {
+    #[rstest::rstest]
+    fn providers_returns_second_model() {
         // Given a service with two providers.
         let service = service_with_providers();
 
@@ -261,7 +265,8 @@ mod tests {
         assert_eq!(providers[1].model, "gpt-4");
     }
 
-    #[rstest::rstest]    fn aliases_delegates_to_registry() {
+    #[rstest::rstest]
+    fn aliases_delegates_to_registry() {
         // Given a service with one alias.
         let service = service_with_providers();
 
@@ -274,7 +279,8 @@ mod tests {
         assert_eq!(aliases[0].target, "ollama/llama3");
     }
 
-    #[rstest::rstest]    fn get_returns_entry_for_known_provider() {
+    #[rstest::rstest]
+    fn get_returns_entry_for_known_provider() {
         // Given a service with providers.
         let service = service_with_providers();
 
@@ -290,7 +296,8 @@ mod tests {
         assert_eq!(entry.model, "llama3");
     }
 
-    #[rstest::rstest]    fn get_returns_none_for_unknown() {
+    #[rstest::rstest]
+    fn get_returns_none_for_unknown() {
         // Given a service with providers.
         let service = service_with_providers();
 
@@ -303,7 +310,8 @@ mod tests {
         assert!(entry.is_none());
     }
 
-    #[rstest::rstest]    fn is_available_delegates_to_registry() {
+    #[rstest::rstest]
+    fn is_available_delegates_to_registry() {
         // Given a service with a keyless provider.
         let service = service_with_providers();
         let api_keys = crate::api_keys::ApiKeys::new();
@@ -315,7 +323,8 @@ mod tests {
         assert!(service.is_available(&id, &api_keys));
     }
 
-    #[rstest::rstest]    fn resolve_alias_delegates_to_registry() {
+    #[rstest::rstest]
+    fn resolve_alias_delegates_to_registry() {
         // Given a service with an alias.
         let service = service_with_providers();
 
@@ -329,7 +338,8 @@ mod tests {
         assert_eq!(resolved.model, "llama3");
     }
 
-    #[rstest::rstest]    fn default_provider_id_delegates_to_registry() {
+    #[rstest::rstest]
+    fn default_provider_id_delegates_to_registry() {
         // Given a service with a configured default provider.
         let config = ProvidersConfig {
             providers: vec![crate::config::ProviderEntry {
@@ -357,7 +367,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn create_factory_delegates_to_registry() {
+    #[rstest::rstest]
+    fn create_factory_delegates_to_registry() {
         // Given a service with a sample provider.
         let config = ProvidersConfig {
             providers: vec![crate::config::ProviderEntry {
@@ -384,7 +395,8 @@ mod tests {
         assert_eq!(factory.unwrap().name(), "Sample");
     }
 
-    #[rstest::rstest]    fn set_default_provider_updates_via_service() {
+    #[rstest::rstest]
+    fn set_default_provider_updates_via_service() {
         // Given a service with a provider.
         let service = service_with_providers();
 
@@ -400,7 +412,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn config_snapshot_returns_current_config() {
+    #[rstest::rstest]
+    fn config_snapshot_returns_current_config() {
         // Given a service with providers.
         let service = service_with_providers();
 

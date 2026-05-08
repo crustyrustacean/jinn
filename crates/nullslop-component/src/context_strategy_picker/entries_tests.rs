@@ -14,7 +14,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
 
 // --- PickerItem tests ---
 
-#[rstest::rstest]fn render_row_shows_active_marker_when_active() {
+#[rstest::rstest]
+fn render_row_shows_active_marker_when_active() {
     // Given a strategy entry that is active.
     let entry = make_entry("passthrough", "Passthrough", "desc", true);
 
@@ -26,7 +27,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
     assert!(text.contains('>'));
 }
 
-#[rstest::rstest]fn render_row_shows_no_marker_when_inactive() {
+#[rstest::rstest]
+fn render_row_shows_no_marker_when_inactive() {
     // Given a strategy entry that is not active.
     let entry = make_entry("passthrough", "Passthrough", "desc", false);
 
@@ -38,7 +40,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
     assert_eq!(first_span.content, "  ");
 }
 
-#[rstest::rstest]fn render_row_shows_name_and_description() {
+#[rstest::rstest]
+fn render_row_shows_name_and_description() {
     // Given a strategy entry with name and description.
     let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
 
@@ -51,7 +54,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
     assert!(text.contains("Send as-is"));
 }
 
-#[rstest::rstest]fn render_row_selected_has_background() {
+#[rstest::rstest]
+fn render_row_selected_has_background() {
     // Given a strategy entry.
     let entry = make_entry("passthrough", "Passthrough", "desc", false);
 
@@ -65,7 +69,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
 
 // --- load_strategy_entries tests ---
 
-#[rstest::rstest]fn load_strategy_entries_returns_all_strategies() {
+#[rstest::rstest]
+fn load_strategy_entries_returns_all_strategies() {
     // Given test services with the default strategy discovery (4 strategies).
     let services = crate::test_utils::test_services();
 
@@ -76,7 +81,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
     assert_eq!(entries.len(), 4);
 }
 
-#[rstest::rstest]fn load_strategy_entries_marks_active() {
+#[rstest::rstest]
+fn load_strategy_entries_marks_active() {
     // Given test services with the default strategy discovery.
     let services = crate::test_utils::test_services();
 
@@ -90,7 +96,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
     assert_eq!(active.strategy_id, PromptStrategyId::passthrough());
 }
 
-#[rstest::rstest]fn load_strategy_entries_marks_active_with_non_default() {
+#[rstest::rstest]
+fn load_strategy_entries_marks_active_with_non_default() {
     // Given test services with the default strategy discovery.
     let services = crate::test_utils::test_services();
 
@@ -105,7 +112,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
 
 // --- sorted_strategy_entries tests ---
 
-#[rstest::rstest]fn sorted_strategy_entries_promotes_active_to_top_when_filter_empty() {
+#[rstest::rstest]
+fn sorted_strategy_entries_promotes_active_to_top_when_filter_empty() {
     // Given 4 entries with sliding_window active (not first).
     let entries = vec![
         make_entry("passthrough", "Passthrough", "desc", false),
@@ -122,7 +130,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
     assert!(result[0].is_active);
 }
 
-#[rstest::rstest]fn sorted_strategy_entries_preserves_order_when_filtering() {
+#[rstest::rstest]
+fn sorted_strategy_entries_preserves_order_when_filtering() {
     // Given entries with sliding_window active.
     let entries = vec![
         make_entry("passthrough", "Passthrough", "desc", false),
@@ -137,7 +146,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
     assert_eq!(result[1].strategy_id, PromptStrategyId::sliding_window());
 }
 
-#[rstest::rstest]fn sorted_strategy_entries_no_change_when_first_is_active() {
+#[rstest::rstest]
+fn sorted_strategy_entries_no_change_when_first_is_active() {
     // Given entries with passthrough active (already first).
     let entries = vec![
         make_entry("passthrough", "Passthrough", "desc", true),
@@ -156,7 +166,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
 
 // --- format_strategy_footer tests ---
 
-#[rstest::rstest]fn format_strategy_footer_contains_label_and_name() {
+#[rstest::rstest]
+fn format_strategy_footer_contains_label_and_name() {
     // Given a strategy name.
     // When formatting the footer.
     let line = format_strategy_footer("Sliding Window");
@@ -167,7 +178,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
     assert!(text.contains("Sliding Window"));
 }
 
-#[rstest::rstest]fn format_strategy_footer_label_is_dark_gray() {
+#[rstest::rstest]
+fn format_strategy_footer_label_is_dark_gray() {
     // Given a strategy name.
     // When formatting the footer.
     let line = format_strategy_footer("Passthrough");
@@ -177,7 +189,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
     assert_eq!(label_span.style.fg, Some(ratatui::style::Color::DarkGray));
 }
 
-#[rstest::rstest]fn format_strategy_footer_name_is_white() {
+#[rstest::rstest]
+fn format_strategy_footer_name_is_white() {
     // Given a strategy name.
     // When formatting the footer.
     let line = format_strategy_footer("Passthrough");
@@ -189,7 +202,8 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
 
 // --- Highlight tests ---
 
-#[rstest::rstest]fn render_row_with_empty_match_indices_same_as_render_row() {
+#[rstest::rstest]
+fn render_row_with_empty_match_indices_same_as_render_row() {
     // Given a strategy entry.
     let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
 
@@ -205,26 +219,40 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
     }
 }
 
-#[rstest::rstest]fn strategy_highlight_applies_gray_bg() {
+#[rstest::rstest]
+fn strategy_highlight_applies_gray_bg() {
     // Given a strategy entry with name "Passthrough".
     let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
 
     // When highlighting with match at byte 0 (the "P").
-    #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+    #[expect(
+        clippy::single_range_in_vec_init,
+        reason = "genuinely want a slice containing one Range<usize>"
+    )]
     let highlights: &[Range<usize>] = &[0..1];
     let line = entry.render_row_with_highlight(false, highlights);
 
     // Then at least one span has gray background.
-    let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(ratatui::style::Color::DarkGray));
-    assert!(has_highlight, "expected at least one span with gray background");
+    let has_highlight = line
+        .spans
+        .iter()
+        .any(|s| s.style.bg == Some(ratatui::style::Color::DarkGray));
+    assert!(
+        has_highlight,
+        "expected at least one span with gray background"
+    );
 }
 
-#[rstest::rstest]fn strategy_highlight_contains_matched_char() {
+#[rstest::rstest]
+fn strategy_highlight_contains_matched_char() {
     // Given a strategy entry with name "Passthrough".
     let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
 
     // When highlighting with match at byte 0 (the "P").
-    #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+    #[expect(
+        clippy::single_range_in_vec_init,
+        reason = "genuinely want a slice containing one Range<usize>"
+    )]
     let highlights: &[Range<usize>] = &[0..1];
     let line = entry.render_row_with_highlight(false, highlights);
 
@@ -235,15 +263,22 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
         .filter(|s| s.style.bg == Some(ratatui::style::Color::DarkGray))
         .map(|s| s.content.clone())
         .collect();
-    assert!(highlighted.contains('P'), "highlighted span should contain 'P'");
+    assert!(
+        highlighted.contains('P'),
+        "highlighted span should contain 'P'"
+    );
 }
 
-#[rstest::rstest]fn render_row_with_highlight_preserves_description() {
+#[rstest::rstest]
+fn render_row_with_highlight_preserves_description() {
     // Given a strategy entry.
     let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
 
     // When highlighting with match at byte 0.
-    #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+    #[expect(
+        clippy::single_range_in_vec_init,
+        reason = "genuinely want a slice containing one Range<usize>"
+    )]
     let highlights: &[Range<usize>] = &[0..1];
     let line = entry.render_row_with_highlight(false, highlights);
 

@@ -116,12 +116,19 @@ fn highlight_text<'a>(
 
         if is_matched != in_highlight {
             // Byte offsets come from char_indices() so they are valid UTF-8 boundaries.
-            #[expect(clippy::string_slice, reason = "offsets from char_indices are valid UTF-8 boundaries")]
+            #[expect(
+                clippy::string_slice,
+                reason = "offsets from char_indices are valid UTF-8 boundaries"
+            )]
             let segment = text[current_start..byte_off].to_owned();
             if !segment.is_empty() {
                 spans.push(Span::styled(
                     segment,
-                    if in_highlight { highlight_style } else { base_style },
+                    if in_highlight {
+                        highlight_style
+                    } else {
+                        base_style
+                    },
                 ));
             }
             current_start = byte_off;
@@ -131,11 +138,18 @@ fn highlight_text<'a>(
 
     if current_start < text.len() {
         // Byte offsets come from char_indices() so they are valid UTF-8 boundaries.
-        #[expect(clippy::string_slice, reason = "offsets from char_indices are valid UTF-8 boundaries")]
+        #[expect(
+            clippy::string_slice,
+            reason = "offsets from char_indices are valid UTF-8 boundaries"
+        )]
         let rest = text[current_start..].to_owned();
         spans.push(Span::styled(
             rest,
-            if in_highlight { highlight_style } else { base_style },
+            if in_highlight {
+                highlight_style
+            } else {
+                base_style
+            },
         ));
     }
 
@@ -189,7 +203,8 @@ pub fn load_session_picker_items(services: &Services, state: &mut crate::AppStat
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn session_entry_display_label_returns_title() {
+    #[rstest::rstest]
+    fn session_entry_display_label_returns_title() {
         // Given a SessionEntry with a title.
         let entry = SessionEntry {
             session_id: nullslop_protocol::SessionId::new(),
@@ -203,7 +218,8 @@ mod tests {
         assert_eq!(entry.display_label(), "My Chat");
     }
 
-    #[rstest::rstest]    fn render_row_contains_title() {
+    #[rstest::rstest]
+    fn render_row_contains_title() {
         // Given a session entry.
         let entry = SessionEntry {
             session_id: nullslop_protocol::SessionId::new(),
@@ -219,7 +235,8 @@ mod tests {
         assert!(row.spans.iter().any(|s| s.content.contains("My Session")));
     }
 
-    #[rstest::rstest]    fn render_row_contains_date() {
+    #[rstest::rstest]
+    fn render_row_contains_date() {
         // Given a session entry.
         let entry = SessionEntry {
             session_id: nullslop_protocol::SessionId::new(),
@@ -235,7 +252,8 @@ mod tests {
         assert!(row.spans.len() >= 2);
     }
 
-    #[rstest::rstest]    fn load_session_entries_returns_empty_on_error() {
+    #[rstest::rstest]
+    fn load_session_entries_returns_empty_on_error() {
         // Given a test Services (with fake session store that returns empty).
         let services = nullslop_services::Services::new();
 

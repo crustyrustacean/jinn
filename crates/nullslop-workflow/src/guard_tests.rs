@@ -105,7 +105,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- file_exists ----
 
-#[rstest::rstest]fn file_exists_passes_when_file_present() {
+#[rstest::rstest]
+fn file_exists_passes_when_file_present() {
     // Given a filesystem with a file at /tmp/test.txt.
     let fs = FakeFileSystem::default().with_file("/tmp/test.txt", "hello");
     let evaluator = DefaultGuardEvaluator::new(fs, FakeShell::default());
@@ -120,7 +121,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert!(result.is_passed());
 }
 
-#[rstest::rstest]fn file_exists_fails_when_file_absent() {
+#[rstest::rstest]
+fn file_exists_fails_when_file_absent() {
     // Given an empty filesystem.
     let evaluator = make_evaluator();
 
@@ -136,7 +138,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- dir_exists ----
 
-#[rstest::rstest]fn dir_exists_passes_when_directory_present() {
+#[rstest::rstest]
+fn dir_exists_passes_when_directory_present() {
     let fs = FakeFileSystem::default().with_dir("/tmp/mydir");
     let evaluator = DefaultGuardEvaluator::new(fs, FakeShell::default());
 
@@ -148,7 +151,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert!(result.is_passed());
 }
 
-#[rstest::rstest]fn dir_exists_fails_when_directory_absent() {
+#[rstest::rstest]
+fn dir_exists_fails_when_directory_absent() {
     let evaluator = make_evaluator();
 
     let guard = GuardExpr::Predicate(GuardPredicate::DirExists {
@@ -161,7 +165,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- all combinator ----
 
-#[rstest::rstest]fn all_passes_when_all_children_pass() {
+#[rstest::rstest]
+fn all_passes_when_all_children_pass() {
     let fs = FakeFileSystem::default()
         .with_file("/a.txt", "a")
         .with_file("/b.txt", "b");
@@ -182,7 +187,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert!(result.is_passed());
 }
 
-#[rstest::rstest]fn all_fails_when_one_child_fails() {
+#[rstest::rstest]
+fn all_fails_when_one_child_fails() {
     let fs = FakeFileSystem::default().with_file("/a.txt", "a");
     let evaluator = DefaultGuardEvaluator::new(fs, FakeShell::default());
 
@@ -203,7 +209,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- any combinator ----
 
-#[rstest::rstest]fn any_passes_when_one_child_passes() {
+#[rstest::rstest]
+fn any_passes_when_one_child_passes() {
     let fs = FakeFileSystem::default().with_file("/a.txt", "a");
     let evaluator = DefaultGuardEvaluator::new(fs, FakeShell::default());
 
@@ -222,7 +229,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert!(result.is_passed());
 }
 
-#[rstest::rstest]fn any_fails_when_all_children_fail() {
+#[rstest::rstest]
+fn any_fails_when_all_children_fail() {
     let evaluator = make_evaluator();
 
     let guard = GuardExpr::Any {
@@ -242,7 +250,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- not combinator ----
 
-#[rstest::rstest]fn not_inverts_pass_to_fail() {
+#[rstest::rstest]
+fn not_inverts_pass_to_fail() {
     let fs = FakeFileSystem::default().with_file("/a.txt", "a");
     let evaluator = DefaultGuardEvaluator::new(fs, FakeShell::default());
 
@@ -256,7 +265,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert!(!result.is_passed());
 }
 
-#[rstest::rstest]fn not_inverts_fail_to_pass() {
+#[rstest::rstest]
+fn not_inverts_fail_to_pass() {
     let evaluator = make_evaluator();
 
     let guard = GuardExpr::Not {
@@ -271,7 +281,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- nested compositions ----
 
-#[rstest::rstest]fn nested_all_containing_any() {
+#[rstest::rstest]
+fn nested_all_containing_any() {
     // all([file_exists("/a.txt"), any([file_exists("/b.txt"), file_exists("/c.txt")])])
     // a.txt exists, b.txt missing, c.txt exists → all pass
     let fs = FakeFileSystem::default()
@@ -303,7 +314,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- template variable resolution ----
 
-#[rstest::rstest]fn template_variables_resolved_before_evaluation() {
+#[rstest::rstest]
+fn template_variables_resolved_before_evaluation() {
     let fs = FakeFileSystem::default().with_file("/home/user/notes.md", "content");
     let evaluator = DefaultGuardEvaluator::new(fs, FakeShell::default());
 
@@ -316,7 +328,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert!(result.is_passed());
 }
 
-#[rstest::rstest]fn unresolved_variable_causes_guard_failure() {
+#[rstest::rstest]
+fn unresolved_variable_causes_guard_failure() {
     let evaluator = make_evaluator();
 
     let guard = GuardExpr::Predicate(GuardPredicate::FileExists {
@@ -330,7 +343,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- command_succeeds ----
 
-#[rstest::rstest]fn command_succeeds_passes_on_exit_zero() {
+#[rstest::rstest]
+fn command_succeeds_passes_on_exit_zero() {
     let shell = FakeShell::default().with_success("echo hello", "hello\n");
     let evaluator = DefaultGuardEvaluator::new(FakeFileSystem::default(), shell);
 
@@ -343,7 +357,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert!(result.is_passed());
 }
 
-#[rstest::rstest]fn command_succeeds_fails_on_nonzero_exit() {
+#[rstest::rstest]
+fn command_succeeds_fails_on_nonzero_exit() {
     let shell = FakeShell::default().with_exit_code("bad-cmd", 1);
     let evaluator = DefaultGuardEvaluator::new(FakeFileSystem::default(), shell);
 
@@ -357,7 +372,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- value_set ----
 
-#[rstest::rstest]fn value_set_passes_when_variable_nonempty() {
+#[rstest::rstest]
+fn value_set_passes_when_variable_nonempty() {
     let evaluator = make_evaluator();
     let vars = HashMap::from([("output_dir".to_owned(), "/tmp/result".to_owned())]);
 
@@ -369,7 +385,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert!(result.is_passed());
 }
 
-#[rstest::rstest]fn value_set_fails_when_variable_empty() {
+#[rstest::rstest]
+fn value_set_fails_when_variable_empty() {
     let evaluator = make_evaluator();
     let vars = HashMap::from([("output_dir".to_owned(), String::new())]);
 
@@ -383,7 +400,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- file_hash_matches ----
 
-#[rstest::rstest]fn file_hash_matches_passes_when_no_stored_hash() {
+#[rstest::rstest]
+fn file_hash_matches_passes_when_no_stored_hash() {
     // First-time check — file exists but no stored hash to compare.
     let fs = FakeFileSystem::default().with_file("/test.txt", "content");
     let evaluator = DefaultGuardEvaluator::new(fs, FakeShell::default());
@@ -396,7 +414,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert!(result.is_passed());
 }
 
-#[rstest::rstest]fn file_hash_matches_fails_when_file_missing() {
+#[rstest::rstest]
+fn file_hash_matches_fails_when_file_missing() {
     let evaluator = make_evaluator();
 
     let guard = GuardExpr::Predicate(GuardPredicate::FileHashMatches {
@@ -409,7 +428,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- None variant ----
 
-#[rstest::rstest]fn none_guard_always_passes() {
+#[rstest::rstest]
+fn none_guard_always_passes() {
     let evaluator = make_evaluator();
     let result = evaluator.evaluate(&GuardExpr::None, &HashMap::new(), &HashMap::new());
     assert!(result.is_passed());
@@ -417,14 +437,16 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
 
 // ---- Serde roundtrips ----
 
-#[rstest::rstest]fn guard_expr_none_roundtrips() {
+#[rstest::rstest]
+fn guard_expr_none_roundtrips() {
     let expr = GuardExpr::None;
     let json = serde_json::to_string(&expr).unwrap();
     let back: GuardExpr = serde_json::from_str(&json).unwrap();
     assert_eq!(expr, back);
 }
 
-#[rstest::rstest]fn guard_predicate_roundtrips() {
+#[rstest::rstest]
+fn guard_predicate_roundtrips() {
     let pred = GuardPredicate::FileExists {
         path: "/tmp/test.txt".to_owned(),
     };
@@ -433,7 +455,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert_eq!(pred, back);
 }
 
-#[rstest::rstest]fn guard_expr_all_roundtrips() {
+#[rstest::rstest]
+fn guard_expr_all_roundtrips() {
     let expr = GuardExpr::All {
         all: vec![
             GuardExpr::Predicate(GuardPredicate::FileExists {
@@ -449,7 +472,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert_eq!(expr, back);
 }
 
-#[rstest::rstest]fn guard_expr_nested_roundtrips() {
+#[rstest::rstest]
+fn guard_expr_nested_roundtrips() {
     let expr = GuardExpr::Any {
         any: vec![
             GuardExpr::All {
@@ -469,7 +493,8 @@ fn make_evaluator() -> DefaultGuardEvaluator<FakeFileSystem, FakeShell> {
     assert_eq!(expr, back);
 }
 
-#[rstest::rstest]fn all_guard_predicates_roundtrip() {
+#[rstest::rstest]
+fn all_guard_predicates_roundtrip() {
     let predicates = vec![
         GuardPredicate::FileExists {
             path: "/f".to_owned(),

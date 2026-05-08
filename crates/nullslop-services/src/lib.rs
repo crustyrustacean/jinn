@@ -80,7 +80,10 @@ impl Services {
     ///
     /// Panics if the tokio runtime fails to create (extremely unlikely).
     #[must_use]
-    #[expect(clippy::expect_used, reason = "test-only defaults, panics are acceptable")]
+    #[expect(
+        clippy::expect_used,
+        reason = "test-only defaults, panics are acceptable"
+    )]
     pub fn new() -> Self {
         let rt = Box::leak(Box::new(
             tokio::runtime::Runtime::new().expect("test runtime"),
@@ -89,9 +92,7 @@ impl Services {
 
         Self {
             handle,
-            actor_host: ActorHostService::new(Arc::new(
-                nullslop_actor_host::FakeActorHost::new(),
-            )),
+            actor_host: ActorHostService::new(Arc::new(nullslop_actor_host::FakeActorHost::new())),
             llm_service: LlmServiceFactoryService::new(Arc::new(
                 nullslop_providers::FakeLlmServiceFactory::new(vec![]),
             )),
@@ -105,9 +106,7 @@ impl Services {
             ),
             api_keys: ApiKeysService::new(ApiKeys::new()),
             config_storage: ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new())),
-            session_store: SessionStoreService::new(Arc::new(
-                test_services::FakeSessionStore,
-            )),
+            session_store: SessionStoreService::new(Arc::new(test_services::FakeSessionStore)),
             strategy_registry: StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery)),
         }
     }

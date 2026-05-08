@@ -152,7 +152,8 @@ mod tests {
             .collect()
     }
 
-    #[rstest::rstest]    fn name_returns_dashboard() {
+    #[rstest::rstest]
+    fn name_returns_dashboard() {
         // Given a DashboardElement.
         let element = DashboardElement;
 
@@ -163,7 +164,8 @@ mod tests {
         assert_eq!(name, "dashboard");
     }
 
-    #[rstest::rstest]    fn render_empty_shows_no_actors() {
+    #[rstest::rstest]
+    fn render_empty_shows_no_actors() {
         // Given a DashboardElement with no actors.
         let mut element = DashboardElement;
         let state = AppState::default();
@@ -175,7 +177,8 @@ mod tests {
         assert!(rows[0].contains("No actors registered."));
     }
 
-    #[rstest::rstest]    fn actor_name_and_status_appear_on_first_line() {
+    #[rstest::rstest]
+    fn actor_name_and_status_appear_on_first_line() {
         // Given a DashboardElement with an actor in Starting status.
         let mut element = DashboardElement;
         let state = {
@@ -193,7 +196,8 @@ mod tests {
         assert!(rows[0].contains("Starting"));
     }
 
-    #[rstest::rstest]    fn actor_description_appears_on_next_line() {
+    #[rstest::rstest]
+    fn actor_description_appears_on_next_line() {
         // Given a DashboardElement with an actor in Starting status.
         let mut element = DashboardElement;
         let state = {
@@ -210,7 +214,8 @@ mod tests {
         assert!(rows[1].contains("Echoes messages back"));
     }
 
-    #[rstest::rstest]    fn render_actor_with_running_status() {
+    #[rstest::rstest]
+    fn render_actor_with_running_status() {
         // Given a DashboardElement with an actor in Running status.
         let mut element = DashboardElement;
         let state = {
@@ -229,7 +234,8 @@ mod tests {
         assert!(rows[0].contains("Running"));
     }
 
-    #[rstest::rstest]    fn render_actor_without_description() {
+    #[rstest::rstest]
+    fn render_actor_without_description() {
         // Given a DashboardElement with an actor that has no description.
         let mut element = DashboardElement;
         let state = {
@@ -246,15 +252,14 @@ mod tests {
         assert!(rows[0].contains("Starting"));
     }
 
-    #[rstest::rstest]    fn first_actor_renders() {
+    #[rstest::rstest]
+    fn first_actor_renders() {
         // Given two actors.
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
-                .mark_starting("echo", Some("Echo".to_owned()));
-            s.dashboard
-                .mark_starting("llm", Some("LLM".to_owned()));
+            s.dashboard.mark_starting("echo", Some("Echo".to_owned()));
+            s.dashboard.mark_starting("llm", Some("LLM".to_owned()));
             s
         };
 
@@ -262,15 +267,14 @@ mod tests {
         assert!(rows[0].contains("echo"));
     }
 
-    #[rstest::rstest]    fn blank_line_between_actors() {
+    #[rstest::rstest]
+    fn blank_line_between_actors() {
         // Given two actors.
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
-                .mark_starting("echo", Some("Echo".to_owned()));
-            s.dashboard
-                .mark_starting("llm", Some("LLM".to_owned()));
+            s.dashboard.mark_starting("echo", Some("Echo".to_owned()));
+            s.dashboard.mark_starting("llm", Some("LLM".to_owned()));
             s
         };
 
@@ -279,15 +283,14 @@ mod tests {
         assert!(rows[2].trim().is_empty());
     }
 
-    #[rstest::rstest]    fn second_actor_renders() {
+    #[rstest::rstest]
+    fn second_actor_renders() {
         // Given two actors.
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
-                .mark_starting("echo", Some("Echo".to_owned()));
-            s.dashboard
-                .mark_starting("llm", Some("LLM".to_owned()));
+            s.dashboard.mark_starting("echo", Some("Echo".to_owned()));
+            s.dashboard.mark_starting("llm", Some("LLM".to_owned()));
             s
         };
 
@@ -295,7 +298,8 @@ mod tests {
         assert!(rows[3].contains("llm"));
     }
 
-    #[rstest::rstest]    fn selected_entry_name_has_yellow_marker() {
+    #[rstest::rstest]
+    fn selected_entry_name_has_yellow_marker() {
         // Given two actors with the first selected (default index 0).
         let mut element = DashboardElement;
         let state = {
@@ -310,7 +314,11 @@ mod tests {
         let backend = TestBackend::new(40, 10);
         let mut terminal = Terminal::new(backend).unwrap();
         let area = Rect::new(0, 0, 40, 10);
-        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
 
         // Then the first entry has a yellow full block at columns 0-1.
         let buffer = terminal.backend().buffer();
@@ -322,7 +330,8 @@ mod tests {
         assert_eq!(cell1.fg, Color::Yellow);
     }
 
-    #[rstest::rstest]    fn selected_entry_description_has_yellow_marker() {
+    #[rstest::rstest]
+    fn selected_entry_description_has_yellow_marker() {
         // Given two actors with the first selected (default index 0).
         let mut element = DashboardElement;
         let state = {
@@ -337,7 +346,11 @@ mod tests {
         let backend = TestBackend::new(40, 10);
         let mut terminal = Terminal::new(backend).unwrap();
         let area = Rect::new(0, 0, 40, 10);
-        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
 
         // And the description line also has the yellow block.
         let buffer = terminal.backend().buffer();
@@ -346,7 +359,8 @@ mod tests {
         assert_eq!(desc_cell0.fg, Color::Yellow);
     }
 
-    #[rstest::rstest]    fn render_unselected_entry_shows_spaces() {
+    #[rstest::rstest]
+    fn render_unselected_entry_shows_spaces() {
         // Given two actors with the first selected (default index 0).
         let mut element = DashboardElement;
         let state = {
@@ -376,7 +390,8 @@ mod tests {
         assert_eq!(cell1.symbol(), " ");
     }
 
-    #[rstest::rstest]    fn unselected_entry_has_spaces() {
+    #[rstest::rstest]
+    fn unselected_entry_has_spaces() {
         // Given two actors with the second selected.
         let mut element = DashboardElement;
         let state = {
@@ -392,7 +407,11 @@ mod tests {
         let backend = TestBackend::new(40, 10);
         let mut terminal = Terminal::new(backend).unwrap();
         let area = Rect::new(0, 0, 40, 10);
-        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
 
         // Then the first entry has spaces (unselected).
         let buffer = terminal.backend().buffer();
@@ -400,7 +419,8 @@ mod tests {
         assert_eq!(first_cell.symbol(), " ");
     }
 
-    #[rstest::rstest]    fn selected_entry_has_yellow_block() {
+    #[rstest::rstest]
+    fn selected_entry_has_yellow_block() {
         // Given two actors with the second selected.
         let mut element = DashboardElement;
         let state = {
@@ -416,7 +436,11 @@ mod tests {
         let backend = TestBackend::new(40, 10);
         let mut terminal = Terminal::new(backend).unwrap();
         let area = Rect::new(0, 0, 40, 10);
-        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
 
         // And the second entry (row 3) has the yellow block (selected).
         let buffer = terminal.backend().buffer();
@@ -425,7 +449,8 @@ mod tests {
         assert_eq!(second_cell.fg, Color::Yellow);
     }
 
-    #[rstest::rstest]    fn dashboard_element_is_selectable() {
+    #[rstest::rstest]
+    fn dashboard_element_is_selectable() {
         // Given a DashboardElement.
         let element = DashboardElement;
 

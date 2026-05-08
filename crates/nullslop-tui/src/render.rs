@@ -352,7 +352,6 @@ fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_co
     widget.render(frame, area);
 }
 
-
 /// Renders the context strategy picker overlay using [`SelectionWidget`].
 ///
 /// Telescope-style layout: bordered popup with filter input at top,
@@ -488,7 +487,9 @@ fn render_autocomplete_popup(
     let popup_height: u16 = if matches.is_empty() {
         3 // border top + "no matches" + border bottom
     } else {
-        u16::try_from(visible_count + 2).unwrap_or(u16::MAX).min(input_area.y)
+        u16::try_from(visible_count + 2)
+            .unwrap_or(u16::MAX)
+            .min(input_area.y)
     };
 
     // Position: above the input box, horizontally anchored at the $.
@@ -515,12 +516,7 @@ fn render_autocomplete_popup(
     } else {
         let mut lines = Vec::with_capacity(inner.height as usize);
         let (start, end) = scroll_window(selected_index, matches.len(), inner.height as usize);
-        for (i, m) in matches
-            .iter()
-            .enumerate()
-            .skip(start)
-            .take(end - start)
-        {
+        for (i, m) in matches.iter().enumerate().skip(start).take(end - start) {
             let text = if m.description.is_empty() {
                 m.name.clone()
             } else {
@@ -554,7 +550,6 @@ fn scroll_window(selected: usize, total: usize, visible: usize) -> (usize, usize
     let end = (start + visible).min(total);
     (start, end)
 }
-
 
 #[cfg(test)]
 #[path = "render_tests.rs"]

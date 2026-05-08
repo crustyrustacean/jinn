@@ -9,7 +9,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     Arc::new(crate::message_sink::TestSink::new())
 }
 
-#[rstest::rstest]fn subscribe_event_accumulates() {
+#[rstest::rstest]
+fn subscribe_event_accumulates() {
     // Given a new context.
     let mut ctx = ActorContext::new("test", test_sink());
 
@@ -25,7 +26,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     );
 }
 
-#[rstest::rstest]fn subscribe_command_accumulates() {
+#[rstest::rstest]
+fn subscribe_command_accumulates() {
     // Given a new context.
     let mut ctx = ActorContext::new("test", test_sink());
 
@@ -38,7 +40,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert_eq!(commands, vec!["echo", "reverse"]);
 }
 
-#[rstest::rstest]fn first_take_returns_data() {
+#[rstest::rstest]
+fn first_take_returns_data() {
     // Given a context with registrations.
     let mut ctx = ActorContext::new("test", test_sink());
     ctx.subscribe_command_by_name("echo");
@@ -52,7 +55,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert!(!first.1.is_empty());
 }
 
-#[rstest::rstest]fn second_take_returns_empty() {
+#[rstest::rstest]
+fn second_take_returns_empty() {
     // Given a context with registrations.
     let mut ctx = ActorContext::new("test", test_sink());
     ctx.subscribe_command_by_name("echo");
@@ -67,7 +71,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert!(second.1.is_empty());
 }
 
-#[rstest::rstest]fn set_and_take_actor_ref() {
+#[rstest::rstest]
+fn set_and_take_actor_ref() {
     // Given a context with an ActorRef<String> stored.
     let mut ctx = ActorContext::new("test", test_sink());
 
@@ -82,7 +87,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert!(result.is_some());
 }
 
-#[rstest::rstest]fn take_actor_ref_returns_none_when_empty() {
+#[rstest::rstest]
+fn take_actor_ref_returns_none_when_empty() {
     // Given a context with no actor refs.
     let mut ctx = ActorContext::new("test", test_sink());
 
@@ -93,7 +99,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert!(result.is_none());
 }
 
-#[rstest::rstest]fn take_actor_ref_removes_from_context() {
+#[rstest::rstest]
+fn take_actor_ref_removes_from_context() {
     // Given a context with an ActorRef<String> stored.
     let mut ctx = ActorContext::new("test", test_sink());
 
@@ -109,7 +116,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert!(second.is_none());
 }
 
-#[rstest::rstest]fn send_command_delegates_to_sink() {
+#[rstest::rstest]
+fn send_command_delegates_to_sink() {
     // Given a context with a test sink.
     let sink = test_sink_as_concrete();
     let ctx = ActorContext::new("test", sink.clone());
@@ -124,7 +132,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert!(matches!(commands[0], Command::Quit));
 }
 
-#[rstest::rstest]fn send_event_delegates_to_sink() {
+#[rstest::rstest]
+fn send_event_delegates_to_sink() {
     // Given a context with a test sink.
     let sink = test_sink_as_concrete();
     let ctx = ActorContext::new("test", sink.clone());
@@ -146,7 +155,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert!(matches!(events[0], Event::KeyDown { .. }));
 }
 
-#[rstest::rstest]fn name_returns_host_assigned_name() {
+#[rstest::rstest]
+fn name_returns_host_assigned_name() {
     // Given a context with a name.
     let ctx = ActorContext::new("my-actor", test_sink());
 
@@ -156,7 +166,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     // Then name returns the assigned name.
 }
 
-#[rstest::rstest]fn set_and_take_data_roundtrip() {
+#[rstest::rstest]
+fn set_and_take_data_roundtrip() {
     // Given a context with injected data.
     let mut ctx = ActorContext::new("test", test_sink());
     ctx.set_data(42i32);
@@ -168,7 +179,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert_eq!(result, Some(42));
 }
 
-#[rstest::rstest]fn take_data_returns_none_when_empty() {
+#[rstest::rstest]
+fn take_data_returns_none_when_empty() {
     // Given a context with no injected data.
     let mut ctx = ActorContext::new("test", test_sink());
 
@@ -179,7 +191,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert!(result.is_none());
 }
 
-#[rstest::rstest]fn take_data_removes_from_context() {
+#[rstest::rstest]
+fn take_data_removes_from_context() {
     // Given a context with injected data.
     let mut ctx = ActorContext::new("test", test_sink());
     ctx.set_data("hello".to_owned());
@@ -193,7 +206,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert!(second.is_none());
 }
 
-#[rstest::rstest]fn sink_returns_arc_clone() {
+#[rstest::rstest]
+fn sink_returns_arc_clone() {
     // Given a context with a test sink.
     let sink = test_sink_as_concrete();
     let ctx = ActorContext::new("test", sink.clone());
@@ -206,7 +220,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert_eq!(sink.commands().len(), 1);
 }
 
-#[rstest::rstest]fn set_description_stores_description() {
+#[rstest::rstest]
+fn set_description_stores_description() {
     // Given a new context.
     let mut ctx = ActorContext::new("test", test_sink());
 
@@ -217,7 +232,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     assert_eq!(ctx.description(), Some("does something useful"));
 }
 
-#[rstest::rstest]fn description_is_none_by_default() {
+#[rstest::rstest]
+fn description_is_none_by_default() {
     // Given a new context.
     let ctx = ActorContext::new("test", test_sink());
 
@@ -227,7 +243,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     // Then it is None.
 }
 
-#[rstest::rstest]fn announce_started_includes_description() {
+#[rstest::rstest]
+fn announce_started_includes_description() {
     // Given a context with a description.
     let sink = test_sink_as_concrete();
     let mut ctx = ActorContext::new("my-actor", sink.clone());
@@ -248,7 +265,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     }
 }
 
-#[rstest::rstest]fn announce_started_sends_actor_started_event() {
+#[rstest::rstest]
+fn announce_started_sends_actor_started_event() {
     // Given a context with a test sink.
     let sink = test_sink_as_concrete();
     let ctx = ActorContext::new("my-actor", sink.clone());
@@ -268,7 +286,8 @@ fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
     }
 }
 
-#[rstest::rstest]fn announce_shutdown_completed_sends_actor_shutdown_completed_event() {
+#[rstest::rstest]
+fn announce_shutdown_completed_sends_actor_shutdown_completed_event() {
     // Given a context with a test sink.
     let sink = test_sink_as_concrete();
     let ctx = ActorContext::new("my-actor", sink.clone());

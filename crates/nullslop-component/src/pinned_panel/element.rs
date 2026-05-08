@@ -7,14 +7,14 @@
 
 use nullslop_component_ui::UiElement;
 use nullslop_protocol::{ChatEntryKind, PinPosition};
+use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
-use ratatui::Frame;
 
-use crate::app_state::pin_sort_key;
 use crate::AppState;
+use crate::app_state::pin_sort_key;
 
 /// Solid yellow full block used as the selection indicator.
 const SELECTED_INDICATOR: &str = "\u{2588}\u{2588}";
@@ -178,9 +178,9 @@ fn build_entry_list(
 #[cfg(test)]
 mod tests {
     use nullslop_protocol::{ChatEntry, PinPosition};
+    use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
-    use ratatui::Terminal;
 
     use super::*;
     use crate::AppState;
@@ -226,12 +226,14 @@ mod tests {
             .collect()
     }
 
-    #[rstest::rstest]    fn name_returns_pinned_panel() {
+    #[rstest::rstest]
+    fn name_returns_pinned_panel() {
         let element = PinnedPanelElement;
         assert_eq!(element.name(), "pinned-panel");
     }
 
-    #[rstest::rstest]    fn render_no_entries_shows_message() {
+    #[rstest::rstest]
+    fn render_no_entries_shows_message() {
         let mut element = PinnedPanelElement;
         let state = AppState::default();
         let rows = render_rows(&mut element, &state, 40, 10);
@@ -239,7 +241,8 @@ mod tests {
         assert!(rows[1].contains("No pinned entries."));
     }
 
-    #[rstest::rstest]    fn render_shows_pinned_entries() {
+    #[rstest::rstest]
+    fn render_shows_pinned_entries() {
         let mut element = PinnedPanelElement;
         let state = state_with_pinned(2);
         let rows = render_rows(&mut element, &state, 60, 20);
@@ -254,7 +257,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn render_selected_entry_has_yellow_marker() {
+    #[rstest::rstest]
+    fn render_selected_entry_has_yellow_marker() {
         let mut element = PinnedPanelElement;
         let state = state_with_pinned(2);
 
@@ -276,13 +280,15 @@ mod tests {
         assert_eq!(cell0.fg, Color::Yellow);
     }
 
-    #[rstest::rstest]    fn pinned_panel_element_is_selectable() {
+    #[rstest::rstest]
+    fn pinned_panel_element_is_selectable() {
         let element = PinnedPanelElement;
         let selectable: &dyn UiElement<AppState> = &element;
         assert!(selectable.is_selectable());
     }
 
-    #[rstest::rstest]    fn render_sorts_entries_by_position() {
+    #[rstest::rstest]
+    fn render_sorts_entries_by_position() {
         // Given entries pinned with BOT, TOP, REL positions (added in that order).
         let mut element = PinnedPanelElement;
         let mut state = AppState::default();
@@ -291,26 +297,38 @@ mod tests {
         let bot_entry = ChatEntry::user("bottom entry");
         let bot_id = bot_entry.id.clone();
         state.active_session_mut().push_entry(bot_entry);
-        state.active_session_mut().pin_entry(&bot_id, PinPosition::Bottom);
+        state
+            .active_session_mut()
+            .pin_entry(&bot_id, PinPosition::Bottom);
 
         let top_entry = ChatEntry::user("top entry");
         let top_id = top_entry.id.clone();
         state.active_session_mut().push_entry(top_entry);
-        state.active_session_mut().pin_entry(&top_id, PinPosition::Top);
+        state
+            .active_session_mut()
+            .pin_entry(&top_id, PinPosition::Top);
 
         let rel_entry = ChatEntry::user("relative entry");
         let rel_id = rel_entry.id.clone();
         state.active_session_mut().push_entry(rel_entry);
-        state.active_session_mut().pin_entry(&rel_id, PinPosition::Relative);
+        state
+            .active_session_mut()
+            .pin_entry(&rel_id, PinPosition::Relative);
 
         // When rendering.
         let rows = render_rows(&mut element, &state, 60, 20);
         let combined = rows.join("\n");
 
         // Then entries appear in TOP, REL, BOT order in the rendered output.
-        let top_pos = combined.find("top entry").expect("should contain top entry");
-        let rel_pos = combined.find("relative entry").expect("should contain relative entry");
-        let bot_pos = combined.find("bottom entry").expect("should contain bottom entry");
+        let top_pos = combined
+            .find("top entry")
+            .expect("should contain top entry");
+        let rel_pos = combined
+            .find("relative entry")
+            .expect("should contain relative entry");
+        let bot_pos = combined
+            .find("bottom entry")
+            .expect("should contain bottom entry");
         assert!(
             top_pos < rel_pos,
             "TOP entry should appear before REL entry"

@@ -279,7 +279,8 @@ mod tests {
 
     use super::*;
 
-    #[rstest::rstest]    fn fake_factory_creates_service() {
+    #[rstest::rstest]
+    fn fake_factory_creates_service() {
         // Given a fake factory.
         let factory = FakeLlmServiceFactory::new(vec!["hello".to_owned()]);
 
@@ -290,7 +291,8 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[rstest::rstest]    fn fake_factory_name() {
+    #[rstest::rstest]
+    fn fake_factory_name() {
         // Given a fake factory.
         let factory = FakeLlmServiceFactory::new(vec![]);
 

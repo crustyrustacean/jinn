@@ -95,7 +95,9 @@ impl PickerHandler {
         match ctx.state.active_picker_kind {
             Some(PickerKind::Provider) => ctx.state.provider_picker.move_up(PICKER_MAX_VISIBLE),
             Some(PickerKind::ContextAssembly) => {
-                ctx.state.context_strategy_picker.move_up(PICKER_MAX_VISIBLE);
+                ctx.state
+                    .context_strategy_picker
+                    .move_up(PICKER_MAX_VISIBLE);
             }
             Some(PickerKind::Keymap) => ctx.state.keymap_picker.move_up(PICKER_MAX_VISIBLE),
             Some(PickerKind::Session) => ctx.state.session_picker.move_up(PICKER_MAX_VISIBLE),
@@ -112,7 +114,9 @@ impl PickerHandler {
         match ctx.state.active_picker_kind {
             Some(PickerKind::Provider) => ctx.state.provider_picker.move_down(PICKER_MAX_VISIBLE),
             Some(PickerKind::ContextAssembly) => {
-                ctx.state.context_strategy_picker.move_down(PICKER_MAX_VISIBLE);
+                ctx.state
+                    .context_strategy_picker
+                    .move_down(PICKER_MAX_VISIBLE);
             }
             Some(PickerKind::Keymap) => ctx.state.keymap_picker.move_down(PICKER_MAX_VISIBLE),
             Some(PickerKind::Session) => ctx.state.session_picker.move_down(PICKER_MAX_VISIBLE),
@@ -272,9 +276,9 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
 
 #[cfg(test)]
 mod tests {
+    use crate::AppState;
     use crate::context_strategy_picker::entries::load_strategy_picker_items;
     use crate::test_utils;
-    use crate::AppState;
     use nullslop_component_core::Bus;
     use nullslop_protocol::PickerKind;
     use nullslop_protocol::PromptStrategyId;
@@ -289,7 +293,8 @@ mod tests {
         bus
     }
 
-    #[rstest::rstest]    fn confirm_strategy_updates_default() {
+    #[rstest::rstest]
+    fn confirm_strategy_updates_default() {
         // Given a bus with PickerHandler and ChatInputBoxHandler, and a loaded strategy picker.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -315,7 +320,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn confirm_strategy_returns_to_normal_mode() {
+    #[rstest::rstest]
+    fn confirm_strategy_returns_to_normal_mode() {
         // Given a bus with PickerHandler and ChatInputBoxHandler, and a loaded strategy picker.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -337,7 +343,8 @@ mod tests {
         assert_eq!(state.mode, nullslop_protocol::Mode::Normal);
     }
 
-    #[rstest::rstest]    fn confirm_strategy_noop_when_no_selection() {
+    #[rstest::rstest]
+    fn confirm_strategy_noop_when_no_selection() {
         // Given a bus with PickerHandler, an empty strategy picker, and ContextAssembly kind.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -360,7 +367,8 @@ mod tests {
 
     // --- ContextAssembly picker dispatch tests ---
 
-    #[rstest::rstest]    fn picker_insert_char_updates_context_strategy_filter() {
+    #[rstest::rstest]
+    fn picker_insert_char_updates_context_strategy_filter() {
         // Given a bus with PickerHandler, and a loaded strategy picker in ContextAssembly mode.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -381,7 +389,8 @@ mod tests {
         assert_eq!(state.context_strategy_picker.filter(), "p");
     }
 
-    #[rstest::rstest]    fn picker_backspace_removes_from_context_strategy_filter() {
+    #[rstest::rstest]
+    fn picker_backspace_removes_from_context_strategy_filter() {
         // Given a bus with PickerHandler, and a loaded strategy picker in ContextAssembly mode.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -405,7 +414,8 @@ mod tests {
         assert_eq!(state.context_strategy_picker.filter(), "p");
     }
 
-    #[rstest::rstest]    fn picker_move_up_decrements_context_strategy_selection() {
+    #[rstest::rstest]
+    fn picker_move_up_decrements_context_strategy_selection() {
         // Given a bus with PickerHandler, and a loaded strategy picker in ContextAssembly mode.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -428,7 +438,8 @@ mod tests {
         assert_eq!(state.context_strategy_picker.selection(), 0);
     }
 
-    #[rstest::rstest]    fn picker_move_down_increments_context_strategy_selection() {
+    #[rstest::rstest]
+    fn picker_move_down_increments_context_strategy_selection() {
         // Given a bus with PickerHandler, and a loaded strategy picker in ContextAssembly mode.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -449,7 +460,8 @@ mod tests {
         assert_eq!(state.context_strategy_picker.selection(), 1);
     }
 
-    #[rstest::rstest]    fn picker_move_cursor_left_decrements_context_strategy_cursor() {
+    #[rstest::rstest]
+    fn picker_move_cursor_left_decrements_context_strategy_cursor() {
         // Given a bus with PickerHandler, and a loaded strategy picker in ContextAssembly mode.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -473,7 +485,8 @@ mod tests {
         assert_eq!(state.context_strategy_picker.cursor_pos(), 1);
     }
 
-    #[rstest::rstest]    fn picker_move_cursor_right_increments_context_strategy_cursor() {
+    #[rstest::rstest]
+    fn picker_move_cursor_right_increments_context_strategy_cursor() {
         // Given a bus with PickerHandler, and a loaded strategy picker in ContextAssembly mode.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -499,7 +512,8 @@ mod tests {
         assert_eq!(state.context_strategy_picker.cursor_pos(), 1);
     }
 
-    #[rstest::rstest]    fn confirm_strategy_updates_sticky_default() {
+    #[rstest::rstest]
+    fn confirm_strategy_updates_sticky_default() {
         // Given a bus with handlers, loaded strategy picker on sliding_window (index 1).
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -521,7 +535,10 @@ mod tests {
         bus.process_commands(&mut state, &services);
 
         // Then default_strategy is updated to sliding_window.
-        assert_eq!(state.default_strategy(), &PromptStrategyId::sliding_window());
+        assert_eq!(
+            state.default_strategy(),
+            &PromptStrategyId::sliding_window()
+        );
     }
 
     // --- Keymap picker dispatch tests ---
@@ -549,7 +566,8 @@ mod tests {
         ]
     }
 
-    #[rstest::rstest]    fn picker_insert_char_updates_keymap_filter() {
+    #[rstest::rstest]
+    fn picker_insert_char_updates_keymap_filter() {
         // Given a bus with PickerHandler, and a keymap picker with entries.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -570,7 +588,8 @@ mod tests {
         assert_eq!(state.keymap_picker.filter(), "q");
     }
 
-    #[rstest::rstest]    fn confirm_keymap_closes_picker() {
+    #[rstest::rstest]
+    fn confirm_keymap_closes_picker() {
         // Given a bus with PickerHandler, and a keymap picker with entries on "gg".
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -592,7 +611,8 @@ mod tests {
         assert_eq!(state.mode, nullslop_protocol::Mode::Normal);
     }
 
-    #[rstest::rstest]    fn confirm_keymap_submits_command() {
+    #[rstest::rstest]
+    fn confirm_keymap_submits_command() {
         // Given a bus with PickerHandler, and a keymap picker with entries on "gg".
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -614,7 +634,8 @@ mod tests {
         assert!(!state.should_quit, "ScrollToTop should not quit");
     }
 
-    #[rstest::rstest]    fn picker_confirm_keymap_noop_when_no_selection() {
+    #[rstest::rstest]
+    fn picker_confirm_keymap_noop_when_no_selection() {
         // Given a bus with PickerHandler, and an empty keymap picker.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -633,7 +654,8 @@ mod tests {
         assert_eq!(state.mode, nullslop_protocol::Mode::Picker);
     }
 
-    #[rstest::rstest]    fn picker_confirm_keymap_opens_another_picker() {
+    #[rstest::rstest]
+    fn picker_confirm_keymap_opens_another_picker() {
         // Given a bus with PickerHandler and OpenPickerHandler, and a keymap
         // picker with an entry whose command is OpenPicker { kind: Provider }.
         use crate::keymap_picker::KeymapEntry;

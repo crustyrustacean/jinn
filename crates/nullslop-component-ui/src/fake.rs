@@ -96,7 +96,8 @@ mod tests {
             .expect("draw should succeed");
     }
 
-    #[rstest::rstest]    fn name_returns_correct_value() {
+    #[rstest::rstest]
+    fn name_returns_correct_value() {
         // Given a fake element.
         let (element, _calls): (FakeUiElement<()>, _) = FakeUiElement::new("chat-input");
 
@@ -107,7 +108,8 @@ mod tests {
         assert_eq!(name, "chat-input");
     }
 
-    #[rstest::rstest]    fn records_render_calls() {
+    #[rstest::rstest]
+    fn records_render_calls() {
         // Given a fake element.
         let (mut element, calls): (FakeUiElement<()>, _) = FakeUiElement::new("test");
         let state = ();
@@ -122,7 +124,8 @@ mod tests {
         assert_eq!(recorded_area, area);
     }
 
-    #[rstest::rstest]    fn shared_call_log_after_move() {
+    #[rstest::rstest]
+    fn shared_call_log_after_move() {
         // Given a fake element whose call_log is cloned.
         let (element, calls): (FakeUiElement<()>, _) = FakeUiElement::new("test");
         let calls_clone = Rc::clone(&calls);
@@ -134,7 +137,8 @@ mod tests {
         assert!(calls_clone.borrow().is_empty());
     }
 
-    #[rstest::rstest]    fn multiple_render_calls_accumulate() {
+    #[rstest::rstest]
+    fn multiple_render_calls_accumulate() {
         // Given a fake element.
         let (mut element, calls): (FakeUiElement<()>, _) = FakeUiElement::new("test");
         let state = ();

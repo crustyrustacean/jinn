@@ -6,8 +6,8 @@
 
 use jiff::Timestamp;
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use nullslop_protocol::{Event, PromptStrategyId, SessionSaveRequested};
 use nullslop_protocol::session::SessionLoadRequested;
+use nullslop_protocol::{Event, PromptStrategyId, SessionSaveRequested};
 use nullslop_session::{PersistedSession, SessionStoreService};
 
 /// Direct message type (unused — the actor only responds to bus events).

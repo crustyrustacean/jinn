@@ -10,9 +10,9 @@ use async_trait::async_trait;
 use aws_config::BehaviorVersion;
 use aws_sdk_bedrockruntime::{
     types::{
-        CachePointBlock, CachePointType, ContentBlock, ContentBlockDelta, ContentBlockStart, ConversationRole, ConverseStreamOutput,
-        Message, SystemContentBlock, Tool, ToolConfiguration, ToolInputSchema, ToolResultBlock,
-        ToolResultContentBlock, ToolUseBlock,
+        CachePointBlock, CachePointType, ContentBlock, ContentBlockDelta, ContentBlockStart,
+        ConversationRole, ConverseStreamOutput, Message, SystemContentBlock, Tool,
+        ToolConfiguration, ToolInputSchema, ToolResultBlock, ToolResultContentBlock, ToolUseBlock,
     },
     Client as BedrockClient,
 };
@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 
 use crate::chat::{
-    ChatMessage as LlmChatMessage, ChatProvider, StreamChunk as LlmStreamChunk, StreamChoice,
+    ChatMessage as LlmChatMessage, ChatProvider, StreamChoice, StreamChunk as LlmStreamChunk,
     StreamDelta, StreamResponse, StructuredOutputFormat, Tool as LlmTool,
     ToolChoice as LlmToolChoice,
 };
@@ -39,7 +39,7 @@ use crate::embedding::EmbeddingProvider;
 use crate::models::ModelsProvider;
 use crate::stt::SpeechToTextProvider;
 use crate::tts::TextToSpeechProvider;
-use crate::{FunctionCall, ToolCall, LLMProvider};
+use crate::{FunctionCall, LLMProvider, ToolCall};
 
 mod error;
 mod models;
@@ -268,7 +268,6 @@ impl BedrockBackend {
                 .set_max_tokens(request.max_tokens.or(self.max_tokens).map(|t| t as i32))
                 .set_temperature(request.temperature.map(|t| t as f32).or(self.temperature))
                 .set_top_p(request.top_p.map(|p| p as f32).or(self.top_p))
-
                 .set_stop_sequences(request.stop_sequences)
                 .build(),
         );
@@ -669,8 +668,7 @@ impl BedrockBackend {
                                 _ => {}
                             },
                             ConverseStreamOutput::ContentBlockStop(stop) => {
-                                let index =
-                                    usize::try_from(stop.content_block_index).unwrap_or(0);
+                                let index = usize::try_from(stop.content_block_index).unwrap_or(0);
                                 if let Some(state) = tool_states.remove(&index) {
                                     if state.started {
                                         pending.push_back(LlmStreamChunk::ToolUseComplete {
@@ -1384,7 +1382,12 @@ impl ChatProvider for BedrockBackend {
         &self,
         messages: &[LlmChatMessage],
     ) -> std::result::Result<
-        Pin<Box<dyn Stream<Item = std::result::Result<StreamResponse, crate::error::LLMError>> + Send>>,
+        Pin<
+            Box<
+                dyn Stream<Item = std::result::Result<StreamResponse, crate::error::LLMError>>
+                    + Send,
+            >,
+        >,
         crate::error::LLMError,
     > {
         let aws_messages: Vec<ChatMessage> = messages
@@ -1434,17 +1437,15 @@ impl ChatProvider for BedrockBackend {
                     }],
                     usage: None,
                 })),
-                Ok(LlmStreamChunk::ToolUseComplete { tool_call, .. }) => {
-                    Some(Ok(StreamResponse {
-                        choices: vec![StreamChoice {
-                            delta: StreamDelta {
-                                content: None,
-                                tool_calls: Some(vec![tool_call]),
-                            },
-                        }],
-                        usage: None,
-                    }))
-                }
+                Ok(LlmStreamChunk::ToolUseComplete { tool_call, .. }) => Some(Ok(StreamResponse {
+                    choices: vec![StreamChoice {
+                        delta: StreamDelta {
+                            content: None,
+                            tool_calls: Some(vec![tool_call]),
+                        },
+                    }],
+                    usage: None,
+                })),
                 Ok(LlmStreamChunk::Done { .. }) => None,
                 Ok(_) => None,
                 Err(e) => Some(Err(crate::error::LLMError::ProviderError(e.to_string()))),
@@ -1459,7 +1460,12 @@ impl ChatProvider for BedrockBackend {
         messages: &[LlmChatMessage],
         tools: Option<&[LlmTool]>,
     ) -> std::result::Result<
-        Pin<Box<dyn Stream<Item = std::result::Result<LlmStreamChunk, crate::error::LLMError>> + Send>>,
+        Pin<
+            Box<
+                dyn Stream<Item = std::result::Result<LlmStreamChunk, crate::error::LLMError>>
+                    + Send,
+            >,
+        >,
         crate::error::LLMError,
     > {
         let aws_messages: Vec<ChatMessage> = messages

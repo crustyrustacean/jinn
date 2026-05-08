@@ -54,7 +54,8 @@ mod tests {
     use super::*;
     use crate::fake::FakeUiElement;
 
-    #[rstest::rstest]    fn default_is_selectable_returns_false() {
+    #[rstest::rstest]
+    fn default_is_selectable_returns_false() {
         // Given a FakeUiElement that does not override is_selectable.
         let (element, _): (FakeUiElement<()>, _) = FakeUiElement::new("test");
 

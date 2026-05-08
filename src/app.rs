@@ -516,8 +516,6 @@ fn create_core_with_actor_host(
     let mut registry = nullslop_component::AppUiRegistry::new();
     nullslop_component::register_all(&mut core.bus, &mut registry);
 
-
-
     (core, services)
 }
 
@@ -553,8 +551,8 @@ fn ensure_prompt_example() {
 /// Called once after core creation. Failures are logged but not fatal —
 /// an empty store is used when the directory is missing or unreadable.
 fn load_prompt_templates(core: &AppCore, path: &Path) {
-    let store = nullslop_prompt_template::PromptTemplateStore::load_from_dir(path)
-        .unwrap_or_else(|e| {
+    let store =
+        nullslop_prompt_template::PromptTemplateStore::load_from_dir(path).unwrap_or_else(|e| {
             tracing::warn!("failed to load prompt templates: {e:?}");
             nullslop_prompt_template::PromptTemplateStore::new()
         });
@@ -577,7 +575,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn dispatch_headless_script_completes_successfully() {
+    #[rstest::rstest]
+    fn dispatch_headless_script_completes_successfully() {
         // Given a script file containing "q".
         let dir = tempfile::tempdir().expect("temp dir");
         let script_path = dir.path().join("test.script");
@@ -598,7 +597,8 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[rstest::rstest]    fn dispatch_headless_script_returns_error_for_missing_file() {
+    #[rstest::rstest]
+    fn dispatch_headless_script_returns_error_for_missing_file() {
         // Given a nonexistent script path.
         let mut app = App::new().expect("create app");
         let cli = test_cli(Some(Commands::Headless {
@@ -615,7 +615,8 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[rstest::rstest]    fn load_prompt_templates_sets_count() {
+    #[rstest::rstest]
+    fn load_prompt_templates_sets_count() {
         // Given a temp directory with a template file.
         let dir = tempfile::tempdir().expect("temp dir");
         let template_content =
@@ -633,7 +634,8 @@ mod tests {
         assert_eq!(state.prompt_templates.len(), 1);
     }
 
-    #[rstest::rstest]    fn load_prompt_templates_contains_template() {
+    #[rstest::rstest]
+    fn load_prompt_templates_contains_template() {
         // Given a temp directory with a template file.
         let dir = tempfile::tempdir().expect("temp dir");
         let template_content =
@@ -651,7 +653,8 @@ mod tests {
         assert!(state.prompt_templates.find_by_name("test").is_some());
     }
 
-    #[rstest::rstest]    fn load_model_cache_populates_state_from_file() {
+    #[rstest::rstest]
+    fn load_model_cache_populates_state_from_file() {
         // Given a temp directory with a model cache file.
         let dir = tempfile::tempdir().expect("temp dir");
         let cache_path = dir.path().join("model_cache.json");
@@ -682,7 +685,8 @@ mod tests {
         assert_eq!(cached.entries["ollama"].len(), 2);
     }
 
-    #[rstest::rstest]    fn load_model_cache_uses_empty_when_file_missing() {
+    #[rstest::rstest]
+    fn load_model_cache_uses_empty_when_file_missing() {
         // Given a path to a nonexistent file.
         let dir = tempfile::tempdir().expect("temp dir");
         let cache_path = dir.path().join("nonexistent.json");

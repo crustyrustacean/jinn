@@ -5,13 +5,11 @@
 
 use nullslop_component_core::{HandlerContext, define_handler};
 use nullslop_protocol as npr;
-use nullslop_protocol::{
-    CommandAction, PickerKind, SessionId, SessionLoadCompleted, SessionNew,
-};
 use nullslop_protocol::context::{RestoreStrategyState, SwitchPromptStrategy};
 use nullslop_protocol::system::SetMode;
-use nullslop_session::{BLOB_STRATEGY_STATE, BLOB_WORKFLOW_STATE};
+use nullslop_protocol::{CommandAction, PickerKind, SessionId, SessionLoadCompleted, SessionNew};
 use nullslop_services::Services;
+use nullslop_session::{BLOB_STRATEGY_STATE, BLOB_WORKFLOW_STATE};
 use nullslop_workflow::WorkflowState;
 
 use crate::AppState;
@@ -93,9 +91,7 @@ impl SessionPickerHandler {
             session.set_strategy_state(strategy_value.clone());
         }
 
-        ctx.state
-            .sessions
-            .insert(cmd.session_id.clone(), session);
+        ctx.state.sessions.insert(cmd.session_id.clone(), session);
         ctx.state.active_session = cmd.session_id.clone();
 
         // Notify the context actor of the loaded strategy so it doesn't
@@ -142,12 +138,15 @@ mod tests {
         bus
     }
 
-    #[rstest::rstest]    fn session_new_creates_fresh_session() {
+    #[rstest::rstest]
+    fn session_new_creates_fresh_session() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
-        let mut state = crate::AppState::default();
-        state.active_picker_kind = Some(PickerKind::Session);
+        let mut state = crate::AppState {
+            active_picker_kind: Some(PickerKind::Session),
+            ..crate::AppState::default()
+        };
 
         // When receiving SessionNew.
         bus.submit_command(nullslop_protocol::Command::SessionNew);
@@ -157,12 +156,15 @@ mod tests {
         assert!(state.active_session().history().is_empty());
     }
 
-    #[rstest::rstest]    fn session_new_closes_picker() {
+    #[rstest::rstest]
+    fn session_new_closes_picker() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
-        let mut state = crate::AppState::default();
-        state.active_picker_kind = Some(PickerKind::Session);
+        let mut state = crate::AppState {
+            active_picker_kind: Some(PickerKind::Session),
+            ..crate::AppState::default()
+        };
 
         // When receiving SessionNew.
         bus.submit_command(nullslop_protocol::Command::SessionNew);
@@ -170,21 +172,25 @@ mod tests {
 
         // Then mode is back to Normal (picker closed via SetMode command).
         let commands = bus.drain_processed_commands();
-        let has_set_mode = commands.iter().any(|c| matches!(
-            &c.command,
-            nullslop_protocol::Command::SetMode { .. }
-        ));
+        let has_set_mode = commands
+            .iter()
+            .any(|c| matches!(&c.command, nullslop_protocol::Command::SetMode { .. }));
         assert!(has_set_mode);
     }
 
-    #[rstest::rstest]    fn session_new_evicts_old_session() {
+    #[rstest::rstest]
+    fn session_new_evicts_old_session() {
         // Given a state with an existing session.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
-        let mut state = crate::AppState::default();
-        state.active_picker_kind = Some(PickerKind::Session);
+        let mut state = crate::AppState {
+            active_picker_kind: Some(PickerKind::Session),
+            ..crate::AppState::default()
+        };
         let original_session = state.active_session.clone();
-        state.active_session_mut().push_entry(ChatEntry::user("old"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("old"));
 
         // When receiving SessionNew.
         bus.submit_command(nullslop_protocol::Command::SessionNew);
@@ -194,13 +200,18 @@ mod tests {
         assert_ne!(state.active_session, original_session);
     }
 
-    #[rstest::rstest]    fn session_new_creates_new_session() {
+    #[rstest::rstest]
+    fn session_new_creates_new_session() {
         // Given a state with an existing session.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
-        let mut state = crate::AppState::default();
-        state.active_picker_kind = Some(PickerKind::Session);
-        state.active_session_mut().push_entry(ChatEntry::user("old"));
+        let mut state = crate::AppState {
+            active_picker_kind: Some(PickerKind::Session),
+            ..crate::AppState::default()
+        };
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("old"));
 
         // When receiving SessionNew.
         bus.submit_command(nullslop_protocol::Command::SessionNew);
@@ -210,13 +221,18 @@ mod tests {
         assert!(state.active_session().history().is_empty());
     }
 
-    #[rstest::rstest]    fn session_new_has_exactly_one_session() {
+    #[rstest::rstest]
+    fn session_new_has_exactly_one_session() {
         // Given a state with an existing session.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
-        let mut state = crate::AppState::default();
-        state.active_picker_kind = Some(PickerKind::Session);
-        state.active_session_mut().push_entry(ChatEntry::user("old"));
+        let mut state = crate::AppState {
+            active_picker_kind: Some(PickerKind::Session),
+            ..crate::AppState::default()
+        };
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("old"));
 
         // When receiving SessionNew.
         bus.submit_command(nullslop_protocol::Command::SessionNew);
@@ -226,7 +242,8 @@ mod tests {
         assert_eq!(state.sessions.len(), 1);
     }
 
-    #[rstest::rstest]    fn session_new_ignores_when_session_picker_not_active() {
+    #[rstest::rstest]
+    fn session_new_ignores_when_session_picker_not_active() {
         // Given a bus with SessionPickerHandler and no picker active.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -241,7 +258,8 @@ mod tests {
         assert_eq!(state.active_session, original_session);
     }
 
-    #[rstest::rstest]    fn load_completed_clears_loading_flag() {
+    #[rstest::rstest]
+    fn load_completed_clears_loading_flag() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -264,7 +282,8 @@ mod tests {
         assert!(!state.session_loading);
     }
 
-    #[rstest::rstest]    fn load_completed_sets_active_session() {
+    #[rstest::rstest]
+    fn load_completed_sets_active_session() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -287,7 +306,8 @@ mod tests {
         assert_eq!(state.mode, Mode::Normal);
     }
 
-    #[rstest::rstest]    fn load_completed_restores_history() {
+    #[rstest::rstest]
+    fn load_completed_restores_history() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -310,7 +330,8 @@ mod tests {
         assert_eq!(state.active_session().history().len(), 1);
     }
 
-    #[rstest::rstest]    fn load_completed_evicts_old_session() {
+    #[rstest::rstest]
+    fn load_completed_evicts_old_session() {
         // Given a state with an existing session containing entries.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -318,7 +339,9 @@ mod tests {
             session_loading: true,
             ..crate::AppState::default()
         };
-        state.active_session_mut().push_entry(ChatEntry::user("old"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("old"));
 
         let cmd = SessionLoadCompleted {
             session_id: SessionId::new(),
@@ -334,7 +357,8 @@ mod tests {
         assert!(state.active_session().history().is_empty());
     }
 
-    #[rstest::rstest]    fn load_completed_adds_new_session() {
+    #[rstest::rstest]
+    fn load_completed_adds_new_session() {
         let mut bus = setup_bus();
         let services = test_utils::test_services();
         let mut state = crate::AppState {
@@ -356,7 +380,8 @@ mod tests {
         assert_eq!(state.active_session().history().len(), 1);
     }
 
-    #[rstest::rstest]    fn load_completed_has_exactly_one_session() {
+    #[rstest::rstest]
+    fn load_completed_has_exactly_one_session() {
         let mut bus = setup_bus();
         let services = test_utils::test_services();
         let mut state = crate::AppState {
@@ -379,7 +404,8 @@ mod tests {
         assert_eq!(state.mode, Mode::Normal);
     }
 
-    #[rstest::rstest]    fn session_load_completed_clears_loading_flag() {
+    #[rstest::rstest]
+    fn session_load_completed_clears_loading_flag() {
         // Given a bus with SessionPickerHandler and session_loading = true.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -397,16 +423,15 @@ mod tests {
         };
 
         // When processing SessionLoadCompleted with empty data.
-        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted {
-            payload: cmd,
-        });
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
         bus.process_commands(&mut state, &services);
 
         // Then session_loading is false.
         assert!(!state.session_loading);
     }
 
-    #[rstest::rstest]    fn session_load_completed_emits_switch_prompt_strategy() {
+    #[rstest::rstest]
+    fn session_load_completed_emits_switch_prompt_strategy() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -425,9 +450,7 @@ mod tests {
         };
 
         // When processing SessionLoadCompleted with sliding_window strategy.
-        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted {
-            payload: cmd,
-        });
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
         bus.process_commands(&mut state, &services);
 
         // Then a SwitchPromptStrategy command is emitted.
@@ -436,13 +459,17 @@ mod tests {
             nullslop_protocol::Command::SwitchPromptStrategy { payload } => Some(payload.clone()),
             _ => None,
         });
-        assert!(switch_cmd.is_some(), "expected SwitchPromptStrategy command");
+        assert!(
+            switch_cmd.is_some(),
+            "expected SwitchPromptStrategy command"
+        );
         let switch_cmd = switch_cmd.expect("should have SwitchPromptStrategy");
         assert_eq!(switch_cmd.session_id, session_id);
         assert_eq!(switch_cmd.strategy_id, PromptStrategyId::sliding_window());
     }
 
-    #[rstest::rstest]    fn load_completed_emits_restore_strategy_command() {
+    #[rstest::rstest]
+    fn load_completed_emits_restore_strategy_command() {
         // Given a state with loading flag set.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -464,14 +491,17 @@ mod tests {
         let commands = bus.drain_processed_commands();
 
         // Then a RestoreStrategyState command is emitted.
-        let has_restore = commands.iter().any(|c| matches!(
-            &c.command,
-            nullslop_protocol::Command::RestoreStrategyState { .. }
-        ));
+        let has_restore = commands.iter().any(|c| {
+            matches!(
+                &c.command,
+                nullslop_protocol::Command::RestoreStrategyState { .. }
+            )
+        });
         assert!(has_restore);
     }
 
-    #[rstest::rstest]    fn restore_command_contains_blob() {
+    #[rstest::rstest]
+    fn restore_command_contains_blob() {
         let mut bus = setup_bus();
         let services = test_utils::test_services();
         let mut state = crate::AppState {
@@ -493,16 +523,22 @@ mod tests {
         let commands = bus.drain_processed_commands();
 
         // Then the restore command contains the blob.
-        let restore = commands.iter().find(|c| matches!(
-            &c.command,
-            nullslop_protocol::Command::RestoreStrategyState { .. }
-        )).expect("should have RestoreStrategyState");
+        let restore = commands
+            .iter()
+            .find(|c| {
+                matches!(
+                    &c.command,
+                    nullslop_protocol::Command::RestoreStrategyState { .. }
+                )
+            })
+            .expect("should have RestoreStrategyState");
         if let nullslop_protocol::Command::RestoreStrategyState { payload } = &restore.command {
             assert_eq!(payload.blob, blob);
         }
     }
 
-    #[rstest::rstest]    fn session_load_completed_skips_restore_when_no_strategy_blob() {
+    #[rstest::rstest]
+    fn session_load_completed_skips_restore_when_no_strategy_blob() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -520,16 +556,20 @@ mod tests {
         };
 
         // When processing SessionLoadCompleted with no blobs.
-        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted {
-            payload: cmd,
-        });
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
         bus.process_commands(&mut state, &services);
 
         // Then no RestoreStrategyState command is emitted.
         let commands = bus.drain_processed_commands();
         let has_restore = commands.iter().any(|c| {
-            matches!(&c.command, nullslop_protocol::Command::RestoreStrategyState { .. })
+            matches!(
+                &c.command,
+                nullslop_protocol::Command::RestoreStrategyState { .. }
+            )
         });
-        assert!(!has_restore, "should not emit RestoreStrategyState without blob");
+        assert!(
+            !has_restore,
+            "should not emit RestoreStrategyState without blob"
+        );
     }
 }

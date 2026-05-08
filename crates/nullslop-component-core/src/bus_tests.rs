@@ -1,7 +1,7 @@
-use nullslop_protocol as npr;
 use npr::chat_input::{DeleteGrapheme, InsertChar};
 use npr::provider::SendMessage;
 use npr::system::{KeyDown, ModeChanged, Quit, SetMode};
+use nullslop_protocol as npr;
 
 use super::*;
 use crate::fake::{FakeCommandHandler, FakeEventHandler};
@@ -12,7 +12,8 @@ struct TestState;
 
 // --- Command dispatch tests ---
 
-#[rstest::rstest]fn command_dispatch_reaches_handler() {
+#[rstest::rstest]
+fn command_dispatch_reaches_handler() {
     // Given a bus with a handler for InsertChar.
     let (handler, calls) = FakeCommandHandler::<InsertChar, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
@@ -31,7 +32,8 @@ struct TestState;
     assert_eq!(calls.borrow()[0].ch, 'x');
 }
 
-#[rstest::rstest]fn multiple_command_handlers_all_run() {
+#[rstest::rstest]
+fn multiple_command_handlers_all_run() {
     // Given a bus with two handlers for the same command type.
     let (h1, calls1) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let (h2, calls2) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
@@ -50,7 +52,8 @@ struct TestState;
     assert_eq!(calls2.borrow().len(), 1);
 }
 
-#[rstest::rstest]fn stop_halts_propagation() {
+#[rstest::rstest]
+fn stop_halts_propagation() {
     // Given a bus where the first handler returns Stop.
     let (stopper, stopper_calls) = FakeCommandHandler::<Quit, TestState, ()>::stopping();
     let (continuer, continuer_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
@@ -69,7 +72,8 @@ struct TestState;
     assert!(continuer_calls.borrow().is_empty());
 }
 
-#[rstest::rstest]fn continue_allows_propagation() {
+#[rstest::rstest]
+fn continue_allows_propagation() {
     // Given a bus where the first handler returns Continue.
     let (c1, calls1) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let (c2, calls2) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
@@ -88,7 +92,8 @@ struct TestState;
     assert_eq!(calls2.borrow().len(), 1);
 }
 
-#[rstest::rstest]fn unregistered_command_is_ignored() {
+#[rstest::rstest]
+fn unregistered_command_is_ignored() {
     // Given a bus with no handlers.
     let mut bus: Bus<TestState, ()> = Bus::new();
 
@@ -102,7 +107,8 @@ struct TestState;
     assert!(!bus.has_pending());
 }
 
-#[rstest::rstest]fn unit_command_dispatches_correctly() {
+#[rstest::rstest]
+fn unit_command_dispatches_correctly() {
     // Given a bus with a handler for DeleteGrapheme (unit struct).
     let (handler, calls) = FakeCommandHandler::<DeleteGrapheme, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
@@ -120,7 +126,8 @@ struct TestState;
 
 // --- Event dispatch tests ---
 
-#[rstest::rstest]fn event_dispatch_reaches_handler() {
+#[rstest::rstest]
+fn event_dispatch_reaches_handler() {
     // Given a bus with a handler for KeyDown.
     let (handler, calls) = FakeEventHandler::<KeyDown, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
@@ -142,7 +149,8 @@ struct TestState;
     assert_eq!(calls.borrow().len(), 1);
 }
 
-#[rstest::rstest]fn all_event_handlers_run() {
+#[rstest::rstest]
+fn all_event_handlers_run() {
     // Given a bus with two event handlers for ModeChanged.
     let (h1, calls1) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let (h2, calls2) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
@@ -182,7 +190,8 @@ impl CommandHandler<InsertChar, TestState, ()> for CascadeHandler {
     }
 }
 
-#[rstest::rstest]fn cascading_commands_are_processed() {
+#[rstest::rstest]
+fn cascading_commands_are_processed() {
     // Given a bus where InsertChar handler submits AppQuit.
     let (quit_handler, quit_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
@@ -217,7 +226,8 @@ impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
     }
 }
 
-#[rstest::rstest]fn max_iterations_prevents_infinite_loop() {
+#[rstest::rstest]
+fn max_iterations_prevents_infinite_loop() {
     // Given a bus where the handler resubmits itself, with a low max_iterations.
     let mut bus: Bus<TestState, ()> = Bus::new().with_max_iterations(3);
     bus.register_command_handler::<InsertChar, _>(LoopHandler);
@@ -235,7 +245,8 @@ impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
 
 // --- has_pending tests ---
 
-#[rstest::rstest]fn has_pending_is_false_before_command_submit() {
+#[rstest::rstest]
+fn has_pending_is_false_before_command_submit() {
     // Given an empty bus.
     let bus: Bus<TestState, ()> = Bus::new();
 
@@ -243,7 +254,8 @@ impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
     assert!(!bus.has_pending());
 }
 
-#[rstest::rstest]fn has_pending_is_true_after_command_submit() {
+#[rstest::rstest]
+fn has_pending_is_true_after_command_submit() {
     // Given an empty bus.
     let mut bus: Bus<TestState, ()> = Bus::new();
 
@@ -254,7 +266,8 @@ impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
     assert!(bus.has_pending());
 }
 
-#[rstest::rstest]fn has_pending_is_false_after_command_process() {
+#[rstest::rstest]
+fn has_pending_is_false_after_command_process() {
     // Given a bus with a submitted command.
     let mut bus: Bus<TestState, ()> = Bus::new();
     bus.submit_command(Command::Quit);
@@ -268,7 +281,8 @@ impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
     assert!(!bus.has_pending());
 }
 
-#[rstest::rstest]fn has_pending_is_false_before_event_submit() {
+#[rstest::rstest]
+fn has_pending_is_false_before_event_submit() {
     // Given an empty bus.
     let bus: Bus<TestState, ()> = Bus::new();
 
@@ -276,7 +290,8 @@ impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
     assert!(!bus.has_pending());
 }
 
-#[rstest::rstest]fn has_pending_is_true_after_event_submit() {
+#[rstest::rstest]
+fn has_pending_is_true_after_event_submit() {
     // Given an empty bus.
     let mut bus: Bus<TestState, ()> = Bus::new();
 
@@ -292,7 +307,8 @@ impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
     assert!(bus.has_pending());
 }
 
-#[rstest::rstest]fn has_pending_is_false_after_event_process() {
+#[rstest::rstest]
+fn has_pending_is_false_after_event_process() {
     // Given a bus with a submitted event.
     let mut bus: Bus<TestState, ()> = Bus::new();
     bus.submit_event(Event::ModeChanged {
@@ -313,12 +329,12 @@ impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
 
 // --- Mixed dispatch: struct variant with payload ---
 
-#[rstest::rstest]fn struct_command_with_payload_dispatches() {
+#[rstest::rstest]
+fn struct_command_with_payload_dispatches() {
     // Given a bus with handlers for multiple struct commands.
     let (set_mode_handler, set_mode_calls) =
         FakeCommandHandler::<SetMode, TestState, ()>::continuing();
-    let (send_handler, send_calls) =
-        FakeCommandHandler::<SendMessage, TestState, ()>::continuing();
+    let (send_handler, send_calls) = FakeCommandHandler::<SendMessage, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
     bus.register_command_handler::<SetMode, _>(set_mode_handler);
     bus.register_command_handler::<SendMessage, _>(send_handler);
@@ -349,11 +365,7 @@ impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
 struct CommandToEventHandler;
 
 impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
-    fn handle(
-        &self,
-        _cmd: &Quit,
-        ctx: &mut HandlerContext<'_, TestState, ()>,
-    ) -> CommandAction {
+    fn handle(&self, _cmd: &Quit, ctx: &mut HandlerContext<'_, TestState, ()>) -> CommandAction {
         ctx.out.submit_event(Event::ModeChanged {
             payload: ModeChanged {
                 from: npr::Mode::Normal,
@@ -364,12 +376,13 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
     }
 }
 
-#[rstest::rstest]fn command_handler_submitted_event_queues_before_processing() {
+#[rstest::rstest]
+fn command_handler_submitted_event_queues_before_processing() {
     // Given a bus where Quit handler submits ModeChanged.
-    let (_event_handler, _event_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
+    let (event_handler, _event_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
     bus.register_command_handler::<Quit, _>(CommandToEventHandler);
-    bus.register_event_handler::<ModeChanged, _>(_event_handler);
+    bus.register_event_handler::<ModeChanged, _>(event_handler);
 
     // When processing a command that submits an event.
     bus.submit_command(Command::Quit);
@@ -381,7 +394,8 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
     assert!(bus.has_pending());
 }
 
-#[rstest::rstest]fn queued_events_reach_handler_on_process() {
+#[rstest::rstest]
+fn queued_events_reach_handler_on_process() {
     // Given a bus where Quit handler submits ModeChanged.
     let (event_handler, event_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
@@ -402,7 +416,8 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
 
 // --- Drain processed tests ---
 
-#[rstest::rstest]fn drain_returns_command_and_event() {
+#[rstest::rstest]
+fn drain_returns_command_and_event() {
     // Given a bus with a command and event handler.
     let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
@@ -432,7 +447,8 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
     assert!(matches!(commands[0].command, Command::Quit));
 }
 
-#[rstest::rstest]fn drain_returns_items_without_source() {
+#[rstest::rstest]
+fn drain_returns_items_without_source() {
     // Given a bus with a command and event handler.
     let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
@@ -459,7 +475,8 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
     assert!(commands[0].source.is_none());
 }
 
-#[rstest::rstest]fn first_drain_returns_items() {
+#[rstest::rstest]
+fn first_drain_returns_items() {
     // Given a bus with a command and event handler.
     let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
@@ -487,7 +504,8 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
     assert_eq!(first_commands.len(), 1);
 }
 
-#[rstest::rstest]fn second_drain_returns_empty() {
+#[rstest::rstest]
+fn second_drain_returns_empty() {
     // Given a bus with a command and event handler.
     let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
@@ -519,7 +537,8 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
 
 // --- Source tagging tests ---
 
-#[rstest::rstest]fn submit_command_from_preserves_source() {
+#[rstest::rstest]
+fn submit_command_from_preserves_source() {
     // Given a bus with a command handler.
     let (handler, _calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
@@ -537,7 +556,8 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
     assert_eq!(processed[0].source.as_deref(), Some("ext-test"));
 }
 
-#[rstest::rstest]fn submit_event_from_preserves_source() {
+#[rstest::rstest]
+fn submit_event_from_preserves_source() {
     // Given a bus with an event handler.
     let (handler, _calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
@@ -563,7 +583,8 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
     assert_eq!(processed[0].source.as_deref(), Some("ext-test"));
 }
 
-#[rstest::rstest]fn submit_command_without_source_has_none() {
+#[rstest::rstest]
+fn submit_command_without_source_has_none() {
     // Given a bus with a command handler.
     let (handler, _calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();

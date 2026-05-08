@@ -6,7 +6,8 @@ use crate::scope::Scope;
 
 // --- Normal scope: key sequence resolution ---
 
-#[rstest::rstest]fn g_shows_in_which_key_with_general_description() {
+#[rstest::rstest]
+fn g_shows_in_which_key_with_general_description() {
     // Given the keymap.
     let keymap = init();
 
@@ -27,7 +28,8 @@ use crate::scope::Scope;
     assert_eq!(g_binding.unwrap().description, "general");
 }
 
-#[rstest::rstest]fn gmp_produces_open_picker_provider() {
+#[rstest::rstest]
+fn gmp_produces_open_picker_provider() {
     // Given the keymap.
     let keymap = init();
 
@@ -62,7 +64,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn gmr_produces_refresh_models_command() {
+#[rstest::rstest]
+fn gmr_produces_refresh_models_command() {
     // Given the keymap.
     let keymap = init();
 
@@ -99,7 +102,8 @@ use crate::scope::Scope;
 
 // --- New bindings: j/k line scroll, gg/G scroll to top/bottom ---
 
-#[rstest::rstest]fn j_produces_chat_entry_select_next() {
+#[rstest::rstest]
+fn j_produces_chat_entry_select_next() {
     // Given the keymap.
     let keymap = init();
 
@@ -115,13 +119,17 @@ use crate::scope::Scope;
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
-        assert!(matches!(entry.unwrap().action, Command::ChatEntrySelectNext { .. }));
+        assert!(matches!(
+            entry.unwrap().action,
+            Command::ChatEntrySelectNext { .. }
+        ));
     } else {
         panic!("Expected leaf node for 'j'");
     }
 }
 
-#[rstest::rstest]fn k_produces_chat_entry_select_prev() {
+#[rstest::rstest]
+fn k_produces_chat_entry_select_prev() {
     // Given the keymap.
     let keymap = init();
 
@@ -137,13 +145,17 @@ use crate::scope::Scope;
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
-        assert!(matches!(entry.unwrap().action, Command::ChatEntrySelectPrev { .. }));
+        assert!(matches!(
+            entry.unwrap().action,
+            Command::ChatEntrySelectPrev { .. }
+        ));
     } else {
         panic!("Expected leaf node for 'k'");
     }
 }
 
-#[rstest::rstest]fn gg_produces_scroll_to_top() {
+#[rstest::rstest]
+fn gg_produces_scroll_to_top() {
     // Given the keymap.
     let keymap = init();
 
@@ -165,7 +177,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn uppercase_g_produces_scroll_to_bottom() {
+#[rstest::rstest]
+fn uppercase_g_produces_scroll_to_bottom() {
     // Given the keymap.
     let keymap = init();
 
@@ -189,7 +202,8 @@ use crate::scope::Scope;
 
 // --- Tab switching: Tab/Shift+Tab ---
 
-#[rstest::rstest]fn tab_produces_switch_tab_next() {
+#[rstest::rstest]
+fn tab_produces_switch_tab_next() {
     // Given the keymap.
     let keymap = init();
 
@@ -214,7 +228,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn shift_tab_produces_switch_tab_prev() {
+#[rstest::rstest]
+fn shift_tab_produces_switch_tab_prev() {
     // Given the keymap.
     let keymap = init();
 
@@ -241,7 +256,8 @@ use crate::scope::Scope;
 
 // --- Category assignments ---
 
-#[rstest::rstest]fn normal_scope_general_category_has_quit_and_help() {
+#[rstest::rstest]
+fn normal_scope_general_category_has_quit_and_help() {
     // Given the keymap.
     let keymap = init();
 
@@ -264,7 +280,8 @@ use crate::scope::Scope;
     );
 }
 
-#[rstest::rstest]fn normal_scope_mode_category_contains_set_mode_input() {
+#[rstest::rstest]
+fn normal_scope_mode_category_contains_set_mode_input() {
     // Given the keymap.
     let keymap = init();
 
@@ -286,7 +303,8 @@ use crate::scope::Scope;
     );
 }
 
-#[rstest::rstest]fn navigation_has_scroll_bindings() {
+#[rstest::rstest]
+fn navigation_has_scroll_bindings() {
     // Given the keymap.
     let keymap = init();
 
@@ -312,7 +330,8 @@ use crate::scope::Scope;
     );
 }
 
-#[rstest::rstest]fn navigation_has_tab_bindings() {
+#[rstest::rstest]
+fn navigation_has_tab_bindings() {
     // Given the keymap.
     let keymap = init();
 
@@ -334,7 +353,8 @@ use crate::scope::Scope;
     );
 }
 
-#[rstest::rstest]fn gm_prefix_appears_under_model_category() {
+#[rstest::rstest]
+fn gm_prefix_appears_under_model_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -353,7 +373,8 @@ use crate::scope::Scope;
     assert_eq!(m_child.unwrap().1, "model");
 }
 
-#[rstest::rstest]fn g_prefix_appears_under_general_category() {
+#[rstest::rstest]
+fn g_prefix_appears_under_general_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -375,7 +396,8 @@ use crate::scope::Scope;
     assert_eq!(g_binding.unwrap().description, "general");
 }
 
-#[rstest::rstest]fn gcr_produces_rescan_prompt_templates() {
+#[rstest::rstest]
+fn gcr_produces_rescan_prompt_templates() {
     // Given the keymap.
     let keymap = init();
 
@@ -410,7 +432,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn gc_prefix_appears_under_general_category() {
+#[rstest::rstest]
+fn gc_prefix_appears_under_general_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -429,7 +452,8 @@ use crate::scope::Scope;
     assert_eq!(c_child.unwrap().1, "context");
 }
 
-#[rstest::rstest]fn dashboard_j_produces_dashboard_select_down() {
+#[rstest::rstest]
+fn dashboard_j_produces_dashboard_select_down() {
     // Given the keymap.
     let keymap = init();
 
@@ -454,7 +478,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn dashboard_k_produces_dashboard_select_up() {
+#[rstest::rstest]
+fn dashboard_k_produces_dashboard_select_up() {
     // Given the keymap.
     let keymap = init();
 
@@ -476,7 +501,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn dashboard_gg_produces_dashboard_select_first() {
+#[rstest::rstest]
+fn dashboard_gg_produces_dashboard_select_first() {
     // Given the keymap.
     let keymap = init();
 
@@ -501,7 +527,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn dashboard_uppercase_g_produces_dashboard_select_last() {
+#[rstest::rstest]
+fn dashboard_uppercase_g_produces_dashboard_select_last() {
     // Given the keymap.
     let keymap = init();
 
@@ -526,7 +553,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn gcs_produces_open_picker_context_assembly() {
+#[rstest::rstest]
+fn gcs_produces_open_picker_context_assembly() {
     // Given the keymap.
     let keymap = init();
 
@@ -561,7 +589,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn gc_prefix_appears_under_context_category() {
+#[rstest::rstest]
+fn gc_prefix_appears_under_context_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -580,7 +609,8 @@ use crate::scope::Scope;
     assert_eq!(c_child.unwrap().1, "context");
 }
 
-#[rstest::rstest]fn input_scope_escape_appears_under_general_category() {
+#[rstest::rstest]
+fn input_scope_escape_appears_under_general_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -604,7 +634,8 @@ use crate::scope::Scope;
 
 // --- Tree walker tests ---
 
-#[rstest::rstest]fn quit_binding_present_in_normal_scope() {
+#[rstest::rstest]
+fn quit_binding_present_in_normal_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -616,7 +647,8 @@ use crate::scope::Scope;
     assert!(q_entry.is_some(), "'q' should be in Normal scope bindings");
 }
 
-#[rstest::rstest]fn quit_binding_has_correct_key() {
+#[rstest::rstest]
+fn quit_binding_has_correct_key() {
     // Given the keymap.
     let keymap = init();
 
@@ -632,7 +664,8 @@ use crate::scope::Scope;
     assert!(matches!(entry.command, Command::Quit));
 }
 
-#[rstest::rstest]fn collect_bindings_for_scope_finds_multi_key_sequence() {
+#[rstest::rstest]
+fn collect_bindings_for_scope_finds_multi_key_sequence() {
     // Given the keymap.
     let keymap = init();
 
@@ -641,11 +674,15 @@ use crate::scope::Scope;
 
     // Then 'gg' (scroll to top) is present.
     let gg_entry = entries.iter().find(|e| e.key_sequence == "gg");
-    assert!(gg_entry.is_some(), "'gg' should be in Normal scope bindings");
+    assert!(
+        gg_entry.is_some(),
+        "'gg' should be in Normal scope bindings"
+    );
     assert_eq!(gg_entry.unwrap().description, "scroll to top");
 }
 
-#[rstest::rstest]fn collect_bindings_for_scope_finds_three_key_sequence() {
+#[rstest::rstest]
+fn collect_bindings_for_scope_finds_three_key_sequence() {
     // Given the keymap.
     let keymap = init();
 
@@ -654,7 +691,10 @@ use crate::scope::Scope;
 
     // Then 'gmp' (open provider picker) is present.
     let gmp_entry = entries.iter().find(|e| e.key_sequence == "gmp");
-    assert!(gmp_entry.is_some(), "'gmp' should be in Normal scope bindings");
+    assert!(
+        gmp_entry.is_some(),
+        "'gmp' should be in Normal scope bindings"
+    );
     let entry = gmp_entry.unwrap();
     assert!(
         matches!(entry.command, Command::OpenPicker { .. }),
@@ -663,7 +703,8 @@ use crate::scope::Scope;
     );
 }
 
-#[rstest::rstest]fn collect_bindings_for_scope_excludes_prefix_only_nodes() {
+#[rstest::rstest]
+fn collect_bindings_for_scope_excludes_prefix_only_nodes() {
     // Given the keymap.
     let keymap = init();
 
@@ -678,7 +719,8 @@ use crate::scope::Scope;
     );
 }
 
-#[rstest::rstest]fn collect_bindings_for_scope_includes_category() {
+#[rstest::rstest]
+fn collect_bindings_for_scope_includes_category() {
     // Given the keymap.
     let keymap = init();
 
@@ -691,7 +733,8 @@ use crate::scope::Scope;
     assert_eq!(q_entry.unwrap().category, "General");
 }
 
-#[rstest::rstest]fn collect_bindings_for_scope_separates_scopes() {
+#[rstest::rstest]
+fn collect_bindings_for_scope_separates_scopes() {
     // Given the keymap.
     let keymap = init();
 
@@ -704,7 +747,8 @@ use crate::scope::Scope;
     assert_eq!(j_entry.unwrap().description, "dashboard select down");
 }
 
-#[rstest::rstest]fn bindings_include_normal_scope() {
+#[rstest::rstest]
+fn bindings_include_normal_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -716,10 +760,14 @@ use crate::scope::Scope;
     let dashboard_entries: Vec<_> = entries.iter().filter(|e| e.scope == "Dashboard").collect();
 
     assert!(!normal_entries.is_empty(), "should have Normal entries");
-    assert!(!dashboard_entries.is_empty(), "should have Dashboard entries");
+    assert!(
+        !dashboard_entries.is_empty(),
+        "should have Dashboard entries"
+    );
 }
 
-#[rstest::rstest]fn bindings_include_input_scope() {
+#[rstest::rstest]
+fn bindings_include_input_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -736,7 +784,8 @@ use crate::scope::Scope;
 
 // --- Keymap picker keybinding tests ---
 
-#[rstest::rstest]fn ctrl_p_produces_open_picker_keymap() {
+#[rstest::rstest]
+fn ctrl_p_produces_open_picker_keymap() {
     // Given the keymap.
     let keymap = init();
 
@@ -761,7 +810,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn ctrl_p_produces_open_picker_keymap_in_input_scope() {
+#[rstest::rstest]
+fn ctrl_p_produces_open_picker_keymap_in_input_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -786,7 +836,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn ctrl_p_produces_open_picker_keymap_in_picker_scope() {
+#[rstest::rstest]
+fn ctrl_p_produces_open_picker_keymap_in_picker_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -811,7 +862,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn ctrl_p_produces_open_picker_keymap_in_dashboard_scope() {
+#[rstest::rstest]
+fn ctrl_p_produces_open_picker_keymap_in_dashboard_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -826,7 +878,10 @@ use crate::scope::Scope;
     assert!(node.is_some());
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Dashboard);
-        assert!(entry.is_some(), "'<c-p>' should be bound in Dashboard scope");
+        assert!(
+            entry.is_some(),
+            "'<c-p>' should be bound in Dashboard scope"
+        );
         assert!(
             matches!(&entry.unwrap().action, Command::OpenPicker { payload } if payload.kind == PickerKind::Keymap),
             "expected OpenPicker Keymap"
@@ -836,7 +891,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn leader_sk_produces_open_picker_keymap() {
+#[rstest::rstest]
+fn leader_sk_produces_open_picker_keymap() {
     // Given the keymap.
     let keymap = init();
 
@@ -860,7 +916,10 @@ use crate::scope::Scope;
     assert!(node.is_some(), "'<space>sk' should resolve");
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
-        assert!(entry.is_some(), "'<space>sk' should be bound in Normal scope");
+        assert!(
+            entry.is_some(),
+            "'<space>sk' should be bound in Normal scope"
+        );
         assert!(
             matches!(&entry.unwrap().action, Command::OpenPicker { payload } if payload.kind == PickerKind::Keymap),
             "expected OpenPicker Keymap"
@@ -870,7 +929,8 @@ use crate::scope::Scope;
     }
 }
 
-#[rstest::rstest]fn leader_sk_produces_open_picker_keymap_in_dashboard() {
+#[rstest::rstest]
+fn leader_sk_produces_open_picker_keymap_in_dashboard() {
     // Given the keymap.
     let keymap = init();
 
@@ -894,7 +954,10 @@ use crate::scope::Scope;
     assert!(node.is_some(), "'<space>sk' should resolve");
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Dashboard);
-        assert!(entry.is_some(), "'<space>sk' should be bound in Dashboard scope");
+        assert!(
+            entry.is_some(),
+            "'<space>sk' should be bound in Dashboard scope"
+        );
         assert!(
             matches!(&entry.unwrap().action, Command::OpenPicker { payload } if payload.kind == PickerKind::Keymap),
             "expected OpenPicker Keymap"
@@ -906,7 +969,8 @@ use crate::scope::Scope;
 
 // --- Scope filter toggle binding ---
 
-#[rstest::rstest]fn ctrl_a_produces_toggle_keymap_scope_filter() {
+#[rstest::rstest]
+fn ctrl_a_produces_toggle_keymap_scope_filter() {
     // Given the keymap.
     let keymap = init();
 

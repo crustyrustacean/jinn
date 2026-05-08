@@ -6,9 +6,11 @@
 
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
-use nullslop_protocol::chat_input::{ChatEntrySelectNext, ChatEntrySelectPrev, InsertChar, SubmitMessage};
-use nullslop_protocol::provider_picker::PickerInsertChar;
+use nullslop_protocol::chat_input::{
+    ChatEntrySelectNext, ChatEntrySelectPrev, InsertChar, SubmitMessage,
+};
 use nullslop_protocol::picker_kind::PickerKind;
+use nullslop_protocol::provider_picker::PickerInsertChar;
 use nullslop_protocol::system::{OpenPicker, SetMode};
 use nullslop_protocol::tab::SwitchTab;
 use nullslop_protocol::{Command, Key, KeyEvent, Mode, SessionId, TabDirection};
@@ -249,7 +251,14 @@ pub fn collect_all_bindings(
     keymap: &Keymap<KeyEvent, Scope, Command, KeyCategory>,
 ) -> Vec<nullslop_component::keymap_picker::KeymapEntry> {
     let mut entries = Vec::new();
-    for scope in &[Scope::Normal, Scope::Dashboard, Scope::Workflow, Scope::Pinned, Scope::Picker, Scope::Input] {
+    for scope in &[
+        Scope::Normal,
+        Scope::Dashboard,
+        Scope::Workflow,
+        Scope::Pinned,
+        Scope::Picker,
+        Scope::Input,
+    ] {
         collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries);
     }
     entries
@@ -285,10 +294,7 @@ fn collect_leaf_bindings(
                             scope: entry.scope.to_string(),
                             category: entry.category.to_string(),
                             command: entry.action.clone(),
-                            search_text: format!(
-                                "{} {}",
-                                full_sequence, entry.description
-                            ),
+                            search_text: format!("{} {}", full_sequence, entry.description),
                         });
                     }
                 }
@@ -304,18 +310,14 @@ fn collect_leaf_bindings(
                 // in different scopes.
                 for entry in leaf_entries {
                     if entry.scope == scope {
-                        let cat = (*branch_category)
-                            .unwrap_or(entry.category);
+                        let cat = (*branch_category).unwrap_or(entry.category);
                         out.push(nullslop_component::keymap_picker::KeymapEntry {
                             key_sequence: full_sequence.clone(),
                             description: entry.description.clone(),
                             scope: entry.scope.to_string(),
                             category: cat.to_string(),
                             command: entry.action.clone(),
-                            search_text: format!(
-                                "{} {}",
-                                full_sequence, entry.description
-                            ),
+                            search_text: format!("{} {}", full_sequence, entry.description),
                         });
                     }
                 }
@@ -326,5 +328,3 @@ fn collect_leaf_bindings(
         }
     }
 }
-
-

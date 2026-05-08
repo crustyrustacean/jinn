@@ -18,11 +18,14 @@ use serde::{Deserialize, Serialize};
 // Internal imports for enum definition and Display impl.
 use crate::actor::ProceedWithShutdown;
 use crate::chat_input::{
+    AutocompleteConfirm, ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev,
+    MoveCursorLeft, MoveCursorRight,
+};
+use crate::chat_input::{
     Clear, DeleteGrapheme, DeleteGraphemeForward, EnqueueUserMessage, InsertChar, Interrupt,
     MoveCursorDown, MoveCursorToEnd, MoveCursorToStart, MoveCursorUp, MoveCursorWordLeft,
     MoveCursorWordRight, PushChatEntry, SetChatInputText, SubmitMessage,
 };
-use crate::chat_input::{AutocompleteConfirm, ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev, MoveCursorLeft, MoveCursorRight};
 use crate::context::AssemblePrompt;
 use crate::context::PinChatEntry;
 use crate::context::RestoreStrategyState;
@@ -42,9 +45,7 @@ use crate::session::SessionLoadCompleted;
 use crate::system::OpenPicker;
 use crate::system::SetMode;
 use crate::tab::SwitchTab;
-use crate::tool::{
-    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools,
-};
+use crate::tool::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
 use crate::workflow::{AbortWorkflow, AdvanceStep, CompleteStep, JumpToStep, LoadWorkflow};
 
 /// Every command the host can receive.
@@ -595,7 +596,11 @@ impl std::fmt::Display for Command {
             Command::SwitchPromptStrategy { .. } => write!(f, "switch prompt strategy"),
             Command::RestoreStrategyState { .. } => write!(f, "restore strategy state"),
             Command::PinChatEntry { payload } => {
-                write!(f, "pin entry '{}' as {}", payload.entry_id, payload.position)
+                write!(
+                    f,
+                    "pin entry '{}' as {}",
+                    payload.entry_id, payload.position
+                )
             }
             Command::UnpinChatEntry { payload } => {
                 write!(f, "unpin entry '{}'", payload.entry_id)
@@ -741,7 +746,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn command_insert_char_serialization() {
+    #[rstest::rstest]
+    fn command_insert_char_serialization() {
         // Given an InsertChar command.
         let cmd = Command::InsertChar {
             payload: InsertChar { ch: 'a' },
@@ -755,7 +761,8 @@ mod tests {
         assert!(json.contains(r#""ch":"a""#));
     }
 
-    #[rstest::rstest]    fn command_app_quit_serialization() {
+    #[rstest::rstest]
+    fn command_app_quit_serialization() {
         // Given a Quit command.
         let cmd = Command::Quit;
 
@@ -878,7 +885,8 @@ mod tests {
         assert_eq!(json, back_json);
     }
 
-    #[rstest::rstest]    fn command_name_returns_name_for_routable_commands() {
+    #[rstest::rstest]
+    fn command_name_returns_name_for_routable_commands() {
         // Given routable command variants.
         // When calling command_name().
         // Then they return their routing name.
@@ -903,7 +911,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn command_name_returns_none_for_internal_commands() {
+    #[rstest::rstest]
+    fn command_name_returns_none_for_internal_commands() {
         // Given internal UI commands.
         // When calling command_name().
         // Then they return None (not routed to actors).
@@ -912,7 +921,8 @@ mod tests {
         assert_eq!(Command::ToggleWhichKey.command_name(), None);
     }
 
-    #[rstest::rstest]    fn open_picker_command_name() {
+    #[rstest::rstest]
+    fn open_picker_command_name() {
         // Given an OpenPicker command.
         let cmd = Command::OpenPicker {
             payload: OpenPicker {

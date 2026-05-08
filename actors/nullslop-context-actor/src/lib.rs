@@ -11,15 +11,17 @@ use std::collections::HashMap;
 
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_context::{
-    AssemblyContext, DefaultStrategyFactory, PromptAssembly, StrategyFactory,
-    estimate_entry_tokens, CharRatioEstimator,
+    AssemblyContext, CharRatioEstimator, DefaultStrategyFactory, PromptAssembly, StrategyFactory,
+    estimate_entry_tokens,
 };
 use nullslop_protocol::context::{
     AssemblePrompt, PromptAssembled, PromptStrategySwitched, RestoreStrategyState,
     SwitchPromptStrategy,
 };
 use nullslop_protocol::tool::ToolsRegistered;
-use nullslop_protocol::{entries_to_messages, ChatEntry, Event, PinPosition, SessionId, ToolDefinition};
+use nullslop_protocol::{
+    ChatEntry, Event, PinPosition, SessionId, ToolDefinition, entries_to_messages,
+};
 
 /// Direct message type for the prompt assembly actor (unused for now).
 pub enum ContextDirectMsg {}

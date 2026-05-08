@@ -56,7 +56,8 @@ impl ApiKeys {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn is_set_returns_true_for_non_empty_key() {
+    #[rstest::rstest]
+    fn is_set_returns_true_for_non_empty_key() {
         // Given a store with a key.
         let mut keys = ApiKeys::new();
         keys.insert("MY_KEY".to_owned(), "sk-secret".to_owned());
@@ -66,7 +67,8 @@ mod tests {
         assert!(keys.is_set("MY_KEY"));
     }
 
-    #[rstest::rstest]    fn is_set_returns_false_for_empty_key() {
+    #[rstest::rstest]
+    fn is_set_returns_false_for_empty_key() {
         // Given a store with an empty key.
         let mut keys = ApiKeys::new();
         keys.insert("MY_KEY".to_owned(), String::new());
@@ -76,7 +78,8 @@ mod tests {
         assert!(!keys.is_set("MY_KEY"));
     }
 
-    #[rstest::rstest]    fn is_set_returns_false_for_missing_key() {
+    #[rstest::rstest]
+    fn is_set_returns_false_for_missing_key() {
         // Given an empty store.
         let keys = ApiKeys::new();
 
@@ -84,7 +87,8 @@ mod tests {
         assert!(!keys.is_set("NONEXISTENT"));
     }
 
-    #[rstest::rstest]    fn get_returns_value_when_present() {
+    #[rstest::rstest]
+    fn get_returns_value_when_present() {
         // Given a store with a key.
         let mut keys = ApiKeys::new();
         keys.insert("MY_KEY".to_owned(), "sk-secret".to_owned());
@@ -93,7 +97,8 @@ mod tests {
         assert_eq!(keys.get("MY_KEY"), Some("sk-secret"));
     }
 
-    #[rstest::rstest]    fn get_returns_none_when_absent() {
+    #[rstest::rstest]
+    fn get_returns_none_when_absent() {
         // Given an empty store.
         let keys = ApiKeys::new();
 

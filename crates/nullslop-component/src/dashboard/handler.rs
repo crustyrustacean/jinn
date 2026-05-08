@@ -94,7 +94,8 @@ mod tests {
     use crate::dashboard::state::ActorStatus;
     use crate::test_utils;
 
-    #[rstest::rstest]    fn actor_starting_adds_with_starting_status() {
+    #[rstest::rstest]
+    fn actor_starting_adds_with_starting_status() {
         // Given a bus with DashboardHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         DashboardHandler.register(&mut bus);
@@ -117,7 +118,8 @@ mod tests {
         assert_eq!(actors[0].status, ActorStatus::Starting);
     }
 
-    #[rstest::rstest]    fn actor_started_updates_to_running() {
+    #[rstest::rstest]
+    fn actor_started_updates_to_running() {
         // Given a bus with DashboardHandler registered and an actor that is running.
         let mut bus: Bus<AppState, Services> = Bus::new();
         DashboardHandler.register(&mut bus);
@@ -140,7 +142,8 @@ mod tests {
         assert_eq!(actors[0].status, ActorStatus::Running);
     }
 
-    #[rstest::rstest]    fn first_actor_tracked_with_status() {
+    #[rstest::rstest]
+    fn first_actor_tracked_with_status() {
         // Given a bus with DashboardHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         DashboardHandler.register(&mut bus);
@@ -160,7 +163,8 @@ mod tests {
         assert!(state.dashboard.actors().iter().any(|a| a.name == "echo"));
     }
 
-    #[rstest::rstest]    fn second_actor_tracked_in_order() {
+    #[rstest::rstest]
+    fn second_actor_tracked_in_order() {
         // Given a bus with DashboardHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         DashboardHandler.register(&mut bus);
@@ -182,11 +186,17 @@ mod tests {
         bus.process_events(&mut state, &services);
 
         // Then both actors are tracked in order.
-        let names: Vec<&str> = state.dashboard.actors().iter().map(|a| a.name.as_str()).collect();
+        let names: Vec<&str> = state
+            .dashboard
+            .actors()
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect();
         assert_eq!(names, vec!["echo", "llm"]);
     }
 
-    #[rstest::rstest]    fn select_down_moves_selection() {
+    #[rstest::rstest]
+    fn select_down_moves_selection() {
         // Given a bus with DashboardHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         DashboardHandler.register(&mut bus);
@@ -203,7 +213,8 @@ mod tests {
         assert_eq!(state.dashboard.selected_index(), 1);
     }
 
-    #[rstest::rstest]    fn select_up_clamps_at_zero() {
+    #[rstest::rstest]
+    fn select_up_clamps_at_zero() {
         // Given a bus with DashboardHandler registered at index 0.
         let mut bus: Bus<AppState, Services> = Bus::new();
         DashboardHandler.register(&mut bus);
@@ -220,7 +231,8 @@ mod tests {
         assert_eq!(state.dashboard.selected_index(), 0);
     }
 
-    #[rstest::rstest]    fn select_first_moves_to_index_zero() {
+    #[rstest::rstest]
+    fn select_first_moves_to_index_zero() {
         // Given a bus with DashboardHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         DashboardHandler.register(&mut bus);
@@ -241,7 +253,8 @@ mod tests {
         assert_eq!(state.dashboard.selected_index(), 0);
     }
 
-    #[rstest::rstest]    fn select_last_moves_to_last_index() {
+    #[rstest::rstest]
+    fn select_last_moves_to_last_index() {
         // Given a bus with DashboardHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         DashboardHandler.register(&mut bus);

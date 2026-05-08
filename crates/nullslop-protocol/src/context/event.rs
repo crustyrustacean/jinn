@@ -54,7 +54,8 @@ pub struct StrategyStateUpdated {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn prompt_assembled_serialization_roundtrip() {
+    #[rstest::rstest]
+    fn prompt_assembled_serialization_roundtrip() {
         // Given a PromptAssembled event.
         let evt = PromptAssembled {
             session_id: SessionId::new(),
@@ -73,11 +74,13 @@ mod tests {
         assert_eq!(back.messages.len(), 1);
     }
 
-    #[rstest::rstest]    fn prompt_assembled_has_type_name() {
+    #[rstest::rstest]
+    fn prompt_assembled_has_type_name() {
         assert_eq!(PromptAssembled::TYPE_NAME, "context::PromptAssembled");
     }
 
-    #[rstest::rstest]    fn prompt_strategy_switched_serialization_roundtrip() {
+    #[rstest::rstest]
+    fn prompt_strategy_switched_serialization_roundtrip() {
         // Given a PromptStrategySwitched event.
         let evt = PromptStrategySwitched {
             session_id: SessionId::new(),
@@ -92,14 +95,16 @@ mod tests {
         assert_eq!(back.strategy_id, PromptStrategyId::sliding_window());
     }
 
-    #[rstest::rstest]    fn prompt_strategy_switched_has_type_name() {
+    #[rstest::rstest]
+    fn prompt_strategy_switched_has_type_name() {
         assert_eq!(
             PromptStrategySwitched::TYPE_NAME,
             "context::PromptStrategySwitched"
         );
     }
 
-    #[rstest::rstest]    fn strategy_state_updated_serialization_roundtrip() {
+    #[rstest::rstest]
+    fn strategy_state_updated_serialization_roundtrip() {
         // Given a StrategyStateUpdated event.
         let evt = StrategyStateUpdated {
             session_id: SessionId::new(),
@@ -116,7 +121,8 @@ mod tests {
         assert_eq!(back.blob["compaction_count"], 3);
     }
 
-    #[rstest::rstest]    fn strategy_state_updated_has_type_name() {
+    #[rstest::rstest]
+    fn strategy_state_updated_has_type_name() {
         assert_eq!(
             StrategyStateUpdated::TYPE_NAME,
             "context::StrategyStateUpdated"

@@ -517,7 +517,10 @@ impl ChatSessionState {
             return;
         }
         let max = self.history.len() - 1;
-        self.selected_entry_index = Some(self.selected_entry_index.map_or(0, |i| i.saturating_add(1).min(max)));
+        self.selected_entry_index = Some(
+            self.selected_entry_index
+                .map_or(0, |i| i.saturating_add(1).min(max)),
+        );
     }
 
     /// Select the previous entry (moving toward older messages).
@@ -529,7 +532,10 @@ impl ChatSessionState {
         if self.history.is_empty() {
             return;
         }
-        self.selected_entry_index = Some(self.selected_entry_index.map_or(self.history.len() - 1, |i| i.saturating_sub(1)));
+        self.selected_entry_index = Some(
+            self.selected_entry_index
+                .map_or(self.history.len() - 1, |i| i.saturating_sub(1)),
+        );
     }
 
     /// Clear the entry selection.

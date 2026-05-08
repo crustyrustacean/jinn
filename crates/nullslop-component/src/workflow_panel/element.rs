@@ -493,19 +493,22 @@ mod tests {
         state
     }
 
-    #[rstest::rstest]    fn name_returns_workflow_panel() {
+    #[rstest::rstest]
+    fn name_returns_workflow_panel() {
         let element = WorkflowPanelElement;
         assert_eq!(element.name(), "workflow-panel");
     }
 
-    #[rstest::rstest]    fn render_no_workflow_shows_message() {
+    #[rstest::rstest]
+    fn render_no_workflow_shows_message() {
         let mut element = WorkflowPanelElement;
         let state = AppState::default();
         let rows = render_rows(&mut element, &state, 40, 10);
         assert!(rows[0].contains("No active workflow."));
     }
 
-    #[rstest::rstest]    fn render_step_list_shows_all_steps() {
+    #[rstest::rstest]
+    fn render_step_list_shows_all_steps() {
         let mut element = WorkflowPanelElement;
         let state = load_state(make_workflow(3));
         let rows = render_rows(&mut element, &state, 60, 20);
@@ -584,7 +587,7 @@ mod tests {
     #[case::stale("⚠", StepStatus::Stale)]
     fn render_status_indicator_appears_for_each_status(
         #[case] indicator: &str,
-        #[case] _status: StepStatus,
+        #[case] status: StepStatus,
     ) {
         // Given a rendered workflow with all four step statuses.
         let combined = render_workflow_with_all_statuses();
@@ -592,11 +595,12 @@ mod tests {
         // Then the expected indicator appears in the output.
         assert!(
             combined.contains(indicator),
-            "should contain {indicator} for {_status:?}, got: {combined}"
+            "should contain {indicator} for {status:?}, got: {combined}"
         );
     }
 
-    #[rstest::rstest]    fn render_selected_step_has_yellow_marker() {
+    #[rstest::rstest]
+    fn render_selected_step_has_yellow_marker() {
         let mut element = WorkflowPanelElement;
         let state = load_state(make_workflow(3));
 
@@ -618,7 +622,8 @@ mod tests {
         assert_eq!(cell0.fg, Color::Yellow);
     }
 
-    #[rstest::rstest]    fn render_progress_header() {
+    #[rstest::rstest]
+    fn render_progress_header() {
         let mut element = WorkflowPanelElement;
         let state = load_state(make_workflow(3));
         let rows = render_rows(&mut element, &state, 60, 20);
@@ -632,7 +637,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn render_detail_shows_step_information() {
+    #[rstest::rstest]
+    fn render_detail_shows_step_information() {
         let mut element = WorkflowPanelElement;
         let mut state = load_state(make_workflow_with_details());
         state.workflow_panel.toggle_detail();
@@ -652,7 +658,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn render_detail_shows_outputs() {
+    #[rstest::rstest]
+    fn render_detail_shows_outputs() {
         let mut element = WorkflowPanelElement;
         let mut state = load_state(make_workflow_with_details());
         state.workflow_panel.toggle_detail();
@@ -680,7 +687,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn render_detail_shows_checkpoint_flag() {
+    #[rstest::rstest]
+    fn render_detail_shows_checkpoint_flag() {
         let mut element = WorkflowPanelElement;
         let mut state = load_state(make_workflow_with_details());
         state.workflow_panel.toggle_detail();
@@ -702,7 +710,8 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]    fn workflow_panel_element_is_selectable() {
+    #[rstest::rstest]
+    fn workflow_panel_element_is_selectable() {
         let element = WorkflowPanelElement;
         let selectable: &dyn UiElement<AppState> = &element;
         assert!(selectable.is_selectable());

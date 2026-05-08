@@ -1,7 +1,7 @@
-use crate::test_utils;
 use crate::chat_input_box::ChatInputBoxHandler;
 use crate::prompt_template::{PromptTemplate, PromptTemplateStore};
-use crate::{AppState, AppBus};
+use crate::test_utils;
+use crate::{AppBus, AppState};
 use nullslop_component_core::Bus;
 use nullslop_protocol::chat_input::{InsertChar, SubmitMessage};
 use nullslop_protocol::{Command, SessionId};
@@ -43,7 +43,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 1: Typing $ at start activates autocomplete ---
 
-#[rstest::rstest]fn typing_dollar_at_start_activates_autocomplete() {
+#[rstest::rstest]
+fn typing_dollar_at_start_activates_autocomplete() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -62,7 +63,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 2: Typing $ after space activates autocomplete ---
 
-#[rstest::rstest]fn typing_dollar_after_space_activates_autocomplete() {
+#[rstest::rstest]
+fn typing_dollar_after_space_activates_autocomplete() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -82,7 +84,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 3: Typing $ midword does NOT activate autocomplete ---
 
-#[rstest::rstest]fn typing_dollar_midword_does_not_activate() {
+#[rstest::rstest]
+fn typing_dollar_midword_does_not_activate() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -102,7 +105,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 4: Typing space after $ deactivates autocomplete ---
 
-#[rstest::rstest]fn typing_space_after_dollar_deactivates_autocomplete() {
+#[rstest::rstest]
+fn typing_space_after_dollar_deactivates_autocomplete() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -122,7 +126,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 5: Completing a name replaces the token ---
 
-#[rstest::rstest]fn completing_name_replaces_token() {
+#[rstest::rstest]
+fn completing_name_replaces_token() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -158,7 +163,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 6: Double-$ expands template body ---
 
-#[rstest::rstest]fn double_dollar_expands_template_body() {
+#[rstest::rstest]
+fn double_dollar_expands_template_body() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -183,7 +189,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 7: Double-$ with unknown name leaves literal ---
 
-#[rstest::rstest]fn double_dollar_with_unknown_name_leaves_literal() {
+#[rstest::rstest]
+fn double_dollar_with_unknown_name_leaves_literal() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -208,7 +215,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 8: Backspace removing $ deactivates ---
 
-#[rstest::rstest]fn backspace_removing_dollar_deactivates() {
+#[rstest::rstest]
+fn backspace_removing_dollar_deactivates() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -234,7 +242,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 9: Backspace within filter updates matches ---
 
-#[rstest::rstest]fn backspace_within_filter_updates_matches() {
+#[rstest::rstest]
+fn backspace_within_filter_updates_matches() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -257,7 +266,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 10: Cursor left leaving token deactivates ---
 
-#[rstest::rstest]fn cursor_left_leaving_token_deactivates() {
+#[rstest::rstest]
+fn cursor_left_leaving_token_deactivates() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -277,7 +287,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 11: Clear deactivates autocomplete ---
 
-#[rstest::rstest]fn clear_deactivates_autocomplete() {
+#[rstest::rstest]
+fn clear_deactivates_autocomplete() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -297,7 +308,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 12: Interrupt deactivates autocomplete ---
 
-#[rstest::rstest]fn interrupt_deactivates_autocomplete() {
+#[rstest::rstest]
+fn interrupt_deactivates_autocomplete() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -325,7 +337,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 13: Arrow up/down navigate matches ---
 
-#[rstest::rstest]fn arrow_up_down_navigate_matches() {
+#[rstest::rstest]
+fn arrow_up_down_navigate_matches() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -372,7 +385,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 14: Tab completes when autocomplete active ---
 
-#[rstest::rstest]fn tab_completes_when_autocomplete_active() {
+#[rstest::rstest]
+fn tab_completes_when_autocomplete_active() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -400,7 +414,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 15: Tab switches tab when autocomplete inactive ---
 
-#[rstest::rstest]fn tab_switches_tab_when_autocomplete_inactive() {
+#[rstest::rstest]
+fn tab_switches_tab_when_autocomplete_inactive() {
     // Given a bus with handler (no templates needed).
     let mut bus: AppBus = Bus::new();
     ChatInputBoxHandler.register(&mut bus);
@@ -422,7 +437,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test 16: Empty matches selected_index safe ---
 
-#[rstest::rstest]fn empty_autocomplete_matches_has_zero_count() {
+#[rstest::rstest]
+fn empty_autocomplete_matches_has_zero_count() {
     // Given a bus with handler and no matching templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -441,7 +457,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
     assert_eq!(ac.selected_index(), 0, "selected_index should be 0");
 }
 
-#[rstest::rstest]fn navigating_with_empty_matches_does_not_panic() {
+#[rstest::rstest]
+fn navigating_with_empty_matches_does_not_panic() {
     // Given a bus with handler and no matching templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -464,7 +481,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test: Delete forward within filter updates matches ---
 
-#[rstest::rstest]fn delete_forward_within_filter_updates_matches() {
+#[rstest::rstest]
+fn delete_forward_within_filter_updates_matches() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -500,7 +518,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test: Multiple $ references in one buffer ---
 
-#[rstest::rstest]fn multiple_dollar_references_in_one_buffer() {
+#[rstest::rstest]
+fn multiple_dollar_references_in_one_buffer() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -526,7 +545,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test: Word-left deactivates autocomplete ---
 
-#[rstest::rstest]fn word_left_deactivates_autocomplete() {
+#[rstest::rstest]
+fn word_left_deactivates_autocomplete() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();
@@ -550,7 +570,8 @@ fn insert_char(bus: &mut AppBus, state: &mut AppState, services: &Services, ch: 
 
 // --- Test: Word-right deactivates autocomplete ---
 
-#[rstest::rstest]fn word_right_deactivates_autocomplete() {
+#[rstest::rstest]
+fn word_right_deactivates_autocomplete() {
     // Given a bus with handler and templates.
     let (mut bus, mut state, store) = setup_bus_with_templates();
     let services = test_utils::test_services();

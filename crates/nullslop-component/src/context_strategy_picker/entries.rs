@@ -10,8 +10,8 @@
 use std::ops::Range;
 
 use crate::AppState;
-use nullslop_protocol::PromptStrategyId;
 use crate::picker_highlight::highlight_text;
+use nullslop_protocol::PromptStrategyId;
 use nullslop_selection_widget::PickerItem;
 use nullslop_services::Services;
 use ratatui::style::{Color, Modifier, Style};
@@ -36,7 +36,13 @@ impl PickerItem for StrategyEntry {
     }
 
     fn render_row(&self, is_selected: bool) -> Line<'static> {
-        render_strategy_row(&self.name, &self.description, self.is_active, is_selected, &[])
+        render_strategy_row(
+            &self.name,
+            &self.description,
+            self.is_active,
+            is_selected,
+            &[],
+        )
     }
 
     fn render_row_with_highlight(
@@ -127,10 +133,7 @@ pub fn load_strategy_entries(
 
 /// Reorders strategy entries so the active strategy is promoted to the top
 /// when the filter is empty. When the filter is non-empty, preserves fuzzy match order.
-pub fn sorted_strategy_entries(
-    entries: &[StrategyEntry],
-    filter: &str,
-) -> Vec<StrategyEntry> {
+pub fn sorted_strategy_entries(entries: &[StrategyEntry], filter: &str) -> Vec<StrategyEntry> {
     let mut result = entries.to_vec();
 
     if filter.is_empty()
@@ -172,10 +175,7 @@ pub fn format_strategy_footer(strategy_name: &str) -> ratatui::text::Line<'stati
     let gray = Style::default().fg(Color::DarkGray);
     Line::from(vec![
         Span::styled("Current: ".to_owned(), gray),
-        Span::styled(
-            strategy_name.to_owned(),
-            Style::default().fg(Color::White),
-        ),
+        Span::styled(strategy_name.to_owned(), Style::default().fg(Color::White)),
     ])
 }
 

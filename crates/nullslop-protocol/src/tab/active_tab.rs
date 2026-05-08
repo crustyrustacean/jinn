@@ -69,21 +69,24 @@ impl ActiveTab {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn next_wraps_from_last_to_first() {
+    #[rstest::rstest]
+    fn next_wraps_from_last_to_first() {
         // Given the last tab.
         // When advancing.
         // Then it wraps to the first tab.
         assert_eq!(ActiveTab::Dashboard.next(), ActiveTab::Chat);
     }
 
-    #[rstest::rstest]    fn prev_wraps_from_first_to_last() {
+    #[rstest::rstest]
+    fn prev_wraps_from_first_to_last() {
         // Given the first tab.
         // When going back.
         // Then it wraps to the last tab.
         assert_eq!(ActiveTab::Chat.prev(), ActiveTab::Dashboard);
     }
 
-    #[rstest::rstest]    fn next_then_prev_returns_to_start() {
+    #[rstest::rstest]
+    fn next_then_prev_returns_to_start() {
         // Given any tab.
         for tab in ActiveTab::all() {
             // When advancing then going back.
@@ -92,14 +95,16 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn two_tabs_cycle_correctly() {
+    #[rstest::rstest]
+    fn two_tabs_cycle_correctly() {
         assert_eq!(ActiveTab::Chat.next(), ActiveTab::Dashboard);
         assert_eq!(ActiveTab::Dashboard.next(), ActiveTab::Chat);
         assert_eq!(ActiveTab::Chat.prev(), ActiveTab::Dashboard);
         assert_eq!(ActiveTab::Dashboard.prev(), ActiveTab::Chat);
     }
 
-    #[rstest::rstest]    fn labels_are_distinct() {
+    #[rstest::rstest]
+    fn labels_are_distinct() {
         // Given all tabs.
         // When collecting labels from each tab.
         let labels: Vec<&str> = ActiveTab::all()

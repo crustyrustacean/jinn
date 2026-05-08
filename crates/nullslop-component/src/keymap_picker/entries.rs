@@ -10,9 +10,9 @@
 
 use std::ops::Range;
 
+use crate::PICKER_HIGHLIGHT_STYLE;
 use nullslop_protocol::Command;
 use nullslop_selection_widget::PickerItem;
-use crate::PICKER_HIGHLIGHT_STYLE;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
@@ -122,8 +122,8 @@ fn render_keymap_row(
         &key_display,
         key_style,
         match_indices,
-        0,               // rendered offset where search_text mapping begins
-        0..key_len,      // search_text range for the key part
+        0,                  // rendered offset where search_text mapping begins
+        0..key_len,         // search_text range for the key part
         key_sequence.len(), // only this many chars are from search_text
     );
     // Trailing spaces after key (not searchable).
@@ -197,7 +197,11 @@ fn highlight_text_segment(
                 let rest = text[current_start..].to_owned();
                 spans.push(Span::styled(
                     rest,
-                    if in_highlight { highlight_style } else { base_style },
+                    if in_highlight {
+                        highlight_style
+                    } else {
+                        base_style
+                    },
                 ));
             }
             return spans;
@@ -213,7 +217,11 @@ fn highlight_text_segment(
             if !segment.is_empty() {
                 spans.push(Span::styled(
                     segment,
-                    if in_highlight { highlight_style } else { base_style },
+                    if in_highlight {
+                        highlight_style
+                    } else {
+                        base_style
+                    },
                 ));
             }
             current_start = byte_off;
@@ -226,7 +234,11 @@ fn highlight_text_segment(
         let rest = text[current_start..].to_owned();
         spans.push(Span::styled(
             rest,
-            if in_highlight { highlight_style } else { base_style },
+            if in_highlight {
+                highlight_style
+            } else {
+                base_style
+            },
         ));
     }
 
@@ -260,7 +272,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn display_label_returns_search_text() {
+    #[rstest::rstest]
+    fn display_label_returns_search_text() {
         // Given a keymap entry with key_sequence "gg".
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -271,7 +284,8 @@ mod tests {
         assert_eq!(label, "gg scroll to top");
     }
 
-    #[rstest::rstest]    fn render_row_contains_key() {
+    #[rstest::rstest]
+    fn render_row_contains_key() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -283,7 +297,8 @@ mod tests {
         assert!(text.contains("gg"), "should contain key sequence");
     }
 
-    #[rstest::rstest]    fn render_row_contains_description() {
+    #[rstest::rstest]
+    fn render_row_contains_description() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -295,7 +310,8 @@ mod tests {
         assert!(text.contains("scroll to top"), "should contain description");
     }
 
-    #[rstest::rstest]    fn render_row_contains_scope() {
+    #[rstest::rstest]
+    fn render_row_contains_scope() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -307,7 +323,8 @@ mod tests {
         assert!(text.contains("[Normal]"), "should contain scope");
     }
 
-    #[rstest::rstest]    fn render_row_contains_category() {
+    #[rstest::rstest]
+    fn render_row_contains_category() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -319,7 +336,8 @@ mod tests {
         assert!(text.contains("Navigation"), "should contain category");
     }
 
-    #[rstest::rstest]    fn render_row_selected_has_dark_gray_background() {
+    #[rstest::rstest]
+    fn render_row_selected_has_dark_gray_background() {
         // Given a keymap entry.
         let entry = make_entry("q", "quit", "Normal", "General");
 
@@ -331,7 +349,8 @@ mod tests {
         assert_eq!(key_span.style.bg, Some(Color::DarkGray));
     }
 
-    #[rstest::rstest]    fn render_row_unselected_has_reset_background() {
+    #[rstest::rstest]
+    fn render_row_unselected_has_reset_background() {
         // Given a keymap entry.
         let entry = make_entry("q", "quit", "Normal", "General");
 
@@ -343,7 +362,8 @@ mod tests {
         assert_eq!(key_span.style.bg, Some(Color::Reset));
     }
 
-    #[rstest::rstest]    fn render_row_key_is_yellow_bold() {
+    #[rstest::rstest]
+    fn render_row_key_is_yellow_bold() {
         // Given a keymap entry.
         let entry = make_entry("q", "quit", "Normal", "General");
 
@@ -356,7 +376,8 @@ mod tests {
         assert!(key_span.style.add_modifier.contains(Modifier::BOLD));
     }
 
-    #[rstest::rstest]    fn render_row_pads_short_key_sequences() {
+    #[rstest::rstest]
+    fn render_row_pads_short_key_sequences() {
         // Given a keymap entry with a single-char key "q".
         let entry = make_entry("q", "quit", "Normal", "General");
 
@@ -365,12 +386,16 @@ mod tests {
 
         // Then the first span is the padded key (8 chars) and the second span is the trailing spaces.
         let key_span = &line.spans[0];
-        assert!(key_span.content.len() >= 8, "key span should be padded to at least 8 chars");
+        assert!(
+            key_span.content.len() >= 8,
+            "key span should be padded to at least 8 chars"
+        );
     }
 
     // --- Fuzzy matching via search_text tests ---
 
-    #[rstest::rstest]    fn search_text_combines_key_sequence_and_description() {
+    #[rstest::rstest]
+    fn search_text_combines_key_sequence_and_description() {
         // Given a keymap entry.
         let entry = make_entry("<c-p>", "open picker keymap", "Normal", "General");
 
@@ -381,7 +406,8 @@ mod tests {
 
     // --- Highlight tests ---
 
-    #[rstest::rstest]    fn render_row_with_empty_match_indices_same_as_render_row() {
+    #[rstest::rstest]
+    fn render_row_with_empty_match_indices_same_as_render_row() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
@@ -397,55 +423,83 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn render_row_with_highlight_applies_gray_bg_to_matched_chars() {
+    #[rstest::rstest]
+    fn render_row_with_highlight_applies_gray_bg_to_matched_chars() {
         // Given a keymap entry with search_text "q quit".
         let entry = make_entry("q", "quit", "Normal", "General");
 
         // When highlighting with match at byte 0 (the "q" in key_sequence).
-        #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+        #[expect(
+            clippy::single_range_in_vec_init,
+            reason = "genuinely want a slice containing one Range<usize>"
+        )]
         let highlights: &[Range<usize>] = &[0..1];
         let line = entry.render_row_with_highlight(false, highlights);
 
         // Then at least one span has gray background (the matched "q").
-        let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::DarkGray));
-        assert!(has_highlight, "expected at least one span with gray background");
+        let has_highlight = line
+            .spans
+            .iter()
+            .any(|s| s.style.bg == Some(Color::DarkGray));
+        assert!(
+            has_highlight,
+            "expected at least one span with gray background"
+        );
     }
 
-    #[rstest::rstest]    fn render_row_with_highlight_preserves_unmatched_chars() {
+    #[rstest::rstest]
+    fn render_row_with_highlight_preserves_unmatched_chars() {
         // Given a keymap entry with search_text "gg scroll to top".
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
         // When highlighting with match at bytes 0..1 (the first "g").
-        #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+        #[expect(
+            clippy::single_range_in_vec_init,
+            reason = "genuinely want a slice containing one Range<usize>"
+        )]
         let highlights: &[Range<usize>] = &[0..1];
         let line = entry.render_row_with_highlight(false, highlights);
 
         // Then the full text is preserved.
         let text: String = line.spans.iter().map(|s| &*s.content).collect();
         assert!(text.contains("gg"), "should still contain 'gg'");
-        assert!(text.contains("scroll to top"), "should still contain description");
+        assert!(
+            text.contains("scroll to top"),
+            "should still contain description"
+        );
     }
 
-    #[rstest::rstest]    fn keymap_highlight_applies_gray_bg() {
+    #[rstest::rstest]
+    fn keymap_highlight_applies_gray_bg() {
         // Given a keymap entry with search_text "gg scroll to top".
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
         // When highlighting with match at byte 3 (the "s" in "scroll").
-        #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+        #[expect(
+            clippy::single_range_in_vec_init,
+            reason = "genuinely want a slice containing one Range<usize>"
+        )]
         let highlights: &[Range<usize>] = &[3..4];
         let line = entry.render_row_with_highlight(false, highlights);
 
         // Then at least one span has gray background.
-        let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::DarkGray));
+        let has_highlight = line
+            .spans
+            .iter()
+            .any(|s| s.style.bg == Some(Color::DarkGray));
         assert!(has_highlight, "expected highlight on description char");
     }
 
-    #[rstest::rstest]    fn keymap_highlight_contains_matched_char() {
+    #[rstest::rstest]
+    fn keymap_highlight_contains_matched_char() {
         // Given a keymap entry with search_text "gg scroll to top".
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
         // When highlighting with match at byte 3 (the "s" in "scroll").
-        #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+        #[expect(
+            clippy::single_range_in_vec_init,
+            reason = "genuinely want a slice containing one Range<usize>"
+        )]
         let highlights: &[Range<usize>] = &[3..4];
         let line = entry.render_row_with_highlight(false, highlights);
 
@@ -456,6 +510,9 @@ mod tests {
             .filter(|s| s.style.bg == Some(Color::DarkGray))
             .map(|s| s.content.clone())
             .collect();
-        assert!(highlighted_content.contains('s'), "highlighted span should contain 's'");
+        assert!(
+            highlighted_content.contains('s'),
+            "highlighted span should contain 's'"
+        );
     }
 }

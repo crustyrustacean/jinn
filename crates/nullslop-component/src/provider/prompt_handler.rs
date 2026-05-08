@@ -86,7 +86,8 @@ mod tests {
     use crate::AppState;
     use crate::test_utils;
 
-    #[rstest::rstest]    fn strategy_state_updated_stores_blob() {
+    #[rstest::rstest]
+    fn strategy_state_updated_stores_blob() {
         // Given a bus with PromptAssemblyHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         PromptAssemblyHandler.register(&mut bus);
@@ -112,7 +113,8 @@ mod tests {
         assert_eq!(blob.unwrap()["compaction_count"], 3);
     }
 
-    #[rstest::rstest]    fn strategy_state_updated_overwrites_existing() {
+    #[rstest::rstest]
+    fn strategy_state_updated_overwrites_existing() {
         // Given a bus with PromptAssemblyHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         PromptAssemblyHandler.register(&mut bus);

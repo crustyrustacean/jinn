@@ -175,7 +175,8 @@ impl DashboardState {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]    fn select_next_increments_index() {
+    #[rstest::rstest]
+    fn select_next_increments_index() {
         // Given 3 actors with selection at index 0.
         let mut state = DashboardState::new();
         state.mark_starting("a", None);
@@ -189,7 +190,8 @@ mod tests {
         assert_eq!(state.selected_index(), 1);
     }
 
-    #[rstest::rstest]    fn select_next_clamps_at_last() {
+    #[rstest::rstest]
+    fn select_next_clamps_at_last() {
         // Given 3 actors with selection at index 2.
         let mut state = DashboardState::new();
         state.mark_starting("a", None);
@@ -206,7 +208,8 @@ mod tests {
         assert_eq!(state.selected_index(), 2);
     }
 
-    #[rstest::rstest]    fn select_prev_decrements_index() {
+    #[rstest::rstest]
+    fn select_prev_decrements_index() {
         // Given 3 actors with selection at index 1.
         let mut state = DashboardState::new();
         state.mark_starting("a", None);
@@ -221,7 +224,8 @@ mod tests {
         assert_eq!(state.selected_index(), 0);
     }
 
-    #[rstest::rstest]    fn select_prev_clamps_at_zero() {
+    #[rstest::rstest]
+    fn select_prev_clamps_at_zero() {
         // Given 2 actors with selection at index 0.
         let mut state = DashboardState::new();
         state.mark_starting("a", None);
@@ -234,7 +238,8 @@ mod tests {
         assert_eq!(state.selected_index(), 0);
     }
 
-    #[rstest::rstest]    fn select_next_noop_with_no_actors() {
+    #[rstest::rstest]
+    fn select_next_noop_with_no_actors() {
         // Given an empty dashboard.
         let mut state = DashboardState::new();
 
@@ -245,7 +250,8 @@ mod tests {
         assert_eq!(state.selected_index(), 0);
     }
 
-    #[rstest::rstest]    fn select_first_goes_to_index_zero() {
+    #[rstest::rstest]
+    fn select_first_goes_to_index_zero() {
         // Given 3 actors with selection at index 2.
         let mut state = DashboardState::new();
         state.mark_starting("a", None);
@@ -262,7 +268,8 @@ mod tests {
         assert_eq!(state.selected_index(), 0);
     }
 
-    #[rstest::rstest]    fn select_last_goes_to_last_index() {
+    #[rstest::rstest]
+    fn select_last_goes_to_last_index() {
         // Given 3 actors with selection at index 0.
         let mut state = DashboardState::new();
         state.mark_starting("a", None);
@@ -276,7 +283,8 @@ mod tests {
         assert_eq!(state.selected_index(), 2);
     }
 
-    #[rstest::rstest]    fn select_first_noop_with_no_actors() {
+    #[rstest::rstest]
+    fn select_first_noop_with_no_actors() {
         // Given an empty dashboard.
         let mut state = DashboardState::new();
 
@@ -287,7 +295,8 @@ mod tests {
         assert_eq!(state.selected_index(), 0);
     }
 
-    #[rstest::rstest]    fn select_last_noop_with_no_actors() {
+    #[rstest::rstest]
+    fn select_last_noop_with_no_actors() {
         // Given an empty dashboard.
         let mut state = DashboardState::new();
 

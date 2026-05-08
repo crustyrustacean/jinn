@@ -4,10 +4,10 @@
 //! [`PromptTemplatesLoaded`] (updates `AppState`, posts summary).
 
 use nullslop_component_core::{HandlerContext, define_handler};
+use nullslop_prompt_template::PromptTemplateStore;
 use nullslop_protocol as npr;
 use nullslop_protocol::CommandAction;
 use nullslop_protocol::provider::{PromptTemplatesLoaded, RescanPromptTemplates};
-use nullslop_prompt_template::PromptTemplateStore;
 use nullslop_services::Services;
 
 use crate::AppState;
@@ -78,7 +78,8 @@ mod tests {
         test_utils::test_services()
     }
 
-    #[rstest::rstest]    fn rescan_command_posts_status_message() {
+    #[rstest::rstest]
+    fn rescan_command_posts_status_message() {
         // Given a bus with RescanHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         RescanHandler.register(&mut bus);
@@ -100,7 +101,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn prompt_templates_loaded_updates_state() {
+    #[rstest::rstest]
+    fn prompt_templates_loaded_updates_state() {
         // Given a bus with RescanHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         RescanHandler.register(&mut bus);
@@ -126,7 +128,8 @@ mod tests {
         assert!(state.prompt_templates.find_by_name("test").is_some());
     }
 
-    #[rstest::rstest]    fn prompt_templates_loaded_posts_summary() {
+    #[rstest::rstest]
+    fn prompt_templates_loaded_posts_summary() {
         // Given a bus with RescanHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         RescanHandler.register(&mut bus);
@@ -157,7 +160,8 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]    fn prompt_templates_loaded_error_preserves_state() {
+    #[rstest::rstest]
+    fn prompt_templates_loaded_error_preserves_state() {
         // Given a bus with RescanHandler registered and an existing template.
         let mut bus: Bus<AppState, Services> = Bus::new();
         RescanHandler.register(&mut bus);

@@ -1,6 +1,7 @@
 use super::*;
 
-#[rstest::rstest]fn chat_entry_id_is_unique() {
+#[rstest::rstest]
+fn chat_entry_id_is_unique() {
     // Given two generated IDs.
     let id1 = ChatEntryId::new();
     let id2 = ChatEntryId::new();
@@ -9,7 +10,8 @@ use super::*;
     assert_ne!(id1, id2);
 }
 
-#[rstest::rstest]fn chat_entry_id_is_valid_uuid() {
+#[rstest::rstest]
+fn chat_entry_id_is_valid_uuid() {
     // Given a generated ID.
     let id = ChatEntryId::new();
 
@@ -18,7 +20,8 @@ use super::*;
     assert!(uuid::Uuid::parse_str(&s).is_ok());
 }
 
-#[rstest::rstest]fn chat_entry_id_serialization_roundtrip() {
+#[rstest::rstest]
+fn chat_entry_id_serialization_roundtrip() {
     // Given a ChatEntryId.
     let id = ChatEntryId::new();
 
@@ -30,7 +33,8 @@ use super::*;
     assert_eq!(back, id);
 }
 
-#[rstest::rstest]fn user_entry_has_user_kind() {
+#[rstest::rstest]
+fn user_entry_has_user_kind() {
     // Given text "hello".
     let text = "hello";
 
@@ -41,7 +45,8 @@ use super::*;
     assert_eq!(entry.kind, ChatEntryKind::User("hello".to_owned()));
 }
 
-#[rstest::rstest]fn system_entry_has_system_kind() {
+#[rstest::rstest]
+fn system_entry_has_system_kind() {
     // Given text "ready".
     let text = "ready";
 
@@ -52,7 +57,8 @@ use super::*;
     assert_eq!(entry.kind, ChatEntryKind::System("ready".to_owned()));
 }
 
-#[rstest::rstest]fn entry_has_timestamp() {
+#[rstest::rstest]
+fn entry_has_timestamp() {
     // Given the current time.
     let before = jiff::Timestamp::now();
 
@@ -65,7 +71,8 @@ use super::*;
     assert!(entry.timestamp <= after);
 }
 
-#[rstest::rstest]fn chat_entry_serialization_roundtrip() {
+#[rstest::rstest]
+fn chat_entry_serialization_roundtrip() {
     // Given a ChatEntry.
     let entry = ChatEntry::user("hello");
 
@@ -79,13 +86,15 @@ use super::*;
     assert_eq!(back.timestamp, entry.timestamp);
 }
 
-#[rstest::rstest]fn assistant_entry_has_assistant_kind() {
+#[rstest::rstest]
+fn assistant_entry_has_assistant_kind() {
     let text = "hello";
     let entry = ChatEntry::assistant(text);
     assert_eq!(entry.kind, ChatEntryKind::Assistant("hello".to_owned()));
 }
 
-#[rstest::rstest]fn assistant_entry_serialization_roundtrip() {
+#[rstest::rstest]
+fn assistant_entry_serialization_roundtrip() {
     let entry = ChatEntry::assistant("hello");
     let json = serde_json::to_string(&entry).expect("serialize");
     let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
@@ -94,7 +103,8 @@ use super::*;
     assert_eq!(back.timestamp, entry.timestamp);
 }
 
-#[rstest::rstest]fn actor_entry_has_actor_kind() {
+#[rstest::rstest]
+fn actor_entry_has_actor_kind() {
     // Given source "echo" and text "HELLO".
     let source = "echo";
     let text = "HELLO";
@@ -112,7 +122,8 @@ use super::*;
     );
 }
 
-#[rstest::rstest]fn actor_entry_serialization_roundtrip() {
+#[rstest::rstest]
+fn actor_entry_serialization_roundtrip() {
     // Given an actor ChatEntry.
     let entry = ChatEntry::actor("echo", "hello");
 
@@ -126,7 +137,8 @@ use super::*;
     assert_eq!(back.timestamp, entry.timestamp);
 }
 
-#[rstest::rstest]fn tool_call_entry_has_tool_call_kind() {
+#[rstest::rstest]
+fn tool_call_entry_has_tool_call_kind() {
     // Given tool call details.
     let id = "call_123";
     let name = "echo";
@@ -146,7 +158,8 @@ use super::*;
     );
 }
 
-#[rstest::rstest]fn tool_result_entry_has_tool_result_kind() {
+#[rstest::rstest]
+fn tool_result_entry_has_tool_result_kind() {
     // Given tool result details.
     let id = "call_123";
     let name = "echo";
@@ -167,7 +180,8 @@ use super::*;
     );
 }
 
-#[rstest::rstest]fn tool_call_entry_serialization_roundtrip() {
+#[rstest::rstest]
+fn tool_call_entry_serialization_roundtrip() {
     // Given a tool call ChatEntry.
     let entry = ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#);
 
@@ -181,7 +195,8 @@ use super::*;
     assert_eq!(back.timestamp, entry.timestamp);
 }
 
-#[rstest::rstest]fn tool_result_entry_serialization_roundtrip() {
+#[rstest::rstest]
+fn tool_result_entry_serialization_roundtrip() {
     // Given a tool result ChatEntry.
     let entry = ChatEntry::tool_result("call_1", "echo", "hi", true);
 
@@ -211,7 +226,8 @@ fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     assert_eq!(entry.pin_position, None);
 }
 
-#[rstest::rstest]fn with_pin_sets_position() {
+#[rstest::rstest]
+fn with_pin_sets_position() {
     // Given a user entry.
     let entry = ChatEntry::user("test").with_pin(PinPosition::Top);
 
@@ -219,7 +235,8 @@ fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     assert_eq!(entry.pin_position, Some(PinPosition::Top));
 }
 
-#[rstest::rstest]fn is_pinned_returns_true_when_pinned() {
+#[rstest::rstest]
+fn is_pinned_returns_true_when_pinned() {
     // Given a pinned entry.
     let entry = ChatEntry::user("test").with_pin(PinPosition::Top);
 
@@ -227,7 +244,8 @@ fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     assert!(entry.is_pinned());
 }
 
-#[rstest::rstest]fn is_pinned_returns_false_when_unpinned() {
+#[rstest::rstest]
+fn is_pinned_returns_false_when_unpinned() {
     // Given a default entry.
     let entry = ChatEntry::user("test");
 
@@ -235,7 +253,8 @@ fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     assert!(!entry.is_pinned());
 }
 
-#[rstest::rstest]fn pin_position_returns_some_when_pinned() {
+#[rstest::rstest]
+fn pin_position_returns_some_when_pinned() {
     // Given a pinned entry.
     let entry = ChatEntry::user("test").with_pin(PinPosition::Bottom);
 
@@ -243,7 +262,8 @@ fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     assert_eq!(entry.pin_position(), Some(PinPosition::Bottom));
 }
 
-#[rstest::rstest]fn pin_position_returns_none_when_unpinned() {
+#[rstest::rstest]
+fn pin_position_returns_none_when_unpinned() {
     // Given an unpinned entry.
     let entry = ChatEntry::user("test");
 
@@ -251,7 +271,8 @@ fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     assert_eq!(entry.pin_position(), None);
 }
 
-#[rstest::rstest]fn pin_position_serialization_roundtrip() {
+#[rstest::rstest]
+fn pin_position_serialization_roundtrip() {
     // Given a pinned entry.
     let entry = ChatEntry::user("instruction").with_pin(PinPosition::Top);
 
@@ -263,7 +284,8 @@ fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     assert_eq!(back.pin_position, Some(PinPosition::Top));
 }
 
-#[rstest::rstest]fn pin_position_deserializes_old_format() {
+#[rstest::rstest]
+fn pin_position_deserializes_old_format() {
     // Given JSON without pin_position field (old format).
     let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"User":"hello"}}"#;
 
@@ -274,7 +296,8 @@ fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     assert_eq!(entry.pin_position, None);
 }
 
-#[rstest::rstest]fn pin_position_enum_serialization() {
+#[rstest::rstest]
+fn pin_position_enum_serialization() {
     // Given each PinPosition variant.
     for (label, position) in [
         ("Top", PinPosition::Top),
@@ -290,7 +313,8 @@ fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     }
 }
 
-#[rstest::rstest]fn with_pin_does_not_mutate_original() {
+#[rstest::rstest]
+fn with_pin_does_not_mutate_original() {
     // Given a cloned user entry.
     let original = ChatEntry::user("test");
     let clone = original.clone();
