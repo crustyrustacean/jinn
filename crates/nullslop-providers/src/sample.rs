@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn think_command_streams_thinking_then_response() {
+    async fn think_output_starts_with_think_tag() {
         // Given a sample service.
         let service = SampleLlmServiceFactory.create().expect("create service");
         let messages = vec![LlmMessage::User {
@@ -217,6 +217,25 @@ mod tests {
         // Then the output starts with <think and contains the thinking text.
         assert!(output.starts_with("<think"));
         assert!(output.contains(THINK_TEXT));
+    }
+
+    #[tokio::test]
+    async fn think_output_contains_closing_tag() {
+        // Given a sample service.
+        let service = SampleLlmServiceFactory.create().expect("create service");
+        let messages = vec![LlmMessage::User {
+            content: "!think".to_owned(),
+        }];
+
+        // When streaming.
+        let stream = service.chat_stream(messages).await.expect("chat_stream");
+        let output: String = stream
+            .map(|r| r.expect("token"))
+            .collect::<Vec<_>>()
+            .await
+            .join("");
+
+        // Then the output contains the closing tag and response text.
         assert!(output.contains("</think"));
         assert!(output.contains(THINK_RESPONSE_TEXT));
     }
@@ -295,16 +314,26 @@ mod tests {
     }
 
     #[test]
-    fn think_tokens_contain_thinking_block() {
+    fn joined_starts_with_think() {
         // Given the think tokenizer.
         // When producing tokens.
         let tokens = tokenize_think();
 
-        // Then the joined output starts with <think and contains </think.
+        // Then the joined output starts with <think and contains the thinking text.
         let joined = tokens.join("");
         assert!(joined.starts_with("<think"));
-        assert!(joined.contains("</think"));
         assert!(joined.contains(THINK_TEXT));
+    }
+
+    #[test]
+    fn joined_contains_closing_think() {
+        // Given the think tokenizer.
+        // When producing tokens.
+        let tokens = tokenize_think();
+
+        // Then the joined output contains </think and the response text.
+        let joined = tokens.join("");
+        assert!(joined.contains("</think"));
         assert!(joined.contains(THINK_RESPONSE_TEXT));
     }
 

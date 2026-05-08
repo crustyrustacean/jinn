@@ -422,7 +422,7 @@ fn queued_events_reach_handler_on_process() {
 // --- Drain processed tests ---
 
 #[test]
-fn drain_processed_returns_dispatched_items() {
+fn drain_returns_command_and_event() {
     // Given a bus with a command and event handler.
     let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
@@ -443,19 +443,74 @@ fn drain_processed_returns_dispatched_items() {
     bus.process_commands(&mut state, &services);
     bus.process_events(&mut state, &services);
 
-    // Then drain returns both with no source.
+    // Then drain returns both.
     let events = bus.drain_processed_events();
     let commands = bus.drain_processed_commands();
     assert_eq!(events.len(), 1);
     assert!(matches!(events[0].event, Event::ModeChanged { .. }));
-    assert!(events[0].source.is_none());
     assert_eq!(commands.len(), 1);
     assert!(matches!(commands[0].command, Command::Quit));
+}
+
+#[test]
+fn drain_returns_items_without_source() {
+    // Given a bus with a command and event handler.
+    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
+    let mut bus: Bus<TestState, ()> = Bus::new();
+    bus.register_command_handler::<Quit, _>(cmd_handler);
+    bus.register_event_handler::<ModeChanged, _>(evt_handler);
+
+    bus.submit_command(Command::Quit);
+    bus.submit_event(Event::ModeChanged {
+        payload: ModeChanged {
+            from: npr::Mode::Normal,
+            to: npr::Mode::Input,
+        },
+    });
+    let mut state = TestState;
+    let services = ();
+    bus.process_commands(&mut state, &services);
+    bus.process_events(&mut state, &services);
+
+    // Then drain returns items with no source.
+    let events = bus.drain_processed_events();
+    let commands = bus.drain_processed_commands();
+    assert!(events[0].source.is_none());
     assert!(commands[0].source.is_none());
 }
 
 #[test]
-fn drain_processed_clears_buffers() {
+fn first_drain_returns_items() {
+    // Given a bus with a command and event handler.
+    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
+    let mut bus: Bus<TestState, ()> = Bus::new();
+    bus.register_command_handler::<Quit, _>(cmd_handler);
+    bus.register_event_handler::<ModeChanged, _>(evt_handler);
+    bus.submit_command(Command::Quit);
+    bus.submit_event(Event::ModeChanged {
+        payload: ModeChanged {
+            from: npr::Mode::Normal,
+            to: npr::Mode::Input,
+        },
+    });
+    let mut state = TestState;
+    let services = ();
+    bus.process_commands(&mut state, &services);
+    bus.process_events(&mut state, &services);
+
+    // When draining.
+    let first_events = bus.drain_processed_events();
+    let first_commands = bus.drain_processed_commands();
+
+    // Then first has items.
+    assert_eq!(first_events.len(), 1);
+    assert_eq!(first_commands.len(), 1);
+}
+
+#[test]
+fn second_drain_returns_empty() {
     // Given a bus with a command and event handler.
     let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
@@ -475,14 +530,12 @@ fn drain_processed_clears_buffers() {
     bus.process_events(&mut state, &services);
 
     // When draining twice.
-    let first_events = bus.drain_processed_events();
-    let first_commands = bus.drain_processed_commands();
+    bus.drain_processed_events();
+    bus.drain_processed_commands();
     let second_events = bus.drain_processed_events();
     let second_commands = bus.drain_processed_commands();
 
-    // Then first has items and second is empty.
-    assert_eq!(first_events.len(), 1);
-    assert_eq!(first_commands.len(), 1);
+    // Then second is empty.
     assert!(second_events.is_empty());
     assert!(second_commands.is_empty());
 }

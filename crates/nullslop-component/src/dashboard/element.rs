@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn render_actor_with_starting_status() {
+    fn actor_name_and_status_appear_on_first_line() {
         // Given a DashboardElement with an actor in Starting status.
         let mut element = DashboardElement;
         let state = {
@@ -194,6 +194,21 @@ mod tests {
         // Then the actor name and status appear on the first line.
         assert!(rows[0].contains("echo"));
         assert!(rows[0].contains("Starting"));
+    }
+
+    #[test]
+    fn actor_description_appears_on_next_line() {
+        // Given a DashboardElement with an actor in Starting status.
+        let mut element = DashboardElement;
+        let state = {
+            let mut s = AppState::default();
+            s.dashboard
+                .mark_starting("echo", Some("Echoes messages back".to_owned()));
+            s
+        };
+
+        // When rendering.
+        let rows = render_rows(&mut element, &state, 40, 10);
 
         // And the description appears on the next line in light gray.
         assert!(rows[1].contains("Echoes messages back"));
@@ -238,31 +253,59 @@ mod tests {
     }
 
     #[test]
-    fn render_multiple_actors_with_blank_line_between() {
+    fn first_actor_renders() {
         // Given two actors.
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
             s.dashboard
-                .mark_starting("echo", Some("Echoes messages back".to_owned()));
+                .mark_starting("echo", Some("Echo".to_owned()));
             s.dashboard
-                .mark_starting("llm", Some("LLM streaming".to_owned()));
+                .mark_starting("llm", Some("LLM".to_owned()));
             s
         };
 
-        // When rendering with enough height.
         let rows = render_rows(&mut element, &state, 40, 10);
-
-        // Then there is a blank line between the two actors.
-        // echo on row 0, description on row 1, blank on row 2, llm on row 3.
         assert!(rows[0].contains("echo"));
-        assert!(rows[1].contains("Echoes messages back"));
-        assert!(rows[3].contains("llm"));
-        assert!(rows[4].contains("LLM streaming"));
     }
 
     #[test]
-    fn render_selected_entry_shows_yellow_block() {
+    fn blank_line_between_actors() {
+        // Given two actors.
+        let mut element = DashboardElement;
+        let state = {
+            let mut s = AppState::default();
+            s.dashboard
+                .mark_starting("echo", Some("Echo".to_owned()));
+            s.dashboard
+                .mark_starting("llm", Some("LLM".to_owned()));
+            s
+        };
+
+        let rows = render_rows(&mut element, &state, 40, 10);
+        // There should be a blank line between actors
+        assert!(rows[2].trim().is_empty());
+    }
+
+    #[test]
+    fn second_actor_renders() {
+        // Given two actors.
+        let mut element = DashboardElement;
+        let state = {
+            let mut s = AppState::default();
+            s.dashboard
+                .mark_starting("echo", Some("Echo".to_owned()));
+            s.dashboard
+                .mark_starting("llm", Some("LLM".to_owned()));
+            s
+        };
+
+        let rows = render_rows(&mut element, &state, 40, 10);
+        assert!(rows[3].contains("llm"));
+    }
+
+    #[test]
+    fn selected_entry_name_has_yellow_marker() {
         // Given two actors with the first selected (default index 0).
         let mut element = DashboardElement;
         let state = {
@@ -274,15 +317,10 @@ mod tests {
             s
         };
 
-        // When rendering.
         let backend = TestBackend::new(40, 10);
         let mut terminal = Terminal::new(backend).unwrap();
         let area = Rect::new(0, 0, 40, 10);
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
+        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
 
         // Then the first entry has a yellow full block at columns 0-1.
         let buffer = terminal.backend().buffer();
@@ -292,8 +330,28 @@ mod tests {
         assert_eq!(cell0.fg, Color::Yellow);
         assert_eq!(cell1.symbol(), "\u{2588}");
         assert_eq!(cell1.fg, Color::Yellow);
+    }
+
+    #[test]
+    fn selected_entry_description_has_yellow_marker() {
+        // Given two actors with the first selected (default index 0).
+        let mut element = DashboardElement;
+        let state = {
+            let mut s = AppState::default();
+            s.dashboard
+                .mark_starting("echo", Some("Echoes messages back".to_owned()));
+            s.dashboard
+                .mark_starting("llm", Some("LLM streaming".to_owned()));
+            s
+        };
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 40, 10);
+        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
 
         // And the description line also has the yellow block.
+        let buffer = terminal.backend().buffer();
         let desc_cell0 = buffer.cell((0, 1)).expect("cell 0,1");
         assert_eq!(desc_cell0.symbol(), "\u{2588}");
         assert_eq!(desc_cell0.fg, Color::Yellow);
@@ -331,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn render_selection_moves_with_next() {
+    fn unselected_entry_has_spaces() {
         // Given two actors with the second selected.
         let mut element = DashboardElement;
         let state = {
@@ -344,22 +402,38 @@ mod tests {
             s
         };
 
-        // When rendering.
         let backend = TestBackend::new(40, 10);
         let mut terminal = Terminal::new(backend).unwrap();
         let area = Rect::new(0, 0, 40, 10);
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
+        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
 
         // Then the first entry has spaces (unselected).
         let buffer = terminal.backend().buffer();
         let first_cell = buffer.cell((0, 0)).expect("cell 0,0");
         assert_eq!(first_cell.symbol(), " ");
+    }
+
+    #[test]
+    fn selected_entry_has_yellow_block() {
+        // Given two actors with the second selected.
+        let mut element = DashboardElement;
+        let state = {
+            let mut s = AppState::default();
+            s.dashboard
+                .mark_starting("echo", Some("Echoes messages back".to_owned()));
+            s.dashboard
+                .mark_starting("llm", Some("LLM streaming".to_owned()));
+            s.dashboard.select_next();
+            s
+        };
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 40, 10);
+        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
 
         // And the second entry (row 3) has the yellow block (selected).
+        let buffer = terminal.backend().buffer();
         let second_cell = buffer.cell((0, 3)).expect("cell 0,3");
         assert_eq!(second_cell.symbol(), "\u{2588}");
         assert_eq!(second_cell.fg, Color::Yellow);

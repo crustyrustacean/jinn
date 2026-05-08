@@ -878,7 +878,7 @@ mod tests {
     // --- Pinned pane tracking tests ---
 
     #[test]
-    fn open_pinned_pane_creates_split_and_tracks_id() {
+    fn open_pinned_sets_tracked_id() {
         // Given a fresh app.
         let mut app = test_app();
         assert!(app.pinned_pane_id.is_none());
@@ -890,10 +890,32 @@ mod tests {
         assert!(app.pinned_pane_id.is_some());
         assert!(app.pinned_pane_visible);
         assert_eq!(app.pane_focus, PaneFocus::Pinned);
-        // And the split manager contains the tracked ID.
+    }
+
+    #[test]
+    fn open_pinned_adds_split() {
+        // Given a fresh app.
+        let mut app = test_app();
+        assert!(app.pinned_pane_id.is_none());
+
+        // When opening the pinned pane.
+        app.open_pinned_pane();
+
+        // Then the split manager contains the tracked ID.
         let id = app.pinned_pane_id.unwrap();
         assert!(app.split_manager.contains(id));
-        // And there are exactly 2 leaves (chat + pinned).
+    }
+
+    #[test]
+    fn open_pinned_has_two_leaves() {
+        // Given a fresh app.
+        let mut app = test_app();
+        assert!(app.pinned_pane_id.is_none());
+
+        // When opening the pinned pane.
+        app.open_pinned_pane();
+
+        // Then there are exactly 2 leaves (chat + pinned).
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
@@ -913,7 +935,22 @@ mod tests {
     }
 
     #[test]
-    fn close_pinned_pane_removes_split() {
+    fn close_pinned_clears_tracked_id() {
+        // Given an app with the pinned pane open.
+        let mut app = test_app();
+        app.open_pinned_pane();
+
+        // When closing the pinned pane.
+        app.close_pinned_pane();
+
+        // Then the tracked ID is cleared and the pane is hidden.
+        assert!(app.pinned_pane_id.is_none());
+        assert!(!app.pinned_pane_visible);
+        assert_eq!(app.pane_focus, PaneFocus::Chat);
+    }
+
+    #[test]
+    fn close_pinned_removes_split() {
         // Given an app with the pinned pane open.
         let mut app = test_app();
         app.open_pinned_pane();
@@ -922,16 +959,13 @@ mod tests {
         // When closing the pinned pane.
         app.close_pinned_pane();
 
-        // Then the tracked ID is cleared and the split is removed.
-        assert!(app.pinned_pane_id.is_none());
-        assert!(!app.pinned_pane_visible);
+        // Then the split is removed and only one leaf remains.
         assert!(!app.split_manager.contains(id));
         assert_eq!(app.split_manager.leaves().len(), 1);
-        assert_eq!(app.pane_focus, PaneFocus::Chat);
     }
 
     #[test]
-    fn close_and_reopen_pinned_pane_works_cleanly() {
+    fn reopen_assigns_new_id() {
         // Given an app where the pinned pane is opened, closed, then reopened.
         let mut app = test_app();
         app.open_pinned_pane();
@@ -945,7 +979,19 @@ mod tests {
         let second_id = app.pinned_pane_id.unwrap();
         assert_ne!(second_id, first_id);
         assert!(app.split_manager.contains(second_id));
-        // And there are exactly 2 leaves (no orphans).
+    }
+
+    #[test]
+    fn reopen_has_two_leaves() {
+        // Given an app where the pinned pane is opened, closed, then reopened.
+        let mut app = test_app();
+        app.open_pinned_pane();
+        app.close_pinned_pane();
+
+        // When reopening.
+        app.open_pinned_pane();
+
+        // Then there are exactly 2 leaves (no orphans).
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
@@ -969,7 +1015,7 @@ mod tests {
     // --- Workflow pane tracking tests ---
 
     #[test]
-    fn open_workflow_pane_creates_split_and_tracks_id() {
+    fn workflow_sets_tracked_id() {
         // Given a fresh app.
         let mut app = test_app();
         assert!(app.workflow_pane_id.is_none());
@@ -981,6 +1027,18 @@ mod tests {
         assert!(app.workflow_pane_id.is_some());
         assert!(app.workflow_pane_visible);
         assert_eq!(app.pane_focus, PaneFocus::Workflow);
+    }
+
+    #[test]
+    fn workflow_creates_split() {
+        // Given a fresh app.
+        let mut app = test_app();
+        assert!(app.workflow_pane_id.is_none());
+
+        // When opening the workflow pane.
+        app.open_workflow_pane();
+
+        // Then there are exactly 2 leaves.
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 
@@ -1017,7 +1075,7 @@ mod tests {
     }
 
     #[test]
-    fn pinned_and_workflow_panes_are_mutually_exclusive() {
+    fn opening_pinned_closes_workflow() {
         // Given an app with the workflow pane open.
         let mut app = test_app();
         app.open_workflow_pane();
@@ -1031,7 +1089,19 @@ mod tests {
         assert!(app.workflow_pane_id.is_none());
         assert!(app.pinned_pane_visible);
         assert!(app.pinned_pane_id.is_some());
-        // And there are exactly 2 leaves (chat + pinned, no orphan workflow).
+    }
+
+    #[test]
+    fn no_orphan_leaves_remain() {
+        // Given an app with the workflow pane open.
+        let mut app = test_app();
+        app.open_workflow_pane();
+        assert!(app.workflow_pane_visible);
+
+        // When opening the pinned pane.
+        app.open_pinned_pane();
+
+        // Then there are exactly 2 leaves (chat + pinned, no orphan workflow).
         assert_eq!(app.split_manager.leaves().len(), 2);
     }
 }

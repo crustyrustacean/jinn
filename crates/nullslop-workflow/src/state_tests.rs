@@ -106,7 +106,25 @@ fn advance_on_last_step_returns_none() {
 // ---- jump_to ----
 
 #[test]
-fn jump_to_activates_target_and_marks_downstream_stale() {
+fn jump_activates_target() {
+    // Given a workflow where steps 0 and 1 are completed.
+    let mut state = WorkflowState::new(make_workflow(3));
+    state.start().unwrap();
+    state.complete_step("step-0", HashMap::new()).unwrap();
+    state.finalize_step("step-0").unwrap();
+    state.advance();
+    state.complete_step("step-1", HashMap::new()).unwrap();
+    state.finalize_step("step-1").unwrap();
+
+    // When jumping back to step 0.
+    let _stale_steps = state.jump_to("step-0").unwrap();
+
+    // Then step 0 is active.
+    assert_eq!(state.steps["step-0"].status.clone(), StepStatus::Active);
+}
+
+#[test]
+fn jump_marks_downstream_stale() {
     // Given a workflow where steps 0 and 1 are completed.
     let mut state = WorkflowState::new(make_workflow(3));
     state.start().unwrap();
@@ -121,7 +139,6 @@ fn jump_to_activates_target_and_marks_downstream_stale() {
 
     // Then downstream steps are stale.
     assert_eq!(stale_steps, vec!["step-1", "step-2"]);
-    assert_eq!(state.steps["step-0"].status.clone(), StepStatus::Active);
     assert_eq!(state.steps["step-1"].status.clone(), StepStatus::Stale);
     assert_eq!(state.steps["step-2"].status.clone(), StepStatus::Stale);
 }
@@ -203,23 +220,45 @@ fn downstream_steps_returns_correct_ids() {
 // ---- full lifecycle ----
 
 #[test]
-fn full_lifecycle_start_complete_finalize_advance() {
+fn lifecycle_start_activates_first_step() {
     // Given a workflow with 2 steps.
     let mut state = WorkflowState::new(make_workflow(2));
 
-    // When running through the full lifecycle.
+    // When starting the workflow.
     state.start().unwrap();
-    assert_eq!(state.active_step.as_deref(), Some("step-0"));
 
+    // Then the first step is active.
+    assert_eq!(state.active_step.as_deref(), Some("step-0"));
+}
+
+#[test]
+fn complete_then_finalize_advances() {
+    // Given a started workflow with 2 steps.
+    let mut state = WorkflowState::new(make_workflow(2));
+    state.start().unwrap();
+
+    // When completing, finalizing, and advancing step 0.
     state.complete_step("step-0", HashMap::new()).unwrap();
     assert_eq!(state.steps["step-0"].status, StepStatus::AwaitingInput);
     state.finalize_step("step-0").unwrap();
     let next = state.advance();
-    assert_eq!(next.as_deref(), Some("step-1"));
 
+    // Then the next step is returned.
+    assert_eq!(next.as_deref(), Some("step-1"));
+}
+
+#[test]
+fn lifecycle_advance_on_last_step_returns_none() {
+    // Given a workflow with 2 steps, both completed.
+    let mut state = WorkflowState::new(make_workflow(2));
+    state.start().unwrap();
+    state.complete_step("step-0", HashMap::new()).unwrap();
+    state.finalize_step("step-0").unwrap();
+    state.advance();
     state.complete_step("step-1", HashMap::new()).unwrap();
-    assert_eq!(state.steps["step-1"].status, StepStatus::AwaitingInput);
     state.finalize_step("step-1").unwrap();
+
+    // When advancing past the last step.
     let done = state.advance();
 
     // Then the workflow is complete (no more steps).

@@ -287,9 +287,9 @@ mod tests {
     }
 
     #[test]
-    fn swap_sender_replaces_channel() {
+    fn swap_sends_to_new_channel() {
         // Given an ActorRef wired to channel A.
-        let (tx_a, rx_a) = kanal::unbounded::<ActorEnvelope<String>>();
+        let (tx_a, _rx_a) = kanal::unbounded::<ActorEnvelope<String>>();
         let actor_ref = ActorRef::new(tx_a);
 
         // When swapping to channel B.
@@ -301,12 +301,30 @@ mod tests {
             .send("after-swap".to_owned())
             .expect("send should succeed");
 
-        // Then the message arrives on channel B, not A.
+        // Then the message arrives on channel B.
         let msg = rx_b
             .try_recv()
             .expect("recv on B should succeed")
             .expect("should have value");
         assert!(matches!(msg, ActorEnvelope::Direct(ref s) if s == "after-swap"));
+    }
+
+    #[test]
+    fn swap_does_not_send_to_old_channel() {
+        // Given an ActorRef wired to channel A.
+        let (tx_a, rx_a) = kanal::unbounded::<ActorEnvelope<String>>();
+        let actor_ref = ActorRef::new(tx_a);
+
+        // When swapping to channel B.
+        let (tx_b, _rx_b) = kanal::unbounded::<ActorEnvelope<String>>();
+        let _old = actor_ref.swap_sender(tx_b);
+
+        // And sending a message.
+        actor_ref
+            .send("after-swap".to_owned())
+            .expect("send should succeed");
+
+        // Then no message arrives on channel A.
         assert!(rx_a.try_recv().expect("recv should succeed").is_none());
     }
 
@@ -331,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_sender_affects_all_clones() {
+    fn swap_on_original_routes_clone_to_new_channel() {
         // Given an ActorRef and its clone.
         let (tx_a, _) = kanal::unbounded::<ActorEnvelope<String>>();
         let actor_ref = ActorRef::new(tx_a);

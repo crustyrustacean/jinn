@@ -52,9 +52,24 @@ pub use workflow_panel::WorkflowPanelState;
 /// Only available in `#[cfg(test)]` builds.
 #[cfg(test)]
 pub(crate) mod test_utils {
+    use nullslop_component_core::Bus;
+    use nullslop_services::Services;
+
+    use crate::AppState;
+
     /// Create a [`nullslop_services::Services`] with fake implementations for tests.
-    pub fn test_services() -> nullslop_services::Services {
-        nullslop_services::Services::new()
+    pub fn test_services() -> Services {
+        Services::new()
+    }
+
+    /// Create a bus for testing.
+    pub fn bus() -> Bus<AppState, Services> {
+        Bus::new()
+    }
+
+    /// Create services for testing.
+    pub fn services() -> Services {
+        Services::new()
     }
 }
 
