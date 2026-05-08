@@ -50,7 +50,7 @@ use nullslop_protocol::provider_picker::{
 };
 use nullslop_protocol::system::{
     ChatEntryPinSelected, DashboardSelectDown, DashboardSelectFirst, DashboardSelectLast,
-    DashboardSelectUp, EditInput, MouseScrollDown, MouseScrollUp, NormalEscape, OpenPicker,
+    DashboardSelectUp, EditInput, MouseScrollDown, MouseScrollUp, NormalEscape,
     PinnedPanelClose, PinnedPanelOpen, PinnedPanelPinBottom, PinnedPanelPinCycle,
     PinnedPanelPinRelative, PinnedPanelPinTop, PinnedPanelSelectDown, PinnedPanelSelectUp,
     PinnedPanelToggle, PinnedPanelUnpin, Quit, ScrollDown, ScrollLineDown, ScrollLineUp,

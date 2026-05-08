@@ -57,8 +57,7 @@ impl ChatEntrySelectionHandler {
 mod tests {
     use npr::ChatEntry;
     use npr::Command;
-    use npr::SessionId;
-    use npr::chat_input::{ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev};
+        use npr::chat_input::{ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev};
     use nullslop_component_core::Bus;
     use nullslop_protocol as npr;
     use nullslop_services::Services;
