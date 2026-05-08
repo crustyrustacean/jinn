@@ -23,6 +23,13 @@ impl UiElement<AppState> for StatusBarElement {
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         let strategy = state.active_session().active_strategy();
+        let pinned_count = state.active_session().pinned_entries().len();
+
+        let left = if pinned_count > 0 {
+            format!("({strategy}) \u{1f4cc}{pinned_count}")
+        } else {
+            format!("({strategy})")
+        };
 
         let model = if state.active_provider == NO_PROVIDER_ID {
             "no model selected".to_owned()
@@ -35,7 +42,7 @@ impl UiElement<AppState> for StatusBarElement {
         let style = Style::default().fg(Color::DarkGray);
 
         let strategy_widget =
-            Paragraph::new(format!("({strategy})")).style(style).alignment(Alignment::Left);
+            Paragraph::new(left).style(style).alignment(Alignment::Left);
         frame.render_widget(strategy_widget, area);
 
         let model_widget = Paragraph::new(model).style(style).alignment(Alignment::Right);
@@ -247,5 +254,62 @@ mod tests {
         // "(Passthrough)" is 13 chars.
         let closing = buffer.cell((12, 0)).expect("closing paren cell");
         assert_eq!(closing.symbol(), ")", "strategy should end with ')'");
+    }
+
+    #[test]
+    fn render_shows_pinned_count_when_entries_pinned() {
+        // Given a session with a pinned entry.
+        let mut element = StatusBarElement;
+        let mut state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
+        let idx = state.active_session_mut().push_entry(
+            nullslop_protocol::ChatEntry::user("hello"),
+        );
+        let entry_id = state.active_session().history()[idx].id.clone();
+        state.active_session_mut().pin_entry(&entry_id, nullslop_protocol::PinPosition::Relative);
+
+        let backend = TestBackend::new(60, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 60, 1);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the left side contains the pin emoji and count.
+        let buffer = terminal.backend().buffer().clone();
+        let row: String = (0..60)
+            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
+            .collect();
+        assert!(row.contains("\u{1f4cc}"), "should show pin emoji, got: {row}");
+        assert!(row.contains("1"), "should show pin count, got: {row}");
+    }
+
+    #[test]
+    fn render_hides_pinned_count_when_no_entries_pinned() {
+        // Given a session with no pinned entries.
+        let mut element = StatusBarElement;
+        let state = AppState { active_provider: "ollama/llama3".to_owned(), ..AppState::default() };
+
+        let backend = TestBackend::new(60, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 60, 1);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the left side shows just the strategy, no pin count.
+        let buffer = terminal.backend().buffer().clone();
+        let row: String = (0..60)
+            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
+            .collect();
+        assert!(row.starts_with("(Passthrough) "), "should show '(Passthrough)' with no pin count, got: {row}");
+        assert!(!row.contains("\u{1f4cc}"), "should not show pin emoji when no entries pinned");
     }
 }

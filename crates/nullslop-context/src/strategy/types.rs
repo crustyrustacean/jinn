@@ -32,6 +32,10 @@ pub struct AssemblyContext<'a> {
     pub model_name: &'a str,
     /// The session this assembly is for.
     pub session_id: &'a SessionId,
+    /// Tokens reserved for TOP/BOTTOM pinned entries that the actor will
+    /// re-inject after the strategy runs. Budget-based strategies should
+    /// reduce their effective budget by this amount.
+    pub budget_offset: usize,
 }
 
 /// Trait for prompt assembly strategies.

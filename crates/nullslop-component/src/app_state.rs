@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use nullslop_protocol::{ActiveTab, Mode, PickerKind, PromptStrategyId, SessionId};
+use nullslop_protocol::{ActiveTab, ChatEntryId, Mode, PinPosition, PickerKind, PromptStrategyId, SessionId};
 use nullslop_providers::NO_PROVIDER_ID;
 use serde_json::Value as JsonValue;
 
@@ -19,6 +19,7 @@ use crate::prompt_template::PromptTemplateStore;
 use crate::provider_picker::entries::PickerEntry;
 use crate::session_picker::entries::SessionEntry;
 use crate::shutdown_tracker::ShutdownTrackerState;
+use crate::pinned_panel::PinnedPanelState;
 use crate::workflow_panel::WorkflowPanelState;
 
 /// A snapshot of everything the application is doing right now.
@@ -63,6 +64,9 @@ pub struct AppState {
 
     /// Workflow panel state — selection index, scroll offset, detail toggle.
     pub workflow_panel: WorkflowPanelState,
+
+    /// Pinned panel state — selection index within the pinned entries list.
+    pub pinned_panel: PinnedPanelState,
 
     /// Persisted strategy state blobs, keyed by (`session_id`, `strategy_id`).
     /// Stored as `serde_json::Value` — the host doesn't interpret the blobs.
@@ -118,6 +122,7 @@ impl Default for AppState {
             model_cache: None,
             last_refreshed_at: None,
             workflow_panel: WorkflowPanelState::default(),
+            pinned_panel: PinnedPanelState::default(),
             strategy_state: HashMap::new(),
             context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
             default_strategy: PromptStrategyId::passthrough(),
@@ -221,6 +226,17 @@ impl AppState {
         self.active_session_mut().chat_input_mut()
     }
 
+    /// Returns pinned entry IDs sorted by position for the active session.
+    ///
+    /// Order: TOP entries first, then RELATIVE, then BOTTOM.
+    /// Within each group, entries maintain their original history order (stable sort).
+    #[must_use]
+    pub fn sorted_pinned_ids(&self) -> Vec<ChatEntryId> {
+        let mut pinned = self.active_session().pinned_entries();
+        pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
+        pinned.iter().map(|e| e.id.clone()).collect()
+    }
+
     /// The default strategy used for new sessions.
     pub fn default_strategy(&self) -> &PromptStrategyId {
         &self.default_strategy
@@ -229,6 +245,20 @@ impl AppState {
     /// Update the sticky default strategy for future sessions.
     pub fn set_default_strategy(&mut self, strategy: PromptStrategyId) {
         self.default_strategy = strategy;
+    }
+}
+
+/// Returns the sort key for a pin position.
+///
+/// TOP = 0, RELATIVE (or None) = 1, BOTTOM = 2.
+/// Used to sort pinned entries in display order.
+#[must_use]
+pub fn pin_sort_key(position: Option<PinPosition>) -> u8 {
+    match position {
+        Some(PinPosition::Top) => 0,
+        Some(PinPosition::Relative) => 1,
+        Some(PinPosition::Bottom) => 2,
+        None => 1,
     }
 }
 

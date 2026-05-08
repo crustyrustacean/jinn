@@ -14,7 +14,7 @@ use crate::strategy::token_estimator::CharRatioEstimator;
 use crate::strategy::types::{PromptAssembly, PromptAssemblyError, StrategyFactory};
 
 /// Default sliding window size used when no configuration is provided.
-const DEFAULT_SLIDING_WINDOW_SIZE: usize = 50;
+const DEFAULT_SLIDING_WINDOW_SIZE: usize = 5;
 
 /// Default token budget used when no configuration is provided.
 const DEFAULT_TOKEN_BUDGET: usize = 8192;

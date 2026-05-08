@@ -4,8 +4,11 @@ mod command;
 mod event;
 
 pub use command::{
-    DashboardSelectDown, DashboardSelectFirst, DashboardSelectLast, DashboardSelectUp, EditInput,
-    MouseScrollDown, MouseScrollUp, OpenPicker, Quit, ScrollDown, ScrollLineDown, ScrollLineUp,
+    ChatEntryPinSelected, DashboardSelectDown, DashboardSelectFirst, DashboardSelectLast,
+    DashboardSelectUp, EditInput, MouseScrollDown, MouseScrollUp, NormalEscape, OpenPicker,
+    PinnedPanelClose, PinnedPanelOpen, PinnedPanelPinBottom, PinnedPanelPinCycle,
+    PinnedPanelPinRelative, PinnedPanelPinTop, PinnedPanelSelectDown, PinnedPanelSelectUp,
+    PinnedPanelToggle, PinnedPanelUnpin, Quit, ScrollDown, ScrollLineDown, ScrollLineUp,
     ScrollToBottom, ScrollToTop, ScrollUp, SetMode, ToggleKeymapScopeFilter, ToggleWhichKey,
     WorkflowApproveStep, WorkflowFocusChat, WorkflowFocusWorkflow, WorkflowRestartStep,
     WorkflowSelectDown, WorkflowSelectFirst, WorkflowSelectLast, WorkflowSelectUp,

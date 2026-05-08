@@ -22,7 +22,10 @@ pub trait TokenEstimator: Send + Sync {
 ///
 /// Uses the same fields that `entries_to_messages` would convert to LLM messages:
 /// [`ChatEntryKind::User`]/[`ChatEntryKind::Assistant`] content, [`ChatEntryKind::ToolCall`] name+arguments, [`ChatEntryKind::ToolResult`] name+content.
-/// System and Actor entries contribute 0 tokens since they are not sent to the LLM.
+///
+/// Unpinned System and Actor entries contribute 0 tokens since they are not
+/// sent to the LLM. Pinned System and Actor entries are estimated based on the
+/// text that `entries_to_messages` would produce for them.
 pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) -> usize {
     match &entry.kind {
         ChatEntryKind::User(text) | ChatEntryKind::Assistant(text) => estimator.estimate(text),
@@ -32,8 +35,22 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         ChatEntryKind::ToolResult { name, content, .. } => {
             estimator.estimate(name) + estimator.estimate(content)
         }
-        // System and Actor entries are not sent to the LLM.
-        ChatEntryKind::System(_) | ChatEntryKind::Actor { .. } => 0,
+        // Pinned System entries produce LlmMessage::System when sent to the LLM.
+        ChatEntryKind::System(text) => {
+            if entry.is_pinned() {
+                estimator.estimate(text)
+            } else {
+                0
+            }
+        }
+        // Pinned Actor entries produce LlmMessage::User with a prefix when sent to the LLM.
+        ChatEntryKind::Actor { source, text } => {
+            if entry.is_pinned() {
+                estimator.estimate(&format!("[Actor: {source}] {text}"))
+            } else {
+                0
+            }
+        }
     }
 }
 
@@ -140,14 +157,60 @@ mod tests {
 
     #[test]
     fn estimate_entry_tokens_for_system_is_zero() {
-        // Given a char ratio estimator and a system entry.
+        // Given a char ratio estimator and an unpinned system entry.
         let estimator = CharRatioEstimator;
         let entry = nullslop_protocol::ChatEntry::system("some status message");
 
         // When estimating entry tokens.
         let tokens = estimate_entry_tokens(&estimator, &entry);
 
-        // Then system entries contribute 0 tokens.
+        // Then unpinned system entries contribute 0 tokens.
         assert_eq!(tokens, 0);
+    }
+
+    #[test]
+    fn estimate_entry_tokens_for_pinned_system_is_nonzero() {
+        // Given a char ratio estimator and a pinned system entry.
+        let estimator = CharRatioEstimator;
+        let entry =
+            nullslop_protocol::ChatEntry::system("important instruction").with_pin(
+                nullslop_protocol::PinPosition::Top,
+            );
+
+        // When estimating entry tokens.
+        let tokens = estimate_entry_tokens(&estimator, &entry);
+
+        // Then pinned system entries contribute tokens equal to their text.
+        assert_eq!(tokens, estimator.estimate("important instruction"));
+        assert!(tokens > 0);
+    }
+
+    #[test]
+    fn estimate_entry_tokens_for_unpinned_actor_is_zero() {
+        // Given a char ratio estimator and an unpinned actor entry.
+        let estimator = CharRatioEstimator;
+        let entry = nullslop_protocol::ChatEntry::actor("echo", "HELLO");
+
+        // When estimating entry tokens.
+        let tokens = estimate_entry_tokens(&estimator, &entry);
+
+        // Then unpinned actor entries contribute 0 tokens.
+        assert_eq!(tokens, 0);
+    }
+
+    #[test]
+    fn estimate_entry_tokens_for_pinned_actor_is_nonzero() {
+        // Given a char ratio estimator and a pinned actor entry.
+        let estimator = CharRatioEstimator;
+        let entry = nullslop_protocol::ChatEntry::actor("echo", "HELLO").with_pin(
+            nullslop_protocol::PinPosition::Relative,
+        );
+
+        // When estimating entry tokens.
+        let tokens = estimate_entry_tokens(&estimator, &entry);
+
+        // Then pinned actor entries contribute tokens matching the formatted output.
+        assert_eq!(tokens, estimator.estimate("[Actor: echo] HELLO"));
+        assert!(tokens > 0);
     }
 }

@@ -36,7 +36,7 @@ pub mod workflow;
 pub use action::CommandAction;
 pub use actor::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 pub use actor_name::ActorName;
-pub use chat::{ChatEntry, ChatEntryId, ChatEntryKind};
+pub use chat::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
 pub use command::Command;
 pub use context::{
     AssemblePrompt, PromptAssembled, PromptStrategyId, PromptStrategySwitched, SwitchPromptStrategy,

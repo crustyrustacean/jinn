@@ -19,13 +19,16 @@ pub mod app_quit;
 pub mod app_state;
 pub mod char_counter;
 pub mod chat_input_box;
+pub mod chat_entry_selection;
 pub mod chat_log;
 pub mod chat_session;
+pub mod context_pin;
 pub mod context_strategy_picker;
 pub mod dashboard;
 pub mod keymap_picker;
 pub mod open_picker_handler;
 pub mod picker_highlight;
+pub mod pinned_panel;
 pub mod prompt_template;
 pub mod provider;
 pub mod provider_picker;
@@ -78,6 +81,8 @@ pub const PICKER_HIGHLIGHT_STYLE: Style = Style::new().bg(Color::DarkGray).add_m
 /// Called once during application startup.
 pub fn register_all(bus: &mut AppBus, registry: &mut AppUiRegistry) {
     app_quit::register(bus, registry);
+    context_pin::register(bus, registry);
+    chat_entry_selection::register(bus, registry);
     shutdown_tracker::register(bus, registry);
     chat_input_box::register(bus, registry);
     chat_log::register(bus, registry);
@@ -89,6 +94,7 @@ pub fn register_all(bus: &mut AppBus, registry: &mut AppUiRegistry) {
     session_picker::register(bus, registry);
     workflow::register(bus, registry);
     workflow_panel::register(bus, registry);
+    pinned_panel::register(bus, registry);
     status_bar::register(bus, registry);
     open_picker_handler::OpenPickerHandler.register(bus);
     prompt_template::rescan_handler::RescanHandler.register(bus);
@@ -105,6 +111,7 @@ pub fn register_tui_elements(registry: &mut AppUiRegistry) {
     registry.register(Box::new(char_counter::CharCounterElement));
     registry.register(Box::new(dashboard::DashboardElement));
     registry.register(Box::new(workflow_panel::WorkflowPanelElement));
+    registry.register(Box::new(pinned_panel::PinnedPanelElement));
     registry.register(Box::new(
         provider::indicator::StreamingIndicatorElement::new(),
     ));
