@@ -94,8 +94,7 @@ pub struct ToolCallStreaming {
 mod tests {
     use super::*;
 
-    #[test]
-    fn tool_batch_completed_roundtrip() {
+    #[rstest::rstest]    fn tool_batch_completed_roundtrip() {
         // Given a ToolBatchCompleted event.
         let event = ToolBatchCompleted {
             session_id: SessionId::new(),
@@ -115,13 +114,11 @@ mod tests {
         assert_eq!(back.results.len(), 1);
     }
 
-    #[test]
-    fn tool_batch_completed_type_name() {
+    #[rstest::rstest]    fn tool_batch_completed_type_name() {
         assert_eq!(ToolBatchCompleted::TYPE_NAME, "tool::ToolBatchCompleted");
     }
 
-    #[test]
-    fn tool_execution_completed_roundtrip() {
+    #[rstest::rstest]    fn tool_execution_completed_roundtrip() {
         // Given a ToolExecutionCompleted event.
         let event = ToolExecutionCompleted {
             session_id: SessionId::new(),
@@ -141,16 +138,14 @@ mod tests {
         assert_eq!(back.result.content, "ok");
     }
 
-    #[test]
-    fn tool_execution_completed_type_name() {
+    #[rstest::rstest]    fn tool_execution_completed_type_name() {
         assert_eq!(
             ToolExecutionCompleted::TYPE_NAME,
             "tool::ToolExecutionCompleted"
         );
     }
 
-    #[test]
-    fn tool_use_started_roundtrip() {
+    #[rstest::rstest]    fn tool_use_started_roundtrip() {
         // Given a ToolUseStarted event.
         let event = ToolUseStarted {
             session_id: SessionId::new(),
@@ -168,13 +163,11 @@ mod tests {
         assert_eq!(back.name, "echo");
     }
 
-    #[test]
-    fn tool_use_started_type_name() {
+    #[rstest::rstest]    fn tool_use_started_type_name() {
         assert_eq!(ToolUseStarted::TYPE_NAME, "tool::ToolUseStarted");
     }
 
-    #[test]
-    fn tool_call_received_roundtrip() {
+    #[rstest::rstest]    fn tool_call_received_roundtrip() {
         // Given a ToolCallReceived event.
         let event = ToolCallReceived {
             session_id: SessionId::new(),
@@ -193,13 +186,11 @@ mod tests {
         assert_eq!(back.tool_call.id, "call_1");
     }
 
-    #[test]
-    fn tool_call_received_type_name() {
+    #[rstest::rstest]    fn tool_call_received_type_name() {
         assert_eq!(ToolCallReceived::TYPE_NAME, "tool::ToolCallReceived");
     }
 
-    #[test]
-    fn tool_call_streaming_roundtrip() {
+    #[rstest::rstest]    fn tool_call_streaming_roundtrip() {
         // Given a ToolCallStreaming event.
         let event = ToolCallStreaming {
             session_id: SessionId::new(),
@@ -216,13 +207,11 @@ mod tests {
         assert_eq!(back.partial_json, r#"{"input":"he"#);
     }
 
-    #[test]
-    fn tool_call_streaming_type_name() {
+    #[rstest::rstest]    fn tool_call_streaming_type_name() {
         assert_eq!(ToolCallStreaming::TYPE_NAME, "tool::ToolCallStreaming");
     }
 
-    #[test]
-    fn tools_registered_roundtrip() {
+    #[rstest::rstest]    fn tools_registered_roundtrip() {
         // Given a ToolsRegistered event.
         let event = ToolsRegistered {
             provider: "echo".into(),
@@ -242,8 +231,7 @@ mod tests {
         assert_eq!(back.definitions.len(), 1);
     }
 
-    #[test]
-    fn tools_registered_type_name() {
+    #[rstest::rstest]    fn tools_registered_type_name() {
         assert_eq!(ToolsRegistered::TYPE_NAME, "tool::ToolsRegistered");
     }
 }

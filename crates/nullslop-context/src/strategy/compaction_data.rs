@@ -57,8 +57,7 @@ mod tests {
     use super::*;
     use crate::strategy::types::StrategySessionData;
 
-    #[test]
-    fn compaction_session_data_serialize_roundtrip() {
+    #[rstest::rstest]    fn compaction_session_data_serialize_roundtrip() {
         // Given compaction session data with a count.
         let data = CompactionSessionData {
             compaction_count: 3,
@@ -74,8 +73,7 @@ mod tests {
         assert_eq!(blob, back_blob);
     }
 
-    #[test]
-    fn compaction_session_data_starts_at_zero() {
+    #[rstest::rstest]    fn compaction_session_data_starts_at_zero() {
         // Given new compaction session data.
         let data = CompactionSessionData::new();
 

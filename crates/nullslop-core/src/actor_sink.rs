@@ -49,8 +49,7 @@ impl MessageSink for ActorMessageSink {
 mod tests {
     use super::*;
 
-    #[test]
-    fn actor_sink_send_command_delivers_message() {
+    #[rstest::rstest]    fn actor_sink_send_command_delivers_message() {
         // Given an ActorMessageSink wired to a channel.
         let (tx, rx) = kanal::unbounded();
         let sink = ActorMessageSink::new(tx);
@@ -67,8 +66,7 @@ mod tests {
         assert!(matches!(msg, AppMsg::Command { command, .. } if matches!(command, Command::Quit)));
     }
 
-    #[test]
-    fn actor_sink_send_event_delivers_message() {
+    #[rstest::rstest]    fn actor_sink_send_event_delivers_message() {
         // Given an ActorMessageSink wired to a channel.
         let (tx, rx) = kanal::unbounded();
         let sink = ActorMessageSink::new(tx);
@@ -94,8 +92,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn actor_sink_returns_error_on_closed_channel() {
+    #[rstest::rstest]    fn actor_sink_returns_error_on_closed_channel() {
         // Given an ActorMessageSink with a dropped receiver.
         let (tx, rx) = kanal::unbounded();
         let sink = ActorMessageSink::new(tx);

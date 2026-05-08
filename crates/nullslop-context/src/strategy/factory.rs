@@ -61,8 +61,7 @@ impl StrategyFactory for DefaultStrategyFactory {
 mod tests {
     use super::*;
 
-    #[test]
-    fn factory_creates_passthrough() {
+    #[rstest::rstest]    fn factory_creates_passthrough() {
         let factory = DefaultStrategyFactory;
         let strategy = factory
             .create(&PromptStrategyId::passthrough())
@@ -70,8 +69,7 @@ mod tests {
         assert_eq!(strategy.name(), "passthrough");
     }
 
-    #[test]
-    fn factory_creates_sliding_window() {
+    #[rstest::rstest]    fn factory_creates_sliding_window() {
         let factory = DefaultStrategyFactory;
         let strategy = factory
             .create(&PromptStrategyId::sliding_window())
@@ -79,8 +77,7 @@ mod tests {
         assert_eq!(strategy.name(), "sliding_window");
     }
 
-    #[test]
-    fn factory_creates_token_budget() {
+    #[rstest::rstest]    fn factory_creates_token_budget() {
         let factory = DefaultStrategyFactory;
         let strategy = factory
             .create(&PromptStrategyId::token_budget())
@@ -88,8 +85,7 @@ mod tests {
         assert_eq!(strategy.name(), "token_budget");
     }
 
-    #[test]
-    fn factory_creates_compaction() {
+    #[rstest::rstest]    fn factory_creates_compaction() {
         let factory = DefaultStrategyFactory;
         let strategy = factory
             .create(&PromptStrategyId::compaction())
@@ -97,15 +93,13 @@ mod tests {
         assert_eq!(strategy.name(), "compaction");
     }
 
-    #[test]
-    fn factory_rejects_unknown_strategy() {
+    #[rstest::rstest]    fn factory_rejects_unknown_strategy() {
         let factory = DefaultStrategyFactory;
         let result = factory.create(&PromptStrategyId::new("nonexistent"));
         assert!(result.is_err());
     }
 
-    #[test]
-    fn factory_name() {
+    #[rstest::rstest]    fn factory_name() {
         let factory = DefaultStrategyFactory;
         assert_eq!(factory.name(), "default_strategy_factory");
     }

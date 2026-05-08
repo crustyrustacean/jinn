@@ -107,8 +107,7 @@ pub struct WorkflowCompleted;
 mod tests {
     use super::*;
 
-    #[test]
-    fn workflow_loaded_serialization_roundtrip() {
+    #[rstest::rstest]    fn workflow_loaded_serialization_roundtrip() {
         // Given a WorkflowLoaded event.
         let evt = WorkflowLoaded {
             name: "test-workflow".to_owned(),
@@ -124,13 +123,11 @@ mod tests {
         assert_eq!(back.step_count, 5);
     }
 
-    #[test]
-    fn workflow_loaded_has_type_name() {
+    #[rstest::rstest]    fn workflow_loaded_has_type_name() {
         assert_eq!(WorkflowLoaded::TYPE_NAME, "workflow::WorkflowLoaded");
     }
 
-    #[test]
-    fn step_started_serialization_roundtrip() {
+    #[rstest::rstest]    fn step_started_serialization_roundtrip() {
         // Given a StepStarted event with all context fields.
         let evt = StepStarted {
             step_id: "step-0".to_owned(),
@@ -158,13 +155,11 @@ mod tests {
         assert!(!back.requires_user_input);
     }
 
-    #[test]
-    fn step_started_has_type_name() {
+    #[rstest::rstest]    fn step_started_has_type_name() {
         assert_eq!(StepStarted::TYPE_NAME, "workflow::StepStarted");
     }
 
-    #[test]
-    fn step_completed_serialization_roundtrip() {
+    #[rstest::rstest]    fn step_completed_serialization_roundtrip() {
         // Given a StepCompleted event.
         let evt = StepCompleted {
             step_id: "step-0".to_owned(),
@@ -178,13 +173,11 @@ mod tests {
         assert_eq!(back.step_id, "step-0");
     }
 
-    #[test]
-    fn step_completed_has_type_name() {
+    #[rstest::rstest]    fn step_completed_has_type_name() {
         assert_eq!(StepCompleted::TYPE_NAME, "workflow::StepCompleted");
     }
 
-    #[test]
-    fn step_stale_serialization_roundtrip() {
+    #[rstest::rstest]    fn step_stale_serialization_roundtrip() {
         // Given a StepStale event.
         let evt = StepStale {
             step_ids: vec!["step-1".to_owned(), "step-2".to_owned()],
@@ -198,13 +191,11 @@ mod tests {
         assert_eq!(back.step_ids, vec!["step-1", "step-2"]);
     }
 
-    #[test]
-    fn step_stale_has_type_name() {
+    #[rstest::rstest]    fn step_stale_has_type_name() {
         assert_eq!(StepStale::TYPE_NAME, "workflow::StepStale");
     }
 
-    #[test]
-    fn step_awaiting_input_serialization_roundtrip() {
+    #[rstest::rstest]    fn step_awaiting_input_serialization_roundtrip() {
         // Given a StepAwaitingInput event.
         let evt = StepAwaitingInput {
             step_id: "step-0".to_owned(),
@@ -218,13 +209,11 @@ mod tests {
         assert_eq!(back.step_id, "step-0");
     }
 
-    #[test]
-    fn step_awaiting_input_has_type_name() {
+    #[rstest::rstest]    fn step_awaiting_input_has_type_name() {
         assert_eq!(StepAwaitingInput::TYPE_NAME, "workflow::StepAwaitingInput");
     }
 
-    #[test]
-    fn workflow_completed_serialization_roundtrip() {
+    #[rstest::rstest]    fn workflow_completed_serialization_roundtrip() {
         // Given a WorkflowCompleted event.
         let evt = WorkflowCompleted;
 
@@ -237,8 +226,7 @@ mod tests {
         assert_eq!(json, json2);
     }
 
-    #[test]
-    fn workflow_completed_has_type_name() {
+    #[rstest::rstest]    fn workflow_completed_has_type_name() {
         assert_eq!(WorkflowCompleted::TYPE_NAME, "workflow::WorkflowCompleted");
     }
 }

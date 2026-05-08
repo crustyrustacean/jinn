@@ -94,8 +94,7 @@ impl ActorHost for FakeActorHost {
 mod tests {
     use super::*;
 
-    #[test]
-    fn fake_host_tracks_events() {
+    #[rstest::rstest]    fn fake_host_tracks_events() {
         // Given a fake host.
         let host = FakeActorHost::new();
 
@@ -117,8 +116,7 @@ mod tests {
         assert!(matches!(host.events_sent()[0], Event::KeyDown { .. }));
     }
 
-    #[test]
-    fn fake_host_tracks_commands() {
+    #[rstest::rstest]    fn fake_host_tracks_commands() {
         // Given a fake host.
         let host = FakeActorHost::new();
 
@@ -130,8 +128,7 @@ mod tests {
         assert!(matches!(host.commands_sent()[0], Command::Quit));
     }
 
-    #[test]
-    fn fake_host_tracks_shutdown() {
+    #[rstest::rstest]    fn fake_host_tracks_shutdown() {
         // Given a fake host.
         let host = FakeActorHost::new();
 
@@ -142,8 +139,7 @@ mod tests {
         assert!(host.is_shutdown());
     }
 
-    #[test]
-    fn fake_host_tracks_system_messages() {
+    #[rstest::rstest]    fn fake_host_tracks_system_messages() {
         // Given a fake host.
         let host = FakeActorHost::new();
 
@@ -158,8 +154,7 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn fake_host_name() {
+    #[rstest::rstest]    fn fake_host_name() {
         // Given a fake host.
         let host = FakeActorHost::new();
 

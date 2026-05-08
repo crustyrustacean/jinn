@@ -98,8 +98,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn name_returns_chat_input_box() {
+    #[rstest::rstest]    fn name_returns_chat_input_box() {
         // Given a ChatInputBoxElement.
         let element = ChatInputBoxElement;
 
@@ -110,8 +109,7 @@ mod tests {
         assert_eq!(name, "chat-input-box");
     }
 
-    #[test]
-    fn render_draws_input_buffer() {
+    #[rstest::rstest]    fn render_draws_input_buffer() {
         // Given a ChatInputBoxElement with "hello" in state (Normal mode).
         let mut element = ChatInputBoxElement;
         let state = {
@@ -139,8 +137,7 @@ mod tests {
         assert_eq!(cell.symbol(), ">");
     }
 
-    #[test]
-    fn render_draws_empty_buffer() {
+    #[rstest::rstest]    fn render_draws_empty_buffer() {
         // Given a ChatInputBoxElement with empty state.
         let mut element = ChatInputBoxElement;
         let state = AppState::default();
@@ -162,8 +159,7 @@ mod tests {
         assert_eq!(cell.symbol(), ">");
     }
 
-    #[test]
-    fn render_input_mode_yellow_prompt() {
+    #[rstest::rstest]    fn render_input_mode_yellow_prompt() {
         // Given a ChatInputBoxElement in Input mode with "hi" in buffer.
         let mut element = ChatInputBoxElement;
         let state = {
@@ -195,8 +191,7 @@ mod tests {
         assert_eq!(cell.style().fg, Some(Color::Yellow));
     }
 
-    #[test]
-    fn render_input_mode_yellow_border() {
+    #[rstest::rstest]    fn render_input_mode_yellow_border() {
         // Given a ChatInputBoxElement in Input mode.
         let mut element = ChatInputBoxElement;
         let state = AppState {
@@ -221,8 +216,7 @@ mod tests {
         assert_eq!(cell.style().fg, Some(Color::Yellow));
     }
 
-    #[test]
-    fn render_input_mode_cursor_at_end_of_text() {
+    #[rstest::rstest]    fn render_input_mode_cursor_at_end_of_text() {
         // Given a ChatInputBoxElement in Input mode with "abc" in buffer.
         let mut element = ChatInputBoxElement;
         let state = {
@@ -253,8 +247,7 @@ mod tests {
             .assert_cursor_position(Position { x: 5, y: 1 });
     }
 
-    #[test]
-    fn render_normal_mode_no_cursor() {
+    #[rstest::rstest]    fn render_normal_mode_no_cursor() {
         // Given a ChatInputBoxElement in Normal mode.
         let mut element = ChatInputBoxElement;
         let state = AppState::default();
@@ -275,8 +268,7 @@ mod tests {
         assert_eq!(pos, Position { x: 0, y: 0 });
     }
 
-    #[test]
-    fn render_cursor_at_mid_buffer() {
+    #[rstest::rstest]    fn render_cursor_at_mid_buffer() {
         // Given a ChatInputBoxElement in Input mode with "abc" and cursor at position 1.
         let mut element = ChatInputBoxElement;
         let state = {
@@ -309,8 +301,7 @@ mod tests {
             .assert_cursor_position(Position { x: 3, y: 1 });
     }
 
-    #[test]
-    fn render_cursor_at_home() {
+    #[rstest::rstest]    fn render_cursor_at_home() {
         // Given a ChatInputBoxElement in Input mode with "hi" and cursor moved to start.
         let mut element = ChatInputBoxElement;
         let state = {
@@ -342,8 +333,7 @@ mod tests {
             .assert_cursor_position(Position { x: 2, y: 1 });
     }
 
-    #[test]
-    fn render_cursor_at_end() {
+    #[rstest::rstest]    fn render_cursor_at_end() {
         // Given a ChatInputBoxElement in Input mode with "hi" and cursor at end.
         let mut element = ChatInputBoxElement;
         let state = {
@@ -375,8 +365,7 @@ mod tests {
             .assert_cursor_position(Position { x: 4, y: 1 });
     }
 
-    #[test]
-    fn multiline_first_line_has_prefix() {
+    #[rstest::rstest]    fn multiline_first_line_has_prefix() {
         // Given a ChatInputBoxElement with "hello\nworld" in buffer (Normal mode).
         let mut element = ChatInputBoxElement;
         let state = {
@@ -406,8 +395,7 @@ mod tests {
         assert_eq!(h_cell.symbol(), "h");
     }
 
-    #[test]
-    fn multiline_second_line_has_indent() {
+    #[rstest::rstest]    fn multiline_second_line_has_indent() {
         // Given a ChatInputBoxElement with "hello\nworld" in buffer (Normal mode).
         let mut element = ChatInputBoxElement;
         let state = {
@@ -437,8 +425,7 @@ mod tests {
         assert_eq!(w_cell.symbol(), "w");
     }
 
-    #[test]
-    fn render_multiline_cursor_on_second_line() {
+    #[rstest::rstest]    fn render_multiline_cursor_on_second_line() {
         // Given a ChatInputBoxElement in Input mode with "ab\ncd" and cursor at end.
         let mut element = ChatInputBoxElement;
         let state = {
@@ -470,8 +457,7 @@ mod tests {
             .assert_cursor_position(Position { x: 4, y: 2 });
     }
 
-    #[test]
-    fn render_multiline_cursor_between_newlines() {
+    #[rstest::rstest]    fn render_multiline_cursor_between_newlines() {
         // Given a ChatInputBoxElement in Input mode with "a\n\nb" and cursor at the empty middle line.
         let mut element = ChatInputBoxElement;
         let state = {

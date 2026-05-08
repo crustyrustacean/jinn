@@ -741,8 +741,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn command_insert_char_serialization() {
+    #[rstest::rstest]    fn command_insert_char_serialization() {
         // Given an InsertChar command.
         let cmd = Command::InsertChar {
             payload: InsertChar { ch: 'a' },
@@ -756,8 +755,7 @@ mod tests {
         assert!(json.contains(r#""ch":"a""#));
     }
 
-    #[test]
-    fn command_app_quit_serialization() {
+    #[rstest::rstest]    fn command_app_quit_serialization() {
         // Given a Quit command.
         let cmd = Command::Quit;
 
@@ -880,8 +878,7 @@ mod tests {
         assert_eq!(json, back_json);
     }
 
-    #[test]
-    fn command_name_returns_name_for_routable_commands() {
+    #[rstest::rstest]    fn command_name_returns_name_for_routable_commands() {
         // Given routable command variants.
         // When calling command_name().
         // Then they return their routing name.
@@ -906,8 +903,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn command_name_returns_none_for_internal_commands() {
+    #[rstest::rstest]    fn command_name_returns_none_for_internal_commands() {
         // Given internal UI commands.
         // When calling command_name().
         // Then they return None (not routed to actors).
@@ -916,8 +912,7 @@ mod tests {
         assert_eq!(Command::ToggleWhichKey.command_name(), None);
     }
 
-    #[test]
-    fn open_picker_command_name() {
+    #[rstest::rstest]    fn open_picker_command_name() {
         // Given an OpenPicker command.
         let cmd = Command::OpenPicker {
             payload: OpenPicker {

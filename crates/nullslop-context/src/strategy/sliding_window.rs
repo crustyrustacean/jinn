@@ -76,6 +76,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sliding_window_truncates_history() {
         // Given 5 entries and a window of 3.
@@ -104,6 +105,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sliding_window_returns_all_when_under_limit() {
         // Given 2 entries and a window of 5.
@@ -119,6 +121,7 @@ mod tests {
         assert_eq!(result.messages.len(), 2);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sliding_window_empty_history() {
         // Given no entries.
@@ -135,6 +138,7 @@ mod tests {
         assert!(result.system_prompt.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sliding_window_exact_size() {
         // Given 3 entries and a window of 3.
@@ -154,12 +158,14 @@ mod tests {
         assert_eq!(result.messages.len(), 3);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sliding_window_name() {
         let strategy = SlidingWindowStrategy::new(10);
         assert_eq!(strategy.name(), "sliding_window");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sliding_window_skips_non_llm_entries_in_window() {
         // Given 4 entries where one is a system entry.
@@ -180,6 +186,7 @@ mod tests {
         assert_eq!(result.messages.len(), 3);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pinned_entry_survives_sliding_window_truncation() {
         // Given 5 entries where the first is pinned, and a window of 3.
@@ -213,6 +220,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sliding_window_keeps_both_pinned_entries() {
         // Given 6 entries where entry 0 and entry 2 are pinned, and a window of 3.
@@ -249,6 +257,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sliding_window_keeps_pinned_at_original_positions() {
         // Given 6 entries where entry 0 and entry 2 are pinned, and a window of 3.
@@ -282,6 +291,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn pinned_entry_inside_window_is_unaffected() {
         // Given 4 entries where entry 2 (inside window) is pinned, and a window of 3.

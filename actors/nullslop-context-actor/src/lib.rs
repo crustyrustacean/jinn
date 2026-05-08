@@ -311,6 +311,7 @@ mod tests {
         None
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn passthrough_assembly_emits_prompt_assembled() {
         // Given an actor with a fresh context.
@@ -340,6 +341,7 @@ mod tests {
         assert!(assembled.system_prompt.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn prompt_assembled_event_contains_messages() {
         // Given an actor with a fresh context.
@@ -366,6 +368,7 @@ mod tests {
         assert_eq!(assembled.messages.len(), 2);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn unknown_session_gets_passthrough() {
         // Given an actor.
@@ -390,6 +393,7 @@ mod tests {
         assert!(find_prompt_assembled(&events).is_some());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn tools_registered_caches_definitions() {
         // Given an actor.
@@ -414,6 +418,7 @@ mod tests {
         assert!(actor.tool_definitions.contains_key("echo"));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn switch_strategy_emits_switched_event() {
         // Given an actor with an existing session.
@@ -452,6 +457,7 @@ mod tests {
         assert_eq!(switched.strategy_id, PromptStrategyId::sliding_window());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn switch_strategy_updates_active_strategy() {
         // Given an actor with an existing session.
@@ -486,6 +492,7 @@ mod tests {
         assert_eq!(strategy.name(), "sliding_window");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn switch_strategy_unknown_id_is_ignored() {
         // Given an actor.
@@ -509,6 +516,7 @@ mod tests {
         assert!(!actor.strategies.contains_key(&session_id));
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn sliding_window_strategy_limits_output() {
         // Given an actor with a session switched to sliding_window.
@@ -549,6 +557,7 @@ mod tests {
         assert_eq!(assembled.messages.len(), 5);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn token_budget_strategy_limits_output() {
         // Given an actor with a session switched to token_budget.
@@ -591,6 +600,7 @@ mod tests {
         assert!(assembled.system_prompt.is_some());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn compaction_strategy_limits_output() {
         // Given an actor with a session switched to compaction.
@@ -637,6 +647,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn restore_strategy_state_does_not_panic() {
         // Given an actor.
@@ -657,6 +668,7 @@ mod tests {
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn restore_strategy_state_emits_no_events() {
         // Given an actor.
@@ -680,6 +692,7 @@ mod tests {
         assert!(events.is_empty());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn top_pinned_entries_appear_first_in_assembled_messages() {
         // Given an actor and history with a TOP-pinned system entry plus regular entries.
@@ -717,6 +730,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn bottom_pin_produces_three_messages() {
         // Given history with BOTTOM-pinned entry plus regular entries.
@@ -748,6 +762,7 @@ mod tests {
         assert_eq!(assembled.messages.len(), 3);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn bottom_pin_precedes_final_user_message() {
         // Given history with BOTTOM-pinned entry plus regular entries.
@@ -796,6 +811,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn relative_pin_produces_three_messages() {
         // Given history with RELATIVE-pinned entries (no TOP/BOTTOM).
@@ -827,6 +843,7 @@ mod tests {
         assert_eq!(assembled.messages.len(), 3);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn relative_pin_stays_at_original_position() {
         // Given history with RELATIVE-pinned entries (no TOP/BOTTOM).
@@ -875,6 +892,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn empty_working_history_with_only_pins() {
         // Given history with only TOP and BOTTOM pins, no working entries.
@@ -917,6 +935,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn single_message_with_bottom_pins() {
         // Given one user message and BOTTOM pins.
@@ -959,6 +978,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn top_pins_appear_first_in_output() {
         // Given history with TOP pin plus other entries.
@@ -999,6 +1019,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn relative_pins_appear_in_strategy_output() {
         // Given history with RELATIVE pin plus other entries.
@@ -1038,6 +1059,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn bottom_pins_appear_before_last_message() {
         // Given history with BOTTOM pin plus other entries.
@@ -1083,6 +1105,7 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn no_pins_produces_correct_message_count() {
         // Given history with no pinned entries.
@@ -1115,6 +1138,7 @@ mod tests {
         assert_eq!(assembled.messages.len(), 3);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn no_pins_produces_correct_message_content() {
         // Given history with no pinned entries.

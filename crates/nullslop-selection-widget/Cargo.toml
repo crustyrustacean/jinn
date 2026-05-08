@@ -10,3 +10,6 @@ fuzzy-matcher = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+rstest = { workspace = true }

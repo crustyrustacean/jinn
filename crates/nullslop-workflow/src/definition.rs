@@ -139,16 +139,14 @@ pub struct WorkflowDef {
 mod tests {
     use super::*;
 
-    #[test]
-    fn model_hint_small_roundtrips() {
+    #[rstest::rstest]    fn model_hint_small_roundtrips() {
         let hint = ModelHint::Small;
         let json = serde_json::to_string(&hint).unwrap();
         let back: ModelHint = serde_json::from_str(&json).unwrap();
         assert_eq!(hint, back);
     }
 
-    #[test]
-    fn model_hint_exact_roundtrips() {
+    #[rstest::rstest]    fn model_hint_exact_roundtrips() {
         let hint = ModelHint::Exact {
             id: "ollama/phi3".to_owned(),
         };
@@ -157,8 +155,7 @@ mod tests {
         assert_eq!(hint, back);
     }
 
-    #[test]
-    fn step_output_def_file_roundtrips() {
+    #[rstest::rstest]    fn step_output_def_file_roundtrips() {
         let output = StepOutputDef::File {
             label: "Video description".to_owned(),
             path: "{{video_dir}}/notes.md".to_owned(),
@@ -168,8 +165,7 @@ mod tests {
         assert_eq!(output, back);
     }
 
-    #[test]
-    fn step_output_def_summary_roundtrips() {
+    #[rstest::rstest]    fn step_output_def_summary_roundtrips() {
         let output = StepOutputDef::Summary {
             label: "Directory".to_owned(),
             value: "{{video_dir_name}}".to_owned(),
@@ -179,8 +175,7 @@ mod tests {
         assert_eq!(output, back);
     }
 
-    #[test]
-    fn step_output_def_artifact_roundtrips() {
+    #[rstest::rstest]    fn step_output_def_artifact_roundtrips() {
         let output = StepOutputDef::Artifact {
             label: "Config".to_owned(),
             description: "Workflow configuration".to_owned(),
@@ -190,8 +185,7 @@ mod tests {
         assert_eq!(output, back);
     }
 
-    #[test]
-    fn step_def_roundtrips() {
+    #[rstest::rstest]    fn step_def_roundtrips() {
         let step = StepDef {
             id: "create-directory".to_owned(),
             title: "Create Directory".to_owned(),
@@ -219,8 +213,7 @@ mod tests {
         assert_eq!(step.title, back.title);
     }
 
-    #[test]
-    fn workflow_def_roundtrips() {
+    #[rstest::rstest]    fn workflow_def_roundtrips() {
         let def = WorkflowDef {
             version: 1,
             name: "test-workflow".to_owned(),

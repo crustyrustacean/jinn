@@ -88,8 +88,7 @@ pub struct UnpinChatEntry {
 mod tests {
     use super::*;
 
-    #[test]
-    fn assemble_prompt_serialization_roundtrip() {
+    #[rstest::rstest]    fn assemble_prompt_serialization_roundtrip() {
         // Given an AssemblePrompt command.
         let cmd = AssemblePrompt {
             session_id: SessionId::new(),
@@ -108,15 +107,13 @@ mod tests {
         assert!(back.tools.is_empty());
     }
 
-    #[test]
-    fn assemble_prompt_has_command_name() {
+    #[rstest::rstest]    fn assemble_prompt_has_command_name() {
         // Given the AssemblePrompt type.
         // Then its NAME constant is set correctly.
         assert_eq!(AssemblePrompt::NAME, "context::AssemblePrompt");
     }
 
-    #[test]
-    fn switch_prompt_strategy_serialization_roundtrip() {
+    #[rstest::rstest]    fn switch_prompt_strategy_serialization_roundtrip() {
         // Given a SwitchPromptStrategy command.
         let cmd = SwitchPromptStrategy {
             session_id: SessionId::new(),
@@ -131,13 +128,11 @@ mod tests {
         assert_eq!(back.strategy_id, PromptStrategyId::sliding_window());
     }
 
-    #[test]
-    fn switch_prompt_strategy_has_command_name() {
+    #[rstest::rstest]    fn switch_prompt_strategy_has_command_name() {
         assert_eq!(SwitchPromptStrategy::NAME, "context::SwitchPromptStrategy");
     }
 
-    #[test]
-    fn restore_strategy_state_serialization_roundtrip() {
+    #[rstest::rstest]    fn restore_strategy_state_serialization_roundtrip() {
         // Given a RestoreStrategyState command.
         let cmd = RestoreStrategyState {
             session_id: SessionId::new(),
@@ -154,13 +149,11 @@ mod tests {
         assert_eq!(back.blob["compaction_count"], 5);
     }
 
-    #[test]
-    fn restore_strategy_state_has_command_name() {
+    #[rstest::rstest]    fn restore_strategy_state_has_command_name() {
         assert_eq!(RestoreStrategyState::NAME, "context::RestoreStrategyState");
     }
 
-    #[test]
-    fn pin_chat_entry_serialization_roundtrip() {
+    #[rstest::rstest]    fn pin_chat_entry_serialization_roundtrip() {
         // Given a PinChatEntry command.
         let cmd = PinChatEntry {
             session_id: SessionId::new(),
@@ -176,13 +169,11 @@ mod tests {
         assert_eq!(back.position, PinPosition::Top);
     }
 
-    #[test]
-    fn pin_chat_entry_has_command_name() {
+    #[rstest::rstest]    fn pin_chat_entry_has_command_name() {
         assert_eq!(PinChatEntry::NAME, "context::PinChatEntry");
     }
 
-    #[test]
-    fn unpin_chat_entry_serialization_roundtrip() {
+    #[rstest::rstest]    fn unpin_chat_entry_serialization_roundtrip() {
         // Given an UnpinChatEntry command.
         let cmd = UnpinChatEntry {
             session_id: SessionId::new(),
@@ -197,8 +188,7 @@ mod tests {
         assert_eq!(back.entry_id, cmd.entry_id);
     }
 
-    #[test]
-    fn unpin_chat_entry_has_command_name() {
+    #[rstest::rstest]    fn unpin_chat_entry_has_command_name() {
         assert_eq!(UnpinChatEntry::NAME, "context::UnpinChatEntry");
     }
 }

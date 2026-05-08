@@ -26,8 +26,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn same_content_produces_same_hash() {
+    #[rstest::rstest]    fn same_content_produces_same_hash() {
         // Given a file with known content.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.txt");
@@ -44,8 +43,7 @@ mod tests {
         assert_eq!(hash1, hash2);
     }
 
-    #[test]
-    fn different_content_produces_different_hash() {
+    #[rstest::rstest]    fn different_content_produces_different_hash() {
         // Given two files with different content.
         let dir = tempfile::tempdir().unwrap();
         let path1 = dir.path().join("a.txt");
@@ -65,8 +63,7 @@ mod tests {
         assert_ne!(hash1, hash2);
     }
 
-    #[test]
-    fn nonexistent_file_returns_none() {
+    #[rstest::rstest]    fn nonexistent_file_returns_none() {
         // Given a path that does not exist.
         // When computing the hash.
         let hash = file_content_hash(Path::new("/nonexistent/file/that/does/not/exist.txt"));

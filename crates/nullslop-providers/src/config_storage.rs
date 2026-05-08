@@ -204,8 +204,7 @@ mod tests {
     use super::*;
     use crate::config::ProviderEntry;
 
-    #[test]
-    fn in_memory_load_returns_default_when_empty() {
+    #[rstest::rstest]    fn in_memory_load_returns_default_when_empty() {
         // Given an empty InMemoryConfigStorage.
         let storage = InMemoryConfigStorage::new();
 
@@ -218,8 +217,7 @@ mod tests {
         assert!(config.default_provider.is_none());
     }
 
-    #[test]
-    fn in_memory_save_then_load_round_trips() {
+    #[rstest::rstest]    fn in_memory_save_then_load_round_trips() {
         // Given an InMemoryConfigStorage with a config.
         let storage = InMemoryConfigStorage::new();
         let config = ProvidersConfig {
@@ -245,8 +243,7 @@ mod tests {
         assert_eq!(reloaded.default_provider.as_deref(), Some("ollama"));
     }
 
-    #[test]
-    fn in_memory_with_config_pre_populates() {
+    #[rstest::rstest]    fn in_memory_with_config_pre_populates() {
         // Given an InMemoryConfigStorage pre-populated with a config.
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
@@ -270,8 +267,7 @@ mod tests {
         assert_eq!(loaded.providers[0].name, "test");
     }
 
-    #[test]
-    fn filesystem_load_creates_default_when_missing() {
+    #[rstest::rstest]    fn filesystem_load_creates_default_when_missing() {
         // Given a temp directory with no config file.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
@@ -287,8 +283,7 @@ mod tests {
         assert!(!config.providers.is_empty());
     }
 
-    #[test]
-    fn filesystem_save_then_load_round_trips() {
+    #[rstest::rstest]    fn filesystem_save_then_load_round_trips() {
         // Given a FilesystemConfigStorage in a temp dir.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");

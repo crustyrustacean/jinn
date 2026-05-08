@@ -71,8 +71,7 @@ mod tests {
 
     // --- Test: Serde round-trip ---
 
-    #[test]
-    fn persisted_session_round_trips_through_serde() {
+    #[rstest::rstest]    fn persisted_session_round_trips_through_serde() {
         // Given a PersistedSession with history, blobs, workflow state, strategy state.
         let session_id = SessionId::new();
         let mut blobs = HashMap::new();
@@ -109,8 +108,7 @@ mod tests {
 
     // --- Test: SessionSummary parses from full snapshot ---
 
-    #[test]
-    fn session_summary_parses_from_full_persisted_session_json() {
+    #[rstest::rstest]    fn session_summary_parses_from_full_persisted_session_json() {
         // Given a full PersistedSession JSON line with history and blobs.
         let session_id = SessionId::new();
         let full = PersistedSession {

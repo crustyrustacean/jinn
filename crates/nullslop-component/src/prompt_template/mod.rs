@@ -80,8 +80,7 @@ mod expand_tokens_tests {
         )
     }
 
-    #[test]
-    fn expand_tokens_replaces_known_name() {
+    #[rstest::rstest]    fn expand_tokens_replaces_known_name() {
         // Given a store with a "greeting" template.
         let store = make_store(vec![("greeting", "A greeting", "Hello, world!")]);
 
@@ -92,8 +91,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "Hello, world!");
     }
 
-    #[test]
-    fn expand_tokens_leaves_unknown_name() {
+    #[rstest::rstest]    fn expand_tokens_leaves_unknown_name() {
         // Given an empty store.
         let store = make_store(vec![]);
 
@@ -104,8 +102,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "$unknown");
     }
 
-    #[test]
-    fn expand_tokens_multiple_tokens() {
+    #[rstest::rstest]    fn expand_tokens_multiple_tokens() {
         // Given a store with two templates.
         let store = make_store(vec![
             ("a", "First", "AAA"),
@@ -119,8 +116,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "AAA and BBB");
     }
 
-    #[test]
-    fn expand_tokens_at_start() {
+    #[rstest::rstest]    fn expand_tokens_at_start() {
         // Given a store with a "hi" template.
         let store = make_store(vec![("hi", "Greeting", "Hello")]);
 
@@ -131,8 +127,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "Hello there");
     }
 
-    #[test]
-    fn expand_tokens_in_middle() {
+    #[rstest::rstest]    fn expand_tokens_in_middle() {
         // Given a store with a "name" template.
         let store = make_store(vec![("name", "Name", "Alice")]);
 
@@ -143,8 +138,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "hello Alice bye");
     }
 
-    #[test]
-    fn expand_tokens_at_end() {
+    #[rstest::rstest]    fn expand_tokens_at_end() {
         // Given a store with an "end" template.
         let store = make_store(vec![("end", "Ending", "DONE")]);
 
@@ -155,8 +149,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "start DONE");
     }
 
-    #[test]
-    fn expand_tokens_adjacent_tokens() {
+    #[rstest::rstest]    fn expand_tokens_adjacent_tokens() {
         // Given a store with "a" and "b" templates.
         let store = make_store(vec![
             ("a", "A", "X"),
@@ -170,8 +163,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "X Y");
     }
 
-    #[test]
-    fn expand_tokens_empty_body() {
+    #[rstest::rstest]    fn expand_tokens_empty_body() {
         // Given a store with a template that has an empty body.
         let store = make_store(vec![("empty", "Empty", "")]);
 
@@ -182,8 +174,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "before  after");
     }
 
-    #[test]
-    fn expand_tokens_midword_dollar_ignored() {
+    #[rstest::rstest]    fn expand_tokens_midword_dollar_ignored() {
         // Given a store with a "foo" template.
         let store = make_store(vec![("foo", "Foo", "BAR")]);
 
@@ -194,8 +185,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "abc$foo");
     }
 
-    #[test]
-    fn expand_tokens_dollar_at_end_of_string() {
+    #[rstest::rstest]    fn expand_tokens_dollar_at_end_of_string() {
         // Given a store with templates.
         let store = make_store(vec![("foo", "Foo", "BAR")]);
 
@@ -206,8 +196,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "test$");
     }
 
-    #[test]
-    fn expand_tokens_bare_dollar() {
+    #[rstest::rstest]    fn expand_tokens_bare_dollar() {
         // Given a store with templates.
         let store = make_store(vec![]);
 
@@ -218,8 +207,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "$");
     }
 
-    #[test]
-    fn expand_tokens_double_dollar_passthrough() {
+    #[rstest::rstest]    fn expand_tokens_double_dollar_passthrough() {
         // Given a store with templates.
         let store = make_store(vec![("foo", "Foo", "BAR")]);
 
@@ -234,8 +222,7 @@ mod expand_tokens_tests {
         assert_eq!(result, "$$foo");
     }
 
-    #[test]
-    fn expand_tokens_empty_text() {
+    #[rstest::rstest]    fn expand_tokens_empty_text() {
         // Given a store.
         let store = make_store(vec![]);
 

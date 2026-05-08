@@ -258,8 +258,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    fn modifiers_none_is_none() {
+    #[rstest::rstest]    fn modifiers_none_is_none() {
         // Given modifiers created with none().
         let mods = Modifiers::none();
 
@@ -297,8 +296,7 @@ mod tests {
         assert_eq!(back, key);
     }
 
-    #[test]
-    fn key_event_serialization_roundtrip() {
+    #[rstest::rstest]    fn key_event_serialization_roundtrip() {
         // Given a KeyEvent with modifiers.
         let event = KeyEvent {
             key: Key::Char('x'),
@@ -314,8 +312,7 @@ mod tests {
     }
 
     #[cfg(feature = "which-key")]
-    #[test]
-    fn parse_notation_s_enter_returns_shift_enter() {
+    #[rstest::rstest]    fn parse_notation_s_enter_returns_shift_enter() {
         // Given the notation "s-enter".
         let result = KeyEvent::parse_notation("s-enter");
 
@@ -329,8 +326,7 @@ mod tests {
     }
 
     #[cfg(feature = "which-key")]
-    #[test]
-    fn parse_notation_c_enter_returns_ctrl_enter() {
+    #[rstest::rstest]    fn parse_notation_c_enter_returns_ctrl_enter() {
         // Given the notation "c-enter".
         let result = KeyEvent::parse_notation("c-enter");
 
@@ -344,8 +340,7 @@ mod tests {
     }
 
     #[cfg(feature = "which-key")]
-    #[test]
-    fn parse_notation_enter_returns_unmodified() {
+    #[rstest::rstest]    fn parse_notation_enter_returns_unmodified() {
         // Given the notation "enter".
         let result = KeyEvent::parse_notation("enter");
 
@@ -426,8 +421,7 @@ mod tests {
     }
 
     #[cfg(feature = "which-key")]
-    #[test]
-    fn parse_notation_single_char_returns_key_event() {
+    #[rstest::rstest]    fn parse_notation_single_char_returns_key_event() {
         // Given a single-character notation.
         let result = KeyEvent::parse_notation("a");
 
@@ -440,8 +434,7 @@ mod tests {
     }
 
     #[cfg(feature = "which-key")]
-    #[test]
-    fn parse_notation_ctrl_single_char() {
+    #[rstest::rstest]    fn parse_notation_ctrl_single_char() {
         // Given a ctrl-modified single-char notation.
         let result = KeyEvent::parse_notation("c-x");
 
@@ -455,8 +448,7 @@ mod tests {
     }
 
     #[cfg(feature = "which-key")]
-    #[test]
-    fn parse_notation_shift_single_char() {
+    #[rstest::rstest]    fn parse_notation_shift_single_char() {
         // Given a shift-modified single-char notation.
         let result = KeyEvent::parse_notation("s-a");
 
@@ -470,8 +462,7 @@ mod tests {
     }
 
     #[cfg(feature = "which-key")]
-    #[test]
-    fn parse_notation_case_insensitive() {
+    #[rstest::rstest]    fn parse_notation_case_insensitive() {
         // Given a notation with mixed case.
         let result = KeyEvent::parse_notation("ENTER");
 

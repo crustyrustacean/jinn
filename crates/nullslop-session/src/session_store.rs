@@ -424,8 +424,7 @@ mod tests {
 
     // --- Test 1: Save + load round-trip ---
 
-    #[test]
-    fn save_creates_summary() {
+    #[rstest::rstest]    fn save_creates_summary() {
         // Given a JsonlSessionStore in a temp directory.
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -443,8 +442,7 @@ mod tests {
         assert_eq!(summary.title, "Test Session");
     }
 
-    #[test]
-    fn load_full_restores_data() {
+    #[rstest::rstest]    fn load_full_restores_data() {
         // Given a JsonlSessionStore in a temp directory.
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -468,8 +466,7 @@ mod tests {
 
     // --- Test 2: Multiple sessions, latest wins ---
 
-    #[test]
-    fn summaries_returns_correct_count() {
+    #[rstest::rstest]    fn summaries_returns_correct_count() {
         // Given a store with 3 saves: session A (v1), session B (v1), session A (v2).
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -488,8 +485,7 @@ mod tests {
         assert_eq!(summaries.len(), 2);
     }
 
-    #[test]
-    fn summaries_returns_latest_versions() {
+    #[rstest::rstest]    fn summaries_returns_latest_versions() {
         // Given a store with 3 saves: session A (v1), session B (v1), session A (v2).
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -518,8 +514,7 @@ mod tests {
         assert_eq!(entry_b.1.title, "B v1");
     }
 
-    #[test]
-    fn byte_offset_points_to_latest() {
+    #[rstest::rstest]    fn byte_offset_points_to_latest() {
         // Given a store with 3 saves: session A (v1), session B (v1), session A (v2).
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -549,8 +544,7 @@ mod tests {
 
     // --- Test 3: Compaction removes stale snapshots ---
 
-    #[test]
-    fn compact_preserves_sessions() {
+    #[rstest::rstest]    fn compact_preserves_sessions() {
         // Given a store with 600+ lines (multiple saves of 2 sessions).
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -576,8 +570,7 @@ mod tests {
         assert_eq!(summaries.len(), 2);
     }
 
-    #[test]
-    fn compact_reduces_file_size() {
+    #[rstest::rstest]    fn compact_reduces_file_size() {
         // Given a store with 600+ lines (multiple saves of 2 sessions).
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -606,8 +599,7 @@ mod tests {
 
     // --- Test 4: Compaction is no-op below threshold ---
 
-    #[test]
-    fn compact_is_noop_below_threshold() {
+    #[rstest::rstest]    fn compact_is_noop_below_threshold() {
         // Given a store with 10 lines (below threshold).
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -631,8 +623,7 @@ mod tests {
 
     // --- Test 5: Corrupted lines skipped gracefully ---
 
-    #[test]
-    fn load_summaries_skips_corrupted_lines() {
+    #[rstest::rstest]    fn load_summaries_skips_corrupted_lines() {
         // Given a JSONL file with a valid line, a corrupted line, and another valid line.
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -665,8 +656,7 @@ mod tests {
 
     // --- Test 6: Load full from corrupted offset returns None ---
 
-    #[test]
-    fn load_full_returns_none_for_corrupted_line() {
+    #[rstest::rstest]    fn load_full_returns_none_for_corrupted_line() {
         // Given a JSONL file with a corrupted line at a known offset.
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -688,8 +678,7 @@ mod tests {
 
     // --- Test 7: Load from empty store returns empty ---
 
-    #[test]
-    fn load_summaries_returns_empty_when_no_file() {
+    #[rstest::rstest]    fn load_summaries_returns_empty_when_no_file() {
         // Given a JsonlSessionStore in a temp directory with no file.
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -703,8 +692,7 @@ mod tests {
 
     // --- Test 8: Save creates directory if missing ---
 
-    #[test]
-    fn save_creates_directory() {
+    #[rstest::rstest]    fn save_creates_directory() {
         // Given a JsonlSessionStore pointed at a non-existent directory.
         let dir = TempDir::new().expect("temp dir");
         let nested = dir.path().join("does").join("not").join("exist");
@@ -718,8 +706,7 @@ mod tests {
         assert!(nested.exists());
     }
 
-    #[test]
-    fn save_creates_file() {
+    #[rstest::rstest]    fn save_creates_file() {
         // Given a JsonlSessionStore pointed at a non-existent directory.
         let dir = TempDir::new().expect("temp dir");
         let nested = dir.path().join("does").join("not").join("exist");
@@ -733,8 +720,7 @@ mod tests {
         assert!(nested.join(FILE_NAME).exists());
     }
 
-    #[test]
-    fn save_returns_summary() {
+    #[rstest::rstest]    fn save_returns_summary() {
         // Given a JsonlSessionStore pointed at a non-existent directory.
         let dir = TempDir::new().expect("temp dir");
         let nested = dir.path().join("does").join("not").join("exist");
@@ -752,8 +738,7 @@ mod tests {
 
     // --- Test 9: Load full at offset returns correct session among many ---
 
-    #[test]
-    fn load_full_at_offset_returns_correct_session_among_many() {
+    #[rstest::rstest]    fn load_full_at_offset_returns_correct_session_among_many() {
         // Given a store with sessions A, B, C saved in sequence.
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());

@@ -360,6 +360,7 @@ mod tests {
 
     // --- Test 1: Save + load round-trip ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn save_then_load_round_trips_workflow_definition() {
         // Given a FileWorkflowStore in a temp directory.
@@ -380,6 +381,7 @@ mod tests {
 
     // --- Test 2: Load returns None for missing workflow ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn load_returns_none_for_missing_workflow() {
         // Given a FileWorkflowStore in a temp directory (empty).
@@ -395,6 +397,7 @@ mod tests {
 
     // --- Test 3: List returns all saved workflows sorted by name ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn list_returns_correct_count() {
         // Given a FileWorkflowStore with 3 workflows saved.
@@ -421,6 +424,7 @@ mod tests {
         assert_eq!(entries.len(), 3);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn list_is_sorted_alphabetically() {
         // Given a FileWorkflowStore with 3 workflows saved.
@@ -460,6 +464,7 @@ mod tests {
 
     // --- Test 4: Delete removes workflow file ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn delete_returns_none_on_load() {
         // Given a FileWorkflowStore with a saved workflow.
@@ -478,6 +483,7 @@ mod tests {
         assert!(result.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn delete_removes_file_from_disk() {
         // Given a FileWorkflowStore with a saved workflow.
@@ -497,6 +503,7 @@ mod tests {
 
     // --- Test 5: Delete is idempotent for missing workflow ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn delete_succeeds_for_missing_workflow() {
         // Given a FileWorkflowStore in a temp directory (empty).
@@ -512,6 +519,7 @@ mod tests {
 
     // --- Test 6: Save overwrites existing workflow ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn save_overwrites_existing_workflow() {
         // Given a FileWorkflowStore with a saved workflow (1 step).
@@ -536,6 +544,7 @@ mod tests {
 
     // --- Test 7: Save creates directory if missing ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn save_creates_directory_if_missing() {
         // Given a FileWorkflowStore pointed at a non-existent directory.
@@ -554,6 +563,7 @@ mod tests {
 
     // --- Test 8: List skips corrupted files ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn list_skips_corrupted_files_gracefully() {
         // Given a FileWorkflowStore directory with one valid and one corrupted file.
@@ -582,6 +592,7 @@ mod tests {
 
     // --- Test 9: Service wrapper delegates to underlying store ---
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn service_wrapper_delegates_to_underlying_store() {
         // Given a WorkflowStoreService wrapping a FileWorkflowStore.

@@ -209,8 +209,7 @@ mod tests {
         state
     }
 
-    #[test]
-    fn select_down_increments_index() {
+    #[rstest::rstest]    fn select_down_increments_index() {
         // Given a bus with PinnedPanelHandler and a session with 3 pinned entries.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -225,8 +224,7 @@ mod tests {
         assert_eq!(state.pinned_panel.selected_id(), Some(&sorted_ids[1]));
     }
 
-    #[test]
-    fn select_up_decrements_index() {
+    #[rstest::rstest]    fn select_up_decrements_index() {
         // Given a bus with PinnedPanelHandler and a session with 3 pinned entries.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -245,8 +243,7 @@ mod tests {
         assert_eq!(state.pinned_panel.selected_id(), Some(&sorted_ids[0]));
     }
 
-    #[test]
-    fn unpin_submits_unpin_command() {
+    #[rstest::rstest]    fn unpin_submits_unpin_command() {
         // Given a bus with PinnedPanelHandler and a session with 2 pinned entries.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -266,8 +263,7 @@ mod tests {
 
     // --- Position-set tests ---
 
-    #[test]
-    fn pin_top_submits_pin_command() {
+    #[rstest::rstest]    fn pin_top_submits_pin_command() {
         // Given a bus with PinnedPanelHandler and a session with a pinned entry.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -289,8 +285,7 @@ mod tests {
         assert_eq!(position, Some(PinPosition::Top));
     }
 
-    #[test]
-    fn pin_bottom_submits_pin_command() {
+    #[rstest::rstest]    fn pin_bottom_submits_pin_command() {
         // Given a bus with PinnedPanelHandler and a session with a pinned entry.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -312,8 +307,7 @@ mod tests {
         assert_eq!(position, Some(PinPosition::Bottom));
     }
 
-    #[test]
-    fn pin_relative_submits_pin_command() {
+    #[rstest::rstest]    fn pin_relative_submits_pin_command() {
         // Given a bus with PinnedPanelHandler and a session with a pinned entry.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -337,8 +331,7 @@ mod tests {
 
     // --- Cycle position tests ---
 
-    #[test]
-    fn pin_cycle_rotates_top_to_bottom() {
+    #[rstest::rstest]    fn pin_cycle_rotates_top_to_bottom() {
         // Given a pinned entry at TOP.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -367,8 +360,7 @@ mod tests {
         assert_eq!(position, Some(PinPosition::Bottom));
     }
 
-    #[test]
-    fn pin_cycle_rotates_bottom_to_relative() {
+    #[rstest::rstest]    fn pin_cycle_rotates_bottom_to_relative() {
         // Given a pinned entry at BOTTOM.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -396,8 +388,7 @@ mod tests {
         assert_eq!(position, Some(PinPosition::Relative));
     }
 
-    #[test]
-    fn pin_cycle_rotates_relative_to_top() {
+    #[rstest::rstest]    fn pin_cycle_rotates_relative_to_top() {
         // Given a pinned entry at RELATIVE.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -427,8 +418,7 @@ mod tests {
 
     // --- Noop tests ---
 
-    #[test]
-    fn pin_top_is_noop_when_empty() {
+    #[rstest::rstest]    fn pin_top_is_noop_when_empty() {
         // Given a bus with PinnedPanelHandler and an empty session.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -446,8 +436,7 @@ mod tests {
         assert!(!has_pin, "expected no PinChatEntry command when pinned panel is empty");
     }
 
-    #[test]
-    fn pin_cycle_is_noop_when_empty() {
+    #[rstest::rstest]    fn pin_cycle_is_noop_when_empty() {
         // Given a bus with PinnedPanelHandler and an empty session.
         let mut bus = setup_bus();
         let services = test_utils::test_services();

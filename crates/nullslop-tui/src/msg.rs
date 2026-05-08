@@ -31,8 +31,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn command_message_carries_command() {
+    #[rstest::rstest]    fn command_message_carries_command() {
         // Given a Command message with a PushChatEntry.
         let msg = Msg::Command(npr::Command::PushChatEntry {
             payload: PushChatEntry {

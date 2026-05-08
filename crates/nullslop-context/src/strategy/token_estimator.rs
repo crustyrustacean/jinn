@@ -78,8 +78,7 @@ impl TokenEstimator for CharRatioEstimator {
 mod tests {
     use super::*;
 
-    #[test]
-    fn char_ratio_returns_nonzero_for_empty_string() {
+    #[rstest::rstest]    fn char_ratio_returns_nonzero_for_empty_string() {
         // Given a char ratio estimator.
         let estimator = CharRatioEstimator;
 
@@ -90,8 +89,7 @@ mod tests {
         assert!(tokens >= 1);
     }
 
-    #[test]
-    fn char_ratio_estimates_reasonably() {
+    #[rstest::rstest]    fn char_ratio_estimates_reasonably() {
         // Given a char ratio estimator and a 100-character string.
         let estimator = CharRatioEstimator;
         let text = "a".repeat(100);
@@ -103,8 +101,7 @@ mod tests {
         assert_eq!(tokens, 26);
     }
 
-    #[test]
-    fn char_ratio_name() {
+    #[rstest::rstest]    fn char_ratio_name() {
         // Given a char ratio estimator.
         let estimator = CharRatioEstimator;
 
@@ -112,8 +109,7 @@ mod tests {
         assert_eq!(estimator.name(), "char_ratio");
     }
 
-    #[test]
-    fn char_ratio_handles_unicode_correctly() {
+    #[rstest::rstest]    fn char_ratio_handles_unicode_correctly() {
         // Given a char ratio estimator and a string with multi-byte characters.
         let estimator = CharRatioEstimator;
         // "日本語" is 3 Unicode characters but 9 bytes in UTF-8.
@@ -126,8 +122,7 @@ mod tests {
         assert_eq!(tokens, 1);
     }
 
-    #[test]
-    fn estimate_entry_tokens_for_user() {
+    #[rstest::rstest]    fn estimate_entry_tokens_for_user() {
         // Given a char ratio estimator and a user entry.
         let estimator = CharRatioEstimator;
         let entry = nullslop_protocol::ChatEntry::user("hello world");
@@ -139,8 +134,7 @@ mod tests {
         assert_eq!(tokens, estimator.estimate("hello world"));
     }
 
-    #[test]
-    fn estimate_entry_tokens_for_tool_call() {
+    #[rstest::rstest]    fn estimate_entry_tokens_for_tool_call() {
         // Given a char ratio estimator and a tool call entry.
         let estimator = CharRatioEstimator;
         let entry = nullslop_protocol::ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#);
@@ -155,8 +149,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn estimate_entry_tokens_for_system_is_zero() {
+    #[rstest::rstest]    fn estimate_entry_tokens_for_system_is_zero() {
         // Given a char ratio estimator and an unpinned system entry.
         let estimator = CharRatioEstimator;
         let entry = nullslop_protocol::ChatEntry::system("some status message");
@@ -168,8 +161,7 @@ mod tests {
         assert_eq!(tokens, 0);
     }
 
-    #[test]
-    fn estimate_entry_tokens_for_pinned_system_is_nonzero() {
+    #[rstest::rstest]    fn estimate_entry_tokens_for_pinned_system_is_nonzero() {
         // Given a char ratio estimator and a pinned system entry.
         let estimator = CharRatioEstimator;
         let entry =
@@ -185,8 +177,7 @@ mod tests {
         assert!(tokens > 0);
     }
 
-    #[test]
-    fn estimate_entry_tokens_for_unpinned_actor_is_zero() {
+    #[rstest::rstest]    fn estimate_entry_tokens_for_unpinned_actor_is_zero() {
         // Given a char ratio estimator and an unpinned actor entry.
         let estimator = CharRatioEstimator;
         let entry = nullslop_protocol::ChatEntry::actor("echo", "HELLO");
@@ -198,8 +189,7 @@ mod tests {
         assert_eq!(tokens, 0);
     }
 
-    #[test]
-    fn estimate_entry_tokens_for_pinned_actor_is_nonzero() {
+    #[rstest::rstest]    fn estimate_entry_tokens_for_pinned_actor_is_nonzero() {
         // Given a char ratio estimator and a pinned actor entry.
         let estimator = CharRatioEstimator;
         let entry = nullslop_protocol::ChatEntry::actor("echo", "HELLO").with_pin(

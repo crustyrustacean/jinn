@@ -189,8 +189,7 @@ pub fn load_session_picker_items(services: &Services, state: &mut crate::AppStat
 mod tests {
     use super::*;
 
-    #[test]
-    fn session_entry_display_label_returns_title() {
+    #[rstest::rstest]    fn session_entry_display_label_returns_title() {
         // Given a SessionEntry with a title.
         let entry = SessionEntry {
             session_id: nullslop_protocol::SessionId::new(),
@@ -204,8 +203,7 @@ mod tests {
         assert_eq!(entry.display_label(), "My Chat");
     }
 
-    #[test]
-    fn render_row_contains_title() {
+    #[rstest::rstest]    fn render_row_contains_title() {
         // Given a session entry.
         let entry = SessionEntry {
             session_id: nullslop_protocol::SessionId::new(),
@@ -221,8 +219,7 @@ mod tests {
         assert!(row.spans.iter().any(|s| s.content.contains("My Session")));
     }
 
-    #[test]
-    fn render_row_contains_date() {
+    #[rstest::rstest]    fn render_row_contains_date() {
         // Given a session entry.
         let entry = SessionEntry {
             session_id: nullslop_protocol::SessionId::new(),
@@ -238,8 +235,7 @@ mod tests {
         assert!(row.spans.len() >= 2);
     }
 
-    #[test]
-    fn load_session_entries_returns_empty_on_error() {
+    #[rstest::rstest]    fn load_session_entries_returns_empty_on_error() {
         // Given a test Services (with fake session store that returns empty).
         let services = nullslop_services::Services::new();
 

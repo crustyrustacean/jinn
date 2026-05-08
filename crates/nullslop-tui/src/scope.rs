@@ -55,16 +55,14 @@ impl std::str::FromStr for Scope {
 mod tests {
     use super::*;
 
-    #[test]
-    fn normal_is_less_than_input() {
+    #[rstest::rstest]    fn normal_is_less_than_input() {
         // Given the two scopes.
         // When comparing.
         // Then Normal < Input.
         assert!(Scope::Normal < Scope::Input);
     }
 
-    #[test]
-    fn picker_is_between_normal_and_input() {
+    #[rstest::rstest]    fn picker_is_between_normal_and_input() {
         // Given the six scopes.
         // When comparing.
         // Then Normal < Dashboard < Workflow < Pinned < Picker < Input (derived from declaration order).

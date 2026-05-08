@@ -231,8 +231,7 @@ mod tests {
         Rect::new(0, 0, 20, 20)
     }
 
-    #[test]
-    fn start_drag_creates_dragging_state() {
+    #[rstest::rstest]    fn start_drag_creates_dragging_state() {
         // Given no prior state.
         // When starting a drag at (5, 7) within bounds.
         let state = SelectionState::start_drag(5, 7, bounds());
@@ -248,8 +247,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn update_focus_clamps_to_bounds() {
+    #[rstest::rstest]    fn update_focus_clamps_to_bounds() {
         // Given a Dragging state at (5, 5) with bounds (0, 0, 10, 10).
         let state = SelectionState::start_drag(5, 5, Rect::new(0, 0, 10, 10));
 
@@ -264,8 +262,7 @@ mod tests {
         assert_eq!(rect, Rect::new(5, 5, 5, 5));
     }
 
-    #[test]
-    fn finalize_transitions_dragging_to_active() {
+    #[rstest::rstest]    fn finalize_transitions_dragging_to_active() {
         // Given a Dragging state.
         let state = SelectionState::start_drag(1, 2, bounds()).update_focus(5, 6);
 
@@ -283,8 +280,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn cancel_returns_to_idle() {
+    #[rstest::rstest]    fn cancel_returns_to_idle() {
         // Given a Dragging state.
         let state = SelectionState::start_drag(3, 4, bounds());
 
@@ -295,8 +291,7 @@ mod tests {
         assert_eq!(state, SelectionState::Idle);
     }
 
-    #[test]
-    fn idle_returns_none_for_selection_rect() {
+    #[rstest::rstest]    fn idle_returns_none_for_selection_rect() {
         // Given an Idle state.
         let state = SelectionState::Idle;
 
@@ -305,8 +300,7 @@ mod tests {
         assert!(state.selection_rect().is_none());
     }
 
-    #[test]
-    fn idle_returns_none_for_extract_text() {
+    #[rstest::rstest]    fn idle_returns_none_for_extract_text() {
         // Given an Idle state and an empty buffer.
         let state = SelectionState::Idle;
         let buffer = Buffer::empty(Rect::new(0, 0, 10, 5));
@@ -316,8 +310,7 @@ mod tests {
         assert!(state.extract_text(&buffer).is_none());
     }
 
-    #[test]
-    fn single_row_selection_returns_text() {
+    #[rstest::rstest]    fn single_row_selection_returns_text() {
         // Given a buffer with known text on row 2.
         let area = Rect::new(0, 0, 10, 5);
         let mut buffer = Buffer::empty(area);
@@ -341,8 +334,7 @@ mod tests {
         assert!(text.is_some());
     }
 
-    #[test]
-    fn single_row_selection_returns_hello() {
+    #[rstest::rstest]    fn single_row_selection_returns_hello() {
         // Given a buffer with known text on row 2.
         let area = Rect::new(0, 0, 10, 5);
         let mut buffer = Buffer::empty(area);
@@ -366,8 +358,7 @@ mod tests {
         assert_eq!(text, "Hello");
     }
 
-    #[test]
-    fn multi_row_selection_spans_rows() {
+    #[rstest::rstest]    fn multi_row_selection_spans_rows() {
         // Given a buffer with text on two rows.
         let area = Rect::new(0, 0, 10, 5);
         let mut buffer = Buffer::empty(area);
@@ -392,8 +383,7 @@ mod tests {
         assert!(text.is_some());
     }
 
-    #[test]
-    fn rows_joined_with_newline() {
+    #[rstest::rstest]    fn rows_joined_with_newline() {
         // Given a buffer with text on two rows.
         let area = Rect::new(0, 0, 10, 5);
         let mut buffer = Buffer::empty(area);
@@ -418,8 +408,7 @@ mod tests {
         assert_eq!(text, "AB\nCD");
     }
 
-    #[test]
-    fn selection_rect_anchor_can_be_after_focus() {
+    #[rstest::rstest]    fn selection_rect_anchor_can_be_after_focus() {
         // Given an Active state where anchor (5, 5) is after focus (2, 2).
         let state = SelectionState::Active {
             anchor: (5, 5),
@@ -438,8 +427,7 @@ mod tests {
 
     // --- SelectableRects tests ---
 
-    #[test]
-    fn selectable_rects_find_returns_smallest_matching() {
+    #[rstest::rstest]    fn selectable_rects_find_returns_smallest_matching() {
         // Given overlapping rects — a large screen and a smaller pane.
         let screen = Rect::new(0, 0, 80, 24);
         let pane = Rect::new(10, 5, 20, 10);
@@ -453,8 +441,7 @@ mod tests {
         assert_eq!(found, Some(pane));
     }
 
-    #[test]
-    fn selectable_rects_find_returns_none_for_position_outside_all() {
+    #[rstest::rstest]    fn selectable_rects_find_returns_none_for_position_outside_all() {
         // Given a single rect.
         let mut rects = SelectableRects::new();
         rects.rebuild(vec![Rect::new(0, 0, 10, 10)]);
@@ -466,8 +453,7 @@ mod tests {
         assert_eq!(found, None);
     }
 
-    #[test]
-    fn selectable_rects_find_returns_none_when_empty() {
+    #[rstest::rstest]    fn selectable_rects_find_returns_none_when_empty() {
         // Given no rects registered.
         let rects = SelectableRects::new();
 
@@ -478,8 +464,7 @@ mod tests {
         assert_eq!(found, None);
     }
 
-    #[test]
-    fn selectable_rects_rebuild_replaces_previous_rects() {
+    #[rstest::rstest]    fn selectable_rects_rebuild_replaces_previous_rects() {
         // Given rects with an initial rect.
         let mut rects = SelectableRects::new();
         rects.rebuild(vec![Rect::new(0, 0, 10, 10)]);

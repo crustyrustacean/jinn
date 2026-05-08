@@ -38,8 +38,7 @@ fn make_items(labels: &[&str]) -> Vec<TestItem> {
 
 // --- insert_char tests ---
 
-#[test]
-fn insert_char_appends_to_filter() {
+#[rstest::rstest]fn insert_char_appends_to_filter() {
     // Given a fresh selection state.
     let mut state = SelectionState::<TestItem>::new();
 
@@ -51,8 +50,7 @@ fn insert_char_appends_to_filter() {
     assert_eq!(state.filter(), "ab");
 }
 
-#[test]
-fn insert_char_resets_selection() {
+#[rstest::rstest]fn insert_char_resets_selection() {
     // Given a selection state with selection at 3 and scroll_offset at 2.
     let mut state = SelectionState::<TestItem>::new();
     state.selection = 3;
@@ -66,8 +64,7 @@ fn insert_char_resets_selection() {
     assert_eq!(state.scroll_offset(), 0);
 }
 
-#[test]
-fn insert_char_at_cursor_middle() {
+#[rstest::rstest]fn insert_char_at_cursor_middle() {
     // Given a selection state with filter "abc" and cursor at 1.
     let mut state = SelectionState::<TestItem>::new();
     state.filter = "abc".to_owned();
@@ -81,8 +78,7 @@ fn insert_char_at_cursor_middle() {
     assert_eq!(state.cursor_pos(), 2);
 }
 
-#[test]
-fn insert_char_advances_cursor() {
+#[rstest::rstest]fn insert_char_advances_cursor() {
     // Given a fresh selection state.
     let mut state = SelectionState::<TestItem>::new();
 
@@ -95,8 +91,7 @@ fn insert_char_advances_cursor() {
 
 // --- backspace tests ---
 
-#[test]
-fn backspace_removes_before_cursor() {
+#[rstest::rstest]fn backspace_removes_before_cursor() {
     // Given a selection state with filter "ab" and cursor at end (position 2).
     let mut state = SelectionState::<TestItem>::new();
     state.filter = "ab".to_owned();
@@ -110,8 +105,7 @@ fn backspace_removes_before_cursor() {
     assert_eq!(state.cursor_pos(), 1);
 }
 
-#[test]
-fn backspace_resets_selection() {
+#[rstest::rstest]fn backspace_resets_selection() {
     // Given a selection state with filter "ab", cursor at end (2), selection at 3, and scroll_offset at 2.
     let mut state = SelectionState::<TestItem>::new();
     state.filter = "ab".to_owned();
@@ -127,8 +121,7 @@ fn backspace_resets_selection() {
     assert_eq!(state.scroll_offset(), 0);
 }
 
-#[test]
-fn backspace_at_cursor_middle() {
+#[rstest::rstest]fn backspace_at_cursor_middle() {
     // Given a selection state with filter "abc" and cursor at 2.
     let mut state = SelectionState::<TestItem>::new();
     state.filter = "abc".to_owned();
@@ -142,8 +135,7 @@ fn backspace_at_cursor_middle() {
     assert_eq!(state.cursor_pos(), 1);
 }
 
-#[test]
-fn backspace_at_start_is_noop() {
+#[rstest::rstest]fn backspace_at_start_is_noop() {
     // Given a selection state with filter "abc" and cursor at 0.
     let mut state = SelectionState::<TestItem>::new();
     state.filter = "abc".to_owned();
@@ -159,8 +151,7 @@ fn backspace_at_start_is_noop() {
 
 // --- cursor movement tests ---
 
-#[test]
-fn move_cursor_left_decrements() {
+#[rstest::rstest]fn move_cursor_left_decrements() {
     // Given a selection state with cursor at 3.
     let mut state = SelectionState::<TestItem>::new();
     state.cursor_pos = 3;
@@ -172,8 +163,7 @@ fn move_cursor_left_decrements() {
     assert_eq!(state.cursor_pos(), 2);
 }
 
-#[test]
-fn move_cursor_left_clamps_at_zero() {
+#[rstest::rstest]fn move_cursor_left_clamps_at_zero() {
     // Given a selection state with cursor at 0.
     let mut state = SelectionState::<TestItem>::new();
 
@@ -184,8 +174,7 @@ fn move_cursor_left_clamps_at_zero() {
     assert_eq!(state.cursor_pos(), 0);
 }
 
-#[test]
-fn move_cursor_right_increments() {
+#[rstest::rstest]fn move_cursor_right_increments() {
     // Given a selection state with filter "abc" and cursor at 1.
     let mut state = SelectionState::<TestItem>::new();
     state.filter = "abc".to_owned();
@@ -198,8 +187,7 @@ fn move_cursor_right_increments() {
     assert_eq!(state.cursor_pos(), 2);
 }
 
-#[test]
-fn move_cursor_right_clamps_at_end() {
+#[rstest::rstest]fn move_cursor_right_clamps_at_end() {
     // Given a selection state with filter "abc" and cursor at 3 (end).
     let mut state = SelectionState::<TestItem>::new();
     state.filter = "abc".to_owned();
@@ -214,8 +202,7 @@ fn move_cursor_right_clamps_at_end() {
 
 // --- selection movement tests ---
 
-#[test]
-fn move_up_decrements() {
+#[rstest::rstest]fn move_up_decrements() {
     // Given a selection state with 5 items and selection at 3.
     let mut state = SelectionState::with_items(make_items(&["a", "b", "c", "d", "e"]));
     state.selection = 3;
@@ -227,8 +214,7 @@ fn move_up_decrements() {
     assert_eq!(state.selection(), 2);
 }
 
-#[test]
-fn move_up_clamps_at_zero() {
+#[rstest::rstest]fn move_up_clamps_at_zero() {
     // Given a selection state with 5 items and selection at 0.
     let mut state = SelectionState::with_items(make_items(&["a", "b", "c", "d", "e"]));
 
@@ -239,8 +225,7 @@ fn move_up_clamps_at_zero() {
     assert_eq!(state.selection(), 0);
 }
 
-#[test]
-fn move_down_increments() {
+#[rstest::rstest]fn move_down_increments() {
     // Given a selection state with 5 items and selection at 1.
     let mut state = SelectionState::with_items(make_items(&["a", "b", "c", "d", "e"]));
     state.selection = 1;
@@ -252,8 +237,7 @@ fn move_down_increments() {
     assert_eq!(state.selection(), 2);
 }
 
-#[test]
-fn move_down_clamps_at_max() {
+#[rstest::rstest]fn move_down_clamps_at_max() {
     // Given a selection state with 5 items and selection at 4.
     let mut state = SelectionState::with_items(make_items(&["a", "b", "c", "d", "e"]));
     state.selection = 4;
@@ -265,8 +249,7 @@ fn move_down_clamps_at_max() {
     assert_eq!(state.selection(), 4);
 }
 
-#[test]
-fn move_down_clamps_when_empty() {
+#[rstest::rstest]fn move_down_clamps_when_empty() {
     // Given a selection state with no items and selection at 0.
     let mut state = SelectionState::<TestItem>::new();
 
@@ -279,8 +262,7 @@ fn move_down_clamps_when_empty() {
 
 // --- scroll offset tests ---
 
-#[test]
-fn move_up_adjusts_scroll_offset_when_selection_above_view() {
+#[rstest::rstest]fn move_up_adjusts_scroll_offset_when_selection_above_view() {
     // Given a selection state with 10 items, scroll_offset=2 and selection=2.
     let mut state =
         SelectionState::with_items((0..10).map(|i| TestItem::new(&i.to_string())).collect());
@@ -295,8 +277,7 @@ fn move_up_adjusts_scroll_offset_when_selection_above_view() {
     assert_eq!(state.scroll_offset(), 1);
 }
 
-#[test]
-fn move_down_adjusts_scroll_offset_when_selection_below_view() {
+#[rstest::rstest]fn move_down_adjusts_scroll_offset_when_selection_below_view() {
     // Given a selection state with 10 items, scroll_offset=0, selection=4.
     let mut state =
         SelectionState::with_items((0..10).map(|i| TestItem::new(&i.to_string())).collect());
@@ -311,8 +292,7 @@ fn move_down_adjusts_scroll_offset_when_selection_below_view() {
     assert_eq!(state.scroll_offset(), 1);
 }
 
-#[test]
-fn ensure_visible_selection_within_view() {
+#[rstest::rstest]fn ensure_visible_selection_within_view() {
     // Given a selection state with scroll_offset=2 and selection=3.
     let mut state = SelectionState::<TestItem>::new();
     state.scroll_offset = 2;
@@ -325,8 +305,7 @@ fn ensure_visible_selection_within_view() {
     assert_eq!(state.scroll_offset(), 2);
 }
 
-#[test]
-fn ensure_visible_selection_above_view() {
+#[rstest::rstest]fn ensure_visible_selection_above_view() {
     // Given a selection state with scroll_offset=3 and selection=1.
     let mut state = SelectionState::<TestItem>::new();
     state.scroll_offset = 3;
@@ -339,8 +318,7 @@ fn ensure_visible_selection_above_view() {
     assert_eq!(state.scroll_offset(), 1);
 }
 
-#[test]
-fn ensure_visible_selection_below_view() {
+#[rstest::rstest]fn ensure_visible_selection_below_view() {
     // Given a selection state with scroll_offset=0 and selection=7.
     let mut state = SelectionState::<TestItem>::new();
     state.scroll_offset = 0;
@@ -355,8 +333,7 @@ fn ensure_visible_selection_below_view() {
 
 // --- reset tests ---
 
-#[test]
-fn reset_clears_everything() {
+#[rstest::rstest]fn reset_clears_everything() {
     // Given a selection state with filter "ab", selection 3, cursor at 2, scroll_offset 1.
     let mut state = SelectionState::<TestItem>::new();
     state.filter = "ab".to_owned();
@@ -378,8 +355,7 @@ fn reset_clears_everything() {
 // New filtering tests
 // =========================================================================
 
-#[test]
-fn set_items_populates_filtered_list() {
+#[rstest::rstest]fn set_items_populates_filtered_list() {
     // Given a fresh selection state.
     let mut state = SelectionState::<TestItem>::new();
 
@@ -390,8 +366,7 @@ fn set_items_populates_filtered_list() {
     assert_eq!(state.filtered_count(), 3);
 }
 
-#[test]
-fn insert_char_filters_items_by_label() {
+#[rstest::rstest]fn insert_char_filters_items_by_label() {
     // Given a selection state with items ["apple", "banana", "cherry"].
     let mut state = SelectionState::with_items(make_items(&["apple", "banana", "cherry"]));
 
@@ -404,8 +379,7 @@ fn insert_char_filters_items_by_label() {
     assert_eq!(state.filtered_item(1).unwrap().display_label(), "banana");
 }
 
-#[test]
-fn backspace_re_expands_filtered_list() {
+#[rstest::rstest]fn backspace_re_expands_filtered_list() {
     // Given a selection state with items, filtered to "ap".
     let mut state = SelectionState::with_items(make_items(&["apple", "banana", "cherry"]));
     state.insert_char('a');
@@ -420,8 +394,7 @@ fn backspace_re_expands_filtered_list() {
     assert_eq!(state.filtered_item(1).unwrap().display_label(), "banana");
 }
 
-#[test]
-fn filter_preserves_consumer_order() {
+#[rstest::rstest]fn filter_preserves_consumer_order() {
     // Given items in a specific order, all containing 'a'.
     let mut state = SelectionState::with_items(make_items(&["banana", "apple", "avocado"]));
 
@@ -435,8 +408,7 @@ fn filter_preserves_consumer_order() {
     assert_eq!(state.filtered_item(2).unwrap().display_label(), "avocado");
 }
 
-#[test]
-fn empty_filter_shows_all_items() {
+#[rstest::rstest]fn empty_filter_shows_all_items() {
     // Given a selection state with 3 items and no filter text.
     let state = SelectionState::with_items(make_items(&["apple", "banana", "cherry"]));
 
@@ -444,8 +416,7 @@ fn empty_filter_shows_all_items() {
     assert_eq!(state.filtered_count(), 3);
 }
 
-#[test]
-fn no_match_returns_empty_filtered() {
+#[rstest::rstest]fn no_match_returns_empty_filtered() {
     // Given a selection state with items.
     let mut state = SelectionState::with_items(make_items(&["apple", "banana", "cherry"]));
 
@@ -458,8 +429,7 @@ fn no_match_returns_empty_filtered() {
     assert_eq!(state.filtered_count(), 0);
 }
 
-#[test]
-fn selected_item_returns_none_when_no_match() {
+#[rstest::rstest]fn selected_item_returns_none_when_no_match() {
     // Given a selection state with items filtered to no matches.
     let mut state = SelectionState::with_items(make_items(&["apple", "banana"]));
     state.insert_char('z');
@@ -468,8 +438,7 @@ fn selected_item_returns_none_when_no_match() {
     assert!(state.selected_item().is_none());
 }
 
-#[test]
-fn selected_item_returns_first_match_initially() {
+#[rstest::rstest]fn selected_item_returns_first_match_initially() {
     // Given a selection state with items and no filter.
     let items = make_items(&["apple", "banana", "cherry"]);
     let state = SelectionState::with_items(items);
@@ -479,8 +448,7 @@ fn selected_item_returns_first_match_initially() {
     assert_eq!(selected.display_label(), "apple");
 }
 
-#[test]
-fn filtered_item_returns_by_filtered_index() {
+#[rstest::rstest]fn filtered_item_returns_by_filtered_index() {
     // Given items ["a", "b", "c"], filtered to match "b" and "c".
     let mut state = SelectionState::with_items(make_items(&["alpha", "bravo", "charlie"]));
     state.insert_char('r');
@@ -491,8 +459,7 @@ fn filtered_item_returns_by_filtered_index() {
     assert_eq!(state.filtered_item(1).unwrap().display_label(), "charlie");
 }
 
-#[test]
-fn fuzzy_match_matches_partial() {
+#[rstest::rstest]fn fuzzy_match_matches_partial() {
     // Given an item "hello world".
     let mut state = SelectionState::with_items(make_items(&["hello world"]));
 
@@ -505,8 +472,7 @@ fn fuzzy_match_matches_partial() {
     assert_eq!(state.filtered_count(), 1);
 }
 
-#[test]
-fn fuzzy_match_is_case_insensitive() {
+#[rstest::rstest]fn fuzzy_match_is_case_insensitive() {
     // Given an item "Hello" and filter "hello".
     let mut state = SelectionState::with_items(make_items(&["Hello"]));
 
@@ -519,8 +485,7 @@ fn fuzzy_match_is_case_insensitive() {
     assert_eq!(state.filtered_count(), 1);
 }
 
-#[test]
-fn set_items_does_not_reset_filter() {
+#[rstest::rstest]fn set_items_does_not_reset_filter() {
     // Given a selection state with items and a filter.
     let mut state = SelectionState::with_items(make_items(&["apple", "banana"]));
     state.insert_char('a');
@@ -533,8 +498,7 @@ fn set_items_does_not_reset_filter() {
     assert_eq!(state.filtered_count(), 2);
 }
 
-#[test]
-fn reset_clears_filter_but_keeps_items() {
+#[rstest::rstest]fn reset_clears_filter_but_keeps_items() {
     // Given a selection state with items and a filter.
     let mut state = SelectionState::with_items(make_items(&["apple", "banana", "cherry"]));
     state.insert_char('a');
@@ -548,8 +512,7 @@ fn reset_clears_filter_but_keeps_items() {
     assert_eq!(state.filtered_count(), 3);
 }
 
-#[test]
-fn no_clone_needed() {
+#[rstest::rstest]fn no_clone_needed() {
     // Compile-time proof: TestItem does not derive Clone,
     // yet SelectionState<TestItem> works fine.
     let mut state = SelectionState::<TestItem>::new();

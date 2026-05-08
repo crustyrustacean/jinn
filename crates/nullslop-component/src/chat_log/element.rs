@@ -257,8 +257,7 @@ mod tests {
     use super::*;
     use crate::AppState;
 
-    #[test]
-    fn name_returns_chat_log() {
+    #[rstest::rstest]    fn name_returns_chat_log() {
         // Given a ChatLogElement.
         let element = ChatLogElement;
 
@@ -269,8 +268,7 @@ mod tests {
         assert_eq!(name, "chat-log");
     }
 
-    #[test]
-    fn render_empty_history() {
+    #[rstest::rstest]    fn render_empty_history() {
         // Given a ChatLogElement with empty chat history.
         let mut element = ChatLogElement;
         let state = AppState::default();
@@ -292,8 +290,7 @@ mod tests {
         assert_eq!(cell.symbol(), " ");
     }
 
-    #[test]
-    fn render_user_entry() {
+    #[rstest::rstest]    fn render_user_entry() {
         // Given a ChatLogElement with a user entry "hello".
         let mut element = ChatLogElement;
         let state = {
@@ -320,8 +317,7 @@ mod tests {
         assert!(cell.style().add_modifier.contains(Modifier::BOLD));
     }
 
-    #[test]
-    fn render_system_entry() {
+    #[rstest::rstest]    fn render_system_entry() {
         // Given a ChatLogElement with a system entry "ready".
         let mut element = ChatLogElement;
         let state = {
@@ -349,8 +345,7 @@ mod tests {
         assert_eq!(cell.style().fg, Some(Color::DarkGray));
     }
 
-    #[test]
-    fn render_actor_entry() {
+    #[rstest::rstest]    fn render_actor_entry() {
         // Given a ChatLogElement with an actor entry.
         let mut element = ChatLogElement;
         let state = {
@@ -378,8 +373,7 @@ mod tests {
         assert_eq!(cell.style().fg, Some(Color::Yellow));
     }
 
-    #[test]
-    fn render_assistant_entry() {
+    #[rstest::rstest]    fn render_assistant_entry() {
         // Given a ChatLogElement with an assistant entry "hello world".
         let mut element = ChatLogElement;
         let state = {
@@ -407,8 +401,7 @@ mod tests {
         assert_eq!(cell.style().fg, Some(Color::Cyan));
     }
 
-    #[test]
-    fn render_mixed_entries() {
+    #[rstest::rstest]    fn render_mixed_entries() {
         // Given a ChatLogElement with system, user, actor, and assistant entries.
         let mut element = ChatLogElement;
         let state = {
@@ -456,8 +449,7 @@ mod tests {
         assert_eq!(line9_cell.style().fg, Some(Color::Cyan));
     }
 
-    #[test]
-    fn render_user_first_line_has_prefix() {
+    #[rstest::rstest]    fn render_user_first_line_has_prefix() {
         // Given a ChatLogElement with a user entry containing "hello\nworld".
         let mut element = ChatLogElement;
         let state = {
@@ -485,8 +477,7 @@ mod tests {
         assert!(line8.style().add_modifier.contains(Modifier::BOLD));
     }
 
-    #[test]
-    fn render_user_continuation_has_no_prefix() {
+    #[rstest::rstest]    fn render_user_continuation_has_no_prefix() {
         // Given a ChatLogElement with a user entry containing "hello\nworld".
         let mut element = ChatLogElement;
         let state = {
@@ -509,8 +500,7 @@ mod tests {
         assert!(w_cell.style().add_modifier.contains(Modifier::BOLD));
     }
 
-    #[test]
-    fn render_assistant_first_line_has_prefix() {
+    #[rstest::rstest]    fn render_assistant_first_line_has_prefix() {
         // Given a ChatLogElement with an assistant entry containing "line1\nline2".
         let mut element = ChatLogElement;
         let state = {
@@ -538,8 +528,7 @@ mod tests {
         assert_eq!(line8.style().fg, Some(Color::Cyan));
     }
 
-    #[test]
-    fn render_assistant_continuation_has_no_prefix() {
+    #[rstest::rstest]    fn render_assistant_continuation_has_no_prefix() {
         // Given a ChatLogElement with an assistant entry containing "line1\nline2".
         let mut element = ChatLogElement;
         let state = {
@@ -562,8 +551,7 @@ mod tests {
         assert_eq!(l_cell.style().fg, Some(Color::Cyan));
     }
 
-    #[test]
-    fn render_first_line_has_prefix() {
+    #[rstest::rstest]    fn render_first_line_has_prefix() {
         // Given a user entry "a\n\nb".
         let mut element = ChatLogElement;
         let state = {
@@ -589,8 +577,7 @@ mod tests {
         assert_eq!(line7.symbol(), "a");
     }
 
-    #[test]
-    fn render_empty_line_between_newlines() {
+    #[rstest::rstest]    fn render_empty_line_between_newlines() {
         // Given a user entry "a\n\nb".
         let mut element = ChatLogElement;
         let state = {
@@ -615,8 +602,7 @@ mod tests {
         assert_ne!(line8.symbol(), "b");
     }
 
-    #[test]
-    fn render_continuation_has_no_prefix() {
+    #[rstest::rstest]    fn render_continuation_has_no_prefix() {
         // Given a user entry "a\n\nb".
         let mut element = ChatLogElement;
         let state = {
@@ -638,8 +624,7 @@ mod tests {
         assert!(line9.style().add_modifier.contains(Modifier::BOLD));
     }
 
-    #[test]
-    fn render_few_messages_bottom_aligned() {
+    #[rstest::rstest]    fn render_few_messages_bottom_aligned() {
         // Given a ChatLogElement with one user entry in a 40x10 viewport.
         let mut element = ChatLogElement;
         let state = {
@@ -672,8 +657,7 @@ mod tests {
         assert!(bottom_cell.style().add_modifier.contains(Modifier::BOLD));
     }
 
-    #[test]
-    fn chat_log_element_is_selectable() {
+    #[rstest::rstest]    fn chat_log_element_is_selectable() {
         // Given a ChatLogElement.
         let element = ChatLogElement;
 
@@ -684,8 +668,7 @@ mod tests {
         assert!(selectable.is_selectable());
     }
 
-    #[test]
-    fn selected_entry_has_reversed_indicator() {
+    #[rstest::rstest]    fn selected_entry_has_reversed_indicator() {
         // Given a ChatLogElement with 2 entries, first selected.
         let mut element = ChatLogElement;
         let state = {
@@ -715,8 +698,7 @@ mod tests {
         assert!(cell.style().add_modifier.contains(Modifier::REVERSED));
     }
 
-    #[test]
-    fn unselected_entry_has_normal_indicator() {
+    #[rstest::rstest]    fn unselected_entry_has_normal_indicator() {
         // Given a ChatLogElement with 2 entries, first selected.
         let mut element = ChatLogElement;
         let state = {
@@ -740,8 +722,7 @@ mod tests {
         assert!(!unselected.style().add_modifier.contains(Modifier::REVERSED));
     }
 
-    #[test]
-    fn render_no_selection_has_no_highlight() {
+    #[rstest::rstest]    fn render_no_selection_has_no_highlight() {
         // Given a ChatLogElement with entries but no selection.
         let mut element = ChatLogElement;
         let state = {
@@ -769,8 +750,7 @@ mod tests {
         assert!(!cell.style().add_modifier.contains(Modifier::REVERSED));
     }
 
-    #[test]
-    fn render_pinned_entry_shows_pin_icon() {
+    #[rstest::rstest]    fn render_pinned_entry_shows_pin_icon() {
         // Given a ChatLogElement with one pinned user entry.
         let mut element = ChatLogElement;
         let state = {
@@ -804,8 +784,7 @@ mod tests {
         assert!(has_pin, "pinned entry should show \u{1F4CC} pin icon");
     }
 
-    #[test]
-    fn render_unpinned_entry_has_no_pin_icon() {
+    #[rstest::rstest]    fn render_unpinned_entry_has_no_pin_icon() {
         // Given a ChatLogElement with one unpinned user entry.
         let mut element = ChatLogElement;
         let state = {
@@ -838,8 +817,7 @@ mod tests {
         assert!(!has_pin, "unpinned entry should not show \u{1F4CC} pin icon");
     }
 
-    #[test]
-    fn render_scroll_to_selected_keeps_entry_visible() {
+    #[rstest::rstest]    fn render_scroll_to_selected_keeps_entry_visible() {
         // Given a ChatLogElement with many entries where the first is selected
         // and the viewport is small enough that it would normally be scrolled off.
         let mut element = ChatLogElement;

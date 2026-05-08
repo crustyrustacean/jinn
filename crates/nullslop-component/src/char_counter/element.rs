@@ -36,8 +36,7 @@ mod tests {
     use super::*;
     use crate::AppState;
 
-    #[test]
-    fn name_returns_char_counter() {
+    #[rstest::rstest]    fn name_returns_char_counter() {
         // Given a CharCounterElement.
         let element = CharCounterElement;
 
@@ -48,8 +47,7 @@ mod tests {
         assert_eq!(name, "char-counter");
     }
 
-    #[test]
-    fn render_empty_buffer_shows_zero() {
+    #[rstest::rstest]    fn render_empty_buffer_shows_zero() {
         // Given a CharCounterElement with empty input buffer.
         let mut element = CharCounterElement;
         let state = AppState::default();
@@ -73,8 +71,7 @@ mod tests {
         assert_eq!(cell.symbol(), "0");
     }
 
-    #[test]
-    fn render_nonempty_buffer_shows_count() {
+    #[rstest::rstest]    fn render_nonempty_buffer_shows_count() {
         // Given a CharCounterElement with "hello" in input buffer.
         let mut element = CharCounterElement;
         let state = {
@@ -102,8 +99,7 @@ mod tests {
         assert_eq!(cell.symbol(), "5");
     }
 
-    #[test]
-    fn render_unicode_counts_graphemes() {
+    #[rstest::rstest]    fn render_unicode_counts_graphemes() {
         // Given a CharCounterElement with "écafé" in input buffer.
         // Each accented character is a single grapheme cluster, so count = 5.
         let mut element = CharCounterElement;

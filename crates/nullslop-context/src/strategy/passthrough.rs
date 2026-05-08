@@ -54,6 +54,7 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn passthrough_converts_all_entries() {
         // Given a history with user and assistant entries.
@@ -74,6 +75,7 @@ mod tests {
         assert_eq!(result.messages.len(), 3);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn passthrough_skips_system_and_actor_entries() {
         // Given a history with mixed entry types.
@@ -94,6 +96,7 @@ mod tests {
         assert_eq!(result.messages.len(), 2);
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn passthrough_empty_history() {
         // Given empty history.
@@ -110,6 +113,7 @@ mod tests {
         assert!(result.system_prompt.is_none());
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn passthrough_name() {
         // Given a passthrough strategy.
@@ -119,6 +123,7 @@ mod tests {
         assert_eq!(strategy.name(), "passthrough");
     }
 
+    #[rstest::rstest]
     #[tokio::test]
     async fn passthrough_preserves_tool_calls() {
         // Given a history with a tool loop.

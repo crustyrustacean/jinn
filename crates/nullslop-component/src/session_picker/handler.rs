@@ -142,8 +142,7 @@ mod tests {
         bus
     }
 
-    #[test]
-    fn session_new_creates_fresh_session() {
+    #[rstest::rstest]    fn session_new_creates_fresh_session() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -158,8 +157,7 @@ mod tests {
         assert!(state.active_session().history().is_empty());
     }
 
-    #[test]
-    fn session_new_closes_picker() {
+    #[rstest::rstest]    fn session_new_closes_picker() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -179,8 +177,7 @@ mod tests {
         assert!(has_set_mode);
     }
 
-    #[test]
-    fn session_new_evicts_old_session() {
+    #[rstest::rstest]    fn session_new_evicts_old_session() {
         // Given a state with an existing session.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -197,8 +194,7 @@ mod tests {
         assert_ne!(state.active_session, original_session);
     }
 
-    #[test]
-    fn session_new_creates_new_session() {
+    #[rstest::rstest]    fn session_new_creates_new_session() {
         // Given a state with an existing session.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -214,8 +210,7 @@ mod tests {
         assert!(state.active_session().history().is_empty());
     }
 
-    #[test]
-    fn session_new_has_exactly_one_session() {
+    #[rstest::rstest]    fn session_new_has_exactly_one_session() {
         // Given a state with an existing session.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -231,8 +226,7 @@ mod tests {
         assert_eq!(state.sessions.len(), 1);
     }
 
-    #[test]
-    fn session_new_ignores_when_session_picker_not_active() {
+    #[rstest::rstest]    fn session_new_ignores_when_session_picker_not_active() {
         // Given a bus with SessionPickerHandler and no picker active.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -247,8 +241,7 @@ mod tests {
         assert_eq!(state.active_session, original_session);
     }
 
-    #[test]
-    fn load_completed_clears_loading_flag() {
+    #[rstest::rstest]    fn load_completed_clears_loading_flag() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -271,8 +264,7 @@ mod tests {
         assert!(!state.session_loading);
     }
 
-    #[test]
-    fn load_completed_sets_active_session() {
+    #[rstest::rstest]    fn load_completed_sets_active_session() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -295,8 +287,7 @@ mod tests {
         assert_eq!(state.mode, Mode::Normal);
     }
 
-    #[test]
-    fn load_completed_restores_history() {
+    #[rstest::rstest]    fn load_completed_restores_history() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -319,8 +310,7 @@ mod tests {
         assert_eq!(state.active_session().history().len(), 1);
     }
 
-    #[test]
-    fn load_completed_evicts_old_session() {
+    #[rstest::rstest]    fn load_completed_evicts_old_session() {
         // Given a state with an existing session containing entries.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -344,8 +334,7 @@ mod tests {
         assert!(state.active_session().history().is_empty());
     }
 
-    #[test]
-    fn load_completed_adds_new_session() {
+    #[rstest::rstest]    fn load_completed_adds_new_session() {
         let mut bus = setup_bus();
         let services = test_utils::test_services();
         let mut state = crate::AppState {
@@ -367,8 +356,7 @@ mod tests {
         assert_eq!(state.active_session().history().len(), 1);
     }
 
-    #[test]
-    fn load_completed_has_exactly_one_session() {
+    #[rstest::rstest]    fn load_completed_has_exactly_one_session() {
         let mut bus = setup_bus();
         let services = test_utils::test_services();
         let mut state = crate::AppState {
@@ -391,8 +379,7 @@ mod tests {
         assert_eq!(state.mode, Mode::Normal);
     }
 
-    #[test]
-    fn session_load_completed_clears_loading_flag() {
+    #[rstest::rstest]    fn session_load_completed_clears_loading_flag() {
         // Given a bus with SessionPickerHandler and session_loading = true.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -419,8 +406,7 @@ mod tests {
         assert!(!state.session_loading);
     }
 
-    #[test]
-    fn session_load_completed_emits_switch_prompt_strategy() {
+    #[rstest::rstest]    fn session_load_completed_emits_switch_prompt_strategy() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -456,8 +442,7 @@ mod tests {
         assert_eq!(switch_cmd.strategy_id, PromptStrategyId::sliding_window());
     }
 
-    #[test]
-    fn load_completed_emits_restore_strategy_command() {
+    #[rstest::rstest]    fn load_completed_emits_restore_strategy_command() {
         // Given a state with loading flag set.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -486,8 +471,7 @@ mod tests {
         assert!(has_restore);
     }
 
-    #[test]
-    fn restore_command_contains_blob() {
+    #[rstest::rstest]    fn restore_command_contains_blob() {
         let mut bus = setup_bus();
         let services = test_utils::test_services();
         let mut state = crate::AppState {
@@ -518,8 +502,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn session_load_completed_skips_restore_when_no_strategy_blob() {
+    #[rstest::rstest]    fn session_load_completed_skips_restore_when_no_strategy_blob() {
         // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();

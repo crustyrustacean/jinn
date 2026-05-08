@@ -15,8 +15,7 @@ fn make_step(id: &str) -> StepDef {
     }
 }
 
-#[test]
-fn create_with_valid_name_succeeds() {
+#[rstest::rstest]fn create_with_valid_name_succeeds() {
     // Given a new builder.
     let mut builder = WorkflowBuilder::new();
 
@@ -27,15 +26,13 @@ fn create_with_valid_name_succeeds() {
     assert!(result.is_ok());
 }
 
-#[test]
-fn create_with_empty_name_fails() {
+#[rstest::rstest]fn create_with_empty_name_fails() {
     let mut builder = WorkflowBuilder::new();
     let result = builder.create(String::new(), "desc".to_owned());
     assert!(result.is_err());
 }
 
-#[test]
-fn add_step_with_unique_id_succeeds() {
+#[rstest::rstest]fn add_step_with_unique_id_succeeds() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -45,8 +42,7 @@ fn add_step_with_unique_id_succeeds() {
     assert!(result.is_ok());
 }
 
-#[test]
-fn add_step_with_duplicate_id_fails() {
+#[rstest::rstest]fn add_step_with_duplicate_id_fails() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -57,8 +53,7 @@ fn add_step_with_duplicate_id_fails() {
     assert!(result.is_err());
 }
 
-#[test]
-fn add_guard_for_existing_step_succeeds() {
+#[rstest::rstest]fn add_guard_for_existing_step_succeeds() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -74,8 +69,7 @@ fn add_guard_for_existing_step_succeeds() {
     assert!(result.is_ok());
 }
 
-#[test]
-fn add_guard_for_unknown_step_fails() {
+#[rstest::rstest]fn add_guard_for_unknown_step_fails() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -90,8 +84,7 @@ fn add_guard_for_unknown_step_fails() {
     assert!(result.is_err());
 }
 
-#[test]
-fn add_output_for_existing_step_succeeds() {
+#[rstest::rstest]fn add_output_for_existing_step_succeeds() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -108,8 +101,7 @@ fn add_output_for_existing_step_succeeds() {
     assert!(result.is_ok());
 }
 
-#[test]
-fn add_output_for_unknown_step_fails() {
+#[rstest::rstest]fn add_output_for_unknown_step_fails() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -125,8 +117,7 @@ fn add_output_for_unknown_step_fails() {
     assert!(result.is_err());
 }
 
-#[test]
-fn build_with_empty_steps_fails() {
+#[rstest::rstest]fn build_with_empty_steps_fails() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -163,8 +154,7 @@ fn build_with_empty_steps_fails() {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    fn build_with_valid_data_has_correct_globals_and_steps() {
+    #[rstest::rstest]    fn build_with_valid_data_has_correct_globals_and_steps() {
         // Given a valid workflow definition.
         let def = build_valid_workflow_def();
 
@@ -174,8 +164,7 @@ fn build_with_empty_steps_fails() {
         assert_eq!(def.steps.first().unwrap().id, "step-1");
     }
 
-#[test]
-fn build_without_name_fails() {
+#[rstest::rstest]fn build_without_name_fails() {
     let builder = WorkflowBuilder::new();
     let result = builder.build();
     assert!(result.is_err());
@@ -237,8 +226,7 @@ fn preview_produces_expected_format(#[case] expected: &str) {
     );
 }
 
-#[test]
-fn preview_shows_all_pieces() {
+#[rstest::rstest]fn preview_shows_all_pieces() {
     // Given a builder.
     let mut builder = WorkflowBuilder::new();
 
@@ -284,8 +272,7 @@ fn preview_shows_all_pieces() {
     assert!(preview.contains("Config (summary)"));
 }
 
-#[test]
-fn build_produces_valid_def() {
+#[rstest::rstest]fn build_produces_valid_def() {
     // Given a builder.
     let mut builder = WorkflowBuilder::new();
 
@@ -334,8 +321,7 @@ fn build_produces_valid_def() {
     );
 }
 
-#[test]
-fn adding_multiple_guards_combines_with_all() {
+#[rstest::rstest]fn adding_multiple_guards_combines_with_all() {
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -372,8 +358,7 @@ fn adding_multiple_guards_combines_with_all() {
     }
 }
 
-#[test]
-fn abort_consumes_builder() {
+#[rstest::rstest]fn abort_consumes_builder() {
     let builder = WorkflowBuilder::new();
     builder.abort();
     // Builder is consumed; this test just verifies it compiles.
@@ -381,8 +366,7 @@ fn abort_consumes_builder() {
 
 // --- validate() tests ---
 
-#[test]
-fn validate_succeeds_for_valid_draft() {
+#[rstest::rstest]fn validate_succeeds_for_valid_draft() {
     // Given a builder with name, description, and a step.
     let mut builder = WorkflowBuilder::new();
     builder
@@ -397,8 +381,7 @@ fn validate_succeeds_for_valid_draft() {
     assert!(result.is_ok());
 }
 
-#[test]
-fn validate_fails_without_name() {
+#[rstest::rstest]fn validate_fails_without_name() {
     // Given a builder with no name.
     let builder = WorkflowBuilder::new();
 
@@ -411,8 +394,7 @@ fn validate_fails_without_name() {
     assert_eq!(*kind, WorkflowErrorKind::MissingField("name".to_owned()));
 }
 
-#[test]
-fn validate_fails_without_description() {
+#[rstest::rstest]fn validate_fails_without_description() {
     // Given a builder with no description.
     let builder = WorkflowBuilder::new();
 
@@ -427,8 +409,7 @@ fn validate_fails_without_description() {
     ));
 }
 
-#[test]
-fn validate_fails_with_no_steps() {
+#[rstest::rstest]fn validate_fails_with_no_steps() {
     // Given a builder with name and description but no steps.
     let mut builder = WorkflowBuilder::new();
     builder
@@ -446,8 +427,7 @@ fn validate_fails_with_no_steps() {
     );
 }
 
-#[test]
-fn validate_does_not_consume_builder() {
+#[rstest::rstest]fn validate_does_not_consume_builder() {
     // Given a builder with name, description, and a step.
     let mut builder = WorkflowBuilder::new();
     builder

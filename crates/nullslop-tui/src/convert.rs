@@ -60,8 +60,7 @@ mod tests {
         crossterm::event::KeyEvent::new(code, modifiers)
     }
 
-    #[test]
-    fn convert_char_key() {
+    #[rstest::rstest]    fn convert_char_key() {
         // Given crossterm Char('a').
         let event = crossterm_key(crossterm::event::KeyCode::Char('a'));
 
@@ -74,8 +73,7 @@ mod tests {
         assert!(key_event.modifiers.is_none());
     }
 
-    #[test]
-    fn convert_ctrl_enter() {
+    #[rstest::rstest]    fn convert_ctrl_enter() {
         // Given crossterm Enter with CONTROL.
         let event = crossterm_key_with_mod(
             crossterm::event::KeyCode::Enter,
@@ -91,8 +89,7 @@ mod tests {
         assert!(key_event.modifiers.ctrl);
     }
 
-    #[test]
-    fn convert_f_key() {
+    #[rstest::rstest]    fn convert_f_key() {
         // Given crossterm F(5).
         let event = crossterm_key(crossterm::event::KeyCode::F(5));
 
@@ -104,8 +101,7 @@ mod tests {
         assert_eq!(key_event.key, Key::F(5));
     }
 
-    #[test]
-    fn convert_unknown_returns_none() {
+    #[rstest::rstest]    fn convert_unknown_returns_none() {
         // Given crossterm Null.
         let event = crossterm_key(crossterm::event::KeyCode::Null);
 

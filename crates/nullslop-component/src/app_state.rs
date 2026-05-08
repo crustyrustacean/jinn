@@ -268,8 +268,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn app_state_default_has_empty_prompt_templates() {
+    #[rstest::rstest]    fn app_state_default_has_empty_prompt_templates() {
         // Given a default AppState.
         let state = AppState::default();
 
@@ -277,8 +276,7 @@ mod tests {
         assert!(state.prompt_templates.is_empty());
     }
 
-    #[test]
-    fn push_entry_adds_to_history() {
+    #[rstest::rstest]    fn push_entry_adds_to_history() {
         // Given a new AppState.
         let mut data = AppState::default();
         let entry = ChatEntry::user("hello");
@@ -291,8 +289,7 @@ mod tests {
         assert_eq!(data.active_session().history().len(), 1);
     }
 
-    #[test]
-    fn default_app_state_has_no_workflow() {
+    #[rstest::rstest]    fn default_app_state_has_no_workflow() {
         // Given a default AppState.
         let state = AppState::default();
 
@@ -300,8 +297,7 @@ mod tests {
         assert!(!state.active_session().has_workflow());
     }
 
-    #[test]
-    fn has_workflow_returns_true_when_set() {
+    #[rstest::rstest]    fn has_workflow_returns_true_when_set() {
         // Given a default AppState.
         let mut state = AppState::default();
 
@@ -314,8 +310,7 @@ mod tests {
         assert!(state.active_session().has_workflow());
     }
 
-    #[test]
-    fn workflow_state_roundtrips_through_serde() {
+    #[rstest::rstest]    fn workflow_state_roundtrips_through_serde() {
         // Given a workflow state in progress.
         let def = make_test_workflow(3);
         let mut ws = nullslop_workflow::WorkflowState::new(def);

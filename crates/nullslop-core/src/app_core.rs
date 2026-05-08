@@ -229,8 +229,7 @@ mod tests {
         nullslop_services::Services::new()
     }
 
-    #[test]
-    fn submit_command_processes_through_bus() {
+    #[rstest::rstest]    fn submit_command_processes_through_bus() {
         // Given an AppCore with components registered.
         let mut core = AppCore::new(test_services());
         let mut registry = nullslop_component::AppUiRegistry::new();
@@ -245,8 +244,7 @@ mod tests {
         assert!(result.did_work);
     }
 
-    #[test]
-    fn tick_returns_false_when_not_quit() {
+    #[rstest::rstest]    fn tick_returns_false_when_not_quit() {
         // Given an AppCore with no messages.
         let mut core = AppCore::new(test_services());
 
@@ -258,8 +256,7 @@ mod tests {
         assert!(!result.did_work);
     }
 
-    #[test]
-    fn tick_processes_insert_char_command() {
+    #[rstest::rstest]    fn tick_processes_insert_char_command() {
         // Given an AppCore with components registered, in Input mode.
         let mut core = AppCore::new(test_services());
         let mut registry = nullslop_component::AppUiRegistry::new();
