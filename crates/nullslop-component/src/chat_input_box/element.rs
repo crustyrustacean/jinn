@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn render_multiline_text_produces_multiple_lines() {
+    fn multiline_first_line_has_prefix() {
         // Given a ChatInputBoxElement with "hello\nworld" in buffer (Normal mode).
         let mut element = ChatInputBoxElement;
         let state = {
@@ -404,8 +404,33 @@ mod tests {
         assert_eq!(cell.symbol(), ">");
         let h_cell = buffer.cell((2, 1)).expect("cell should exist");
         assert_eq!(h_cell.symbol(), "h");
+    }
 
-        // And line 2 (row 2) has "  " indent and "world".
+    #[test]
+    fn multiline_second_line_has_indent() {
+        // Given a ChatInputBoxElement with "hello\nworld" in buffer (Normal mode).
+        let mut element = ChatInputBoxElement;
+        let state = {
+            let mut s = AppState::default();
+            for ch in "hello\nworld".chars() {
+                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
+            }
+            s
+        };
+
+        let backend = TestBackend::new(40, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 40, 5);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then line 2 (row 2) has "  " indent and "world".
+        let buffer = terminal.backend().buffer().clone();
         let indent_cell = buffer.cell((0, 2)).expect("cell should exist");
         assert_eq!(indent_cell.symbol(), " ");
         let w_cell = buffer.cell((2, 2)).expect("cell should exist");

@@ -457,7 +457,7 @@ mod tests {
     }
 
     #[test]
-    fn render_user_entry_with_newlines() {
+    fn render_user_first_line_has_prefix() {
         // Given a ChatLogElement with a user entry containing "hello\nworld".
         let mut element = ChatLogElement;
         let state = {
@@ -483,15 +483,34 @@ mod tests {
         let line8 = buffer.cell((0, 8)).expect("cell should exist");
         assert_eq!(line8.symbol(), ">");
         assert!(line8.style().add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn render_user_continuation_has_no_prefix() {
+        // Given a ChatLogElement with a user entry containing "hello\nworld".
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::user("hello\nworld"));
+            s
+        };
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 40, 10);
+
+        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
 
         // And line 9 has "world" (no prefix, bold).
+        let buffer = terminal.backend().buffer().clone();
         let w_cell = buffer.cell((0, 9)).expect("cell should exist");
         assert_eq!(w_cell.symbol(), "w");
         assert!(w_cell.style().add_modifier.contains(Modifier::BOLD));
     }
 
     #[test]
-    fn render_assistant_entry_with_newlines() {
+    fn render_assistant_first_line_has_prefix() {
         // Given a ChatLogElement with an assistant entry containing "line1\nline2".
         let mut element = ChatLogElement;
         let state = {
@@ -517,15 +536,34 @@ mod tests {
         let line8 = buffer.cell((0, 8)).expect("cell should exist");
         assert_eq!(line8.symbol(), "\u{2726}");
         assert_eq!(line8.style().fg, Some(Color::Cyan));
+    }
+
+    #[test]
+    fn render_assistant_continuation_has_no_prefix() {
+        // Given a ChatLogElement with an assistant entry containing "line1\nline2".
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::assistant("line1\nline2"));
+            s
+        };
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 40, 10);
+
+        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
 
         // And line 9 has "line2" (no prefix, cyan).
+        let buffer = terminal.backend().buffer().clone();
         let l_cell = buffer.cell((0, 9)).expect("cell should exist");
         assert_eq!(l_cell.symbol(), "l");
         assert_eq!(l_cell.style().fg, Some(Color::Cyan));
     }
 
     #[test]
-    fn render_entry_with_empty_line_between_newlines() {
+    fn render_first_line_has_prefix() {
         // Given a user entry "a\n\nb".
         let mut element = ChatLogElement;
         let state = {
@@ -549,9 +587,52 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let line7 = buffer.cell((2, 7)).expect("cell should exist");
         assert_eq!(line7.symbol(), "a");
+    }
 
-        // And line 8 is empty (middle line between newlines).
+    #[test]
+    fn render_empty_line_between_newlines() {
+        // Given a user entry "a\n\nb".
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::user("a\n\nb"));
+            s
+        };
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 40, 10);
+
+        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
+
+        // Then line 8 is empty (middle line between newlines).
+        // Verified by checking that line 9 has "b".
+        let buffer = terminal.backend().buffer().clone();
+        // Line 8 should not have a prefix character (not '>' or 'a' or 'b')
+        let line8 = buffer.cell((0, 8)).expect("cell should exist");
+        assert_ne!(line8.symbol(), ">");
+        assert_ne!(line8.symbol(), "a");
+        assert_ne!(line8.symbol(), "b");
+    }
+
+    #[test]
+    fn render_continuation_has_no_prefix() {
+        // Given a user entry "a\n\nb".
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::user("a\n\nb"));
+            s
+        };
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 40, 10);
+
+        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
+
         // And line 9 is "b" (no prefix, bold).
+        let buffer = terminal.backend().buffer().clone();
         let line9 = buffer.cell((0, 9)).expect("cell should exist");
         assert_eq!(line9.symbol(), "b");
         assert!(line9.style().add_modifier.contains(Modifier::BOLD));
@@ -604,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn render_selected_entry_has_highlight() {
+    fn selected_entry_has_reversed_indicator() {
         // Given a ChatLogElement with 2 entries, first selected.
         let mut element = ChatLogElement;
         let state = {
@@ -632,8 +713,28 @@ mod tests {
         let cell = buffer.cell((0, 8)).expect("cell should exist");
         assert_eq!(cell.symbol(), "\u{25b6}");
         assert!(cell.style().add_modifier.contains(Modifier::REVERSED));
+    }
+
+    #[test]
+    fn unselected_entry_has_normal_indicator() {
+        // Given a ChatLogElement with 2 entries, first selected.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::user("hello"));
+            s.active_session_mut().push_entry(ChatEntry::user("world"));
+            s.active_session_mut().select_next_entry(); // selects index 0
+            s
+        };
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 40, 10);
+
+        terminal.draw(|frame| { element.render(frame, area, &state); }).unwrap();
 
         // Line 9 has the unselected entry (no ▶ prefix, no REVERSED).
+        let buffer = terminal.backend().buffer().clone();
         let unselected = buffer.cell((0, 9)).expect("cell should exist");
         assert_eq!(unselected.symbol(), ">");
         assert!(!unselected.style().add_modifier.contains(Modifier::REVERSED));

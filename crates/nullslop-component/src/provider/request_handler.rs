@@ -249,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn submit_user_message_emits_session_save_requested() {
+    fn submit_emits_save_event() {
         // Given a bus with MessageQueueHandler registered.
         let mut bus = test_bus();
         let services = test_services();
@@ -264,21 +264,43 @@ mod tests {
             },
         });
         bus.process_commands(&mut state, &services);
-
-        // Events emitted during command processing need process_events to dispatch.
         bus.process_events(&mut state, &services);
 
-        // Then a SessionSaveRequested event is emitted with matching session_id
-        // and history containing the user message.
+        // Then a SessionSaveRequested event is emitted.
         let events = bus.drain_processed_events();
         let save_event = events.iter().find_map(|e| match &e.event {
             npr::Event::SessionSaveRequested { payload } => Some(payload.clone()),
             _ => None,
         });
         assert!(save_event.is_some(), "expected SessionSaveRequested event");
-        let save_event = save_event.expect("should have save event");
+        assert_eq!(save_event.expect("should have save event").history.len(), 1);
+    }
+
+    #[test]
+    fn save_event_matches_session_id() {
+        // Given a bus with MessageQueueHandler registered.
+        let mut bus = test_bus();
+        let services = test_services();
+        let mut state = crate::AppState::default();
+        let session_id = state.active_session.clone();
+
+        // When processing an EnqueueUserMessage command.
+        bus.submit_command(npr::Command::EnqueueUserMessage {
+            payload: EnqueueUserMessage {
+                session_id: session_id.clone(),
+                text: "hello world".to_owned(),
+            },
+        });
+        bus.process_commands(&mut state, &services);
+        bus.process_events(&mut state, &services);
+
+        // Then the save event has the correct session_id and title.
+        let events = bus.drain_processed_events();
+        let save_event = events.iter().find_map(|e| match &e.event {
+            npr::Event::SessionSaveRequested { payload } => Some(payload.clone()),
+            _ => None,
+        }).expect("should have save event");
         assert_eq!(save_event.session_id, session_id);
-        assert_eq!(save_event.history.len(), 1);
         assert_eq!(save_event.title, "hello world");
     }
 

@@ -605,7 +605,7 @@ mod tests {
     // --- Context assembly tests ---
 
     #[test]
-    fn assemble_step_context_builds_system_prompt() {
+    fn assembly_produces_system_message() {
         // Given a StepStarted with instructions.
         let started = StepStarted {
             step_id: "step-0".to_owned(),
@@ -625,14 +625,38 @@ mod tests {
         // When assembling context.
         let messages = assemble_step_context(&started);
 
-        // Then a system and user message are produced.
-        assert_eq!(messages.len(), 2);
+        // Then a system message is produced.
         let system_content = match &messages[0] {
             LlmMessage::System { content } => content.clone(),
             _ => panic!("expected system message"),
         };
         assert!(system_content.contains("Create Directory"));
         assert!(system_content.contains("Ask the user for the directory name"));
+    }
+
+    #[test]
+    fn assembly_produces_user_message() {
+        // Given a StepStarted with instructions.
+        let started = StepStarted {
+            step_id: "step-0".to_owned(),
+            step_title: "Create Directory".to_owned(),
+            instructions: "Ask the user for the directory name.".to_owned(),
+            model_hint: ModelHint::Small,
+            model_overrides: HashMap::new(),
+            requires_user_input: false,
+            checkpoint: false,
+            guards: GuardExpr::None,
+            outputs: vec![],
+            completed_outputs: HashMap::new(),
+            globals: HashMap::new(),
+            stored_hashes: HashMap::new(),
+        };
+
+        // When assembling context.
+        let messages = assemble_step_context(&started);
+
+        // Then a user message is produced.
+        assert_eq!(messages.len(), 2);
         let user_content = match &messages[1] {
             LlmMessage::User { content } => content.clone(),
             _ => panic!("expected user message"),

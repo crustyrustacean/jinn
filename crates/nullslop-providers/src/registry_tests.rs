@@ -148,7 +148,7 @@ fn rejects_duplicate_expanded_ids() {
 }
 
 #[test]
-fn expands_multi_model_provider() {
+fn registry_has_two_entries() {
     // Given a config with one provider that has two models.
     let config = make_config(
         vec![ProviderEntry {
@@ -169,8 +169,29 @@ fn expands_multi_model_provider() {
     // Then two resolved entries exist.
     let providers = registry.providers();
     assert_eq!(providers.len(), 2);
+}
 
-    // And each has the correct expanded ID.
+#[test]
+fn entries_have_correct_ids() {
+    // Given a config with one provider that has two models.
+    let config = make_config(
+        vec![ProviderEntry {
+            name: "ollama".to_owned(),
+            backend: "ollama".to_owned(),
+            models: vec!["llama3".to_owned(), "mistral".to_owned()],
+            base_url: None,
+            api_key_env: None,
+            requires_key: false,
+        }],
+        vec![],
+        None,
+    );
+
+    // When building the registry.
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+
+    // Then each has the correct expanded ID.
+    let providers = registry.providers();
     assert_eq!(providers[0].id.as_str(), "ollama/llama3");
     assert_eq!(providers[0].name, "ollama");
     assert_eq!(providers[0].model, "llama3");
@@ -178,8 +199,28 @@ fn expands_multi_model_provider() {
     assert_eq!(providers[1].id.as_str(), "ollama/mistral");
     assert_eq!(providers[1].name, "ollama");
     assert_eq!(providers[1].model, "mistral");
+}
 
-    // And both are individually look-up-able.
+#[test]
+fn entries_are_individually_lookupable() {
+    // Given a config with one provider that has two models.
+    let config = make_config(
+        vec![ProviderEntry {
+            name: "ollama".to_owned(),
+            backend: "ollama".to_owned(),
+            models: vec!["llama3".to_owned(), "mistral".to_owned()],
+            base_url: None,
+            api_key_env: None,
+            requires_key: false,
+        }],
+        vec![],
+        None,
+    );
+
+    // When building the registry.
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+
+    // Then both are individually look-up-able.
     assert!(
         registry
             .get(&ProviderId::new("ollama/llama3".to_owned()))

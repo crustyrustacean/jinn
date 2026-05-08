@@ -298,7 +298,7 @@ fn normal_scope_mode_category_contains_set_mode_input() {
 }
 
 #[test]
-fn normal_scope_navigation_category_has_scroll_and_tab() {
+fn navigation_has_scroll_bindings() {
     // Given the keymap.
     let keymap = init();
 
@@ -306,7 +306,7 @@ fn normal_scope_navigation_category_has_scroll_and_tab() {
     let groups = keymap.bindings_for_scope(Scope::Normal);
     let nav = groups.iter().find(|g| g.category == "Navigation");
 
-    // Then the Navigation group contains scroll and tab bindings.
+    // Then the Navigation group contains scroll bindings.
     assert!(nav.is_some(), "Navigation category should exist");
     let descs: Vec<&str> = nav
         .unwrap()
@@ -322,6 +322,25 @@ fn normal_scope_navigation_category_has_scroll_and_tab() {
         descs.contains(&"scroll down"),
         "Navigation should contain scroll down"
     );
+}
+
+#[test]
+fn navigation_has_tab_bindings() {
+    // Given the keymap.
+    let keymap = init();
+
+    // When getting bindings grouped by category for Normal scope.
+    let groups = keymap.bindings_for_scope(Scope::Normal);
+    let nav = groups.iter().find(|g| g.category == "Navigation");
+
+    // Then the Navigation group contains tab bindings.
+    assert!(nav.is_some(), "Navigation category should exist");
+    let descs: Vec<&str> = nav
+        .unwrap()
+        .bindings
+        .iter()
+        .map(|b| b.description.as_str())
+        .collect();
     assert!(
         descs.iter().any(|d| d.contains("tab")),
         "Navigation should contain tab switch"
@@ -610,7 +629,7 @@ fn input_scope_escape_appears_under_general_category() {
 // --- Tree walker tests ---
 
 #[test]
-fn collect_bindings_for_scope_finds_single_key_leaf() {
+fn quit_binding_present_in_normal_scope() {
     // Given the keymap.
     let keymap = init();
 
@@ -618,6 +637,19 @@ fn collect_bindings_for_scope_finds_single_key_leaf() {
     let entries = collect_bindings_for_scope(&keymap, &Scope::Normal);
 
     // Then the quit binding 'q' is present.
+    let q_entry = entries.iter().find(|e| e.key_sequence == "q");
+    assert!(q_entry.is_some(), "'q' should be in Normal scope bindings");
+}
+
+#[test]
+fn quit_binding_has_correct_key() {
+    // Given the keymap.
+    let keymap = init();
+
+    // When collecting bindings for Normal scope.
+    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal);
+
+    // Then the quit binding has correct description, scope, and command.
     let q_entry = entries.iter().find(|e| e.key_sequence == "q");
     assert!(q_entry.is_some(), "'q' should be in Normal scope bindings");
     let entry = q_entry.unwrap();
@@ -704,21 +736,33 @@ fn collect_bindings_for_scope_separates_scopes() {
 }
 
 #[test]
-fn collect_all_bindings_includes_multiple_scopes() {
+fn bindings_include_normal_scope() {
     // Given the keymap.
     let keymap = init();
 
     // When collecting all bindings.
     let entries = collect_all_bindings(&keymap);
 
-    // Then entries from multiple scopes are present.
+    // Then entries from Normal and Dashboard scopes are present.
     let normal_entries: Vec<_> = entries.iter().filter(|e| e.scope == "Normal").collect();
     let dashboard_entries: Vec<_> = entries.iter().filter(|e| e.scope == "Dashboard").collect();
-    let picker_entries: Vec<_> = entries.iter().filter(|e| e.scope == "Picker").collect();
-    let input_entries: Vec<_> = entries.iter().filter(|e| e.scope == "Input").collect();
 
     assert!(!normal_entries.is_empty(), "should have Normal entries");
     assert!(!dashboard_entries.is_empty(), "should have Dashboard entries");
+}
+
+#[test]
+fn bindings_include_input_scope() {
+    // Given the keymap.
+    let keymap = init();
+
+    // When collecting all bindings.
+    let entries = collect_all_bindings(&keymap);
+
+    // Then entries from Picker and Input scopes are present.
+    let picker_entries: Vec<_> = entries.iter().filter(|e| e.scope == "Picker").collect();
+    let input_entries: Vec<_> = entries.iter().filter(|e| e.scope == "Input").collect();
+
     assert!(!picker_entries.is_empty(), "should have Picker entries");
     assert!(!input_entries.is_empty(), "should have Input entries");
 }

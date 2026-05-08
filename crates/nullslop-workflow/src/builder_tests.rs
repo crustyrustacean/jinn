@@ -207,7 +207,7 @@ fn preview_produces_expected_format() {
 }
 
 #[test]
-fn full_builder_flow() {
+fn preview_shows_all_pieces() {
     // Given a builder.
     let mut builder = WorkflowBuilder::new();
 
@@ -251,8 +251,47 @@ fn full_builder_flow() {
     assert!(preview.contains("render"));
     assert!(preview.contains("file_exists({{video_dir}}/config.json)"));
     assert!(preview.contains("Config (summary)"));
+}
 
-    // And build produces a valid WorkflowDef.
+#[test]
+fn build_produces_valid_def() {
+    // Given a builder.
+    let mut builder = WorkflowBuilder::new();
+
+    // When building a complete workflow.
+    builder
+        .create(
+            "video-workflow".to_owned(),
+            "Music video workflow".to_owned(),
+        )
+        .unwrap();
+
+    builder.add_global("video_dir".to_owned(), "/tmp/video".to_owned());
+    builder.set_model_override("small".to_owned(), "ollama/phi3".to_owned());
+
+    builder.add_step(make_step("setup")).unwrap();
+    builder.add_step(make_step("render")).unwrap();
+
+    builder
+        .add_guard(
+            "setup",
+            GuardPredicate::FileExists {
+                path: "{{video_dir}}/config.json".to_owned(),
+            },
+        )
+        .unwrap();
+
+    builder
+        .add_output(
+            "setup",
+            StepOutputDef::Summary {
+                label: "Config".to_owned(),
+                value: "done".to_owned(),
+            },
+        )
+        .unwrap();
+
+    // Then build produces a valid WorkflowDef.
     let def = builder.build().unwrap();
     assert_eq!(def.name, "video-workflow");
     assert_eq!(def.steps.len(), 2);

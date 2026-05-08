@@ -94,7 +94,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn ensure_creates_directory_and_example_file() {
+    fn ensure_creates_directory() {
         // Given a nonexistent directory.
         let dir = TempDir::new().expect("temp dir");
         let prompts = dir.path().join("prompts");
@@ -103,12 +103,35 @@ mod tests {
         // When ensuring the prompts dir with example.
         ensure_prompts_dir_with_example_to(&prompts).expect("ensure");
 
-        // Then the directory and example file exist.
+        // Then the directory exists.
         assert!(prompts.exists());
+    }
+
+    #[test]
+    fn ensure_creates_example_file() {
+        // Given a nonexistent directory.
+        let dir = TempDir::new().expect("temp dir");
+        let prompts = dir.path().join("prompts");
+
+        // When ensuring the prompts dir with example.
+        ensure_prompts_dir_with_example_to(&prompts).expect("ensure");
+
+        // Then the example file exists.
         let example = prompts.join(EXAMPLE_FILENAME);
         assert!(example.exists());
+    }
 
-        // And the file parses back to a valid template.
+    #[test]
+    fn example_file_is_valid_template() {
+        // Given a nonexistent directory.
+        let dir = TempDir::new().expect("temp dir");
+        let prompts = dir.path().join("prompts");
+
+        // When ensuring the prompts dir with example.
+        ensure_prompts_dir_with_example_to(&prompts).expect("ensure");
+
+        // Then the file parses back to a valid template.
+        let example = prompts.join(EXAMPLE_FILENAME);
         let content = std::fs::read_to_string(&example).expect("read");
         let template = crate::loader::parse_template_content(&content).expect("parse");
         assert_eq!(template.name, "example");

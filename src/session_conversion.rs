@@ -122,10 +122,10 @@ mod tests {
         }
     }
 
-    // --- Test: Missing blobs produce defaults ---
+    // --- Test: Missing workflow blob produces None ---
 
     #[test]
-    fn persisted_into_session_provides_defaults_when_blobs_missing() {
+    fn workflow_state_is_none_when_blob_missing() {
         // Given a PersistedSession with empty blobs map.
         let persisted = PersistedSession {
             session_id: SessionId::new(),
@@ -139,18 +139,58 @@ mod tests {
         // When calling persisted_into_session.
         let session = persisted_into_session(persisted);
 
-        // Then workflow and strategy state are None and session has defaults.
+        // Then workflow state is None.
         assert!(session.workflow().is_none());
+    }
+
+    // --- Test: Missing strategy blob produces None ---
+
+    #[test]
+    fn strategy_state_is_none_when_blob_missing() {
+        // Given a PersistedSession with empty blobs map.
+        let persisted = PersistedSession {
+            session_id: SessionId::new(),
+            title: "Empty".to_owned(),
+            updated_at: jiff::Timestamp::now(),
+            history: vec![],
+            active_strategy: PromptStrategyId::passthrough(),
+            blobs: HashMap::new(),
+        };
+
+        // When calling persisted_into_session.
+        let session = persisted_into_session(persisted);
+
+        // Then strategy state is None.
         assert!(session.strategy_state().is_none());
+    }
+
+    // --- Test: Session has defaults when blobs are missing ---
+
+    #[test]
+    fn session_has_defaults_when_blobs_missing() {
+        // Given a PersistedSession with empty blobs map.
+        let persisted = PersistedSession {
+            session_id: SessionId::new(),
+            title: "Empty".to_owned(),
+            updated_at: jiff::Timestamp::now(),
+            history: vec![],
+            active_strategy: PromptStrategyId::passthrough(),
+            blobs: HashMap::new(),
+        };
+
+        // When calling persisted_into_session.
+        let session = persisted_into_session(persisted);
+
+        // Then session has default values.
         assert!(!session.is_streaming());
         assert!(!session.is_sending());
         assert!(session.queue().is_empty());
     }
 
-    // --- Test: Ephemeral fields reset to defaults ---
+    // --- Test: Ephemeral fields reset to defaults on round-trip ---
 
     #[test]
-    fn persisted_into_session_resets_ephemeral_fields_to_defaults() {
+    fn ephemeral_fields_reset_to_defaults() {
         // Given a ChatSessionState with history entries.
         let mut runtime = ChatSessionState::new();
         runtime.push_entry(ChatEntry::user("hello"));
@@ -167,7 +207,23 @@ mod tests {
         assert!(!restored.is_assembling());
         assert!(restored.scroll_offset().is_none());
         assert!(restored.queue().is_empty());
-        // And durable fields are preserved.
+    }
+
+    // --- Test: Durable fields survive round-trip ---
+
+    #[test]
+    fn durable_fields_preserved_after_roundtrip() {
+        // Given a ChatSessionState with history entries.
+        let mut runtime = ChatSessionState::new();
+        runtime.push_entry(ChatEntry::user("hello"));
+        runtime.push_entry(ChatEntry::assistant("world"));
+
+        // When converting to PersistedSession and back to ChatSessionState.
+        let session_id = SessionId::new();
+        let persisted = session_to_persisted(&runtime, &session_id, "Test");
+        let restored = persisted_into_session(persisted);
+
+        // Then durable fields are preserved.
         assert_eq!(restored.history().len(), 2);
     }
 

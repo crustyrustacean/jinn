@@ -425,7 +425,7 @@ mod tests {
     // --- Test 1: Save + load round-trip ---
 
     #[test]
-    fn save_then_load_full_round_trips_session_data() {
+    fn save_creates_summary() {
         // Given a JsonlSessionStore in a temp directory.
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -438,13 +438,27 @@ mod tests {
 
         // Then one summary is returned.
         assert_eq!(summaries.len(), 1);
-        let (id, summary, offset) = &summaries[0];
+        let (id, summary, _offset) = &summaries[0];
         assert_eq!(id, &session_id);
         assert_eq!(summary.title, "Test Session");
+    }
 
-        // And load_full at that offset returns the complete session.
+    #[test]
+    fn load_full_restores_data() {
+        // Given a JsonlSessionStore in a temp directory.
+        let dir = TempDir::new().expect("temp dir");
+        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
+        let session_id = SessionId::new();
+        let session = make_session(&session_id, "Test Session");
+
+        // When saving and loading full at the summary offset.
+        store.save(&session).expect("save");
+        let summaries = store.load_summaries().expect("load_summaries");
+        let offset = summaries[0].2;
+
+        // Then load_full returns the complete session.
         let full = store
-            .load_full(*offset)
+            .load_full(offset)
             .expect("load_full")
             .expect("should have a session");
         assert_eq!(full.session_id, session_id);
@@ -455,7 +469,7 @@ mod tests {
     // --- Test 2: Multiple sessions, latest wins ---
 
     #[test]
-    fn load_summaries_returns_latest_snapshot_per_session() {
+    fn summaries_returns_correct_count() {
         // Given a store with 3 saves: session A (v1), session B (v1), session A (v2).
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -470,9 +484,27 @@ mod tests {
         // When loading summaries.
         let summaries = store.load_summaries().expect("load_summaries");
 
-        // Then 2 summaries are returned: A (v2) and B (v1).
+        // Then 2 summaries are returned.
         assert_eq!(summaries.len(), 2);
+    }
 
+    #[test]
+    fn summaries_returns_latest_versions() {
+        // Given a store with 3 saves: session A (v1), session B (v1), session A (v2).
+        let dir = TempDir::new().expect("temp dir");
+        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
+
+        let id_a = SessionId::new();
+        let id_b = SessionId::new();
+
+        store.save(&make_session(&id_a, "A v1")).expect("save A v1");
+        store.save(&make_session(&id_b, "B v1")).expect("save B v1");
+        store.save(&make_session(&id_a, "A v2")).expect("save A v2");
+
+        // When loading summaries.
+        let summaries = store.load_summaries().expect("load_summaries");
+
+        // Then A is v2 and B is v1.
         let entry_a = summaries
             .iter()
             .find(|(id, _, _)| id == &id_a)
@@ -484,8 +516,30 @@ mod tests {
             .find(|(id, _, _)| id == &id_b)
             .expect("session B should exist");
         assert_eq!(entry_b.1.title, "B v1");
+    }
 
-        // And session A's byte offset points to the second save (v2).
+    #[test]
+    fn byte_offset_points_to_latest() {
+        // Given a store with 3 saves: session A (v1), session B (v1), session A (v2).
+        let dir = TempDir::new().expect("temp dir");
+        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
+
+        let id_a = SessionId::new();
+        let id_b = SessionId::new();
+
+        store.save(&make_session(&id_a, "A v1")).expect("save A v1");
+        store.save(&make_session(&id_b, "B v1")).expect("save B v1");
+        store.save(&make_session(&id_a, "A v2")).expect("save A v2");
+
+        // When loading summaries and seeking to A's offset.
+        let summaries = store.load_summaries().expect("load_summaries");
+
+        let entry_a = summaries
+            .iter()
+            .find(|(id, _, _)| id == &id_a)
+            .expect("session A should exist");
+
+        // Then session A's byte offset points to the second save (v2).
         let full_a = store
             .load_full(entry_a.2)
             .expect("load_full")
@@ -496,7 +550,7 @@ mod tests {
     // --- Test 3: Compaction removes stale snapshots ---
 
     #[test]
-    fn compact_removes_stale_snapshots_and_preserves_latest() {
+    fn compact_preserves_sessions() {
         // Given a store with 600+ lines (multiple saves of 2 sessions).
         let dir = TempDir::new().expect("temp dir");
         let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
@@ -520,8 +574,31 @@ mod tests {
         // Then summaries still return the same sessions.
         let summaries = store.load_summaries().expect("load_summaries");
         assert_eq!(summaries.len(), 2);
+    }
 
-        // And the file now has only 2 lines (one per session).
+    #[test]
+    fn compact_reduces_file_size() {
+        // Given a store with 600+ lines (multiple saves of 2 sessions).
+        let dir = TempDir::new().expect("temp dir");
+        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
+
+        let id_a = SessionId::new();
+        let id_b = SessionId::new();
+
+        for i in 0..300 {
+            store
+                .save(&make_session(&id_a, &format!("A iter {i}")))
+                .expect("save A");
+            store
+                .save(&make_session(&id_b, &format!("B iter {i}")))
+                .expect("save B");
+        }
+        // 600 lines total, above the 500 threshold.
+
+        // When compacting.
+        store.compact().expect("compact");
+
+        // Then the file now has only 2 lines (one per session).
         let content = fs::read_to_string(store.file_path()).expect("read file");
         let line_count = content.lines().filter(|l| !l.is_empty()).count();
         assert_eq!(line_count, 2);
@@ -627,7 +704,7 @@ mod tests {
     // --- Test 8: Save creates directory if missing ---
 
     #[test]
-    fn save_creates_directory_if_missing() {
+    fn save_creates_directory() {
         // Given a JsonlSessionStore pointed at a non-existent directory.
         let dir = TempDir::new().expect("temp dir");
         let nested = dir.path().join("does").join("not").join("exist");
@@ -637,11 +714,37 @@ mod tests {
         // When saving.
         store.save(&session).expect("save");
 
-        // Then the directory and file are created.
+        // Then the directory is created.
         assert!(nested.exists());
-        assert!(nested.join(FILE_NAME).exists());
+    }
 
-        // And load_summaries returns the saved session.
+    #[test]
+    fn save_creates_file() {
+        // Given a JsonlSessionStore pointed at a non-existent directory.
+        let dir = TempDir::new().expect("temp dir");
+        let nested = dir.path().join("does").join("not").join("exist");
+        let store = JsonlSessionStore::new_in(nested.clone());
+        let session = make_session(&SessionId::new(), "Mkdir Test");
+
+        // When saving.
+        store.save(&session).expect("save");
+
+        // Then the file is created.
+        assert!(nested.join(FILE_NAME).exists());
+    }
+
+    #[test]
+    fn save_returns_summary() {
+        // Given a JsonlSessionStore pointed at a non-existent directory.
+        let dir = TempDir::new().expect("temp dir");
+        let nested = dir.path().join("does").join("not").join("exist");
+        let store = JsonlSessionStore::new_in(nested.clone());
+        let session = make_session(&SessionId::new(), "Mkdir Test");
+
+        // When saving and loading summaries.
+        store.save(&session).expect("save");
+
+        // Then load_summaries returns the saved session.
         let summaries = store.load_summaries().expect("load_summaries");
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].1.title, "Mkdir Test");

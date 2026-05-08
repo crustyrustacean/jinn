@@ -123,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn save_and_load_roundtrip() {
+    fn loaded_matches_original_entries() {
         // Given a cache with entries and a timestamp.
         let mut cache = ModelCache::new();
         cache.entries.insert(
@@ -139,11 +139,33 @@ mod tests {
         cache.save(&path).expect("save");
         let loaded = ModelCache::load(&path).expect("load");
 
-        // Then the loaded cache matches the original.
+        // Then the loaded cache entries match the original.
         assert!(loaded.is_some());
         let loaded = loaded.unwrap();
         assert_eq!(loaded.entries.len(), 1);
         assert_eq!(loaded.entries["ollama"].len(), 2);
+    }
+
+    #[test]
+    fn loaded_matches_original_timestamp() {
+        // Given a cache with entries and a timestamp.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "ollama".to_owned(),
+            vec!["llama3".to_owned(), "mistral".to_owned()],
+        );
+        cache.last_updated_at = Some(Timestamp::now());
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("model_cache.json");
+
+        // When saving and loading.
+        cache.save(&path).expect("save");
+        let loaded = ModelCache::load(&path).expect("load");
+
+        // Then the loaded cache has a timestamp.
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
         assert!(loaded.last_updated_at.is_some());
     }
 

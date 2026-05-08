@@ -76,7 +76,7 @@ mod tests {
     }
 
     #[test]
-    fn open_picker_provider_sets_kind_loads_enters_picker() {
+    fn open_provider_sets_kind() {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -92,12 +92,29 @@ mod tests {
 
         // Then active_picker_kind is Provider.
         assert_eq!(state.active_picker_kind, Some(PickerKind::Provider));
-        // And mode is Picker.
+    }
+
+    #[test]
+    fn open_provider_sets_mode_to_picker() {
+        // Given a bus with OpenPickerHandler.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+
+        // When processing OpenPicker { kind: Provider }.
+        bus.submit_command(nullslop_protocol::Command::OpenPicker {
+            payload: OpenPicker {
+                kind: PickerKind::Provider,
+            },
+        });
+        bus.process_commands(&mut state, &services);
+
+        // Then mode is Picker.
         assert_eq!(state.mode, nullslop_protocol::Mode::Picker);
     }
 
     #[test]
-    fn open_picker_context_assembly_sets_kind_loads_enters_picker() {
+    fn open_context_assembly_sets_kind() {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -113,12 +130,73 @@ mod tests {
 
         // Then active_picker_kind is ContextAssembly.
         assert_eq!(state.active_picker_kind, Some(PickerKind::ContextAssembly));
-        // And mode is Picker.
+    }
+
+    #[test]
+    fn open_context_assembly_sets_mode_to_picker() {
+        // Given a bus with OpenPickerHandler.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+
+        // When processing OpenPicker { kind: ContextAssembly }.
+        bus.submit_command(nullslop_protocol::Command::OpenPicker {
+            payload: OpenPicker {
+                kind: PickerKind::ContextAssembly,
+            },
+        });
+        bus.process_commands(&mut state, &services);
+
+        // Then mode is Picker.
         assert_eq!(state.mode, nullslop_protocol::Mode::Picker);
     }
 
     #[test]
-    fn open_picker_keymap_sets_kind_resets_enters_picker() {
+    fn open_keymap_sets_kind() {
+        // Given a bus with OpenPickerHandler.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState {
+            keymap_picker_show_all: true,
+            ..Default::default()
+        };
+
+        // When processing OpenPicker { kind: Keymap }.
+        bus.submit_command(nullslop_protocol::Command::OpenPicker {
+            payload: OpenPicker {
+                kind: PickerKind::Keymap,
+            },
+        });
+        bus.process_commands(&mut state, &services);
+
+        // Then active_picker_kind is Keymap.
+        assert_eq!(state.active_picker_kind, Some(PickerKind::Keymap));
+    }
+
+    #[test]
+    fn open_keymap_sets_mode_to_picker() {
+        // Given a bus with OpenPickerHandler.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState {
+            keymap_picker_show_all: true,
+            ..Default::default()
+        };
+
+        // When processing OpenPicker { kind: Keymap }.
+        bus.submit_command(nullslop_protocol::Command::OpenPicker {
+            payload: OpenPicker {
+                kind: PickerKind::Keymap,
+            },
+        });
+        bus.process_commands(&mut state, &services);
+
+        // Then mode is Picker.
+        assert_eq!(state.mode, nullslop_protocol::Mode::Picker);
+    }
+
+    #[test]
+    fn open_keymap_resets_show_all() {
         // Given a bus with OpenPickerHandler.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -136,11 +214,7 @@ mod tests {
         });
         bus.process_commands(&mut state, &services);
 
-        // Then active_picker_kind is Keymap.
-        assert_eq!(state.active_picker_kind, Some(PickerKind::Keymap));
-        // And mode is Picker.
-        assert_eq!(state.mode, nullslop_protocol::Mode::Picker);
-        // And keymap_picker_show_all is reset to false.
+        // Then keymap_picker_show_all is reset to false.
         assert!(!state.keymap_picker_show_all);
     }
 }

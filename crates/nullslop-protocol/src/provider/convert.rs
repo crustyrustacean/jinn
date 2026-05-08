@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn entries_to_messages_converts_tool_call_entries() {
+    fn orphaned_tool_call_produces_assistant_message() {
         // Given a tool call entry (orphaned — no preceding assistant).
         let entries = vec![ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#)];
 
@@ -185,6 +185,18 @@ mod tests {
 
         // Then an empty assistant message with tool_calls is produced.
         assert_eq!(messages.len(), 1);
+        assert!(matches!(&messages[0], LlmMessage::Assistant { .. }));
+    }
+
+    #[test]
+    fn assistant_message_contains_tool_calls() {
+        // Given a tool call entry (orphaned — no preceding assistant).
+        let entries = vec![ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#)];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then the assistant message has one tool call with correct fields.
         match &messages[0] {
             LlmMessage::Assistant {
                 content,
@@ -247,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn entries_to_messages_assembles_tool_loop() {
+    fn tool_loop_produces_four_messages() {
         // Given a full tool loop: user → assistant → tool call → tool result → assistant.
         let entries = vec![
             ChatEntry::user("what time is it?"),
@@ -260,8 +272,25 @@ mod tests {
         // When converting to messages.
         let messages = entries_to_messages(&entries);
 
-        // Then four messages are produced: user, assistant+tool_calls, tool, assistant.
+        // Then four messages are produced.
         assert_eq!(messages.len(), 4);
+    }
+
+    #[test]
+    fn tool_loop_message_types_match_expected_order() {
+        // Given a full tool loop: user → assistant → tool call → tool result → assistant.
+        let entries = vec![
+            ChatEntry::user("what time is it?"),
+            ChatEntry::assistant(""),
+            ChatEntry::tool_call("call_1", "get_time", "{}"),
+            ChatEntry::tool_result("call_1", "get_time", "12:00", true),
+            ChatEntry::assistant("It's 12:00!"),
+        ];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then message types match expected order: user, assistant+tool_calls, tool, assistant.
         assert!(
             matches!(&messages[0], LlmMessage::User { content } if content == "what time is it?")
         );
@@ -286,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn entries_to_messages_multiple_tool_calls_in_one_response() {
+    fn multiple_tool_calls_produce_one_assistant_message() {
         // Given an assistant entry followed by multiple tool call entries.
         let entries = vec![
             ChatEntry::assistant("checking both"),
@@ -297,8 +326,24 @@ mod tests {
         // When converting to messages.
         let messages = entries_to_messages(&entries);
 
-        // Then one assistant message with two tool calls is produced.
+        // Then one assistant message is produced.
         assert_eq!(messages.len(), 1);
+        assert!(matches!(&messages[0], LlmMessage::Assistant { .. }));
+    }
+
+    #[test]
+    fn assistant_message_has_two_tool_calls() {
+        // Given an assistant entry followed by multiple tool call entries.
+        let entries = vec![
+            ChatEntry::assistant("checking both"),
+            ChatEntry::tool_call("call_1", "echo", r#"{"input":"a"}"#),
+            ChatEntry::tool_call("call_2", "get_time", "{}"),
+        ];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then the assistant message has two tool calls with correct ids.
         match &messages[0] {
             LlmMessage::Assistant {
                 content,
@@ -315,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn entries_to_messages_skips_system_and_actor_with_tools() {
+    fn system_entries_skipped_between_tools() {
         // Given entries with system and actor entries between tool entries.
         let entries = vec![
             ChatEntry::user("go"),
@@ -329,7 +374,29 @@ mod tests {
         // When converting to messages.
         let messages = entries_to_messages(&entries);
 
-        // Then system and actor entries are skipped.
+        // Then system and actor entries are skipped, producing only 3 messages.
+        assert_eq!(messages.len(), 3);
+        assert!(matches!(&messages[0], LlmMessage::User { .. }));
+        assert!(matches!(&messages[1], LlmMessage::Assistant { .. }));
+        assert!(matches!(&messages[2], LlmMessage::Tool { .. }));
+    }
+
+    #[test]
+    fn actor_entries_skipped_between_tools() {
+        // Given entries with system and actor entries between tool entries.
+        let entries = vec![
+            ChatEntry::user("go"),
+            ChatEntry::assistant(""),
+            ChatEntry::tool_call("call_1", "echo", "{}"),
+            ChatEntry::system("some status"),
+            ChatEntry::actor("actor-x", "doing work"),
+            ChatEntry::tool_result("call_1", "echo", "ok", true),
+        ];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then actor entries are skipped, producing only User, Assistant, and Tool.
         assert_eq!(messages.len(), 3);
         assert!(matches!(&messages[0], LlmMessage::User { .. }));
         assert!(matches!(&messages[1], LlmMessage::Assistant { .. }));
@@ -428,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn pinned_system_with_other_entries() {
+    fn pinned_system_appears_first() {
         // Given a pinned System entry alongside User and Assistant entries.
         let entries = vec![
             ChatEntry::system("always include").with_pin(PinPosition::Top),
@@ -439,7 +506,7 @@ mod tests {
         // When converting to messages.
         let messages = entries_to_messages(&entries);
 
-        // Then the pinned System entry appears first, followed by User and Assistant.
+        // Then the pinned System entry appears first.
         assert_eq!(messages.len(), 3);
         assert_eq!(
             messages[0],
@@ -447,6 +514,21 @@ mod tests {
                 content: "always include".into(),
             }
         );
+    }
+
+    #[test]
+    fn other_entries_follow_pinned() {
+        // Given a pinned System entry alongside User and Assistant entries.
+        let entries = vec![
+            ChatEntry::system("always include").with_pin(PinPosition::Top),
+            ChatEntry::user("hello"),
+            ChatEntry::assistant("hi"),
+        ];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then User and Assistant messages follow the pinned System entry.
         assert_eq!(
             messages[1],
             LlmMessage::User {
