@@ -1727,7 +1727,7 @@ mod tests {
     // --- Batch execution tests ---
 
     #[tokio::test]
-    async fn execute_batch_with_single_builtin_tool() {
+    async fn execute_batch_with_echo_tool_emits_completion() {
         // Given an activated actor.
         let sink = std::sync::Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -1756,6 +1756,33 @@ mod tests {
         assert_eq!(completed.len(), 1);
         assert_eq!(completed[0].result.content, "hello");
         assert!(completed[0].result.success);
+    }
+
+    #[tokio::test]
+    async fn completion_event_triggers_batch_completed() {
+        // Given an activated actor with a single echo batch executed.
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::ExecuteToolBatch {
+            payload: ExecuteToolBatch {
+                session_id: session_id.clone(),
+                tool_calls: vec![ToolCall {
+                    id: "call_1".to_owned(),
+                    name: "echo".to_owned(),
+                    arguments: r#"{"input":"hello"}"#.to_owned(),
+                }],
+            },
+        };
+        actor.handle_command(&cmd, &ctx).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let events = sink.take_events();
+        let completed = find_execution_completed(&events);
 
         // When feeding the completion event back to the actor.
         let completion_event = Event::ToolExecutionCompleted {
@@ -1775,7 +1802,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_batch_with_multiple_builtin_tools() {
+    async fn execute_batch_with_two_tools_emits_two_completions() {
         // Given an activated actor.
         let sink = std::sync::Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -1809,6 +1836,40 @@ mod tests {
         let events = sink.take_events();
         let completed = find_execution_completed(&events);
         assert_eq!(completed.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn first_completion_does_not_complete_batch() {
+        // Given an activated actor with a batch of two echo calls executed.
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::ExecuteToolBatch {
+            payload: ExecuteToolBatch {
+                session_id: session_id.clone(),
+                tool_calls: vec![
+                    ToolCall {
+                        id: "call_a".to_owned(),
+                        name: "echo".to_owned(),
+                        arguments: r#"{"input":"first"}"#.to_owned(),
+                    },
+                    ToolCall {
+                        id: "call_b".to_owned(),
+                        name: "echo".to_owned(),
+                        arguments: r#"{"input":"second"}"#.to_owned(),
+                    },
+                ],
+            },
+        };
+        actor.handle_command(&cmd, &ctx).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let events = sink.take_events();
+        let completed = find_execution_completed(&events);
 
         // When feeding the first completion back.
         actor.handle_event(
@@ -1824,6 +1885,51 @@ mod tests {
         // Then no batch completed yet (one remaining).
         let events = sink.take_events();
         assert!(find_batch_completed(&events).is_empty());
+    }
+
+    #[tokio::test]
+    async fn second_completion_emits_batch_completed() {
+        // Given an activated actor with a batch of two echo calls where first completion was fed back.
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::ExecuteToolBatch {
+            payload: ExecuteToolBatch {
+                session_id: session_id.clone(),
+                tool_calls: vec![
+                    ToolCall {
+                        id: "call_a".to_owned(),
+                        name: "echo".to_owned(),
+                        arguments: r#"{"input":"first"}"#.to_owned(),
+                    },
+                    ToolCall {
+                        id: "call_b".to_owned(),
+                        name: "echo".to_owned(),
+                        arguments: r#"{"input":"second"}"#.to_owned(),
+                    },
+                ],
+            },
+        };
+        actor.handle_command(&cmd, &ctx).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let events = sink.take_events();
+        let completed = find_execution_completed(&events);
+
+        actor.handle_event(
+            &Event::ToolExecutionCompleted {
+                payload: ToolExecutionCompleted {
+                    session_id: session_id.clone(),
+                    result: completed[0].result.clone(),
+                },
+            },
+            &ctx,
+        );
+        sink.take_events();
 
         // When feeding the second completion back.
         actor.handle_event(
@@ -1844,7 +1950,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_batch_with_unknown_tool_returns_error_result() {
+    async fn execute_batch_with_unknown_tool_emits_error_completion() {
         // Given an activated actor.
         let sink = std::sync::Arc::new(RecordingSink::new());
         let mut ctx = test_context(&sink);
@@ -1872,6 +1978,32 @@ mod tests {
         assert_eq!(completed.len(), 1);
         assert!(!completed[0].result.success);
         assert!(completed[0].result.content.contains("unknown tool"));
+    }
+
+    #[tokio::test]
+    async fn error_completion_triggers_batch_completed() {
+        // Given an activated actor with an unknown tool batch executed.
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::ExecuteToolBatch {
+            payload: ExecuteToolBatch {
+                session_id: session_id.clone(),
+                tool_calls: vec![ToolCall {
+                    id: "call_x".to_owned(),
+                    name: "nonexistent_tool".to_owned(),
+                    arguments: "{}".to_owned(),
+                }],
+            },
+        };
+        actor.handle_command(&cmd, &ctx).await;
+
+        let events = sink.events();
+        let completed = find_execution_completed(&events);
 
         // When feeding the error result back.
         actor.handle_event(
@@ -2881,12 +3013,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn full_workflow_creation_flow() {
-        // Given an activated actor.
+    async fn workflow_preview_shows_all_steps() {
+        // Given an activated actor with a fully built workflow.
         let (mut actor, sink, ctx) = activate();
         let session_id = SessionId::new();
 
-        // When building a complete workflow through all tools.
         send_batch(
             &mut actor,
             &ctx,
@@ -2939,16 +3070,17 @@ mod tests {
         )
         .await;
 
-        // Then preview shows everything.
+        // When previewing the workflow.
         sink.clear();
         send_batch(
             &mut actor,
             &ctx,
-            session_id.clone(),
+            session_id,
             vec![make_call("workflow_preview", "{}")],
         )
         .await;
 
+        // Then preview shows all steps, guards, outputs, and globals.
         let preview_events = sink.take_events();
         let preview_batch = find_batch_completed(&preview_events);
         assert_eq!(preview_batch.len(), 1);
@@ -2959,8 +3091,67 @@ mod tests {
         assert!(preview.contains("file_exists"));
         assert!(preview.contains("Notes (file)"));
         assert!(preview.contains("Globals: dir"));
+    }
 
-        // When committing.
+    #[tokio::test]
+    async fn workflow_commit_loads_definition() {
+        // Given an activated actor with a fully built workflow.
+        let (mut actor, sink, ctx) = activate();
+        let session_id = SessionId::new();
+
+        send_batch(
+            &mut actor,
+            &ctx,
+            session_id.clone(),
+            vec![make_call(
+                "workflow_create",
+                r#"{"name":"video-wf","description":"Video workflow"}"#,
+            )],
+        )
+        .await;
+
+        send_batch(
+            &mut actor,
+            &ctx,
+            session_id.clone(),
+            vec![make_call(
+                "workflow_add_step",
+                r#"{"id":"create-dir","title":"Create Dir","instructions":"Create directory","model_hint":"small","checkpoint":true,"requires_user_input":true,"tools":["shell","file_read"]}"#,
+            )],
+        ).await;
+
+        send_batch(
+            &mut actor,
+            &ctx,
+            session_id.clone(),
+            vec![make_call(
+                "workflow_add_guard",
+                r#"{"step_id":"create-dir","predicate":"file_exists","args":{"path":"{{dir}}/notes.md"}}"#,
+            )],
+        ).await;
+
+        send_batch(
+            &mut actor,
+            &ctx,
+            session_id.clone(),
+            vec![make_call(
+                "workflow_add_output",
+                r#"{"step_id":"create-dir","kind":"file","label":"Notes","path":"{{dir}}/notes.md"}"#,
+            )],
+        ).await;
+
+        send_batch(
+            &mut actor,
+            &ctx,
+            session_id.clone(),
+            vec![make_call(
+                "workflow_add_global",
+                r#"{"key":"dir","value":"/tmp/video"}"#,
+            )],
+        )
+        .await;
+
+        // When committing the workflow.
         sink.clear();
         send_batch(
             &mut actor,
@@ -2970,7 +3161,7 @@ mod tests {
         )
         .await;
 
-        // Then the workflow is loaded.
+        // Then the workflow is loaded with the correct definition.
         let events = sink.take_events();
         let commit_batch = find_batch_completed(&events);
         assert_eq!(commit_batch.len(), 1);
@@ -3029,7 +3220,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn batch_with_workflow_and_regular_tools() {
+    async fn batch_with_mixed_tools_emits_echo_completion() {
         // Given an activated actor.
         let (mut actor, sink, ctx) = activate();
         let session_id = SessionId::new();
@@ -3055,8 +3246,33 @@ mod tests {
         let completed = find_execution_completed(&events);
         assert_eq!(completed.len(), 1);
 
-        // No batch completed yet (echo still pending).
+        // And no batch completed yet (echo still pending).
         assert!(find_batch_completed(&events).is_empty());
+    }
+
+    #[tokio::test]
+    async fn echo_completion_triggers_batch_completed_with_both_results() {
+        // Given an activated actor with a batch of workflow and echo tools executed.
+        let (mut actor, sink, ctx) = activate();
+        let session_id = SessionId::new();
+
+        send_batch(
+            &mut actor,
+            &ctx,
+            session_id.clone(),
+            vec![
+                make_call(
+                    "workflow_create",
+                    r#"{"name":"test-wf","description":"A test"}"#,
+                ),
+                make_call("echo", r#"{"input":"hello"}"#),
+            ],
+        )
+        .await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let events = sink.take_events();
+        let completed = find_execution_completed(&events);
 
         // When feeding the echo completion back.
         actor.handle_event(

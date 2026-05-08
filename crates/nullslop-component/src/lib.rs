@@ -249,29 +249,50 @@ mod macro_tests {
     }
 
     #[test]
-    fn multiple_handlers_dispatch_correctly() {
-        // Given a MultiHandler with 2 command handlers and 1 event handler.
+    fn insert_char_handler_updates_input() {
+        // Given a MultiHandler with command handlers registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         MultiHandler.register(&mut bus);
+
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
 
         // When processing an InsertChar command.
         bus.submit_command(Command::InsertChar {
             payload: InsertChar { ch: 'h' },
         });
-        let services = test_utils::test_services();
-        let mut state = AppState::default();
         bus.process_commands(&mut state, &services);
 
-        // Then the command handler ran.
+        // Then the input buffer is updated.
         assert_eq!(state.active_chat_input().text(), "h");
         assert!(!state.should_quit);
+    }
 
-        // When also processing Quit.
+    #[test]
+    fn quit_handler_sets_should_quit() {
+        // Given a MultiHandler with command handlers registered.
+        let mut bus: Bus<AppState, Services> = Bus::new();
+        MultiHandler.register(&mut bus);
+
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+
+        // When processing a Quit command.
         bus.submit_command(Command::Quit);
         bus.process_commands(&mut state, &services);
 
-        // Then should_quit is now true.
+        // Then should_quit is true.
         assert!(state.should_quit);
+    }
+
+    #[test]
+    fn mode_changed_handler_updates_input() {
+        // Given a MultiHandler with event handlers registered.
+        let mut bus: Bus<AppState, Services> = Bus::new();
+        MultiHandler.register(&mut bus);
+
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
 
         // When processing a ModeChanged event.
         bus.submit_event(Event::ModeChanged {
@@ -282,7 +303,7 @@ mod macro_tests {
         });
         bus.process_events(&mut state, &services);
 
-        // Then the event handler ran (chat_input.text() has "h!").
-        assert_eq!(state.active_chat_input().text(), "h!");
+        // Then the event handler ran (chat_input.text() has "!").
+        assert_eq!(state.active_chat_input().text(), "!");
     }
 }

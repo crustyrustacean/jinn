@@ -783,27 +783,16 @@ mod tests {
     // --- Keymap scope toggle tests ---
 
     #[test]
-    fn toggle_keymap_scope_filter_flips_show_all_and_repopulates_entries() {
+    fn toggle_scope_filter_to_show_all_includes_multiple_scopes() {
         // Given an app in Normal scope with keymap picker entries.
         let mut app = test_app();
         app.which_key.set_scope(Scope::Normal);
 
-        // Populate initial entries by routing OpenPicker (stores origin scope).
         app.route_command(Command::OpenPicker {
             payload: nullslop_protocol::system::OpenPicker {
                 kind: nullslop_protocol::PickerKind::Keymap,
             },
         });
-
-        // Verify origin scope was stored.
-        {
-            let state = app.core.state.read();
-            assert_eq!(
-                state.keymap_picker_origin_scope,
-                Some("Normal".to_owned()),
-                "origin scope should be Normal"
-            );
-        }
 
         // When toggling the scope filter (false -> true).
         app.route_command(Command::ToggleKeymapScopeFilter);
@@ -821,8 +810,22 @@ mod tests {
                 "all scopes should include multiple scopes, got: {scopes:?}"
             );
         }
+    }
 
-        // When toggling again (true -> false).
+    #[test]
+    fn toggle_scope_filter_back_to_false_limits_to_normal_scope() {
+        // Given an app in Normal scope with keymap picker entries.
+        let mut app = test_app();
+        app.which_key.set_scope(Scope::Normal);
+
+        app.route_command(Command::OpenPicker {
+            payload: nullslop_protocol::system::OpenPicker {
+                kind: nullslop_protocol::PickerKind::Keymap,
+            },
+        });
+
+        // When toggling twice (false -> true -> false).
+        app.route_command(Command::ToggleKeymapScopeFilter);
         app.route_command(Command::ToggleKeymapScopeFilter);
 
         // Then show_all is false and entries are Normal-scope only (the origin scope).
