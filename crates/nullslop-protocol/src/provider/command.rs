@@ -35,18 +35,6 @@ pub struct CancelStream {
     pub session_id: SessionId,
 }
 
-/// A single token from a streaming LLM response.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("provider")]
-pub struct StreamToken {
-    /// The session this token belongs to.
-    pub session_id: SessionId,
-    /// The zero-based index of this token in the stream.
-    pub index: usize,
-    /// The token text.
-    pub token: String,
-}
-
 /// Command to send conversation context to the LLM provider.
 ///
 /// Emitted by `LlmRequestHandler` when a user message is submitted.

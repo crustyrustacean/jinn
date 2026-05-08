@@ -1,6 +1,6 @@
 //! Provider component — handles streaming LLM responses and message queuing.
 //!
-//! `ProviderHandler` processes [`StreamToken`] commands to track streaming state.
+//! `ProviderHandler` processes [`StreamToken`] events to track streaming state.
 //! `MessageQueueHandler` manages the message queue: enqueue, dispatch, cancel-drain.
 //! `StreamingIndicatorElement` shows the current streaming/sending/queue state.
 //! `QueueDisplayElement` shows stacked dimmed "QUEUED:" entries.

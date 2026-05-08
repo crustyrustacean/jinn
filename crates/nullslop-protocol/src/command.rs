@@ -32,7 +32,7 @@ use crate::context::UnpinChatEntry;
 pub use crate::custom::CommandMsg;
 use crate::provider::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
-    SendToLlmProvider, StreamToken,
+    SendToLlmProvider,
 };
 use crate::provider_picker::{
     PickerBackspace, PickerConfirm, PickerInsertChar, PickerMoveCursorLeft, PickerMoveCursorRight,
@@ -43,8 +43,7 @@ use crate::system::OpenPicker;
 use crate::system::SetMode;
 use crate::tab::SwitchTab;
 use crate::tool::{
-    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools, ToolCallReceived,
-    ToolCallStreaming, ToolUseStarted,
+    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools,
 };
 use crate::workflow::{AbortWorkflow, AdvanceStep, CompleteStep, JumpToStep, LoadWorkflow};
 
@@ -152,13 +151,6 @@ pub enum Command {
         /// The full conversation history as LLM messages.
         #[serde(flatten)]
         payload: SendToLlmProvider,
-    },
-    /// A single token from a streaming LLM response.
-    #[serde(rename = "stream_token")]
-    StreamToken {
-        /// The stream token.
-        #[serde(flatten)]
-        payload: StreamToken,
     },
     /// Request prompt assembly from the context actor.
     #[serde(rename = "assemble_prompt")]
@@ -304,27 +296,6 @@ pub enum Command {
         /// The single tool execution payload.
         #[serde(flatten)]
         payload: ExecuteTool,
-    },
-    /// A tool call has started in the LLM stream.
-    #[serde(rename = "tool_use_started")]
-    ToolUseStarted {
-        /// The tool use started payload.
-        #[serde(flatten)]
-        payload: ToolUseStarted,
-    },
-    /// A complete tool call was received from the LLM stream.
-    #[serde(rename = "tool_call_received")]
-    ToolCallReceived {
-        /// The received tool call payload.
-        #[serde(flatten)]
-        payload: ToolCallReceived,
-    },
-    /// Streaming update for a tool call's arguments being assembled.
-    #[serde(rename = "tool_call_streaming")]
-    ToolCallStreaming {
-        /// The streaming tool call payload.
-        #[serde(flatten)]
-        payload: ToolCallStreaming,
     },
     /// Push a tool result into the chat log.
     #[serde(rename = "push_tool_result")]
@@ -561,7 +532,6 @@ impl Command {
             Self::ChatEntrySelectNext { .. } => Some(ChatEntrySelectNext::NAME),
             Self::ChatEntrySelectPrev { .. } => Some(ChatEntrySelectPrev::NAME),
             Self::ChatEntrySelectCancel { .. } => Some(ChatEntrySelectCancel::NAME),
-            Self::StreamToken { .. } => Some(StreamToken::NAME),
             Self::PushChatEntry { .. } => Some(PushChatEntry::NAME),
             Self::EnqueueUserMessage { .. } => Some(EnqueueUserMessage::NAME),
             Self::SetChatInputText { .. } => Some(SetChatInputText::NAME),
@@ -582,9 +552,6 @@ impl Command {
             Self::RegisterTools { .. } => Some(RegisterTools::NAME),
             Self::ExecuteToolBatch { .. } => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool { .. } => Some(ExecuteTool::NAME),
-            Self::ToolUseStarted { .. } => Some(ToolUseStarted::NAME),
-            Self::ToolCallReceived { .. } => Some(ToolCallReceived::NAME),
-            Self::ToolCallStreaming { .. } => Some(ToolCallStreaming::NAME),
             Self::PushToolResult { .. } => Some(PushToolResult::NAME),
             Self::LoadWorkflow { .. } => Some(LoadWorkflow::NAME),
             Self::AdvanceStep => Some(AdvanceStep::NAME),
@@ -636,13 +603,6 @@ impl std::fmt::Display for Command {
             Command::ChatEntrySelectNext { .. } => write!(f, "select next entry"),
             Command::ChatEntrySelectPrev { .. } => write!(f, "select prev entry"),
             Command::ChatEntrySelectCancel { .. } => write!(f, "cancel entry selection"),
-            Command::StreamToken { payload } => {
-                write!(
-                    f,
-                    "stream token '{}' (idx {})",
-                    payload.token, payload.index
-                )
-            }
             Command::PushChatEntry { .. } => write!(f, "push chat entry"),
             Command::EnqueueUserMessage { .. } => write!(f, "enqueue user message"),
             Command::SetChatInputText { .. } => write!(f, "set chat input text"),
@@ -693,19 +653,6 @@ impl std::fmt::Display for Command {
                     "execute tool '{}' ({})",
                     payload.tool_call.name, payload.tool_call.id
                 )
-            }
-            Command::ToolUseStarted { payload } => {
-                write!(f, "tool use started '{}' ({})", payload.name, payload.id)
-            }
-            Command::ToolCallReceived { payload } => {
-                write!(
-                    f,
-                    "tool call received '{}' ({})",
-                    payload.tool_call.name, payload.tool_call.id
-                )
-            }
-            Command::ToolCallStreaming { payload } => {
-                write!(f, "tool call streaming idx {}", payload.index)
             }
             Command::PushToolResult { payload } => {
                 write!(
@@ -838,7 +785,6 @@ mod tests {
     #[case::assemble_prompt(Command::AssemblePrompt { payload: AssemblePrompt { session_id: SessionId::new(), history: vec![], tools: vec![], model_name: "test".to_owned() } })]
     #[case::switch_prompt_strategy(Command::SwitchPromptStrategy { payload: SwitchPromptStrategy { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::sliding_window() } })]
     #[case::restore_strategy_state(Command::RestoreStrategyState { payload: RestoreStrategyState { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::compaction(), blob: serde_json::json!({}) } })]
-    #[case::stream_token(Command::StreamToken { payload: StreamToken { session_id: SessionId::new(), index: 0, token: "hello".into() } })]
     #[case::push_chat_entry(Command::PushChatEntry { payload: PushChatEntry { session_id: SessionId::new(), entry: crate::ChatEntry::user("hi") } })]
     #[case::proceed_with_shutdown(Command::ProceedWithShutdown { payload: ProceedWithShutdown { completed: vec!["ext-a".into()], timed_out: vec!["ext-b".into()] } })]
     #[case::move_cursor_left(Command::MoveCursorLeft)]
@@ -874,9 +820,6 @@ mod tests {
     #[case::register_tools(Command::RegisterTools { payload: RegisterTools { provider: "echo-actor".into(), definitions: vec![crate::ToolDefinition { name: "echo".into(), description: "echo".into(), parameters: serde_json::json!({}) }] } })]
     #[case::execute_tool_batch(Command::ExecuteToolBatch { payload: ExecuteToolBatch { session_id: SessionId::new(), tool_calls: vec![crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() }] } })]
     #[case::execute_tool(Command::ExecuteTool { payload: ExecuteTool { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
-    #[case::tool_use_started(Command::ToolUseStarted { payload: ToolUseStarted { session_id: SessionId::new(), index: 0, id: "call_1".into(), name: "echo".into() } })]
-    #[case::tool_call_received(Command::ToolCallReceived { payload: ToolCallReceived { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
-    #[case::tool_call_streaming(Command::ToolCallStreaming { payload: ToolCallStreaming { session_id: SessionId::new(), index: 0, partial_json: "{\"a\":".into() } })]
     #[case::push_tool_result(Command::PushToolResult { payload: PushToolResult { session_id: SessionId::new(), result: crate::ToolResult { tool_call_id: "call_1".into(), name: "echo".into(), content: "hi".into(), success: true } } })]
     #[case::dashboard_select_down(Command::DashboardSelectDown)]
     #[case::dashboard_select_up(Command::DashboardSelectUp)]

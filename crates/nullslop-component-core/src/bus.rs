@@ -473,9 +473,6 @@ impl<S, Sv> Bus<S, Sv> {
             Command::ChatEntrySelectCancel { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
-            Command::StreamToken { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
             Command::PushChatEntry { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
@@ -565,15 +562,6 @@ impl<S, Sv> Bus<S, Sv> {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
             Command::ExecuteTool { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::ToolUseStarted { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::ToolCallReceived { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::ToolCallStreaming { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
             Command::PushToolResult { payload } => {
@@ -776,6 +764,18 @@ impl<S, Sv> Bus<S, Sv> {
                 self.dispatch_event_to_handlers(&payload, state, services, &mut out);
             }
             Event::StreamCompleted { payload } => {
+                self.dispatch_event_to_handlers(&payload, state, services, &mut out);
+            }
+            Event::StreamToken { payload } => {
+                self.dispatch_event_to_handlers(&payload, state, services, &mut out);
+            }
+            Event::ToolUseStarted { payload } => {
+                self.dispatch_event_to_handlers(&payload, state, services, &mut out);
+            }
+            Event::ToolCallReceived { payload } => {
+                self.dispatch_event_to_handlers(&payload, state, services, &mut out);
+            }
+            Event::ToolCallStreaming { payload } => {
                 self.dispatch_event_to_handlers(&payload, state, services, &mut out);
             }
             Event::ProviderSwitched { payload } => {

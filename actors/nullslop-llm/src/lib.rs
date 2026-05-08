@@ -252,7 +252,7 @@ impl LlmActor {
                     Ok(event) => match event {
                         StreamEvent::Text(token) => {
                             accumulated_text.push_str(&token);
-                            let _ = sink.send_command(Command::StreamToken {
+                            let _ = sink.send_event(Event::StreamToken {
                                 payload: StreamToken {
                                     session_id: sid.clone(),
                                     index: token_index,
@@ -262,7 +262,7 @@ impl LlmActor {
                             token_index += 1;
                         }
                         StreamEvent::ToolUseStart { index, id, name } => {
-                            let _ = sink.send_command(Command::ToolUseStarted {
+                            let _ = sink.send_event(Event::ToolUseStarted {
                                 payload: ToolUseStarted {
                                     session_id: sid.clone(),
                                     index,
@@ -275,7 +275,7 @@ impl LlmActor {
                             index,
                             partial_json,
                         } => {
-                            let _ = sink.send_command(Command::ToolCallStreaming {
+                            let _ = sink.send_event(Event::ToolCallStreaming {
                                 payload: ToolCallStreaming {
                                     session_id: sid.clone(),
                                     index,
@@ -285,7 +285,7 @@ impl LlmActor {
                         }
                         StreamEvent::ToolUseComplete { tool_call, .. } => {
                             accumulated_tool_calls.push(tool_call.clone());
-                            let _ = sink.send_command(Command::ToolCallReceived {
+                            let _ = sink.send_event(Event::ToolCallReceived {
                                 payload: ToolCallReceived {
                                     session_id: sid.clone(),
                                     tool_call,
@@ -597,12 +597,12 @@ mod tests {
             .collect()
     }
 
-    /// Extracts `StreamToken` commands.
-    fn find_stream_tokens(commands: &[Command]) -> Vec<&StreamToken> {
-        commands
+    /// Extracts `StreamToken` events.
+    fn find_stream_tokens(events: &[Event]) -> Vec<&StreamToken> {
+        events
             .iter()
-            .filter_map(|c| match c {
-                Command::StreamToken { payload } => Some(payload),
+            .filter_map(|e| match e {
+                Event::StreamToken { payload } => Some(payload),
                 _ => None,
             })
             .collect()
@@ -657,15 +657,14 @@ mod tests {
         // Wait for the stream task to complete.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // Then StreamToken commands were emitted.
-        let commands = sink.take_commands();
-        let tokens = find_stream_tokens(&commands);
+        // Then StreamToken events were emitted.
+        let events = sink.take_events();
+        let tokens = find_stream_tokens(&events);
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].token, "Hello");
         assert_eq!(tokens[1].token, " world");
 
         // And a StreamCompleted event was emitted with Finished reason.
-        let events = sink.events();
         let completed = find_stream_completed(&events);
         assert_eq!(completed.len(), 1);
         assert_eq!(completed[0].reason, StreamCompletedReason::Finished);
@@ -713,33 +712,34 @@ mod tests {
         // Wait for the stream task to complete.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // Then ToolUseStarted, ToolCallStreaming, ToolCallReceived commands were emitted.
-        let commands = sink.commands();
-        let has_tool_use_started = commands.iter().any(|c| {
+        // Then ToolUseStarted, ToolCallStreaming, ToolCallReceived events were emitted.
+        let events = sink.events();
+        let has_tool_use_started = events.iter().any(|e| {
             matches!(
-                c,
-                Command::ToolUseStarted { payload }
+                e,
+                Event::ToolUseStarted { payload }
                 if payload.id == "call_1" && payload.name == "echo"
             )
         });
-        let has_tool_call_streaming = commands
+        let has_tool_call_streaming = events
             .iter()
-            .any(|c| matches!(c, Command::ToolCallStreaming { .. }));
-        let has_tool_call_received = commands.iter().any(|c| {
+            .any(|e| matches!(e, Event::ToolCallStreaming { .. }));
+        let has_tool_call_received = events.iter().any(|e| {
             matches!(
-                c,
-                Command::ToolCallReceived { payload }
+                e,
+                Event::ToolCallReceived { payload }
                 if payload.tool_call == tool_call
             )
         });
-        assert!(has_tool_use_started, "expected ToolUseStarted command");
+        assert!(has_tool_use_started, "expected ToolUseStarted event");
         assert!(
             has_tool_call_streaming,
-            "expected ToolCallStreaming command"
+            "expected ToolCallStreaming event"
         );
-        assert!(has_tool_call_received, "expected ToolCallReceived command");
+        assert!(has_tool_call_received, "expected ToolCallReceived event");
 
         // And an ExecuteToolBatch command was emitted.
+        let commands = sink.commands();
         let has_execute_batch = commands.iter().any(|c| {
             matches!(
                 c,
@@ -832,14 +832,15 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Then new stream tokens were emitted (from the second stream call).
-        let commands = sink.commands();
-        let tokens = find_stream_tokens(&commands);
+        let events = sink.events();
+        let tokens = find_stream_tokens(&events);
         assert!(
             !tokens.is_empty(),
-            "expected StreamToken commands from new stream"
+            "expected StreamToken events from new stream"
         );
 
         // And a PushToolResult command was emitted.
+        let commands = sink.commands();
         let has_push_tool_result = commands
             .iter()
             .any(|c| matches!(c, Command::PushToolResult { .. }));

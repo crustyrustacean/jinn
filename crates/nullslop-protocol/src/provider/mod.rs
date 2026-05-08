@@ -7,8 +7,11 @@ mod message;
 
 pub use command::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
-    SendToLlmProvider, StreamToken,
+    SendToLlmProvider,
 };
 pub use convert::entries_to_messages;
-pub use event::{ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamCompletedReason};
+pub use event::{
+    ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
+    StreamCompletedReason, StreamToken,
+};
 pub use message::LlmMessage;
