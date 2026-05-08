@@ -143,6 +143,11 @@ pub fn init() -> Keymap<KeyEvent, Scope, Command, KeyCategory> {
             .bind("k", Command::PinnedPanelSelectUp, KeyCategory::Navigation)
             // Actions
             .bind("u", Command::PinnedPanelUnpin, KeyCategory::Context)
+            // Position — change pin position of selected entry
+            .bind("t", Command::PinnedPanelPinTop, KeyCategory::Context)
+            .bind("b", Command::PinnedPanelPinBottom, KeyCategory::Context)
+            .bind("r", Command::PinnedPanelPinRelative, KeyCategory::Context)
+            .bind("m", Command::PinnedPanelPinCycle, KeyCategory::Context)
             .bind("<esc>", Command::PinnedPanelClose, KeyCategory::General)
             // Tab switching
             .bind("<tab>", Command::SwitchTab { payload: SwitchTab { direction: TabDirection::Next } }, KeyCategory::Navigation)

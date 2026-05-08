@@ -467,6 +467,18 @@ pub enum Command {
     /// Unpin the currently selected pinned entry from the pinned panel.
     #[serde(rename = "pinned_panel_unpin")]
     PinnedPanelUnpin,
+    /// Set the selected pinned entry's position to TOP.
+    #[serde(rename = "pinned_panel_pin_top")]
+    PinnedPanelPinTop,
+    /// Set the selected pinned entry's position to BOTTOM.
+    #[serde(rename = "pinned_panel_pin_bottom")]
+    PinnedPanelPinBottom,
+    /// Set the selected pinned entry's position to RELATIVE.
+    #[serde(rename = "pinned_panel_pin_relative")]
+    PinnedPanelPinRelative,
+    /// Cycle the selected pinned entry's position.
+    #[serde(rename = "pinned_panel_pin_cycle")]
+    PinnedPanelPinCycle,
     /// Pin the currently selected chat entry.
     #[serde(rename = "chat_entry_pin_selected")]
     ChatEntryPinSelected,
@@ -529,6 +541,10 @@ impl Command {
             | Self::PinnedPanelSelectDown
             | Self::PinnedPanelSelectUp
             | Self::PinnedPanelUnpin
+            | Self::PinnedPanelPinTop
+            | Self::PinnedPanelPinBottom
+            | Self::PinnedPanelPinRelative
+            | Self::PinnedPanelPinCycle
             | Self::ChatEntryPinSelected
             | Self::NormalEscape
             | Self::ToggleKeymapScopeFilter
@@ -726,6 +742,10 @@ impl std::fmt::Display for Command {
             Command::PinnedPanelSelectDown => write!(f, "pinned panel select down"),
             Command::PinnedPanelSelectUp => write!(f, "pinned panel select up"),
             Command::PinnedPanelUnpin => write!(f, "pinned panel unpin"),
+            Command::PinnedPanelPinTop => write!(f, "pinned panel pin top"),
+            Command::PinnedPanelPinBottom => write!(f, "pinned panel pin bottom"),
+            Command::PinnedPanelPinRelative => write!(f, "pinned panel pin relative"),
+            Command::PinnedPanelPinCycle => write!(f, "pinned panel pin cycle"),
             Command::ChatEntryPinSelected => write!(f, "pin selected entry"),
             Command::NormalEscape => write!(f, "escape"),
             Command::SessionLoadCompleted { .. } => write!(f, "session load completed"),
@@ -894,6 +914,10 @@ mod tests {
     #[case::pinned_panel_select_down(Command::PinnedPanelSelectDown)]
     #[case::pinned_panel_select_up(Command::PinnedPanelSelectUp)]
     #[case::pinned_panel_unpin(Command::PinnedPanelUnpin)]
+    #[case::pinned_panel_pin_top(Command::PinnedPanelPinTop)]
+    #[case::pinned_panel_pin_bottom(Command::PinnedPanelPinBottom)]
+    #[case::pinned_panel_pin_relative(Command::PinnedPanelPinRelative)]
+    #[case::pinned_panel_pin_cycle(Command::PinnedPanelPinCycle)]
     #[case::chat_entry_pin_selected(Command::ChatEntryPinSelected)]
     #[case::normal_escape(Command::NormalEscape)]
     #[case::pin_chat_entry(Command::PinChatEntry { payload: PinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new(), position: crate::PinPosition::Top } })]

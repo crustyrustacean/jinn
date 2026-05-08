@@ -51,7 +51,8 @@ use nullslop_protocol::provider_picker::{
 use nullslop_protocol::system::{
     ChatEntryPinSelected, DashboardSelectDown, DashboardSelectFirst, DashboardSelectLast,
     DashboardSelectUp, EditInput, MouseScrollDown, MouseScrollUp, NormalEscape, OpenPicker,
-    PinnedPanelClose, PinnedPanelOpen, PinnedPanelSelectDown, PinnedPanelSelectUp,
+    PinnedPanelClose, PinnedPanelOpen, PinnedPanelPinBottom, PinnedPanelPinCycle,
+    PinnedPanelPinRelative, PinnedPanelPinTop, PinnedPanelSelectDown, PinnedPanelSelectUp,
     PinnedPanelToggle, PinnedPanelUnpin, Quit, ScrollDown, ScrollLineDown, ScrollLineUp,
     ScrollToBottom, ScrollToTop, ScrollUp, ToggleKeymapScopeFilter, ToggleWhichKey,
     WorkflowApproveStep, WorkflowFocusChat, WorkflowFocusWorkflow, WorkflowRestartStep,
@@ -688,6 +689,22 @@ impl<S, Sv> Bus<S, Sv> {
             }
             Command::PinnedPanelUnpin => {
                 let cmd = PinnedPanelUnpin;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelPinTop => {
+                let cmd = PinnedPanelPinTop;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelPinBottom => {
+                let cmd = PinnedPanelPinBottom;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelPinRelative => {
+                let cmd = PinnedPanelPinRelative;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelPinCycle => {
+                let cmd = PinnedPanelPinCycle;
                 self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
             }
             Command::ChatEntryPinSelected => {

@@ -13,6 +13,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
+use crate::app_state::pin_sort_key;
 use crate::AppState;
 
 /// Solid yellow full block used as the selection indicator.
@@ -40,13 +41,16 @@ impl UiElement<AppState> for PinnedPanelElement {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        let pinned = state.active_session().pinned_entries();
+        let sorted_ids = state.sorted_pinned_ids();
+        let mut pinned = state.active_session().pinned_entries();
+        // Sort to match sorted_ids order (TOP → REL → BOT, stable by history).
+        pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
         if pinned.is_empty() {
             render_no_entries(frame, inner);
             return;
         }
 
-        let selected_index = state.pinned_panel.selection_index();
+        let selected_index = state.pinned_panel.selection_index(&sorted_ids);
         let lines = build_entry_list(&pinned, selected_index, inner.width);
 
         let total_lines = lines.len() as u16;
@@ -281,5 +285,45 @@ mod tests {
         let element = PinnedPanelElement;
         let selectable: &dyn UiElement<AppState> = &element;
         assert!(selectable.is_selectable());
+    }
+
+    #[test]
+    fn render_sorts_entries_by_position() {
+        // Given entries pinned with BOT, TOP, REL positions (added in that order).
+        let mut element = PinnedPanelElement;
+        let mut state = AppState::default();
+
+        // Add entries in BOT, TOP, REL order.
+        let bot_entry = ChatEntry::user("bottom entry");
+        let bot_id = bot_entry.id.clone();
+        state.active_session_mut().push_entry(bot_entry);
+        state.active_session_mut().pin_entry(&bot_id, PinPosition::Bottom);
+
+        let top_entry = ChatEntry::user("top entry");
+        let top_id = top_entry.id.clone();
+        state.active_session_mut().push_entry(top_entry);
+        state.active_session_mut().pin_entry(&top_id, PinPosition::Top);
+
+        let rel_entry = ChatEntry::user("relative entry");
+        let rel_id = rel_entry.id.clone();
+        state.active_session_mut().push_entry(rel_entry);
+        state.active_session_mut().pin_entry(&rel_id, PinPosition::Relative);
+
+        // When rendering.
+        let rows = render_rows(&mut element, &state, 60, 20);
+        let combined = rows.join("\n");
+
+        // Then entries appear in TOP, REL, BOT order in the rendered output.
+        let top_pos = combined.find("top entry").expect("should contain top entry");
+        let rel_pos = combined.find("relative entry").expect("should contain relative entry");
+        let bot_pos = combined.find("bottom entry").expect("should contain bottom entry");
+        assert!(
+            top_pos < rel_pos,
+            "TOP entry should appear before REL entry"
+        );
+        assert!(
+            rel_pos < bot_pos,
+            "REL entry should appear before BOT entry"
+        );
     }
 }
