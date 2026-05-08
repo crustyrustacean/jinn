@@ -181,6 +181,8 @@ mod tests {
 
     #[tokio::test]
     async fn response_command_streams_canned_text() {
+        tokio::time::pause();
+
         // Given a sample service.
         let service = SampleLlmServiceFactory.create().expect("create service");
         let messages = vec![LlmMessage::User {
@@ -200,6 +202,8 @@ mod tests {
 
     #[tokio::test]
     async fn think_output_starts_with_think_tag() {
+        tokio::time::pause();
+
         // Given a sample service.
         let service = SampleLlmServiceFactory.create().expect("create service");
         let messages = vec![LlmMessage::User {
@@ -221,6 +225,8 @@ mod tests {
 
     #[tokio::test]
     async fn think_output_contains_closing_tag() {
+        tokio::time::pause();
+
         // Given a sample service.
         let service = SampleLlmServiceFactory.create().expect("create service");
         let messages = vec![LlmMessage::User {
@@ -279,6 +285,8 @@ mod tests {
 
     #[tokio::test]
     async fn response_command_produces_more_than_one_token() {
+        tokio::time::pause();
+
         // Given a sample service.
         let service = SampleLlmServiceFactory.create().expect("create service");
         let messages = vec![LlmMessage::User {
@@ -339,6 +347,8 @@ mod tests {
 
     #[tokio::test]
     async fn command_matching_is_case_insensitive() {
+        tokio::time::pause();
+
         // Given a sample service.
         let service = SampleLlmServiceFactory.create().expect("create service");
 
