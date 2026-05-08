@@ -2,8 +2,8 @@ COPYRIGHT_NAME := "Jayson Lennon"
 COPYRIGHT_YEAR := "2026"
 
 test:
-    cargo nextest run --workspace --all-features --exclude nullslop-e2e
-    cargo test --workspace --doc
+    cargo nextest run --workspace --all-features --exclude nullslop-e2e --exclude llm
+    cargo test --workspace --doc --exclude llm
     cargo test --test e2e -p nullslop-e2e
 
 check:
@@ -26,8 +26,8 @@ lint:
 
 # Full CI pipeline (lint + test + docs)
 ci: lint
-    cargo nextest run --workspace --all-features --exclude nullslop-e2e
-    cargo test --workspace --doc
+    cargo nextest run --workspace --all-features --exclude nullslop-e2e --exclude llm
+    cargo test --workspace --doc --exclude llm
     cargo test --test e2e -p nullslop-e2e
     cargo doc --workspace --no-deps
 

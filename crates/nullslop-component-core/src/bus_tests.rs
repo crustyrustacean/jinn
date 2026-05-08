@@ -248,7 +248,7 @@ fn max_iterations_prevents_infinite_loop() {
 #[test]
 fn has_pending_is_false_before_command_submit() {
     // Given an empty bus.
-    let mut bus: Bus<TestState, ()> = Bus::new();
+    let bus: Bus<TestState, ()> = Bus::new();
 
     // Then the bus has no pending messages.
     assert!(!bus.has_pending());
@@ -284,7 +284,7 @@ fn has_pending_is_false_after_command_process() {
 #[test]
 fn has_pending_is_false_before_event_submit() {
     // Given an empty bus.
-    let mut bus: Bus<TestState, ()> = Bus::new();
+    let bus: Bus<TestState, ()> = Bus::new();
 
     // Then the bus has no pending messages.
     assert!(!bus.has_pending());

@@ -526,11 +526,6 @@ mod tests {
             self.events.lock().unwrap().clone()
         }
 
-        fn take_commands(&self) -> Vec<Command> {
-            let mut guard = self.commands.lock().unwrap();
-            std::mem::take(&mut guard)
-        }
-
         fn take_events(&self) -> Vec<Event> {
             let mut guard = self.events.lock().unwrap();
             std::mem::take(&mut guard)

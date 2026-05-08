@@ -128,7 +128,7 @@ mod tests {
 
     use nullslop_component_core::Bus;
     use nullslop_protocol::{
-        ChatEntry, Command, Event, Mode, PickerKind, PromptStrategyId, SessionId, SessionLoadCompleted,
+        ChatEntry, Mode, PickerKind, PromptStrategyId, SessionId, SessionLoadCompleted,
     };
     use nullslop_services::Services;
 
