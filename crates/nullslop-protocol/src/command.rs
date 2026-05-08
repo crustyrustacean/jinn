@@ -22,10 +22,12 @@ use crate::chat_input::{
     MoveCursorDown, MoveCursorToEnd, MoveCursorToStart, MoveCursorUp, MoveCursorWordLeft,
     MoveCursorWordRight, PushChatEntry, SetChatInputText, SubmitMessage,
 };
-use crate::chat_input::{AutocompleteConfirm, MoveCursorLeft, MoveCursorRight};
+use crate::chat_input::{AutocompleteConfirm, ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev, MoveCursorLeft, MoveCursorRight};
 use crate::context::AssemblePrompt;
+use crate::context::PinChatEntry;
 use crate::context::RestoreStrategyState;
 use crate::context::SwitchPromptStrategy;
+use crate::context::UnpinChatEntry;
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::custom::CommandMsg;
 use crate::provider::{
@@ -178,6 +180,41 @@ pub enum Command {
         /// The state to restore.
         #[serde(flatten)]
         payload: RestoreStrategyState,
+    },
+    /// Pin a chat entry so it survives context management.
+    #[serde(rename = "pin_chat_entry")]
+    PinChatEntry {
+        /// The pin request.
+        #[serde(flatten)]
+        payload: PinChatEntry,
+    },
+    /// Remove the pin from a chat entry.
+    #[serde(rename = "unpin_chat_entry")]
+    UnpinChatEntry {
+        /// The unpin request.
+        #[serde(flatten)]
+        payload: UnpinChatEntry,
+    },
+    /// Select the next chat entry in the chat log.
+    #[serde(rename = "chat_entry_select_next")]
+    ChatEntrySelectNext {
+        /// The session to navigate.
+        #[serde(flatten)]
+        payload: ChatEntrySelectNext,
+    },
+    /// Select the previous chat entry in the chat log.
+    #[serde(rename = "chat_entry_select_prev")]
+    ChatEntrySelectPrev {
+        /// The session to navigate.
+        #[serde(flatten)]
+        payload: ChatEntrySelectPrev,
+    },
+    /// Cancel entry selection in the chat log.
+    #[serde(rename = "chat_entry_select_cancel")]
+    ChatEntrySelectCancel {
+        /// The session to clear selection on.
+        #[serde(flatten)]
+        payload: ChatEntrySelectCancel,
     },
     /// Push a chat entry into the conversation history.
     #[serde(rename = "push_chat_entry")]
@@ -412,6 +449,42 @@ pub enum Command {
     /// Focus the workflow pane in the split layout.
     #[serde(rename = "workflow_focus_workflow")]
     WorkflowFocusWorkflow,
+    /// Toggle the pinned context panel visibility.
+    #[serde(rename = "pinned_panel_toggle")]
+    PinnedPanelToggle,
+    /// Open the pinned context panel.
+    #[serde(rename = "pinned_panel_open")]
+    PinnedPanelOpen,
+    /// Close the pinned context panel.
+    #[serde(rename = "pinned_panel_close")]
+    PinnedPanelClose,
+    /// Move the pinned panel selection down one entry.
+    #[serde(rename = "pinned_panel_select_down")]
+    PinnedPanelSelectDown,
+    /// Move the pinned panel selection up one entry.
+    #[serde(rename = "pinned_panel_select_up")]
+    PinnedPanelSelectUp,
+    /// Unpin the currently selected pinned entry from the pinned panel.
+    #[serde(rename = "pinned_panel_unpin")]
+    PinnedPanelUnpin,
+    /// Set the selected pinned entry's position to TOP.
+    #[serde(rename = "pinned_panel_pin_top")]
+    PinnedPanelPinTop,
+    /// Set the selected pinned entry's position to BOTTOM.
+    #[serde(rename = "pinned_panel_pin_bottom")]
+    PinnedPanelPinBottom,
+    /// Set the selected pinned entry's position to RELATIVE.
+    #[serde(rename = "pinned_panel_pin_relative")]
+    PinnedPanelPinRelative,
+    /// Cycle the selected pinned entry's position.
+    #[serde(rename = "pinned_panel_pin_cycle")]
+    PinnedPanelPinCycle,
+    /// Pin the currently selected chat entry.
+    #[serde(rename = "chat_entry_pin_selected")]
+    ChatEntryPinSelected,
+    /// Escape key in Normal mode: cancel selection and close pinned panel.
+    #[serde(rename = "normal_escape")]
+    NormalEscape,
 }
 
 impl Command {
@@ -462,6 +535,18 @@ impl Command {
             | Self::WorkflowTogglePane
             | Self::WorkflowFocusChat
             | Self::WorkflowFocusWorkflow
+            | Self::PinnedPanelToggle
+            | Self::PinnedPanelOpen
+            | Self::PinnedPanelClose
+            | Self::PinnedPanelSelectDown
+            | Self::PinnedPanelSelectUp
+            | Self::PinnedPanelUnpin
+            | Self::PinnedPanelPinTop
+            | Self::PinnedPanelPinBottom
+            | Self::PinnedPanelPinRelative
+            | Self::PinnedPanelPinCycle
+            | Self::ChatEntryPinSelected
+            | Self::NormalEscape
             | Self::ToggleKeymapScopeFilter
             | Self::SessionNew => None,
             Self::SwitchTab { .. } => Some(SwitchTab::NAME),
@@ -471,6 +556,11 @@ impl Command {
             Self::AssemblePrompt { .. } => Some(AssemblePrompt::NAME),
             Self::SwitchPromptStrategy { .. } => Some(SwitchPromptStrategy::NAME),
             Self::RestoreStrategyState { .. } => Some(RestoreStrategyState::NAME),
+            Self::PinChatEntry { .. } => Some(PinChatEntry::NAME),
+            Self::UnpinChatEntry { .. } => Some(UnpinChatEntry::NAME),
+            Self::ChatEntrySelectNext { .. } => Some(ChatEntrySelectNext::NAME),
+            Self::ChatEntrySelectPrev { .. } => Some(ChatEntrySelectPrev::NAME),
+            Self::ChatEntrySelectCancel { .. } => Some(ChatEntrySelectCancel::NAME),
             Self::StreamToken { .. } => Some(StreamToken::NAME),
             Self::PushChatEntry { .. } => Some(PushChatEntry::NAME),
             Self::EnqueueUserMessage { .. } => Some(EnqueueUserMessage::NAME),
@@ -537,6 +627,15 @@ impl std::fmt::Display for Command {
             Command::AssemblePrompt { .. } => write!(f, "assemble prompt"),
             Command::SwitchPromptStrategy { .. } => write!(f, "switch prompt strategy"),
             Command::RestoreStrategyState { .. } => write!(f, "restore strategy state"),
+            Command::PinChatEntry { payload } => {
+                write!(f, "pin entry '{}' as {}", payload.entry_id, payload.position)
+            }
+            Command::UnpinChatEntry { payload } => {
+                write!(f, "unpin entry '{}'", payload.entry_id)
+            }
+            Command::ChatEntrySelectNext { .. } => write!(f, "select next entry"),
+            Command::ChatEntrySelectPrev { .. } => write!(f, "select prev entry"),
+            Command::ChatEntrySelectCancel { .. } => write!(f, "cancel entry selection"),
             Command::StreamToken { payload } => {
                 write!(
                     f,
@@ -637,6 +736,18 @@ impl std::fmt::Display for Command {
             Command::WorkflowTogglePane => write!(f, "toggle workflow pane"),
             Command::WorkflowFocusChat => write!(f, "focus chat pane"),
             Command::WorkflowFocusWorkflow => write!(f, "focus workflow pane"),
+            Command::PinnedPanelToggle => write!(f, "toggle pinned panel"),
+            Command::PinnedPanelOpen => write!(f, "open pinned panel"),
+            Command::PinnedPanelClose => write!(f, "close pinned panel"),
+            Command::PinnedPanelSelectDown => write!(f, "pinned panel select down"),
+            Command::PinnedPanelSelectUp => write!(f, "pinned panel select up"),
+            Command::PinnedPanelUnpin => write!(f, "pinned panel unpin"),
+            Command::PinnedPanelPinTop => write!(f, "pinned panel pin top"),
+            Command::PinnedPanelPinBottom => write!(f, "pinned panel pin bottom"),
+            Command::PinnedPanelPinRelative => write!(f, "pinned panel pin relative"),
+            Command::PinnedPanelPinCycle => write!(f, "pinned panel pin cycle"),
+            Command::ChatEntryPinSelected => write!(f, "pin selected entry"),
+            Command::NormalEscape => write!(f, "escape"),
             Command::SessionLoadCompleted { .. } => write!(f, "session load completed"),
             Command::SessionNew => write!(f, "session new"),
         }
@@ -797,6 +908,23 @@ mod tests {
     #[case::workflow_toggle_pane(Command::WorkflowTogglePane)]
     #[case::workflow_focus_chat(Command::WorkflowFocusChat)]
     #[case::workflow_focus_workflow(Command::WorkflowFocusWorkflow)]
+    #[case::pinned_panel_toggle(Command::PinnedPanelToggle)]
+    #[case::pinned_panel_open(Command::PinnedPanelOpen)]
+    #[case::pinned_panel_close(Command::PinnedPanelClose)]
+    #[case::pinned_panel_select_down(Command::PinnedPanelSelectDown)]
+    #[case::pinned_panel_select_up(Command::PinnedPanelSelectUp)]
+    #[case::pinned_panel_unpin(Command::PinnedPanelUnpin)]
+    #[case::pinned_panel_pin_top(Command::PinnedPanelPinTop)]
+    #[case::pinned_panel_pin_bottom(Command::PinnedPanelPinBottom)]
+    #[case::pinned_panel_pin_relative(Command::PinnedPanelPinRelative)]
+    #[case::pinned_panel_pin_cycle(Command::PinnedPanelPinCycle)]
+    #[case::chat_entry_pin_selected(Command::ChatEntryPinSelected)]
+    #[case::normal_escape(Command::NormalEscape)]
+    #[case::pin_chat_entry(Command::PinChatEntry { payload: PinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new(), position: crate::PinPosition::Top } })]
+    #[case::unpin_chat_entry(Command::UnpinChatEntry { payload: UnpinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new() } })]
+    #[case::chat_entry_select_next(Command::ChatEntrySelectNext { payload: ChatEntrySelectNext { session_id: SessionId::new() } })]
+    #[case::chat_entry_select_prev(Command::ChatEntrySelectPrev { payload: ChatEntrySelectPrev { session_id: SessionId::new() } })]
+    #[case::chat_entry_select_cancel(Command::ChatEntrySelectCancel { payload: ChatEntrySelectCancel { session_id: SessionId::new() } })]
     fn command_roundtrip_all_variants(#[case] cmd: Command) {
         // Given a command variant.
         let json = serde_json::to_string(&cmd).expect("serialize");

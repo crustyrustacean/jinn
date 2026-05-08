@@ -103,7 +103,7 @@ fn gmr_produces_refresh_models_command() {
 // --- New bindings: j/k line scroll, gg/G scroll to top/bottom ---
 
 #[test]
-fn j_produces_scroll_line_down() {
+fn j_produces_chat_entry_select_next() {
     // Given the keymap.
     let keymap = init();
 
@@ -114,19 +114,19 @@ fn j_produces_scroll_line_down() {
     };
     let node = keymap.get_node_at_path(&[j_key]);
 
-    // Then it's a leaf with ScrollLineDown.
+    // Then it's a leaf with ChatEntrySelectNext in Normal scope.
     assert!(node.is_some());
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
-        assert!(matches!(entry.unwrap().action, Command::ScrollLineDown));
+        assert!(matches!(entry.unwrap().action, Command::ChatEntrySelectNext { .. }));
     } else {
         panic!("Expected leaf node for 'j'");
     }
 }
 
 #[test]
-fn k_produces_scroll_line_up() {
+fn k_produces_chat_entry_select_prev() {
     // Given the keymap.
     let keymap = init();
 
@@ -137,12 +137,12 @@ fn k_produces_scroll_line_up() {
     };
     let node = keymap.get_node_at_path(&[k_key]);
 
-    // Then it's a leaf with ScrollLineUp.
+    // Then it's a leaf with ChatEntrySelectPrev in Normal scope.
     assert!(node.is_some());
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
-        assert!(matches!(entry.unwrap().action, Command::ScrollLineUp));
+        assert!(matches!(entry.unwrap().action, Command::ChatEntrySelectPrev { .. }));
     } else {
         panic!("Expected leaf node for 'k'");
     }

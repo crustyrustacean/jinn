@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ChatEntry;
+use crate::ChatEntryId;
 use crate::CommandMsg;
+use crate::PinPosition;
 use crate::SessionId;
 use crate::context::PromptStrategyId;
 use crate::tool::ToolDefinition;
@@ -53,6 +55,33 @@ pub struct RestoreStrategyState {
     pub strategy_id: PromptStrategyId,
     /// The opaque state blob to restore.
     pub blob: serde_json::Value,
+}
+
+/// Pin a chat entry so it survives context management strategies.
+///
+/// The entry will be positioned according to `position` in the assembled prompt.
+/// Phase 1's `pin_entry()` method on `ChatSessionState` handles the actual mutation.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("context")]
+pub struct PinChatEntry {
+    /// The session containing the entry.
+    pub session_id: SessionId,
+    /// The entry to pin.
+    pub entry_id: ChatEntryId,
+    /// Where the pinned entry should appear in the assembled prompt.
+    pub position: PinPosition,
+}
+
+/// Remove the pin from a chat entry, allowing normal context management.
+///
+/// If the entry is not pinned, this is a no-op.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("context")]
+pub struct UnpinChatEntry {
+    /// The session containing the entry.
+    pub session_id: SessionId,
+    /// The entry to unpin.
+    pub entry_id: ChatEntryId,
 }
 
 #[cfg(test)]
@@ -128,5 +157,48 @@ mod tests {
     #[test]
     fn restore_strategy_state_has_command_name() {
         assert_eq!(RestoreStrategyState::NAME, "context::RestoreStrategyState");
+    }
+
+    #[test]
+    fn pin_chat_entry_serialization_roundtrip() {
+        // Given a PinChatEntry command.
+        let cmd = PinChatEntry {
+            session_id: SessionId::new(),
+            entry_id: ChatEntryId::new(),
+            position: PinPosition::Top,
+        };
+
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&cmd).expect("serialize");
+        let back: PinChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+        // Then fields are preserved.
+        assert_eq!(back.position, PinPosition::Top);
+    }
+
+    #[test]
+    fn pin_chat_entry_has_command_name() {
+        assert_eq!(PinChatEntry::NAME, "context::PinChatEntry");
+    }
+
+    #[test]
+    fn unpin_chat_entry_serialization_roundtrip() {
+        // Given an UnpinChatEntry command.
+        let cmd = UnpinChatEntry {
+            session_id: SessionId::new(),
+            entry_id: ChatEntryId::new(),
+        };
+
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&cmd).expect("serialize");
+        let back: UnpinChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+        // Then fields are preserved.
+        assert_eq!(back.entry_id, cmd.entry_id);
+    }
+
+    #[test]
+    fn unpin_chat_entry_has_command_name() {
+        assert_eq!(UnpinChatEntry::NAME, "context::UnpinChatEntry");
     }
 }

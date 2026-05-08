@@ -49,12 +49,15 @@ use nullslop_protocol::provider_picker::{
     PickerMoveUp,
 };
 use nullslop_protocol::system::{
-    DashboardSelectDown, DashboardSelectFirst, DashboardSelectLast, DashboardSelectUp, EditInput,
-    MouseScrollDown, MouseScrollUp, Quit, ScrollDown, ScrollLineDown, ScrollLineUp, ScrollToBottom,
-    ScrollToTop, ScrollUp, ToggleKeymapScopeFilter, ToggleWhichKey, WorkflowApproveStep,
-    WorkflowFocusChat, WorkflowFocusWorkflow, WorkflowRestartStep, WorkflowSelectDown,
-    WorkflowSelectFirst, WorkflowSelectLast, WorkflowSelectUp, WorkflowToggleDetail,
-    WorkflowTogglePane,
+    ChatEntryPinSelected, DashboardSelectDown, DashboardSelectFirst, DashboardSelectLast,
+    DashboardSelectUp, EditInput, MouseScrollDown, MouseScrollUp, NormalEscape, OpenPicker,
+    PinnedPanelClose, PinnedPanelOpen, PinnedPanelPinBottom, PinnedPanelPinCycle,
+    PinnedPanelPinRelative, PinnedPanelPinTop, PinnedPanelSelectDown, PinnedPanelSelectUp,
+    PinnedPanelToggle, PinnedPanelUnpin, Quit, ScrollDown, ScrollLineDown, ScrollLineUp,
+    ScrollToBottom, ScrollToTop, ScrollUp, ToggleKeymapScopeFilter, ToggleWhichKey,
+    WorkflowApproveStep, WorkflowFocusChat, WorkflowFocusWorkflow, WorkflowRestartStep,
+    WorkflowSelectDown, WorkflowSelectFirst, WorkflowSelectLast, WorkflowSelectUp,
+    WorkflowToggleDetail, WorkflowTogglePane,
 };
 use nullslop_protocol::workflow::{AbortWorkflow, AdvanceStep, WorkflowCompleted};
 use nullslop_protocol::{ActorName, Command, CommandAction, Event};
@@ -455,6 +458,21 @@ impl<S, Sv> Bus<S, Sv> {
             Command::RestoreStrategyState { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
+            Command::PinChatEntry { payload } => {
+                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
+            }
+            Command::UnpinChatEntry { payload } => {
+                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
+            }
+            Command::ChatEntrySelectNext { payload } => {
+                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
+            }
+            Command::ChatEntrySelectPrev { payload } => {
+                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
+            }
+            Command::ChatEntrySelectCancel { payload } => {
+                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
+            }
             Command::StreamToken { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
@@ -647,6 +665,54 @@ impl<S, Sv> Bus<S, Sv> {
             Command::SessionNew => {
                 use nullslop_protocol::SessionNew;
                 let cmd = SessionNew;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelToggle => {
+                let cmd = PinnedPanelToggle;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelOpen => {
+                let cmd = PinnedPanelOpen;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelClose => {
+                let cmd = PinnedPanelClose;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelSelectDown => {
+                let cmd = PinnedPanelSelectDown;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelSelectUp => {
+                let cmd = PinnedPanelSelectUp;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelUnpin => {
+                let cmd = PinnedPanelUnpin;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelPinTop => {
+                let cmd = PinnedPanelPinTop;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelPinBottom => {
+                let cmd = PinnedPanelPinBottom;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelPinRelative => {
+                let cmd = PinnedPanelPinRelative;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::PinnedPanelPinCycle => {
+                let cmd = PinnedPanelPinCycle;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::ChatEntryPinSelected => {
+                let cmd = ChatEntryPinSelected;
+                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            }
+            Command::NormalEscape => {
+                let cmd = NormalEscape;
                 self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
             }
             Command::AutocompleteConfirm => {

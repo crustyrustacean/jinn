@@ -1,9 +1,11 @@
 //! Token budget strategy — limits context to fit within a token budget.
 //!
 //! Walks history from newest to oldest, accumulating token estimates.
-//! When the budget is exceeded, older entries are dropped. Always includes
-//! at least the most recent entry so the user's message is never lost.
-//! Sets a system prompt when context was trimmed to inform the LLM.
+//! When the budget is exceeded, older entries are dropped. Pinned entries are
+//! always included regardless of budget, but their tokens still count toward
+//! the accumulated total. Always includes at least the most recent entry so
+//! the user's message is never lost. Sets a system prompt when context was
+//! trimmed to inform the LLM.
 
 use async_trait::async_trait;
 use error_stack::Report;
@@ -54,16 +56,27 @@ impl PromptAssembly for TokenBudgetStrategy {
             });
         }
 
+        let effective_budget = self.max_tokens.saturating_sub(context.budget_offset);
+
         // Walk history from newest to oldest, accumulating token estimates.
+        // Pinned entries are always included regardless of budget.
         let mut included_indices = Vec::new();
         let mut total_tokens = 0usize;
 
         for (i, entry) in context.history.iter().enumerate().rev() {
             let entry_tokens = estimate_entry_tokens(self.estimator.as_ref(), entry);
 
-            // Always include at least the most recent entry.
-            if !included_indices.is_empty() && total_tokens + entry_tokens > self.max_tokens {
-                break;
+            // Pinned entries are always included, tokens count toward budget.
+            if entry.is_pinned() {
+                total_tokens += entry_tokens;
+                included_indices.push(i);
+                continue;
+            }
+
+            // Skip unpinned entries when budget is exceeded, but continue walking
+            // to find pinned entries at older indices.
+            if !included_indices.is_empty() && total_tokens + entry_tokens > effective_budget {
+                continue;
             }
 
             total_tokens += entry_tokens;
@@ -97,7 +110,7 @@ impl PromptAssembly for TokenBudgetStrategy {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::{ChatEntry, SessionId};
+    use nullslop_protocol::{ChatEntry, PinPosition, SessionId};
 
     use super::*;
     use crate::strategy::token_estimator::CharRatioEstimator;
@@ -111,6 +124,7 @@ mod tests {
             tools: &[],
             model_name: "test-model",
             session_id,
+            budget_offset: 0,
         }
     }
 
@@ -306,6 +320,123 @@ mod tests {
 
         // Then at least the most recent entry is included.
         assert!(!result.messages.is_empty());
+        let last = result.messages.last().expect("should have messages");
+        assert_eq!(
+            last,
+            &nullslop_protocol::LlmMessage::User {
+                content: "ok".to_owned(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn pinned_entry_survives_token_budget_trimming() {
+        // Given 4 entries where the first (oldest) is pinned, and a tight budget.
+        let history = vec![
+            ChatEntry::user("pinned").with_pin(PinPosition::Top),
+            ChatEntry::user("a".repeat(100)),
+            ChatEntry::user("b".repeat(100)),
+            ChatEntry::user("recent"),
+        ];
+        // Budget fits recent + pinned but not the middle entries.
+        let strategy = make_strategy(10);
+        let session_id = SessionId::new();
+        let context = test_context(&history, &session_id);
+
+        // When assembling.
+        let result = strategy.assemble(&context).await.expect("assemble");
+
+        // Then the pinned entry and the most recent entry are included.
+        let contents: Vec<&str> = result
+            .messages
+            .iter()
+            .map(|m| match m {
+                nullslop_protocol::LlmMessage::User { content } => content.as_str(),
+                other => panic!("expected User, got {other:?}"),
+            })
+            .collect();
+        assert!(contents.contains(&"pinned"));
+        assert!(contents.contains(&"recent"));
+    }
+
+    #[tokio::test]
+    async fn pinned_entry_tokens_count_toward_budget() {
+        // Given entries with a pinned entry in the middle, and a tight budget.
+        let history = vec![
+            ChatEntry::user("old"),
+            ChatEntry::user("x".repeat(100)).with_pin(PinPosition::Relative),
+            ChatEntry::user("mid"),
+            ChatEntry::user("recent"),
+        ];
+        // Budget: "recent"(~2) + "mid"(~1) + pinned"x"*100(~26) = ~29 tokens.
+        // "old"(~1) would push to ~30, but budget is 28 so it's excluded.
+        let strategy = make_strategy(28);
+        let session_id = SessionId::new();
+        let context = test_context(&history, &session_id);
+
+        // When assembling.
+        let result = strategy.assemble(&context).await.expect("assemble");
+
+        // Then the pinned entry consumes budget, crowding out the oldest entry.
+        assert!(result.messages.len() < 4);
+        let contents: Vec<&str> = result
+            .messages
+            .iter()
+            .map(|m| match m {
+                nullslop_protocol::LlmMessage::User { content } => content.as_str(),
+                other => panic!("expected User, got {other:?}"),
+            })
+            .collect();
+        assert!(contents.contains(&"x".repeat(100).as_str()));
+        assert!(!contents.contains(&"old"));
+    }
+
+    #[tokio::test]
+    async fn multiple_pinned_entries_survive_budget_trimming() {
+        // Given 5 entries where entry 0 and entry 2 are pinned.
+        let history = vec![
+            ChatEntry::user("pinned-early").with_pin(PinPosition::Top),
+            ChatEntry::user("a".repeat(100)),
+            ChatEntry::user("pinned-mid").with_pin(PinPosition::Relative),
+            ChatEntry::user("b".repeat(100)),
+            ChatEntry::user("recent"),
+        ];
+        let strategy = make_strategy(30);
+        let session_id = SessionId::new();
+        let context = test_context(&history, &session_id);
+
+        // When assembling.
+        let result = strategy.assemble(&context).await.expect("assemble");
+
+        // Then both pinned entries survive regardless of budget.
+        let contents: Vec<&str> = result
+            .messages
+            .iter()
+            .map(|m| match m {
+                nullslop_protocol::LlmMessage::User { content } => content.as_str(),
+                other => panic!("expected User, got {other:?}"),
+            })
+            .collect();
+        assert!(contents.contains(&"pinned-early"));
+        assert!(contents.contains(&"pinned-mid"));
+    }
+
+    #[tokio::test]
+    async fn pinned_entry_does_not_prevent_newest_entry() {
+        // Given a pinned entry and a most recent entry, both exceeding budget.
+        let history = vec![
+            ChatEntry::user("pinned".repeat(50)).with_pin(PinPosition::Relative),
+            ChatEntry::user("ok"),
+        ];
+        let strategy = make_strategy(5);
+        let session_id = SessionId::new();
+        let context = test_context(&history, &session_id);
+
+        // When assembling.
+        let result = strategy.assemble(&context).await.expect("assemble");
+
+        // Then both pinned and most recent are included.
+        assert_eq!(result.messages.len(), 2);
         let last = result.messages.last().expect("should have messages");
         assert_eq!(
             last,
