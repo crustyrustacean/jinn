@@ -34,23 +34,29 @@ impl UiElement<AppState> for PinnedPanelElement {
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Pinned Context ");
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+
         let pinned = state.active_session().pinned_entries();
         if pinned.is_empty() {
-            render_no_entries(frame, area);
+            render_no_entries(frame, inner);
             return;
         }
 
         let selected_index = state.pinned_panel.selection_index();
-        let lines = build_entry_list(&pinned, selected_index, area.width);
+        let lines = build_entry_list(&pinned, selected_index, inner.width);
 
         let total_lines = lines.len() as u16;
-        let max_offset = total_lines.saturating_sub(area.height);
+        let max_offset = total_lines.saturating_sub(inner.height);
         let scroll_offset = max_offset;
 
         let widget = Paragraph::new(lines)
             .block(Block::default().borders(Borders::NONE))
             .scroll((scroll_offset, 0));
-        frame.render_widget(widget, area);
+        frame.render_widget(widget, inner);
     }
 }
 
@@ -227,7 +233,8 @@ mod tests {
         let mut element = PinnedPanelElement;
         let state = AppState::default();
         let rows = render_rows(&mut element, &state, 40, 10);
-        assert!(rows[0].contains("No pinned entries."));
+        // Message is inside the bordered block (row 0 = top border, row 1 = content).
+        assert!(rows[1].contains("No pinned entries."));
     }
 
     #[test]
@@ -262,8 +269,9 @@ mod tests {
 
         let buffer = terminal.backend().buffer();
         // First entry at index 0 is selected by default.
-        // Header is row 0, blank row 1, entry at row 2.
-        let cell0 = buffer.cell((0, 2)).expect("cell 0,2");
+        // Bordered block: row 0 = top border, row 1 = header, row 2 = blank, row 3 = first entry.
+        // Left border takes col 0, so the yellow marker starts at col 1.
+        let cell0 = buffer.cell((1, 3)).expect("cell 1,3");
         assert_eq!(cell0.symbol(), "\u{2588}");
         assert_eq!(cell0.fg, Color::Yellow);
     }

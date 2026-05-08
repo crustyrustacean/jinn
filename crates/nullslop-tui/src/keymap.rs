@@ -150,7 +150,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Command, KeyCategory> {
             // Pane navigation — focus back to chat
             .bind("<c-h>", Command::WorkflowFocusChat, KeyCategory::Navigation)
             // Input — external editor
-            .bind("<c-e>", Command::EditInput, KeyCategory::Input);
+            .bind("<c-e>", Command::EditInput, KeyCategory::Input)
+            // Input — enter input mode
+            .bind("i", Command::SetMode { payload: SetMode { mode: Mode::Input } }, KeyCategory::Input);
         })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {

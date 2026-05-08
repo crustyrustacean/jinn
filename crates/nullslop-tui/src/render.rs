@@ -10,7 +10,7 @@ use ratatui_tabs::{TabManager, TabsBar, TabsStyle};
 use ratatui_which_key::{PopupPosition, WhichKey};
 
 use crate::TuiApp;
-use crate::app::{CHAT_PANE, PaneFocus, PINNED_PANE, WORKFLOW_PANE};
+use crate::app::{CHAT_PANE, PaneFocus};
 
 /// Minimum terminal width.
 pub const MIN_WIDTH: u16 = 40;
@@ -129,8 +129,9 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
                 let chat_rect = result.rect_for(CHAT_PANE).unwrap_or(layout.content);
 
                 if app.workflow_pane_visible {
-                    let workflow_rect = result
-                        .rect_for(WORKFLOW_PANE)
+                    let workflow_rect = app
+                        .workflow_pane_id
+                        .and_then(|id| result.rect_for(id))
                         .unwrap_or_default();
 
                     // Render workflow panel into sidebar.
@@ -143,8 +144,9 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
                 }
 
                 if app.pinned_pane_visible {
-                    let pinned_rect = result
-                        .rect_for(PINNED_PANE)
+                    let pinned_rect = app
+                        .pinned_pane_id
+                        .and_then(|id| result.rect_for(id))
                         .unwrap_or_default();
 
                     // Render pinned panel into sidebar.
