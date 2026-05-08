@@ -344,7 +344,7 @@ mod tests {
     // --- Test 1: LoadWorkflow creates state and activates first step ---
 
     #[test]
-    fn load_workflow_creates_state_and_activates_first_step() {
+    fn load_workflow_activates_first_step() {
         // Given a bus with WorkflowHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -356,7 +356,7 @@ mod tests {
             },
         });
         let mut state = AppState::default();
-        let processed = process_and_drain_events(&mut bus, &mut state, &services);
+        process_and_drain_events(&mut bus, &mut state, &services);
 
         // Then the workflow is active with step-0 as Active.
         assert!(state.active_session().has_workflow());
@@ -373,6 +373,22 @@ mod tests {
             state.active_session().workflow().unwrap().steps["step-0"].status,
             StepStatus::Active
         );
+    }
+
+    #[test]
+    fn load_workflow_emits_loaded_and_started_events() {
+        // Given a bus with WorkflowHandler registered.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+
+        // When loading a workflow.
+        bus.submit_command(npr::Command::LoadWorkflow {
+            payload: LoadWorkflow {
+                definition: make_workflow(3),
+            },
+        });
+        let mut state = AppState::default();
+        let processed = process_and_drain_events(&mut bus, &mut state, &services);
 
         // And WorkflowLoaded and StepStarted events were emitted.
         assert_eq!(processed.len(), 2);
@@ -418,7 +434,7 @@ mod tests {
     // --- Test 3: AdvanceStep finalizes and moves to next step ---
 
     #[test]
-    fn advance_step_finalizes_and_moves_to_next_step() {
+    fn advance_finalizes_current_step() {
         // Given a loaded workflow where step-0 has been completed (AwaitingInput).
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -446,13 +462,43 @@ mod tests {
 
         // When advancing to the next step.
         bus.submit_command(npr::Command::AdvanceStep);
-        let processed = process_and_drain_events(&mut bus, &mut state, &services);
+        process_and_drain_events(&mut bus, &mut state, &services);
 
-        // Then step-0 is finalized as completed and step-1 is active.
+        // Then step-0 is finalized as completed.
         assert_eq!(
             state.active_session().workflow().unwrap().steps["step-0"].status,
             StepStatus::Completed
         );
+    }
+
+    #[test]
+    fn advance_activates_next_step() {
+        // Given a loaded workflow where step-0 has been completed (AwaitingInput).
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+
+        bus.submit_command(npr::Command::LoadWorkflow {
+            payload: LoadWorkflow {
+                definition: make_workflow(3),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Complete step-0 (sets AwaitingInput).
+        bus.submit_command(npr::Command::CompleteStep {
+            payload: CompleteStep {
+                step_id: "step-0".to_owned(),
+                resolved_outputs: HashMap::new(),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // When advancing to the next step.
+        bus.submit_command(npr::Command::AdvanceStep);
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Then step-1 is active.
         assert_eq!(
             state
                 .active_session()
@@ -466,6 +512,34 @@ mod tests {
             state.active_session().workflow().unwrap().steps["step-1"].status,
             StepStatus::Active
         );
+    }
+
+    #[test]
+    fn advance_emits_step_completed_and_started_events() {
+        // Given a loaded workflow where step-0 has been completed (AwaitingInput).
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+
+        bus.submit_command(npr::Command::LoadWorkflow {
+            payload: LoadWorkflow {
+                definition: make_workflow(3),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Complete step-0 (sets AwaitingInput).
+        bus.submit_command(npr::Command::CompleteStep {
+            payload: CompleteStep {
+                step_id: "step-0".to_owned(),
+                resolved_outputs: HashMap::new(),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // When advancing to the next step.
+        bus.submit_command(npr::Command::AdvanceStep);
+        let processed = process_and_drain_events(&mut bus, &mut state, &services);
 
         // And StepCompleted and StepStarted events were emitted.
         assert!(processed.len() >= 2);
@@ -518,7 +592,7 @@ mod tests {
     // --- Test 5: Workflow completion posts system message to chat ---
 
     #[test]
-    fn workflow_completion_posts_system_message_to_chat() {
+    fn workflow_completion_posts_system_entry() {
         // Given a two-step workflow advanced to completion.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -560,8 +634,50 @@ mod tests {
             .filter(|e| matches!(e.kind, npr::ChatEntryKind::System(_)))
             .collect();
         assert_eq!(system_entries.len(), 1);
+    }
+
+    #[test]
+    fn system_message_contains_workflow_name_and_step_count() {
+        // Given a two-step workflow advanced to completion.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+
+        bus.submit_command(npr::Command::LoadWorkflow {
+            payload: LoadWorkflow {
+                definition: make_workflow(2),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Complete and advance step-0.
+        bus.submit_command(npr::Command::CompleteStep {
+            payload: CompleteStep {
+                step_id: "step-0".to_owned(),
+                resolved_outputs: HashMap::new(),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+        bus.submit_command(npr::Command::AdvanceStep);
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Complete and advance step-1 (final step).
+        bus.submit_command(npr::Command::CompleteStep {
+            payload: CompleteStep {
+                step_id: "step-1".to_owned(),
+                resolved_outputs: HashMap::new(),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+        bus.submit_command(npr::Command::AdvanceStep);
+        process_and_drain_events(&mut bus, &mut state, &services);
 
         // And the message contains the workflow name and step count.
+        let history = state.active_session().history();
+        let system_entries: Vec<_> = history
+            .iter()
+            .filter(|e| matches!(e.kind, npr::ChatEntryKind::System(_)))
+            .collect();
         if let npr::ChatEntryKind::System(ref text) = system_entries[0].kind {
             assert!(text.contains("test-workflow"));
             assert!(text.contains("2 steps finished"));
@@ -590,7 +706,86 @@ mod tests {
     // --- Test 7: JumpToStep activates target and marks downstream stale ---
 
     #[test]
-    fn jump_to_step_activates_target_and_marks_downstream_stale() {
+    fn jump_activates_target_step() {
+        // Given a multi-step workflow advanced past step 0.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+
+        bus.submit_command(npr::Command::LoadWorkflow {
+            payload: LoadWorkflow {
+                definition: make_workflow(3),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Advance to step 1.
+        bus.submit_command(npr::Command::AdvanceStep);
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // When jumping back to step 0.
+        bus.submit_command(npr::Command::JumpToStep {
+            payload: JumpToStep {
+                step_id: "step-0".to_owned(),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Then step-0 is active.
+        assert_eq!(
+            state
+                .active_session()
+                .workflow()
+                .unwrap()
+                .active_step
+                .as_deref(),
+            Some("step-0")
+        );
+        assert_eq!(
+            state.active_session().workflow().unwrap().steps["step-0"].status,
+            StepStatus::Active
+        );
+    }
+
+    #[test]
+    fn jump_marks_downstream_as_stale() {
+        // Given a multi-step workflow advanced past step 0.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+
+        bus.submit_command(npr::Command::LoadWorkflow {
+            payload: LoadWorkflow {
+                definition: make_workflow(3),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Advance to step 1.
+        bus.submit_command(npr::Command::AdvanceStep);
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // When jumping back to step 0.
+        bus.submit_command(npr::Command::JumpToStep {
+            payload: JumpToStep {
+                step_id: "step-0".to_owned(),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Then downstream steps are stale.
+        assert_eq!(
+            state.active_session().workflow().unwrap().steps["step-1"].status,
+            StepStatus::Stale
+        );
+        assert_eq!(
+            state.active_session().workflow().unwrap().steps["step-2"].status,
+            StepStatus::Stale
+        );
+    }
+
+    #[test]
+    fn jump_emits_stale_and_started_events() {
         // Given a multi-step workflow advanced past step 0.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -614,29 +809,6 @@ mod tests {
             },
         });
         let processed = process_and_drain_events(&mut bus, &mut state, &services);
-
-        // Then step-0 is active and downstream steps are stale.
-        assert_eq!(
-            state
-                .active_session()
-                .workflow()
-                .unwrap()
-                .active_step
-                .as_deref(),
-            Some("step-0")
-        );
-        assert_eq!(
-            state.active_session().workflow().unwrap().steps["step-0"].status,
-            StepStatus::Active
-        );
-        assert_eq!(
-            state.active_session().workflow().unwrap().steps["step-1"].status,
-            StepStatus::Stale
-        );
-        assert_eq!(
-            state.active_session().workflow().unwrap().steps["step-2"].status,
-            StepStatus::Stale
-        );
 
         // And StepStale and StepStarted events were emitted.
         assert!(processed.len() >= 2);
@@ -744,7 +916,7 @@ mod tests {
     // --- Test 12: CompleteStep records outputs ---
 
     #[test]
-    fn complete_step_sets_awaiting_input_and_emits_event() {
+    fn complete_step_sets_awaiting_input_with_outputs() {
         // Given a loaded workflow with step-0 active.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -769,7 +941,7 @@ mod tests {
                 resolved_outputs: outputs,
             },
         });
-        let processed = process_and_drain_events(&mut bus, &mut state, &services);
+        process_and_drain_events(&mut bus, &mut state, &services);
 
         // Then step-0 is AwaitingInput (not Completed) with stored outputs.
         assert_eq!(
@@ -782,6 +954,31 @@ mod tests {
                 .get("result"),
             Some(&"42".to_owned())
         );
+    }
+
+    #[test]
+    fn complete_step_emits_awaiting_input_event() {
+        // Given a loaded workflow with step-0 active.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+
+        bus.submit_command(npr::Command::LoadWorkflow {
+            payload: LoadWorkflow {
+                definition: make_workflow(2),
+            },
+        });
+        process_and_drain_events(&mut bus, &mut state, &services);
+
+        // When completing step-0 with resolved outputs.
+        let outputs = HashMap::from([("result".to_owned(), "42".to_owned())]);
+        bus.submit_command(npr::Command::CompleteStep {
+            payload: CompleteStep {
+                step_id: "step-0".to_owned(),
+                resolved_outputs: outputs,
+            },
+        });
+        let processed = process_and_drain_events(&mut bus, &mut state, &services);
 
         // And StepAwaitingInput event was emitted.
         let has_awaiting = processed.iter().any(|p| {
@@ -796,7 +993,7 @@ mod tests {
     // --- Test 13: StepStarted event includes context ---
 
     #[test]
-    fn step_started_event_includes_context() {
+    fn step_started_contains_step_id() {
         // Given a bus with WorkflowHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -810,17 +1007,73 @@ mod tests {
         let mut state = AppState::default();
         let processed = process_and_drain_events(&mut bus, &mut state, &services);
 
-        // Then StepStarted has enriched context.
-        let started = processed.iter().find_map(|p| match &p.event {
+        // Then StepStarted has step_id.
+        let started = find_step_started(&processed);
+        assert_eq!(started.step_id, "step-0");
+    }
+
+    #[test]
+    fn step_started_contains_instructions() {
+        // Given a bus with WorkflowHandler registered.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+
+        bus.submit_command(npr::Command::LoadWorkflow {
+            payload: LoadWorkflow {
+                definition: make_workflow(2),
+            },
+        });
+        let mut state = AppState::default();
+        let processed = process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Then StepStarted has instructions.
+        let started = find_step_started(&processed);
+        assert_eq!(started.instructions, "Instructions for step 0");
+    }
+
+    #[test]
+    fn step_started_contains_requires_user_input() {
+        // Given a bus with WorkflowHandler registered.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+
+        bus.submit_command(npr::Command::LoadWorkflow {
+            payload: LoadWorkflow {
+                definition: make_workflow(2),
+            },
+        });
+        let mut state = AppState::default();
+        let processed = process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Then StepStarted has requires_user_input.
+        let started = find_step_started(&processed);
+        assert!(!started.requires_user_input);
+        assert!(!started.checkpoint);
+    }
+
+    #[test]
+    fn step_started_contains_empty_completed_outputs() {
+        // Given a bus with WorkflowHandler registered.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+
+        bus.submit_command(npr::Command::LoadWorkflow {
+            payload: LoadWorkflow {
+                definition: make_workflow(2),
+            },
+        });
+        let mut state = AppState::default();
+        let processed = process_and_drain_events(&mut bus, &mut state, &services);
+
+        // Then StepStarted has empty completed_outputs.
+        let started = find_step_started(&processed);
+        assert!(started.completed_outputs.is_empty());
+    }
+
+    fn find_step_started(processed: &[nullslop_component_core::bus::ProcessedEvent]) -> StepStarted {
+        processed.iter().find_map(|p| match &p.event {
             npr::Event::StepStarted { payload } => Some((**payload).clone()),
             _ => None,
-        });
-        assert!(started.is_some());
-        let s = started.expect("found StepStarted");
-        assert_eq!(s.step_id, "step-0");
-        assert_eq!(s.instructions, "Instructions for step 0");
-        assert!(!s.requires_user_input);
-        assert!(!s.checkpoint);
-        assert!(s.completed_outputs.is_empty());
+        }).expect("found StepStarted")
     }
 }

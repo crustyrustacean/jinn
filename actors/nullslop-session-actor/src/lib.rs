@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn session_persistence_actor_saves_on_event() {
+    async fn save_event_creates_summary() {
         // Given a SessionPersistenceActor with a JsonlSessionStore in a temp directory.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
@@ -227,13 +227,29 @@ mod tests {
         // Then load_summaries returns the session.
         let summaries = store_service.load_summaries().expect("load_summaries");
         assert_eq!(summaries.len(), 1);
-        let (id, summary, offset) = &summaries[0];
+        let (id, summary, _offset) = &summaries[0];
         assert_eq!(id, &session_id);
         assert_eq!(summary.title, "Test Session");
+    }
+
+    #[tokio::test]
+    async fn save_event_preserves_full_data() {
+        // Given a SessionPersistenceActor with a JsonlSessionStore in a temp directory.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        // When a SessionSaveRequested event is sent to the actor.
+        let session_id = SessionId::new();
+        let event = make_save_event(&session_id, "Test Session");
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // And load_full returns matching data.
+        let summaries = store_service.load_summaries().expect("load_summaries");
         let full = store_service
-            .load_full(*offset)
+            .load_full(summaries[0].2)
             .expect("load_full")
             .expect("should have session");
         assert_eq!(full.session_id, session_id);
@@ -337,7 +353,42 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn session_round_trips_through_persistence() {
+    async fn session_save_creates_summary() {
+        // Given a SessionPersistenceActor with a store.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        // When saving a session with history and blobs.
+        let session_id = SessionId::new();
+        let event = Event::SessionSaveRequested {
+            payload: SessionSaveRequested {
+                session_id: session_id.clone(),
+                title: "Round Trip".to_owned(),
+                history: vec![
+                    ChatEntry::user("first message"),
+                    ChatEntry::assistant("first response"),
+                    ChatEntry::user("second message"),
+                ],
+                active_strategy: PromptStrategyId::passthrough(),
+                blobs: HashMap::from([(
+                    "workflow_state".to_owned(),
+                    serde_json::json!({"active_step": "step-1"}),
+                )]),
+            },
+        };
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
+
+        // Then loading summaries shows the saved session.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].1.title, "Round Trip");
+    }
+
+    #[tokio::test]
+    async fn session_load_restores_full_data() {
         // Given a SessionPersistenceActor with a store.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());

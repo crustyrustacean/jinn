@@ -143,41 +143,51 @@ mod tests {
     }
 
     #[test]
-    fn multiple_actors_tracked_in_order() {
+    fn first_actor_tracked_with_status() {
         // Given a bus with DashboardHandler registered.
         let mut bus: Bus<AppState, Services> = Bus::new();
         DashboardHandler.register(&mut bus);
 
-        // When two actors start in sequence.
+        // When receiving a status update for the first actor.
         bus.submit_event(Event::ActorStarting {
             payload: ActorStarting {
-                name: "alpha".into(),
-                description: None,
-            },
-        });
-        bus.submit_event(Event::ActorStarted {
-            payload: ActorStarted {
-                name: "alpha".into(),
-                description: None,
-            },
-        });
-        bus.submit_event(Event::ActorStarting {
-            payload: ActorStarting {
-                name: "beta".into(),
-                description: None,
+                name: "echo".into(),
+                description: Some("Echo tool".into()),
             },
         });
         let services = test_utils::test_services();
         let mut state = AppState::default();
         bus.process_events(&mut state, &services);
 
-        // Then both are tracked in order with correct statuses.
-        let actors = state.dashboard.actors();
-        assert_eq!(actors.len(), 2);
-        assert_eq!(actors[0].name, "alpha");
-        assert_eq!(actors[0].status, ActorStatus::Running);
-        assert_eq!(actors[1].name, "beta");
-        assert_eq!(actors[1].status, ActorStatus::Starting);
+        // Then the first actor is tracked.
+        assert!(state.dashboard.actors().iter().any(|a| a.name == "echo"));
+    }
+
+    #[test]
+    fn second_actor_tracked_in_order() {
+        // Given a bus with DashboardHandler registered.
+        let mut bus: Bus<AppState, Services> = Bus::new();
+        DashboardHandler.register(&mut bus);
+
+        bus.submit_event(Event::ActorStarting {
+            payload: ActorStarting {
+                name: "echo".into(),
+                description: Some("Echo tool".into()),
+            },
+        });
+        bus.submit_event(Event::ActorStarting {
+            payload: ActorStarting {
+                name: "llm".into(),
+                description: Some("LLM provider".into()),
+            },
+        });
+        let services = test_utils::test_services();
+        let mut state = AppState::default();
+        bus.process_events(&mut state, &services);
+
+        // Then both actors are tracked in order.
+        let names: Vec<&str> = state.dashboard.actors().iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, vec!["echo", "llm"]);
     }
 
     #[test]

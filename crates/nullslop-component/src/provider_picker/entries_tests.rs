@@ -37,28 +37,44 @@ fn make_config(
     }
 }
 
-#[test]
-fn load_provider_entries_returns_all_providers() {
-    // Given a registry with one keyless and one key-required provider (key present).
-    let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
-    let registry = ProviderRegistry::from_config(config).expect("registry");
-    let mut api_keys = ApiKeys::new();
-    api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
+/// Loads entries from a registry with ollama (keyless) and openrouter (key present).
+    fn load_two_providers() -> Vec<PickerEntry> {
+        let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
+        let registry = ProviderRegistry::from_config(config).expect("registry");
+        let mut api_keys = ApiKeys::new();
+        api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
+        load_provider_entries(&registry, &api_keys, None)
+    }
 
-    // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, None);
+    #[test]
+    fn load_provider_entries_returns_two_providers() {
+        // Given a registry with two providers.
+        let entries = load_two_providers();
 
-    // Then both providers are returned with correct availability.
-    assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].provider_id, "ollama/llama3");
-    assert_eq!(entries[0].provider_name, "ollama");
-    assert_eq!(entries[0].model, "llama3");
-    assert!(entries[0].is_available);
-    assert_eq!(entries[1].provider_id, "openrouter/gpt-4");
-    assert_eq!(entries[1].provider_name, "openrouter");
-    assert_eq!(entries[1].model, "gpt-4");
-    assert!(entries[1].is_available);
-}
+        // Then exactly two entries are returned.
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[rstest::rstest]
+    #[case::ollama(0, "ollama/llama3", "ollama", "llama3", true)]
+    #[case::openrouter(1, "openrouter/gpt-4", "openrouter", "gpt-4", true)]
+    fn load_provider_entries_returns_provider_with_correct_fields(
+        #[case] index: usize,
+        #[case] provider_id: &str,
+        #[case] provider_name: &str,
+        #[case] model: &str,
+        #[case] is_available: bool,
+    ) {
+        // Given a registry with two providers.
+        let entries = load_two_providers();
+
+        // Then the entry at the given index has the expected fields.
+        let entry = &entries[index];
+        assert_eq!(entry.provider_id, provider_id);
+        assert_eq!(entry.provider_name, provider_name);
+        assert_eq!(entry.model, model);
+        assert_eq!(entry.is_available, is_available);
+    }
 
 #[test]
 fn load_provider_entries_includes_all_regardless_of_text() {
@@ -120,33 +136,58 @@ fn load_provider_entries_marks_keyless_always_available() {
     assert!(entries[0].is_available);
 }
 
-#[test]
-fn load_provider_entries_includes_aliases() {
-    // Given a registry with a provider and an alias.
-    let config = make_config(
-        vec![ollama_entry()],
-        vec![nullslop_providers::AliasEntry {
-            name: "fast".to_owned(),
-            target: "ollama/llama3".to_owned(),
-        }],
-        None,
-    );
-    let registry = ProviderRegistry::from_config(config).expect("registry");
-    let api_keys = ApiKeys::new();
+/// Loads entries from a registry with ollama and a "fast" alias.
+    fn load_entries_with_alias() -> (Vec<PickerEntry>, PickerEntry) {
+        let config = make_config(
+            vec![ollama_entry()],
+            vec![nullslop_providers::AliasEntry {
+                name: "fast".to_owned(),
+                target: "ollama/llama3".to_owned(),
+            }],
+            None,
+        );
+        let registry = ProviderRegistry::from_config(config).expect("registry");
+        let api_keys = ApiKeys::new();
+        let entries = load_provider_entries(&registry, &api_keys, None);
+        let alias = entries.iter().find(|e| e.is_alias).expect("alias entry").clone();
+        (entries, alias)
+    }
 
-    // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, None);
+    #[test]
+    fn load_provider_entries_alias_count() {
+        // Given a registry with one provider and one alias.
+        let (entries, _) = load_entries_with_alias();
 
-    // Then both the provider and alias are present.
-    assert_eq!(entries.len(), 2);
-    let alias = entries.iter().find(|e| e.is_alias).expect("alias entry");
-    assert_eq!(alias.name, "fast");
-    assert_eq!(alias.provider_id, "ollama/llama3");
-    assert_eq!(alias.alias_target.as_deref(), Some("ollama/llama3"));
-    assert_eq!(alias.provider_name, "ollama");
-    assert_eq!(alias.backend, "ollama");
-    assert_eq!(alias.model, "llama3");
-}
+        // Then both entries are returned.
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[rstest::rstest]
+    #[case::name("name", "fast")]
+    #[case::provider_id("provider_id", "ollama/llama3")]
+    #[case::alias_target("alias_target", "ollama/llama3")]
+    #[case::provider_name("provider_name", "ollama")]
+    #[case::backend("backend", "ollama")]
+    #[case::model("model", "llama3")]
+    fn load_provider_entries_alias_field_matches(
+        #[case] field: &str,
+        #[case] expected: &str,
+    ) {
+        // Given a registry with one provider and one alias.
+        let (_, alias) = load_entries_with_alias();
+
+        // Then the alias entry has the expected field value.
+        let actual = match field {
+            "name" => alias.name.as_str(),
+            "provider_id" => alias.provider_id.as_str(),
+            "alias_target" => alias.alias_target.as_deref().unwrap_or(""),
+            "provider_name" => alias.provider_name.as_str(),
+            "backend" => alias.backend.as_str(),
+            "model" => alias.model.as_str(),
+            _ => panic!("unknown field: {field}"),
+        };
+        assert_eq!(actual, expected);
+    }
 
 #[test]
 fn load_provider_entries_alias_inherits_availability() {
@@ -182,7 +223,7 @@ fn load_provider_entries_alias_inherits_availability() {
 // --- Remote model cache tests ---
 
 #[test]
-fn load_provider_entries_merges_remote_models_from_cache() {
+fn static_entries_present_after_cache_merge() {
     // Given a registry with one keyless provider (ollama/llama3).
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -197,13 +238,32 @@ fn load_provider_entries_merges_remote_models_from_cache() {
     // When loading provider entries with the cache.
     let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
 
-    // Then both static and remote entries are present.
+    // Then the static entry is present.
     assert_eq!(entries.len(), 2);
     let static_entry = entries
         .iter()
         .find(|e| e.model == "llama3")
         .expect("static");
     assert!(!static_entry.is_remote);
+}
+
+#[test]
+fn remote_entries_present_after_cache_merge() {
+    // Given a registry with one keyless provider (ollama/llama3).
+    let config = make_config(vec![ollama_entry()], vec![], None);
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let api_keys = ApiKeys::new();
+
+    // And a cache with an additional model for the same provider.
+    let mut cache = nullslop_providers::ModelCache::new();
+    cache
+        .entries
+        .insert("ollama".to_owned(), vec!["mistral".to_owned()]);
+
+    // When loading provider entries with the cache.
+    let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
+
+    // Then the remote entry is present with correct metadata.
     let remote_entry = entries
         .iter()
         .find(|e| e.model == "mistral")
@@ -214,7 +274,7 @@ fn load_provider_entries_merges_remote_models_from_cache() {
 }
 
 #[test]
-fn load_provider_entries_static_wins_on_collision_with_cache() {
+fn static_entry_not_duplicated_on_collision() {
     // Given a registry with ollama/llama3.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -230,18 +290,61 @@ fn load_provider_entries_static_wins_on_collision_with_cache() {
     // When loading provider entries.
     let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
 
-    // Then the static entry is kept (not duplicated) and only the new remote model is added.
+    // Then the static entry is kept (not duplicated).
     let llama3_entries: Vec<_> = entries.iter().filter(|e| e.model == "llama3").collect();
     assert_eq!(llama3_entries.len(), 1);
     assert!(!llama3_entries[0].is_remote);
+}
 
+#[test]
+fn new_remote_entry_added_on_collision() {
+    // Given a registry with ollama/llama3.
+    let config = make_config(vec![ollama_entry()], vec![], None);
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let api_keys = ApiKeys::new();
+
+    // And a cache that also contains ollama/llama3 (collision).
+    let mut cache = nullslop_providers::ModelCache::new();
+    cache.entries.insert(
+        "ollama".to_owned(),
+        vec!["llama3".to_owned(), "mistral".to_owned()],
+    );
+
+    // When loading provider entries.
+    let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
+
+    // Then only the new remote model is added.
     let mistral_entries: Vec<_> = entries.iter().filter(|e| e.model == "mistral").collect();
     assert_eq!(mistral_entries.len(), 1);
     assert!(mistral_entries[0].is_remote);
 }
 
 #[test]
-fn load_provider_entries_marks_remote_unavailable_when_key_missing() {
+fn remote_entry_present_when_key_missing() {
+    // Given a registry with a key-required provider (openrouter).
+    let config = make_config(vec![openrouter_entry()], vec![], None);
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let api_keys = ApiKeys::new(); // No keys set.
+
+    // And a cache with additional models.
+    let mut cache = nullslop_providers::ModelCache::new();
+    cache
+        .entries
+        .insert("openrouter".to_owned(), vec!["claude-3".to_owned()]);
+
+    // When loading provider entries.
+    let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
+
+    // Then the remote model is present.
+    let remote = entries
+        .iter()
+        .find(|e| e.model == "claude-3")
+        .expect("remote");
+    assert!(remote.is_remote);
+}
+
+#[test]
+fn remote_entry_marked_unavailable_when_key_missing() {
     // Given a registry with a key-required provider (openrouter).
     let config = make_config(vec![openrouter_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
@@ -261,7 +364,6 @@ fn load_provider_entries_marks_remote_unavailable_when_key_missing() {
         .iter()
         .find(|e| e.model == "claude-3")
         .expect("remote");
-    assert!(remote.is_remote);
     assert!(!remote.is_available);
 }
 
@@ -288,7 +390,7 @@ fn load_provider_entries_includes_all_remote_models() {
 // --- sorted_entries tests ---
 
 #[test]
-fn sorted_entries_moves_active_to_top_when_filter_empty() {
+fn active_provider_promoted_to_first() {
     // Given entries ["a/model", "b/model", "c/model"] with active_provider "c/model" and empty filter.
     let entries = vec![
         PickerEntry {
@@ -332,12 +434,60 @@ fn sorted_entries_moves_active_to_top_when_filter_empty() {
     // When sorting with empty filter and active_provider "c/model".
     let result = sorted_entries(&entries, "", "c/model");
 
-    // Then "c/model" is first (promoted) and marked active.
+    // Then "c/model" is first (promoted).
     assert_eq!(result[0].provider_id, "c/model");
-    assert!(result[0].is_active);
     assert_eq!(result[1].provider_id, "a/model");
-    assert!(!result[1].is_active);
     assert_eq!(result[2].provider_id, "b/model");
+}
+
+#[test]
+fn active_entry_marked_active() {
+    // Given entries ["a/model", "b/model", "c/model"] with active_provider "c/model" and empty filter.
+    let entries = vec![
+        PickerEntry {
+            provider_id: "a/model".into(),
+            name: "a".into(),
+            provider_name: "a".into(),
+            backend: "a".into(),
+            model: "model".into(),
+            is_alias: false,
+            alias_target: None,
+            is_available: true,
+            is_remote: false,
+            is_active: false,
+        },
+        PickerEntry {
+            provider_id: "b/model".into(),
+            name: "b".into(),
+            provider_name: "b".into(),
+            backend: "b".into(),
+            model: "model".into(),
+            is_alias: false,
+            alias_target: None,
+            is_available: true,
+            is_remote: false,
+            is_active: false,
+        },
+        PickerEntry {
+            provider_id: "c/model".into(),
+            name: "c".into(),
+            provider_name: "c".into(),
+            backend: "c".into(),
+            model: "model".into(),
+            is_alias: false,
+            alias_target: None,
+            is_available: true,
+            is_remote: false,
+            is_active: false,
+        },
+    ];
+
+    // When sorting with empty filter and active_provider "c/model".
+    let result = sorted_entries(&entries, "", "c/model");
+
+    // Then only the promoted entry is marked active.
+    assert!(result[0].is_active);
+    assert!(!result[1].is_active);
     assert!(!result[2].is_active);
 }
 
@@ -418,7 +568,7 @@ fn sorted_entries_preserves_order_when_no_active() {
 }
 
 #[test]
-fn sorted_entries_available_before_unavailable() {
+fn available_entry_comes_first() {
     // Given entries with mixed availability.
     let entries = vec![
         PickerEntry {
@@ -462,10 +612,58 @@ fn sorted_entries_available_before_unavailable() {
     // When sorting with empty filter and no active provider.
     let result = sorted_entries(&entries, "", "__no_provider__");
 
-    // Then available entry comes first, followed by unavailable entries sorted by model.
+    // Then the available entry comes first.
     assert_eq!(result.len(), 3);
     assert_eq!(result[0].provider_id, "a/model");
     assert!(result[0].is_available);
+}
+
+#[test]
+fn unavailable_entries_sorted_by_model() {
+    // Given entries with mixed availability.
+    let entries = vec![
+        PickerEntry {
+            provider_id: "z/model".into(),
+            name: "z".into(),
+            provider_name: "z".into(),
+            backend: "z".into(),
+            model: "model".into(),
+            is_alias: false,
+            alias_target: None,
+            is_available: false,
+            is_remote: false,
+            is_active: false,
+        },
+        PickerEntry {
+            provider_id: "a/model".into(),
+            name: "a".into(),
+            provider_name: "a".into(),
+            backend: "a".into(),
+            model: "model".into(),
+            is_alias: false,
+            alias_target: None,
+            is_available: true,
+            is_remote: false,
+            is_active: false,
+        },
+        PickerEntry {
+            provider_id: "b/model".into(),
+            name: "b".into(),
+            provider_name: "b".into(),
+            backend: "b".into(),
+            model: "model".into(),
+            is_alias: false,
+            alias_target: None,
+            is_available: false,
+            is_remote: false,
+            is_active: false,
+        },
+    ];
+
+    // When sorting with empty filter and no active provider.
+    let result = sorted_entries(&entries, "", "__no_provider__");
+
+    // Then unavailable entries are after the available one.
     assert!(!result[1].is_available);
     assert!(!result[2].is_available);
 }
@@ -648,7 +846,7 @@ fn truncate_line_fits_within_width() {
 }
 
 #[test]
-fn truncate_line_preserves_style_on_partial_span() {
+fn truncate_keeps_first_span_whole() {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
@@ -661,11 +859,44 @@ fn truncate_line_preserves_style_on_partial_span() {
     // When truncating to width 8.
     let result = truncate_line(line, 8);
 
-    // Then the first span is kept whole and the second is truncated.
+    // Then the first span is kept whole.
     assert_eq!(result.spans.len(), 2);
     assert_eq!(result.spans[0].content, "hello ");
+}
+
+#[test]
+fn truncate_truncates_second_span() {
+    use ratatui::style::{Color, Style};
+    use ratatui::text::{Line, Span};
+
+    // Given a line where the second span will be partially truncated.
+    let line = Line::from(vec![
+        Span::styled("hello ".to_owned(), Style::default()),
+        Span::styled("world".to_owned(), Style::default().fg(Color::Red)),
+    ]);
+
+    // When truncating to width 8.
+    let result = truncate_line(line, 8);
+
+    // Then the second span is truncated.
     assert_eq!(result.spans[1].content, "wo");
-    // And the partial span retains its style.
+}
+
+#[test]
+fn partial_span_retains_style() {
+    use ratatui::style::{Color, Style};
+    use ratatui::text::{Line, Span};
+
+    // Given a line where the second span will be partially truncated.
+    let line = Line::from(vec![
+        Span::styled("hello ".to_owned(), Style::default()),
+        Span::styled("world".to_owned(), Style::default().fg(Color::Red)),
+    ]);
+
+    // When truncating to width 8.
+    let result = truncate_line(line, 8);
+
+    // Then the partial span retains its style.
     assert_eq!(result.spans[1].style.fg, Some(Color::Red));
 }
 
@@ -709,7 +940,7 @@ fn render_row_with_empty_match_indices_same_as_render_row() {
 }
 
 #[test]
-fn render_row_with_highlight_applies_gray_bg_to_matched_model_chars() {
+fn provider_highlight_applies_gray_bg() {
     // Given a provider entry with model "llama3".
     let entry = make_picker_entry("llama3", "ollama", true, false);
 
@@ -724,7 +955,19 @@ fn render_row_with_highlight_applies_gray_bg_to_matched_model_chars() {
         has_highlight,
         "expected at least one span with gray background"
     );
-    // And the highlighted content contains "l".
+}
+
+#[test]
+fn provider_highlight_contains_matched_char() {
+    // Given a provider entry with model "llama3".
+    let entry = make_picker_entry("llama3", "ollama", true, false);
+
+    // When highlighting with match at byte 0 (the "l").
+    #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+    let highlights: &[Range<usize>] = &[0..1];
+    let line = entry.render_row_with_highlight(false, highlights);
+
+    // Then the highlighted content contains "l".
     let highlighted: String = line
         .spans
         .iter()

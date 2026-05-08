@@ -247,21 +247,38 @@ mod tests {
         assert_eq!(def.steps.len(), back.steps.len());
     }
 
-    #[test]
-    fn step_def_missing_optionals_uses_defaults() {
-        // JSON without optional fields should deserialize with defaults.
+    /// Parses a minimal StepDef JSON (no optional fields) for default-checking tests.
+    fn parse_minimal_step_def() -> StepDef {
         let json = r#"{
             "id": "step-1",
             "title": "Test",
             "instructions": "Do it",
             "model_hint": {"type": "small"}
         }"#;
-        let step: StepDef = serde_json::from_str(json).unwrap();
-        assert!(!step.checkpoint);
-        assert!(!step.requires_user_input);
-        assert!(step.tools.is_empty());
-        assert!(step.outputs.is_empty());
-        assert!(step.depends_on.is_empty());
-        assert_eq!(step.guards, GuardExpr::None);
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[rstest::rstest]
+    #[case::checkpoint("checkpoint", true)]
+    #[case::requires_user_input("requires_user_input", true)]
+    #[case::tools_empty("tools_empty", true)]
+    #[case::outputs_empty("outputs_empty", true)]
+    #[case::depends_on_empty("depends_on_empty", true)]
+    #[case::guards_none("guards_none", true)]
+    fn step_def_missing_optional_uses_default(#[case] field: &str, #[case] expected: bool) {
+        // Given a StepDef deserialized from JSON without optional fields.
+        let step = parse_minimal_step_def();
+
+        // Then the field uses its default value.
+        let actual = match field {
+            "checkpoint" => !step.checkpoint,
+            "requires_user_input" => !step.requires_user_input,
+            "tools_empty" => step.tools.is_empty(),
+            "outputs_empty" => step.outputs.is_empty(),
+            "depends_on_empty" => step.depends_on.is_empty(),
+            "guards_none" => step.guards == GuardExpr::None,
+            _ => panic!("unknown field: {field}"),
+        };
+        assert_eq!(actual, expected, "field {field}: expected {expected}, got {actual}");
     }
 }

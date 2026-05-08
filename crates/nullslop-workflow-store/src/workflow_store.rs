@@ -396,7 +396,7 @@ mod tests {
     // --- Test 3: List returns all saved workflows sorted by name ---
 
     #[tokio::test]
-    async fn list_returns_all_saved_workflows_sorted_by_name() {
+    async fn list_returns_correct_count() {
         // Given a FileWorkflowStore with 3 workflows saved.
         let dir = TempDir::new().expect("temp dir");
         let store = FileWorkflowStore::new_in(dir.path().to_path_buf());
@@ -417,8 +417,33 @@ mod tests {
         // When calling list.
         let entries = store.list().await.expect("list");
 
-        // Then 3 entries are returned sorted alphabetically.
+        // Then 3 entries are returned.
         assert_eq!(entries.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn list_is_sorted_alphabetically() {
+        // Given a FileWorkflowStore with 3 workflows saved.
+        let dir = TempDir::new().expect("temp dir");
+        let store = FileWorkflowStore::new_in(dir.path().to_path_buf());
+
+        store
+            .save("charlie", &make_def("charlie", "Third workflow", 1))
+            .await
+            .expect("save charlie");
+        store
+            .save("alpha", &make_def("alpha", "First workflow", 1))
+            .await
+            .expect("save alpha");
+        store
+            .save("bravo", &make_def("bravo", "Second workflow", 1))
+            .await
+            .expect("save bravo");
+
+        // When calling list.
+        let entries = store.list().await.expect("list");
+
+        // Then entries are sorted alphabetically.
         assert_eq!(
             entries[0],
             ("alpha".to_owned(), "First workflow".to_owned())
@@ -436,7 +461,7 @@ mod tests {
     // --- Test 4: Delete removes workflow file ---
 
     #[tokio::test]
-    async fn delete_removes_workflow_file() {
+    async fn delete_returns_none_on_load() {
         // Given a FileWorkflowStore with a saved workflow.
         let dir = TempDir::new().expect("temp dir");
         let store = FileWorkflowStore::new_in(dir.path().to_path_buf());
@@ -451,8 +476,22 @@ mod tests {
         // Then load returns None.
         let result = store.load("test-wf").await.expect("load");
         assert!(result.is_none());
+    }
 
-        // And the .json file no longer exists on disk.
+    #[tokio::test]
+    async fn delete_removes_file_from_disk() {
+        // Given a FileWorkflowStore with a saved workflow.
+        let dir = TempDir::new().expect("temp dir");
+        let store = FileWorkflowStore::new_in(dir.path().to_path_buf());
+        store
+            .save("test-wf", &make_def("test-wf", "A test", 1))
+            .await
+            .expect("save");
+
+        // When deleting the workflow.
+        store.delete("test-wf").await.expect("delete");
+
+        // Then the .json file no longer exists on disk.
         assert!(!dir.path().join("test-wf.json").exists());
     }
 

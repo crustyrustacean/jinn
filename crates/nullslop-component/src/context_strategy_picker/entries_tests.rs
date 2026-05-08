@@ -220,7 +220,7 @@ fn render_row_with_empty_match_indices_same_as_render_row() {
 }
 
 #[test]
-fn render_row_with_highlight_applies_gray_bg_to_matched_name_chars() {
+fn strategy_highlight_applies_gray_bg() {
     // Given a strategy entry with name "Passthrough".
     let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
 
@@ -232,7 +232,19 @@ fn render_row_with_highlight_applies_gray_bg_to_matched_name_chars() {
     // Then at least one span has gray background.
     let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(ratatui::style::Color::DarkGray));
     assert!(has_highlight, "expected at least one span with gray background");
-    // And the highlighted content contains "P".
+}
+
+#[test]
+fn strategy_highlight_contains_matched_char() {
+    // Given a strategy entry with name "Passthrough".
+    let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
+
+    // When highlighting with match at byte 0 (the "P").
+    #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+    let highlights: &[Range<usize>] = &[0..1];
+    let line = entry.render_row_with_highlight(false, highlights);
+
+    // Then the highlighted content contains "P".
     let highlighted: String = line
         .spans
         .iter()

@@ -402,7 +402,7 @@ mod tests {
     // ── compute_split_borders tests ──────────────────────────────
 
     #[test]
-    fn vertical_split_produces_vertical_border_and_shrinks_left() {
+    fn vertical_split_produces_border() {
         // Given a vertical split: left(1) at (0,0,50,100), right(2) at (50,0,50,100).
         let areas = vec![
             area(1, Rect::new(0, 0, 50, 100)),
@@ -418,6 +418,18 @@ mod tests {
         assert_eq!(result.lines[0].pos, 49);
         assert_eq!(result.lines[0].start, 0);
         assert_eq!(result.lines[0].end, 100);
+    }
+
+    #[test]
+    fn vertical_split_shrinks_left() {
+        // Given a vertical split: left(1) at (0,0,50,100), right(2) at (50,0,50,100).
+        let areas = vec![
+            area(1, Rect::new(0, 0, 50, 100)),
+            area(2, Rect::new(50, 0, 50, 100)),
+        ];
+
+        // When computing borders.
+        let result = compute_split_borders(&areas);
 
         // And the left area is shrunk by 1 column, right unchanged.
         assert_eq!(result.rect_for(AreaId(1)), Some(Rect::new(0, 0, 49, 100)));
@@ -425,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn horizontal_split_produces_horizontal_border_and_shrinks_top() {
+    fn horizontal_split_produces_border() {
         // Given a horizontal split: top(1) at (0,0,100,50), bottom(2) at (0,50,100,50).
         let areas = vec![
             area(1, Rect::new(0, 0, 100, 50)),
@@ -441,6 +453,18 @@ mod tests {
         assert_eq!(result.lines[0].pos, 49);
         assert_eq!(result.lines[0].start, 0);
         assert_eq!(result.lines[0].end, 100);
+    }
+
+    #[test]
+    fn horizontal_split_shrinks_top() {
+        // Given a horizontal split: top(1) at (0,0,100,50), bottom(2) at (0,50,100,50).
+        let areas = vec![
+            area(1, Rect::new(0, 0, 100, 50)),
+            area(2, Rect::new(0, 50, 100, 50)),
+        ];
+
+        // When computing borders.
+        let result = compute_split_borders(&areas);
 
         // And the top area is shrunk by 1 row, bottom unchanged.
         assert_eq!(result.rect_for(AreaId(1)), Some(Rect::new(0, 0, 100, 49)));
@@ -448,7 +472,7 @@ mod tests {
     }
 
     #[test]
-    fn four_way_grid_produces_cross_junction() {
+    fn grid_produces_two_border_lines() {
         // Given a 4-way grid layout.
         let areas = vec![
             area(1, Rect::new(0, 0, 50, 50)),   // top-left
@@ -461,8 +485,8 @@ mod tests {
         let result = compute_split_borders(&areas);
 
         // Then there are 2 border lines after merging collinear segments:
-        // - 1 vertical at x=50 spanning full height (0..100)
-        // - 1 horizontal at y=50 spanning full width (0..100)
+        // - 1 vertical at x=49 spanning full height (0..100)
+        // - 1 horizontal at y=49 spanning full width (0..100)
         assert_eq!(result.lines.len(), 2);
 
         let verticals: Vec<_> = result
@@ -485,6 +509,20 @@ mod tests {
         assert_eq!(horizontals[0].pos, 49);
         assert_eq!(horizontals[0].start, 0);
         assert_eq!(horizontals[0].end, 100);
+    }
+
+    #[test]
+    fn top_left_shrunk_both_ways() {
+        // Given a 4-way grid layout.
+        let areas = vec![
+            area(1, Rect::new(0, 0, 50, 50)),   // top-left
+            area(2, Rect::new(50, 0, 50, 50)),  // top-right
+            area(3, Rect::new(0, 50, 50, 50)),  // bottom-left
+            area(4, Rect::new(50, 50, 50, 50)), // bottom-right
+        ];
+
+        // When computing borders.
+        let result = compute_split_borders(&areas);
 
         // And top-left is shrunk both ways, top-right by 1 row,
         // bottom-left by 1 col, bottom-right unchanged.
@@ -574,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn render_cross_junction_draws_cross_character() {
+    fn crossing_point_is_cross_char() {
         // Given a 4-way grid with crossing borders.
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
@@ -608,11 +646,77 @@ mod tests {
         let buf = terminal.backend().buffer().clone();
         let cross = buf.cell((50, 50)).expect("cross cell");
         assert_eq!(cross.symbol(), "┼");
+    }
+
+    #[test]
+    fn vertical_border_above_crossing() {
+        // Given a 4-way grid with crossing borders.
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(100, 100);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let lines = vec![
+            BorderLine {
+                orientation: BorderOrientation::Vertical,
+                pos: 50,
+                start: 0,
+                end: 100,
+            },
+            BorderLine {
+                orientation: BorderOrientation::Horizontal,
+                pos: 50,
+                start: 0,
+                end: 100,
+            },
+        ];
+
+        // When rendering borders.
+        terminal
+            .draw(|frame| {
+                render_borders(frame, &lines);
+            })
+            .unwrap();
 
         // And the vertical border above the crossing is │.
+        let buf = terminal.backend().buffer().clone();
         assert_eq!(buf.cell((50, 0)).expect("above").symbol(), "│");
+    }
+
+    #[test]
+    fn horizontal_border_on_sides() {
+        // Given a 4-way grid with crossing borders.
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(100, 100);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let lines = vec![
+            BorderLine {
+                orientation: BorderOrientation::Vertical,
+                pos: 50,
+                start: 0,
+                end: 100,
+            },
+            BorderLine {
+                orientation: BorderOrientation::Horizontal,
+                pos: 50,
+                start: 0,
+                end: 100,
+            },
+        ];
+
+        // When rendering borders.
+        terminal
+            .draw(|frame| {
+                render_borders(frame, &lines);
+            })
+            .unwrap();
 
         // And the horizontal borders on each side are ─.
+        let buf = terminal.backend().buffer().clone();
         assert_eq!(buf.cell((25, 50)).expect("left h").symbol(), "─");
         assert_eq!(buf.cell((75, 50)).expect("right h").symbol(), "─");
     }

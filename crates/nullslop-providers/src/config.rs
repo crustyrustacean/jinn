@@ -195,9 +195,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn load_config_parses_well_formed_toml() {
-        // Given a temp directory with a well-formed TOML config.
+    /// Writes a well-formed TOML config to a temp file and loads it.
+    fn load_test_config() -> ProvidersConfig {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         let toml = r#"
@@ -212,19 +211,45 @@ name = "fast"
 target = "ollama/llama3"
 "#;
         std::fs::write(&path, toml).expect("write");
+        load_config_from(&path).expect("load")
+    }
 
-        // When loading the config.
-        let config = load_config_from(&path).expect("load");
+    #[test]
+    fn load_config_parses_provider_count_and_models() {
+        // Given a well-formed TOML config.
+        let config = load_test_config();
 
-        // Then providers and aliases are parsed correctly.
+        // Then provider count and models are correct.
         assert_eq!(config.providers.len(), 1);
-        assert_eq!(config.providers[0].name, "ollama");
-        assert_eq!(config.providers[0].backend, "ollama");
         assert_eq!(config.providers[0].models, vec!["llama3", "codellama"]);
-        assert!(!config.providers[0].requires_key);
-        assert_eq!(config.aliases.len(), 1);
-        assert_eq!(config.aliases[0].name, "fast");
-        assert_eq!(config.aliases[0].target, "ollama/llama3");
+    }
+
+    #[rstest::rstest]
+    #[case::provider_name("provider_name", "ollama")]
+    #[case::provider_backend("provider_backend", "ollama")]
+    #[case::requires_key("requires_key", "false")]
+    #[case::alias_name("alias_name", "fast")]
+    #[case::alias_target("alias_target", "ollama/llama3")]
+    fn load_config_parses_field_correctly(#[case] field: &str, #[case] expected: &str) {
+        // Given a well-formed TOML config.
+        let config = load_test_config();
+
+        // Then the field matches the expected value.
+        let actual = match field {
+            "provider_name" => config.providers[0].name.as_str(),
+            "provider_backend" => config.providers[0].backend.as_str(),
+            "requires_key" => {
+                assert!(!config.providers[0].requires_key);
+                return;
+            }
+            "alias_name" => {
+                assert_eq!(config.aliases.len(), 1);
+                config.aliases[0].name.as_str()
+            }
+            "alias_target" => config.aliases[0].target.as_str(),
+            _ => panic!("unknown field: {field}"),
+        };
+        assert_eq!(actual, expected);
     }
 
     #[test]

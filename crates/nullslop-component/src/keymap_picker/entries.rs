@@ -273,21 +273,54 @@ mod tests {
     }
 
     #[test]
-    fn render_row_shows_key_description_scope_category() {
+    fn render_row_contains_key() {
         // Given a keymap entry.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
         // When rendering the row.
         let line = entry.render_row(false);
 
-        // Then all fields appear in the rendered text.
+        // Then the rendered text contains the key sequence.
         let text: String = line.spans.iter().map(|s| &*s.content).collect();
         assert!(text.contains("gg"), "should contain key sequence");
-        assert!(
-            text.contains("scroll to top"),
-            "should contain description"
-        );
+    }
+
+    #[test]
+    fn render_row_contains_description() {
+        // Given a keymap entry.
+        let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
+
+        // When rendering the row.
+        let line = entry.render_row(false);
+
+        // Then the rendered text contains the description.
+        let text: String = line.spans.iter().map(|s| &*s.content).collect();
+        assert!(text.contains("scroll to top"), "should contain description");
+    }
+
+    #[test]
+    fn render_row_contains_scope() {
+        // Given a keymap entry.
+        let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
+
+        // When rendering the row.
+        let line = entry.render_row(false);
+
+        // Then the rendered text contains the scope.
+        let text: String = line.spans.iter().map(|s| &*s.content).collect();
         assert!(text.contains("[Normal]"), "should contain scope");
+    }
+
+    #[test]
+    fn render_row_contains_category() {
+        // Given a keymap entry.
+        let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
+
+        // When rendering the row.
+        let line = entry.render_row(false);
+
+        // Then the rendered text contains the category.
+        let text: String = line.spans.iter().map(|s| &*s.content).collect();
         assert!(text.contains("Navigation"), "should contain category");
     }
 
@@ -407,9 +440,8 @@ mod tests {
     }
 
     #[test]
-    fn render_row_with_highlight_matches_description_chars() {
+    fn keymap_highlight_applies_gray_bg() {
         // Given a keymap entry with search_text "gg scroll to top".
-        // "scroll to top" starts at byte 3 in search_text.
         let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
 
         // When highlighting with match at byte 3 (the "s" in "scroll").
@@ -420,7 +452,19 @@ mod tests {
         // Then at least one span has gray background.
         let has_highlight = line.spans.iter().any(|s| s.style.bg == Some(Color::DarkGray));
         assert!(has_highlight, "expected highlight on description char");
-        // And the highlighted content contains "s".
+    }
+
+    #[test]
+    fn keymap_highlight_contains_matched_char() {
+        // Given a keymap entry with search_text "gg scroll to top".
+        let entry = make_entry("gg", "scroll to top", "Normal", "Navigation");
+
+        // When highlighting with match at byte 3 (the "s" in "scroll").
+        #[expect(clippy::single_range_in_vec_init, reason = "genuinely want a slice containing one Range<usize>")]
+        let highlights: &[Range<usize>] = &[3..4];
+        let line = entry.render_row_with_highlight(false, highlights);
+
+        // Then the highlighted content contains "s".
         let highlighted_content: String = line
             .spans
             .iter()

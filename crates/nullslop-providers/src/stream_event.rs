@@ -48,95 +48,95 @@ pub enum StreamEvent {
 mod tests {
     use super::*;
 
-    #[test]
-    fn debug_formatting() {
-        // Given all StreamEvent variants.
-        let text = StreamEvent::Text("hello".to_owned());
-        let tool_start = StreamEvent::ToolUseStart {
-            index: 0,
+    #[rstest::rstest]
+    #[case::text(StreamEvent::Text("hello".to_owned()))]
+    #[case::tool_start(StreamEvent::ToolUseStart {
+        index: 0,
+        id: "call_1".to_owned(),
+        name: "echo".to_owned(),
+    })]
+    #[case::tool_delta(StreamEvent::ToolUseInputDelta {
+        index: 0,
+        partial_json: r#"{"input":"h"#.to_owned(),
+    })]
+    #[case::tool_complete(StreamEvent::ToolUseComplete {
+        index: 0,
+        tool_call: ToolCall {
             id: "call_1".to_owned(),
             name: "echo".to_owned(),
-        };
-        let tool_delta = StreamEvent::ToolUseInputDelta {
-            index: 0,
-            partial_json: r#"{"input":"h"#.to_owned(),
-        };
-        let tool_complete = StreamEvent::ToolUseComplete {
-            index: 0,
-            tool_call: ToolCall {
-                id: "call_1".to_owned(),
-                name: "echo".to_owned(),
-                arguments: r#"{"input":"hi"}"#.to_owned(),
-            },
-        };
-        let done = StreamEvent::Done {
-            stop_reason: "end_turn".to_owned(),
-        };
-
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        },
+    })]
+    #[case::done(StreamEvent::Done {
+        stop_reason: "end_turn".to_owned(),
+    })]
+    fn debug_formatting_produces_non_empty_string(#[case] event: StreamEvent) {
+        // Given a StreamEvent variant.
         // When formatting with Debug.
-        // Then each variant produces a non-empty debug string.
-        assert!(!format!("{text:?}").is_empty());
-        assert!(!format!("{tool_start:?}").is_empty());
-        assert!(!format!("{tool_delta:?}").is_empty());
-        assert!(!format!("{tool_complete:?}").is_empty());
-        assert!(!format!("{done:?}").is_empty());
+        // Then the debug string is non-empty.
+        assert!(!format!("{event:?}").is_empty());
     }
 
-    #[test]
-    fn partial_eq_all_variants() {
-        // Given two identical sets of events.
-        let text_a = StreamEvent::Text("hello".to_owned());
-        let text_b = StreamEvent::Text("hello".to_owned());
-
-        let start_a = StreamEvent::ToolUseStart {
+    #[rstest::rstest]
+    #[case::text(
+        StreamEvent::Text("hello".to_owned()),
+        StreamEvent::Text("hello".to_owned())
+    )]
+    #[case::tool_start(
+        StreamEvent::ToolUseStart {
             index: 0,
             id: "call_1".to_owned(),
             name: "echo".to_owned(),
-        };
-        let start_b = StreamEvent::ToolUseStart {
+        },
+        StreamEvent::ToolUseStart {
             index: 0,
             id: "call_1".to_owned(),
             name: "echo".to_owned(),
-        };
-
-        let delta_a = StreamEvent::ToolUseInputDelta {
+        }
+    )]
+    #[case::tool_delta(
+        StreamEvent::ToolUseInputDelta {
             index: 0,
             partial_json: r#"{"x"#.to_owned(),
-        };
-        let delta_b = StreamEvent::ToolUseInputDelta {
+        },
+        StreamEvent::ToolUseInputDelta {
             index: 0,
             partial_json: r#"{"x"#.to_owned(),
-        };
-
-        let complete_a = StreamEvent::ToolUseComplete {
+        }
+    )]
+    #[case::tool_complete(
+        StreamEvent::ToolUseComplete {
             index: 0,
             tool_call: ToolCall {
                 id: "call_1".to_owned(),
                 name: "echo".to_owned(),
                 arguments: "{}".to_owned(),
             },
-        };
-        let complete_b = StreamEvent::ToolUseComplete {
+        },
+        StreamEvent::ToolUseComplete {
             index: 0,
             tool_call: ToolCall {
                 id: "call_1".to_owned(),
                 name: "echo".to_owned(),
                 arguments: "{}".to_owned(),
             },
-        };
-
-        let done_a = StreamEvent::Done {
+        }
+    )]
+    #[case::done(
+        StreamEvent::Done {
             stop_reason: "tool_use".to_owned(),
-        };
-        let done_b = StreamEvent::Done {
+        },
+        StreamEvent::Done {
             stop_reason: "tool_use".to_owned(),
-        };
-
-        // Then each pair is equal.
-        assert_eq!(text_a, text_b);
-        assert_eq!(start_a, start_b);
-        assert_eq!(delta_a, delta_b);
-        assert_eq!(complete_a, complete_b);
-        assert_eq!(done_a, done_b);
+        }
+    )]
+    fn partial_eq_compares_identical_variants_as_equal(
+        #[case] a: StreamEvent,
+        #[case] b: StreamEvent,
+    ) {
+        // Given two independently constructed identical StreamEvents.
+        // When comparing with ==.
+        // Then they are equal.
+        assert_eq!(a, b);
     }
 }

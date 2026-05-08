@@ -16,7 +16,7 @@ fn push_entry_adds_to_history() {
 }
 
 #[test]
-fn begin_streaming_creates_assistant_entry_and_sets_streaming() {
+fn begin_streaming_creates_assistant_entry() {
     // Given a session with one entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
@@ -24,14 +24,26 @@ fn begin_streaming_creates_assistant_entry_and_sets_streaming() {
     // When beginning streaming.
     let index = session.begin_streaming();
 
-    // Then the index is 1, is_streaming is true, and history has an Assistant entry.
+    // Then the index is 1 and history has an Assistant entry.
     assert_eq!(index, 1);
-    assert!(session.is_streaming());
     assert_eq!(session.history().len(), 2);
     assert!(matches!(
         session.history()[1].kind,
         nullslop_protocol::ChatEntryKind::Assistant(ref text) if text.is_empty()
     ));
+}
+
+#[test]
+fn begin_streaming_sets_is_streaming() {
+    // Given a session with one entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+
+    // When beginning streaming.
+    let _ = session.begin_streaming();
+
+    // Then is_streaming is true.
+    assert!(session.is_streaming());
 }
 
 #[test]
@@ -298,7 +310,7 @@ fn dequeue_message_returns_none_when_empty() {
 }
 
 #[test]
-fn drain_queue_empties_and_returns_all() {
+fn drain_returns_all_in_order() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
     session.enqueue_message("a".to_owned());
@@ -308,11 +320,25 @@ fn drain_queue_empties_and_returns_all() {
     // When draining the queue.
     let drained = session.drain_queue();
 
-    // Then all messages are returned in order and the queue is empty.
+    // Then all messages are returned in order.
     assert_eq!(drained.len(), 3);
     assert_eq!(drained[0], "a");
     assert_eq!(drained[1], "b");
     assert_eq!(drained[2], "c");
+}
+
+#[test]
+fn drain_empties_queue() {
+    // Given a session with three queued messages.
+    let mut session = ChatSessionState::new();
+    session.enqueue_message("a".to_owned());
+    session.enqueue_message("b".to_owned());
+    session.enqueue_message("c".to_owned());
+
+    // When draining the queue.
+    let _ = session.drain_queue();
+
+    // Then the queue is empty.
     assert_eq!(session.queue_len(), 0);
 }
 
@@ -411,23 +437,33 @@ fn is_idle_false_when_streaming() {
 }
 
 #[test]
-fn cancel_streaming_clears_sending_too() {
+fn cancel_streaming_clears_is_streaming() {
     // Given a session that was sending before streaming started.
     let mut session = ChatSessionState::new();
     session.begin_sending();
-    // Simulate: stream started (sending still set until first token clears it).
-    // We need to manipulate internals since normally begin_streaming would panic
-    // when is_sending is true. So we manually set is_streaming.
     session.is_streaming = true;
-    assert!(session.is_sending());
     assert!(session.is_streaming());
 
     // When cancelling streaming.
     session.cancel_streaming();
 
-    // Then both flags are cleared.
-    assert!(!session.is_sending());
+    // Then is_streaming is cleared.
     assert!(!session.is_streaming());
+}
+
+#[test]
+fn cancel_streaming_clears_is_sending() {
+    // Given a session that was sending before streaming started.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.is_streaming = true;
+    assert!(session.is_sending());
+
+    // When cancelling streaming.
+    session.cancel_streaming();
+
+    // Then is_sending is cleared.
+    assert!(!session.is_sending());
 }
 
 #[test]
@@ -657,7 +693,7 @@ fn new_with_strategy_creates_empty_history() {
 // --- Pinning tests ---
 
 #[test]
-fn pin_entry_sets_position_on_matching_entry() {
+fn pin_state_sets_position() {
     // Given a session with two entries.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("first"));
@@ -669,7 +705,20 @@ fn pin_entry_sets_position_on_matching_entry() {
 
     // Then the first entry has pin_position set to Top.
     assert_eq!(session.history()[0].pin_position, Some(PinPosition::Top));
-    // And the second entry is still unpinned.
+}
+
+#[test]
+fn pin_state_does_not_affect_other_entries() {
+    // Given a session with two entries.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("first"));
+    let id0 = session.history()[0].id.clone();
+    session.push_entry(ChatEntry::user("second"));
+
+    // When pinning the first entry as Top.
+    session.pin_entry(&id0, PinPosition::Top);
+
+    // Then the second entry is still unpinned.
     assert_eq!(session.history()[1].pin_position, None);
 }
 
@@ -739,7 +788,28 @@ fn pinned_entries_returns_only_pinned() {
 }
 
 #[test]
-fn pinned_entries_returns_in_history_order() {
+fn pinned_entries_returns_correct_count() {
+    // Given a session with five entries, three pinned at indices 0, 2, 4.
+    let mut session = ChatSessionState::new();
+    for i in 0..5 {
+        session.push_entry(ChatEntry::user(format!("msg {i}")));
+    }
+    let id0 = session.history()[0].id.clone();
+    let id2 = session.history()[2].id.clone();
+    let id4 = session.history()[4].id.clone();
+    session.pin_entry(&id4, PinPosition::Relative);
+    session.pin_entry(&id0, PinPosition::Top);
+    session.pin_entry(&id2, PinPosition::Bottom);
+
+    // When getting pinned entries.
+    let pinned = session.pinned_entries();
+
+    // Then three entries are returned.
+    assert_eq!(pinned.len(), 3);
+}
+
+#[test]
+fn pinned_entries_returns_in_order() {
     // Given a session with five entries, three pinned at indices 0, 2, 4.
     let mut session = ChatSessionState::new();
     for i in 0..5 {
@@ -757,7 +827,6 @@ fn pinned_entries_returns_in_history_order() {
     let pinned = session.pinned_entries();
 
     // Then they are in history order (0, 2, 4).
-    assert_eq!(pinned.len(), 3);
     assert_eq!(pinned[0].id, id0);
     assert_eq!(pinned[1].id, id2);
     assert_eq!(pinned[2].id, id4);

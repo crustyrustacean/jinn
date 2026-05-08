@@ -290,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn confirm_strategy_submits_switch_and_updates_default() {
+    fn confirm_strategy_updates_default() {
         // Given a bus with PickerHandler and ChatInputBoxHandler, and a loaded strategy picker.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -314,8 +314,28 @@ mod tests {
             PromptStrategyId::passthrough(),
             "default_strategy should have been updated from passthrough"
         );
+    }
 
-        // And mode is back to Normal.
+    #[test]
+    fn confirm_strategy_returns_to_normal_mode() {
+        // Given a bus with PickerHandler and ChatInputBoxHandler, and a loaded strategy picker.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState {
+            active_picker_kind: Some(PickerKind::ContextAssembly),
+            mode: nullslop_protocol::Mode::Picker,
+            ..AppState::default()
+        };
+        load_strategy_picker_items(&services, &mut state);
+
+        // Navigate to the second entry (sliding_window, after passthrough).
+        state.context_strategy_picker.move_down(100);
+
+        // When processing PickerConfirm.
+        bus.submit_command(nullslop_protocol::Command::PickerConfirm);
+        bus.process_commands(&mut state, &services);
+
+        // Then mode is back to Normal.
         assert_eq!(state.mode, nullslop_protocol::Mode::Normal);
     }
 
@@ -562,7 +582,7 @@ mod tests {
     }
 
     #[test]
-    fn picker_confirm_keymap_submits_command_and_closes() {
+    fn confirm_keymap_closes_picker() {
         // Given a bus with PickerHandler, and a keymap picker with entries on "gg".
         let mut bus = setup_bus();
         let services = test_utils::test_services();
@@ -582,9 +602,28 @@ mod tests {
 
         // Then mode is back to Normal (picker closed).
         assert_eq!(state.mode, nullslop_protocol::Mode::Normal);
-        // And should_quit is true (Quit command was NOT dispatched — we selected
-        // ScrollToTop at index 1). The bus processes SetMode from confirm_keymap,
-        // plus the stored ScrollToTop command.
+    }
+
+    #[test]
+    fn confirm_keymap_submits_command() {
+        // Given a bus with PickerHandler, and a keymap picker with entries on "gg".
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = AppState {
+            active_picker_kind: Some(PickerKind::Keymap),
+            mode: nullslop_protocol::Mode::Picker,
+            ..AppState::default()
+        };
+        state.keymap_picker.set_items(keymap_entries());
+
+        // Navigate to "gg" (index 1).
+        state.keymap_picker.move_down(100);
+
+        // When processing PickerConfirm.
+        bus.submit_command(nullslop_protocol::Command::PickerConfirm);
+        bus.process_commands(&mut state, &services);
+
+        // Then the selected command (ScrollToTop) was dispatched, not quit.
         assert!(!state.should_quit, "ScrollToTop should not quit");
     }
 

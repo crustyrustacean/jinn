@@ -618,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn load_prompt_templates_populates_state_from_dir() {
+    fn load_prompt_templates_sets_count() {
         // Given a temp directory with a template file.
         let dir = tempfile::tempdir().expect("temp dir");
         let template_content =
@@ -631,9 +631,27 @@ mod tests {
         // When loading prompt templates from the temp directory.
         load_prompt_templates(&core, dir.path());
 
-        // Then the template is in state.
+        // Then the template count is correct.
         let state = core.state.read();
         assert_eq!(state.prompt_templates.len(), 1);
+    }
+
+    #[test]
+    fn load_prompt_templates_contains_template() {
+        // Given a temp directory with a template file.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let template_content =
+            "+++\nname = \"test\"\ndescription = \"Test template\"\n+++\nTest body.";
+        std::fs::write(dir.path().join("test.md"), template_content).expect("write template");
+
+        let services = nullslop_services::Services::new();
+        let core = AppCore::new(services);
+
+        // When loading prompt templates from the temp directory.
+        load_prompt_templates(&core, dir.path());
+
+        // Then the template is findable by name.
+        let state = core.state.read();
         assert!(state.prompt_templates.find_by_name("test").is_some());
     }
 

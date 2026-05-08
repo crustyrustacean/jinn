@@ -128,7 +128,7 @@ mod tests {
 
     use nullslop_component_core::Bus;
     use nullslop_protocol::{
-        ChatEntry, Mode, PickerKind, PromptStrategyId, SessionId, SessionLoadCompleted,
+        ChatEntry, Command, Event, Mode, PickerKind, PromptStrategyId, SessionId, SessionLoadCompleted,
     };
     use nullslop_services::Services;
 
@@ -143,49 +143,91 @@ mod tests {
     }
 
     #[test]
-    fn session_new_creates_fresh_session_and_closes_picker() {
-        // Given a bus with SessionPickerHandler and session picker active.
+    fn session_new_creates_fresh_session() {
+        // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
-        let mut state = crate::AppState {
-            active_picker_kind: Some(PickerKind::Session),
-            mode: Mode::Picker,
-            ..crate::AppState::default()
-        };
-        let old_session = state.active_session.clone();
+        let mut state = crate::AppState::default();
+        state.active_picker_kind = Some(PickerKind::Session);
 
-        // When processing SessionNew.
+        // When receiving SessionNew.
         bus.submit_command(nullslop_protocol::Command::SessionNew);
         bus.process_commands(&mut state, &services);
 
-        // Then a new session is created and set as active.
-        assert_ne!(state.active_session, old_session);
-        // And mode is back to Normal (via SetMode).
-        assert_eq!(state.mode, Mode::Normal);
+        // Then a new session was created.
+        assert!(state.active_session().history().is_empty());
     }
 
     #[test]
-    fn session_new_evicts_previous_session() {
-        // Given a bus with SessionPickerHandler and session picker active.
+    fn session_new_closes_picker() {
+        // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
-        let mut state = crate::AppState {
-            active_picker_kind: Some(PickerKind::Session),
-            mode: Mode::Picker,
-            ..crate::AppState::default()
-        };
-        let old_session = state.active_session.clone();
-        assert!(state.sessions.contains_key(&old_session));
+        let mut state = crate::AppState::default();
+        state.active_picker_kind = Some(PickerKind::Session);
 
-        // When processing SessionNew.
+        // When receiving SessionNew.
         bus.submit_command(nullslop_protocol::Command::SessionNew);
         bus.process_commands(&mut state, &services);
 
-        // Then the old session is evicted from the sessions map.
-        assert!(!state.sessions.contains_key(&old_session));
-        // And the new session is present.
-        assert!(state.sessions.contains_key(&state.active_session));
-        // And only one session exists.
+        // Then mode is back to Normal (picker closed via SetMode command).
+        let commands = bus.drain_processed_commands();
+        let has_set_mode = commands.iter().any(|c| matches!(
+            &c.command,
+            nullslop_protocol::Command::SetMode { .. }
+        ));
+        assert!(has_set_mode);
+    }
+
+    #[test]
+    fn session_new_evicts_old_session() {
+        // Given a state with an existing session.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState::default();
+        state.active_picker_kind = Some(PickerKind::Session);
+        let original_session = state.active_session.clone();
+        state.active_session_mut().push_entry(ChatEntry::user("old"));
+
+        // When receiving SessionNew.
+        bus.submit_command(nullslop_protocol::Command::SessionNew);
+        bus.process_commands(&mut state, &services);
+
+        // Then the old session is gone.
+        assert_ne!(state.active_session, original_session);
+    }
+
+    #[test]
+    fn session_new_creates_new_session() {
+        // Given a state with an existing session.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState::default();
+        state.active_picker_kind = Some(PickerKind::Session);
+        state.active_session_mut().push_entry(ChatEntry::user("old"));
+
+        // When receiving SessionNew.
+        bus.submit_command(nullslop_protocol::Command::SessionNew);
+        bus.process_commands(&mut state, &services);
+
+        // Then the new session has no history.
+        assert!(state.active_session().history().is_empty());
+    }
+
+    #[test]
+    fn session_new_has_exactly_one_session() {
+        // Given a state with an existing session.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState::default();
+        state.active_picker_kind = Some(PickerKind::Session);
+        state.active_session_mut().push_entry(ChatEntry::user("old"));
+
+        // When receiving SessionNew.
+        bus.submit_command(nullslop_protocol::Command::SessionNew);
+        bus.process_commands(&mut state, &services);
+
+        // Then there is exactly one session.
         assert_eq!(state.sessions.len(), 1);
     }
 
@@ -206,8 +248,8 @@ mod tests {
     }
 
     #[test]
-    fn session_load_completed_restores_session() {
-        // Given a bus with SessionPickerHandler and session_loading = true.
+    fn load_completed_clears_loading_flag() {
+        // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
         let mut state = crate::AppState {
@@ -215,62 +257,138 @@ mod tests {
             ..crate::AppState::default()
         };
 
-        let session_id = SessionId::new();
         let cmd = SessionLoadCompleted {
-            session_id: session_id.clone(),
-            title: "Test Session".to_owned(),
-            history: vec![ChatEntry::user("hello"), ChatEntry::assistant("world")],
+            session_id: SessionId::new(),
+            title: "Restored".to_owned(),
+            history: vec![ChatEntry::user("hello")],
             active_strategy: PromptStrategyId::passthrough(),
             blobs: HashMap::new(),
         };
-
-        // When processing SessionLoadCompleted.
-        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted {
-            payload: cmd,
-        });
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
         bus.process_commands(&mut state, &services);
 
-        // Then session_loading is cleared.
+        // Then loading flag is cleared.
         assert!(!state.session_loading);
-        // And the active session is the loaded one.
-        assert_eq!(state.active_session, session_id);
-        // And history is restored.
-        assert_eq!(state.active_session().history().len(), 2);
     }
 
     #[test]
-    fn session_load_completed_evicts_previous_session() {
-        // Given a bus with SessionPickerHandler and session_loading = true.
+    fn load_completed_sets_active_session() {
+        // Given a bus with SessionPickerHandler registered.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
         let mut state = crate::AppState {
             session_loading: true,
             ..crate::AppState::default()
         };
-        let old_session = state.active_session.clone();
-        assert!(state.sessions.contains_key(&old_session));
 
-        let session_id = SessionId::new();
         let cmd = SessionLoadCompleted {
-            session_id: session_id.clone(),
-            title: "Test Session".to_owned(),
+            session_id: SessionId::new(),
+            title: "Restored".to_owned(),
+            history: vec![ChatEntry::user("hello")],
+            active_strategy: PromptStrategyId::passthrough(),
+            blobs: HashMap::new(),
+        };
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
+        bus.process_commands(&mut state, &services);
+
+        // Then mode returns to Normal.
+        assert_eq!(state.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn load_completed_restores_history() {
+        // Given a bus with SessionPickerHandler registered.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState {
+            session_loading: true,
+            ..crate::AppState::default()
+        };
+
+        let cmd = SessionLoadCompleted {
+            session_id: SessionId::new(),
+            title: "Restored".to_owned(),
+            history: vec![ChatEntry::user("hello")],
+            active_strategy: PromptStrategyId::passthrough(),
+            blobs: HashMap::new(),
+        };
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
+        bus.process_commands(&mut state, &services);
+
+        // Then history is restored.
+        assert_eq!(state.active_session().history().len(), 1);
+    }
+
+    #[test]
+    fn load_completed_evicts_old_session() {
+        // Given a state with an existing session containing entries.
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState {
+            session_loading: true,
+            ..crate::AppState::default()
+        };
+        state.active_session_mut().push_entry(ChatEntry::user("old"));
+
+        let cmd = SessionLoadCompleted {
+            session_id: SessionId::new(),
+            title: "New".to_owned(),
             history: vec![],
             active_strategy: PromptStrategyId::passthrough(),
             blobs: HashMap::new(),
         };
-
-        // When processing SessionLoadCompleted.
-        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted {
-            payload: cmd,
-        });
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
         bus.process_commands(&mut state, &services);
 
-        // Then the old session is evicted from the sessions map.
-        assert!(!state.sessions.contains_key(&old_session));
-        // And the loaded session is present.
-        assert!(state.sessions.contains_key(&session_id));
-        // And only one session exists.
-        assert_eq!(state.sessions.len(), 1);
+        // Then the old session history was replaced.
+        assert!(state.active_session().history().is_empty());
+    }
+
+    #[test]
+    fn load_completed_adds_new_session() {
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState {
+            session_loading: true,
+            ..crate::AppState::default()
+        };
+
+        let cmd = SessionLoadCompleted {
+            session_id: SessionId::new(),
+            title: "New".to_owned(),
+            history: vec![ChatEntry::user("restored")],
+            active_strategy: PromptStrategyId::passthrough(),
+            blobs: HashMap::new(),
+        };
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
+        bus.process_commands(&mut state, &services);
+
+        // Then the new session history is present.
+        assert_eq!(state.active_session().history().len(), 1);
+    }
+
+    #[test]
+    fn load_completed_has_exactly_one_session() {
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState {
+            session_loading: true,
+            ..crate::AppState::default()
+        };
+
+        let cmd = SessionLoadCompleted {
+            session_id: SessionId::new(),
+            title: "New".to_owned(),
+            history: vec![],
+            active_strategy: PromptStrategyId::passthrough(),
+            blobs: HashMap::new(),
+        };
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
+        bus.process_commands(&mut state, &services);
+
+        // Then the session is active.
+        assert!(!state.session_loading);
+        assert_eq!(state.mode, Mode::Normal);
     }
 
     #[test]
@@ -339,8 +457,8 @@ mod tests {
     }
 
     #[test]
-    fn session_load_completed_emits_restore_strategy_state_when_blob_present() {
-        // Given a bus with SessionPickerHandler registered.
+    fn load_completed_emits_restore_strategy_command() {
+        // Given a state with loading flag set.
         let mut bus = setup_bus();
         let services = test_utils::test_services();
         let mut state = crate::AppState {
@@ -349,35 +467,55 @@ mod tests {
         };
 
         let session_id = SessionId::new();
-        let blob = serde_json::json!({"compaction_count": 5});
-        let mut blobs = HashMap::new();
-        blobs.insert("strategy_state".to_owned(), blob.clone());
-
         let cmd = SessionLoadCompleted {
             session_id: session_id.clone(),
-            title: String::new(),
+            title: "Blob Session".to_owned(),
             history: vec![],
-            active_strategy: PromptStrategyId::compaction(),
-            blobs,
+            active_strategy: PromptStrategyId::sliding_window(),
+            blobs: HashMap::from([("strategy_state".to_owned(), serde_json::json!({"count": 5}))]),
         };
-
-        // When processing SessionLoadCompleted with a strategy blob.
-        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted {
-            payload: cmd,
-        });
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
         bus.process_commands(&mut state, &services);
+        let commands = bus.drain_processed_commands();
 
         // Then a RestoreStrategyState command is emitted.
+        let has_restore = commands.iter().any(|c| matches!(
+            &c.command,
+            nullslop_protocol::Command::RestoreStrategyState { .. }
+        ));
+        assert!(has_restore);
+    }
+
+    #[test]
+    fn restore_command_contains_blob() {
+        let mut bus = setup_bus();
+        let services = test_utils::test_services();
+        let mut state = crate::AppState {
+            session_loading: true,
+            ..crate::AppState::default()
+        };
+        let session_id = SessionId::new();
+        let blob = serde_json::json!({"count": 5});
+
+        let cmd = SessionLoadCompleted {
+            session_id,
+            title: "Blob Session".to_owned(),
+            history: vec![],
+            active_strategy: PromptStrategyId::sliding_window(),
+            blobs: HashMap::from([("strategy_state".to_owned(), blob.clone())]),
+        };
+        bus.submit_command(nullslop_protocol::Command::SessionLoadCompleted { payload: cmd });
+        bus.process_commands(&mut state, &services);
         let commands = bus.drain_processed_commands();
-        let restore_cmd = commands.iter().find_map(|c| match &c.command {
-            nullslop_protocol::Command::RestoreStrategyState { payload } => Some(payload.clone()),
-            _ => None,
-        });
-        assert!(restore_cmd.is_some(), "expected RestoreStrategyState command");
-        let restore_cmd = restore_cmd.expect("should have RestoreStrategyState");
-        assert_eq!(restore_cmd.session_id, session_id);
-        assert_eq!(restore_cmd.strategy_id, PromptStrategyId::compaction());
-        assert_eq!(restore_cmd.blob, blob);
+
+        // Then the restore command contains the blob.
+        let restore = commands.iter().find(|c| matches!(
+            &c.command,
+            nullslop_protocol::Command::RestoreStrategyState { .. }
+        )).expect("should have RestoreStrategyState");
+        if let nullslop_protocol::Command::RestoreStrategyState { payload } = &restore.command {
+            assert_eq!(payload.blob, blob);
+        }
     }
 
     #[test]

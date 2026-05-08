@@ -62,20 +62,21 @@ mod tests {
         assert_eq!(strategies.len(), 4);
     }
 
-    #[test]
-    fn discovery_includes_known_strategy_ids() {
+    #[rstest::rstest]
+    #[case::passthrough(PromptStrategyId::passthrough())]
+    #[case::sliding_window(PromptStrategyId::sliding_window())]
+    #[case::token_budget(PromptStrategyId::token_budget())]
+    #[case::compaction(PromptStrategyId::compaction())]
+    fn discovery_includes_known_strategy_id(#[case] expected_id: PromptStrategyId) {
         // Given the default discovery.
         let discovery = DefaultStrategyDiscovery;
 
         // When listing strategies.
         let strategies = discovery.list();
 
-        // Then all four known IDs are present.
-        let ids: Vec<PromptStrategyId> = strategies.iter().map(|s| s.id.clone()).collect();
-        assert!(ids.contains(&PromptStrategyId::passthrough()));
-        assert!(ids.contains(&PromptStrategyId::sliding_window()));
-        assert!(ids.contains(&PromptStrategyId::token_budget()));
-        assert!(ids.contains(&PromptStrategyId::compaction()));
+        // Then the expected strategy ID is present.
+        let ids: Vec<&PromptStrategyId> = strategies.iter().map(|s| &s.id).collect();
+        assert!(ids.contains(&&expected_id), "missing strategy: {expected_id:?}");
     }
 
     #[test]

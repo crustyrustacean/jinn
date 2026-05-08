@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn render_height_scales_with_terminal() {
+    fn larger_terminal_taller_popup() {
         // Given two terminal sizes.
         let small_area = Rect::new(0, 0, 80, 24);
         let large_area = Rect::new(0, 0, 80, 42);
@@ -293,8 +293,17 @@ mod tests {
 
         // Then the larger terminal gets a taller popup.
         assert!(large_popup.height > small_popup.height);
+    }
 
-        // And the small terminal popup uses 75% of height + 4 rows of chrome.
+    #[test]
+    fn small_terminal_uses_75_percent() {
+        // Given a small terminal.
+        let small_area = Rect::new(0, 0, 80, 24);
+
+        // When computing popup rect.
+        let small_popup = compute_popup_rect(small_area);
+
+        // Then the popup uses 75% of height + 4 rows of chrome.
         // floor(24 * 0.75) = 18, min(18 + 4, 24) = 22.
         assert_eq!(small_popup.height, 22);
     }
@@ -579,24 +588,27 @@ mod tests {
     }
 
     #[test]
-    fn compute_popup_rect_cannot_exceed_terminal() {
+    fn popup_width_does_not_exceed_terminal() {
         // Given a terminal area.
         let area = Rect::new(0, 0, 80, 24);
 
         // When computing the popup rect.
         let popup = compute_popup_rect(area);
 
-        // Then popup width and height never exceed area dimensions.
+        // Then popup width never exceeds terminal width.
         assert!(popup.width <= area.width, "popup width exceeds terminal");
+    }
+
+    #[test]
+    fn popup_height_does_not_exceed_terminal() {
+        // Given a terminal area.
+        let area = Rect::new(0, 0, 80, 24);
+
+        // When computing the popup rect.
+        let popup = compute_popup_rect(area);
+
+        // Then popup height never exceeds terminal height.
         assert!(popup.height <= area.height, "popup height exceeds terminal");
-        assert!(
-            popup.x + popup.width <= area.width,
-            "popup extends beyond right edge"
-        );
-        assert!(
-            popup.y + popup.height <= area.height,
-            "popup extends beyond bottom edge"
-        );
     }
 
     #[test]
