@@ -15,6 +15,7 @@
 
 //! Tests for the [`IntentHandler`] — one test per Intent variant.
 
+use nullslop_component::context_strategy_picker::entries::StrategyEntry;
 use nullslop_component::keymap_picker::entries::KeymapEntry;
 use nullslop_component::provider_picker::entries::PickerEntry;
 use nullslop_component::session_picker::entries::SessionEntry;
@@ -22,23 +23,15 @@ use nullslop_component::AppState;
 use nullslop_protocol::context::PinChatEntry;
 use nullslop_protocol::tab::SwitchTab;
 use nullslop_protocol::{
-    ChatEntry, Command, Event, Mode, PickerKind, PinPosition, SessionId, TabDirection,
+    ChatEntry, Command, Mode, PickerKind, PinPosition, SessionId, TabDirection,
 };
-use nullslop_services::Services;
 
 use super::IntentHandler;
 use crate::Intent;
 
-fn test_services() -> Services {
-    Services::new()
-}
-
 fn handle(intent: &Intent, state: &mut AppState) -> super::IntentResult {
-    let services = test_services();
-    IntentHandler::handle(intent, state, &services)
+    IntentHandler::handle(intent, state)
 }
-
-// handle_with_services removed — use handle() with test_services() inside.
 
 // ============================================================
 // Chat Input Intents
@@ -563,7 +556,11 @@ fn open_picker_provider_sets_kind_and_mode() {
     // Then active_picker_kind and mode are set.
     assert_eq!(state.active_picker_kind, Some(PickerKind::Provider));
     assert_eq!(state.mode, Mode::Picker);
-    assert!(result.commands.is_empty());
+    // And a LoadPickerEntries command is returned.
+    assert!(result.commands.iter().any(|c| matches!(
+        c,
+        Command::LoadPickerEntries { .. }
+    )));
 }
 
 #[rstest::rstest]
@@ -692,7 +689,7 @@ fn picker_confirm_provider_returns_switch_and_set_mode() {
 }
 
 #[rstest::rstest]
-fn picker_confirm_session_returns_event_and_set_mode() {
+fn picker_confirm_session_returns_session_load_command_and_set_mode() {
     // Given a state with active session picker and a selected entry.
     let mut state = AppState {
         active_picker_kind: Some(PickerKind::Session),
@@ -710,10 +707,10 @@ fn picker_confirm_session_returns_event_and_set_mode() {
 
     // Then session_loading is true.
     assert!(state.session_loading);
-    // And a SessionLoadRequested event is returned.
-    assert!(result.events.iter().any(|e| matches!(
-        e,
-        Event::SessionLoadRequested { .. }
+    // And a SessionLoadRequested command is returned (not event).
+    assert!(result.commands.iter().any(|c| matches!(
+        c,
+        Command::SessionLoadRequested { .. }
     )));
     // And a SetMode command is returned.
     assert!(result
@@ -757,22 +754,31 @@ fn picker_confirm_noop_with_no_active_picker() {
     // When handling PickerConfirm.
     let result = handle(&Intent::PickerConfirm, &mut state);
 
-    // Then no commands or events.
+    // Then no commands.
     assert!(result.commands.is_empty());
-    assert!(result.events.is_empty());
 }
 
 #[rstest::rstest]
 fn picker_confirm_strategy_updates_default() {
-    // Given a state with active context strategy picker.
+    // Given a state with active context strategy picker and manual entries.
     let mut state = AppState {
         active_picker_kind: Some(PickerKind::ContextAssembly),
         ..Default::default()
     };
-    nullslop_component::context_strategy_picker::entries::load_strategy_picker_items(
-        &test_services(),
-        &mut state,
-    );
+    state.context_strategy_picker.set_items(vec![
+        StrategyEntry {
+            strategy_id: nullslop_protocol::PromptStrategyId::passthrough(),
+            name: "Passthrough".to_owned(),
+            description: "No processing".to_owned(),
+            is_active: false,
+        },
+        StrategyEntry {
+            strategy_id: nullslop_protocol::PromptStrategyId::sliding_window(),
+            name: "Sliding Window".to_owned(),
+            description: "Sliding window".to_owned(),
+            is_active: false,
+        },
+    ]);
     // Navigate to second entry.
     state.context_strategy_picker.move_down(100);
 

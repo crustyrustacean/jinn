@@ -18,8 +18,7 @@
 //! Processes every [`Intent`] variant: call the validator, then act.
 //! On validation failure, the handler does nothing (no-op). On success,
 //! it mutates [`AppState`] directly, optionally sets TUI signals, and
-//! returns [`IntentResult`] carrying commands and events for the
-//! coordinator actor.
+//! returns [`IntentResult`] carrying commands for the coordinator actor.
 
 #![expect(
     clippy::missing_docs_in_private_items,
@@ -39,10 +38,10 @@ use nullslop_protocol::provider::{CancelStream, ProviderSwitch};
 use nullslop_protocol::session::SessionLoadRequested;
 use nullslop_protocol::system::SetMode;
 use nullslop_protocol::tab::SwitchTab;
+use nullslop_protocol::system::LoadPickerEntries;
 use nullslop_protocol::{
-    Command, Event, Mode, PickerKind, PinPosition, SessionId, TabDirection,
+    Command, Mode, PickerKind, PinPosition, SessionId, TabDirection,
 };
-use nullslop_services::Services;
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::Intent;
@@ -53,35 +52,21 @@ use crate::validators::{
 /// What the [`IntentHandler`] returns after processing an intent.
 #[derive(Debug)]
 pub struct IntentResult {
-    /// Commands to send to the coordinator actor (or bus, during transition).
+    /// Commands to send to the coordinator actor.
     pub commands: Vec<Command>,
-    /// Events to submit to the bus (e.g., `SessionLoadRequested`).
-    pub events: Vec<Event>,
 }
 
 impl IntentResult {
-    /// An empty result with no commands or events.
+    /// An empty result with no commands.
     #[must_use]
     pub fn empty() -> Self {
-        Self {
-            commands: vec![],
-            events: vec![],
-        }
+        Self { commands: vec![] }
     }
 
-    /// A result with commands only.
+    /// A result with commands.
     #[must_use]
     pub fn with_commands(commands: Vec<Command>) -> Self {
-        Self {
-            commands,
-            events: vec![],
-        }
-    }
-
-    /// A result with both commands and events.
-    #[must_use]
-    pub fn with_commands_and_events(commands: Vec<Command>, events: Vec<Event>) -> Self {
-        Self { commands, events }
+        Self { commands }
     }
 }
 
@@ -112,7 +97,7 @@ impl IntentHandler {
         clippy::too_many_lines,
         reason = "exhaustive match on all Intent variants"
     )]
-    pub fn handle(intent: &Intent, state: &mut AppState, services: &Services) -> IntentResult {
+    pub fn handle(intent: &Intent, state: &mut AppState) -> IntentResult {
         state.tui_signals.clear();
 
         match intent {
@@ -248,7 +233,7 @@ impl IntentHandler {
             Intent::NormalEscape => handle_normal_escape(state),
 
             // --- Picker ---
-            Intent::OpenPicker { kind } => handle_open_picker(state, services, *kind),
+            Intent::OpenPicker { kind } => handle_open_picker(state, *kind),
             Intent::PickerInsertChar { ch } => {
                 picker::validate_picker_insert_char(state, *ch);
                 match state.active_picker_kind {
@@ -662,7 +647,7 @@ fn handle_normal_escape(state: &mut AppState) -> IntentResult {
 
 // --- Picker handlers ---
 
-fn handle_open_picker(state: &mut AppState, services: &Services, kind: PickerKind) -> IntentResult {
+fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResult {
     if picker::validate_open_picker(state, &kind).is_err() {
         return IntentResult::empty();
     }
@@ -671,15 +656,9 @@ fn handle_open_picker(state: &mut AppState, services: &Services, kind: PickerKin
 
     match kind {
         PickerKind::Provider => {
-            nullslop_component::provider_picker::handler::load_provider_picker_items(
-                services, state,
-            );
             state.provider_picker.reset();
         }
         PickerKind::ContextAssembly => {
-            nullslop_component::context_strategy_picker::entries::load_strategy_picker_items(
-                services, state,
-            );
             state.context_strategy_picker.reset();
         }
         PickerKind::Keymap => {
@@ -687,15 +666,20 @@ fn handle_open_picker(state: &mut AppState, services: &Services, kind: PickerKin
             state.keymap_picker_show_all = false;
         }
         PickerKind::Session => {
-            nullslop_component::session_picker::entries::load_session_picker_items(
-                services, state,
-            );
             state.session_picker.reset();
         }
     }
 
     state.mode = Mode::Picker;
-    IntentResult::empty()
+
+    // Keymap entries come from state, not services.
+    if matches!(kind, PickerKind::Keymap) {
+        IntentResult::empty()
+    } else {
+        IntentResult::with_commands(vec![Command::LoadPickerEntries {
+            payload: LoadPickerEntries { kind },
+        }])
+    }
 }
 
 fn handle_picker_confirm(state: &mut AppState) -> IntentResult {
@@ -782,19 +766,19 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 
     state.session_loading = true;
 
-    IntentResult::with_commands_and_events(
-        vec![Command::SetMode {
+    IntentResult::with_commands(vec![
+        Command::SetMode {
             payload: SetMode {
                 mode: Mode::Normal,
             },
-        }],
-        vec![Event::SessionLoadRequested {
+        },
+        Command::SessionLoadRequested {
             payload: SessionLoadRequested {
                 session_id,
                 byte_offset,
             },
-        }],
-    )
+        },
+    ])
 }
 
 fn handle_toggle_keymap_scope_filter(state: &mut AppState) -> IntentResult {

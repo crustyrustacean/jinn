@@ -6,8 +6,6 @@ edition = "2024"
 [dependencies]
 nullslop-protocol = { workspace = true }
 nullslop-component = { workspace = true }
-nullslop-services = { workspace = true }
-nullslop-prompt-template = { workspace = true }
 wherror = { workspace = true }
 unicode-segmentation = { workspace = true }
 

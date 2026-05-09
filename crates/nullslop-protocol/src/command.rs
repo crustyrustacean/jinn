@@ -42,6 +42,8 @@ use crate::provider_picker::{
     PickerMoveDown, PickerMoveUp,
 };
 use crate::session::SessionLoadCompleted;
+use crate::session::SessionLoadRequested;
+use crate::system::LoadPickerEntries;
 use crate::system::OpenPicker;
 use crate::system::SetMode;
 use crate::tab::SwitchTab;
@@ -398,6 +400,20 @@ pub enum Command {
     /// Escape key in Normal mode: cancel selection and close pinned panel.
     #[serde(rename = "normal_escape")]
     NormalEscape,
+    /// Load entries for the active picker from the actor system.
+    #[serde(rename = "load_picker_entries")]
+    LoadPickerEntries {
+        /// Which picker kind to load entries for.
+        #[serde(flatten)]
+        payload: LoadPickerEntries,
+    },
+    /// Request to load a full session from disk by byte offset.
+    #[serde(rename = "session_load_requested")]
+    SessionLoadRequested {
+        /// The session to load.
+        #[serde(flatten)]
+        payload: SessionLoadRequested,
+    },
 }
 
 impl Command {
@@ -451,7 +467,9 @@ impl Command {
             | Self::ChatEntryPinSelected
             | Self::NormalEscape
             | Self::ToggleKeymapScopeFilter
-            | Self::SessionNew => None,
+            | Self::SessionNew
+            | Self::LoadPickerEntries { .. }
+            | Self::SessionLoadRequested { .. } => None,
             Self::SwitchTab { .. } => Some(SwitchTab::NAME),
             Self::SendMessage { .. } => Some(SendMessage::NAME),
             Self::CancelStream { .. } => Some(CancelStream::NAME),
@@ -612,6 +630,10 @@ impl std::fmt::Display for Command {
             Command::NormalEscape => write!(f, "escape"),
             Command::SessionLoadCompleted { .. } => write!(f, "session load completed"),
             Command::SessionNew => write!(f, "session new"),
+            Command::LoadPickerEntries { payload } => {
+                write!(f, "load {} picker entries", payload.kind)
+            }
+            Command::SessionLoadRequested { .. } => write!(f, "session load requested"),
         }
     }
 }
@@ -731,6 +753,10 @@ mod tests {
     #[case::pinned_panel_pin_cycle(Command::PinnedPanelPinCycle)]
     #[case::chat_entry_pin_selected(Command::ChatEntryPinSelected)]
     #[case::normal_escape(Command::NormalEscape)]
+    #[case::load_picker_entries(Command::LoadPickerEntries { payload: LoadPickerEntries { kind: PickerKind::Provider } })]
+    #[case::session_load_requested(Command::SessionLoadRequested { payload: SessionLoadRequested {
+        session_id: SessionId::new(), byte_offset: 42u64,
+    } })]
     #[case::pin_chat_entry(Command::PinChatEntry { payload: PinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new(), position: crate::PinPosition::Top } })]
     #[case::unpin_chat_entry(Command::UnpinChatEntry { payload: UnpinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new() } })]
     #[case::chat_entry_select_next(Command::ChatEntrySelectNext { payload: ChatEntrySelectNext { session_id: SessionId::new() } })]
