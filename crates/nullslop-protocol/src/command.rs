@@ -211,7 +211,7 @@ impl Command {
             Self::ProceedWithShutdown { .. } => Some(ProceedWithShutdown::NAME),
             Self::SessionLoadCompleted { .. } => Some(SessionLoadCompleted::NAME),
             Self::LoadPickerEntries { .. } => Some(LoadPickerEntries::NAME),
-            Self::SessionLoadRequested { .. } => None, // EventMsg, not CommandMsg
+            Self::SessionLoadRequested { .. } => Some("SessionLoadRequested"),
         }
     }
 }

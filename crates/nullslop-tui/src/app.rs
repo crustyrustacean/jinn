@@ -99,9 +99,9 @@ impl TuiApp {
     /// Creates a new application with the given services and config.
     #[must_use]
     pub fn new_with_config(services: nullslop_services::Services, config: TuiConfig) -> Self {
-        let mut core = AppCore::new(services.clone());
+        let core = AppCore::new();
         let mut ui_registry = AppUiRegistry::new();
-        nullslop_component::register_all(&mut core.bus, &mut ui_registry);
+        nullslop_component::register_all(&mut ui_registry);
         let keymap = keymap::init();
         let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
 

@@ -12,13 +12,14 @@ use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use nullslop_actor_host::{ActorHostService, InMemoryActorHost, spawn_actor};
 use nullslop_cli::Cli;
 use nullslop_component::AppState;
-use nullslop_component_core::Bus;
 use nullslop_context::{DefaultStrategyFactory, StrategyFactory};
 use nullslop_context_actor::PromptAssemblyActor;
-use nullslop_core::{ActorMessageSink, AppCore, AppMsg, State};
+use nullslop_coordinator::CoordinatorActor;
+use nullslop_core::{ActorMessageSink, AppCore, AppMsg, State, spawn_forwarding_task};
 use nullslop_echo::EchoActor;
 use nullslop_llm::LlmActor;
 use nullslop_llm_discover::DiscoverActor;
+use nullslop_projector::ProjectorActor;
 use nullslop_prompt_scan::PromptScanActor;
 use nullslop_protocol::Event;
 use nullslop_protocol::actor::{ActorStarted, ActorStarting};
@@ -37,6 +38,7 @@ use nullslop_services::Services;
 use nullslop_services::strategy_registry::StrategyRegistryService;
 use nullslop_session::{JsonlSessionStore, SessionStoreService};
 use nullslop_session_actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
+use nullslop_shutdown_tracker::ShutdownTrackerActor;
 use nullslop_tool_orchestrator::ToolOrchestratorActor;
 use tokio::runtime::Runtime;
 use wherror::Error;
@@ -224,7 +226,7 @@ impl Default for App {
     }
 }
 
-/// Creates an `AppCore` with all components registered and the actor host started.
+/// Creates an `AppCore` with all actors registered and the async forwarding task started.
 fn create_core_with_actor_host(
     handle: &tokio::runtime::Handle,
     llm_service: LlmServiceFactoryService,
@@ -240,7 +242,10 @@ fn create_core_with_actor_host(
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
 
-    // Create echo actor using two-phase startup.
+    // Create shared State FIRST — injected into multiple actors.
+    let state = State::new(AppState::default());
+
+    // --- Echo actor ---
     let (echo_tx, echo_rx) = kanal::unbounded::<ActorEnvelope<nullslop_echo::EchoDirectMsg>>();
     let echo_ref = ActorRef::new(echo_tx);
     let mut echo_ctx = ActorContext::new("echo", sink.clone());
@@ -248,7 +253,7 @@ fn create_core_with_actor_host(
     let echo_actor = EchoActor::activate(&mut echo_ctx);
     let echo_result = spawn_actor("echo", echo_actor, &echo_ref, echo_rx, echo_ctx, handle);
 
-    // Create LLM actor with data injection.
+    // --- LLM actor with data injection ---
     let (llm_tx, llm_rx) = kanal::unbounded::<ActorEnvelope<nullslop_llm::LlmDirectMsg>>();
     let llm_ref = ActorRef::new(llm_tx);
     let mut llm_ctx = ActorContext::new("llm-streaming", sink.clone());
@@ -264,7 +269,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create discover actor with data injection.
+    // --- Discover actor with data injection ---
     let (discover_tx, discover_rx) =
         kanal::unbounded::<ActorEnvelope<nullslop_llm_discover::DiscoverDirectMsg>>();
     let discover_ref = ActorRef::new(discover_tx);
@@ -282,7 +287,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create tool orchestrator actor.
+    // --- Tool orchestrator actor ---
     let (orch_tx, orch_rx) =
         kanal::unbounded::<ActorEnvelope<nullslop_tool_orchestrator::ToolOrchestratorDirectMsg>>();
     let orch_ref = ActorRef::new(orch_tx);
@@ -298,7 +303,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create prompt assembly actor.
+    // --- Prompt assembly actor ---
     let (ctx_tx, ctx_rx) =
         kanal::unbounded::<ActorEnvelope<nullslop_context_actor::ContextDirectMsg>>();
     let ctx_ref = ActorRef::new(ctx_tx);
@@ -315,7 +320,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create session store and persistence actor.
+    // --- Session persistence actor ---
     let session_store = JsonlSessionStore::new();
     let session_store_service = SessionStoreService::new(Arc::new(session_store));
 
@@ -334,7 +339,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create prompt scan actor with injected path.
+    // --- Prompt scan actor ---
     let (scan_tx, scan_rx) =
         kanal::unbounded::<ActorEnvelope<nullslop_prompt_scan::PromptScanDirectMsg>>();
     let scan_ref = ActorRef::new(scan_tx);
@@ -351,93 +356,98 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Emit lifecycle events.
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "echo".to_string(),
-            description: Some("Echoes messages back".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "echo".to_string(),
-            description: Some("Echoes messages back".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "llm-streaming".to_string(),
-            description: Some("LLM streaming with tool support".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "llm-streaming".to_string(),
-            description: Some("LLM streaming with tool support".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "llm-provider-listing".to_string(),
-            description: Some("Discovers available models".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "llm-provider-listing".to_string(),
-            description: Some("Discovers available models".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "tool-orchestrator".to_string(),
-            description: Some("Dispatches and manages tool execution".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "tool-orchestrator".to_string(),
-            description: Some("Dispatches and manages tool execution".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "context".to_string(),
-            description: Some("Assembles LLM prompts from chat history".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "context".to_string(),
-            description: Some("Assembles LLM prompts from chat history".to_string()),
-        },
-    });
-    // Session persistence lifecycle events.
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "session-persistence".to_string(),
-            description: Some("Persists session data to disk".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "session-persistence".to_string(),
-            description: Some("Persists session data to disk".to_string()),
-        },
-    });
+    // --- Coordinator actor (new in Phase 7) ---
+    // Build services (no actor_host needed — coordinator accesses actor_host via AppCore).
+    let strategy_registry =
+        StrategyRegistryService::new(Arc::new(nullslop_context::DefaultStrategyDiscovery));
+    let services = Services {
+        handle: handle.clone(),
+        llm_service: llm_service.clone(),
+        provider_registry: provider_registry.clone(),
+        api_keys: api_keys.clone(),
+        config_storage: config_storage.clone(),
+        session_store: session_store_service.clone(),
+        strategy_registry: strategy_registry.clone(),
+    };
 
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "prompt-scan".to_string(),
-            description: Some("Scans and reloads prompt templates".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "prompt-scan".to_string(),
-            description: Some("Scans and reloads prompt templates".to_string()),
-        },
-    });
+    let (coord_tx, coord_rx) =
+        kanal::unbounded::<ActorEnvelope<nullslop_coordinator::CoordinatorDirectMsg>>();
+    let coord_ref = ActorRef::new(coord_tx);
+    let mut coord_ctx = ActorContext::new("coordinator", sink.clone());
+    coord_ctx.set_description("Orchestrates domain workflows");
+    coord_ctx.set_data(state.clone());
+    coord_ctx.set_data(services.clone());
+    let coordinator_actor = CoordinatorActor::activate(&mut coord_ctx);
+    let coord_result = spawn_actor(
+        "coordinator",
+        coordinator_actor,
+        &coord_ref,
+        coord_rx,
+        coord_ctx,
+        handle,
+    );
+
+    // --- Projector actor (new in Phase 7) ---
+    let (proj_tx, proj_rx) =
+        kanal::unbounded::<ActorEnvelope<nullslop_projector::ProjectorDirectMsg>>();
+    let proj_ref = ActorRef::new(proj_tx);
+    let mut proj_ctx = ActorContext::new("projector", sink.clone());
+    proj_ctx.set_description("Projects events into state");
+    proj_ctx.set_data(state.clone());
+    let projector_actor = ProjectorActor::activate(&mut proj_ctx);
+    let proj_result = spawn_actor(
+        "projector",
+        projector_actor,
+        &proj_ref,
+        proj_rx,
+        proj_ctx,
+        handle,
+    );
+
+    // --- Shutdown tracker actor (new in Phase 7) ---
+    let (st_tx, st_rx) =
+        kanal::unbounded::<ActorEnvelope<nullslop_shutdown_tracker::ShutdownTrackerDirectMsg>>();
+    let st_ref = ActorRef::new(st_tx);
+    let mut st_ctx = ActorContext::new("shutdown-tracker", sink.clone());
+    st_ctx.set_description("Tracks actor lifecycle for shutdown coordination");
+    st_ctx.set_data(state.clone());
+    let shutdown_actor = ShutdownTrackerActor::activate(&mut st_ctx);
+    let st_result = spawn_actor(
+        "shutdown-tracker",
+        shutdown_actor,
+        &st_ref,
+        st_rx,
+        st_ctx,
+        handle,
+    );
+
+    // Emit lifecycle events for all actors.
+    let actor_names = [
+        ("echo", "Echoes messages back"),
+        ("llm-streaming", "LLM streaming with tool support"),
+        ("llm-provider-listing", "Discovers available models"),
+        ("tool-orchestrator", "Dispatches and manages tool execution"),
+        ("context", "Assembles LLM prompts from chat history"),
+        ("session-persistence", "Persists session data to disk"),
+        ("prompt-scan", "Scans and reloads prompt templates"),
+        ("coordinator", "Orchestrates domain workflows"),
+        ("projector", "Projects events into state"),
+        ("shutdown-tracker", "Tracks actor lifecycle for shutdown coordination"),
+    ];
+    for (name, desc) in &actor_names {
+        let _ = sink.send_event(Event::ActorStarting {
+            payload: ActorStarting {
+                name: name.to_string(),
+                description: Some(desc.to_string()),
+            },
+        });
+        let _ = sink.send_event(Event::ActorStarted {
+            payload: ActorStarted {
+                name: name.to_string(),
+                description: Some(desc.to_string()),
+            },
+        });
+    }
 
     let host = InMemoryActorHost::from_actors_with_handle(
         vec![
@@ -448,36 +458,27 @@ fn create_core_with_actor_host(
             prompt_result,
             sp_result,
             scan_result,
+            coord_result,
+            proj_result,
+            st_result,
         ],
         handle.clone(),
     );
     let host_arc: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(host);
 
-    // Build services with the actor host.
-    let strategy_registry =
-        StrategyRegistryService::new(Arc::new(nullslop_context::DefaultStrategyDiscovery));
-    let services = Services {
-        handle: handle.clone(),
-        actor_host: ActorHostService::new(host_arc.clone()),
-        llm_service,
-        provider_registry,
-        api_keys,
-        config_storage,
-        session_store: session_store_service.clone(),
-        strategy_registry,
-    };
+    // Spawn the async forwarding task — continuously drains AppMsg channel → actor host.
+    let actor_host_service = ActorHostService::new(host_arc);
+    spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
-    // Build AppCore with services stored separately from state.
-    let mut core = AppCore {
-        bus: Bus::new(),
-        state: State::new(AppState::default()),
-        services: services.clone(),
+    // Build AppCore with shared state (no bus, no services field).
+    let core = AppCore {
+        state,
         sender,
-        receiver,
-        actor_host: Some(ActorHostService::new(host_arc)),
+        receiver: kanal::unbounded::<AppMsg>().1, // Fresh receiver (old one consumed by forwarding task)
+        actor_host: Some(actor_host_service),
     };
     let mut registry = nullslop_component::AppUiRegistry::new();
-    nullslop_component::register_all(&mut core.bus, &mut registry);
+    nullslop_component::register_all(&mut registry);
 
     (core, services)
 }
@@ -586,8 +587,7 @@ mod tests {
             "+++\nname = \"test\"\ndescription = \"Test template\"\n+++\nTest body.";
         std::fs::write(dir.path().join("test.md"), template_content).expect("write template");
 
-        let services = nullslop_services::Services::new();
-        let core = AppCore::new(services);
+        let core = AppCore::new();
 
         // When loading prompt templates from the temp directory.
         load_prompt_templates(&core, dir.path());
@@ -605,8 +605,7 @@ mod tests {
             "+++\nname = \"test\"\ndescription = \"Test template\"\n+++\nTest body.";
         std::fs::write(dir.path().join("test.md"), template_content).expect("write template");
 
-        let services = nullslop_services::Services::new();
-        let core = AppCore::new(services);
+        let core = AppCore::new();
 
         // When loading prompt templates from the temp directory.
         load_prompt_templates(&core, dir.path());
@@ -634,8 +633,7 @@ mod tests {
         };
         cache.save(&cache_path).expect("save cache");
 
-        let services = nullslop_services::Services::new();
-        let core = AppCore::new(services);
+        let core = AppCore::new();
 
         // When loading the model cache from the temp file.
         load_model_cache(&core, &cache_path);
@@ -654,8 +652,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let cache_path = dir.path().join("nonexistent.json");
 
-        let services = nullslop_services::Services::new();
-        let core = AppCore::new(services);
+        let core = AppCore::new();
 
         // When loading the model cache from a missing file.
         load_model_cache(&core, &cache_path);

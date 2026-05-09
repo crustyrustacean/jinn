@@ -29,21 +29,18 @@ const IDLE_TICKS_TO_SETTLE: usize = 3;
 
 /// Headless application state.
 ///
-/// Owns an [`AppCore`] and [`Services`](nullslop_services::Services) for
-/// non-interactive command processing. Commands are submitted, the core
-/// runs until settled, and results can be inspected.
+/// Owns an [`AppCore`] for non-interactive command processing.
+/// Commands are submitted, the core runs until settled, and results can be inspected.
 pub struct HeadlessApp {
-    /// Application core (bus, state, message channel).
+    /// Application core (state, message channel).
     core: AppCore,
-    /// Runtime services.
-    services: nullslop_services::Services,
 }
 
 impl HeadlessApp {
-    /// Creates a new headless app with the given core and services.
+    /// Creates a new headless app with the given core.
     #[must_use]
-    pub fn new(core: AppCore, services: nullslop_services::Services) -> Self {
-        Self { core, services }
+    pub fn new(core: AppCore, _services: nullslop_services::Services) -> Self {
+        Self { core }
     }
 
     /// Sends a chat message through the core pipeline.
@@ -183,8 +180,9 @@ impl HeadlessApp {
 
     /// Shuts down the actor host gracefully.
     pub fn shutdown(&mut self) {
+        let actor_host = self.core.actor_host.clone().expect("actor host initialized");
         self.core.coordinated_shutdown(
-            self.services.actor_host.backend(),
+            actor_host.backend(),
             nullslop_core::SHUTDOWN_TIMEOUT,
         );
     }

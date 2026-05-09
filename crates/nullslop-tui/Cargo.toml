@@ -9,7 +9,6 @@ nullslop-intent = { workspace = true }
 nullslop-protocol = { workspace = true, features = ["which-key"] }
 nullslop-actor-host = { workspace = true }
 nullslop-component = { workspace = true }
-nullslop-component-core = { workspace = true }
 nullslop-component-ui = { workspace = true }
 nullslop-services = { workspace = true }
 wherror = { workspace = true }

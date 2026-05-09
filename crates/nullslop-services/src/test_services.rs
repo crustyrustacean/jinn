@@ -7,7 +7,6 @@
 use std::sync::Arc;
 
 use error_stack::Report;
-use nullslop_actor_host::{ActorHostService, FakeActorHost};
 use nullslop_context::{DefaultStrategyDiscovery, StrategyDiscovery};
 use nullslop_protocol::SessionId;
 use nullslop_providers::{
@@ -74,8 +73,6 @@ pub struct TestServices {
     providers: ProvidersConfig,
     /// Custom tokio runtime handle (if provided).
     handle: Option<Handle>,
-    /// Custom actor host (if provided).
-    actor_host: Option<Arc<dyn nullslop_actor_host::ActorHost>>,
     /// Custom LLM service factory (if provided).
     llm_service: Option<LlmServiceFactoryService>,
     /// Custom session store service (if provided).
@@ -93,7 +90,6 @@ impl Default for TestServices {
                 default_provider: None,
             },
             handle: None,
-            actor_host: None,
             llm_service: None,
             session_store: None,
             strategy_discovery: None,
@@ -119,13 +115,6 @@ impl TestServices {
     #[must_use]
     pub fn handle(mut self, handle: Handle) -> Self {
         self.handle = Some(handle);
-        self
-    }
-
-    /// Set a custom actor host.
-    #[must_use]
-    pub fn actor_host(mut self, host: Arc<dyn nullslop_actor_host::ActorHost>) -> Self {
-        self.actor_host = Some(host);
         self
     }
 
@@ -169,10 +158,6 @@ impl TestServices {
 
         Services {
             handle,
-            actor_host: ActorHostService::new(
-                self.actor_host
-                    .unwrap_or_else(|| Arc::new(FakeActorHost::new())),
-            ),
             llm_service: self.llm_service.unwrap_or_else(|| {
                 LlmServiceFactoryService::new(Arc::new(
                     nullslop_providers::FakeLlmServiceFactory::new(vec![]),

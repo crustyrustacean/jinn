@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 
-use nullslop_actor_host::ActorHostService;
 use nullslop_context::DefaultStrategyDiscovery;
 pub use nullslop_providers as providers;
 use nullslop_providers::{
@@ -32,7 +31,6 @@ use crate::strategy_registry::StrategyRegistryService;
 /// ```ignore
 /// let services = Services {
 ///     handle: handle.clone(),
-///     actor_host: ActorHostService::new(host),
 ///     llm_service,
 ///     provider_registry,
 ///     api_keys,
@@ -48,8 +46,6 @@ use crate::strategy_registry::StrategyRegistryService;
 pub struct Services {
     /// Async runtime handle for spawning background tasks.
     pub handle: Handle,
-    /// Actor host service.
-    pub actor_host: ActorHostService,
     /// LLM service factory for creating streaming chat instances.
     pub llm_service: LlmServiceFactoryService,
     /// Provider registry for looking up and validating provider configs.
@@ -92,7 +88,6 @@ impl Services {
 
         Self {
             handle,
-            actor_host: ActorHostService::new(Arc::new(nullslop_actor_host::FakeActorHost::new())),
             llm_service: LlmServiceFactoryService::new(Arc::new(
                 nullslop_providers::FakeLlmServiceFactory::new(vec![]),
             )),

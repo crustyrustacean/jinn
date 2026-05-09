@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use cucumber::World;
-use nullslop_actor_host::FakeActorHost;
 use nullslop_context::DefaultStrategyDiscovery;
 use nullslop_services::strategy_registry::StrategyRegistryService;
 use nullslop_tui::{Scope, TuiApp};
@@ -31,7 +30,6 @@ impl TuiWorld {
             tokio::runtime::Runtime::new().expect("test runtime"),
         ));
         let handle = rt.handle().clone();
-        let actor_host: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(FakeActorHost::new());
         let llm = nullslop_services::providers::LlmServiceFactoryService::new(Arc::new(
             nullslop_providers::FakeLlmServiceFactory::new(vec![]),
         ));
@@ -43,7 +41,6 @@ impl TuiWorld {
         let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
         let services = nullslop_services::Services {
             handle,
-            actor_host: nullslop_actor_host::ActorHostService::new(actor_host),
             llm_service: llm,
             provider_registry: nullslop_providers::ProviderRegistryService::new(
                 nullslop_providers::ProviderRegistry::from_config(config).expect("test registry"),

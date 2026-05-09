@@ -1,22 +1,11 @@
-//! Provider picker handler (stubbed).
+//! Provider picker loader — loads provider entries into picker state.
 //!
-//! Phase 5: This handler will be deleted entirely.
-//! Stubbed — Picker* commands were removed from the Command enum.
+//! Extracted from the deleted `handler.rs` so that rendering tests and
+//! the future coordinator actor can still call this function.
 
-#![allow(missing_docs)]
-
-use nullslop_component_core::define_handler;
 use nullslop_services::Services;
 
 use crate::AppState;
-
-define_handler! {
-    pub(crate) struct PickerHandler;
-
-    commands {}
-
-    events {}
-}
 
 /// Loads provider entries into the picker state, ready for display.
 ///

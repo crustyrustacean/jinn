@@ -5,8 +5,9 @@
 
 use std::sync::Arc;
 
-use nullslop_component::AppState;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use crate::AppState;
 
 /// Shared application state accessible from any thread.
 ///
@@ -32,10 +33,6 @@ pub struct StateWriteGuard<'a> {
 impl State {
     /// Create a new State wrapping the given `AppState`.
     #[must_use]
-    #[expect(
-        clippy::arc_with_non_send_sync,
-        reason = "State is shared across threads; AppState Sync will be ensured at usage sites"
-    )]
     pub fn new(data: AppState) -> Self {
         Self {
             inner: Arc::new(RwLock::new(data)),
@@ -84,10 +81,6 @@ mod tests {
     use nullslop_protocol::ChatEntry;
 
     use super::*;
-
-    fn _test_services() -> nullslop_services::Services {
-        nullslop_services::Services::new()
-    }
 
     #[rstest::rstest]
     fn state_read_returns_app_state() {
