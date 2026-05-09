@@ -165,11 +165,6 @@ fn emit_save_requested(
     let title = derive_title(session);
 
     let mut blobs = HashMap::new();
-    if let Some(workflow) = session.workflow()
-        && let Ok(value) = serde_json::to_value(workflow)
-    {
-        blobs.insert("workflow_state".to_owned(), value);
-    }
     if let Some(strategy_state) = session.strategy_state() {
         blobs.insert("strategy_state".to_owned(), strategy_state.clone());
     }

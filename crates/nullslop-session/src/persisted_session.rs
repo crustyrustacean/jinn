@@ -14,9 +14,6 @@ use nullslop_protocol::{ChatEntry, PromptStrategyId, SessionId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-/// Blob key for workflow runtime state.
-pub const BLOB_WORKFLOW_STATE: &str = "workflow_state";
-
 /// Blob key for prompt strategy state.
 pub const BLOB_STRATEGY_STATE: &str = "strategy_state";
 
@@ -25,7 +22,7 @@ pub const BLOB_STRATEGY_STATE: &str = "strategy_state";
 /// Contains only durable data — ephemeral runtime state (streaming flags,
 /// scroll offset, message queue, etc.) is reconstructed with defaults on load.
 ///
-/// Subsystem state (workflows, strategies) is stored as opaque blobs in a
+/// Subsystem state (strategies) is stored as opaque blobs in a
 /// [`HashMap<String, serde_json::Value>`]. Each subsystem owns its blob key
 /// and is responsible for (de)serialization. Missing or malformed blobs
 /// produce safe defaults — subsystems must handle this defensively.
@@ -73,13 +70,9 @@ mod tests {
 
     #[rstest::rstest]
     fn persisted_session_round_trips_through_serde() {
-        // Given a PersistedSession with history, blobs, workflow state, strategy state.
+        // Given a PersistedSession with history, blobs, strategy state.
         let session_id = SessionId::new();
         let mut blobs = HashMap::new();
-        blobs.insert(
-            BLOB_WORKFLOW_STATE.to_owned(),
-            serde_json::json!({"definition": {"version": 1}}),
-        );
         blobs.insert(
             BLOB_STRATEGY_STATE.to_owned(),
             serde_json::json!({"compaction_count": 5}),
@@ -103,7 +96,6 @@ mod tests {
         assert_eq!(back.title, original.title);
         assert_eq!(back.history.len(), 2);
         assert_eq!(back.active_strategy, original.active_strategy);
-        assert!(back.blobs.contains_key(BLOB_WORKFLOW_STATE));
         assert!(back.blobs.contains_key(BLOB_STRATEGY_STATE));
     }
 
@@ -119,10 +111,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             history: vec![ChatEntry::user("hello")],
             active_strategy: PromptStrategyId::passthrough(),
-            blobs: HashMap::from([(
-                BLOB_WORKFLOW_STATE.to_owned(),
-                serde_json::json!({"key": "value"}),
-            )]),
+            blobs: HashMap::new(),
         };
         let json = serde_json::to_string(&full).expect("serialize");
 

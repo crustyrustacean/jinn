@@ -32,8 +32,6 @@ pub(crate) const CHAT_PANE: AreaId = AreaId(1);
 pub enum PaneFocus {
     /// The chat log pane (left side).
     Chat,
-    /// The workflow sidebar pane (right side).
-    Workflow,
     /// The pinned context sidebar pane (right side).
     Pinned,
 }
@@ -84,14 +82,10 @@ pub struct TuiApp {
     pub(crate) config: TuiConfig,
     /// Split manager for the chat tab's pane layout.
     pub(crate) split_manager: SplitManager,
-    /// Which pane has focus when a workflow is active in the Chat tab.
+    /// Which pane currently has keyboard focus in the Chat tab.
     pub(crate) pane_focus: PaneFocus,
-    /// Whether the workflow sidebar pane is visible.
-    pub(crate) workflow_pane_visible: bool,
     /// Whether the pinned context sidebar pane is visible.
     pub(crate) pinned_pane_visible: bool,
-    /// Tracked [`AreaId`] for the workflow sidebar pane (set when opened, cleared when closed).
-    pub(crate) workflow_pane_id: Option<AreaId>,
     /// Tracked [`AreaId`] for the pinned context sidebar pane (set when opened, cleared when closed).
     pub(crate) pinned_pane_id: Option<AreaId>,
 }
@@ -128,9 +122,7 @@ impl TuiApp {
             config,
             split_manager: SplitManager::new(),
             pane_focus: PaneFocus::Chat,
-            workflow_pane_visible: false,
             pinned_pane_visible: false,
-            workflow_pane_id: None,
             pinned_pane_id: None,
         }
     }
@@ -178,9 +170,7 @@ impl TuiApp {
             config,
             split_manager: SplitManager::new(),
             pane_focus: PaneFocus::Chat,
-            workflow_pane_visible: false,
             pinned_pane_visible: false,
-            workflow_pane_id: None,
             pinned_pane_id: None,
         }
     }
@@ -350,23 +340,6 @@ impl TuiApp {
                 };
                 state.keymap_picker.set_items(entries);
             }
-            Command::WorkflowTogglePane => {
-                let state = self.core.state.read();
-                let incomplete = state.active_session().workflow().is_some_and(|w| {
-                    w.active_step.is_some()
-                        && w.steps.values().any(|s| {
-                            !matches!(
-                                s.status,
-                                nullslop_workflow::StepStatus::Completed
-                                    | nullslop_workflow::StepStatus::AwaitingInput
-                            )
-                        })
-                });
-                drop(state);
-                self.toggle_workflow_pane(incomplete);
-            }
-            Command::WorkflowFocusChat => self.focus_chat_pane(),
-            Command::WorkflowFocusWorkflow => self.focus_workflow_pane(),
             Command::PinnedPanelToggle => self.toggle_pinned_pane(),
             Command::PinnedPanelOpen => self.open_pinned_pane(),
             Command::PinnedPanelClose => self.close_pinned_pane(),
@@ -424,79 +397,6 @@ impl TuiApp {
         render::render(self, frame);
     }
 
-    /// Opens the workflow sidebar pane by splitting the chat area vertically.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `CHAT_PANE` is not a valid leaf in the split manager.
-    #[expect(
-        clippy::expect_used,
-        reason = "CHAT_PANE invariant maintained by split manager"
-    )]
-    pub fn open_workflow_pane(&mut self) {
-        if self.workflow_pane_visible {
-            return;
-        }
-        // Pinned and workflow panels are mutually exclusive.
-        if self.pinned_pane_visible {
-            self.close_pinned_pane();
-        }
-        // Defensive: if we have a stale tracked ID in the tree, reuse it.
-        if let Some(id) = self.workflow_pane_id
-            && self.split_manager.contains(id)
-        {
-            self.workflow_pane_visible = true;
-            self.pane_focus = PaneFocus::Workflow;
-            return;
-        }
-        let result = self
-            .split_manager
-            .split_vertical_with_ratio(CHAT_PANE, 0.7)
-            .expect("CHAT_PANE should always be a valid leaf");
-        self.workflow_pane_id = Some(result.new);
-        self.workflow_pane_visible = true;
-        self.pane_focus = PaneFocus::Workflow;
-    }
-
-    /// Closes the workflow sidebar pane.
-    pub fn close_workflow_pane(&mut self) {
-        if !self.workflow_pane_visible {
-            return;
-        }
-        if let Some(id) = self.workflow_pane_id {
-            self.split_manager.close(id);
-            self.workflow_pane_id = None;
-        }
-        self.workflow_pane_visible = false;
-        self.pane_focus = PaneFocus::Chat;
-    }
-
-    /// Toggles the workflow sidebar pane. Returns `false` if toggle is blocked
-    /// (workflow active and incomplete).
-    pub fn toggle_workflow_pane(&mut self, has_active_workflow: bool) -> bool {
-        if self.workflow_pane_visible {
-            if has_active_workflow {
-                return false;
-            }
-            self.close_workflow_pane();
-        } else {
-            self.open_workflow_pane();
-        }
-        true
-    }
-
-    /// Focuses the chat pane (left).
-    pub fn focus_chat_pane(&mut self) {
-        self.pane_focus = PaneFocus::Chat;
-    }
-
-    /// Focuses the workflow pane (right). No-op if pane not visible.
-    pub fn focus_workflow_pane(&mut self) {
-        if self.workflow_pane_visible {
-            self.pane_focus = PaneFocus::Workflow;
-        }
-    }
-
     /// Opens the pinned context sidebar pane by splitting the chat area vertically.
     ///
     /// # Panics
@@ -507,10 +407,6 @@ impl TuiApp {
         reason = "CHAT_PANE invariant maintained by split manager"
     )]
     pub fn open_pinned_pane(&mut self) {
-        // Close workflow pane first if visible (mutually exclusive).
-        if self.workflow_pane_visible {
-            self.close_workflow_pane();
-        }
         if self.pinned_pane_visible {
             // Already visible — just ensure focus is set.
             self.pane_focus = PaneFocus::Pinned;
@@ -556,20 +452,13 @@ impl TuiApp {
     }
 }
 
-/// Returns the scope corresponding to the given mode, active tab, pane focus, and workflow visibility.
-pub fn scope_for_mode(
-    mode: Mode,
-    active_tab: ActiveTab,
-    pane_focus: PaneFocus,
-    workflow_visible: bool,
-) -> Scope {
+/// Returns the scope corresponding to the given mode, active tab, and pane focus.
+pub fn scope_for_mode(mode: Mode, active_tab: ActiveTab, pane_focus: PaneFocus) -> Scope {
     match mode {
         Mode::Normal => match active_tab {
             ActiveTab::Dashboard => Scope::Dashboard,
             ActiveTab::Chat => {
-                if workflow_visible && pane_focus == PaneFocus::Workflow {
-                    Scope::Workflow
-                } else if pane_focus == PaneFocus::Pinned {
+                if pane_focus == PaneFocus::Pinned {
                     Scope::Pinned
                 } else {
                     Scope::Normal
@@ -595,49 +484,21 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[case::normal_chat(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Normal)]
-    #[case::normal_dashboard(
-        Mode::Normal,
-        ActiveTab::Dashboard,
-        PaneFocus::Chat,
-        false,
-        Scope::Dashboard
-    )]
-    #[case::workflow_visible(
-        Mode::Normal,
-        ActiveTab::Chat,
-        PaneFocus::Workflow,
-        true,
-        Scope::Workflow
-    )]
-    #[case::workflow_not_visible(
-        Mode::Normal,
-        ActiveTab::Chat,
-        PaneFocus::Workflow,
-        false,
-        Scope::Normal
-    )]
-    #[case::pane_visible_chat_focused(
-        Mode::Normal,
-        ActiveTab::Chat,
-        PaneFocus::Chat,
-        true,
-        Scope::Normal
-    )]
-    #[case::pinned(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, false, Scope::Pinned)]
-    #[case::input(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Input)]
-    #[case::picker(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, false, Scope::Picker)]
+    #[case::normal_chat(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, Scope::Normal)]
+    #[case::normal_dashboard(Mode::Normal, ActiveTab::Dashboard, PaneFocus::Chat, Scope::Dashboard)]
+    #[case::pinned(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, Scope::Pinned)]
+    #[case::input(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, Scope::Input)]
+    #[case::picker(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, Scope::Picker)]
     fn scope_for_mode_maps_correctly(
         #[case] mode: Mode,
         #[case] tab: ActiveTab,
         #[case] focus: PaneFocus,
-        #[case] pane_visible: bool,
         #[case] expected: Scope,
     ) {
-        // Given a mode, tab, pane focus, and pane visibility.
+        // Given a mode, tab, and pane focus.
         // When mapping to a scope.
         // Then the expected scope is returned.
-        assert_eq!(scope_for_mode(mode, tab, focus, pane_visible), expected);
+        assert_eq!(scope_for_mode(mode, tab, focus), expected);
     }
 
     #[rstest::rstest]
@@ -1034,98 +895,5 @@ mod tests {
 
         // Then there is still exactly 1 leaf (the chat pane).
         assert_eq!(app.split_manager.leaves().len(), 1);
-    }
-
-    // --- Workflow pane tracking tests ---
-
-    #[rstest::rstest]
-    fn workflow_sets_tracked_id() {
-        // Given a fresh app.
-        let mut app = test_app();
-        assert!(app.workflow_pane_id.is_none());
-
-        // When opening the workflow pane.
-        app.open_workflow_pane();
-
-        // Then the tracked ID is set and the pane is visible.
-        assert!(app.workflow_pane_id.is_some());
-        assert!(app.workflow_pane_visible);
-        assert_eq!(app.pane_focus, PaneFocus::Workflow);
-    }
-
-    #[rstest::rstest]
-    fn workflow_creates_split() {
-        // Given a fresh app.
-        let mut app = test_app();
-        assert!(app.workflow_pane_id.is_none());
-
-        // When opening the workflow pane.
-        app.open_workflow_pane();
-
-        // Then there are exactly 2 leaves.
-        assert_eq!(app.split_manager.leaves().len(), 2);
-    }
-
-    #[rstest::rstest]
-    fn opening_workflow_pane_twice_is_idempotent() {
-        // Given an app with the workflow pane already open.
-        let mut app = test_app();
-        app.open_workflow_pane();
-        let first_id = app.workflow_pane_id;
-
-        // When opening it again.
-        app.open_workflow_pane();
-
-        // Then the tracked ID is unchanged.
-        assert_eq!(app.workflow_pane_id, first_id);
-        assert_eq!(app.split_manager.leaves().len(), 2);
-    }
-
-    #[rstest::rstest]
-    fn close_and_reopen_workflow_pane_works_cleanly() {
-        // Given an app where the workflow pane is opened, closed, then reopened.
-        let mut app = test_app();
-        app.open_workflow_pane();
-        let first_id = app.workflow_pane_id.unwrap();
-        app.close_workflow_pane();
-
-        // When reopening.
-        app.open_workflow_pane();
-
-        // Then a new tracked ID is assigned and there are exactly 2 leaves.
-        let second_id = app.workflow_pane_id.unwrap();
-        assert_ne!(second_id, first_id);
-        assert_eq!(app.split_manager.leaves().len(), 2);
-    }
-
-    #[rstest::rstest]
-    fn opening_pinned_closes_workflow() {
-        // Given an app with the workflow pane open.
-        let mut app = test_app();
-        app.open_workflow_pane();
-        assert!(app.workflow_pane_visible);
-
-        // When opening the pinned pane.
-        app.open_pinned_pane();
-
-        // Then the workflow pane is closed and the pinned pane is open.
-        assert!(!app.workflow_pane_visible);
-        assert!(app.workflow_pane_id.is_none());
-        assert!(app.pinned_pane_visible);
-        assert!(app.pinned_pane_id.is_some());
-    }
-
-    #[rstest::rstest]
-    fn no_orphan_leaves_remain() {
-        // Given an app with the workflow pane open.
-        let mut app = test_app();
-        app.open_workflow_pane();
-        assert!(app.workflow_pane_visible);
-
-        // When opening the pinned pane.
-        app.open_pinned_pane();
-
-        // Then there are exactly 2 leaves (chat + pinned, no orphan workflow).
-        assert_eq!(app.split_manager.leaves().len(), 2);
     }
 }

@@ -23,10 +23,10 @@ nullslop-core = { workspace = true }
 nullslop-actor = { workspace = true }
 nullslop-context = { workspace = true }
 nullslop-llm = { workspace = true }
-nullslop-tool-orchestrator = { workspace = true }
 nullslop-session = { workspace = true }
 tempfile = { workspace = true }
 kanal = { workspace = true }
+nullslop-tool-orchestrator = { workspace = true }
 
 [lints.clippy]
 # Test-only crate: relax production lints.

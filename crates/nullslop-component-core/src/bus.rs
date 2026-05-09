@@ -54,11 +54,8 @@ use nullslop_protocol::system::{
     PinnedPanelOpen, PinnedPanelPinBottom, PinnedPanelPinCycle, PinnedPanelPinRelative,
     PinnedPanelPinTop, PinnedPanelSelectDown, PinnedPanelSelectUp, PinnedPanelToggle,
     PinnedPanelUnpin, Quit, ScrollDown, ScrollLineDown, ScrollLineUp, ScrollToBottom, ScrollToTop,
-    ScrollUp, ToggleKeymapScopeFilter, ToggleWhichKey, WorkflowApproveStep, WorkflowFocusChat,
-    WorkflowFocusWorkflow, WorkflowRestartStep, WorkflowSelectDown, WorkflowSelectFirst,
-    WorkflowSelectLast, WorkflowSelectUp, WorkflowToggleDetail, WorkflowTogglePane,
+    ScrollUp, ToggleKeymapScopeFilter, ToggleWhichKey,
 };
-use nullslop_protocol::workflow::{AbortWorkflow, AdvanceStep, WorkflowCompleted};
 use nullslop_protocol::{ActorName, Command, CommandAction, Event};
 
 use crate::handler::{CommandHandler, EventHandler, HandlerContext};
@@ -582,63 +579,6 @@ impl<S, Sv> Bus<S, Sv> {
                 let cmd = DashboardSelectLast;
                 self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
             }
-            Command::LoadWorkflow { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::AdvanceStep => {
-                let cmd = AdvanceStep;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::JumpToStep { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::AbortWorkflow => {
-                let cmd = AbortWorkflow;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::CompleteStep { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::WorkflowSelectDown => {
-                let cmd = WorkflowSelectDown;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::WorkflowSelectUp => {
-                let cmd = WorkflowSelectUp;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::WorkflowSelectFirst => {
-                let cmd = WorkflowSelectFirst;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::WorkflowSelectLast => {
-                let cmd = WorkflowSelectLast;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::WorkflowRestartStep => {
-                let cmd = WorkflowRestartStep;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::WorkflowApproveStep => {
-                let cmd = WorkflowApproveStep;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::WorkflowToggleDetail => {
-                let cmd = WorkflowToggleDetail;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::WorkflowTogglePane => {
-                let cmd = WorkflowTogglePane;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::WorkflowFocusChat => {
-                let cmd = WorkflowFocusChat;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::WorkflowFocusWorkflow => {
-                let cmd = WorkflowFocusWorkflow;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
             Command::OpenPicker { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
@@ -803,25 +743,6 @@ impl<S, Sv> Bus<S, Sv> {
             }
             Event::StrategyStateUpdated { payload } => {
                 self.dispatch_event_to_handlers(&payload, state, services, &mut out);
-            }
-            Event::WorkflowLoaded { payload } => {
-                self.dispatch_event_to_handlers(&payload, state, services, &mut out);
-            }
-            Event::StepStarted { payload } => {
-                self.dispatch_event_to_handlers(&*payload, state, services, &mut out);
-            }
-            Event::StepCompleted { payload } => {
-                self.dispatch_event_to_handlers(&payload, state, services, &mut out);
-            }
-            Event::StepStale { payload } => {
-                self.dispatch_event_to_handlers(&payload, state, services, &mut out);
-            }
-            Event::StepAwaitingInput { payload } => {
-                self.dispatch_event_to_handlers(&payload, state, services, &mut out);
-            }
-            Event::WorkflowCompleted => {
-                let evt = WorkflowCompleted;
-                self.dispatch_event_to_handlers(&evt, state, services, &mut out);
             }
             Event::SessionSaveRequested { payload } => {
                 self.dispatch_event_to_handlers(&payload, state, services, &mut out);

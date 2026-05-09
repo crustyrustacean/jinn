@@ -77,15 +77,11 @@ pub fn init() -> Keymap<KeyEvent, Scope, Command, KeyCategory> {
             .bind("gcs", Command::OpenPicker { payload: OpenPicker { kind: PickerKind::ContextAssembly } }, KeyCategory::Context)
             .bind("gcr", Command::RescanPromptTemplates, KeyCategory::Context)
             .bind("gs", Command::OpenPicker { payload: OpenPicker { kind: PickerKind::Session } }, KeyCategory::General)
-            // Pane navigation (only meaningful when workflow pane is visible)
-            .bind("<c-h>", Command::WorkflowFocusChat, KeyCategory::Navigation)
             .bind("<c-l>", Command::PinnedPanelOpen, KeyCategory::Navigation)
             // Pin selected entry
             .bind("p", Command::ChatEntryPinSelected, KeyCategory::Context)
             // Escape: cancel selection, close pinned panel
             .bind("<esc>", Command::NormalEscape, KeyCategory::General)
-            // Workflow pane toggle
-            .bind("<leader>w", Command::WorkflowTogglePane, KeyCategory::General)
             // Pinned panel toggle (mnemonic: "go to pins")
             .bind("gp", Command::PinnedPanelToggle, KeyCategory::Context);
         })
@@ -106,34 +102,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Command, KeyCategory> {
             // Tab switching
             .bind("<tab>", Command::SwitchTab { payload: SwitchTab { direction: TabDirection::Next } }, KeyCategory::Navigation)
             .bind("<s-tab>", Command::SwitchTab { payload: SwitchTab { direction: TabDirection::Prev } }, KeyCategory::Navigation)
-            // Pane navigation and workflow toggle (no-op outside Chat tab, but prevents confusion)
-            .bind("<c-h>", Command::WorkflowFocusChat, KeyCategory::Navigation)
-            .bind("<c-l>", Command::WorkflowFocusWorkflow, KeyCategory::Navigation)
-            .bind("<leader>w", Command::WorkflowTogglePane, KeyCategory::General);
-        })
-        // Workflow scope: workflow step list navigation
-        .scope(Scope::Workflow, |b| {
-            b
-            // General — app control
-            .bind("q", Command::Quit, KeyCategory::General)
-            .bind("<c-c>", Command::Quit, KeyCategory::General)
-            .bind("?", Command::ToggleWhichKey, KeyCategory::General)
-            // Navigation — step list
-            .bind("j", Command::WorkflowSelectDown, KeyCategory::Navigation)
-            .bind("k", Command::WorkflowSelectUp, KeyCategory::Navigation)
-            .bind("gg", Command::WorkflowSelectFirst, KeyCategory::Navigation)
-            .bind("G", Command::WorkflowSelectLast, KeyCategory::Navigation)
-            .bind("r", Command::WorkflowRestartStep, KeyCategory::General)
-            .bind("a", Command::WorkflowApproveStep, KeyCategory::General)
-            .bind("D", Command::WorkflowToggleDetail, KeyCategory::General)
-            // Tab switching
-            .bind("<tab>", Command::SwitchTab { payload: SwitchTab { direction: TabDirection::Next } }, KeyCategory::Navigation)
-            .bind("<s-tab>", Command::SwitchTab { payload: SwitchTab { direction: TabDirection::Prev } }, KeyCategory::Navigation)
             // Pane navigation
-            .bind("<c-h>", Command::WorkflowFocusChat, KeyCategory::Navigation)
-            .bind("<c-l>", Command::WorkflowFocusWorkflow, KeyCategory::Navigation)
-            // Input — external editor
-            .bind("<c-e>", Command::EditInput, KeyCategory::Input);
+            .bind("<c-l>", Command::PinnedPanelOpen, KeyCategory::Navigation);
         })
         // Pinned scope: pinned entry navigation and management
         .scope(Scope::Pinned, |b| {
@@ -157,7 +127,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Command, KeyCategory> {
             .bind("<tab>", Command::SwitchTab { payload: SwitchTab { direction: TabDirection::Next } }, KeyCategory::Navigation)
             .bind("<s-tab>", Command::SwitchTab { payload: SwitchTab { direction: TabDirection::Prev } }, KeyCategory::Navigation)
             // Pane navigation — focus back to chat
-            .bind("<c-h>", Command::WorkflowFocusChat, KeyCategory::Navigation)
+            .bind("<c-h>", Command::PinnedPanelClose, KeyCategory::Navigation)
             // Input — external editor
             .bind("<c-e>", Command::EditInput, KeyCategory::Input)
             // Input — enter input mode
@@ -254,7 +224,6 @@ pub fn collect_all_bindings(
     for scope in &[
         Scope::Normal,
         Scope::Dashboard,
-        Scope::Workflow,
         Scope::Pinned,
         Scope::Picker,
         Scope::Input,

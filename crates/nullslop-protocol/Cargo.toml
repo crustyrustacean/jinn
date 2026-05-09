@@ -14,12 +14,10 @@ jiff = { workspace = true }
 derive_more = { workspace = true }
 ratatui-which-key = { workspace = true, optional = true }
 nullslop-protocol-derive = { workspace = true }
-nullslop-workflow = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
-nullslop-workflow = { workspace = true }
 
 [lints]
 workspace = true

@@ -105,56 +105,6 @@ pub struct OpenPicker {
 #[cmd("system")]
 pub struct ToggleKeymapScopeFilter;
 
-/// Move the workflow panel selection down one step.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("workflow_panel")]
-pub struct WorkflowSelectDown;
-
-/// Move the workflow panel selection up one step.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("workflow_panel")]
-pub struct WorkflowSelectUp;
-
-/// Move the workflow panel selection to the first step.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("workflow_panel")]
-pub struct WorkflowSelectFirst;
-
-/// Move the workflow panel selection to the last step.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("workflow_panel")]
-pub struct WorkflowSelectLast;
-
-/// Restart the currently selected workflow step.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("workflow_panel")]
-pub struct WorkflowRestartStep;
-
-/// Approve the currently active workflow step.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("workflow_panel")]
-pub struct WorkflowApproveStep;
-
-/// Toggle the workflow step detail view.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("workflow_panel")]
-pub struct WorkflowToggleDetail;
-
-/// Toggles the workflow sidebar pane visibility in the chat tab.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("workflow_panel")]
-pub struct WorkflowTogglePane;
-
-/// Focuses the chat pane (left side) in the chat tab.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("workflow_panel")]
-pub struct WorkflowFocusChat;
-
-/// Focuses the workflow pane (right side) in the chat tab.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("workflow_panel")]
-pub struct WorkflowFocusWorkflow;
-
 /// Toggle the pinned context panel visibility.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("system")]

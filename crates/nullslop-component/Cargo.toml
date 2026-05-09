@@ -10,7 +10,6 @@ nullslop-component-core = { workspace = true }
 nullslop-component-ui = { workspace = true }
 nullslop-services = { workspace = true }
 nullslop-providers = { workspace = true }
-nullslop-workflow = { workspace = true }
 nullslop-session = { workspace = true }
 ratatui = { workspace = true }
 throbber-widgets-tui = { workspace = true }

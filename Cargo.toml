@@ -6,7 +6,7 @@ resolver = "3"
 default-run = "nullslop"
 
 [workspace]
-members = ["crates/*", "actors/*", "tests/*"]
+members = ["crates/*", "actors/nullslop-echo", "actors/nullslop-context-actor", "actors/nullslop-llm", "actors/nullslop-llm-discover", "actors/nullslop-prompt-scan", "actors/nullslop-session-actor", "tests/*"]
 
 [lib]
 path = "src/lib.rs"
@@ -28,12 +28,9 @@ nullslop-prompt-scan = { workspace = true }
 nullslop-prompt-template = { workspace = true }
 nullslop-context-actor = { workspace = true }
 nullslop-context = { workspace = true }
-nullslop-tool-orchestrator = { workspace = true }
-nullslop-workflow-executor = { workspace = true }
 nullslop-session = { workspace = true }
 nullslop-session-actor = { workspace = true }
-nullslop-workflow = { workspace = true }
-nullslop-workflow-store = { workspace = true }
+nullslop-tool-orchestrator = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
 wherror = { workspace = true }
@@ -69,17 +66,15 @@ nullslop-echo = { path = "actors/nullslop-echo" }
 nullslop-llm = { path = "actors/nullslop-llm" }
 nullslop-llm-discover = { path = "actors/nullslop-llm-discover" }
 nullslop-context-actor = { path = "actors/nullslop-context-actor" }
-nullslop-tool-orchestrator = { path = "actors/nullslop-tool-orchestrator" }
 nullslop-actor = { path = "crates/nullslop-actor" }
 nullslop-actor-host = { path = "crates/nullslop-actor-host" }
 nullslop-providers = { path = "crates/nullslop-providers" }
 nullslop-protocol-derive = { path = "crates/nullslop-protocol-derive" }
 nullslop-selection-widget = { path = "crates/nullslop-selection-widget" }
 nullslop-workflow = { path = "crates/nullslop-workflow" }
-nullslop-workflow-executor = { path = "actors/nullslop-workflow-executor" }
+nullslop-tool-orchestrator = { path = "actors/nullslop-tool-orchestrator" }
 nullslop-session = { path = "crates/nullslop-session" }
 nullslop-session-actor = { path = "actors/nullslop-session-actor" }
-nullslop-workflow-store = { path = "crates/nullslop-workflow-store" }
 
 # Error handling
 wherror = "2.3.1"

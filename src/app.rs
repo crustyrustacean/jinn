@@ -38,8 +38,6 @@ use nullslop_services::strategy_registry::StrategyRegistryService;
 use nullslop_session::{JsonlSessionStore, SessionStoreService};
 use nullslop_session_actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
 use nullslop_tool_orchestrator::ToolOrchestratorActor;
-use nullslop_workflow_executor::WorkflowExecutorActor;
-use nullslop_workflow_store::{FileWorkflowStore, WorkflowStoreService};
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -284,17 +282,12 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create workflow store for the tool orchestrator.
-    let workflow_store = FileWorkflowStore::new();
-    let workflow_store_service = WorkflowStoreService::new(Arc::new(workflow_store));
-
     // Create tool orchestrator actor.
     let (orch_tx, orch_rx) =
         kanal::unbounded::<ActorEnvelope<nullslop_tool_orchestrator::ToolOrchestratorDirectMsg>>();
     let orch_ref = ActorRef::new(orch_tx);
     let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
     orch_ctx.set_description("Dispatches and manages tool execution");
-    orch_ctx.set_data(workflow_store_service);
     let orch_actor = ToolOrchestratorActor::activate(&mut orch_ctx);
     let orch_result = spawn_actor(
         "tool-orchestrator",
@@ -319,22 +312,6 @@ fn create_core_with_actor_host(
         &ctx_ref,
         ctx_rx,
         prompt_ctx,
-        handle,
-    );
-
-    // Create workflow executor actor.
-    let (wf_tx, wf_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_workflow_executor::WorkflowExecutorDirectMsg>>();
-    let wf_ref = ActorRef::new(wf_tx);
-    let mut wf_ctx = ActorContext::new("workflow-executor", sink.clone());
-    wf_ctx.set_description("Executes workflow steps via LLM dispatch");
-    let wf_actor = WorkflowExecutorActor::activate(&mut wf_ctx);
-    let wf_result = spawn_actor(
-        "workflow-executor",
-        wf_actor,
-        &wf_ref,
-        wf_rx,
-        wf_ctx,
         handle,
     );
 
@@ -435,19 +412,6 @@ fn create_core_with_actor_host(
             description: Some("Assembles LLM prompts from chat history".to_string()),
         },
     });
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "workflow-executor".to_string(),
-            description: Some("Executes workflow steps via LLM dispatch".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "workflow-executor".to_string(),
-            description: Some("Executes workflow steps via LLM dispatch".to_string()),
-        },
-    });
-
     // Session persistence lifecycle events.
     let _ = sink.send_event(Event::ActorStarting {
         payload: ActorStarting {
@@ -482,7 +446,6 @@ fn create_core_with_actor_host(
             discover_result,
             orch_result,
             prompt_result,
-            wf_result,
             sp_result,
             scan_result,
         ],
