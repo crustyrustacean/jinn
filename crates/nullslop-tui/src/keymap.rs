@@ -6,7 +6,7 @@
 
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
-use nullslop_intent::Intent;
+use nullslop_protocol::Intent;
 use nullslop_protocol::picker_kind::PickerKind;
 use nullslop_protocol::{Key, KeyEvent, Mode, TabDirection};
 use ratatui_which_key::CrosstermKeymapExt as _;
@@ -199,7 +199,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 pub fn collect_bindings_for_scope(
     keymap: &Keymap<KeyEvent, Scope, Intent, KeyCategory>,
     scope: &Scope,
-) -> Vec<nullslop_component::keymap_picker::KeymapEntry<Intent>> {
+) -> Vec<nullslop_component::keymap_picker::KeymapEntry> {
     let mut entries = Vec::new();
     collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries);
     entries
@@ -210,7 +210,7 @@ pub fn collect_bindings_for_scope(
 /// Iterates over all known scopes and collects entries from each one.
 pub fn collect_all_bindings(
     keymap: &Keymap<KeyEvent, Scope, Intent, KeyCategory>,
-) -> Vec<nullslop_component::keymap_picker::KeymapEntry<Intent>> {
+) -> Vec<nullslop_component::keymap_picker::KeymapEntry> {
     let mut entries = Vec::new();
     for scope in &[
         Scope::Normal,
@@ -234,7 +234,7 @@ fn collect_leaf_bindings(
     children: &[ratatui_which_key::KeyChild<KeyEvent, Scope, Intent, KeyCategory>],
     scope: Scope,
     prefix: &str,
-    out: &mut Vec<nullslop_component::keymap_picker::KeymapEntry<Intent>>,
+    out: &mut Vec<nullslop_component::keymap_picker::KeymapEntry>,
 ) {
     for child in children {
         let key_display = WhichKeyKey::display(&child.key);

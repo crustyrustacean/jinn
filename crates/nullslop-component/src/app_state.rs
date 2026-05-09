@@ -82,7 +82,7 @@ pub struct AppState {
     pub prompt_templates: PromptTemplateStore,
 
     /// Keymap picker state (items, filter text, selection index).
-    pub keymap_picker: nullslop_selection_widget::SelectionState<KeymapEntry<nullslop_protocol::Command>>,
+    pub keymap_picker: nullslop_selection_widget::SelectionState<KeymapEntry>,
 
     /// Whether the keymap picker shows all scopes (`true`) or current scope only (`false`).
     pub keymap_picker_show_all: bool,
@@ -106,7 +106,7 @@ pub struct AppState {
 
     /// All keymap entries, populated once at startup. Used by [`ToggleKeymapScopeFilter`](crate::Intent::ToggleKeymapScopeFilter)
     /// to re-filter entries by scope without needing a live keymap reference.
-    pub all_keymap_entries: Vec<KeymapEntry<nullslop_protocol::Command>>,
+    pub all_keymap_entries: Vec<KeymapEntry>,
 }
 
 impl Default for AppState {

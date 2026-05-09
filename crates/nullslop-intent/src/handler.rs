@@ -723,15 +723,14 @@ fn confirm_strategy(state: &mut AppState) -> IntentResult {
 }
 
 fn confirm_keymap(state: &mut AppState) -> IntentResult {
-    let Some(_entry) = state.keymap_picker.selected_item() else {
+    let Some(entry) = state.keymap_picker.selected_item() else {
         return IntentResult::empty();
     };
+    let intent = entry.command.clone();
 
-    // Set mode to Normal. The TUI layer reads the selected entry's intent
-    // from its own keymap entries and executes it.
+    // Set mode to Normal, then execute the selected keymap intent.
     state.mode = Mode::Normal;
-    state.tui_signals.keymap_confirmed = true;
-    IntentResult::empty()
+    IntentHandler::handle(&intent, state)
 }
 
 fn confirm_session(state: &mut AppState) -> IntentResult {

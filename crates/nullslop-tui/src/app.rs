@@ -6,9 +6,9 @@ use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
 use nullslop_component::AppUiRegistry;
 use nullslop_core::{AppCore, AppMsg};
-use nullslop_intent::{Intent, IntentHandler};
-use nullslop_protocol::PickerKind;
-use nullslop_protocol::{ActiveTab, Command, Mode};
+use nullslop_intent::IntentHandler;
+use nullslop_protocol::{Intent, PickerKind};
+use nullslop_protocol::{ActiveTab, Mode};
 use ratatui::Frame;
 use ratatui_spatial_splits::{AreaId, SplitManager};
 use ratatui_tabs::TabManager;
@@ -87,10 +87,6 @@ pub struct TuiApp {
     pub(crate) pinned_pane_visible: bool,
     /// Tracked [`AreaId`] for the pinned context sidebar pane (set when opened, cleared when closed).
     pub(crate) pinned_pane_id: Option<AreaId>,
-    /// Keymap entries with their [`Intent`] actions, populated when the keymap picker opens.
-    /// Used to execute the selected intent when the user confirms a keymap entry.
-    pub(crate) keymap_intent_entries:
-        Vec<nullslop_component::keymap_picker::KeymapEntry<Intent>>,
 }
 
 impl TuiApp {
@@ -127,7 +123,6 @@ impl TuiApp {
             pane_focus: PaneFocus::Chat,
             pinned_pane_visible: false,
             pinned_pane_id: None,
-            keymap_intent_entries: vec![],
         }
     }
 
@@ -176,7 +171,6 @@ impl TuiApp {
             pane_focus: PaneFocus::Chat,
             pinned_pane_visible: false,
             pinned_pane_id: None,
-            keymap_intent_entries: vec![],
         }
     }
 
@@ -302,36 +296,10 @@ impl TuiApp {
                 } else {
                     keymap::collect_bindings_for_scope(self.which_key.keymap(), &scope)
                 };
-                // Store Intent entries for executing on confirm.
-                self.keymap_intent_entries = intent_entries;
-                // Convert to Command-based entries for AppState (the command field
-                // is unused by the IntentHandler's scope filter logic).
-                let cmd_entries = self
-                    .keymap_intent_entries
-                    .iter()
-                    .map(|e| nullslop_component::keymap_picker::KeymapEntry {
-                        key_sequence: e.key_sequence.clone(),
-                        description: e.description.clone(),
-                        scope: e.scope.clone(),
-                        category: e.category.clone(),
-                        command: Command::RefreshModels, // dummy — field is unused
-                        search_text: e.search_text.clone(),
-                    })
-                    .collect();
-                state.keymap_picker.set_items(cmd_entries);
+                // Entries now carry Intent directly — store them in AppState.
+                state.keymap_picker.set_items(intent_entries);
                 // Also populate all_keymap_entries for scope toggle.
-                let all_entries: Vec<_> = keymap::collect_all_bindings(self.which_key.keymap())
-                    .into_iter()
-                    .map(|e| nullslop_component::keymap_picker::KeymapEntry {
-                        key_sequence: e.key_sequence.clone(),
-                        description: e.description.clone(),
-                        scope: e.scope.clone(),
-                        category: e.category.clone(),
-                        command: Command::RefreshModels, // dummy — field is unused
-                        search_text: e.search_text.clone(),
-                    })
-                    .collect();
-                state.all_keymap_entries = all_entries;
+                state.all_keymap_entries = keymap::collect_all_bindings(self.which_key.keymap());
             }
 
             // Cancel selection when mode changes away from Picker.
@@ -377,13 +345,6 @@ impl TuiApp {
         }
         if signals.pinned_pane_close {
             self.close_pinned_pane();
-        }
-        if signals.keymap_confirmed {
-            // Read the selected entry from our Intent entries and execute it.
-            let selected_idx = self.core.state.read().keymap_picker.selection();
-            if let Some(entry) = self.keymap_intent_entries.get(selected_idx).cloned() {
-                self.route_intent(entry.command);
-            }
         }
 
         // Step 6: Update scope based on new mode.
@@ -461,7 +422,6 @@ struct TuiSignalsSnapshot {
     pinned_pane_toggle: bool,
     pinned_pane_open: bool,
     pinned_pane_close: bool,
-    keymap_confirmed: bool,
 }
 
 impl TuiSignalsSnapshot {
@@ -472,7 +432,6 @@ impl TuiSignalsSnapshot {
             pinned_pane_toggle: state.tui_signals.pinned_pane_toggle,
             pinned_pane_open: state.tui_signals.pinned_pane_open,
             pinned_pane_close: state.tui_signals.pinned_pane_close,
-            keymap_confirmed: state.tui_signals.keymap_confirmed,
         }
     }
 }

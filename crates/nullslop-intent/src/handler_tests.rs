@@ -714,16 +714,16 @@ fn picker_confirm_keymap_sets_mode_and_signal() {
         description: "quit".to_owned(),
         scope: "Normal".to_owned(),
         category: "General".to_owned(),
-        command: Command::RefreshModels,
+        command: Intent::Quit,
         search_text: "q quit".to_owned(),
     }]);
 
     // When handling PickerConfirm.
     let result = handle(&Intent::PickerConfirm, &mut state);
 
-    // Then mode is Normal and keymap_confirmed signal is set.
+    // Then mode is Normal and the intent was executed (should_quit is set).
     assert_eq!(state.mode, Mode::Normal);
-    assert!(state.tui_signals.keymap_confirmed);
+    assert!(state.should_quit);
     assert!(result.commands.is_empty());
 }
 
@@ -913,7 +913,7 @@ fn toggle_keymap_scope_filter_toggles_flag() {
             description: "quit".to_owned(),
             scope: "Normal".to_owned(),
             category: "General".to_owned(),
-            command: Command::RefreshModels,
+            command: Intent::Quit,
             search_text: "q quit".to_owned(),
         }],
         keymap_picker_origin_scope: Some("Input".to_owned()),
