@@ -2822,6 +2822,7 @@ dependencies = [
  "nullslop-context-actor",
  "nullslop-core",
  "nullslop-echo",
+ "nullslop-intent",
  "nullslop-llm",
  "nullslop-llm-discover",
  "nullslop-prompt-scan",
@@ -3013,6 +3014,17 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "nullslop-intent"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "nullslop-component",
+ "nullslop-protocol",
+ "rstest",
+ "wherror",
 ]
 
 [[package]]
