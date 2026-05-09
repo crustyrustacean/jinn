@@ -2833,9 +2833,6 @@ dependencies = [
  "nullslop-session-actor",
  "nullslop-tool-orchestrator",
  "nullslop-tui",
- "nullslop-workflow",
- "nullslop-workflow-executor",
- "nullslop-workflow-store",
  "ratatui-which-key",
  "rstest",
  "serde_json",
@@ -2901,7 +2898,6 @@ dependencies = [
  "nullslop-selection-widget",
  "nullslop-services",
  "nullslop-session",
- "nullslop-workflow",
  "ratatui",
  "rstest",
  "serde",
@@ -3086,7 +3082,6 @@ dependencies = [
  "derive_more",
  "jiff",
  "nullslop-protocol-derive",
- "nullslop-workflow",
  "ratatui-which-key",
  "rstest",
  "serde",
@@ -3191,8 +3186,6 @@ dependencies = [
  "jiff",
  "nullslop-actor",
  "nullslop-protocol",
- "nullslop-workflow",
- "nullslop-workflow-store",
  "parking_lot",
  "rstest",
  "serde_json",
@@ -3221,7 +3214,6 @@ dependencies = [
  "nullslop-providers",
  "nullslop-selection-widget",
  "nullslop-services",
- "nullslop-workflow",
  "parking_lot",
  "ratatui",
  "ratatui-spatial-splits",
@@ -3250,36 +3242,6 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-workflow-executor"
-version = "0.1.0"
-dependencies = [
- "nullslop-actor",
- "nullslop-protocol",
- "nullslop-workflow",
- "rstest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "nullslop-workflow-store"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "dirs",
- "error-stack",
- "nullslop-workflow",
- "rstest",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
  "wherror",
 ]
 

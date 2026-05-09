@@ -4,7 +4,6 @@ use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 
 use nullslop_protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
-use nullslop_workflow::WorkflowState;
 use serde_json::Value as JsonValue;
 
 use crate::chat_input_box::ChatInputBoxState;
@@ -51,8 +50,6 @@ pub struct ChatSessionState {
     /// a concrete offset so `scroll_up` / `scroll_down` work correctly.
     /// Uses `Cell` for interior mutability since the element receives `&self`.
     last_max_offset: Cell<u16>,
-    /// The active workflow, if any. Owned by the session so it persists with it.
-    workflow: Option<WorkflowState>,
     /// Persisted strategy state blob for the active strategy.
     /// Stored as a `serde_json::Value` — the session doesn't interpret it.
     strategy_state: Option<JsonValue>,
@@ -75,7 +72,6 @@ impl ChatSessionState {
             scroll_offset: None,
             selected_entry_index: None,
             last_max_offset: Cell::new(0),
-            workflow: None,
             strategy_state: None,
         }
     }
@@ -96,7 +92,6 @@ impl ChatSessionState {
             scroll_offset: None,
             selected_entry_index: None,
             last_max_offset: Cell::new(0),
-            workflow: None,
             strategy_state: None,
         }
     }
@@ -451,33 +446,6 @@ impl ChatSessionState {
     pub fn restore_history(&mut self, entries: Vec<ChatEntry>) {
         self.history = entries;
         self.clear_selection();
-    }
-
-    // --- Workflow ---
-
-    /// Whether a workflow is active in this session.
-    pub fn has_workflow(&self) -> bool {
-        self.workflow.is_some()
-    }
-
-    /// Read-only access to the active workflow.
-    pub fn workflow(&self) -> Option<&WorkflowState> {
-        self.workflow.as_ref()
-    }
-
-    /// Mutable access to the active workflow.
-    pub fn workflow_mut(&mut self) -> Option<&mut WorkflowState> {
-        self.workflow.as_mut()
-    }
-
-    /// Set the active workflow for this session.
-    pub fn set_workflow(&mut self, ws: WorkflowState) {
-        self.workflow = Some(ws);
-    }
-
-    /// Clear the active workflow.
-    pub fn clear_workflow(&mut self) {
-        self.workflow = None;
     }
 
     // --- Pinning ---

@@ -36,16 +36,12 @@ pub mod session_picker;
 pub mod shutdown_tracker;
 pub mod status_bar;
 pub mod tab_nav;
-pub mod workflow;
-pub mod workflow_panel;
 
 pub use app_state::AppState;
 pub use chat_input_box::ChatInputBoxState;
 pub use chat_session::ChatSessionState;
 pub use dashboard::DashboardState;
 pub use shutdown_tracker::ShutdownTrackerState;
-
-pub use workflow_panel::WorkflowPanelState;
 
 /// Test utilities shared across the crate.
 ///
@@ -96,8 +92,6 @@ pub fn register_all(bus: &mut AppBus, registry: &mut AppUiRegistry) {
     provider::register(bus, registry);
     provider_picker::register(bus, registry);
     session_picker::register(bus, registry);
-    workflow::register(bus, registry);
-    workflow_panel::register(bus, registry);
     pinned_panel::register(bus, registry);
     status_bar::register(bus, registry);
     open_picker_handler::OpenPickerHandler.register(bus);
@@ -114,7 +108,6 @@ pub fn register_tui_elements(registry: &mut AppUiRegistry) {
     registry.register(Box::new(chat_log::ChatLogElement));
     registry.register(Box::new(char_counter::CharCounterElement));
     registry.register(Box::new(dashboard::DashboardElement));
-    registry.register(Box::new(workflow_panel::WorkflowPanelElement));
     registry.register(Box::new(pinned_panel::PinnedPanelElement));
     registry.register(Box::new(
         provider::indicator::StreamingIndicatorElement::new(),

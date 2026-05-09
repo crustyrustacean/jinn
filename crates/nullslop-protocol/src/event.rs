@@ -32,9 +32,6 @@ use crate::tool::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolUseStarted, ToolsRegistered,
 };
-use crate::workflow::{
-    StepAwaitingInput, StepCompleted, StepStale, StepStarted, WorkflowCompleted, WorkflowLoaded,
-};
 
 /// Every event the host can broadcast.
 ///
@@ -194,45 +191,6 @@ pub enum Event {
         #[serde(flatten)]
         payload: StrategyStateUpdated,
     },
-    // --- Workflow ---
-    /// A workflow was loaded and started.
-    #[serde(rename = "workflow_loaded")]
-    WorkflowLoaded {
-        /// The workflow loaded confirmation.
-        #[serde(flatten)]
-        payload: WorkflowLoaded,
-    },
-    /// A step has become active.
-    #[serde(rename = "step_started")]
-    StepStarted {
-        /// The step started payload.
-        #[serde(flatten)]
-        payload: Box<StepStarted>,
-    },
-    /// A step finished successfully.
-    #[serde(rename = "step_completed")]
-    StepCompleted {
-        /// The step completed payload.
-        #[serde(flatten)]
-        payload: StepCompleted,
-    },
-    /// Steps marked stale by a jump-back.
-    #[serde(rename = "step_stale")]
-    StepStale {
-        /// The stale steps payload.
-        #[serde(flatten)]
-        payload: StepStale,
-    },
-    /// A step needs user input or approval.
-    #[serde(rename = "step_awaiting_input")]
-    StepAwaitingInput {
-        /// The awaiting input payload.
-        #[serde(flatten)]
-        payload: StepAwaitingInput,
-    },
-    /// All steps are done.
-    #[serde(rename = "workflow_completed")]
-    WorkflowCompleted,
     /// Session data should be persisted to disk.
     #[serde(rename = "session_save_requested")]
     SessionSaveRequested {
@@ -275,12 +233,7 @@ impl Event {
             Self::PromptAssembled { .. } => Some(PromptAssembled::TYPE_NAME),
             Self::PromptStrategySwitched { .. } => Some(PromptStrategySwitched::TYPE_NAME),
             Self::StrategyStateUpdated { .. } => Some(StrategyStateUpdated::TYPE_NAME),
-            Self::WorkflowLoaded { .. } => Some(WorkflowLoaded::TYPE_NAME),
-            Self::StepStarted { .. } => Some(StepStarted::TYPE_NAME),
-            Self::StepCompleted { .. } => Some(StepCompleted::TYPE_NAME),
-            Self::StepStale { .. } => Some(StepStale::TYPE_NAME),
-            Self::StepAwaitingInput { .. } => Some(StepAwaitingInput::TYPE_NAME),
-            Self::WorkflowCompleted => Some(WorkflowCompleted::TYPE_NAME),
+
             Self::SessionSaveRequested { .. } => Some(SessionSaveRequested::TYPE_NAME),
             Self::SessionLoadRequested { .. } => Some(SessionLoadRequested::TYPE_NAME),
         }
@@ -343,25 +296,6 @@ mod tests {
     #[case::prompt_assembled(Event::PromptAssembled { payload: PromptAssembled { session_id: SessionId::new(), system_prompt: None, messages: vec![] } })]
     #[case::prompt_strategy_switched(Event::PromptStrategySwitched { payload: PromptStrategySwitched { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::sliding_window() } })]
     #[case::strategy_state_updated(Event::StrategyStateUpdated { payload: StrategyStateUpdated { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::compaction(), blob: serde_json::json!({"compaction_count": 0}) } })]
-    #[case::workflow_loaded(Event::WorkflowLoaded { payload: crate::workflow::WorkflowLoaded { name: "test".to_owned(), step_count: 3 } })]
-    #[case::step_started(Event::StepStarted { payload: Box::new(crate::workflow::StepStarted {
-        step_id: "step-0".to_owned(),
-        step_title: "First".to_owned(),
-        instructions: "Do it".to_owned(),
-        model_hint: nullslop_workflow::ModelHint::Small,
-        model_overrides: std::collections::HashMap::new(),
-        requires_user_input: false,
-        checkpoint: false,
-        guards: nullslop_workflow::GuardExpr::None,
-        outputs: vec![],
-        completed_outputs: std::collections::HashMap::new(),
-        globals: std::collections::HashMap::new(),
-        stored_hashes: std::collections::HashMap::new(),
-    }) })]
-    #[case::step_completed(Event::StepCompleted { payload: crate::workflow::StepCompleted { step_id: "step-0".to_owned() } })]
-    #[case::step_stale(Event::StepStale { payload: crate::workflow::StepStale { step_ids: vec!["step-1".to_owned()] } })]
-    #[case::step_awaiting_input(Event::StepAwaitingInput { payload: crate::workflow::StepAwaitingInput { step_id: "step-0".to_owned() } })]
-    #[case::workflow_completed(Event::WorkflowCompleted)]
     #[case::session_save_requested(Event::SessionSaveRequested { payload: SessionSaveRequested {
         session_id: SessionId::new(),
         title: "Test".to_owned(),
@@ -465,12 +399,6 @@ mod tests {
         StrategyStateUpdated::TYPE_NAME,
         "context::StrategyStateUpdated"
     )]
-    #[case::workflow_loaded(WorkflowLoaded::TYPE_NAME, "workflow::WorkflowLoaded")]
-    #[case::step_started(StepStarted::TYPE_NAME, "workflow::StepStarted")]
-    #[case::step_completed(StepCompleted::TYPE_NAME, "workflow::StepCompleted")]
-    #[case::step_stale(StepStale::TYPE_NAME, "workflow::StepStale")]
-    #[case::step_awaiting_input(StepAwaitingInput::TYPE_NAME, "workflow::StepAwaitingInput")]
-    #[case::workflow_completed(WorkflowCompleted::TYPE_NAME, "workflow::WorkflowCompleted")]
     #[case::session_save_requested(
         SessionSaveRequested::TYPE_NAME,
         "session::SessionSaveRequested"

@@ -22,8 +22,6 @@ use crate::prompt_template::PromptTemplateStore;
 use crate::provider_picker::entries::PickerEntry;
 use crate::session_picker::entries::SessionEntry;
 use crate::shutdown_tracker::ShutdownTrackerState;
-use crate::workflow_panel::WorkflowPanelState;
-
 /// A snapshot of everything the application is doing right now.
 #[derive(Debug)]
 pub struct AppState {
@@ -63,9 +61,6 @@ pub struct AppState {
     /// When the model list was last refreshed (UTC).
     /// `None` if the model list has never been refreshed.
     pub last_refreshed_at: Option<jiff::Timestamp>,
-
-    /// Workflow panel state — selection index, scroll offset, detail toggle.
-    pub workflow_panel: WorkflowPanelState,
 
     /// Pinned panel state — selection index within the pinned entries list.
     pub pinned_panel: PinnedPanelState,
@@ -123,7 +118,6 @@ impl Default for AppState {
             provider_picker: nullslop_selection_widget::SelectionState::new(),
             model_cache: None,
             last_refreshed_at: None,
-            workflow_panel: WorkflowPanelState::default(),
             pinned_panel: PinnedPanelState::default(),
             strategy_state: HashMap::new(),
             context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
@@ -290,75 +284,5 @@ mod tests {
         // Then the index is 0 and history has one entry.
         assert_eq!(index, 0);
         assert_eq!(data.active_session().history().len(), 1);
-    }
-
-    #[rstest::rstest]
-    fn default_app_state_has_no_workflow() {
-        // Given a default AppState.
-        let state = AppState::default();
-
-        // Then no workflow is active on the active session.
-        assert!(!state.active_session().has_workflow());
-    }
-
-    #[rstest::rstest]
-    fn has_workflow_returns_true_when_set() {
-        // Given a default AppState.
-        let mut state = AppState::default();
-
-        // When setting a workflow on the active session.
-        let def = make_test_workflow(2);
-        let ws = nullslop_workflow::WorkflowState::new(def);
-        state.active_session_mut().set_workflow(ws);
-
-        // Then has_workflow returns true.
-        assert!(state.active_session().has_workflow());
-    }
-
-    #[rstest::rstest]
-    fn workflow_state_roundtrips_through_serde() {
-        // Given a workflow state in progress.
-        let def = make_test_workflow(3);
-        let mut ws = nullslop_workflow::WorkflowState::new(def);
-        ws.start().unwrap();
-
-        // When serializing and deserializing.
-        let json = serde_json::to_string(&ws).unwrap();
-        let back: nullslop_workflow::WorkflowState = serde_json::from_str(&json).unwrap();
-
-        // Then the active step is preserved.
-        assert_eq!(ws.active_step, back.active_step);
-        assert_eq!(ws.steps.len(), back.steps.len());
-    }
-
-    /// Creates a minimal workflow definition for testing.
-    fn make_test_workflow(step_count: usize) -> nullslop_workflow::WorkflowDef {
-        use std::collections::HashMap;
-
-        use nullslop_workflow::{GuardExpr, ModelHint, StepDef, WorkflowDef};
-
-        let steps: Vec<StepDef> = (0..step_count)
-            .map(|i| StepDef {
-                id: format!("step-{i}"),
-                title: format!("Step {i}"),
-                instructions: format!("Instructions for step {i}"),
-                model_hint: ModelHint::Small,
-                checkpoint: false,
-                requires_user_input: false,
-                tools: vec![],
-                guards: GuardExpr::None,
-                outputs: vec![],
-                depends_on: vec![],
-            })
-            .collect();
-
-        WorkflowDef {
-            version: 1,
-            name: "test-workflow".to_owned(),
-            description: "A test workflow".to_owned(),
-            model_overrides: HashMap::new(),
-            globals: HashMap::new(),
-            steps,
-        }
     }
 }

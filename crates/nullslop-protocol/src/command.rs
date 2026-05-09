@@ -46,7 +46,6 @@ use crate::system::OpenPicker;
 use crate::system::SetMode;
 use crate::tab::SwitchTab;
 use crate::tool::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
-use crate::workflow::{AbortWorkflow, AdvanceStep, CompleteStep, JumpToStep, LoadWorkflow};
 
 /// Every command the host can receive.
 ///
@@ -363,64 +362,6 @@ pub enum Command {
     /// Close the session picker and start a fresh empty session.
     #[serde(rename = "session_new")]
     SessionNew,
-    // --- Workflow ---
-    /// Load a workflow definition and start it.
-    #[serde(rename = "load_workflow")]
-    LoadWorkflow {
-        /// The workflow definition to load.
-        #[serde(flatten)]
-        payload: LoadWorkflow,
-    },
-    /// Advance to the next workflow step.
-    #[serde(rename = "advance_step")]
-    AdvanceStep,
-    /// Jump to a specific workflow step.
-    #[serde(rename = "jump_to_step")]
-    JumpToStep {
-        /// The jump request.
-        #[serde(flatten)]
-        payload: JumpToStep,
-    },
-    /// Abort the active workflow.
-    #[serde(rename = "abort_workflow")]
-    AbortWorkflow,
-    /// Complete a step, recording output hashes and resolved values.
-    #[serde(rename = "complete_step")]
-    CompleteStep {
-        /// The step completion payload.
-        #[serde(flatten)]
-        payload: CompleteStep,
-    },
-    /// Move the workflow panel selection down one step.
-    #[serde(rename = "workflow_select_down")]
-    WorkflowSelectDown,
-    /// Move the workflow panel selection up one step.
-    #[serde(rename = "workflow_select_up")]
-    WorkflowSelectUp,
-    /// Move the workflow panel selection to the first step.
-    #[serde(rename = "workflow_select_first")]
-    WorkflowSelectFirst,
-    /// Move the workflow panel selection to the last step.
-    #[serde(rename = "workflow_select_last")]
-    WorkflowSelectLast,
-    /// Restart the currently selected workflow step.
-    #[serde(rename = "workflow_restart_step")]
-    WorkflowRestartStep,
-    /// Approve the currently active workflow step.
-    #[serde(rename = "workflow_approve_step")]
-    WorkflowApproveStep,
-    /// Toggle the workflow step detail view.
-    #[serde(rename = "workflow_toggle_detail")]
-    WorkflowToggleDetail,
-    /// Toggle the workflow sidebar pane visibility.
-    #[serde(rename = "workflow_toggle_pane")]
-    WorkflowTogglePane,
-    /// Focus the chat pane in the split layout.
-    #[serde(rename = "workflow_focus_chat")]
-    WorkflowFocusChat,
-    /// Focus the workflow pane in the split layout.
-    #[serde(rename = "workflow_focus_workflow")]
-    WorkflowFocusWorkflow,
     /// Toggle the pinned context panel visibility.
     #[serde(rename = "pinned_panel_toggle")]
     PinnedPanelToggle,
@@ -497,16 +438,6 @@ impl Command {
             | Self::DashboardSelectUp
             | Self::DashboardSelectFirst
             | Self::DashboardSelectLast
-            | Self::WorkflowSelectDown
-            | Self::WorkflowSelectUp
-            | Self::WorkflowSelectFirst
-            | Self::WorkflowSelectLast
-            | Self::WorkflowRestartStep
-            | Self::WorkflowApproveStep
-            | Self::WorkflowToggleDetail
-            | Self::WorkflowTogglePane
-            | Self::WorkflowFocusChat
-            | Self::WorkflowFocusWorkflow
             | Self::PinnedPanelToggle
             | Self::PinnedPanelOpen
             | Self::PinnedPanelClose
@@ -554,11 +485,6 @@ impl Command {
             Self::ExecuteToolBatch { .. } => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool { .. } => Some(ExecuteTool::NAME),
             Self::PushToolResult { .. } => Some(PushToolResult::NAME),
-            Self::LoadWorkflow { .. } => Some(LoadWorkflow::NAME),
-            Self::AdvanceStep => Some(AdvanceStep::NAME),
-            Self::JumpToStep { .. } => Some(JumpToStep::NAME),
-            Self::AbortWorkflow => Some(AbortWorkflow::NAME),
-            Self::CompleteStep { .. } => Some(CompleteStep::NAME),
         }
     }
 }
@@ -671,23 +597,7 @@ impl std::fmt::Display for Command {
             Command::DashboardSelectFirst => write!(f, "dashboard select first"),
             Command::DashboardSelectLast => write!(f, "dashboard select last"),
             Command::ToggleKeymapScopeFilter => write!(f, "toggle keymap scope filter"),
-            Command::LoadWorkflow { .. } => write!(f, "load workflow"),
-            Command::AdvanceStep => write!(f, "advance step"),
-            Command::JumpToStep { payload } => write!(f, "jump to step '{}'", payload.step_id),
-            Command::AbortWorkflow => write!(f, "abort workflow"),
-            Command::CompleteStep { payload } => {
-                write!(f, "complete step '{}'", payload.step_id)
-            }
-            Command::WorkflowSelectDown => write!(f, "workflow select down"),
-            Command::WorkflowSelectUp => write!(f, "workflow select up"),
-            Command::WorkflowSelectFirst => write!(f, "workflow select first"),
-            Command::WorkflowSelectLast => write!(f, "workflow select last"),
-            Command::WorkflowRestartStep => write!(f, "workflow restart step"),
-            Command::WorkflowApproveStep => write!(f, "workflow approve step"),
-            Command::WorkflowToggleDetail => write!(f, "workflow toggle detail"),
-            Command::WorkflowTogglePane => write!(f, "toggle workflow pane"),
-            Command::WorkflowFocusChat => write!(f, "focus chat pane"),
-            Command::WorkflowFocusWorkflow => write!(f, "focus workflow pane"),
+
             Command::PinnedPanelToggle => write!(f, "toggle pinned panel"),
             Command::PinnedPanelOpen => write!(f, "open pinned panel"),
             Command::PinnedPanelClose => write!(f, "close pinned panel"),
@@ -708,43 +618,11 @@ impl std::fmt::Display for Command {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use nullslop_workflow::{GuardExpr, ModelHint, StepDef, WorkflowDef as WorkflowDefType};
-
     use super::*;
     use crate::Mode;
     use crate::OpenPicker;
     use crate::PickerKind;
     use crate::SessionId;
-    use crate::workflow::{JumpToStep, LoadWorkflow};
-
-    /// Creates a minimal workflow definition for testing.
-    fn make_test_workflow(step_count: usize) -> WorkflowDefType {
-        let steps: Vec<StepDef> = (0..step_count)
-            .map(|i| StepDef {
-                id: format!("step-{i}"),
-                title: format!("Step {i}"),
-                instructions: format!("Instructions for step {i}"),
-                model_hint: ModelHint::Small,
-                checkpoint: false,
-                requires_user_input: false,
-                tools: vec![],
-                guards: GuardExpr::None,
-                outputs: vec![],
-                depends_on: vec![],
-            })
-            .collect();
-
-        WorkflowDefType {
-            version: 1,
-            name: "test-workflow".to_owned(),
-            description: "A test workflow".to_owned(),
-            model_overrides: HashMap::new(),
-            globals: HashMap::new(),
-            steps,
-        }
-    }
 
     #[rstest::rstest]
     fn command_insert_char_serialization() {
@@ -841,21 +719,6 @@ mod tests {
         blobs: std::collections::HashMap::new(),
     } })]
     #[case::session_new(Command::SessionNew)]
-    #[case::load_workflow(Command::LoadWorkflow { payload: LoadWorkflow { definition: make_test_workflow(2) } })]
-    #[case::advance_step(Command::AdvanceStep)]
-    #[case::jump_to_step(Command::JumpToStep { payload: JumpToStep { step_id: "step-0".to_owned() } })]
-    #[case::abort_workflow(Command::AbortWorkflow)]
-    #[case::complete_step(Command::CompleteStep { payload: CompleteStep { step_id: "step-0".to_owned(), resolved_outputs: std::collections::HashMap::new() } })]
-    #[case::workflow_select_down(Command::WorkflowSelectDown)]
-    #[case::workflow_select_up(Command::WorkflowSelectUp)]
-    #[case::workflow_select_first(Command::WorkflowSelectFirst)]
-    #[case::workflow_select_last(Command::WorkflowSelectLast)]
-    #[case::workflow_restart_step(Command::WorkflowRestartStep)]
-    #[case::workflow_approve_step(Command::WorkflowApproveStep)]
-    #[case::workflow_toggle_detail(Command::WorkflowToggleDetail)]
-    #[case::workflow_toggle_pane(Command::WorkflowTogglePane)]
-    #[case::workflow_focus_chat(Command::WorkflowFocusChat)]
-    #[case::workflow_focus_workflow(Command::WorkflowFocusWorkflow)]
     #[case::pinned_panel_toggle(Command::PinnedPanelToggle)]
     #[case::pinned_panel_open(Command::PinnedPanelOpen)]
     #[case::pinned_panel_close(Command::PinnedPanelClose)]

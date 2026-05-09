@@ -128,20 +128,9 @@ fn run_main_loop(
         // Core processing: drain messages, process bus, forward events.
         let should_quit = app.core.tick().should_quit;
         let state_read = app.core.state.read();
-        let scope = scope_for_mode(
-            state_read.mode,
-            state_read.active_tab,
-            app.pane_focus,
-            app.workflow_pane_visible,
-        );
+        let scope = scope_for_mode(state_read.mode, state_read.active_tab, app.pane_focus);
         drop(state_read);
         app.which_key.set_scope(scope);
-
-        // Auto-open workflow sidebar when workflow appears.
-        let has_workflow = app.core.state.read().active_session().has_workflow();
-        if has_workflow && !app.workflow_pane_visible {
-            app.open_workflow_pane();
-        }
 
         // Sync tab manager active tab from AppState.active_tab.
         sync_tab_manager(app);

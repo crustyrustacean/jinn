@@ -11,7 +11,6 @@ nullslop-component = { workspace = true }
 nullslop-component-core = { workspace = true }
 nullslop-component-ui = { workspace = true }
 nullslop-services = { workspace = true }
-nullslop-workflow = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 ratatui = { workspace = true }

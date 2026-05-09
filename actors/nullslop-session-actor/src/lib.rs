@@ -306,7 +306,12 @@ mod tests {
         let mut actor = SessionPersistenceActor::activate(&mut ctx);
 
         // When a non-SessionSaveRequested event is sent.
-        let event = Event::WorkflowCompleted;
+        let event = Event::ActorStarted {
+            payload: nullslop_protocol::ActorStarted {
+                name: "test".to_owned(),
+                description: None,
+            },
+        };
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then no session is saved.
@@ -381,8 +386,8 @@ mod tests {
                 ],
                 active_strategy: PromptStrategyId::passthrough(),
                 blobs: HashMap::from([(
-                    "workflow_state".to_owned(),
-                    serde_json::json!({"active_step": "step-1"}),
+                    "test_blob".to_owned(),
+                    serde_json::json!({"key": "value"}),
                 )]),
             },
         };
@@ -417,8 +422,8 @@ mod tests {
                 ],
                 active_strategy: PromptStrategyId::passthrough(),
                 blobs: HashMap::from([(
-                    "workflow_state".to_owned(),
-                    serde_json::json!({"active_step": "step-1"}),
+                    "test_blob".to_owned(),
+                    serde_json::json!({"key": "value"}),
                 )]),
             },
         };
@@ -434,6 +439,6 @@ mod tests {
         assert_eq!(full.session_id, session_id);
         assert_eq!(full.title, "Round Trip");
         assert_eq!(full.history.len(), 3);
-        assert_eq!(full.blobs["workflow_state"]["active_step"], "step-1");
+        assert_eq!(full.blobs["test_blob"]["key"], "value");
     }
 }

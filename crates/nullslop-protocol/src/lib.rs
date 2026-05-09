@@ -26,7 +26,6 @@ pub mod session;
 pub mod system;
 pub mod tab;
 pub mod tool;
-pub mod workflow;
 
 // Re-export primary types
 pub use action::CommandAction;
@@ -61,8 +60,4 @@ pub use tool::{
     ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools, ToolBatchCompleted, ToolCall,
     ToolCallReceived, ToolCallStreaming, ToolDefinition, ToolExecutionCompleted, ToolResult,
     ToolUseStarted, ToolsRegistered,
-};
-pub use workflow::{
-    AbortWorkflow, AdvanceStep, CompleteStep, JumpToStep, LoadWorkflow, StepAwaitingInput,
-    StepCompleted, StepStale, StepStarted, WorkflowCompleted, WorkflowLoaded,
 };

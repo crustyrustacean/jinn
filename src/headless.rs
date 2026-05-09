@@ -105,7 +105,6 @@ impl HeadlessApp {
                     state_read.mode,
                     state_read.active_tab,
                     nullslop_tui::app::PaneFocus::Chat,
-                    false,
                 );
                 drop(state_read);
                 which_key.set_scope(scope);

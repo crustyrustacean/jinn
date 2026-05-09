@@ -9,8 +9,7 @@ use nullslop_protocol::context::{RestoreStrategyState, SwitchPromptStrategy};
 use nullslop_protocol::system::SetMode;
 use nullslop_protocol::{CommandAction, PickerKind, SessionId, SessionLoadCompleted, SessionNew};
 use nullslop_services::Services;
-use nullslop_session::{BLOB_STRATEGY_STATE, BLOB_WORKFLOW_STATE};
-use nullslop_workflow::WorkflowState;
+use nullslop_session::BLOB_STRATEGY_STATE;
 
 use crate::AppState;
 use crate::chat_session::ChatSessionState;
@@ -62,7 +61,7 @@ impl SessionPickerHandler {
     /// Handles `SessionLoadCompleted`: restores a session from persisted data.
     ///
     /// Clears the loading flag, reconstructs [`ChatSessionState`] from the
-    /// loaded data (history, strategy, workflow/strategy blobs), inserts it
+    /// loaded data (history, strategy blobs), inserts it
     /// into the sessions map, and sets it as active.
     fn on_session_load_completed(
         cmd: &SessionLoadCompleted,
@@ -76,15 +75,6 @@ impl SessionPickerHandler {
         let mut session = ChatSessionState::new();
         session.restore_history(cmd.history.clone());
         session.switch_strategy(cmd.active_strategy.clone());
-
-        // Deserialize workflow blob.
-        if let Some(workflow_value) = cmd
-            .blobs
-            .get(BLOB_WORKFLOW_STATE)
-            .and_then(|v| serde_json::from_value::<WorkflowState>(v.clone()).ok())
-        {
-            session.set_workflow(workflow_value);
-        }
 
         // Deserialize strategy blob.
         if let Some(strategy_value) = cmd.blobs.get(BLOB_STRATEGY_STATE) {

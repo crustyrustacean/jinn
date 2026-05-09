@@ -122,26 +122,11 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
     match state.active_tab {
         nullslop_protocol::ActiveTab::Chat => {
-            let content_area = if app.workflow_pane_visible || app.pinned_pane_visible {
+            let content_area = if app.pinned_pane_visible {
                 app.split_manager.set_viewport(layout.content);
                 let areas = app.split_manager.areas();
                 let result = crate::split_borders::compute_split_borders(areas);
                 let chat_rect = result.rect_for(CHAT_PANE).unwrap_or(layout.content);
-
-                if app.workflow_pane_visible {
-                    let workflow_rect = app
-                        .workflow_pane_id
-                        .and_then(|id| result.rect_for(id))
-                        .unwrap_or_default();
-
-                    // Render workflow panel into sidebar.
-                    if let Some(element) = app.ui_registry.get_mut("workflow-panel") {
-                        element.render(frame, workflow_rect, &state);
-                        if element.is_selectable() && app.pane_focus == PaneFocus::Workflow {
-                            rects.push(workflow_rect);
-                        }
-                    }
-                }
 
                 if app.pinned_pane_visible {
                     let pinned_rect = app
