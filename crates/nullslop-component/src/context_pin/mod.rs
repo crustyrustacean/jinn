@@ -1,8 +1,8 @@
 //! Context pin component — handles pin/unpin commands for chat entries.
 //!
-//! This component wires [`ContextPinHandler`] into the bus so that
+//! This component wires \[`ContextPinHandler`] into the bus so that
 //! `PinChatEntry` and `UnpinChatEntry` commands are dispatched to
-//! [`ChatSessionState::pin_entry`] and [`ChatSessionState::unpin_entry`].
+//! `ChatSessionState::pin_entry` and `ChatSessionState::unpin_entry`.
 
 pub mod handler;
 

@@ -1,10 +1,8 @@
 //! Carries fully loaded session data from the persistence actor back to the bus.
 //!
-//! Sent by the [`SessionPersistenceActor`] after loading a session from disk.
+//! Sent by the `SessionPersistenceActor` (in `nullslop-session-actor`) after loading a session from disk.
 //! The component handler receives this command and populates the active session
 //! state with the restored data.
-//!
-//! [`SessionPersistenceActor`]: nullslop_session_actor::SessionPersistenceActor
 
 use std::collections::HashMap;
 
@@ -18,10 +16,8 @@ use crate::session::SessionId;
 
 /// Carries fully loaded session data from the persistence actor back to the bus.
 ///
-/// The component handler uses this to populate [`ChatSessionState`] with restored
+/// The component handler uses this to populate `ChatSessionState` with restored
 /// history, strategy, and subsystem blobs.
-///
-/// [`ChatSessionState`]: nullslop_component::ChatSessionState
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("session")]
 pub struct SessionLoadCompleted {

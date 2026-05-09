@@ -1,8 +1,8 @@
 //! Keymap configuration and initialization.
 //!
 //! Defines the key categories and builds the keymap with all scope bindings.
-//! Binds keys to [`Command`](nullslop_protocol::Command) variants. Parameterized on
-//! [`nullslop_protocol::KeyEvent`] so the keymap works in both TUI and headless modes.
+//! Binds keys to [`Command`] variants. Parameterized on
+//! [`KeyEvent`] so the keymap works in both TUI and headless modes.
 
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;

@@ -129,7 +129,7 @@ impl HeadlessApp {
 
     /// Runs `AppCore::tick()` in a loop until the system settles or times out.
     ///
-    /// "Settled" means [`IDLE_TICKS_TO_SETTLE`] consecutive ticks performed no work.
+    /// "Settled" means \[`IDLE_TICKS_TO_SETTLE`] consecutive ticks performed no work.
     pub fn run_until_settled(&mut self) {
         let start = Instant::now();
         let mut consecutive_idle = 0;

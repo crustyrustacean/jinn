@@ -53,7 +53,7 @@ pub struct AppError;
 
 /// Top-level application state.
 ///
-/// Created once in [`main`](crate::main) and dispatched to whichever
+/// Created once in `crate::main` and dispatched to whichever
 /// runner handles the command. Owns the tokio runtime and delegates
 /// to [`Runner`] variants.
 pub struct App {

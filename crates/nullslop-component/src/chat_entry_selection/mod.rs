@@ -1,6 +1,6 @@
 //! Chat entry selection component — handles j/k navigation in the chat log.
 //!
-//! This component wires [`ChatEntrySelectionHandler`] into the bus so that
+//! This component wires \[`ChatEntrySelectionHandler`] into the bus so that
 //! `ChatEntrySelectNext`, `ChatEntrySelectPrev`, and `ChatEntrySelectCancel`
 //! commands are dispatched to the active session's selection methods.
 

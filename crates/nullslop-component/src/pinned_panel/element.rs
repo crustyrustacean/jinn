@@ -1,7 +1,7 @@
 //! Renders the pinned context panel — lists pinned entries with position badges.
 //!
 //! Displays all pinned entries from the active session. Each entry shows a pin
-//! position badge ([TOP], [BOT], [REL]), an entry type icon, and truncated content.
+//! position badge (\[TOP], \[BOT], \[REL]), an entry type icon, and truncated content.
 //! The selected entry is highlighted with a yellow marker and reversed style.
 //! When no entries are pinned, shows a dimmed "No pinned entries." message.
 

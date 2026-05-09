@@ -1,6 +1,6 @@
 //! Handler for pin/unpin commands.
 //!
-//! Delegates to [`ChatSessionState::pin_entry`] and [`ChatSessionState::unpin_entry`].
+//! Delegates to `ChatSessionState::pin_entry` and `ChatSessionState::unpin_entry`.
 
 use npr::CommandAction;
 use npr::context::{PinChatEntry, UnpinChatEntry};

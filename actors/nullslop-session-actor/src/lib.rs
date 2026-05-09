@@ -1,7 +1,7 @@
 //! Session persistence actor — writes session snapshots to disk.
 //!
 //! Subscribes to [`SessionSaveRequested`] events from the bus, constructs a
-//! [`PersistedSession`], and writes it to the [`SessionStore`]. Runs
+//! [`PersistedSession`], and writes it to the `SessionStore`. Runs
 //! asynchronously on a tokio task — file I/O never blocks the sync bus loop.
 
 use jiff::Timestamp;

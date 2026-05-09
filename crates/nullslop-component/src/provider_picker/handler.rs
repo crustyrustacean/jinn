@@ -2,7 +2,7 @@
 //!
 //! All 7 `Picker*` commands are shared across every picker type. Each handler
 //! method dispatches on [`AppState::active_picker_kind`] to route to the
-//! correct [`SelectionState`] field.
+//! correct `SelectionState` field.
 
 use npr::CommandAction;
 use npr::PickerKind;
@@ -265,7 +265,7 @@ const PICKER_MAX_VISIBLE: usize = 100;
 ///
 /// Reads from the provider registry and model cache, applies available-first
 /// sorting and active-provider promotion, then stores the entries via
-/// [`SelectionState::set_items`].
+/// `SelectionState::set_items`.
 pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
     let registry = services.provider_registry.read();
     let api_keys = services.api_keys.read();

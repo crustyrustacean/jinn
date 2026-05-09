@@ -3,8 +3,8 @@
 //! The [`Event`] enum is the unified type the host broadcasts to
 //! inform internal handlers and actors about state changes and input.
 //!
-//! Individual event structs live in domain modules ([`chat_input`], [`system`],
-//! [`custom`], [`actor`]). Consumers import structs directly from those modules —
+//! Individual event structs live in domain modules (`chat_input`, `system`,
+//! `custom`, `actor`). Consumers import structs directly from those modules —
 //! this facade only re-exports infrastructure types.
 //!
 //! # When adding a new event

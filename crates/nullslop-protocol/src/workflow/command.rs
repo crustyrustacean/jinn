@@ -41,7 +41,7 @@ pub struct JumpToStep {
 /// Abort and discard the active workflow.
 ///
 /// Removes the workflow state entirely from
-/// [`AppState`](nullslop_component::AppState).
+/// `AppState` (in `nullslop-component`).
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("workflow")]
 pub struct AbortWorkflow;

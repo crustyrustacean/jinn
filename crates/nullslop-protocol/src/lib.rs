@@ -4,12 +4,8 @@
 //! interaction modes, and chat data that the host and all actors agree on.
 //! Every type here is serializable and travels across the actor boundary.
 //!
-//! Runtime-mutable state types ([`AppState`], [`ShutdownTracker`], [`ChatInputBoxState`])
+//! Runtime-mutable state types (`AppState`, `ShutdownTracker`, `ChatInputBoxState`)
 //! live in `nullslop-component`.
-//!
-//! [`AppState`]: nullslop_component::AppState
-//! [`ShutdownTracker`]: nullslop_component::ShutdownTracker
-//! [`ChatInputBoxState`]: nullslop_component::ChatInputBoxState
 
 pub mod action;
 pub mod actor;

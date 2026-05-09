@@ -2,9 +2,9 @@
 //!
 //! [`ActorContext`] is provided to actor methods. During [`activate`](crate::Actor::activate),
 //! the context accumulates subscriptions and provides peer [`ActorRef<M>`](crate::ActorRef)
-//! handles via [`take_actor_ref`](ActorContext::take_actor_ref). During `handle`,
+//! handles via `take_actor_ref`. During `handle`,
 //! the context can send commands and events back to the application via the
-//! [`MessageSink`](crate::MessageSink) trait.
+//! [`MessageSink`] trait.
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
@@ -21,9 +21,9 @@ use crate::message_sink::MessageSink;
 ///
 /// During [`activate`](crate::Actor::activate), the context accumulates subscriptions
 /// and provides peer [`ActorRef<M>`](crate::ActorRef) handles via
-/// [`take_actor_ref`](ActorContext::take_actor_ref). During `handle`, the context
+/// `take_actor_ref`. During `handle`, the context
 /// can send commands and events back to the application via the
-/// [`MessageSink`](crate::MessageSink) trait.
+/// [`MessageSink`] trait.
 pub struct ActorContext {
     /// The actor's host-assigned name.
     name: String,

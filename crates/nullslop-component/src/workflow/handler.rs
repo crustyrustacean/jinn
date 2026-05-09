@@ -1,7 +1,7 @@
 //! Bus handler for workflow lifecycle commands.
 //!
 //! Processes [`LoadWorkflow`], [`AdvanceStep`], [`JumpToStep`], [`CompleteStep`],
-//! and [`AbortWorkflow`] commands. Mutates [`AppState::workflow`] and emits
+//! and [`AbortWorkflow`] commands. Mutates `AppState::workflow` and emits
 //! events for each state transition.
 //!
 //! Every step pauses after the LLM responds (`AwaitingInput`). Advance only

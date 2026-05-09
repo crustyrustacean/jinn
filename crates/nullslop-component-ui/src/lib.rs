@@ -8,10 +8,10 @@
 //! # Two-struct pattern
 //!
 //! Handlers and elements are separate structs that communicate through
-//! [`AppState`]:
+//! `AppState`:
 //!
-//! - **Handlers** implement [`CommandHandler`](nullslop_component_core::CommandHandler)
-//!   or [`EventHandler`](nullslop_component_core::EventHandler) and mutate state
+//! - **Handlers** implement `CommandHandler`
+//!   or `EventHandler` and mutate state
 //!   during command/event processing.
 //! - **Elements** implement [`UiElement`] and read state during rendering.
 //!

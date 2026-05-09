@@ -1,8 +1,8 @@
 //! Handler for chat entry selection commands.
 //!
-//! Delegates to [`ChatSessionState::select_next_entry`],
-//! [`ChatSessionState::select_prev_entry`], and
-//! [`ChatSessionState::clear_selection`].
+//! Delegates to `ChatSessionState::select_next_entry`,
+//! `ChatSessionState::select_prev_entry`, and
+//! `ChatSessionState::clear_selection`.
 
 use npr::CommandAction;
 use npr::chat_input::{ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev};

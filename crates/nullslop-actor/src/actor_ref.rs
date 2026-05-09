@@ -1,6 +1,6 @@
 //! Typed, cloneable handle for sending messages to an actor.
 //!
-//! [`ActorRef<M>`] wraps a shared [`ActorCell<M>`] containing a
+//! [`ActorRef<M>`] wraps a shared \[`ActorCell<M>`] containing a
 //! [`parking_lot::RwLock`] around a [`kanal::Sender`]. The swappable sender
 //! enables actor restart without breaking peer references — all holders of the
 //! same `ActorRef` see the new channel after a swap.

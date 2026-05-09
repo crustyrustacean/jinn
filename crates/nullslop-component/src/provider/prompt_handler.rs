@@ -1,6 +1,6 @@
 //! Prompt assembly completion and strategy switch handlers.
 //!
-//! [`PromptAssemblyHandler`] receives [`PromptAssembled`] events from the prompt
+//! \[`PromptAssemblyHandler`] receives [`PromptAssembled`] events from the prompt
 //! assembly actor and submits the assembled messages to the LLM provider.
 //! When a system prompt is present, it is prepended as an `LlmMessage::System`.
 //!
