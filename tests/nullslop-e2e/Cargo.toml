@@ -21,6 +21,7 @@ crossterm = { workspace = true }
 ratatui-which-key = { workspace = true }
 nullslop-core = { workspace = true }
 nullslop-actor = { workspace = true }
+nullslop-intent = { workspace = true }
 nullslop-context = { workspace = true }
 nullslop-llm = { workspace = true }
 nullslop-session = { workspace = true }

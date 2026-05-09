@@ -1,4 +1,5 @@
-use nullslop_protocol::{Command, Key, KeyEvent, Modifiers, PickerKind, TabDirection};
+use nullslop_intent::Intent;
+use nullslop_protocol::{Key, KeyEvent, Modifiers, PickerKind, TabDirection};
 use ratatui_which_key::Key as _;
 
 use crate::keymap::{collect_all_bindings, collect_bindings_for_scope, init};
@@ -49,14 +50,14 @@ fn gmp_produces_open_picker_provider() {
 
     let node = keymap.get_node_at_path(&[g_key, m_key, p_key]);
 
-    // Then it's a leaf with the OpenPicker Provider command.
+    // Then it's a leaf with the OpenPicker Provider intent.
     assert!(node.is_some());
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
         let cmd = &entry.unwrap().action;
         assert!(
-            matches!(cmd, Command::OpenPicker { payload } if payload.kind == PickerKind::Provider),
+            matches!(cmd, Intent::OpenPicker { kind } if *kind == PickerKind::Provider),
             "expected OpenPicker Provider, got {cmd:?}"
         );
     } else {
@@ -65,7 +66,7 @@ fn gmp_produces_open_picker_provider() {
 }
 
 #[rstest::rstest]
-fn gmr_produces_refresh_models_command() {
+fn gmr_produces_refresh_models_intent() {
     // Given the keymap.
     let keymap = init();
 
@@ -85,14 +86,14 @@ fn gmr_produces_refresh_models_command() {
 
     let node = keymap.get_node_at_path(&[g_key, m_key, r_key]);
 
-    // Then it's a leaf with the RefreshModels command.
+    // Then it's a leaf with the RefreshModels intent.
     assert!(node.is_some());
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
         let cmd = &entry.unwrap().action;
         assert!(
-            matches!(cmd, Command::RefreshModels),
+            matches!(cmd, Intent::RefreshModels),
             "expected RefreshModels, got {cmd:?}"
         );
     } else {
@@ -119,10 +120,7 @@ fn j_produces_chat_entry_select_next() {
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
-        assert!(matches!(
-            entry.unwrap().action,
-            Command::ChatEntrySelectNext { .. }
-        ));
+        assert!(matches!(entry.unwrap().action, Intent::ChatEntrySelectNext));
     } else {
         panic!("Expected leaf node for 'j'");
     }
@@ -145,10 +143,7 @@ fn k_produces_chat_entry_select_prev() {
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
-        assert!(matches!(
-            entry.unwrap().action,
-            Command::ChatEntrySelectPrev { .. }
-        ));
+        assert!(matches!(entry.unwrap().action, Intent::ChatEntrySelectPrev));
     } else {
         panic!("Expected leaf node for 'k'");
     }
@@ -171,7 +166,7 @@ fn gg_produces_scroll_to_top() {
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
-        assert!(matches!(entry.unwrap().action, Command::ScrollToTop));
+        assert!(matches!(entry.unwrap().action, Intent::ScrollToTop));
     } else {
         panic!("Expected leaf node for 'gg'");
     }
@@ -194,7 +189,7 @@ fn uppercase_g_produces_scroll_to_bottom() {
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
-        assert!(matches!(entry.unwrap().action, Command::ScrollToBottom));
+        assert!(matches!(entry.unwrap().action, Intent::ScrollToBottom));
     } else {
         panic!("Expected leaf node for 'G'");
     }
@@ -220,7 +215,7 @@ fn tab_produces_switch_tab_next() {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
         assert!(
-            matches!(&entry.unwrap().action, Command::SwitchTab { payload } if payload.direction == TabDirection::Next),
+            matches!(&entry.unwrap().action, Intent::SwitchTab { direction } if *direction == TabDirection::Next),
             "expected SwitchTab Next"
         );
     } else {
@@ -246,7 +241,7 @@ fn shift_tab_produces_switch_tab_prev() {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
         assert!(
-            matches!(&entry.unwrap().action, Command::SwitchTab { payload } if payload.direction == TabDirection::Prev),
+            matches!(&entry.unwrap().action, Intent::SwitchTab { direction } if *direction == TabDirection::Prev),
             "expected SwitchTab Prev"
         );
     } else {
@@ -417,14 +412,14 @@ fn gcr_produces_rescan_prompt_templates() {
 
     let node = keymap.get_node_at_path(&[g_key, c_key, r_key]);
 
-    // Then it's a leaf with the RescanPromptTemplates command.
+    // Then it's a leaf with the RescanPromptTemplates intent.
     assert!(node.is_some());
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
         let cmd = &entry.unwrap().action;
         assert!(
-            matches!(cmd, Command::RescanPromptTemplates),
+            matches!(cmd, Intent::RescanPromptTemplates),
             "expected RescanPromptTemplates, got {cmd:?}"
         );
     } else {
@@ -469,10 +464,7 @@ fn dashboard_j_produces_dashboard_select_down() {
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Dashboard);
         assert!(entry.is_some());
-        assert!(matches!(
-            entry.unwrap().action,
-            Command::DashboardSelectDown
-        ));
+        assert!(matches!(entry.unwrap().action, Intent::DashboardSelectDown));
     } else {
         panic!("Expected leaf node for 'j' in Dashboard scope");
     }
@@ -495,7 +487,7 @@ fn dashboard_k_produces_dashboard_select_up() {
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Dashboard);
         assert!(entry.is_some());
-        assert!(matches!(entry.unwrap().action, Command::DashboardSelectUp));
+        assert!(matches!(entry.unwrap().action, Intent::DashboardSelectUp));
     } else {
         panic!("Expected leaf node for 'k' in Dashboard scope");
     }
@@ -518,10 +510,7 @@ fn dashboard_gg_produces_dashboard_select_first() {
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Dashboard);
         assert!(entry.is_some());
-        assert!(matches!(
-            entry.unwrap().action,
-            Command::DashboardSelectFirst
-        ));
+        assert!(matches!(entry.unwrap().action, Intent::DashboardSelectFirst));
     } else {
         panic!("Expected leaf node for 'gg' in Dashboard scope");
     }
@@ -544,10 +533,7 @@ fn dashboard_uppercase_g_produces_dashboard_select_last() {
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Dashboard);
         assert!(entry.is_some());
-        assert!(matches!(
-            entry.unwrap().action,
-            Command::DashboardSelectLast
-        ));
+        assert!(matches!(entry.unwrap().action, Intent::DashboardSelectLast));
     } else {
         panic!("Expected leaf node for 'G' in Dashboard scope");
     }
@@ -574,14 +560,14 @@ fn gcs_produces_open_picker_context_assembly() {
 
     let node = keymap.get_node_at_path(&[g_key, c_key, s_key]);
 
-    // Then it's a leaf with the OpenPicker ContextAssembly command.
+    // Then it's a leaf with the OpenPicker ContextAssembly intent.
     assert!(node.is_some());
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
         let cmd = &entry.unwrap().action;
         assert!(
-            matches!(cmd, Command::OpenPicker { payload } if payload.kind == PickerKind::ContextAssembly),
+            matches!(cmd, Intent::OpenPicker { kind } if *kind == PickerKind::ContextAssembly),
             "expected OpenPicker ContextAssembly, got {cmd:?}"
         );
     } else {
@@ -655,13 +641,13 @@ fn quit_binding_has_correct_key() {
     // When collecting bindings for Normal scope.
     let entries = collect_bindings_for_scope(&keymap, &Scope::Normal);
 
-    // Then the quit binding has correct description, scope, and command.
+    // Then the quit binding has correct description, scope, and intent.
     let q_entry = entries.iter().find(|e| e.key_sequence == "q");
     assert!(q_entry.is_some(), "'q' should be in Normal scope bindings");
     let entry = q_entry.unwrap();
     assert_eq!(entry.description, "quit");
     assert_eq!(entry.scope, "Normal");
-    assert!(matches!(entry.command, Command::Quit));
+    assert!(matches!(entry.command, Intent::Quit));
 }
 
 #[rstest::rstest]
@@ -697,7 +683,7 @@ fn collect_bindings_for_scope_finds_three_key_sequence() {
     );
     let entry = gmp_entry.unwrap();
     assert!(
-        matches!(entry.command, Command::OpenPicker { .. }),
+        matches!(entry.command, Intent::OpenPicker { .. }),
         "expected OpenPicker, got {:?}",
         entry.command
     );
@@ -802,7 +788,7 @@ fn ctrl_p_produces_open_picker_keymap() {
         let entry = entries.iter().find(|e| e.scope == Scope::Normal);
         assert!(entry.is_some());
         assert!(
-            matches!(&entry.unwrap().action, Command::OpenPicker { payload } if payload.kind == PickerKind::Keymap),
+            matches!(&entry.unwrap().action, Intent::OpenPicker { kind } if *kind == PickerKind::Keymap),
             "expected OpenPicker Keymap"
         );
     } else {
@@ -828,7 +814,7 @@ fn ctrl_p_produces_open_picker_keymap_in_input_scope() {
         let entry = entries.iter().find(|e| e.scope == Scope::Input);
         assert!(entry.is_some(), "'<c-p>' should be bound in Input scope");
         assert!(
-            matches!(&entry.unwrap().action, Command::OpenPicker { payload } if payload.kind == PickerKind::Keymap),
+            matches!(&entry.unwrap().action, Intent::OpenPicker { kind } if *kind == PickerKind::Keymap),
             "expected OpenPicker Keymap"
         );
     } else {
@@ -854,7 +840,7 @@ fn ctrl_p_produces_open_picker_keymap_in_picker_scope() {
         let entry = entries.iter().find(|e| e.scope == Scope::Picker);
         assert!(entry.is_some(), "'<c-p>' should be bound in Picker scope");
         assert!(
-            matches!(&entry.unwrap().action, Command::OpenPicker { payload } if payload.kind == PickerKind::Keymap),
+            matches!(&entry.unwrap().action, Intent::OpenPicker { kind } if *kind == PickerKind::Keymap),
             "expected OpenPicker Keymap"
         );
     } else {
@@ -883,7 +869,7 @@ fn ctrl_p_produces_open_picker_keymap_in_dashboard_scope() {
             "'<c-p>' should be bound in Dashboard scope"
         );
         assert!(
-            matches!(&entry.unwrap().action, Command::OpenPicker { payload } if payload.kind == PickerKind::Keymap),
+            matches!(&entry.unwrap().action, Intent::OpenPicker { kind } if *kind == PickerKind::Keymap),
             "expected OpenPicker Keymap"
         );
     } else {
@@ -921,7 +907,7 @@ fn leader_sk_produces_open_picker_keymap() {
             "'<space>sk' should be bound in Normal scope"
         );
         assert!(
-            matches!(&entry.unwrap().action, Command::OpenPicker { payload } if payload.kind == PickerKind::Keymap),
+            matches!(&entry.unwrap().action, Intent::OpenPicker { kind } if *kind == PickerKind::Keymap),
             "expected OpenPicker Keymap"
         );
     } else {
@@ -959,7 +945,7 @@ fn leader_sk_produces_open_picker_keymap_in_dashboard() {
             "'<space>sk' should be bound in Dashboard scope"
         );
         assert!(
-            matches!(&entry.unwrap().action, Command::OpenPicker { payload } if payload.kind == PickerKind::Keymap),
+            matches!(&entry.unwrap().action, Intent::OpenPicker { kind } if *kind == PickerKind::Keymap),
             "expected OpenPicker Keymap"
         );
     } else {
@@ -987,7 +973,7 @@ fn ctrl_a_produces_toggle_keymap_scope_filter() {
         let entry = entries.iter().find(|e| e.scope == Scope::Picker);
         assert!(entry.is_some(), "'<c-a>' should be bound in Picker scope");
         assert!(
-            matches!(entry.unwrap().action, Command::ToggleKeymapScopeFilter),
+            matches!(entry.unwrap().action, Intent::ToggleKeymapScopeFilter),
             "expected ToggleKeymapScopeFilter"
         );
     } else {

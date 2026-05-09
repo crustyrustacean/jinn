@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 nullslop-core = { workspace = true }
+nullslop-intent = { workspace = true }
 nullslop-protocol = { workspace = true, features = ["which-key"] }
 nullslop-actor-host = { workspace = true }
 nullslop-component = { workspace = true }

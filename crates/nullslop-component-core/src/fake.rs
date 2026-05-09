@@ -120,7 +120,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use npr::system::Quit;
+    use npr::provider::RefreshModels;
     use nullslop_protocol as npr;
 
     use super::*;
@@ -133,14 +133,14 @@ mod tests {
     #[rstest::rstest]
     fn fake_command_handler_records_call() {
         // Given a continuing fake handler.
-        let (handler, calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+        let (handler, calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
         let mut state = TestState;
         let services = ();
         let mut out = Out::new();
         let mut ctx = HandlerContext::new(&mut state, &services, &mut out);
 
         // When handling a command.
-        let action = handler.handle(&Quit, &mut ctx);
+        let action = handler.handle(&RefreshModels, &mut ctx);
 
         // Then the action is Continue and the call was recorded.
         assert_eq!(action, CommandAction::Continue);
@@ -150,14 +150,14 @@ mod tests {
     #[rstest::rstest]
     fn fake_command_handler_stopping() {
         // Given a stopping fake handler.
-        let (handler, calls) = FakeCommandHandler::<Quit, TestState, ()>::stopping();
+        let (handler, calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::stopping();
         let mut state = TestState;
         let services = ();
         let mut out = Out::new();
         let mut ctx = HandlerContext::new(&mut state, &services, &mut out);
 
         // When handling a command.
-        let action = handler.handle(&Quit, &mut ctx);
+        let action = handler.handle(&RefreshModels, &mut ctx);
 
         // Then the action is Stop.
         assert_eq!(action, CommandAction::Stop);
@@ -167,7 +167,7 @@ mod tests {
     #[rstest::rstest]
     fn fake_command_handler_shared_call_log() {
         // Given a handler whose call_log is cloned.
-        let (handler, calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+        let (handler, calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
         let calls_clone = Rc::clone(&calls);
 
         // When moving the handler (simulating bus registration).

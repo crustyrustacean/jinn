@@ -123,11 +123,11 @@ mod tests {
         let host = FakeActorHost::new();
 
         // When sending a command.
-        host.send_command(&Command::Quit, None);
+        host.send_command(&Command::RefreshModels, None);
 
         // Then the command is recorded.
         assert_eq!(host.commands_sent().len(), 1);
-        assert!(matches!(host.commands_sent()[0], Command::Quit));
+        assert!(matches!(host.commands_sent()[0], Command::RefreshModels));
     }
 
     #[rstest::rstest]

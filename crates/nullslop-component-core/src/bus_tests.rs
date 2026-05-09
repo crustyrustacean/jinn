@@ -1,6 +1,6 @@
-use npr::chat_input::{DeleteGrapheme, InsertChar};
-use npr::provider::SendMessage;
-use npr::system::{KeyDown, ModeChanged, Quit, SetMode};
+use npr::chat_input::EnqueueUserMessage;
+use npr::provider::{CancelStream, RefreshModels, RescanPromptTemplates, SendMessage};
+use npr::system::{KeyDown, ModeChanged};
 use nullslop_protocol as npr;
 
 use super::*;
@@ -14,35 +14,32 @@ struct TestState;
 
 #[rstest::rstest]
 fn command_dispatch_reaches_handler() {
-    // Given a bus with a handler for InsertChar.
-    let (handler, calls) = FakeCommandHandler::<InsertChar, TestState, ()>::continuing();
+    // Given a bus with a handler for RefreshModels.
+    let (handler, calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<InsertChar, _>(handler);
+    bus.register_command_handler::<RefreshModels, _>(handler);
 
     // When submitting and processing the command.
-    bus.submit_command(Command::InsertChar {
-        payload: InsertChar { ch: 'x' },
-    });
+    bus.submit_command(Command::RefreshModels);
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);
 
-    // Then the handler was called with the correct payload.
+    // Then the handler was called.
     assert_eq!(calls.borrow().len(), 1);
-    assert_eq!(calls.borrow()[0].ch, 'x');
 }
 
 #[rstest::rstest]
 fn multiple_command_handlers_all_run() {
     // Given a bus with two handlers for the same command type.
-    let (h1, calls1) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
-    let (h2, calls2) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (h1, calls1) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
+    let (h2, calls2) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(h1);
-    bus.register_command_handler::<Quit, _>(h2);
+    bus.register_command_handler::<RefreshModels, _>(h1);
+    bus.register_command_handler::<RefreshModels, _>(h2);
 
     // When processing a command.
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);
@@ -55,14 +52,15 @@ fn multiple_command_handlers_all_run() {
 #[rstest::rstest]
 fn stop_halts_propagation() {
     // Given a bus where the first handler returns Stop.
-    let (stopper, stopper_calls) = FakeCommandHandler::<Quit, TestState, ()>::stopping();
-    let (continuer, continuer_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (stopper, stopper_calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::stopping();
+    let (continuer, continuer_calls) =
+        FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(stopper);
-    bus.register_command_handler::<Quit, _>(continuer);
+    bus.register_command_handler::<RefreshModels, _>(stopper);
+    bus.register_command_handler::<RefreshModels, _>(continuer);
 
     // When processing a command.
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);
@@ -75,14 +73,14 @@ fn stop_halts_propagation() {
 #[rstest::rstest]
 fn continue_allows_propagation() {
     // Given a bus where the first handler returns Continue.
-    let (c1, calls1) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
-    let (c2, calls2) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (c1, calls1) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
+    let (c2, calls2) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(c1);
-    bus.register_command_handler::<Quit, _>(c2);
+    bus.register_command_handler::<RefreshModels, _>(c1);
+    bus.register_command_handler::<RefreshModels, _>(c2);
 
     // When processing a command.
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);
@@ -98,7 +96,7 @@ fn unregistered_command_is_ignored() {
     let mut bus: Bus<TestState, ()> = Bus::new();
 
     // When submitting a command.
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);
@@ -109,13 +107,14 @@ fn unregistered_command_is_ignored() {
 
 #[rstest::rstest]
 fn unit_command_dispatches_correctly() {
-    // Given a bus with a handler for DeleteGrapheme (unit struct).
-    let (handler, calls) = FakeCommandHandler::<DeleteGrapheme, TestState, ()>::continuing();
+    // Given a bus with a handler for RescanPromptTemplates (unit struct).
+    let (handler, calls) =
+        FakeCommandHandler::<RescanPromptTemplates, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<DeleteGrapheme, _>(handler);
+    bus.register_command_handler::<RescanPromptTemplates, _>(handler);
 
     // When processing a unit command.
-    bus.submit_command(Command::DeleteGrapheme);
+    bus.submit_command(Command::RescanPromptTemplates);
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);
@@ -176,51 +175,58 @@ fn all_event_handlers_run() {
 
 // --- Out / cascading tests ---
 
-/// Handler that submits an `AppQuit` command when it sees `InsertChar`.
+/// Handler that submits a RefreshModels command when it sees EnqueueUserMessage.
 struct CascadeHandler;
 
-impl CommandHandler<InsertChar, TestState, ()> for CascadeHandler {
+impl CommandHandler<EnqueueUserMessage, TestState, ()> for CascadeHandler {
     fn handle(
         &self,
-        _cmd: &InsertChar,
+        _cmd: &EnqueueUserMessage,
         ctx: &mut HandlerContext<'_, TestState, ()>,
     ) -> CommandAction {
-        ctx.out.submit_command(Command::Quit);
+        ctx.out.submit_command(Command::RefreshModels);
         CommandAction::Continue
     }
 }
 
 #[rstest::rstest]
 fn cascading_commands_are_processed() {
-    // Given a bus where InsertChar handler submits AppQuit.
-    let (quit_handler, quit_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    // Given a bus where EnqueueUserMessage handler submits RefreshModels.
+    let (refresh_handler, refresh_calls) =
+        FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<InsertChar, _>(CascadeHandler);
-    bus.register_command_handler::<Quit, _>(quit_handler);
+    bus.register_command_handler::<EnqueueUserMessage, _>(CascadeHandler);
+    bus.register_command_handler::<RefreshModels, _>(refresh_handler);
 
     // When processing the initial command.
-    bus.submit_command(Command::InsertChar {
-        payload: InsertChar { ch: 'x' },
+    bus.submit_command(Command::EnqueueUserMessage {
+        payload: EnqueueUserMessage {
+            session_id: npr::SessionId::new(),
+            text: "test".into(),
+        },
     });
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);
 
-    // Then the cascaded Quit was also processed.
-    assert_eq!(quit_calls.borrow().len(), 1);
+    // Then the cascaded RefreshModels was also processed.
+    assert_eq!(refresh_calls.borrow().len(), 1);
 }
 
 /// Handler that resubmits itself, creating a potential infinite loop.
 struct LoopHandler;
 
-impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
+impl CommandHandler<EnqueueUserMessage, TestState, ()> for LoopHandler {
     fn handle(
         &self,
-        _cmd: &InsertChar,
+        _cmd: &EnqueueUserMessage,
         ctx: &mut HandlerContext<'_, TestState, ()>,
     ) -> CommandAction {
-        ctx.out.submit_command(Command::InsertChar {
-            payload: InsertChar { ch: 'x' },
+        ctx.out.submit_command(Command::EnqueueUserMessage {
+            payload: EnqueueUserMessage {
+                session_id: npr::SessionId::new(),
+                text: "test".into(),
+            },
         });
         CommandAction::Continue
     }
@@ -230,11 +236,14 @@ impl CommandHandler<InsertChar, TestState, ()> for LoopHandler {
 fn max_iterations_prevents_infinite_loop() {
     // Given a bus where the handler resubmits itself, with a low max_iterations.
     let mut bus: Bus<TestState, ()> = Bus::new().with_max_iterations(3);
-    bus.register_command_handler::<InsertChar, _>(LoopHandler);
+    bus.register_command_handler::<EnqueueUserMessage, _>(LoopHandler);
 
     // When processing commands.
-    bus.submit_command(Command::InsertChar {
-        payload: InsertChar { ch: 'x' },
+    bus.submit_command(Command::EnqueueUserMessage {
+        payload: EnqueueUserMessage {
+            session_id: npr::SessionId::new(),
+            text: "test".into(),
+        },
     });
     let mut state = TestState;
     let services = ();
@@ -260,7 +269,7 @@ fn has_pending_is_true_after_command_submit() {
     let mut bus: Bus<TestState, ()> = Bus::new();
 
     // When submitting a command.
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
 
     // Then the bus has pending messages.
     assert!(bus.has_pending());
@@ -270,7 +279,7 @@ fn has_pending_is_true_after_command_submit() {
 fn has_pending_is_false_after_command_process() {
     // Given a bus with a submitted command.
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
 
     // When processing commands.
     let mut state = TestState;
@@ -332,17 +341,17 @@ fn has_pending_is_false_after_event_process() {
 #[rstest::rstest]
 fn struct_command_with_payload_dispatches() {
     // Given a bus with handlers for multiple struct commands.
-    let (set_mode_handler, set_mode_calls) =
-        FakeCommandHandler::<SetMode, TestState, ()>::continuing();
+    let (cancel_handler, cancel_calls) =
+        FakeCommandHandler::<CancelStream, TestState, ()>::continuing();
     let (send_handler, send_calls) = FakeCommandHandler::<SendMessage, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<SetMode, _>(set_mode_handler);
+    bus.register_command_handler::<CancelStream, _>(cancel_handler);
     bus.register_command_handler::<SendMessage, _>(send_handler);
 
     // When submitting multiple commands.
-    bus.submit_command(Command::SetMode {
-        payload: SetMode {
-            mode: npr::Mode::Input,
+    bus.submit_command(Command::CancelStream {
+        payload: CancelStream {
+            session_id: npr::SessionId::new(),
         },
     });
     bus.submit_command(Command::SendMessage {
@@ -356,7 +365,7 @@ fn struct_command_with_payload_dispatches() {
     bus.process_commands(&mut state, &services);
 
     // Then both handlers were called with correct payloads.
-    assert_eq!(set_mode_calls.borrow().len(), 1);
+    assert_eq!(cancel_calls.borrow().len(), 1);
     assert_eq!(send_calls.borrow().len(), 1);
     assert_eq!(send_calls.borrow()[0].text, "hello");
 }
@@ -364,8 +373,12 @@ fn struct_command_with_payload_dispatches() {
 /// Handler that submits an event when processing a command.
 struct CommandToEventHandler;
 
-impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
-    fn handle(&self, _cmd: &Quit, ctx: &mut HandlerContext<'_, TestState, ()>) -> CommandAction {
+impl CommandHandler<RefreshModels, TestState, ()> for CommandToEventHandler {
+    fn handle(
+        &self,
+        _cmd: &RefreshModels,
+        ctx: &mut HandlerContext<'_, TestState, ()>,
+    ) -> CommandAction {
         ctx.out.submit_event(Event::ModeChanged {
             payload: ModeChanged {
                 from: npr::Mode::Normal,
@@ -378,14 +391,14 @@ impl CommandHandler<Quit, TestState, ()> for CommandToEventHandler {
 
 #[rstest::rstest]
 fn command_handler_submitted_event_queues_before_processing() {
-    // Given a bus where Quit handler submits ModeChanged.
+    // Given a bus where RefreshModels handler submits ModeChanged.
     let (event_handler, _event_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(CommandToEventHandler);
+    bus.register_command_handler::<RefreshModels, _>(CommandToEventHandler);
     bus.register_event_handler::<ModeChanged, _>(event_handler);
 
     // When processing a command that submits an event.
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);
@@ -396,13 +409,13 @@ fn command_handler_submitted_event_queues_before_processing() {
 
 #[rstest::rstest]
 fn queued_events_reach_handler_on_process() {
-    // Given a bus where Quit handler submits ModeChanged.
+    // Given a bus where RefreshModels handler submits ModeChanged.
     let (event_handler, event_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(CommandToEventHandler);
+    bus.register_command_handler::<RefreshModels, _>(CommandToEventHandler);
     bus.register_event_handler::<ModeChanged, _>(event_handler);
 
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);
@@ -419,14 +432,14 @@ fn queued_events_reach_handler_on_process() {
 #[rstest::rstest]
 fn drain_returns_command_and_event() {
     // Given a bus with a command and event handler.
-    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(cmd_handler);
+    bus.register_command_handler::<RefreshModels, _>(cmd_handler);
     bus.register_event_handler::<ModeChanged, _>(evt_handler);
 
     // When processing a command and event.
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     bus.submit_event(Event::ModeChanged {
         payload: ModeChanged {
             from: npr::Mode::Normal,
@@ -444,19 +457,19 @@ fn drain_returns_command_and_event() {
     assert_eq!(events.len(), 1);
     assert!(matches!(events[0].event, Event::ModeChanged { .. }));
     assert_eq!(commands.len(), 1);
-    assert!(matches!(commands[0].command, Command::Quit));
+    assert!(matches!(commands[0].command, Command::RefreshModels));
 }
 
 #[rstest::rstest]
 fn drain_returns_items_without_source() {
     // Given a bus with a command and event handler.
-    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(cmd_handler);
+    bus.register_command_handler::<RefreshModels, _>(cmd_handler);
     bus.register_event_handler::<ModeChanged, _>(evt_handler);
 
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     bus.submit_event(Event::ModeChanged {
         payload: ModeChanged {
             from: npr::Mode::Normal,
@@ -478,12 +491,12 @@ fn drain_returns_items_without_source() {
 #[rstest::rstest]
 fn first_drain_returns_items() {
     // Given a bus with a command and event handler.
-    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(cmd_handler);
+    bus.register_command_handler::<RefreshModels, _>(cmd_handler);
     bus.register_event_handler::<ModeChanged, _>(evt_handler);
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     bus.submit_event(Event::ModeChanged {
         payload: ModeChanged {
             from: npr::Mode::Normal,
@@ -507,12 +520,12 @@ fn first_drain_returns_items() {
 #[rstest::rstest]
 fn second_drain_returns_empty() {
     // Given a bus with a command and event handler.
-    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (cmd_handler, _cmd_calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let (evt_handler, _evt_calls) = FakeEventHandler::<ModeChanged, TestState, ()>::new();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(cmd_handler);
+    bus.register_command_handler::<RefreshModels, _>(cmd_handler);
     bus.register_event_handler::<ModeChanged, _>(evt_handler);
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     bus.submit_event(Event::ModeChanged {
         payload: ModeChanged {
             from: npr::Mode::Normal,
@@ -540,12 +553,12 @@ fn second_drain_returns_empty() {
 #[rstest::rstest]
 fn submit_command_from_preserves_source() {
     // Given a bus with a command handler.
-    let (handler, _calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (handler, _calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(handler);
+    bus.register_command_handler::<RefreshModels, _>(handler);
 
     // When submitting a command with a source.
-    bus.submit_command_from(Command::Quit, Some(ActorName::new("ext-test")));
+    bus.submit_command_from(Command::RefreshModels, Some(ActorName::new("ext-test")));
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);
@@ -586,12 +599,12 @@ fn submit_event_from_preserves_source() {
 #[rstest::rstest]
 fn submit_command_without_source_has_none() {
     // Given a bus with a command handler.
-    let (handler, _calls) = FakeCommandHandler::<Quit, TestState, ()>::continuing();
+    let (handler, _calls) = FakeCommandHandler::<RefreshModels, TestState, ()>::continuing();
     let mut bus: Bus<TestState, ()> = Bus::new();
-    bus.register_command_handler::<Quit, _>(handler);
+    bus.register_command_handler::<RefreshModels, _>(handler);
 
     // When submitting a command without source.
-    bus.submit_command(Command::Quit);
+    bus.submit_command(Command::RefreshModels);
     let mut state = TestState;
     let services = ();
     bus.process_commands(&mut state, &services);

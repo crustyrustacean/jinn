@@ -8,9 +8,9 @@ use std::time::{Duration, Instant};
 
 use error_stack::{Report, ResultExt};
 use nullslop_core::{AppCore, AppMsg, TickResult};
+use nullslop_intent::IntentHandler;
 use nullslop_protocol::Command;
-use nullslop_protocol::SessionId;
-use nullslop_protocol::chat_input::SubmitMessage;
+use nullslop_protocol::chat_input::EnqueueUserMessage;
 use wherror::Error;
 
 /// Error type for headless operations.
@@ -52,12 +52,16 @@ impl HeadlessApp {
     ///
     /// Returns an error if the message cannot be sent.
     pub fn send_chat(&self, message: &str) -> Result<(), Report<HeadlessError>> {
+        let session_id = {
+            let state = self.core.state.read();
+            state.active_session.clone()
+        };
         self.core
             .sender()
             .send(AppMsg::Command {
-                command: Command::SubmitMessage {
-                    payload: SubmitMessage {
-                        session_id: SessionId::new(),
+                command: Command::EnqueueUserMessage {
+                    payload: EnqueueUserMessage {
+                        session_id,
                         text: message.to_string(),
                     },
                 },
@@ -109,15 +113,23 @@ impl HeadlessApp {
                 drop(state_read);
                 which_key.set_scope(scope);
 
-                if let Some(cmd) = which_key.handle_key(key) {
-                    self.core
-                        .sender()
-                        .send(AppMsg::Command {
-                            command: cmd,
-                            source: None,
-                        })
-                        .change_context(HeadlessError)
-                        .attach("failed to send script command")?;
+                if let Some(intent) = which_key.handle_key(key) {
+                    // Process the intent through the IntentHandler.
+                    let mut state = self.core.state.write();
+                    let result = IntentHandler::handle(&intent, &mut state);
+                    drop(state);
+
+                    // Send resulting commands to core.
+                    for cmd in result.commands {
+                        self.core
+                            .sender()
+                            .send(AppMsg::Command {
+                                command: cmd,
+                                source: None,
+                            })
+                            .change_context(HeadlessError)
+                            .attach("failed to send script command")?;
+                    }
                 }
             }
             self.run_until_settled();

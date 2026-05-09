@@ -56,7 +56,7 @@ mod tests {
         let sink = ActorMessageSink::new(tx);
 
         // When sending a command.
-        sink.send_command(Command::Quit)
+        sink.send_command(Command::RefreshModels)
             .expect("send should succeed");
 
         // Then the message is received as AppMsg::Command.
@@ -64,7 +64,7 @@ mod tests {
             .try_recv()
             .expect("recv should succeed")
             .expect("should have value");
-        assert!(matches!(msg, AppMsg::Command { command, .. } if matches!(command, Command::Quit)));
+        assert!(matches!(msg, AppMsg::Command { command, .. } if matches!(command, Command::RefreshModels)));
     }
 
     #[rstest::rstest]
@@ -102,7 +102,7 @@ mod tests {
         drop(rx);
 
         // When sending a command.
-        let result = sink.send_command(Command::Quit);
+        let result = sink.send_command(Command::RefreshModels);
 
         // Then it returns an error.
         assert!(result.is_err());

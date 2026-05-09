@@ -11,14 +11,17 @@
 use std::ops::Range;
 
 use crate::PICKER_HIGHLIGHT_STYLE;
-use nullslop_protocol::Command;
 use nullslop_selection_widget::PickerItem;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 /// A single fully-resolved keymap binding, ready for display in the picker.
+///
+/// Generic over the action type `A` so the picker display logic stays in
+/// `nullslop-component` while the concrete action type (`Intent`) is chosen
+/// by the crate that constructs entries.
 #[derive(Debug, Clone)]
-pub struct KeymapEntry {
+pub struct KeymapEntry<A> {
     /// Full key sequence string (e.g., `"gg"`, `"gmp"`, `"<c-p>"`).
     pub key_sequence: String,
     /// Command description from the keymap (e.g., `"scroll to top"`).
@@ -27,14 +30,14 @@ pub struct KeymapEntry {
     pub scope: String,
     /// Category name (e.g., `"General"`, `"Navigation"`, `"Input"`).
     pub category: String,
-    /// The command to execute when this entry is confirmed.
-    pub command: Command,
+    /// The action to execute when this entry is confirmed.
+    pub command: A,
     /// Pre-computed searchable text combining key sequence and description.
     /// Used by fuzzy matching so users can search by either keys or description.
     pub search_text: String,
 }
 
-impl PickerItem for KeymapEntry {
+impl<A: std::fmt::Debug + 'static> PickerItem for KeymapEntry<A> {
     fn display_label(&self) -> &str {
         // Returns pre-computed search text for fuzzy matching.
         // Combines key_sequence + description so users can search by either.
@@ -260,14 +263,14 @@ mod tests {
         description: &str,
         scope: &str,
         category: &str,
-    ) -> KeymapEntry {
+    ) -> KeymapEntry<&'static str> {
         let search_text = format!("{key_sequence} {description}");
         KeymapEntry {
             key_sequence: key_sequence.to_owned(),
             description: description.to_owned(),
             scope: scope.to_owned(),
             category: category.to_owned(),
-            command: Command::Quit,
+            command: "test-command",
             search_text,
         }
     }

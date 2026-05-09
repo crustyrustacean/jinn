@@ -6,11 +6,5 @@
 mod command;
 mod event;
 
-pub use command::{
-    AutocompleteConfirm, ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev, Clear,
-    DeleteGrapheme, DeleteGraphemeForward, EnqueueUserMessage, InsertChar, Interrupt,
-    MoveCursorDown, MoveCursorLeft, MoveCursorRight, MoveCursorToEnd, MoveCursorToStart,
-    MoveCursorUp, MoveCursorWordLeft, MoveCursorWordRight, PushChatEntry, SetChatInputText,
-    SubmitMessage,
-};
+pub use command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
 pub use event::ChatEntrySubmitted;

@@ -551,8 +551,8 @@ mod tests {
         let host =
             InMemoryActorHost::from_actors_with_handle(vec![result], runtime.handle().clone());
 
-        // When sending an unregistered command (Quit is not subscribed by the actor).
-        host.send_command(&Command::Quit, None);
+        // When sending an unregistered command (RefreshModels is not subscribed by the actor).
+        host.send_command(&Command::RefreshModels, None);
         std::thread::sleep(Duration::from_millis(50));
 
         // Then no messages were delivered to the actor.

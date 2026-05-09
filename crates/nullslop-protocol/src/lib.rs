@@ -45,15 +45,13 @@ pub use picker_kind::PickerKind;
 pub use prompt_template::PromptTemplate;
 pub use provider::LlmMessage;
 pub use provider::entries_to_messages;
-pub use provider_picker::{
-    PickerBackspace, PickerConfirm, PickerInsertChar, PickerMoveDown, PickerMoveUp,
-};
+// provider_picker module kept for transition; no types re-exported.
 pub use session::SessionId;
 pub use session::SessionLoadCompleted;
 pub use session::SessionLoadRequested;
 pub use session::SessionNew;
 pub use session::SessionSaveRequested;
-pub use system::OpenPicker;
+// OpenPicker removed — now an Intent variant.
 pub use tab::ActiveTab;
 pub use tab::TabDirection;
 pub use tool::{

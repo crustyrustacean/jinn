@@ -32,12 +32,9 @@
 use nullslop_component::chat_input_box::AutocompleteMatch;
 use nullslop_component::prompt_template::PromptTemplateStore;
 use nullslop_component::AppState;
-use nullslop_protocol::chat_input::ChatEntrySelectCancel;
 use nullslop_protocol::context::{PinChatEntry, SwitchPromptStrategy, UnpinChatEntry};
 use nullslop_protocol::provider::{CancelStream, ProviderSwitch};
 use nullslop_protocol::session::SessionLoadRequested;
-use nullslop_protocol::system::SetMode;
-use nullslop_protocol::tab::SwitchTab;
 use nullslop_protocol::system::LoadPickerEntries;
 use nullslop_protocol::{
     Command, Mode, PickerKind, PinPosition, SessionId, TabDirection,
@@ -579,11 +576,8 @@ fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
         IntentResult::empty()
     } else {
         // Fallback: switch tab when autocomplete is inactive.
-        IntentResult::with_commands(vec![Command::SwitchTab {
-            payload: SwitchTab {
-                direction: TabDirection::Next,
-            },
-        }])
+        state.active_tab = state.active_tab.next();
+        IntentResult::empty()
     }
 }
 
@@ -631,18 +625,13 @@ fn handle_set_mode(state: &mut AppState, mode: Mode) -> IntentResult {
 fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     app::validate_normal_escape(state);
 
-    let mut commands = vec![];
-
     if state.active_session().selected_entry_index().is_some() {
-        let session_id = state.active_session.clone();
-        commands.push(Command::ChatEntrySelectCancel {
-            payload: ChatEntrySelectCancel { session_id },
-        });
+        state.active_session_mut().clear_selection();
     }
 
     state.tui_signals.pinned_pane_close = true;
 
-    IntentResult::with_commands(commands)
+    IntentResult::empty()
 }
 
 // --- Picker handlers ---
@@ -705,14 +694,10 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     }
     let provider_id = entry.provider_id.clone();
 
+    state.mode = Mode::Normal;
     IntentResult::with_commands(vec![
         Command::ProviderSwitch {
             payload: ProviderSwitch { provider_id },
-        },
-        Command::SetMode {
-            payload: SetMode {
-                mode: Mode::Normal,
-            },
         },
     ])
 }
@@ -726,6 +711,7 @@ fn confirm_strategy(state: &mut AppState) -> IntentResult {
 
     state.set_default_strategy(strategy_id.clone());
 
+    state.mode = Mode::Normal;
     IntentResult::with_commands(vec![
         Command::SwitchPromptStrategy {
             payload: SwitchPromptStrategy {
@@ -733,28 +719,19 @@ fn confirm_strategy(state: &mut AppState) -> IntentResult {
                 strategy_id,
             },
         },
-        Command::SetMode {
-            payload: SetMode {
-                mode: Mode::Normal,
-            },
-        },
     ])
 }
 
 fn confirm_keymap(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.keymap_picker.selected_item() else {
+    let Some(_entry) = state.keymap_picker.selected_item() else {
         return IntentResult::empty();
     };
-    let command = entry.command.clone();
 
-    IntentResult::with_commands(vec![
-        Command::SetMode {
-            payload: SetMode {
-                mode: Mode::Normal,
-            },
-        },
-        command,
-    ])
+    // Set mode to Normal. The TUI layer reads the selected entry's intent
+    // from its own keymap entries and executes it.
+    state.mode = Mode::Normal;
+    state.tui_signals.keymap_confirmed = true;
+    IntentResult::empty()
 }
 
 fn confirm_session(state: &mut AppState) -> IntentResult {
@@ -765,13 +742,9 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
     let byte_offset = entry.byte_offset;
 
     state.session_loading = true;
+    state.mode = Mode::Normal;
 
     IntentResult::with_commands(vec![
-        Command::SetMode {
-            payload: SetMode {
-                mode: Mode::Normal,
-            },
-        },
         Command::SessionLoadRequested {
             payload: SessionLoadRequested {
                 session_id,
@@ -818,12 +791,9 @@ fn handle_session_new(state: &mut AppState) -> IntentResult {
         .sessions
         .insert(new_id.clone(), nullslop_component::chat_session::ChatSessionState::new());
     state.active_session = new_id;
+    state.mode = Mode::Normal;
 
-    IntentResult::with_commands(vec![Command::SetMode {
-        payload: SetMode {
-            mode: Mode::Normal,
-        },
-    }])
+    IntentResult::empty()
 }
 
 fn handle_refresh_models(state: &mut AppState) -> IntentResult {
