@@ -38,6 +38,7 @@ pub mod status_bar;
 pub mod tab_nav;
 
 pub use app_state::AppState;
+pub use nullslop_providers::NO_PROVIDER_ID;
 pub use chat_input_box::ChatInputBoxState;
 pub use chat_session::ChatSessionState;
 pub use dashboard::DashboardState;

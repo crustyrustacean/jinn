@@ -13,8 +13,9 @@ path = "src/lib.rs"
 
 [dependencies]
 nullslop-cli = { workspace = true }
-nullslop-tui = { workspace = true }
 nullslop-core = { workspace = true }
+nullslop-intent = { workspace = true }
+nullslop-tui = { workspace = true }
 nullslop-services = { workspace = true }
 nullslop-providers = { workspace = true }
 nullslop-component = { workspace = true }
@@ -75,6 +76,7 @@ nullslop-workflow = { path = "crates/nullslop-workflow" }
 nullslop-tool-orchestrator = { path = "actors/nullslop-tool-orchestrator" }
 nullslop-session = { path = "crates/nullslop-session" }
 nullslop-session-actor = { path = "actors/nullslop-session-actor" }
+nullslop-intent = { path = "crates/nullslop-intent" }
 
 # Error handling
 wherror = "2.3.1"
