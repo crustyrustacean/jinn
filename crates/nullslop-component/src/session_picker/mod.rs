@@ -2,16 +2,9 @@
 //!
 //! Manages the picker overlay state for browsing persisted sessions.
 //! The user can select a session to load, or press CTRL+N to start a new one.
+//!
+//! Phase 5: Handler removed — session loading will be re-implemented in Phase 7.
 
 pub mod entries;
-mod handler;
 
-use crate::{AppBus, AppUiRegistry};
-
-/// Register the session picker component with the bus.
-///
-/// The picker has no UI element — it is rendered as an overlay in
-/// `nullslop-tui/src/render.rs`.
-pub(crate) fn register(bus: &mut AppBus, _registry: &mut AppUiRegistry) {
-    handler::SessionPickerHandler.register(bus);
-}
+pub use entries::SessionEntry;

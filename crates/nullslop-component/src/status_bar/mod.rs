@@ -6,12 +6,4 @@
 
 pub mod element;
 
-use crate::AppBus;
-use crate::AppUiRegistry;
-
 pub use element::StatusBarElement;
-
-/// Register the status bar UI element.
-pub(crate) fn register(_bus: &mut AppBus, registry: &mut AppUiRegistry) {
-    registry.register(Box::new(StatusBarElement));
-}

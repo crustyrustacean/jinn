@@ -2817,14 +2817,15 @@ dependencies = [
  "nullslop-actor-host",
  "nullslop-cli",
  "nullslop-component",
- "nullslop-component-core",
  "nullslop-context",
  "nullslop-context-actor",
+ "nullslop-coordinator",
  "nullslop-core",
  "nullslop-echo",
  "nullslop-intent",
  "nullslop-llm",
  "nullslop-llm-discover",
+ "nullslop-projector",
  "nullslop-prompt-scan",
  "nullslop-prompt-template",
  "nullslop-protocol",
@@ -2832,6 +2833,7 @@ dependencies = [
  "nullslop-services",
  "nullslop-session",
  "nullslop-session-actor",
+ "nullslop-shutdown-tracker",
  "nullslop-tool-orchestrator",
  "nullslop-tui",
  "ratatui-which-key",
@@ -2891,7 +2893,6 @@ dependencies = [
  "humantime",
  "jiff",
  "nullslop-actor-host",
- "nullslop-component-core",
  "nullslop-component-ui",
  "nullslop-prompt-template",
  "nullslop-protocol",
@@ -2899,6 +2900,7 @@ dependencies = [
  "nullslop-selection-widget",
  "nullslop-services",
  "nullslop-session",
+ "parking_lot",
  "ratatui",
  "rstest",
  "serde",
@@ -2909,14 +2911,6 @@ dependencies = [
  "tracing",
  "unicode-segmentation",
  "wherror",
-]
-
-[[package]]
-name = "nullslop-component-core"
-version = "0.1.0"
-dependencies = [
- "nullslop-protocol",
- "rstest",
 ]
 
 [[package]]
@@ -2958,26 +2952,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "nullslop-coordinator"
+version = "0.1.0"
+dependencies = [
+ "nullslop-actor",
+ "nullslop-component",
+ "nullslop-protocol",
+ "nullslop-services",
+ "rstest",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "nullslop-core"
 version = "0.1.0"
 dependencies = [
- "derive_more",
- "error-stack",
- "jiff",
  "kanal",
  "nullslop-actor",
  "nullslop-actor-host",
  "nullslop-component",
- "nullslop-component-core",
  "nullslop-component-ui",
  "nullslop-protocol",
- "nullslop-services",
- "parking_lot",
  "rstest",
- "serde",
- "serde_json",
+ "tokio",
  "tracing",
- "wherror",
 ]
 
 [[package]]
@@ -2990,7 +2990,6 @@ dependencies = [
  "nullslop-actor",
  "nullslop-actor-host",
  "nullslop-component",
- "nullslop-component-core",
  "nullslop-context",
  "nullslop-core",
  "nullslop-intent",
@@ -3058,6 +3057,21 @@ dependencies = [
  "tokio",
  "tracing",
  "wherror",
+]
+
+[[package]]
+name = "nullslop-projector"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "nullslop-actor",
+ "nullslop-component",
+ "nullslop-protocol",
+ "nullslop-providers",
+ "rstest",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -3194,6 +3208,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nullslop-shutdown-tracker"
+version = "0.1.0"
+dependencies = [
+ "nullslop-actor",
+ "nullslop-component",
+ "nullslop-protocol",
+ "rstest",
+ "tracing",
+]
+
+[[package]]
 name = "nullslop-tool-orchestrator"
 version = "0.1.0"
 dependencies = [
@@ -3221,7 +3246,6 @@ dependencies = [
  "kanal",
  "nullslop-actor-host",
  "nullslop-component",
- "nullslop-component-core",
  "nullslop-component-ui",
  "nullslop-core",
  "nullslop-intent",

@@ -2,6 +2,8 @@
 //!
 //! Re-exports types from [`nullslop_prompt_template`]. Provides component-specific
 //! operations like [`expand_tokens`].
+//!
+//! Phase 5: Rescan handler removed — template rescanning will be re-implemented in Phase 7.
 
 // Re-export from the standalone crate.
 pub use nullslop_prompt_template::{
@@ -9,8 +11,6 @@ pub use nullslop_prompt_template::{
 };
 // Re-export PromptTemplate from protocol (also available through the standalone crate).
 pub use nullslop_protocol::PromptTemplate;
-
-pub mod rescan_handler;
 
 /// Expands `$name` tokens in `text` using templates from the store.
 ///

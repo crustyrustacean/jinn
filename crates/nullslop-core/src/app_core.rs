@@ -1,19 +1,20 @@
-//! Application core: bus, state, and processing loop.
+//! Application core: state, message channel, and processing.
 //!
-//! [`AppCore`] owns the processing pipeline — the bus, shared state,
-//! an internal message channel for [`AppMsg`], and an optional actor host.
-//! The caller (TUI or headless runner) feeds messages into [`AppCore`] and
-//! drives the processing loop.
+//! [`AppCore`] owns the processing pipeline — shared state, an internal
+//! message channel for [`AppMsg`], and an optional actor host.
+//!
+//! Phase 7: The bus has been deleted. An async forwarding task continuously
+//! drains the `AppMsg` channel and forwards directly to the actor host.
+//! The main loop is input + rendering only — no tick call.
 
 use std::time::{Duration, Instant};
 
 use kanal::{Receiver, Sender};
 use nullslop_actor::SystemMessage;
 use nullslop_actor_host::ActorHostService;
-use nullslop_component::AppState;
-use nullslop_component_core::Bus;
+use nullslop_component::State;
 
-use crate::{AppMsg, State};
+use crate::AppMsg;
 
 /// How long to wait between ticks during coordinated shutdown.
 const SHUTDOWN_TICK_INTERVAL: Duration = Duration::from_millis(50);
@@ -22,6 +23,8 @@ const SHUTDOWN_TICK_INTERVAL: Duration = Duration::from_millis(50);
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Result of a [`AppCore::tick`] call.
+///
+/// Kept for backward compatibility with callers that check `should_quit`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TickResult {
     /// The application has requested to quit.
@@ -30,20 +33,20 @@ pub struct TickResult {
     pub did_work: bool,
 }
 
-/// Application core: bus, state, and processing.
+/// Application core: state, message channel, and processing.
 ///
 /// Owns the processing pipeline. The caller feeds [`AppMsg`] values
-/// via [`Self::sender`] and drives processing with [`Self::tick`].
+/// via [`Self::sender`] and the async forwarding task handles routing
+/// to the actor host.
 pub struct AppCore {
-    /// Command and event bus for routing between components.
-    pub bus: Bus<AppState, nullslop_services::Services>,
     /// Shared application state.
     pub state: State,
-    /// Runtime services passed to handlers during dispatch.
-    pub services: nullslop_services::Services,
     /// Sender half of the internal message channel.
     pub sender: Sender<AppMsg>,
     /// Receiver half of the internal message channel.
+    ///
+    /// Usually consumed by [`spawn_forwarding_task`]. Kept here so
+    /// callers that don't use the async task can drain manually.
     pub receiver: Receiver<AppMsg>,
     /// Optional actor host for forwarding processed messages.
     pub actor_host: Option<ActorHostService>,
@@ -59,18 +62,12 @@ impl std::fmt::Debug for AppCore {
 }
 
 impl AppCore {
-    /// Creates a new `AppCore` with default state and empty bus.
-    ///
-    /// The caller registers components on the returned bus via
-    /// [`Bus::register_command_handler`] / [`Bus::register_event_handler`],
-    /// and optionally sets the actor host directly on the public field.
+    /// Creates a new `AppCore` with default state and empty channel.
     #[must_use]
-    pub fn new(services: nullslop_services::Services) -> Self {
+    pub fn new() -> Self {
         let (sender, receiver) = kanal::unbounded();
         Self {
-            bus: Bus::new(),
-            state: State::new(AppState::default()),
-            services,
+            state: State::new(nullslop_component::AppState::default()),
             sender,
             receiver,
             actor_host: None,
@@ -102,71 +99,37 @@ impl AppCore {
 
     /// Processes one batch of pending messages.
     ///
-    /// Drains all available [`AppMsg`] values from the internal channel,
-    /// routes them, processes the bus (commands then events), and forwards
-    /// processed events to the actor host.
+    /// Drains all available [`AppMsg`] values from the internal channel
+    /// and forwards them directly to the actor host.
     ///
     /// Returns a [`TickResult`] indicating whether quit was requested and
     /// whether any work was performed.
+    ///
+    /// **Note:** This is kept for backward compatibility with the headless
+    /// runner and coordinated shutdown. The main TUI loop no longer calls
+    /// this — the async forwarding task handles message routing instead.
     pub fn tick(&mut self) -> TickResult {
         let mut received_messages = false;
 
-        // Drain all available messages.
         while let Ok(Some(msg)) = self.receiver.try_recv() {
             received_messages = true;
             match msg {
                 AppMsg::Command { command, source } => {
-                    self.route_command(command, source);
+                    if let Some(host) = &self.actor_host {
+                        host.send_command(&command, source.as_ref());
+                    }
                 }
                 AppMsg::Event { event, source } => {
-                    self.bus.submit_event_from(event, source);
+                    if let Some(host) = &self.actor_host {
+                        host.send_event(&event, source.as_ref());
+                    }
                 }
             }
         }
-
-        // Check if bus has pending items from previous ticks or just-routed commands.
-        let had_pending = self.bus.has_pending();
-
-        // Process the bus: commands then events.
-        {
-            let mut guard = self.state.write();
-            self.bus.process_commands(&mut guard, &self.services);
-            self.bus.process_events(&mut guard, &self.services);
-        }
-
-        // Forward processed items to actor host.
-        let (events, commands) = self.bus.drain_all();
-        self.forward_events_to_actor_host(&events);
-        self.forward_commands_to_actor_host(&commands);
 
         TickResult {
             should_quit: self.state.read().should_quit,
-            did_work: received_messages || had_pending,
-        }
-    }
-
-    /// Forwards drained events to the actor host.
-    ///
-    /// No-op when no actor host is set.
-    fn forward_events_to_actor_host(&self, items: &[nullslop_component_core::bus::ProcessedEvent]) {
-        if let Some(host) = &self.actor_host {
-            for item in items {
-                host.send_event(&item.event, item.source.as_ref());
-            }
-        }
-    }
-
-    /// Forwards drained commands to the actor host.
-    ///
-    /// No-op when no actor host is set.
-    fn forward_commands_to_actor_host(
-        &self,
-        items: &[nullslop_component_core::bus::ProcessedCommand],
-    ) {
-        if let Some(host) = &self.actor_host {
-            for item in items {
-                host.send_command(&item.command, item.source.as_ref());
-            }
+            did_work: received_messages,
         }
     }
 
@@ -174,7 +137,7 @@ impl AppCore {
     ///
     /// 1. Marks shutdown active on the tracker.
     /// 2. Sends `SystemMessage::ApplicationShuttingDown` to all actors.
-    /// 3. Tick loop: drains actor events through the bus until the shutdown
+    /// 3. Tick loop: drains actor events through the channel until the shutdown
     ///    tracker reports complete or the timeout expires.
     /// 4. Joins actor tasks via the host.
     ///
@@ -190,7 +153,7 @@ impl AppCore {
         // 2. Send ApplicationShuttingDown to all actors.
         actor_host.send_system(SystemMessage::ApplicationShuttingDown);
 
-        // 3. Tick loop: drain actor events through bus until tracker complete or timeout.
+        // 3. Tick loop: drain actor events until tracker complete or timeout.
         let start = Instant::now();
         loop {
             self.tick();
@@ -208,49 +171,51 @@ impl AppCore {
             tracing::error!(err = ?e, "actor host shutdown error");
         }
     }
+}
 
-    /// Routes a command through the bus.
-    fn route_command(
-        &mut self,
-        cmd: nullslop_protocol::Command,
-        source: Option<nullslop_protocol::ActorName>,
-    ) {
-        self.bus.submit_command_from(cmd, source);
+impl Default for AppCore {
+    fn default() -> Self {
+        Self::new()
     }
+}
+
+/// Spawns a background task that continuously drains the `AppMsg` channel
+/// and forwards to the actor host.
+///
+/// No tick dependency — messages are forwarded immediately as they arrive.
+/// The task ends when the `receiver` channel is dropped (happens when
+/// `AppCore` is dropped).
+pub fn spawn_forwarding_task(
+    receiver: Receiver<AppMsg>,
+    actor_host: ActorHostService,
+    handle: &tokio::runtime::Handle,
+) -> tokio::task::JoinHandle<()> {
+    handle.spawn(async move {
+        let async_rx = receiver.as_async();
+        loop {
+            match async_rx.recv().await {
+                Ok(msg) => match msg {
+                    AppMsg::Command { command, source } => {
+                        actor_host.send_command(&command, source.as_ref());
+                    }
+                    AppMsg::Event { event, source } => {
+                        actor_host.send_event(&event, source.as_ref());
+                    }
+                },
+                Err(_) => break, // Channel closed
+            }
+        }
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::ChatEntryKind;
-
     use super::*;
-
-    fn test_services() -> nullslop_services::Services {
-        nullslop_services::Services::new()
-    }
-
-    #[rstest::rstest]
-    fn submit_command_processes_through_bus() {
-        // Given an AppCore with components registered.
-        let mut core = AppCore::new(test_services());
-        let mut registry = nullslop_component::AppUiRegistry::new();
-        nullslop_component::register_all(&mut core.bus, &mut registry);
-
-        // When submitting a RescanPromptTemplates command and ticking.
-        core.submit_command(nullslop_protocol::Command::RescanPromptTemplates);
-        let result = core.tick();
-
-        // Then work was done and a system message was posted.
-        assert!(result.did_work);
-        let state = core.state.read();
-        let last = state.active_session().history().last().expect("should have entry");
-        assert!(matches!(&last.kind, ChatEntryKind::System(t) if t.contains("Rescanning")));
-    }
 
     #[rstest::rstest]
     fn tick_returns_no_work_when_idle() {
         // Given an AppCore with no messages.
-        let mut core = AppCore::new(test_services());
+        let mut core = AppCore::new();
 
         // When ticking with no messages.
         let result = core.tick();
@@ -261,19 +226,36 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn tick_processes_rescan_prompt_templates_command() {
-        // Given an AppCore with components registered.
-        let mut core = AppCore::new(test_services());
-        let mut registry = nullslop_component::AppUiRegistry::new();
-        nullslop_component::register_all(&mut core.bus, &mut registry);
+    fn submit_command_records_through_channel() {
+        // Given an AppCore.
+        let mut core = AppCore::new();
 
-        // When submitting RescanPromptTemplates and ticking.
-        core.submit_command(nullslop_protocol::Command::RescanPromptTemplates);
+        // When submitting a command and ticking.
+        core.submit_command(nullslop_protocol::Command::RefreshModels);
+        let result = core.tick();
+
+        // Then work was done.
+        assert!(result.did_work);
+    }
+
+    #[rstest::rstest]
+    fn processed_command_forwarded_to_actor_host() {
+        // Given an AppCore with a fake actor host.
+        use nullslop_actor_host::FakeActorHost;
+        let mut core = AppCore::new();
+        let host = std::sync::Arc::new(FakeActorHost::new());
+        core.actor_host = Some(nullslop_actor_host::ActorHostService::new(host.clone()));
+
+        // When submitting a command and ticking.
+        core.submit_command(nullslop_protocol::Command::RefreshModels);
         core.tick();
 
-        // Then a "Rescanning" system message appears in the session.
-        let state = core.state.read();
-        let last = state.active_session().history().last().expect("should have entry");
-        assert!(matches!(&last.kind, ChatEntryKind::System(t) if t.contains("Rescanning")));
+        // Then the command was forwarded to the actor host.
+        let sent = host.commands_sent();
+        assert_eq!(sent.len(), 1);
+        assert!(matches!(
+            sent[0],
+            nullslop_protocol::Command::RefreshModels
+        ));
     }
 }

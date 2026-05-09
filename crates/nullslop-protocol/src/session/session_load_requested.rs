@@ -8,15 +8,15 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::EventMsg;
 use crate::session::SessionId;
+use crate::CommandMsg;
 
 /// Request to load a full session from disk by byte offset.
 ///
 /// Carries the session ID and byte offset so the actor can seek directly
 /// to the right line in the JSONL file.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("session")]
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("session")]
 pub struct SessionLoadRequested {
     /// The session to load.
     pub session_id: SessionId,

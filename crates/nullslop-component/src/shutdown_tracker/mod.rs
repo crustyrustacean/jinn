@@ -4,17 +4,9 @@
 //! chance to clean up. When shutdown is triggered, this component waits for each
 //! actor to report completion before allowing the application to proceed with
 //! exiting.
+//!
+//! Phase 5: Handler removed — shutdown tracking will be re-implemented in Phase 7.
 
-pub mod handler;
 pub mod state;
 
-pub(crate) use handler::ShutdownTrackerHandler;
 pub use state::ShutdownTrackerState;
-
-use crate::AppBus;
-use crate::AppUiRegistry;
-
-/// Register the shutdown tracker handler.
-pub(crate) fn register(bus: &mut AppBus, _registry: &mut AppUiRegistry) {
-    ShutdownTrackerHandler.register(bus);
-}

@@ -3,6 +3,9 @@
 //! The [`ActorWorld`] creates an [`AppCore`] with [`InMemoryActorHost`] hosting
 //! the real LLM and tool orchestrator actors, backed by a fake LLM factory
 //! that simulates multi-turn tool loop behavior.
+//!
+//! Phase 7: The bus has been deleted. AppCore now uses an async forwarding
+//! task to drain the AppMsg channel and forward directly to the actor host.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -11,7 +14,6 @@ use cucumber::World;
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef};
 use nullslop_actor_host::{InMemoryActorHost, spawn_actor};
 use nullslop_component::AppState;
-use nullslop_component_core::Bus;
 use nullslop_core::{ActorMessageSink, AppCore, AppMsg, TickResult};
 use nullslop_llm::LlmActor;
 use nullslop_protocol::provider::SendToLlmProvider;
@@ -32,11 +34,11 @@ const IDLE_TICKS_TO_SETTLE: usize = 3;
 /// Cucumber world wrapping real actors for integration testing.
 ///
 /// Created fresh for each scenario. The LLM actor and tool orchestrator
-/// actor are running in-memory, communicating through the bus.
+/// actor are running in-memory, communicating through the async forwarding task.
 #[derive(World)]
 #[world(init = Self::new_actor_world)]
 pub struct ActorWorld {
-    /// The application core (bus, state, message channel).
+    /// The application core (state, message channel).
     pub core: AppCore,
     /// Runtime services.
     #[allow(dead_code)]
@@ -164,21 +166,22 @@ fn create_actor_core(
 
     let services = nullslop_services::test_services::TestServices::builder()
         .handle(handle.clone())
-        .actor_host(host_arc.clone())
         .llm_service(llm_service)
         .build();
 
-    let mut core = AppCore {
-        bus: Bus::new(),
+    // Spawn the async forwarding task.
+    let actor_host_service = nullslop_actor_host::ActorHostService::new(host_arc);
+    nullslop_core::spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
+
+    let core = AppCore {
         state: nullslop_core::State::new(AppState::default()),
-        services: services.clone(),
         sender,
-        receiver,
-        actor_host: Some(nullslop_actor_host::ActorHostService::new(host_arc)),
+        receiver: kanal::unbounded::<AppMsg>().1,
+        actor_host: Some(actor_host_service),
     };
 
     let mut registry = nullslop_component::AppUiRegistry::new();
-    nullslop_component::register_all(&mut core.bus, &mut registry);
+    nullslop_component::register_all(&mut registry);
 
     (core, services)
 }
