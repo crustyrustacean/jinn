@@ -178,6 +178,7 @@ fn create_actor_core(
         sender,
         receiver: kanal::unbounded::<AppMsg>().1,
         actor_host: Some(actor_host_service),
+        core_receiver: None,
     };
 
     let mut registry = nullslop_component::AppUiRegistry::new();

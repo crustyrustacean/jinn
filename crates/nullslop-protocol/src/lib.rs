@@ -8,6 +8,7 @@
 //! live in `nullslop-component`.
 
 pub mod action;
+pub mod app_msg;
 pub mod actor;
 pub mod actor_name;
 pub mod chat;
@@ -30,6 +31,7 @@ pub mod tool;
 
 // Re-export primary types
 pub use action::CommandAction;
+pub use app_msg::AppMsg;
 pub use actor::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 pub use actor_name::ActorName;
 pub use chat::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};

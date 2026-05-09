@@ -35,6 +35,8 @@ use nullslop_providers::ProviderRegistry;
 use nullslop_providers::ProviderRegistryService;
 use nullslop_providers::cache_path;
 use nullslop_services::Services;
+use nullslop_services::actor_channel::ActorChannelService;
+use nullslop_services::core_channel::{CoreChannelService, CoreNotification};
 use nullslop_services::strategy_registry::StrategyRegistryService;
 use nullslop_session::{JsonlSessionStore, SessionStoreService};
 use nullslop_session_actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
@@ -239,6 +241,9 @@ fn create_core_with_actor_host(
     // the channel independently.
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
 
+    // Create the actor→core notification channel.
+    let (core_notify_tx, core_notify_rx) = kanal::unbounded::<CoreNotification>();
+
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
 
@@ -362,6 +367,8 @@ fn create_core_with_actor_host(
         StrategyRegistryService::new(Arc::new(nullslop_context::DefaultStrategyDiscovery));
     let services = Services {
         handle: handle.clone(),
+        actor_channel: ActorChannelService::new(sender.clone()),
+        core_channel: CoreChannelService::new(core_notify_tx),
         llm_service: llm_service.clone(),
         provider_registry: provider_registry.clone(),
         api_keys: api_keys.clone(),
@@ -411,6 +418,7 @@ fn create_core_with_actor_host(
     let mut st_ctx = ActorContext::new("shutdown-tracker", sink.clone());
     st_ctx.set_description("Tracks actor lifecycle for shutdown coordination");
     st_ctx.set_data(state.clone());
+    st_ctx.set_data(services.clone());
     let shutdown_actor = ShutdownTrackerActor::activate(&mut st_ctx);
     let st_result = spawn_actor(
         "shutdown-tracker",
@@ -470,12 +478,13 @@ fn create_core_with_actor_host(
     let actor_host_service = ActorHostService::new(host_arc);
     spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
-    // Build AppCore with shared state (no bus, no services field).
+    // Build AppCore with shared state and the core notification receiver.
     let core = AppCore {
         state,
         sender,
         receiver: kanal::unbounded::<AppMsg>().1, // Fresh receiver (old one consumed by forwarding task)
         actor_host: Some(actor_host_service),
+        core_receiver: Some(core_notify_rx),
     };
     let mut registry = nullslop_component::AppUiRegistry::new();
     nullslop_component::register_all(&mut registry);
