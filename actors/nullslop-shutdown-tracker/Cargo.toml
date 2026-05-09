@@ -10,6 +10,7 @@ path = "src/lib.rs"
 nullslop-actor = { workspace = true }
 nullslop-protocol = { workspace = true }
 nullslop-component = { workspace = true }
+nullslop-services = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

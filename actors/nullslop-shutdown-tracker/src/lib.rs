@@ -8,6 +8,7 @@ use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_component::State;
 use nullslop_protocol::actor::{ActorShutdownCompleted, ActorStarting, ProceedWithShutdown};
 use nullslop_protocol::{Command, Event};
+use nullslop_services::Services;
 
 /// Direct message type for the shutdown tracker actor (unused).
 pub enum ShutdownTrackerDirectMsg {}
@@ -21,6 +22,7 @@ pub enum ShutdownTrackerDirectMsg {}
 /// on `AppState`.
 pub struct ShutdownTrackerActor {
     state: State,
+    services: Option<Services>,
 }
 
 impl Actor for ShutdownTrackerActor {
@@ -36,7 +38,10 @@ impl Actor for ShutdownTrackerActor {
             .take_data::<State>()
             .expect("State must be injected");
 
-        Self { state }
+        // Services is optional — not all test contexts provide it.
+        let services = ctx.take_data::<Services>();
+
+        Self { state, services }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
@@ -121,6 +126,13 @@ impl ShutdownTrackerActor {
     /// Sets `should_quit` on `AppState` when `ProceedWithShutdown` is received.
     fn on_proceed_with_shutdown(&mut self) {
         self.state.write().should_quit = true;
+
+        // Notify the core that shutdown is complete.
+        if let Some(ref services) = self.services {
+            services
+                .core_channel
+                .send(nullslop_services::CoreNotification::ShutdownComplete);
+        }
     }
 }
 
@@ -139,7 +151,7 @@ mod tests {
     fn actor_starting_tracks_actor() {
         // Given a shutdown tracker actor with fresh state.
         let state = fresh_state();
-        let mut actor = ShutdownTrackerActor { state };
+        let mut actor = ShutdownTrackerActor { state, services: None };
 
         // When processing an ActorStarting event.
         actor.on_actor_starting("echo-actor");
@@ -155,7 +167,7 @@ mod tests {
         let state = fresh_state();
         state.write().shutdown_tracker.track("echo-actor");
         state.write().shutdown_tracker.begin_shutdown();
-        let mut actor = ShutdownTrackerActor { state: state.clone() };
+        let mut actor = ShutdownTrackerActor { state: state.clone(), services: None };
 
         // When the actor completes shutdown.
         actor.on_actor_shutdown_completed("echo-actor", &create_noop_ctx());
@@ -171,7 +183,7 @@ mod tests {
         state.write().shutdown_tracker.track("actor-a");
         state.write().shutdown_tracker.track("actor-b");
         state.write().shutdown_tracker.begin_shutdown();
-        let mut actor = ShutdownTrackerActor { state: state.clone() };
+        let mut actor = ShutdownTrackerActor { state: state.clone(), services: None };
 
         // When only one actor completes shutdown.
         actor.on_actor_shutdown_completed("actor-a", &create_noop_ctx());
@@ -187,7 +199,7 @@ mod tests {
         state.write().shutdown_tracker.track("actor-a");
         state.write().shutdown_tracker.track("actor-b");
         state.write().shutdown_tracker.begin_shutdown();
-        let mut actor = ShutdownTrackerActor { state: state.clone() };
+        let mut actor = ShutdownTrackerActor { state: state.clone(), services: None };
 
         // When both actors complete shutdown.
         actor.on_actor_shutdown_completed("actor-a", &create_noop_ctx());
@@ -201,7 +213,7 @@ mod tests {
     fn proceed_with_shutdown_sets_should_quit() {
         // Given a tracker with fresh state.
         let state = fresh_state();
-        let mut actor = ShutdownTrackerActor { state };
+        let mut actor = ShutdownTrackerActor { state, services: None };
 
         // When receiving ProceedWithShutdown.
         actor.on_proceed_with_shutdown();

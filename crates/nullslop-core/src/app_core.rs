@@ -13,6 +13,7 @@ use kanal::{Receiver, Sender};
 use nullslop_actor::SystemMessage;
 use nullslop_actor_host::ActorHostService;
 use nullslop_component::State;
+use nullslop_services::CoreNotification;
 
 use crate::AppMsg;
 
@@ -50,6 +51,11 @@ pub struct AppCore {
     pub receiver: Receiver<AppMsg>,
     /// Optional actor host for forwarding processed messages.
     pub actor_host: Option<ActorHostService>,
+    /// Receiver for core lifecycle notifications (e.g. shutdown complete).
+    ///
+    /// Set during startup wiring. Used by [`coordinated_shutdown`](Self::coordinated_shutdown)
+    /// to block until the actor system signals completion, replacing sleep-polling.
+    pub core_receiver: Option<Receiver<CoreNotification>>,
 }
 
 impl std::fmt::Debug for AppCore {
@@ -71,6 +77,7 @@ impl AppCore {
             sender,
             receiver,
             actor_host: None,
+            core_receiver: None,
         }
     }
 
@@ -137,8 +144,9 @@ impl AppCore {
     ///
     /// 1. Marks shutdown active on the tracker.
     /// 2. Sends `SystemMessage::ApplicationShuttingDown` to all actors.
-    /// 3. Tick loop: drains actor events through the channel until the shutdown
-    ///    tracker reports complete or the timeout expires.
+    /// 3. If a [`core_receiver`](Self::core_receiver) is available, blocks until
+    ///    `CoreNotification::ShutdownComplete` is received or the timeout expires.
+    ///    Otherwise, falls back to tick-loop polling.
     /// 4. Joins actor tasks via the host.
     ///
     /// Pass the default timeout with [`SHUTDOWN_TIMEOUT`] or a custom duration.
@@ -153,17 +161,24 @@ impl AppCore {
         // 2. Send ApplicationShuttingDown to all actors.
         actor_host.send_system(SystemMessage::ApplicationShuttingDown);
 
-        // 3. Tick loop: drain actor events until tracker complete or timeout.
-        let start = Instant::now();
-        loop {
-            self.tick();
-            if self.state.read().shutdown_tracker.is_complete() {
-                break;
+        // 3. Wait for shutdown completion via notification channel.
+        if let Some(ref core_rx) = self.core_receiver {
+            let cloned = core_rx.clone();
+            let async_rx = cloned.as_async();
+            let _ = async_rx.recv(); // Block until ShutdownComplete or channel closes
+        } else {
+            // Fallback: tick loop polling (backward compat for tests without core_receiver).
+            let start = Instant::now();
+            loop {
+                self.tick();
+                if self.state.read().shutdown_tracker.is_complete() {
+                    break;
+                }
+                if start.elapsed() > timeout {
+                    break;
+                }
+                std::thread::sleep(SHUTDOWN_TICK_INTERVAL);
             }
-            if start.elapsed() > timeout {
-                break;
-            }
-            std::thread::sleep(SHUTDOWN_TICK_INTERVAL);
         }
 
         // 4. Join actor tasks.

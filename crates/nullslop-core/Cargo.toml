@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-nullslop-protocol = { workspace = true }
 nullslop-actor = { workspace = true }
 nullslop-actor-host = { workspace = true }
 nullslop-component = { workspace = true }
+nullslop-protocol = { workspace = true }
+nullslop-services = { workspace = true }
 kanal = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

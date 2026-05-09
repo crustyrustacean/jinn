@@ -2975,6 +2975,7 @@ dependencies = [
  "nullslop-component",
  "nullslop-component-ui",
  "nullslop-protocol",
+ "nullslop-services",
  "rstest",
  "tokio",
  "tracing",
@@ -3167,6 +3168,7 @@ dependencies = [
  "derive_more",
  "error-stack",
  "futures",
+ "kanal",
  "nullslop-actor-host",
  "nullslop-context",
  "nullslop-protocol",
@@ -3214,6 +3216,7 @@ dependencies = [
  "nullslop-actor",
  "nullslop-component",
  "nullslop-protocol",
+ "nullslop-services",
  "rstest",
  "tracing",
 ]

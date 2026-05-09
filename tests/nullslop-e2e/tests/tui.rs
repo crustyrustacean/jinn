@@ -39,8 +39,13 @@ impl TuiWorld {
             default_provider: None,
         };
         let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
+        let (actor_tx, _actor_rx) = kanal::unbounded::<nullslop_protocol::AppMsg>();
+        let (core_tx, _core_rx) = kanal::unbounded::<nullslop_services::CoreNotification>();
+
         let services = nullslop_services::Services {
             handle,
+            actor_channel: nullslop_services::ActorChannelService::new(actor_tx),
+            core_channel: nullslop_services::CoreChannelService::new(core_tx),
             llm_service: llm,
             provider_registry: nullslop_providers::ProviderRegistryService::new(
                 nullslop_providers::ProviderRegistry::from_config(config).expect("test registry"),
