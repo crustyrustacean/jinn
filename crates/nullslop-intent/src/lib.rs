@@ -4,10 +4,16 @@
 //! dedicated validator function that checks whether the intent can proceed
 //! given the current [`AppState`].
 //!
+//! The [`IntentHandler`] processes all 55 intents: it validates each intent,
+//! then acts on it — mutating [`AppState`], setting TUI signals, and returning
+//! commands/events for the coordinator actor.
+//!
 //! This crate has no TUI or async dependency. It supports headless and
 //! script modes identically to the TUI mode.
 
+pub mod handler;
 pub mod intent;
 pub mod validators;
 
+pub use handler::{IntentHandler, IntentResult};
 pub use intent::Intent;

@@ -36,9 +36,11 @@ pub mod session_picker;
 pub mod shutdown_tracker;
 pub mod status_bar;
 pub mod tab_nav;
+pub mod tui_signals;
 
 pub use app_state::AppState;
 pub use nullslop_providers::NO_PROVIDER_ID;
+pub use tui_signals::TuiSignals;
 pub use chat_input_box::ChatInputBoxState;
 pub use chat_session::ChatSessionState;
 pub use dashboard::DashboardState;

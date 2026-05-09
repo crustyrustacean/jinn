@@ -3022,8 +3022,11 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "nullslop-component",
+ "nullslop-prompt-template",
  "nullslop-protocol",
+ "nullslop-services",
  "rstest",
+ "unicode-segmentation",
  "wherror",
 ]
 
