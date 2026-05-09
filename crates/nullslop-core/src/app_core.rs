@@ -221,7 +221,7 @@ impl AppCore {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::Mode;
+    use nullslop_protocol::ChatEntryKind;
 
     use super::*;
 
@@ -236,43 +236,44 @@ mod tests {
         let mut registry = nullslop_component::AppUiRegistry::new();
         nullslop_component::register_all(&mut core.bus, &mut registry);
 
-        // When submitting a quit command and ticking.
-        core.submit_command(nullslop_protocol::Command::Quit);
+        // When submitting a RescanPromptTemplates command and ticking.
+        core.submit_command(nullslop_protocol::Command::RescanPromptTemplates);
         let result = core.tick();
 
-        // Then should_quit is true and work was done.
-        assert!(result.should_quit);
+        // Then work was done and a system message was posted.
         assert!(result.did_work);
+        let state = core.state.read();
+        let last = state.active_session().history().last().expect("should have entry");
+        assert!(matches!(&last.kind, ChatEntryKind::System(t) if t.contains("Rescanning")));
     }
 
     #[rstest::rstest]
-    fn tick_returns_false_when_not_quit() {
+    fn tick_returns_no_work_when_idle() {
         // Given an AppCore with no messages.
         let mut core = AppCore::new(test_services());
 
         // When ticking with no messages.
         let result = core.tick();
 
-        // Then returns false for both.
+        // Then returns false for did_work.
         assert!(!result.should_quit);
         assert!(!result.did_work);
     }
 
     #[rstest::rstest]
-    fn tick_processes_insert_char_command() {
-        // Given an AppCore with components registered, in Input mode.
+    fn tick_processes_rescan_prompt_templates_command() {
+        // Given an AppCore with components registered.
         let mut core = AppCore::new(test_services());
         let mut registry = nullslop_component::AppUiRegistry::new();
         nullslop_component::register_all(&mut core.bus, &mut registry);
-        core.state.write().mode = Mode::Input;
 
-        // When submitting InsertChar and ticking.
-        core.submit_command(nullslop_protocol::Command::InsertChar {
-            payload: nullslop_protocol::chat_input::InsertChar { ch: 'x' },
-        });
+        // When submitting RescanPromptTemplates and ticking.
+        core.submit_command(nullslop_protocol::Command::RescanPromptTemplates);
         core.tick();
 
-        // Then the character appears in chat_input.input_buffer.
-        assert_eq!(core.state.read().active_chat_input().text(), "x");
+        // Then a "Rescanning" system message appears in the session.
+        let state = core.state.read();
+        let last = state.active_session().history().last().expect("should have entry");
+        assert!(matches!(&last.kind, ChatEntryKind::System(t) if t.contains("Rescanning")));
     }
 }

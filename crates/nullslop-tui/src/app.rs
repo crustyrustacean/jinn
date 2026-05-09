@@ -6,9 +6,8 @@ use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
 use nullslop_component::AppUiRegistry;
 use nullslop_core::{AppCore, AppMsg};
-use nullslop_protocol::PinPosition;
-use nullslop_protocol::chat_input::ChatEntrySelectCancel;
-use nullslop_protocol::context::PinChatEntry;
+use nullslop_intent::{Intent, IntentHandler};
+use nullslop_protocol::PickerKind;
 use nullslop_protocol::{ActiveTab, Command, Mode};
 use ratatui::Frame;
 use ratatui_spatial_splits::{AreaId, SplitManager};
@@ -38,7 +37,7 @@ pub enum PaneFocus {
 
 /// Type alias for the which-key state parameterized for nullslop.
 pub type WhichKeyInstance =
-    WhichKeyState<nullslop_protocol::KeyEvent, Scope, Command, crate::keymap::KeyCategory>;
+    WhichKeyState<nullslop_protocol::KeyEvent, Scope, Intent, crate::keymap::KeyCategory>;
 
 /// Top-level application state and event loop.
 #[expect(
@@ -88,6 +87,10 @@ pub struct TuiApp {
     pub(crate) pinned_pane_visible: bool,
     /// Tracked [`AreaId`] for the pinned context sidebar pane (set when opened, cleared when closed).
     pub(crate) pinned_pane_id: Option<AreaId>,
+    /// Keymap entries with their [`Intent`] actions, populated when the keymap picker opens.
+    /// Used to execute the selected intent when the user confirms a keymap entry.
+    pub(crate) keymap_intent_entries:
+        Vec<nullslop_component::keymap_picker::KeymapEntry<Intent>>,
 }
 
 impl TuiApp {
@@ -124,6 +127,7 @@ impl TuiApp {
             pane_focus: PaneFocus::Chat,
             pinned_pane_visible: false,
             pinned_pane_id: None,
+            keymap_intent_entries: vec![],
         }
     }
 
@@ -172,6 +176,7 @@ impl TuiApp {
             pane_focus: PaneFocus::Chat,
             pinned_pane_visible: false,
             pinned_pane_id: None,
+            keymap_intent_entries: vec![],
         }
     }
 
@@ -199,10 +204,10 @@ impl TuiApp {
                             scope = ?self.which_key.scope(),
                             "key event received"
                         );
-                        let Some(cmd) = self.which_key.handle_key(protocol_key) else {
+                        let Some(intent) = self.which_key.handle_key(protocol_key) else {
                             return;
                         };
-                        self.route_command(cmd);
+                        self.route_intent(intent);
                     }
                     crossterm::event::Event::Mouse(mouse) => {
                         // Selection handling — intercept before keymap
@@ -212,7 +217,7 @@ impl TuiApp {
                         }
                         // Fall through to keymap for scroll, etc.
                         let scope = *self.which_key.scope();
-                        let Some(cmd) = self
+                        let Some(intent) = self
                             .which_key
                             .keymap()
                             .mouse_handler()
@@ -220,13 +225,16 @@ impl TuiApp {
                         else {
                             return;
                         };
-                        self.route_command(cmd);
+                        self.route_intent(intent);
                     }
                     _ => {}
                 }
             }
             Msg::Command(cmd) => {
-                self.route_command(cmd);
+                let _ = self.core.sender().send(AppMsg::Command {
+                    command: cmd,
+                    source: None,
+                });
             }
         }
     }
@@ -271,125 +279,117 @@ impl TuiApp {
         }
     }
 
-    /// Routes a command to the appropriate handler.
+    /// Routes an intent through the [`IntentHandler`] and handles TUI signals.
     ///
-    /// Commands that need `TuiApp`-level state (which-key toggle, editor suspend)
-    /// are handled directly. All other commands go through the core channel.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "command routing is inherently a large match"
-    )]
-    fn route_command(&mut self, cmd: Command) {
-        match cmd {
-            Command::ToggleWhichKey => {
-                self.which_key.toggle();
-            }
-            Command::EditInput => {
-                let initial_content = self.core.state.read().active_chat_input().text().to_owned();
-                self.suspend.request(SuspendAction::Edit {
-                    initial_content,
-                    on_result: Box::new(|result| result),
-                });
-            }
-            Command::SetMode { payload } => {
-                // Cancel any active selection when mode changes.
-                // The selectable rects are rebuilt next frame, but the selection's
-                // `bounds` may reference a now-invalid rect (e.g. a closed picker popup).
-                self.selection = mem::take(&mut self.selection).cancel();
-                // Clear keymap picker origin scope when leaving picker mode.
-                if payload.mode != Mode::Picker {
-                    self.core.state.write().keymap_picker_origin_scope = None;
-                }
-                let _ = self.core.sender().send(AppMsg::Command {
-                    command: Command::SetMode { payload },
-                    source: None,
-                });
-            }
-            Command::OpenPicker { ref payload }
-                if payload.kind == nullslop_protocol::PickerKind::Keymap =>
-            {
+    /// 1. Acquires the state write lock and calls [`IntentHandler::handle`].
+    /// 2. Collects TUI signals, commands, and mode from the result.
+    /// 3. Drops the write lock.
+    /// 4. Sends commands to the core channel.
+    /// 5. Handles TUI signals (which-key toggle, editor, pinned pane, etc.).
+    /// 6. Updates the keymap scope based on the new mode.
+    pub fn route_intent(&mut self, intent: Intent) {
+        // Step 1–3: Handle intent, collect results, release lock.
+        let (commands, signals, mode) = {
+            let mut state = self.core.state.write();
+            let result = IntentHandler::handle(&intent, &mut state);
+
+            // Populate keymap picker entries if opening the keymap picker.
+            if matches!(intent, Intent::OpenPicker { kind: PickerKind::Keymap }) {
                 let scope = *self.which_key.scope();
-                {
-                    let mut state = self.core.state.write();
-                    state.keymap_picker_origin_scope = Some(scope.to_string());
-                    let entries = if state.keymap_picker_show_all {
-                        keymap::collect_all_bindings(self.which_key.keymap())
-                    } else {
-                        keymap::collect_bindings_for_scope(self.which_key.keymap(), &scope)
-                    };
-                    state.keymap_picker.set_items(entries);
-                    state.keymap_picker.reset();
-                }
-                let _ = self.core.sender().send(AppMsg::Command {
-                    command: cmd,
-                    source: None,
-                });
-            }
-            Command::ToggleKeymapScopeFilter => {
-                let mut state = self.core.state.write();
-                state.keymap_picker_show_all = !state.keymap_picker_show_all;
-                let scope: Scope = state
-                    .keymap_picker_origin_scope
-                    .as_deref()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(*self.which_key.scope());
-                let entries = if state.keymap_picker_show_all {
+                state.keymap_picker_origin_scope = Some(scope.to_string());
+                let intent_entries = if state.keymap_picker_show_all {
                     keymap::collect_all_bindings(self.which_key.keymap())
                 } else {
                     keymap::collect_bindings_for_scope(self.which_key.keymap(), &scope)
                 };
-                state.keymap_picker.set_items(entries);
+                // Store Intent entries for executing on confirm.
+                self.keymap_intent_entries = intent_entries;
+                // Convert to Command-based entries for AppState (the command field
+                // is unused by the IntentHandler's scope filter logic).
+                let cmd_entries = self
+                    .keymap_intent_entries
+                    .iter()
+                    .map(|e| nullslop_component::keymap_picker::KeymapEntry {
+                        key_sequence: e.key_sequence.clone(),
+                        description: e.description.clone(),
+                        scope: e.scope.clone(),
+                        category: e.category.clone(),
+                        command: Command::RefreshModels, // dummy — field is unused
+                        search_text: e.search_text.clone(),
+                    })
+                    .collect();
+                state.keymap_picker.set_items(cmd_entries);
+                // Also populate all_keymap_entries for scope toggle.
+                let all_entries: Vec<_> = keymap::collect_all_bindings(self.which_key.keymap())
+                    .into_iter()
+                    .map(|e| nullslop_component::keymap_picker::KeymapEntry {
+                        key_sequence: e.key_sequence.clone(),
+                        description: e.description.clone(),
+                        scope: e.scope.clone(),
+                        category: e.category.clone(),
+                        command: Command::RefreshModels, // dummy — field is unused
+                        search_text: e.search_text.clone(),
+                    })
+                    .collect();
+                state.all_keymap_entries = all_entries;
             }
-            Command::PinnedPanelToggle => self.toggle_pinned_pane(),
-            Command::PinnedPanelOpen => self.open_pinned_pane(),
-            Command::PinnedPanelClose => self.close_pinned_pane(),
-            Command::ChatEntryPinSelected => {
-                let (session_id, entry_id) = {
-                    let state = self.core.state.read();
-                    match state.active_session().selected_entry_id() {
-                        Some(id) => (state.active_session.clone(), id.clone()),
-                        None => return,
-                    }
-                };
-                let _ = self.core.sender().send(AppMsg::Command {
-                    command: Command::PinChatEntry {
-                        payload: PinChatEntry {
-                            session_id,
-                            entry_id,
-                            position: PinPosition::Relative,
-                        },
-                    },
-                    source: None,
-                });
-            }
-            Command::NormalEscape => {
-                let session_id = self.core.state.read().active_session.clone();
-                let has_selection = self
-                    .core
-                    .state
-                    .read()
-                    .active_session()
-                    .selected_entry_index()
-                    .is_some();
-                if has_selection {
-                    let _ = self.core.sender().send(AppMsg::Command {
-                        command: Command::ChatEntrySelectCancel {
-                            payload: ChatEntrySelectCancel { session_id },
-                        },
-                        source: None,
-                    });
-                }
-                if self.pinned_pane_visible {
-                    self.close_pinned_pane();
+
+            // Cancel selection when mode changes away from Picker.
+            if matches!(intent, Intent::SetMode { .. } | Intent::NormalEscape) {
+                self.selection = mem::take(&mut self.selection).cancel();
+                if !matches!(state.mode, Mode::Picker) {
+                    state.keymap_picker_origin_scope = None;
                 }
             }
-            _ => {
-                let _ = self.core.sender().send(AppMsg::Command {
-                    command: cmd,
-                    source: None,
-                });
+
+            // Collect signals and mode before releasing lock.
+            let signals = TuiSignalsSnapshot::from_state(&state);
+            let mode = state.mode;
+            let commands = result.commands;
+
+            (commands, signals, mode)
+        };
+
+        // Step 4: Send commands to core channel.
+        for cmd in commands {
+            let _ = self.core.sender().send(AppMsg::Command {
+                command: cmd,
+                source: None,
+            });
+        }
+
+        // Step 5: Handle TUI signals.
+        if signals.toggle_whichkey {
+            self.which_key.toggle();
+        }
+        if signals.edit_requested {
+            let initial_content = self.core.state.read().active_chat_input().text().to_owned();
+            self.suspend.request(SuspendAction::Edit {
+                initial_content,
+                on_result: Box::new(|result| result),
+            });
+        }
+        if signals.pinned_pane_toggle {
+            self.toggle_pinned_pane();
+        }
+        if signals.pinned_pane_open {
+            self.open_pinned_pane();
+        }
+        if signals.pinned_pane_close {
+            self.close_pinned_pane();
+        }
+        if signals.keymap_confirmed {
+            // Read the selected entry from our Intent entries and execute it.
+            let selected_idx = self.core.state.read().keymap_picker.selection();
+            if let Some(entry) = self.keymap_intent_entries.get(selected_idx).cloned() {
+                self.route_intent(entry.command);
             }
         }
+
+        // Step 6: Update scope based on new mode.
+        let active_tab = self.core.state.read().active_tab;
+        let new_scope = scope_for_mode(mode, active_tab, self.pane_focus);
+        self.which_key.set_scope(new_scope);
     }
 
     /// Renders the application for a single frame.
@@ -448,6 +448,31 @@ impl TuiApp {
             self.close_pinned_pane();
         } else {
             self.open_pinned_pane();
+        }
+    }
+}
+
+/// Snapshot of [`nullslop_component::tui_signals::TuiSignals`] fields, copied
+/// out of AppState before releasing the write lock.
+#[derive(Debug)]
+struct TuiSignalsSnapshot {
+    toggle_whichkey: bool,
+    edit_requested: bool,
+    pinned_pane_toggle: bool,
+    pinned_pane_open: bool,
+    pinned_pane_close: bool,
+    keymap_confirmed: bool,
+}
+
+impl TuiSignalsSnapshot {
+    fn from_state(state: &nullslop_component::AppState) -> Self {
+        Self {
+            toggle_whichkey: state.tui_signals.toggle_whichkey,
+            edit_requested: state.tui_signals.edit_requested,
+            pinned_pane_toggle: state.tui_signals.pinned_pane_toggle,
+            pinned_pane_open: state.tui_signals.pinned_pane_open,
+            pinned_pane_close: state.tui_signals.pinned_pane_close,
+            keymap_confirmed: state.tui_signals.keymap_confirmed,
         }
     }
 }
@@ -670,14 +695,12 @@ mod tests {
         let mut app = test_app();
         app.which_key.set_scope(Scope::Normal);
 
-        app.route_command(Command::OpenPicker {
-            payload: nullslop_protocol::system::OpenPicker {
-                kind: nullslop_protocol::PickerKind::Keymap,
-            },
+        app.route_intent(Intent::OpenPicker {
+            kind: PickerKind::Keymap,
         });
 
         // When toggling the scope filter (false -> true).
-        app.route_command(Command::ToggleKeymapScopeFilter);
+        app.route_intent(Intent::ToggleKeymapScopeFilter);
 
         // Then show_all is true and entries include multiple scopes.
         {
@@ -700,15 +723,13 @@ mod tests {
         let mut app = test_app();
         app.which_key.set_scope(Scope::Normal);
 
-        app.route_command(Command::OpenPicker {
-            payload: nullslop_protocol::system::OpenPicker {
-                kind: nullslop_protocol::PickerKind::Keymap,
-            },
+        app.route_intent(Intent::OpenPicker {
+            kind: PickerKind::Keymap,
         });
 
         // When toggling twice (false -> true -> false).
-        app.route_command(Command::ToggleKeymapScopeFilter);
-        app.route_command(Command::ToggleKeymapScopeFilter);
+        app.route_intent(Intent::ToggleKeymapScopeFilter);
+        app.route_intent(Intent::ToggleKeymapScopeFilter);
 
         // Then show_all is false and entries are Normal-scope only (the origin scope).
         {
@@ -736,10 +757,8 @@ mod tests {
         app.which_key.set_scope(Scope::Normal);
 
         // Populate initial entries (stores origin scope).
-        app.route_command(Command::OpenPicker {
-            payload: nullslop_protocol::system::OpenPicker {
-                kind: nullslop_protocol::PickerKind::Keymap,
-            },
+        app.route_intent(Intent::OpenPicker {
+            kind: PickerKind::Keymap,
         });
 
         // Insert filter text.
@@ -749,7 +768,7 @@ mod tests {
         }
 
         // When toggling the scope filter.
-        app.route_command(Command::ToggleKeymapScopeFilter);
+        app.route_intent(Intent::ToggleKeymapScopeFilter);
 
         // Then the filter text is preserved.
         let state = app.core.state.read();

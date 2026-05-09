@@ -38,24 +38,7 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use nullslop_protocol::chat_input::{
-    AutocompleteConfirm, Clear, DeleteGrapheme, DeleteGraphemeForward, Interrupt, MoveCursorDown,
-    MoveCursorLeft, MoveCursorRight, MoveCursorToEnd, MoveCursorToStart, MoveCursorUp,
-    MoveCursorWordLeft, MoveCursorWordRight,
-};
 use nullslop_protocol::provider::{RefreshModels, RescanPromptTemplates};
-use nullslop_protocol::provider_picker::{
-    PickerBackspace, PickerConfirm, PickerMoveCursorLeft, PickerMoveCursorRight, PickerMoveDown,
-    PickerMoveUp,
-};
-use nullslop_protocol::system::{
-    ChatEntryPinSelected, DashboardSelectDown, DashboardSelectFirst, DashboardSelectLast,
-    DashboardSelectUp, EditInput, MouseScrollDown, MouseScrollUp, NormalEscape, PinnedPanelClose,
-    PinnedPanelOpen, PinnedPanelPinBottom, PinnedPanelPinCycle, PinnedPanelPinRelative,
-    PinnedPanelPinTop, PinnedPanelSelectDown, PinnedPanelSelectUp, PinnedPanelToggle,
-    PinnedPanelUnpin, Quit, ScrollDown, ScrollLineDown, ScrollLineUp, ScrollToBottom, ScrollToTop,
-    ScrollUp, ToggleKeymapScopeFilter, ToggleWhichKey,
-};
 use nullslop_protocol::{ActorName, Command, CommandAction, Event};
 
 use crate::handler::{CommandHandler, EventHandler, HandlerContext};
@@ -364,88 +347,7 @@ impl<S, Sv> Bus<S, Sv> {
         });
         let mut out = Out::new();
         match cmd {
-            Command::InsertChar { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::DeleteGrapheme => {
-                let cmd = DeleteGrapheme;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::SubmitMessage { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::Clear => {
-                let cmd = Clear;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::Interrupt => {
-                let cmd = Interrupt;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::MoveCursorLeft => {
-                let cmd = MoveCursorLeft;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::MoveCursorRight => {
-                let cmd = MoveCursorRight;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::MoveCursorToStart => {
-                let cmd = MoveCursorToStart;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::MoveCursorToEnd => {
-                let cmd = MoveCursorToEnd;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::DeleteGraphemeForward => {
-                let cmd = DeleteGraphemeForward;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::MoveCursorWordLeft => {
-                let cmd = MoveCursorWordLeft;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::MoveCursorWordRight => {
-                let cmd = MoveCursorWordRight;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::MoveCursorUp => {
-                let cmd = MoveCursorUp;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::MoveCursorDown => {
-                let cmd = MoveCursorDown;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::SetMode { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::Quit => {
-                let cmd = Quit;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::EditInput => {
-                let cmd = EditInput;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::ToggleWhichKey => {
-                let cmd = ToggleWhichKey;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::SwitchTab { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
             Command::SendMessage { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::CancelStream { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::SendToLlmProvider { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::AssemblePrompt { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
             Command::SwitchPromptStrategy { payload } => {
@@ -460,88 +362,26 @@ impl<S, Sv> Bus<S, Sv> {
             Command::UnpinChatEntry { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
-            Command::ChatEntrySelectNext { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::ChatEntrySelectPrev { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::ChatEntrySelectCancel { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::PushChatEntry { payload } => {
-                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
             Command::EnqueueUserMessage { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
             Command::SetChatInputText { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
-            Command::ProceedWithShutdown { payload } => {
+            Command::PushChatEntry { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
-            Command::ScrollUp => {
-                let cmd = ScrollUp;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::ScrollDown => {
-                let cmd = ScrollDown;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::MouseScrollUp => {
-                let cmd = MouseScrollUp;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::MouseScrollDown => {
-                let cmd = MouseScrollDown;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::ScrollLineUp => {
-                let cmd = ScrollLineUp;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::ScrollLineDown => {
-                let cmd = ScrollLineDown;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::ScrollToTop => {
-                let cmd = ScrollToTop;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::ScrollToBottom => {
-                let cmd = ScrollToBottom;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            Command::CancelStream { payload } => {
+                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
             Command::ProviderSwitch { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
-            Command::PickerInsertChar { payload } => {
+            Command::AssemblePrompt { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
-            Command::PickerBackspace => {
-                let cmd = PickerBackspace;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PickerConfirm => {
-                let cmd = PickerConfirm;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PickerMoveUp => {
-                let cmd = PickerMoveUp;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PickerMoveDown => {
-                let cmd = PickerMoveDown;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PickerMoveCursorLeft => {
-                let cmd = PickerMoveCursorLeft;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PickerMoveCursorRight => {
-                let cmd = PickerMoveCursorRight;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            Command::SendToLlmProvider { payload } => {
+                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
             Command::RefreshModels => {
                 let cmd = RefreshModels;
@@ -563,92 +403,17 @@ impl<S, Sv> Bus<S, Sv> {
             Command::PushToolResult { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
-            Command::DashboardSelectDown => {
-                let cmd = DashboardSelectDown;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::DashboardSelectUp => {
-                let cmd = DashboardSelectUp;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::DashboardSelectFirst => {
-                let cmd = DashboardSelectFirst;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::DashboardSelectLast => {
-                let cmd = DashboardSelectLast;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::OpenPicker { payload } => {
+            Command::ProceedWithShutdown { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
-            }
-            Command::ToggleKeymapScopeFilter => {
-                let cmd = ToggleKeymapScopeFilter;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
             }
             Command::SessionLoadCompleted { payload } => {
                 self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
-            Command::SessionNew => {
-                use nullslop_protocol::SessionNew;
-                let cmd = SessionNew;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
+            Command::LoadPickerEntries { payload } => {
+                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
-            Command::PinnedPanelToggle => {
-                let cmd = PinnedPanelToggle;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PinnedPanelOpen => {
-                let cmd = PinnedPanelOpen;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PinnedPanelClose => {
-                let cmd = PinnedPanelClose;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PinnedPanelSelectDown => {
-                let cmd = PinnedPanelSelectDown;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PinnedPanelSelectUp => {
-                let cmd = PinnedPanelSelectUp;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PinnedPanelUnpin => {
-                let cmd = PinnedPanelUnpin;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PinnedPanelPinTop => {
-                let cmd = PinnedPanelPinTop;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PinnedPanelPinBottom => {
-                let cmd = PinnedPanelPinBottom;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PinnedPanelPinRelative => {
-                let cmd = PinnedPanelPinRelative;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::PinnedPanelPinCycle => {
-                let cmd = PinnedPanelPinCycle;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::ChatEntryPinSelected => {
-                let cmd = ChatEntryPinSelected;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::NormalEscape => {
-                let cmd = NormalEscape;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::AutocompleteConfirm => {
-                let cmd = AutocompleteConfirm;
-                self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
-            }
-            Command::LoadPickerEntries { .. } | Command::SessionLoadRequested { .. } => {
-                // Domain commands — will be handled by the coordinator actor (Phase 7).
-                // No-op in the current bus dispatch.
+            Command::SessionLoadRequested { payload } => {
+                self.dispatch_command_to_handlers(&payload, state, services, &mut out);
             }
         }
         self.flush_out(out);

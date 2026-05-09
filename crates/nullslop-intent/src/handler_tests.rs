@@ -21,9 +21,9 @@ use nullslop_component::provider_picker::entries::PickerEntry;
 use nullslop_component::session_picker::entries::SessionEntry;
 use nullslop_component::AppState;
 use nullslop_protocol::context::PinChatEntry;
-use nullslop_protocol::tab::SwitchTab;
+use nullslop_protocol::tab::TabDirection;
 use nullslop_protocol::{
-    ChatEntry, Command, Mode, PickerKind, PinPosition, SessionId, TabDirection,
+    ChatEntry, Command, Mode, PickerKind, PinPosition, SessionId,
 };
 
 use super::IntentHandler;
@@ -117,20 +117,14 @@ fn submit_message_noop_with_empty_buffer() {
 fn autocomplete_confirm_falls_back_to_switch_tab() {
     // Given a state with no autocomplete active.
     let mut state = AppState::default();
+    let prev_tab = state.active_tab;
 
     // When handling AutocompleteConfirm.
     let result = handle(&Intent::AutocompleteConfirm, &mut state);
 
-    // Then a SwitchTab(Next) command is returned.
-    assert_eq!(result.commands.len(), 1);
-    assert!(matches!(
-        &result.commands[0],
-        Command::SwitchTab {
-            payload: SwitchTab {
-                direction: TabDirection::Next
-            }
-        }
-    ));
+    // Then the tab has advanced.
+    assert_ne!(state.active_tab, prev_tab);
+    assert!(result.commands.is_empty());
 }
 
 #[rstest::rstest]
@@ -515,13 +509,11 @@ fn normal_escape_clears_selection() {
     // When handling NormalEscape.
     let result = handle(&Intent::NormalEscape, &mut state);
 
-    // Then a ChatEntrySelectCancel command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::ChatEntrySelectCancel { .. }
-    )));
+    // Then the selection is cleared.
+    assert!(state.active_session().selected_entry_index().is_none());
     // And pinned_pane_close signal is set.
     assert!(state.tui_signals.pinned_pane_close);
+    assert!(result.commands.is_empty());
 }
 
 #[rstest::rstest]
@@ -532,11 +524,8 @@ fn normal_escape_sets_close_signal_even_without_selection() {
     // When handling NormalEscape.
     let result = handle(&Intent::NormalEscape, &mut state);
 
-    // Then no ChatEntrySelectCancel command.
-    assert!(!result.commands.iter().any(|c| matches!(
-        c,
-        Command::ChatEntrySelectCancel { .. }
-    )));
+    // Then no commands.
+    assert!(result.commands.is_empty());
     // But pinned_pane_close signal is still set.
     assert!(state.tui_signals.pinned_pane_close);
 }
@@ -655,7 +644,7 @@ fn picker_backspace_removes_from_filter() {
 }
 
 #[rstest::rstest]
-fn picker_confirm_provider_returns_switch_and_set_mode() {
+fn picker_confirm_provider_returns_provider_switch() {
     // Given a state with active provider picker and a selected entry.
     let mut state = AppState {
         active_picker_kind: Some(PickerKind::Provider),
@@ -677,19 +666,16 @@ fn picker_confirm_provider_returns_switch_and_set_mode() {
     // When handling PickerConfirm.
     let result = handle(&Intent::PickerConfirm, &mut state);
 
-    // Then ProviderSwitch and SetMode commands are returned.
+    // Then a ProviderSwitch command is returned and mode is Normal.
     assert!(result.commands.iter().any(|c| matches!(
         c,
         Command::ProviderSwitch { .. }
     )));
-    assert!(result
-        .commands
-        .iter()
-        .any(|c| matches!(c, Command::SetMode { .. })));
+    assert_eq!(state.mode, Mode::Normal);
 }
 
 #[rstest::rstest]
-fn picker_confirm_session_returns_session_load_command_and_set_mode() {
+fn picker_confirm_session_returns_session_load_command() {
     // Given a state with active session picker and a selected entry.
     let mut state = AppState {
         active_picker_kind: Some(PickerKind::Session),
@@ -707,20 +693,17 @@ fn picker_confirm_session_returns_session_load_command_and_set_mode() {
 
     // Then session_loading is true.
     assert!(state.session_loading);
-    // And a SessionLoadRequested command is returned (not event).
+    // And a SessionLoadRequested command is returned.
     assert!(result.commands.iter().any(|c| matches!(
         c,
         Command::SessionLoadRequested { .. }
     )));
-    // And a SetMode command is returned.
-    assert!(result
-        .commands
-        .iter()
-        .any(|c| matches!(c, Command::SetMode { .. })));
+    // And mode is Normal.
+    assert_eq!(state.mode, Mode::Normal);
 }
 
 #[rstest::rstest]
-fn picker_confirm_keymap_returns_stored_command() {
+fn picker_confirm_keymap_sets_mode_and_signal() {
     // Given a state with active keymap picker.
     let mut state = AppState {
         active_picker_kind: Some(PickerKind::Keymap),
@@ -731,19 +714,17 @@ fn picker_confirm_keymap_returns_stored_command() {
         description: "quit".to_owned(),
         scope: "Normal".to_owned(),
         category: "General".to_owned(),
-        command: Command::Quit,
+        command: Command::RefreshModels,
         search_text: "q quit".to_owned(),
     }]);
 
     // When handling PickerConfirm.
     let result = handle(&Intent::PickerConfirm, &mut state);
 
-    // Then SetMode(Normal) and Quit commands are returned.
-    assert!(result.commands.iter().any(|c| matches!(c, Command::Quit)));
-    assert!(result
-        .commands
-        .iter()
-        .any(|c| matches!(c, Command::SetMode { .. })));
+    // Then mode is Normal and keymap_confirmed signal is set.
+    assert_eq!(state.mode, Mode::Normal);
+    assert!(state.tui_signals.keymap_confirmed);
+    assert!(result.commands.is_empty());
 }
 
 #[rstest::rstest]
@@ -790,11 +771,13 @@ fn picker_confirm_strategy_updates_default() {
         state.default_strategy,
         nullslop_protocol::PromptStrategyId::passthrough()
     );
-    // And SwitchPromptStrategy and SetMode commands are returned.
+    // And SwitchPromptStrategy command is returned.
     assert!(result.commands.iter().any(|c| matches!(
         c,
         Command::SwitchPromptStrategy { .. }
     )));
+    // And mode is Normal.
+    assert_eq!(state.mode, Mode::Normal);
 }
 
 #[rstest::rstest]
@@ -930,7 +913,7 @@ fn toggle_keymap_scope_filter_toggles_flag() {
             description: "quit".to_owned(),
             scope: "Normal".to_owned(),
             category: "General".to_owned(),
-            command: Command::Quit,
+            command: Command::RefreshModels,
             search_text: "q quit".to_owned(),
         }],
         keymap_picker_origin_scope: Some("Input".to_owned()),
@@ -960,10 +943,7 @@ fn session_new_creates_fresh_session() {
     // Then a new session is created.
     assert_ne!(state.active_session, old_id);
     assert!(state.active_session().history().is_empty());
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::SetMode { .. }
-    )));
+    assert_eq!(state.mode, Mode::Normal);
 }
 
 #[rstest::rstest]

@@ -201,7 +201,7 @@ mod tests {
             description: "quit".to_owned(),
             scope: "normal".to_owned(),
             category: "general".to_owned(),
-            command: nullslop_protocol::Command::Quit,
+            command: nullslop_protocol::Command::RefreshModels,
             search_text: "q quit".to_owned(),
         }]);
 

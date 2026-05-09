@@ -4,7 +4,6 @@ mod active_tab;
 mod command;
 
 pub use active_tab::ActiveTab;
-pub use command::SwitchTab;
 use serde::{Deserialize, Serialize};
 
 /// Direction for tab cycling.

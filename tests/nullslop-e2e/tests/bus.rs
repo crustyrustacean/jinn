@@ -194,6 +194,16 @@ impl BusWorld {
         self.bus.process_commands(&mut self.state, &self.services);
     }
 
+    /// Handles an intent through the IntentHandler, then submits any resulting
+    /// commands to the bus and processes them.
+    fn handle_intent_and_process(&mut self, intent: nullslop_intent::Intent) {
+        let result = nullslop_intent::IntentHandler::handle(&intent, &mut self.state);
+        for cmd in result.commands {
+            self.bus.submit_command(cmd);
+        }
+        self.bus.process_commands(&mut self.state, &self.services);
+    }
+
     /// Drains processed commands, returning how many match a predicate.
     fn count_processed_commands(&mut self, pred: impl Fn(&npr::Command) -> bool) -> usize {
         self.bus
@@ -282,88 +292,79 @@ fn given_services_with_unavailable(world: &mut BusWorld) {
 fn when_insert_char(world: &mut BusWorld, ch: String) {
     let ch_str = ch.replace("\\n", "\n").replace("\\t", "\t");
     let ch = ch_str.chars().next().expect("single char");
-    world.submit_and_process(npr::Command::InsertChar {
-        payload: npr::chat_input::InsertChar { ch },
-    });
+    world.handle_intent_and_process(nullslop_intent::Intent::InsertChar { ch });
 }
 
 #[cucumber::when(expr = "I submit DeleteGrapheme")]
 fn when_delete_grapheme(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::DeleteGrapheme);
+    world.handle_intent_and_process(nullslop_intent::Intent::DeleteGrapheme);
 }
 
 #[cucumber::when(expr = "I submit DeleteGraphemeForward")]
 fn when_delete_grapheme_forward(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::DeleteGraphemeForward);
+    world.handle_intent_and_process(nullslop_intent::Intent::DeleteGraphemeForward);
 }
 
 #[cucumber::when(expr = "I submit SubmitMessage")]
 fn when_submit_message(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::SubmitMessage {
-        payload: npr::chat_input::SubmitMessage {
-            session_id: world.state.active_session.clone(),
-            text: String::new(),
-        },
-    });
+    world.handle_intent_and_process(nullslop_intent::Intent::SubmitMessage);
 }
 
 #[cucumber::when(expr = "I submit Clear")]
 fn when_clear(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::Clear);
+    world.handle_intent_and_process(nullslop_intent::Intent::Interrupt);
 }
 
 #[cucumber::when(expr = "I submit Interrupt")]
 fn when_interrupt(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::Interrupt);
+    world.handle_intent_and_process(nullslop_intent::Intent::Interrupt);
 }
 
 #[cucumber::when(expr = "I submit SetMode {word}")]
 fn when_set_mode(world: &mut BusWorld, mode: String) {
-    world.submit_and_process(npr::Command::SetMode {
-        payload: npr::system::SetMode {
-            mode: parse_mode(&mode),
-        },
+    world.handle_intent_and_process(nullslop_intent::Intent::SetMode {
+        mode: parse_mode(&mode),
     });
 }
 
 #[cucumber::when(expr = "I submit MoveCursorLeft")]
 fn when_move_cursor_left(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::MoveCursorLeft);
+    world.handle_intent_and_process(nullslop_intent::Intent::MoveCursorLeft);
 }
 
 #[cucumber::when(expr = "I submit MoveCursorRight")]
 fn when_move_cursor_right(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::MoveCursorRight);
+    world.handle_intent_and_process(nullslop_intent::Intent::MoveCursorRight);
 }
 
 #[cucumber::when(expr = "I submit MoveCursorToStart")]
 fn when_move_cursor_to_start(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::MoveCursorToStart);
+    world.handle_intent_and_process(nullslop_intent::Intent::MoveCursorToStart);
 }
 
 #[cucumber::when(expr = "I submit MoveCursorToEnd")]
 fn when_move_cursor_to_end(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::MoveCursorToEnd);
+    world.handle_intent_and_process(nullslop_intent::Intent::MoveCursorToEnd);
 }
 
 #[cucumber::when(expr = "I submit MoveCursorWordLeft")]
 fn when_move_cursor_word_left(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::MoveCursorWordLeft);
+    world.handle_intent_and_process(nullslop_intent::Intent::MoveCursorWordLeft);
 }
 
 #[cucumber::when(expr = "I submit MoveCursorWordRight")]
 fn when_move_cursor_word_right(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::MoveCursorWordRight);
+    world.handle_intent_and_process(nullslop_intent::Intent::MoveCursorWordRight);
 }
 
 #[cucumber::when(expr = "I submit MoveCursorUp")]
 fn when_move_cursor_up(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::MoveCursorUp);
+    world.handle_intent_and_process(nullslop_intent::Intent::MoveCursorUp);
 }
 
 #[cucumber::when(expr = "I submit MoveCursorDown")]
 fn when_move_cursor_down(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::MoveCursorDown);
+    world.handle_intent_and_process(nullslop_intent::Intent::MoveCursorDown);
 }
 
 #[cucumber::when(expr = "I submit EnqueueUserMessage with text {string}")]
@@ -422,39 +423,37 @@ fn when_stream_completed_canceled(world: &mut BusWorld) {
 #[cucumber::when(expr = "I submit PickerInsertChar with {string}")]
 fn when_picker_insert_char(world: &mut BusWorld, ch: String) {
     let ch = ch.chars().next().expect("single char");
-    world.submit_and_process(npr::Command::PickerInsertChar {
-        payload: npr::provider_picker::PickerInsertChar { ch },
-    });
+    world.handle_intent_and_process(nullslop_intent::Intent::PickerInsertChar { ch });
 }
 
 #[cucumber::when(expr = "I submit PickerBackspace")]
 fn when_picker_backspace(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::PickerBackspace);
+    world.handle_intent_and_process(nullslop_intent::Intent::PickerBackspace);
 }
 
 #[cucumber::when(expr = "I submit PickerMoveUp")]
 fn when_picker_move_up(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::PickerMoveUp);
+    world.handle_intent_and_process(nullslop_intent::Intent::PickerMoveUp);
 }
 
 #[cucumber::when(expr = "I submit PickerMoveDown")]
 fn when_picker_move_down(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::PickerMoveDown);
+    world.handle_intent_and_process(nullslop_intent::Intent::PickerMoveDown);
 }
 
 #[cucumber::when(expr = "I submit PickerConfirm")]
 fn when_picker_confirm(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::PickerConfirm);
+    world.handle_intent_and_process(nullslop_intent::Intent::PickerConfirm);
 }
 
 #[cucumber::when(expr = "I submit PickerMoveCursorLeft")]
 fn when_picker_move_cursor_left(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::PickerMoveCursorLeft);
+    world.handle_intent_and_process(nullslop_intent::Intent::PickerMoveCursorLeft);
 }
 
 #[cucumber::when(expr = "I submit PickerMoveCursorRight")]
 fn when_picker_move_cursor_right(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::PickerMoveCursorRight);
+    world.handle_intent_and_process(nullslop_intent::Intent::PickerMoveCursorRight);
 }
 
 // --- Then steps ---
@@ -876,12 +875,12 @@ fn when_push_actor_entry(world: &mut BusWorld, source: String, text: String) {
 
 #[cucumber::when(expr = "I submit ScrollUp")]
 fn when_scroll_up(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::ScrollUp);
+    world.handle_intent_and_process(nullslop_intent::Intent::ScrollUp);
 }
 
 #[cucumber::when(expr = "I submit ScrollDown")]
 fn when_scroll_down(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::ScrollDown);
+    world.handle_intent_and_process(nullslop_intent::Intent::ScrollDown);
 }
 
 #[cucumber::then(expr = "a ChatEntrySubmitted event should have been submitted")]
@@ -1104,9 +1103,7 @@ fn when_submit_open_picker(world: &mut BusWorld, kind: String) {
         "ContextAssembly" => npr::PickerKind::ContextAssembly,
         _ => panic!("unknown picker kind: {kind}"),
     };
-    world.submit_and_process(npr::Command::OpenPicker {
-        payload: npr::system::OpenPicker { kind: picker_kind },
-    });
+    world.handle_intent_and_process(nullslop_intent::Intent::OpenPicker { kind: picker_kind });
 }
 
 #[cucumber::then(expr = "the context strategy picker filter should be {string}")]
@@ -1167,22 +1164,22 @@ fn given_dashboard_has_3_actors(world: &mut BusWorld, a: String, b: String, c: S
 
 #[cucumber::when(expr = "I submit DashboardSelectDown")]
 fn when_dashboard_select_down(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::DashboardSelectDown);
+    world.handle_intent_and_process(nullslop_intent::Intent::DashboardSelectDown);
 }
 
 #[cucumber::when(expr = "I submit DashboardSelectUp")]
 fn when_dashboard_select_up(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::DashboardSelectUp);
+    world.handle_intent_and_process(nullslop_intent::Intent::DashboardSelectUp);
 }
 
 #[cucumber::when(expr = "I submit DashboardSelectFirst")]
 fn when_dashboard_select_first(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::DashboardSelectFirst);
+    world.handle_intent_and_process(nullslop_intent::Intent::DashboardSelectFirst);
 }
 
 #[cucumber::when(expr = "I submit DashboardSelectLast")]
 fn when_dashboard_select_last(world: &mut BusWorld) {
-    world.submit_and_process(npr::Command::DashboardSelectLast);
+    world.handle_intent_and_process(nullslop_intent::Intent::DashboardSelectLast);
 }
 
 #[cucumber::then(expr = "the dashboard selected index should be {int}")]

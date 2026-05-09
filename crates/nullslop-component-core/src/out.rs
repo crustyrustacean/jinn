@@ -54,7 +54,7 @@ impl Out {
 
 #[cfg(test)]
 mod tests {
-    use npr::chat_input::InsertChar;
+    use npr::provider::RefreshModels;
     use nullslop_protocol as npr;
 
     use super::*;
@@ -76,9 +76,7 @@ mod tests {
         let mut out = Out::new();
 
         // When submitting a command.
-        out.submit_command(Command::InsertChar {
-            payload: InsertChar { ch: 'a' },
-        });
+        out.submit_command(Command::RefreshModels);
 
         // Then it is not empty and has one command.
         assert!(!out.is_empty());
@@ -109,7 +107,7 @@ mod tests {
     fn drain_commands_takes_and_clears() {
         // Given an Out with a command.
         let mut out = Out::new();
-        out.submit_command(Command::Quit);
+        out.submit_command(Command::RefreshModels);
 
         // When draining commands.
         let cmds = out.drain_commands();
@@ -160,7 +158,7 @@ mod tests {
         let mut out = Out::new();
 
         // When submitting both commands and events.
-        out.submit_command(Command::Quit);
+        out.submit_command(Command::RefreshModels);
         out.submit_event(Event::KeyDown {
             payload: npr::system::KeyDown {
                 key: npr::KeyEvent {
@@ -169,10 +167,12 @@ mod tests {
                 },
             },
         });
-        out.submit_command(Command::DeleteGrapheme);
+        out.submit_command(Command::RescanPromptTemplates);
 
         // Then both buffers contain their items.
         assert_eq!(out.commands.len(), 2);
+        assert!(matches!(out.commands[0], Command::RefreshModels));
+        assert!(matches!(out.commands[1], Command::RescanPromptTemplates));
         assert_eq!(out.events.len(), 1);
         assert!(!out.is_empty());
     }

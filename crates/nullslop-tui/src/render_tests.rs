@@ -385,7 +385,7 @@ fn keymap_picker_state() -> nullslop_component::AppState {
             description: "quit".to_owned(),
             scope: "Normal".to_owned(),
             category: "General".to_owned(),
-            command: Command::Quit,
+            command: Command::RefreshModels, // dummy — field unused for rendering
             search_text: "q quit".to_owned(),
         },
         KeymapEntry {
@@ -393,7 +393,7 @@ fn keymap_picker_state() -> nullslop_component::AppState {
             description: "scroll to top".to_owned(),
             scope: "Normal".to_owned(),
             category: "Navigation".to_owned(),
-            command: Command::ScrollToTop,
+            command: Command::RefreshModels, // dummy — field unused for rendering
             search_text: "gg scroll to top".to_owned(),
         },
         KeymapEntry {
@@ -401,9 +401,7 @@ fn keymap_picker_state() -> nullslop_component::AppState {
             description: "set mode normal".to_owned(),
             scope: "Picker".to_owned(),
             category: "General".to_owned(),
-            command: Command::SetMode {
-                payload: nullslop_protocol::system::SetMode { mode: Mode::Normal },
-            },
+            command: Command::RefreshModels, // dummy — field unused for rendering
             search_text: "<esc> set mode normal".to_owned(),
         },
     ];

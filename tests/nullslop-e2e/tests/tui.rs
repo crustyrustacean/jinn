@@ -76,6 +76,12 @@ impl TuiWorld {
         self.app.handle_msg(nullslop_tui::msg::Msg::Command(cmd));
         self.app.core.tick();
     }
+
+    /// Routes an intent through the app and ticks the core.
+    fn route_intent(&mut self, intent: nullslop_intent::Intent) {
+        self.app.route_intent(intent);
+        self.app.core.tick();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +196,7 @@ fn when_routes_push_chat_entry(world: &mut TuiWorld, source: String, text: Strin
 /// Routes a ToggleWhichKey command directly.
 #[cucumber::when(expr = "the app routes the ToggleWhichKey command")]
 fn when_routes_toggle_which_key(world: &mut TuiWorld) {
-    world.route_command(nullslop_protocol::Command::ToggleWhichKey);
+    world.route_intent(nullslop_intent::Intent::ToggleWhichkey);
 }
 
 // --- Then steps ---
@@ -356,8 +362,8 @@ fn run_headless_script(world: &mut TuiWorld, content: &str) {
             );
             drop(state_read);
             world.app.which_key.set_scope(scope);
-            if let Some(cmd) = world.app.which_key.handle_key(key) {
-                world.route_command(cmd);
+            if let Some(intent) = world.app.which_key.handle_key(key) {
+                world.route_intent(intent);
             }
         }
     }
