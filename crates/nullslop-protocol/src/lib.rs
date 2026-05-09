@@ -16,6 +16,7 @@ pub mod command;
 pub mod context;
 pub mod custom;
 pub mod event;
+pub mod intent;
 pub mod key;
 pub mod mode;
 pub mod picker_kind;
@@ -38,6 +39,7 @@ pub use context::{
 };
 pub use custom::{CommandMsg, CommandName, EventMsg, EventTypeName};
 pub use event::Event;
+pub use intent::Intent;
 pub use key::{Key, KeyEvent, Modifiers};
 pub use mode::Mode;
 pub use nullslop_protocol_derive::{CommandMsg, EventMsg};

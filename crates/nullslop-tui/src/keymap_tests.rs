@@ -1,4 +1,4 @@
-use nullslop_intent::Intent;
+use nullslop_protocol::Intent;
 use nullslop_protocol::{Key, KeyEvent, Modifiers, PickerKind, TabDirection};
 use ratatui_which_key::Key as _;
 

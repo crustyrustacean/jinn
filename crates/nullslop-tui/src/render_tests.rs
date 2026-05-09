@@ -1,6 +1,6 @@
 use super::*;
 use crate::selection::SelectionState;
-use nullslop_protocol::Command;
+use nullslop_protocol::Intent;
 use nullslop_selection_widget::compute_popup_rect;
 use ratatui::style::Modifier;
 
@@ -385,7 +385,7 @@ fn keymap_picker_state() -> nullslop_component::AppState {
             description: "quit".to_owned(),
             scope: "Normal".to_owned(),
             category: "General".to_owned(),
-            command: Command::RefreshModels, // dummy — field unused for rendering
+            command: Intent::Quit,
             search_text: "q quit".to_owned(),
         },
         KeymapEntry {
@@ -393,7 +393,7 @@ fn keymap_picker_state() -> nullslop_component::AppState {
             description: "scroll to top".to_owned(),
             scope: "Normal".to_owned(),
             category: "Navigation".to_owned(),
-            command: Command::RefreshModels, // dummy — field unused for rendering
+            command: Intent::ScrollToTop,
             search_text: "gg scroll to top".to_owned(),
         },
         KeymapEntry {
@@ -401,7 +401,7 @@ fn keymap_picker_state() -> nullslop_component::AppState {
             description: "set mode normal".to_owned(),
             scope: "Picker".to_owned(),
             category: "General".to_owned(),
-            command: Command::RefreshModels, // dummy — field unused for rendering
+            command: Intent::SetMode { mode: Mode::Normal },
             search_text: "<esc> set mode normal".to_owned(),
         },
     ];

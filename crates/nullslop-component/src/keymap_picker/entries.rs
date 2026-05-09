@@ -16,12 +16,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 /// A single fully-resolved keymap binding, ready for display in the picker.
-///
-/// Generic over the action type `A` so the picker display logic stays in
-/// `nullslop-component` while the concrete action type (`Intent`) is chosen
-/// by the crate that constructs entries.
 #[derive(Debug, Clone)]
-pub struct KeymapEntry<A> {
+pub struct KeymapEntry {
     /// Full key sequence string (e.g., `"gg"`, `"gmp"`, `"<c-p>"`).
     pub key_sequence: String,
     /// Command description from the keymap (e.g., `"scroll to top"`).
@@ -31,13 +27,13 @@ pub struct KeymapEntry<A> {
     /// Category name (e.g., `"General"`, `"Navigation"`, `"Input"`).
     pub category: String,
     /// The action to execute when this entry is confirmed.
-    pub command: A,
+    pub command: nullslop_protocol::Intent,
     /// Pre-computed searchable text combining key sequence and description.
     /// Used by fuzzy matching so users can search by either keys or description.
     pub search_text: String,
 }
 
-impl<A: std::fmt::Debug + 'static> PickerItem for KeymapEntry<A> {
+impl PickerItem for KeymapEntry {
     fn display_label(&self) -> &str {
         // Returns pre-computed search text for fuzzy matching.
         // Combines key_sequence + description so users can search by either.
@@ -263,14 +259,14 @@ mod tests {
         description: &str,
         scope: &str,
         category: &str,
-    ) -> KeymapEntry<&'static str> {
+    ) -> KeymapEntry {
         let search_text = format!("{key_sequence} {description}");
         KeymapEntry {
             key_sequence: key_sequence.to_owned(),
             description: description.to_owned(),
             scope: scope.to_owned(),
             category: category.to_owned(),
-            command: "test-command",
+            command: nullslop_protocol::Intent::Quit,
             search_text,
         }
     }

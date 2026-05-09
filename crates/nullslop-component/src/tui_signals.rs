@@ -11,7 +11,7 @@
 // GNU Affero General Public License for more details.
 //
 // You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+// along with this program.  If not, not, see <https://www.gnu.org/licenses/>.
 
 //! Signals from the [`IntentHandler`] for the outer platform layer.
 //!
@@ -43,10 +43,6 @@ pub struct TuiSignals {
 
     /// The pinned pane should be closed.
     pub pinned_pane_close: bool,
-
-    /// A keymap picker entry was confirmed. The TUI layer should read the
-    /// selected entry's intent from its own keymap entries and execute it.
-    pub keymap_confirmed: bool,
 }
 
 impl Default for TuiSignals {
@@ -65,7 +61,6 @@ impl TuiSignals {
             pinned_pane_toggle: false,
             pinned_pane_open: false,
             pinned_pane_close: false,
-            keymap_confirmed: false,
         }
     }
 
@@ -76,7 +71,6 @@ impl TuiSignals {
         self.pinned_pane_toggle = false;
         self.pinned_pane_open = false;
         self.pinned_pane_close = false;
-        self.keymap_confirmed = false;
     }
 }
 
@@ -95,7 +89,6 @@ mod tests {
         assert!(!signals.pinned_pane_toggle);
         assert!(!signals.pinned_pane_open);
         assert!(!signals.pinned_pane_close);
-        assert!(!signals.keymap_confirmed);
     }
 
     #[rstest::rstest]
@@ -115,6 +108,5 @@ mod tests {
         assert!(!signals.pinned_pane_toggle);
         assert!(!signals.pinned_pane_open);
         assert!(!signals.pinned_pane_close);
-        assert!(!signals.keymap_confirmed);
     }
 }
