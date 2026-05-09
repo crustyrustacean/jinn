@@ -2,7 +2,7 @@
 //!
 //! Elements draw within an allocated area on the frame. They are
 //! separate from command/event handlers and communicate through
-//! [`AppState`] — handlers mutate state during processing, elements
+//! `AppState` — handlers mutate state during processing, elements
 //! read state during rendering.
 
 use ratatui::{Frame, layout::Rect};

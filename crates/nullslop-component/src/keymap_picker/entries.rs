@@ -2,7 +2,7 @@
 //!
 //! [`KeymapEntry`] represents a single fully-resolved leaf binding from the
 //! keymap — a key sequence, its description, scope, category, and the command
-//! it triggers. It implements [`PickerItem`] so [`SelectionState`] can
+//! it triggers. It implements [`PickerItem`] so `SelectionState` can
 //! fuzzy-filter and render keymap entries in the picker overlay.
 //!
 //! The tree-walking collection functions that build `KeymapEntry` lists live

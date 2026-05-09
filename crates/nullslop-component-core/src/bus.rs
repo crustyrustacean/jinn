@@ -7,14 +7,14 @@
 //!
 //! - [`process_commands`](Bus::process_commands) drains the command queue and
 //!   dispatches each command to its registered handlers. If handlers submit new
-//!   commands via [`Out`](crate::Out), those are processed in subsequent iterations
+//!   commands via [`Out`], those are processed in subsequent iterations
 //!   (with a configurable [`max_iterations`](Bus::with_max_iterations) guard).
 //! - [`process_events`](Bus::process_events) drains the event queue in a single
 //!   pass. All handlers for each event always run (no interception).
 //!
 //! # Consistency
 //!
-//! Each command or event receives a fresh [`Out`](crate::Out) buffer. New messages
+//! Each command or event receives a fresh [`Out`] buffer. New messages
 //! submitted by handlers are only queued after all handlers for the current item
 //! have finished, ensuring a consistent state snapshot per dispatch.
 

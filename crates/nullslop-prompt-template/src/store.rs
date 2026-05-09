@@ -87,7 +87,7 @@ impl PromptTemplateStore {
     /// Returns fuzzy-matched templates ordered by relevance score.
     ///
     /// Results are ordered least-relevant (top) to most-relevant (bottom),
-    /// capped at [`MAX_FUZZY_RESULTS`].
+    /// capped at \[`MAX_FUZZY_RESULTS`].
     #[must_use]
     pub fn fuzzy_search(&self, query: &str) -> Vec<&PromptTemplate> {
         let matcher = SkimMatcherV2::default();

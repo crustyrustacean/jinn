@@ -95,7 +95,7 @@ pub enum ToolOrchestratorDirectMsg {}
 /// handler and aggregates results into batch completion events.
 ///
 /// Workflow creation tools are executed synchronously against the in-progress
-/// [`WorkflowBuilder`] draft stored in [`workflow_builder`](Self::workflow_builder).
+/// [`WorkflowBuilder`] draft stored in `workflow_builder`.
 pub struct ToolOrchestratorActor {
     /// Tool name → registration info.
     tools: HashMap<String, ToolRegistration>,

@@ -2,7 +2,7 @@
 //!
 //! A single set of `Picker*` commands, `Mode::Picker`, `Scope::Picker`,
 //! and keymap bindings serve all pickers. [`PickerKind`] determines which
-//! [`SelectionState`](nullslop_selection_widget::SelectionState) the commands
+//! `SelectionState` (from `nullslop-selection-widget`) the commands
 //! operate on.
 
 use serde::{Deserialize, Serialize};

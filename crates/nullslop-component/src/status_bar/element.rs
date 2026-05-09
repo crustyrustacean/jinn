@@ -1,7 +1,7 @@
 //! Status bar — displays the active prompt strategy and current model.
 //!
 //! Shows `<strategy> | <model>` in a single row. The strategy name comes from
-//! [`PromptStrategyId`]'s `Display` impl (e.g., "Passthrough", "Sliding Window").
+//! `PromptStrategyId`'s `Display` impl (e.g., "Passthrough", "Sliding Window").
 //! The model shows `({provider})/{model}` when set, or "no model selected" otherwise.
 
 use crate::AppState;

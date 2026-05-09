@@ -191,7 +191,7 @@ pub fn load_session_entries(services: &Services) -> Vec<SessionEntry> {
 /// Loads session entries into the picker state, ready for display.
 ///
 /// Reads from the session store via services and stores the entries via
-/// [`SelectionState::set_items`].
+/// `SelectionState::set_items`.
 ///
 /// [`SelectionState`]: nullslop_selection_widget::SelectionState
 pub fn load_session_picker_items(services: &Services, state: &mut crate::AppState) {

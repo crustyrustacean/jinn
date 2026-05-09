@@ -1,7 +1,7 @@
 //! Workflow management component — handles lifecycle commands for structured multi-step workflows.
 //!
 //! Processes commands that load, advance, jump within, and abort workflows.
-//! All state mutations go through [`AppState::workflow`](crate::AppState::workflow).
+//! All state mutations go through `AppState::workflow` ([`AppState`](crate::AppState)).
 
 pub mod handler;
 

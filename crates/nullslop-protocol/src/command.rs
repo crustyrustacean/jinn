@@ -3,8 +3,8 @@
 //! The [`Command`] enum is the unified type the host uses to receive and
 //! dispatch instructions from both internal handlers and actors.
 //!
-//! Individual command structs live in domain modules ([`chat_input`], [`system`],
-//! [`custom`], [`actor`], [`provider`], [`tab`]). Consumers import structs
+//! Individual command structs live in domain modules (`chat_input`, `system`,
+//! `custom`, `actor`, `provider`, `tab`). Consumers import structs
 //! directly from those modules — this facade only re-exports infrastructure types.
 //!
 //! # When adding a new command
@@ -462,7 +462,7 @@ pub enum Command {
 impl Command {
     /// Returns the routing name for this command, if it has one.
     ///
-    /// Analogous to [`Event::type_name()`]. Returns `None` for commands
+    /// Analogous to `Event::type_name()`. Returns `None` for commands
     /// that are not routed to actors (e.g., internal UI commands).
     #[must_use]
     pub fn command_name(&self) -> Option<&'static str> {

@@ -1,6 +1,6 @@
 //! Strategy entries for the context assembly picker.
 //!
-//! Builds the list of available strategies from the [`StrategyRegistryService`],
+//! Builds the list of available strategies from the `StrategyRegistryService`,
 //! and implements [`PickerItem`] so [`SelectionState`] can fuzzy-filter
 //! and render them. Also provides footer formatting for the strategy picker overlay.
 //!
@@ -154,7 +154,7 @@ pub fn sorted_strategy_entries(entries: &[StrategyEntry], filter: &str) -> Vec<S
 ///
 /// Reads from the strategy registry, marks the active strategy from the
 /// current session, applies active-first sorting, then stores the entries
-/// via [`SelectionState::set_items`].
+/// via `SelectionState::set_items`.
 ///
 /// [`SelectionState`]: nullslop_selection_widget::SelectionState
 pub fn load_strategy_picker_items(services: &Services, state: &mut AppState) {

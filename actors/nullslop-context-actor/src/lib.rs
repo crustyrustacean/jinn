@@ -4,7 +4,7 @@
 //! runs the configured strategy for each session, and emits [`PromptAssembled`]
 //! and [`PromptStrategySwitched`] events when complete.
 //!
-//! Unknown sessions are automatically initialized with [`PassthroughStrategy`].
+//! Unknown sessions are automatically initialized with `PassthroughStrategy`.
 //! Strategy switching uses a [`StrategyFactory`] injected via [`ActorContext`] data.
 
 use std::collections::HashMap;

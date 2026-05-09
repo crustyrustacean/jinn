@@ -2,8 +2,8 @@
 //!
 //! Defines [`SessionStore`] as the trait for session persistence and
 //! [`JsonlSessionStore`] as the append-only JSONL file backend. Startup scans
-//! lightweight [`SessionSummary`](crate::SessionSummary) entries with byte
-//! offsets; full [`PersistedSession`](crate::PersistedSession) data loads on
+//! lightweight [`SessionSummary`] entries with byte
+//! offsets; full [`PersistedSession`] data loads on
 //! demand via seek.
 
 use std::collections::HashMap;
