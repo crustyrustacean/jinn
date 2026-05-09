@@ -646,6 +646,10 @@ impl<S, Sv> Bus<S, Sv> {
                 let cmd = AutocompleteConfirm;
                 self.dispatch_command_to_handlers(&cmd, state, services, &mut out);
             }
+            Command::LoadPickerEntries { .. } | Command::SessionLoadRequested { .. } => {
+                // Domain commands — will be handled by the coordinator actor (Phase 7).
+                // No-op in the current bus dispatch.
+            }
         }
         self.flush_out(out);
     }
