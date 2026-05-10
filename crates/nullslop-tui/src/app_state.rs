@@ -27,4 +27,3 @@ mod tests {
         // Then it is Starting.
     }
 }
-

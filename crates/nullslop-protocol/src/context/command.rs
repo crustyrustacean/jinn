@@ -174,5 +174,4 @@ mod tests {
         // Then fields are preserved.
         assert_eq!(back.entry_id, cmd.entry_id);
     }
-
 }

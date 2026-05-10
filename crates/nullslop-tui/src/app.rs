@@ -193,6 +193,10 @@ impl TuiApp {
     /// 4. Sends commands to the core channel.
     /// 5. Handles TUI signals (which-key toggle, editor, pinned pane, etc.).
     /// 6. Updates the keymap scope based on the new mode.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "Intent is consumed by intent routing, ownership is semantic"
+    )]
     pub fn route_intent(&mut self, intent: Intent) {
         // Step 1–3: Handle intent, collect results, release lock.
         let (commands, signals, mode) = {
@@ -200,7 +204,12 @@ impl TuiApp {
             let result = IntentHandler::handle(&intent, &mut state);
 
             // Populate keymap picker entries if opening the keymap picker.
-            if matches!(intent, Intent::OpenPicker { kind: PickerKind::Keymap }) {
+            if matches!(
+                intent,
+                Intent::OpenPicker {
+                    kind: PickerKind::Keymap
+                }
+            ) {
                 let scope = *self.which_key.scope();
                 state.frontend.keymap_picker_origin_scope = Some(scope.to_string());
                 let intent_entries = if state.frontend.keymap_picker_show_all {
@@ -211,7 +220,8 @@ impl TuiApp {
                 // Entries now carry Intent directly — store them in AppState.
                 state.frontend.keymap_picker.set_items(intent_entries);
                 // Also populate all_keymap_entries for scope toggle.
-                state.frontend.all_keymap_entries = keymap::collect_all_bindings(self.which_key.keymap());
+                state.frontend.all_keymap_entries =
+                    keymap::collect_all_bindings(self.which_key.keymap());
             }
 
             // Cancel selection when mode changes away from Picker.
@@ -329,14 +339,20 @@ impl TuiApp {
 /// out of AppState before releasing the write lock.
 #[derive(Debug)]
 struct TuiSignalsSnapshot {
+    /// Whether to toggle the which-key overlay.
     toggle_whichkey: bool,
+    /// Whether an external editor was requested.
     edit_requested: bool,
+    /// Whether to toggle the pinned pane visibility.
     pinned_pane_toggle: bool,
+    /// Whether to open the pinned pane.
     pinned_pane_open: bool,
+    /// Whether to close the pinned pane.
     pinned_pane_close: bool,
 }
 
 impl TuiSignalsSnapshot {
+    /// Extracts TUI signal flags from the given app state.
     fn from_state(state: &nullslop_component::AppState) -> Self {
         Self {
             toggle_whichkey: state.frontend.tui_signals.toggle_whichkey,
@@ -638,7 +654,10 @@ mod tests {
         // Then show_all is true and entries include multiple scopes.
         {
             let state = app.core.state.read();
-            assert!(state.frontend.keymap_picker_show_all, "should be true after toggle");
+            assert!(
+                state.frontend.keymap_picker_show_all,
+                "should be true after toggle"
+            );
             let all_entries = state.frontend.keymap_picker.items();
             assert!(!all_entries.is_empty(), "should have entries");
             let scopes: std::collections::HashSet<&str> =
@@ -861,18 +880,22 @@ mod tests {
 /// ```
 #[derive(Default)]
 pub struct TuiAppBuilder {
+    /// Optional services override (defaults to fake services).
     services: Option<nullslop_services::Services>,
+    /// Optional app state override (defaults to default state).
     state: Option<nullslop_component::AppState>,
 }
 
 impl TuiAppBuilder {
     /// Override the default services.
+    #[must_use]
     pub fn services(mut self, services: nullslop_services::Services) -> Self {
         self.services = Some(services);
         self
     }
 
     /// Override the default app state.
+    #[must_use]
     pub fn state(mut self, state: nullslop_component::AppState) -> Self {
         self.state = Some(state);
         self
@@ -880,7 +903,7 @@ impl TuiAppBuilder {
 
     /// Build the `TuiApp` with the configured overrides.
     pub fn build(self) -> TuiApp {
-        let services = self.services.unwrap_or_else(nullslop_services::Services::new);
+        let services = self.services.unwrap_or_default();
         let state = self.state.unwrap_or_default();
 
         let (sender, _receiver) = kanal::unbounded();

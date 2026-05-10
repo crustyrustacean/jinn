@@ -257,14 +257,20 @@ fn create_core_with_actor_host(
     provider_registry: ProviderRegistryService,
     api_keys: ApiKeysService,
     config_storage: ConfigStorageService,
-) -> (AppCore, Services, ActorHostService, kanal::Receiver<nullslop_protocol::CoreNotification>) {
+) -> (
+    AppCore,
+    Services,
+    ActorHostService,
+    kanal::Receiver<nullslop_protocol::CoreNotification>,
+) {
     // Create channel first — actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
     // the channel independently.
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
 
     // Create the actor→core notification channel.
-    let (core_notify_tx, core_notify_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+    let (core_notify_tx, core_notify_rx) =
+        kanal::unbounded::<nullslop_protocol::CoreNotification>();
 
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
@@ -442,11 +448,20 @@ fn create_core_with_actor_host(
         ("llm-streaming", "LLM streaming with tool support"),
         ("llm-provider-listing", "Discovers available models"),
         ("tool-orchestrator", "Dispatches and manages tool execution"),
-        ("context", "Context assembly, strategy management, pinning, and templates"),
+        (
+            "context",
+            "Context assembly, strategy management, pinning, and templates",
+        ),
         ("session-persistence", "Persists session data to disk"),
         ("prompt-scan", "Scans and reloads prompt templates"),
-        ("provider", "Manages provider selection, LLM factory, and model cache"),
-        ("shutdown-tracker", "Tracks actor lifecycle for shutdown coordination"),
+        (
+            "provider",
+            "Manages provider selection, LLM factory, and model cache",
+        ),
+        (
+            "shutdown-tracker",
+            "Tracks actor lifecycle for shutdown coordination",
+        ),
     ];
     for (name, desc) in &actor_names {
         let _ = sink.send_event(Event::ActorStarting {
@@ -484,10 +499,7 @@ fn create_core_with_actor_host(
     spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
     // Build AppCore with shared state and sender only.
-    let core = AppCore {
-        state,
-        sender,
-    };
+    let core = AppCore { state, sender };
     let mut registry = nullslop_component::AppUiRegistry::new();
     nullslop_component::register_all(&mut registry);
 
@@ -623,7 +635,13 @@ mod tests {
 
         // Then the template is findable by name.
         let state = state.read();
-        assert!(state.context.prompt_templates.find_by_name("test").is_some());
+        assert!(
+            state
+                .context
+                .prompt_templates
+                .find_by_name("test")
+                .is_some()
+        );
     }
 
     #[rstest::rstest]
@@ -690,7 +708,8 @@ mod tests {
         };
         let registry = nullslop_providers::ProviderRegistry::from_config(config).expect("registry");
         let registry_service = nullslop_providers::ProviderRegistryService::new(registry);
-        let api_keys_service = nullslop_providers::ApiKeysService::new(nullslop_providers::ApiKeys::new());
+        let api_keys_service =
+            nullslop_providers::ApiKeysService::new(nullslop_providers::ApiKeys::new());
 
         // When resolving the initial factory.
         let (factory, name) = resolve_initial_factory(&registry_service, &api_keys_service);

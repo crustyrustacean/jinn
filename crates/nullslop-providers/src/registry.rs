@@ -301,7 +301,6 @@ impl ProviderRegistry {
         resolved: &ResolvedProvider,
         api_keys: &ApiKeys,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
-
         if resolved.backend == "sample" {
             let factory: Box<dyn LlmServiceFactory> = Box::new(SampleLlmServiceFactory);
             return Ok(factory);

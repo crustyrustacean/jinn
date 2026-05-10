@@ -7,13 +7,13 @@
 use std::sync::Arc;
 
 use nullslop_context::DefaultStrategyDiscovery;
+use nullslop_protocol::AppMsg;
 pub use nullslop_providers as providers;
 use nullslop_providers::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 use nullslop_session::SessionStoreService;
-use nullslop_protocol::AppMsg;
 use tokio::runtime::Handle;
 
 pub mod actor_channel;

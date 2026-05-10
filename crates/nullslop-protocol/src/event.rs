@@ -348,6 +348,4 @@ mod tests {
         // Then it returns Some of the payload's TYPE_NAME.
         assert_eq!(event.type_name(), Some(expected));
     }
-
-
 }

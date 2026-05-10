@@ -18,6 +18,10 @@ pub enum SubmitMessageError {
 /// Validates the SubmitMessage intent.
 ///
 /// Returns an error if autocomplete is active or the input buffer is empty.
+///
+/// # Errors
+///
+/// Returns an error if autocomplete is active or the input buffer is empty.
 pub fn validate_submit_message(state: &AppState) -> Result<(), SubmitMessageError> {
     if state.active_chat_input().autocomplete().is_some() {
         return Err(SubmitMessageError::AutocompleteActive);
@@ -39,6 +43,10 @@ pub enum AutocompleteConfirmError {
 /// Validates the AutocompleteConfirm intent.
 ///
 /// Returns an error if no autocomplete session is active.
+///
+/// # Errors
+///
+/// Returns an error if no autocomplete session is active.
 pub fn validate_autocomplete_confirm(state: &AppState) -> Result<(), AutocompleteConfirmError> {
     if state.active_chat_input().autocomplete().is_none() {
         return Err(AutocompleteConfirmError::NotActive);
@@ -58,6 +66,10 @@ pub enum InterruptError {
 ///
 /// Returns an error if the buffer is empty and the session is idle
 /// (not streaming, not sending, not assembling).
+///
+/// # Errors
+///
+/// Returns an error if the buffer is empty and the session is idle.
 pub fn validate_interrupt(state: &AppState) -> Result<(), InterruptError> {
     if state.active_chat_input().is_empty() && state.active_session().is_idle() {
         return Err(InterruptError::NothingToInterrupt);

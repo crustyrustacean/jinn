@@ -94,8 +94,8 @@ impl ActorWorld {
         nullslop_core::coordinated_shutdown(
             self.actor_host.backend(),
             &self.core.state,
-            self.core_receiver.clone(),
-            self.handle.clone(),
+            &self.core_receiver,
+            &self.handle,
             nullslop_core::SHUTDOWN_TIMEOUT,
         );
     }
@@ -111,8 +111,12 @@ impl ActorWorld {
 fn create_actor_core(
     handle: &tokio::runtime::Handle,
     llm_service: LlmServiceFactoryService,
-) -> (AppCore, Services, ActorHostService, kanal::Receiver<nullslop_protocol::CoreNotification>)
-{
+) -> (
+    AppCore,
+    Services,
+    ActorHostService,
+    kanal::Receiver<nullslop_protocol::CoreNotification>,
+) {
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
     let (core_notify_tx, core_notify_rx) =
         kanal::unbounded::<nullslop_protocol::CoreNotification>();
@@ -151,8 +155,7 @@ fn create_actor_core(
     // Create session actor to write events into state.
     // State is shared between AppCore and the session actor via Arc clone.
     let state = nullslop_core::State::new(AppState::default());
-    let (sp_tx, sp_rx) =
-        kanal::unbounded::<ActorEnvelope<SessionPersistenceDirectMsg>>();
+    let (sp_tx, sp_rx) = kanal::unbounded::<ActorEnvelope<SessionPersistenceDirectMsg>>();
     let sp_ref = ActorRef::new(sp_tx);
     let mut sp_ctx = ActorContext::new("session-persistence", sink.clone());
     sp_ctx.set_data(state.clone());
@@ -167,8 +170,10 @@ fn create_actor_core(
         handle,
     );
 
-    let host =
-        InMemoryActorHost::from_actors_with_handle(vec![orch_result, llm_result, sp_result], handle.clone());
+    let host = InMemoryActorHost::from_actors_with_handle(
+        vec![orch_result, llm_result, sp_result],
+        handle.clone(),
+    );
     let host_arc: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(host);
 
     let services = nullslop_services::test_services::TestServices::builder()

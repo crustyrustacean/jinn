@@ -69,17 +69,14 @@ pub fn spawn_forwarding_task(
 ) -> tokio::task::JoinHandle<()> {
     handle.spawn(async move {
         let async_rx = receiver.as_async();
-        loop {
-            match async_rx.recv().await {
-                Ok(msg) => match msg {
-                    AppMsg::Command { command, source } => {
-                        actor_host.send_command(&command, source.as_ref());
-                    }
-                    AppMsg::Event { event, source } => {
-                        actor_host.send_event(&event, source.as_ref());
-                    }
-                },
-                Err(_) => break, // Channel closed
+        while let Ok(msg) = async_rx.recv().await {
+            match msg {
+                AppMsg::Command { command, source } => {
+                    actor_host.send_command(&command, source.as_ref());
+                }
+                AppMsg::Event { event, source } => {
+                    actor_host.send_event(&event, source.as_ref());
+                }
             }
         }
     })
@@ -106,8 +103,8 @@ pub fn spawn_forwarding_task(
 pub fn coordinated_shutdown(
     actor_host: &dyn nullslop_actor_host::ActorHost,
     state: &State,
-    core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
-    handle: tokio::runtime::Handle,
+    core_receiver: &kanal::Receiver<nullslop_protocol::CoreNotification>,
+    handle: &tokio::runtime::Handle,
     timeout: Duration,
 ) {
     // 1. Mark shutdown active.
@@ -128,9 +125,9 @@ pub fn coordinated_shutdown(
         let result = tokio::time::timeout(timeout, async_rx.recv()).await;
         let _ = tx.send(result);
     });
-    match rx.blocking_recv() {
-        Ok(Ok(Ok(_))) => {}
-        _ => tracing::warn!(?timeout, "coordinated shutdown timed out"),
+    if let Ok(Ok(Ok(_))) = rx.blocking_recv() {
+    } else {
+        tracing::warn!(?timeout, "coordinated shutdown timed out");
     }
 
     // 4. Join actor tasks.

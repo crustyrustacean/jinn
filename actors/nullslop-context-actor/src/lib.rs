@@ -12,8 +12,8 @@
 use std::collections::HashMap;
 
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use nullslop_component::prompt_template::PromptTemplateStore;
 use nullslop_component::State;
+use nullslop_component::prompt_template::PromptTemplateStore;
 use nullslop_context::{
     AssemblyContext, CharRatioEstimator, DefaultStrategyFactory, PromptAssembly, StrategyFactory,
     estimate_entry_tokens,
@@ -61,6 +61,7 @@ impl Actor for PromptAssemblyActor {
 
         ctx.set_description("Context assembly, strategy management, pinning, and templates");
 
+        #[expect(clippy::expect_used, reason = "State is always injected at startup")]
         let state = ctx
             .take_data::<State>()
             .expect("PromptAssemblyActor requires State injection");
@@ -293,7 +294,8 @@ impl PromptAssemblyActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.switch_strategy(payload.strategy_id.clone());
-            state.context
+            state
+                .context
                 .strategy_state
                 .get(&(payload.session_id.clone(), payload.strategy_id.clone()))
                 .cloned()
@@ -391,7 +393,6 @@ mod tests {
         }
         None
     }
-
 
     #[rstest::rstest]
     #[tokio::test]
@@ -687,8 +688,6 @@ mod tests {
             )
         );
     }
-
-
 
     #[rstest::rstest]
     #[tokio::test]
@@ -1290,9 +1289,16 @@ mod tests {
 
         // And RestoreStrategyState and PromptStrategySwitched were emitted.
         let cmds = sink.commands();
-        assert!(cmds.iter().any(|c| matches!(c, Command::RestoreStrategyState { .. })));
+        assert!(
+            cmds.iter()
+                .any(|c| matches!(c, Command::RestoreStrategyState { .. }))
+        );
         let events = sink.events();
-        assert!(events.iter().any(|e| matches!(e, Event::PromptStrategySwitched { .. })));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::PromptStrategySwitched { .. }))
+        );
     }
 
     #[rstest::rstest]
@@ -1321,7 +1327,8 @@ mod tests {
         // Then the blob is stored in strategy_state.
         {
             let guard = state.read();
-            let stored = guard.context
+            let stored = guard
+                .context
                 .strategy_state
                 .get(&(session_id.clone(), strategy_id.clone()));
             assert_eq!(stored, Some(&blob));
@@ -1329,7 +1336,9 @@ mod tests {
 
         // And a StrategyStateUpdated event was emitted.
         let events = sink.events();
-        let found = events.iter().any(|e| matches!(e, Event::StrategyStateUpdated { .. }));
+        let found = events
+            .iter()
+            .any(|e| matches!(e, Event::StrategyStateUpdated { .. }));
         assert!(found, "expected StrategyStateUpdated event");
     }
 
@@ -1360,7 +1369,11 @@ mod tests {
         let guard = state.read();
         assert_eq!(guard.context.prompt_templates.len(), 1);
         assert_eq!(
-            guard.context.prompt_templates.find_by_name("greeting").map(|t| &t.body),
+            guard
+                .context
+                .prompt_templates
+                .find_by_name("greeting")
+                .map(|t| &t.body),
             Some(&"Hello!".to_owned())
         );
     }

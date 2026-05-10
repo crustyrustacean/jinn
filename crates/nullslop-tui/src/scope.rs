@@ -46,4 +46,3 @@ impl std::str::FromStr for Scope {
         }
     }
 }
-

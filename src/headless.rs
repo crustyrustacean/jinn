@@ -152,8 +152,8 @@ impl HeadlessApp {
         nullslop_core::coordinated_shutdown(
             self.actor_host.backend(),
             &self.core.state,
-            self.core_receiver.clone(),
-            self.handle.clone(),
+            &self.core_receiver,
+            &self.handle,
             nullslop_core::SHUTDOWN_TIMEOUT,
         );
     }

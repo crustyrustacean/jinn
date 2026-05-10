@@ -43,4 +43,3 @@ pub enum StreamEvent {
         stop_reason: String,
     },
 }
-

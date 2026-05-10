@@ -330,7 +330,10 @@ fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_co
     use nullslop_component::provider_picker::entries;
     use nullslop_selection_widget::SelectionWidget;
 
-    let footer = entries::format_footer(state.provider.last_refreshed_at.as_ref(), area.width as usize);
+    let footer = entries::format_footer(
+        state.provider.last_refreshed_at.as_ref(),
+        area.width as usize,
+    );
     let widget = SelectionWidget::new(&state.provider.provider_picker)
         .title(ratatui::text::Line::from(" Model "))
         .footer(footer);
@@ -351,7 +354,8 @@ fn render_context_strategy_picker(
     use nullslop_selection_widget::SelectionWidget;
 
     // Find the active strategy's display name for the footer.
-    let active_name = state.frontend
+    let active_name = state
+        .frontend
         .context_strategy_picker
         .items()
         .iter()
@@ -373,7 +377,8 @@ fn render_context_strategy_picker(
 fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
     use nullslop_selection_widget::SelectionWidget;
 
-    let scope_name = state.frontend
+    let scope_name = state
+        .frontend
         .keymap_picker_origin_scope
         .as_deref()
         .unwrap_or("unknown");

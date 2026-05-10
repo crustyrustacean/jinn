@@ -85,8 +85,8 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
     nullslop_core::coordinated_shutdown(
         app.actor_host.backend(),
         &app.core.state,
-        app.core_receiver.clone(),
-        app.services.handle.clone(),
+        &app.core_receiver,
+        &app.services.handle,
         nullslop_core::SHUTDOWN_TIMEOUT,
     );
 
@@ -131,7 +131,11 @@ fn run_main_loop(
         // Check should_quit from shared state (async forwarding task handles messages).
         let state_read = app.core.state.read();
         let should_quit = state_read.frontend.should_quit;
-        let scope = scope_for_mode(state_read.frontend.mode, state_read.frontend.active_tab, app.pane_focus);
+        let scope = scope_for_mode(
+            state_read.frontend.mode,
+            state_read.frontend.active_tab,
+            app.pane_focus,
+        );
         drop(state_read);
         app.which_key.set_scope(scope);
 

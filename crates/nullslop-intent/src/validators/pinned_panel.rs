@@ -21,28 +21,46 @@ pub enum PinnedPanelActionError {
 /// Validates the PinnedPanelUnpin intent.
 ///
 /// Returns an error if there are no pinned entries or no entry is selected.
+///
+/// # Errors
+///
+/// Returns an error if there are no pinned entries or no entry is selected.
 pub fn validate_pinned_panel_unpin(state: &AppState) -> Result<(), PinnedPanelActionError> {
     validate_pin_action(state)
 }
 
 /// Validates the PinnedPanelPinTop intent.
+///
+/// # Errors
+///
+/// Returns an error if there are no pinned entries or no entry is selected.
 pub fn validate_pinned_panel_pin_top(state: &AppState) -> Result<(), PinnedPanelActionError> {
     validate_pin_action(state)
 }
 
 /// Validates the PinnedPanelPinBottom intent.
+///
+/// # Errors
+///
+/// Returns an error if there are no pinned entries or no entry is selected.
 pub fn validate_pinned_panel_pin_bottom(state: &AppState) -> Result<(), PinnedPanelActionError> {
     validate_pin_action(state)
 }
 
 /// Validates the PinnedPanelPinRelative intent.
-pub fn validate_pinned_panel_pin_relative(
-    state: &AppState,
-) -> Result<(), PinnedPanelActionError> {
+///
+/// # Errors
+///
+/// Returns an error if there are no pinned entries or no entry is selected.
+pub fn validate_pinned_panel_pin_relative(state: &AppState) -> Result<(), PinnedPanelActionError> {
     validate_pin_action(state)
 }
 
 /// Validates the PinnedPanelPinCycle intent.
+///
+/// # Errors
+///
+/// Returns an error if there are no pinned entries or no entry is selected.
 pub fn validate_pinned_panel_pin_cycle(state: &AppState) -> Result<(), PinnedPanelActionError> {
     validate_pin_action(state)
 }
@@ -69,9 +87,7 @@ mod tests {
     fn state_with_selected_pin(text: &str, position: PinPosition) -> AppState {
         let mut state = AppState::default();
         let entry_id = {
-            let index = state
-                .active_session_mut()
-                .push_entry(ChatEntry::user(text));
+            let index = state.active_session_mut().push_entry(ChatEntry::user(text));
             state.active_session().history()[index].id.clone()
         };
         state.active_session_mut().pin_entry(&entry_id, position);
@@ -82,9 +98,7 @@ mod tests {
     fn state_with_unselected_pin(text: &str, position: PinPosition) -> AppState {
         let mut state = AppState::default();
         let entry_id = {
-            let index = state
-                .active_session_mut()
-                .push_entry(ChatEntry::user(text));
+            let index = state.active_session_mut().push_entry(ChatEntry::user(text));
             state.active_session().history()[index].id.clone()
         };
         state.active_session_mut().pin_entry(&entry_id, position);
@@ -128,5 +142,4 @@ mod tests {
         // Then it returns NoSelection error.
         assert!(matches!(result, Err(PinnedPanelActionError::NoSelection)));
     }
-
 }

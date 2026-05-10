@@ -510,7 +510,10 @@ fn dashboard_gg_produces_dashboard_select_first() {
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Dashboard);
         assert!(entry.is_some());
-        assert!(matches!(entry.unwrap().action, Intent::DashboardSelectFirst));
+        assert!(matches!(
+            entry.unwrap().action,
+            Intent::DashboardSelectFirst
+        ));
     } else {
         panic!("Expected leaf node for 'gg' in Dashboard scope");
     }

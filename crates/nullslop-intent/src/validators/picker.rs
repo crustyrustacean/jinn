@@ -45,14 +45,23 @@ pub enum PickerConfirmError {
 /// Validates the PickerConfirm intent.
 ///
 /// Returns an error if no picker is active or no item is selected.
+///
+/// # Errors
+///
+/// Returns an error if no picker is active or no item is selected.
 pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmError> {
-    let kind = state.frontend
+    let kind = state
+        .frontend
         .active_picker_kind
         .ok_or(PickerConfirmError::NoActivePicker)?;
 
     let has_selection = match kind {
         PickerKind::Provider => state.provider.provider_picker.selected_item().is_some(),
-        PickerKind::ContextAssembly => state.frontend.context_strategy_picker.selected_item().is_some(),
+        PickerKind::ContextAssembly => state
+            .frontend
+            .context_strategy_picker
+            .selected_item()
+            .is_some(),
         PickerKind::Keymap => state.frontend.keymap_picker.selected_item().is_some(),
         PickerKind::Session => state.frontend.session_picker.selected_item().is_some(),
     };
@@ -75,10 +84,11 @@ pub enum OpenPickerError {
 /// Validates the OpenPicker intent.
 ///
 /// Returns an error if a picker is already active.
-pub fn validate_open_picker(
-    state: &AppState,
-    _kind: &PickerKind,
-) -> Result<(), OpenPickerError> {
+///
+/// # Errors
+///
+/// Returns an error if a picker is already active.
+pub fn validate_open_picker(state: &AppState, _kind: &PickerKind) -> Result<(), OpenPickerError> {
     if state.frontend.active_picker_kind.is_some() {
         return Err(OpenPickerError::AlreadyInPicker);
     }
@@ -194,12 +204,15 @@ mod tests {
         use nullslop_component::context_strategy_picker::entries::StrategyEntry;
         let mut state = AppState::default();
         state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
-        state.frontend.context_strategy_picker.set_items(vec![StrategyEntry {
-            strategy_id: nullslop_protocol::PromptStrategyId::passthrough(),
-            name: "passthrough".to_owned(),
-            description: "No processing".to_owned(),
-            is_active: false,
-        }]);
+        state
+            .frontend
+            .context_strategy_picker
+            .set_items(vec![StrategyEntry {
+                strategy_id: nullslop_protocol::PromptStrategyId::passthrough(),
+                name: "passthrough".to_owned(),
+                description: "No processing".to_owned(),
+                is_active: false,
+            }]);
 
         // When validating picker confirm.
         let result = validate_picker_confirm(&state);

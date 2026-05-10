@@ -76,20 +76,7 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-    use ratatui::layout::Rect;
-
     use super::*;
-    use crate::AppState;
-    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
-        let backend = TestBackend::new(width, height);
-        let terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, width, height);
-        (terminal, area)
-    }
-
-
 
     #[rstest::rstest]
     fn name_returns_streaming_indicator() {

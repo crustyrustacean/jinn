@@ -213,5 +213,4 @@ mod tests {
         assert_eq!(back.provider, "echo");
         assert_eq!(back.definitions.len(), 1);
     }
-
 }

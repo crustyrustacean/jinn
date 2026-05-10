@@ -55,19 +55,6 @@ pub use shutdown_tracker::ShutdownTrackerState;
 pub use state::{State, StateReadGuard, StateWriteGuard};
 pub use tui_signals::TuiSignals;
 
-/// Test utilities shared across the crate.
-///
-/// Only available in `#[cfg(test)]` builds.
-#[cfg(test)]
-pub(crate) mod test_utils {
-    use nullslop_services::Services;
-
-    /// Create a [`nullslop_services::Services`] with fake implementations for tests.
-    pub fn test_services() -> Services {
-        Services::new()
-    }
-}
-
 use nullslop_component_ui::UiRegistry;
 
 /// Standard UI registry type for the nullslop application.
@@ -105,4 +92,17 @@ pub fn register_tui_elements(registry: &mut AppUiRegistry) {
     ));
     registry.register(Box::new(provider::queue_element::QueueDisplayElement));
     registry.register(Box::new(status_bar::StatusBarElement));
+}
+
+/// Test utilities shared across the crate.
+///
+/// Only available in `#[cfg(test)]` builds.
+#[cfg(test)]
+pub(crate) mod test_utils {
+    use nullslop_services::Services;
+
+    /// Create a [`nullslop_services::Services`] with fake implementations for tests.
+    pub fn test_services() -> Services {
+        Services::new()
+    }
 }

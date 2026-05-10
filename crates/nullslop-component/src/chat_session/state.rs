@@ -16,31 +16,31 @@ use crate::chat_input_box::ChatInputBoxState;
 pub struct SessionCore {
     /// All messages in this conversation.
     /// OWNER: session-actor (creates/removes entries, restores history)
-    pub(crate) history: Vec<ChatEntry>,
+    history: Vec<ChatEntry>,
     /// Index into `history` for the entry currently receiving stream tokens.
     /// OWNER: session-actor
-    pub(crate) streaming_entry_index: Option<usize>,
+    streaming_entry_index: Option<usize>,
     /// Whether an LLM stream is actively producing tokens.
     /// OWNER: session-actor
-    pub(crate) is_streaming: bool,
+    is_streaming: bool,
     /// Messages waiting to be sent to the LLM, one at a time.
     /// OWNER: session-actor
-    pub(crate) message_queue: VecDeque<String>,
+    message_queue: VecDeque<String>,
     /// Whether a message has been dispatched to the LLM but no tokens have arrived yet.
     /// OWNER: session-actor
-    pub(crate) is_sending: bool,
+    is_sending: bool,
     /// Whether a prompt assembly request is in progress.
     /// OWNER: session-actor
-    pub(crate) is_assembling: bool,
+    is_assembling: bool,
     /// The active prompt strategy for this session.
     /// OWNER: context-actor (via SwitchPromptStrategy command)
-    pub(crate) active_strategy: nullslop_protocol::PromptStrategyId,
+    active_strategy: nullslop_protocol::PromptStrategyId,
     /// Maps stream tool call index to history index for in-progress tool calls.
     /// OWNER: session-actor
-    pub(crate) streaming_tool_call_indices: HashMap<usize, usize>,
+    streaming_tool_call_indices: HashMap<usize, usize>,
     /// Persisted strategy state blob for the active strategy.
     /// OWNER: context-actor (via RestoreStrategyState command)
-    pub(crate) strategy_state: Option<JsonValue>,
+    strategy_state: Option<JsonValue>,
 }
 
 impl Default for SessionCore {
@@ -65,23 +65,23 @@ impl Default for SessionCore {
 #[derive(Debug)]
 pub struct SessionUi {
     /// The user's in-progress message for this session.
-    pub(crate) chat_input: ChatInputBoxState,
+    chat_input: ChatInputBoxState,
     /// Number of lines to skip from the top when rendering (ratatui scroll offset).
     ///
     /// `None` means "show the bottom of the conversation" (auto-scroll).
     /// `Some(n)` means the user has manually scrolled to offset `n`.
-    pub(crate) scroll_offset: Option<u16>,
+    scroll_offset: Option<u16>,
     /// The index of the currently selected chat entry, if any.
     ///
     /// Used by j/k navigation in Normal mode for targeting entries
     /// for actions like pinning. `None` means no entry is selected.
-    pub(crate) selected_entry_index: Option<usize>,
+    selected_entry_index: Option<usize>,
     /// The maximum scroll offset computed during the last render.
     ///
     /// Used by scroll handlers to resolve the "at bottom" sentinel into
     /// a concrete offset so `scroll_up` / `scroll_down` work correctly.
     /// Uses `AtomicU16` for interior mutability since the element receives `&self`.
-    pub(crate) last_max_offset: AtomicU16,
+    last_max_offset: AtomicU16,
 }
 
 impl Default for SessionUi {
@@ -107,7 +107,9 @@ impl Default for SessionUi {
 /// writes visually obvious during code review.
 #[derive(Debug)]
 pub struct ChatSessionState {
+    /// Core domain state managed by session-actor and context-actor.
     core: SessionCore,
+    /// UI state managed by IntentHandler.
     ui: SessionUi,
 }
 
@@ -291,7 +293,7 @@ impl ChatSessionState {
     ///
     /// Searches recent history for a `ToolCall` entry matching the given ID.
     /// If not found (shouldn't happen in normal flow), pushes a new entry.
-    #[allow(dead_code, reason = "used by tool call finalization flow")]
+    #[expect(dead_code, reason = "only used in tests")]
     pub(crate) fn finalize_tool_call(&mut self, id: &str, name: &str, arguments: &str) {
         for entry in self.core.history.iter_mut().rev() {
             if let ChatEntryKind::ToolCall {
@@ -403,7 +405,10 @@ impl ChatSessionState {
     ///
     /// Panics if not currently sending.
     pub fn finish_sending(&mut self) {
-        assert!(self.core.is_sending, "finish_sending called while not sending");
+        assert!(
+            self.core.is_sending,
+            "finish_sending called while not sending"
+        );
         self.core.is_sending = false;
     }
 
@@ -437,7 +442,10 @@ impl ChatSessionState {
     /// If currently at the bottom (auto-scroll), resolves to `last_max_offset` first
     /// so the scroll is relative to the actual bottom position.
     pub fn scroll_up(&mut self, amount: u16) {
-        let current = self.ui.scroll_offset.unwrap_or(self.ui.last_max_offset.load(Ordering::Relaxed));
+        let current = self
+            .ui
+            .scroll_offset
+            .unwrap_or(self.ui.last_max_offset.load(Ordering::Relaxed));
         self.ui.scroll_offset = Some(current.saturating_sub(amount));
     }
 
@@ -446,7 +454,10 @@ impl ChatSessionState {
     /// If the resulting offset reaches or exceeds `last_max_offset`, resets to
     /// auto-scroll (bottom).
     pub fn scroll_down(&mut self, amount: u16) {
-        let current = self.ui.scroll_offset.unwrap_or(self.ui.last_max_offset.load(Ordering::Relaxed));
+        let current = self
+            .ui
+            .scroll_offset
+            .unwrap_or(self.ui.last_max_offset.load(Ordering::Relaxed));
         let next = current.saturating_add(amount);
         if next >= self.ui.last_max_offset.load(Ordering::Relaxed) {
             self.ui.scroll_offset = None;

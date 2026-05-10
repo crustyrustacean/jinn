@@ -88,6 +88,7 @@ impl Actor for SessionPersistenceActor {
 
         ctx.set_description("Session lifecycle and persistence");
 
+        #[expect(clippy::expect_used, reason = "State is always injected at startup")]
         let state = ctx
             .take_data::<State>()
             .expect("SessionPersistenceActor requires State injection");
@@ -141,7 +142,7 @@ impl SessionPersistenceActor {
             Command::SetChatInputText { payload } => self.handle_set_chat_input_text(payload),
             Command::PushChatEntry { payload } => self.handle_push_chat_entry(payload, ctx),
             Command::PushToolResult { payload } => self.handle_push_tool_result(payload),
-            Command::SendMessage { payload } => self.handle_send_message(payload, ctx),
+            Command::SendMessage { payload } => Self::handle_send_message(payload, ctx),
             Command::SessionLoadCompleted { payload } => {
                 self.handle_session_load_completed(payload, ctx);
             }
@@ -272,8 +273,7 @@ impl SessionPersistenceActor {
                 let model_name = state.provider.active_provider.clone();
                 (history, model_name)
             }
-            EnqueueAction::Queued => (vec![], String::new()),
-            EnqueueAction::SetInputText(_) => (vec![], String::new()),
+            EnqueueAction::Queued | EnqueueAction::SetInputText(_) => (vec![], String::new()),
         };
 
         match action {
@@ -350,7 +350,7 @@ impl SessionPersistenceActor {
     }
 
     /// SendMessage: backward compat — emit EnqueueUserMessage.
-    fn handle_send_message(&self, payload: &SendMessage, ctx: &ActorContext) {
+    fn handle_send_message(payload: &SendMessage, ctx: &ActorContext) {
         if let Err(e) = ctx.send_command(Command::EnqueueUserMessage {
             payload: EnqueueUserMessage {
                 session_id: payload.session_id.clone(),
@@ -362,11 +362,7 @@ impl SessionPersistenceActor {
     }
 
     /// SessionLoadCompleted: restore session state and emit follow-up commands.
-    fn handle_session_load_completed(
-        &self,
-        payload: &SessionLoadCompleted,
-        ctx: &ActorContext,
-    ) {
+    fn handle_session_load_completed(&self, payload: &SessionLoadCompleted, ctx: &ActorContext) {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
@@ -492,8 +488,8 @@ mod tests {
         reason = "Actor trait needed for activate() method resolution"
     )]
     use nullslop_actor::Actor;
-    use nullslop_actor::{ActorContext, ActorEnvelope, MessageSink};
     use nullslop_actor::RecordingSink;
+    use nullslop_actor::{ActorContext, ActorEnvelope, MessageSink};
     use nullslop_component::{AppState, State};
     use nullslop_protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
     // no context imports needed in tests currently
@@ -508,8 +504,8 @@ mod tests {
         ChatEntry, ChatEntryKind, Command, Event, PromptStrategyId, SessionId,
         SessionSaveRequested, ToolCall, ToolResult,
     };
-    use nullslop_session::{JsonlSessionStore, SessionStoreService};
     use nullslop_services::Services;
+    use nullslop_session::{JsonlSessionStore, SessionStoreService};
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;
@@ -545,7 +541,12 @@ mod tests {
     }
 
     /// Creates a lifecycle test actor with a fresh AppState and fake services.
-    fn create_lifecycle_actor() -> (SessionPersistenceActor, State, Arc<RecordingSink>, ActorContext) {
+    fn create_lifecycle_actor() -> (
+        SessionPersistenceActor,
+        State,
+        Arc<RecordingSink>,
+        ActorContext,
+    ) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("session-actor", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
@@ -810,7 +811,10 @@ mod tests {
 
         // And an AssemblePrompt command was emitted.
         let cmds = sink.commands();
-        assert!(cmds.iter().any(|c| matches!(c, Command::AssemblePrompt { .. })));
+        assert!(
+            cmds.iter()
+                .any(|c| matches!(c, Command::AssemblePrompt { .. }))
+        );
     }
 
     #[rstest::rstest]
@@ -911,7 +915,11 @@ mod tests {
             _ => None,
         });
         let prompt = cmd.expect("expected AssemblePrompt command");
-        assert_eq!(prompt.history.len(), 1, "history must not be empty for first message");
+        assert_eq!(
+            prompt.history.len(),
+            1,
+            "history must not be empty for first message"
+        );
         assert!(matches!(
             &prompt.history[0].kind,
             ChatEntryKind::User(t) if t == "hello"
@@ -1082,7 +1090,9 @@ mod tests {
 
         // And a ChatEntrySubmitted event was emitted.
         let events = sink.events();
-        let found = events.iter().any(|e| matches!(e, Event::ChatEntrySubmitted { .. }));
+        let found = events
+            .iter()
+            .any(|e| matches!(e, Event::ChatEntrySubmitted { .. }));
         assert!(found, "expected ChatEntrySubmitted event");
     }
 
@@ -1202,8 +1212,14 @@ mod tests {
 
         // And RestoreStrategyState and SwitchPromptStrategy were emitted.
         let cmds = sink.commands();
-        assert!(cmds.iter().any(|c| matches!(c, Command::RestoreStrategyState { .. })));
-        assert!(cmds.iter().any(|c| matches!(c, Command::SwitchPromptStrategy { .. })));
+        assert!(
+            cmds.iter()
+                .any(|c| matches!(c, Command::RestoreStrategyState { .. }))
+        );
+        assert!(
+            cmds.iter()
+                .any(|c| matches!(c, Command::SwitchPromptStrategy { .. }))
+        );
     }
 
     // --- PromptAssembled (event) ---
@@ -1246,7 +1262,10 @@ mod tests {
 
         // And a SendToLlmProvider command was emitted.
         let cmds = sink.commands();
-        assert!(cmds.iter().any(|c| matches!(c, Command::SendToLlmProvider { .. })));
+        assert!(
+            cmds.iter()
+                .any(|c| matches!(c, Command::SendToLlmProvider { .. }))
+        );
     }
 
     // =========================================================
@@ -1380,7 +1399,11 @@ mod tests {
         let session = guard.session(&session_id);
         assert_eq!(session.history().len(), 1);
         match &session.history()[0].kind {
-            ChatEntryKind::ToolCall { id, name, arguments } => {
+            ChatEntryKind::ToolCall {
+                id,
+                name,
+                arguments,
+            } => {
                 assert_eq!(id, "call_1");
                 assert_eq!(name, "read_file");
                 assert_eq!(arguments, r#"{"path":"/tmp"}"#);

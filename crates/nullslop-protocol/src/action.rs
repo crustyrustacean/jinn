@@ -11,5 +11,3 @@ pub enum CommandAction {
     /// Stop propagation — no further handlers see this command.
     Stop,
 }
-
-
