@@ -409,6 +409,7 @@ mod tests {
         nsslice_chat_log::register(&mut ui_registry);
         nsslice_provider::register(&mut ui_registry);
         nsslice_pinned_panel::register(&mut ui_registry);
+        nsslice_chat_input_box::register(&mut ui_registry);
         TuiApp {
             core,
             services,
@@ -611,6 +612,7 @@ mod tests {
         nsslice_chat_log::register(&mut ui_registry);
         nsslice_provider::register(&mut ui_registry);
         nsslice_pinned_panel::register(&mut ui_registry);
+        nsslice_chat_input_box::register(&mut ui_registry);
         let mut app = TuiApp {
             core,
             services,
@@ -935,6 +937,7 @@ impl TuiAppBuilder {
         nsslice_chat_log::register(&mut ui_registry);
         nsslice_provider::register(&mut ui_registry);
         nsslice_pinned_panel::register(&mut ui_registry);
+        nsslice_chat_input_box::register(&mut ui_registry);
 
         TuiApp {
             core,

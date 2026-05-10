@@ -77,9 +77,8 @@ pub fn register_all(registry: &mut AppUiRegistry) {
 /// Register only TUI elements.
 ///
 /// Populates the UI element registry with all built-in elements.
-pub fn register_tui_elements(registry: &mut AppUiRegistry) {
-    registry.register(Box::new(chat_input_box::ChatInputBoxElement));
-
+/// After Phase 6, this is empty — all elements are registered by slice crates.
+pub fn register_tui_elements(_registry: &mut AppUiRegistry) {
 }
 
 /// Test utilities shared across the crate.

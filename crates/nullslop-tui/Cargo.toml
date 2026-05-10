@@ -34,6 +34,7 @@ nsslice-dashboard = { workspace = true }
 nsslice-chat-log = { workspace = true }
 nsslice-provider = { workspace = true }
 nsslice-pinned-panel = { workspace = true }
+nsslice-chat-input-box = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

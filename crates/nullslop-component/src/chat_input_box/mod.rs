@@ -4,11 +4,9 @@
 //! displaying the in-progress message, tracking the input buffer, and switching
 //! between browsing and typing modes.
 //!
-//! Phase 5: Handler removed — input logic is now handled directly by
-//! the IntentHandler. Only the UI element is registered.
+//! The rendering element and intent handling are in the `nsslice-chat-input-box` slice crate.
+//! Only state types remain here.
 
-pub mod element;
 pub mod state;
 
-pub use element::ChatInputBoxElement;
 pub use state::{AutocompleteMatch, AutocompleteState, ChatInputBoxState};

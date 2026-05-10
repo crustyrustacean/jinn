@@ -143,6 +143,7 @@ impl App {
                 nsslice_chat_log::register(&mut ui_registry);
                 nsslice_provider::register(&mut ui_registry);
                 nsslice_pinned_panel::register(&mut ui_registry);
+                nsslice_chat_input_box::register(&mut ui_registry);
                 let which_key = nullslop_tui::app::WhichKeyInstance::new(
                     nullslop_tui::keymap::init(),
                     nullslop_tui::Scope::Normal,
@@ -514,6 +515,7 @@ fn create_core_with_actor_host(
     nsslice_chat_log::register(&mut registry);
     nsslice_provider::register(&mut registry);
     nsslice_pinned_panel::register(&mut registry);
+    nsslice_chat_input_box::register(&mut registry);
 
     (core, services, actor_host_service, core_notify_rx)
 }

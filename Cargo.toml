@@ -6,7 +6,7 @@ resolver = "3"
 default-run = "nullslop"
 
 [workspace]
-members = ["crates/*", "crates/slices/nsslice-status-bar", "crates/slices/nsslice-char-counter", "crates/slices/nsslice-dashboard", "crates/slices/nsslice-chat-log", "crates/slices/nsslice-provider", "crates/slices/nsslice-pinned-panel", "actors/*", "tests/*"]
+members = ["crates/*", "crates/slices/nsslice-status-bar", "crates/slices/nsslice-char-counter", "crates/slices/nsslice-dashboard", "crates/slices/nsslice-chat-log", "crates/slices/nsslice-provider", "crates/slices/nsslice-pinned-panel", "crates/slices/nsslice-chat-input-box", "actors/*", "tests/*"]
 exclude = ["crates/slices"]
 
 [lib]
@@ -39,6 +39,7 @@ nsslice-dashboard = { workspace = true }
 nsslice-chat-log = { workspace = true }
 nsslice-provider = { workspace = true }
 nsslice-pinned-panel = { workspace = true }
+nsslice-chat-input-box = { workspace = true }
 nullslop-shutdown-tracker = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
@@ -93,6 +94,7 @@ nsslice-dashboard = { path = "crates/slices/nsslice-dashboard" }
 nsslice-chat-log = { path = "crates/slices/nsslice-chat-log" }
 nsslice-provider = { path = "crates/slices/nsslice-provider" }
 nsslice-pinned-panel = { path = "crates/slices/nsslice-pinned-panel" }
+nsslice-chat-input-box = { path = "crates/slices/nsslice-chat-input-box" }
 
 # Error handling
 wherror = "2.3.1"

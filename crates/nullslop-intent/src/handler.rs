@@ -30,17 +30,14 @@
 )]
 
 use nullslop_component::AppState;
-use nullslop_component::chat_input_box::AutocompleteMatch;
-use nullslop_component::prompt_template::PromptTemplateStore;
 use nullslop_protocol::context::{PinChatEntry, SwitchPromptStrategy};
 use nullslop_protocol::provider::{CancelStream, ProviderSwitch};
 use nullslop_protocol::session::SessionLoadRequested;
 use nullslop_protocol::system::LoadPickerEntries;
 use nullslop_protocol::{Command, Mode, PickerKind, PinPosition, SessionId, TabDirection};
-use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::Intent;
-use crate::validators::{app, chat_entry, chat_input, picker};
+use crate::validators::{app, chat_entry, picker};
 
 use nullslop_protocol::IntentResult;
 
@@ -76,62 +73,44 @@ impl IntentHandler {
 
         match intent {
             // --- Chat Input ---
-            Intent::InsertChar { ch } => handle_insert_char(*ch, state),
-            Intent::DeleteGrapheme => handle_delete_grapheme(state),
-            Intent::DeleteGraphemeForward => handle_delete_grapheme_forward(state),
-            Intent::SubmitMessage => handle_submit_message(state),
-            Intent::AutocompleteConfirm => handle_autocomplete_confirm(state),
+            Intent::InsertChar { ch } => {
+                nsslice_chat_input_box::intent::handle_insert_char(*ch, state)
+            }
+            Intent::DeleteGrapheme => {
+                nsslice_chat_input_box::intent::handle_delete_grapheme(state)
+            }
+            Intent::DeleteGraphemeForward => {
+                nsslice_chat_input_box::intent::handle_delete_grapheme_forward(state)
+            }
+            Intent::SubmitMessage => {
+                nsslice_chat_input_box::intent::handle_submit_message(state)
+            }
+            Intent::AutocompleteConfirm => {
+                nsslice_chat_input_box::intent::handle_autocomplete_confirm(state)
+            }
             Intent::MoveCursorLeft => {
-                state.active_chat_input_mut().move_cursor_left();
-                let should_deactivate = should_deactivate_on_cursor_move(state);
-                if should_deactivate {
-                    state.active_chat_input_mut().deactivate_autocomplete();
-                }
-                IntentResult::empty()
+                nsslice_chat_input_box::intent::handle_move_cursor_left(state)
             }
             Intent::MoveCursorRight => {
-                state.active_chat_input_mut().move_cursor_right();
-                let should_deactivate = should_deactivate_on_cursor_move(state);
-                if should_deactivate {
-                    state.active_chat_input_mut().deactivate_autocomplete();
-                }
-                IntentResult::empty()
+                nsslice_chat_input_box::intent::handle_move_cursor_right(state)
             }
             Intent::MoveCursorToStart => {
-                state.active_chat_input_mut().deactivate_autocomplete();
-                state.active_chat_input_mut().move_cursor_to_start();
-                IntentResult::empty()
+                nsslice_chat_input_box::intent::handle_move_cursor_to_start(state)
             }
             Intent::MoveCursorToEnd => {
-                state.active_chat_input_mut().deactivate_autocomplete();
-                state.active_chat_input_mut().move_cursor_to_end();
-                IntentResult::empty()
+                nsslice_chat_input_box::intent::handle_move_cursor_to_end(state)
             }
             Intent::MoveCursorWordLeft => {
-                state.active_chat_input_mut().deactivate_autocomplete();
-                state.active_chat_input_mut().move_cursor_word_left();
-                IntentResult::empty()
+                nsslice_chat_input_box::intent::handle_move_cursor_word_left(state)
             }
             Intent::MoveCursorWordRight => {
-                state.active_chat_input_mut().deactivate_autocomplete();
-                state.active_chat_input_mut().move_cursor_word_right();
-                IntentResult::empty()
+                nsslice_chat_input_box::intent::handle_move_cursor_word_right(state)
             }
             Intent::MoveCursorUp => {
-                if state.active_chat_input().autocomplete().is_some() {
-                    state.active_chat_input_mut().autocomplete_move_up();
-                } else {
-                    state.active_chat_input_mut().move_cursor_up();
-                }
-                IntentResult::empty()
+                nsslice_chat_input_box::intent::handle_move_cursor_up(state)
             }
             Intent::MoveCursorDown => {
-                if state.active_chat_input().autocomplete().is_some() {
-                    state.active_chat_input_mut().autocomplete_move_down();
-                } else {
-                    state.active_chat_input_mut().move_cursor_down();
-                }
-                IntentResult::empty()
+                nsslice_chat_input_box::intent::handle_move_cursor_down(state)
             }
 
             // --- Navigation ---
@@ -382,171 +361,10 @@ impl IntentHandler {
 
 // --- Chat input handlers ---
 
-fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
-    let is_autocomplete_active = state.active_chat_input().autocomplete().is_some();
-
-    if is_autocomplete_active {
-        state.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-
-        match ch {
-            ' ' => {
-                state.active_chat_input_mut().deactivate_autocomplete();
-            }
-            '$' => {
-                let Some(token_start) = state.active_chat_input().autocomplete_token_start() else {
-                    return IntentResult::empty();
-                };
-                let cursor_before_insert = state.active_chat_input().cursor_pos() - 1;
-                let filter: String = state
-                    .active_chat_input()
-                    .text()
-                    .graphemes(true)
-                    .enumerate()
-                    .skip_while(|(i, _)| *i < token_start + 1)
-                    .take_while(|(i, _)| *i < cursor_before_insert)
-                    .map(|(_, g)| g)
-                    .collect();
-                if let Some(template) = state.context.prompt_templates.find_by_name(&filter) {
-                    let body = template.body.clone();
-                    state.active_chat_input_mut().expand_autocomplete(&body);
-                } else {
-                    state.active_chat_input_mut().deactivate_autocomplete();
-                }
-            }
-            _ => {
-                let filter = state
-                    .active_chat_input()
-                    .autocomplete_filter()
-                    .unwrap_or_default();
-                let matches = compute_matches(&state.context.prompt_templates, &filter);
-                state
-                    .active_chat_input_mut()
-                    .update_autocomplete_matches(matches);
-            }
-        }
-    } else {
-        state.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-
-        if ch == '$' {
-            let input = state.active_chat_input();
-            if is_valid_trigger_position(input) {
-                let token_start = input.cursor_pos() - 1;
-                let matches = compute_matches(&state.context.prompt_templates, "");
-                state
-                    .active_chat_input_mut()
-                    .activate_autocomplete(token_start, matches);
-            }
-        }
-    }
-
-    IntentResult::empty()
-}
-
-fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
-    let should_deactivate =
-        if let Some(token_start) = state.active_chat_input().autocomplete_token_start() {
-            state.active_chat_input().cursor_pos() <= token_start + 1
-        } else {
-            false
-        };
-
-    if should_deactivate {
-        state.active_chat_input_mut().deactivate_autocomplete();
-        state
-            .active_chat_input_mut()
-            .delete_grapheme_before_cursor();
-    } else if state.active_chat_input().autocomplete().is_some() {
-        state
-            .active_chat_input_mut()
-            .delete_grapheme_before_cursor();
-        let filter = state
-            .active_chat_input()
-            .autocomplete_filter()
-            .unwrap_or_default();
-        let matches = compute_matches(&state.context.prompt_templates, &filter);
-        state
-            .active_chat_input_mut()
-            .update_autocomplete_matches(matches);
-    } else {
-        state
-            .active_chat_input_mut()
-            .delete_grapheme_before_cursor();
-    }
-
-    IntentResult::empty()
-}
-
-fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
-    let token_start = state.active_chat_input().autocomplete_token_start();
-    let cursor = state.active_chat_input().cursor_pos();
-
-    if let Some(token_start) = token_start {
-        if cursor == token_start {
-            state.active_chat_input_mut().deactivate_autocomplete();
-            state.active_chat_input_mut().delete_grapheme_after_cursor();
-        } else {
-            state.active_chat_input_mut().delete_grapheme_after_cursor();
-            let should_deactivate = should_deactivate_on_cursor_move(state);
-            if should_deactivate {
-                state.active_chat_input_mut().deactivate_autocomplete();
-            } else {
-                let filter = state
-                    .active_chat_input()
-                    .autocomplete_filter()
-                    .unwrap_or_default();
-                let matches = compute_matches(&state.context.prompt_templates, &filter);
-                state
-                    .active_chat_input_mut()
-                    .update_autocomplete_matches(matches);
-            }
-        }
-    } else {
-        state.active_chat_input_mut().delete_grapheme_after_cursor();
-    }
-
-    IntentResult::empty()
-}
-
-fn handle_submit_message(state: &mut AppState) -> IntentResult {
-    if chat_input::validate_submit_message(state).is_err() {
-        return IntentResult::empty();
-    }
-
-    let text = state.active_chat_input().text().to_owned();
-    let session_id = state.session.active_session.clone();
-    state.active_chat_input_mut().reset();
-
-    IntentResult::with_commands(vec![Command::EnqueueUserMessage {
-        payload: nullslop_protocol::chat_input::EnqueueUserMessage { session_id, text },
-    }])
-}
-
-fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
-    if chat_input::validate_autocomplete_confirm(state).is_ok() {
-        if let Some(selected) = state.active_chat_input().autocomplete_selected() {
-            let name = selected.name.clone();
-            state.active_chat_input_mut().complete_autocomplete(&name);
-            let filter = state
-                .active_chat_input()
-                .autocomplete_filter()
-                .unwrap_or_default();
-            let matches = compute_matches(&state.context.prompt_templates, &filter);
-            state
-                .active_chat_input_mut()
-                .update_autocomplete_matches(matches);
-        }
-        IntentResult::empty()
-    } else {
-        // Fallback: switch tab when autocomplete is inactive.
-        state.frontend.active_tab = state.frontend.active_tab.next();
-        IntentResult::empty()
-    }
-}
-
 // --- Mode & App handlers ---
 
 fn handle_interrupt(state: &mut AppState) -> IntentResult {
-    if chat_input::validate_interrupt(state).is_err() {
+    if nsslice_chat_input_box::validator::validate_interrupt(state).is_err() {
         return IntentResult::empty();
     }
 
@@ -814,36 +632,6 @@ fn handle_chat_entry_pin_selected(state: &mut AppState) -> IntentResult {
             position: PinPosition::Relative,
         },
     }])
-}
-
-// --- Helpers ---
-
-fn is_valid_trigger_position(
-    input: &nullslop_component::chat_input_box::ChatInputBoxState,
-) -> bool {
-    let dollar_pos = input.cursor_pos() - 1;
-    if dollar_pos == 0 {
-        return true;
-    }
-    input.grapheme_at(dollar_pos - 1) == Some(" ")
-}
-
-fn should_deactivate_on_cursor_move(state: &AppState) -> bool {
-    let Some(ac) = state.active_chat_input().autocomplete() else {
-        return false;
-    };
-    state.active_chat_input().cursor_pos() <= ac.token_start()
-}
-
-fn compute_matches(store: &PromptTemplateStore, filter: &str) -> Vec<AutocompleteMatch> {
-    store
-        .fuzzy_search(filter)
-        .into_iter()
-        .map(|t| AutocompleteMatch {
-            name: t.name.clone(),
-            description: t.description.clone(),
-        })
-        .collect()
 }
 
 #[cfg(test)]
