@@ -601,7 +601,6 @@ fn execute_file_write(call: ToolCall) -> BoxedToolFuture {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_actor::MessageSink;
     use nullslop_actor::RecordingSink;
     use nullslop_protocol::tool::{ExecuteToolBatch, RegisterTools};
 

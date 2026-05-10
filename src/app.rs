@@ -14,15 +14,14 @@ use nullslop_cli::Cli;
 use nullslop_component::AppState;
 use nullslop_context::{DefaultStrategyFactory, StrategyFactory};
 use nullslop_context_actor::PromptAssemblyActor;
-use nullslop_coordinator::CoordinatorActor;
 use nullslop_core::{ActorMessageSink, AppCore, AppMsg, State, spawn_forwarding_task};
 use nullslop_echo::EchoActor;
 use nullslop_llm::LlmActor;
 use nullslop_llm_discover::DiscoverActor;
-use nullslop_projector::ProjectorActor;
 use nullslop_prompt_scan::PromptScanActor;
 use nullslop_protocol::Event;
 use nullslop_protocol::actor::{ActorStarted, ActorStarting};
+use nullslop_provider_actor::ProviderActor;
 use nullslop_providers::ApiKeys;
 use nullslop_providers::ApiKeysService;
 use nullslop_providers::ConfigStorageService;
@@ -336,7 +335,8 @@ fn create_core_with_actor_host(
         kanal::unbounded::<ActorEnvelope<nullslop_context_actor::ContextDirectMsg>>();
     let ctx_ref = ActorRef::new(ctx_tx);
     let mut prompt_ctx = ActorContext::new("context", sink.clone());
-    prompt_ctx.set_description("Assembles LLM prompts from chat history");
+    prompt_ctx.set_description("Context assembly, strategy management, pinning, and templates");
+    prompt_ctx.set_data(state.clone());
     prompt_ctx.set_data::<Box<dyn StrategyFactory>>(Box::new(DefaultStrategyFactory));
     let prompt_actor = PromptAssemblyActor::activate(&mut prompt_ctx);
     let prompt_result = spawn_actor(
@@ -356,6 +356,7 @@ fn create_core_with_actor_host(
     let sp_ref = ActorRef::new(sp_tx);
     let mut sp_ctx = ActorContext::new("session-persistence", sink.clone());
     sp_ctx.set_description("Persists session data to disk");
+    sp_ctx.set_data(state.clone());
     sp_ctx.set_data(session_store_service.clone());
     let sp_actor = SessionPersistenceActor::activate(&mut sp_ctx);
     let sp_result = spawn_actor(
@@ -384,8 +385,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // --- Coordinator actor (new in Phase 7) ---
-    // Build services (no actor_host needed — coordinator accesses actor_host via AppCore).
+    // Build services (needed by provider actor and shutdown tracker).
     let strategy_registry =
         StrategyRegistryService::new(Arc::new(nullslop_context::DefaultStrategyDiscovery));
     let services = Services {
@@ -400,37 +400,21 @@ fn create_core_with_actor_host(
         strategy_registry: strategy_registry.clone(),
     };
 
-    let (coord_tx, coord_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_coordinator::CoordinatorDirectMsg>>();
-    let coord_ref = ActorRef::new(coord_tx);
-    let mut coord_ctx = ActorContext::new("coordinator", sink.clone());
-    coord_ctx.set_description("Orchestrates domain workflows");
-    coord_ctx.set_data(state.clone());
-    coord_ctx.set_data(services.clone());
-    let coordinator_actor = CoordinatorActor::activate(&mut coord_ctx);
-    let coord_result = spawn_actor(
-        "coordinator",
-        coordinator_actor,
-        &coord_ref,
-        coord_rx,
-        coord_ctx,
-        handle,
-    );
-
-    // --- Projector actor (new in Phase 7) ---
-    let (proj_tx, proj_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_projector::ProjectorDirectMsg>>();
-    let proj_ref = ActorRef::new(proj_tx);
-    let mut proj_ctx = ActorContext::new("projector", sink.clone());
-    proj_ctx.set_description("Projects events into state");
-    proj_ctx.set_data(state.clone());
-    let projector_actor = ProjectorActor::activate(&mut proj_ctx);
-    let proj_result = spawn_actor(
-        "projector",
-        projector_actor,
-        &proj_ref,
-        proj_rx,
-        proj_ctx,
+    // --- Provider actor ---
+    let (prov_tx, prov_rx) =
+        kanal::unbounded::<ActorEnvelope<nullslop_provider_actor::ProviderDirectMsg>>();
+    let prov_ref = ActorRef::new(prov_tx);
+    let mut prov_ctx = ActorContext::new("provider", sink.clone());
+    prov_ctx.set_description("Manages provider selection, LLM factory, and model cache");
+    prov_ctx.set_data(state.clone());
+    prov_ctx.set_data(services.clone());
+    let provider_actor = ProviderActor::activate(&mut prov_ctx);
+    let prov_result = spawn_actor(
+        "provider",
+        provider_actor,
+        &prov_ref,
+        prov_rx,
+        prov_ctx,
         handle,
     );
 
@@ -458,11 +442,10 @@ fn create_core_with_actor_host(
         ("llm-streaming", "LLM streaming with tool support"),
         ("llm-provider-listing", "Discovers available models"),
         ("tool-orchestrator", "Dispatches and manages tool execution"),
-        ("context", "Assembles LLM prompts from chat history"),
+        ("context", "Context assembly, strategy management, pinning, and templates"),
         ("session-persistence", "Persists session data to disk"),
         ("prompt-scan", "Scans and reloads prompt templates"),
-        ("coordinator", "Orchestrates domain workflows"),
-        ("projector", "Projects events into state"),
+        ("provider", "Manages provider selection, LLM factory, and model cache"),
         ("shutdown-tracker", "Tracks actor lifecycle for shutdown coordination"),
     ];
     for (name, desc) in &actor_names {
@@ -489,8 +472,7 @@ fn create_core_with_actor_host(
             prompt_result,
             sp_result,
             scan_result,
-            coord_result,
-            proj_result,
+            prov_result,
             st_result,
         ],
         handle.clone(),

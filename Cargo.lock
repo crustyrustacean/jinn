@@ -2819,16 +2819,15 @@ dependencies = [
  "nullslop-component",
  "nullslop-context",
  "nullslop-context-actor",
- "nullslop-coordinator",
  "nullslop-core",
  "nullslop-echo",
  "nullslop-intent",
  "nullslop-llm",
  "nullslop-llm-discover",
- "nullslop-projector",
  "nullslop-prompt-scan",
  "nullslop-prompt-template",
  "nullslop-protocol",
+ "nullslop-provider-actor",
  "nullslop-providers",
  "nullslop-services",
  "nullslop-session",
@@ -2943,23 +2942,9 @@ name = "nullslop-context-actor"
 version = "0.1.0"
 dependencies = [
  "nullslop-actor",
+ "nullslop-component",
  "nullslop-context",
  "nullslop-protocol",
- "nullslop-services",
- "rstest",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "nullslop-coordinator"
-version = "0.1.0"
-dependencies = [
- "nullslop-actor",
- "nullslop-component",
- "nullslop-protocol",
- "nullslop-providers",
  "nullslop-services",
  "rstest",
  "serde_json",
@@ -2996,11 +2981,11 @@ dependencies = [
  "nullslop-core",
  "nullslop-intent",
  "nullslop-llm",
- "nullslop-projector",
  "nullslop-protocol",
  "nullslop-providers",
  "nullslop-services",
  "nullslop-session",
+ "nullslop-session-actor",
  "nullslop-tool-orchestrator",
  "nullslop-tui",
  "ratatui-spatial-splits",
@@ -3064,21 +3049,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nullslop-projector"
-version = "0.1.0"
-dependencies = [
- "jiff",
- "nullslop-actor",
- "nullslop-component",
- "nullslop-protocol",
- "nullslop-providers",
- "rstest",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "nullslop-prompt-scan"
 version = "0.1.0"
 dependencies = [
@@ -3128,6 +3098,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "nullslop-provider-actor"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "nullslop-actor",
+ "nullslop-component",
+ "nullslop-protocol",
+ "nullslop-providers",
+ "nullslop-services",
+ "rstest",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -3203,7 +3188,9 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "nullslop-actor",
+ "nullslop-component",
  "nullslop-protocol",
+ "nullslop-services",
  "nullslop-session",
  "rstest",
  "serde_json",

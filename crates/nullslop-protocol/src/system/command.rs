@@ -7,7 +7,7 @@ use crate::PickerKind;
 
 /// Load entries for the active picker from the actor system.
 ///
-/// The coordinator receives this, calls the appropriate loader via `Services`,
+/// The provider actor receives this, calls the appropriate loader via `Services`,
 /// and writes entries into `AppState`.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("system")]

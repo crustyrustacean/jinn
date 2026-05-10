@@ -19,7 +19,7 @@ use nullslop_protocol::provider::SendToLlmProvider;
 use nullslop_protocol::tool::ToolCall;
 use nullslop_providers::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
 use nullslop_services::Services;
-use nullslop_projector::ProjectorActor;
+use nullslop_session_actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
 use nullslop_tool_orchestrator::ToolOrchestratorActor;
 
 /// Cucumber world wrapping real actors for integration testing.
@@ -35,10 +35,13 @@ pub struct ActorWorld {
     #[allow(dead_code)]
     pub services: Services,
     /// Actor host for coordinated shutdown.
+    #[allow(dead_code)]
     actor_host: ActorHostService,
     /// Tokio runtime handle for spawning async shutdown task.
+    #[allow(dead_code)]
     handle: tokio::runtime::Handle,
     /// Receiver for core lifecycle notifications (shutdown complete).
+    #[allow(dead_code)]
     core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
 }
 
@@ -86,6 +89,7 @@ impl ActorWorld {
     }
 
     /// Runs graceful coordinated shutdown of the actor system.
+    #[allow(dead_code)]
     pub fn graceful_shutdown(&mut self) {
         nullslop_core::coordinated_shutdown(
             self.actor_host.backend(),
@@ -144,26 +148,27 @@ fn create_actor_core(
         handle,
     );
 
-    // Create projector actor to write events into state.
-    // State is shared between AppCore and the projector via Arc clone.
+    // Create session actor to write events into state.
+    // State is shared between AppCore and the session actor via Arc clone.
     let state = nullslop_core::State::new(AppState::default());
-    let (proj_tx, proj_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_projector::ProjectorDirectMsg>>();
-    let proj_ref = ActorRef::new(proj_tx);
-    let mut proj_ctx = ActorContext::new("projector", sink.clone());
-    proj_ctx.set_data(state.clone());
-    let proj_actor = ProjectorActor::activate(&mut proj_ctx);
-    let proj_result = spawn_actor(
-        "projector",
-        proj_actor,
-        &proj_ref,
-        proj_rx,
-        proj_ctx,
+    let (sp_tx, sp_rx) =
+        kanal::unbounded::<ActorEnvelope<SessionPersistenceDirectMsg>>();
+    let sp_ref = ActorRef::new(sp_tx);
+    let mut sp_ctx = ActorContext::new("session-persistence", sink.clone());
+    sp_ctx.set_data(state.clone());
+    // SessionStoreService is optional — the e2e test only needs streaming event→state writes.
+    let sp_actor = SessionPersistenceActor::activate(&mut sp_ctx);
+    let sp_result = spawn_actor(
+        "session-persistence",
+        sp_actor,
+        &sp_ref,
+        sp_rx,
+        sp_ctx,
         handle,
     );
 
     let host =
-        InMemoryActorHost::from_actors_with_handle(vec![orch_result, llm_result, proj_result], handle.clone());
+        InMemoryActorHost::from_actors_with_handle(vec![orch_result, llm_result, sp_result], handle.clone());
     let host_arc: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(host);
 
     let services = nullslop_services::test_services::TestServices::builder()
@@ -180,17 +185,17 @@ fn create_actor_core(
         sender,
     };
 
-    // Emit lifecycle events for the projector.
+    // Emit lifecycle events for the session actor.
     let _ = sink.send_event(nullslop_protocol::Event::ActorStarting {
         payload: nullslop_protocol::ActorStarting {
-            name: "projector".to_string(),
-            description: Some("Projects events into state".to_string()),
+            name: "session-persistence".to_string(),
+            description: Some("Session lifecycle and persistence".to_string()),
         },
     });
     let _ = sink.send_event(nullslop_protocol::Event::ActorStarted {
         payload: nullslop_protocol::ActorStarted {
-            name: "projector".to_string(),
-            description: Some("Projects events into state".to_string()),
+            name: "session-persistence".to_string(),
+            description: Some("Session lifecycle and persistence".to_string()),
         },
     });
 
