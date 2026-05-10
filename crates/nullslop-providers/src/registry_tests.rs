@@ -480,3 +480,81 @@ fn create_factory_for_model_fails_for_unknown_provider() {
     // Then it fails.
     assert!(factory.is_err());
 }
+
+#[rstest::rstest]
+fn create_factory_succeeds_for_remote_model_via_fallback() {
+    // Given a registry with an LMStudio-like provider that has "local-model" as a
+    // static placeholder, simulating runtime-discovered models.
+    let config = make_config(
+        vec![ProviderEntry {
+            name: "lmstudio".to_owned(),
+            backend: "openai".to_owned(),
+            models: vec!["local-model".to_owned()],
+            base_url: Some("http://localhost:1234/v1".to_owned()),
+            api_key_env: None,
+            requires_key: false,
+        }],
+        vec![],
+        None,
+    );
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let api_keys = ApiKeys::new();
+
+    // When creating a factory for a remote-only model (not in static config).
+    let factory = registry.create_factory(
+        &ProviderId::new("lmstudio/my-real-model".to_owned()),
+        &api_keys,
+    );
+
+    // Then it succeeds via the create_factory_for_model fallback.
+    assert!(factory.is_ok());
+    assert_eq!(factory.unwrap().name(), "lmstudio");
+}
+
+#[rstest::rstest]
+fn create_factory_for_static_model_still_works() {
+    // Given a registry with a keyless provider.
+    let config = make_config(vec![ollama_entry()], vec![], None);
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let api_keys = ApiKeys::new();
+
+    // When creating a factory for the statically configured model.
+    let factory = registry.create_factory(
+        &ProviderId::new("ollama/llama3".to_owned()),
+        &api_keys,
+    );
+
+    // Then it succeeds (unchanged behavior).
+    assert!(factory.is_ok());
+    assert_eq!(factory.unwrap().name(), "ollama");
+}
+
+#[rstest::rstest]
+fn create_factory_falls_back_for_model_with_slashes() {
+    // Given a registry with an OpenRouter-like provider whose models contain slashes.
+    let config = make_config(
+        vec![ProviderEntry {
+            name: "openrouter".to_owned(),
+            backend: "openrouter".to_owned(),
+            models: vec!["openai/gpt-4".to_owned()],
+            base_url: None,
+            api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
+            requires_key: true,
+        }],
+        vec![],
+        None,
+    );
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let mut api_keys = ApiKeys::new();
+    api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
+
+    // When creating a factory for a remote model with a slash in the model name.
+    let factory = registry.create_factory(
+        &ProviderId::new("openrouter/anthropic/claude-sonnet-4".to_owned()),
+        &api_keys,
+    );
+
+    // Then it succeeds (splits on first "/" → provider="openrouter", model="anthropic/claude-sonnet-4").
+    assert!(factory.is_ok());
+    assert_eq!(factory.unwrap().name(), "openrouter");
+}
