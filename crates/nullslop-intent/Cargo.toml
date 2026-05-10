@@ -11,6 +11,7 @@ nsslice-chat-input-box = { workspace = true }
 nsslice-dashboard = { workspace = true }
 nsslice-picker = { workspace = true }
 nsslice-chat-entry-selection = { workspace = true }
+nsslice-navigation = { workspace = true }
 wherror = { workspace = true }
 
 [dev-dependencies]

@@ -2850,6 +2850,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsslice-navigation"
+version = "0.1.0"
+dependencies = [
+ "nullslop-component",
+ "nullslop-protocol",
+ "rstest",
+]
+
+[[package]]
 name = "nsslice-picker"
 version = "0.1.0"
 dependencies = [
@@ -2920,6 +2929,7 @@ dependencies = [
  "nsslice-chat-input-box",
  "nsslice-chat-log",
  "nsslice-dashboard",
+ "nsslice-navigation",
  "nsslice-picker",
  "nsslice-pinned-panel",
  "nsslice-provider",
@@ -3124,6 +3134,7 @@ dependencies = [
  "nsslice-chat-entry-selection",
  "nsslice-chat-input-box",
  "nsslice-dashboard",
+ "nsslice-navigation",
  "nsslice-picker",
  "nsslice-pinned-panel",
  "nullslop-component",

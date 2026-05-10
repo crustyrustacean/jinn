@@ -31,7 +31,7 @@
 
 use nullslop_component::AppState;
 use nullslop_protocol::provider::CancelStream;
-use nullslop_protocol::{Command, Mode, PinPosition, SessionId, TabDirection};
+use nullslop_protocol::{Command, Mode, PinPosition, SessionId};
 
 use crate::Intent;
 use crate::validators::{app, chat_entry};
@@ -50,11 +50,6 @@ use nullslop_protocol::IntentResult;
 pub struct IntentHandler;
 
 impl IntentHandler {
-    /// Number of lines to scroll per keyboard step.
-    const SCROLL_STEP: u16 = 10;
-    /// Number of lines to scroll per mouse wheel tick.
-    const MOUSE_SCROLL_STEP: u16 = 3;
-
     /// Process an intent against the current application state.
     ///
     /// Clears TUI signals from the previous call, then processes the intent.
@@ -110,45 +105,22 @@ impl IntentHandler {
             }
 
             // --- Navigation ---
-            Intent::ScrollUp => {
-                state.active_session_mut().scroll_up(Self::SCROLL_STEP);
-                IntentResult::empty()
-            }
-            Intent::ScrollDown => {
-                state.active_session_mut().scroll_down(Self::SCROLL_STEP);
-                IntentResult::empty()
-            }
+            Intent::ScrollUp => nsslice_navigation::intent::handle_scroll_up(state),
+            Intent::ScrollDown => nsslice_navigation::intent::handle_scroll_down(state),
             Intent::MouseScrollUp => {
-                state
-                    .active_session_mut()
-                    .scroll_up(Self::MOUSE_SCROLL_STEP);
-                IntentResult::empty()
+                nsslice_navigation::intent::handle_mouse_scroll_up(state)
             }
             Intent::MouseScrollDown => {
-                state
-                    .active_session_mut()
-                    .scroll_down(Self::MOUSE_SCROLL_STEP);
-                IntentResult::empty()
+                nsslice_navigation::intent::handle_mouse_scroll_down(state)
             }
-            Intent::ScrollToTop => {
-                state.active_session_mut().scroll_to_top();
-                IntentResult::empty()
-            }
+            Intent::ScrollToTop => nsslice_navigation::intent::handle_scroll_to_top(state),
             Intent::ScrollToBottom => {
-                state.active_session_mut().scroll_to_bottom();
-                IntentResult::empty()
+                nsslice_navigation::intent::handle_scroll_to_bottom(state)
             }
             Intent::SwitchTab { direction } => {
-                state.frontend.active_tab = match direction {
-                    TabDirection::Next => state.frontend.active_tab.next(),
-                    TabDirection::Prev => state.frontend.active_tab.prev(),
-                };
-                IntentResult::empty()
+                nsslice_navigation::intent::handle_switch_tab(state, *direction)
             }
-            Intent::EditInput => {
-                state.frontend.tui_signals.edit_requested = true;
-                IntentResult::empty()
-            }
+            Intent::EditInput => nsslice_navigation::intent::handle_edit_input(state),
 
             // --- Mode & App ---
             Intent::Quit => {
