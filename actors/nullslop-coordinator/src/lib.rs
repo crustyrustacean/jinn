@@ -559,7 +559,7 @@ impl CoordinatorActor {
 mod tests {
     use std::sync::Arc;
 
-    use nullslop_actor::{Actor, ActorContext, ActorEnvelope, MessageSink, SendResult};
+    use nullslop_actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use nullslop_component::{AppState, State};
     use nullslop_protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
     use nullslop_protocol::context::{
@@ -576,42 +576,6 @@ mod tests {
     use nullslop_services::Services;
 
     use super::CoordinatorActor;
-
-    /// A recording message sink that captures commands and events.
-    #[derive(Debug)]
-    struct RecordingSink {
-        commands: std::sync::Mutex<Vec<Command>>,
-        events: std::sync::Mutex<Vec<Event>>,
-    }
-
-    impl RecordingSink {
-        fn new() -> Self {
-            Self {
-                commands: std::sync::Mutex::new(Vec::new()),
-                events: std::sync::Mutex::new(Vec::new()),
-            }
-        }
-
-        fn commands(&self) -> Vec<Command> {
-            self.commands.lock().unwrap().clone()
-        }
-
-        fn events(&self) -> Vec<Event> {
-            self.events.lock().unwrap().clone()
-        }
-    }
-
-    impl MessageSink for RecordingSink {
-        fn send_command(&self, command: Command) -> SendResult {
-            self.commands.lock().unwrap().push(command);
-            Ok(())
-        }
-
-        fn send_event(&self, event: Event) -> SendResult {
-            self.events.lock().unwrap().push(event);
-            Ok(())
-        }
-    }
 
     /// Creates a test actor with a fresh AppState and fake services.
     fn create_actor() -> (CoordinatorActor, State, Arc<RecordingSink>, ActorContext) {

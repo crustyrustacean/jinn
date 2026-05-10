@@ -181,6 +181,13 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
+    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
+        let backend = TestBackend::new(width, height);
+        let terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, width, height);
+        (terminal, area)
+    }
+
 
     use super::*;
     use crate::AppState;
@@ -204,9 +211,7 @@ mod tests {
         width: u16,
         height: u16,
     ) -> Vec<String> {
-        let backend = TestBackend::new(width, height);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, width, height);
+        let (mut terminal, area) = setup_term(width, height);
         terminal
             .draw(|frame| {
                 element.render(frame, area, state);
@@ -262,9 +267,7 @@ mod tests {
         let mut element = PinnedPanelElement;
         let state = state_with_pinned(2);
 
-        let backend = TestBackend::new(60, 20);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 60, 20);
+        let (mut terminal, area) = setup_term(60, 20);
         terminal
             .draw(|frame| {
                 element.render(frame, area, &state);

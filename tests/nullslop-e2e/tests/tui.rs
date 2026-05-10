@@ -63,44 +63,9 @@ impl TuiWorld {
             strategy_registry,
         };
 
-        // Build a minimal AppCore with struct literal.
-        let (sender, _receiver) = kanal::unbounded();
-        let core = nullslop_core::AppCore {
-            state: nullslop_component::State::new(nullslop_component::AppState::default()),
-            sender,
-        };
-
-        // Create a disconnected core receiver and fake actor host.
-        let (_, tui_core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
-        let fake_host = ActorHostService::new(Arc::new(nullslop_actor_host::FakeActorHost::new()));
-
-        let mut ui_registry = nullslop_component::AppUiRegistry::new();
-        nullslop_component::register_all(&mut ui_registry);
-
-        let app = TuiApp {
-            core,
-            services,
-            actor_host: fake_host,
-            core_receiver: tui_core_rx,
-            ui_registry,
-            events: nullslop_tui::MsgHandler::new(),
-            which_key: nullslop_tui::app::WhichKeyInstance::new(
-                nullslop_tui::keymap::init(),
-                Scope::Normal,
-            ),
-            suspend: nullslop_tui::suspend::Suspend::new(),
-            event_task: None,
-            status: nullslop_tui::AppStatus::Starting,
-            tab_manager: nullslop_tui::render::init_tab_manager(),
-            selection: nullslop_tui::selection::SelectionState::Idle,
-            selectable_rects: Default::default(),
-            pending_clipboard: false,
-            config: nullslop_tui::config::TuiConfig::default(),
-            split_manager: ratatui_spatial_splits::SplitManager::new(),
-            pane_focus: nullslop_tui::app::PaneFocus::Chat,
-            pinned_pane_visible: false,
-            pinned_pane_id: None,
-        };
+        let app = TuiApp::test_builder()
+            .services(services)
+            .build();
 
         Self { app }
     }

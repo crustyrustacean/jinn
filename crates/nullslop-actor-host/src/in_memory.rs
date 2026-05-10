@@ -284,38 +284,11 @@ impl ActorHost for InMemoryActorHost {
 mod tests {
     use std::sync::Arc;
 
-    use nullslop_actor::SendResult;
-    use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
+    use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, RecordingSink};
     use nullslop_protocol::chat_input::ChatEntrySubmitted;
     use nullslop_protocol::{Command, CommandMsg as _, Event};
 
     use super::*;
-
-    /// A test message sink that records commands and events.
-    struct TestSink {
-        commands: Mutex<Vec<Command>>,
-        events: Mutex<Vec<Event>>,
-    }
-
-    impl TestSink {
-        fn new() -> Self {
-            Self {
-                commands: Mutex::new(Vec::new()),
-                events: Mutex::new(Vec::new()),
-            }
-        }
-    }
-
-    impl MessageSink for TestSink {
-        fn send_command(&self, command: Command) -> SendResult {
-            self.commands.lock().push(command);
-            Ok(())
-        }
-        fn send_event(&self, event: Event) -> SendResult {
-            self.events.lock().push(event);
-            Ok(())
-        }
-    }
 
     /// No-op actor for lifecycle testing.
     struct NoopActor;
@@ -420,7 +393,7 @@ mod tests {
         // Given a host with a recording actor subscribed to ChatEntrySubmitted.
         let runtime = rt();
         let _guard = runtime.enter();
-        let sink = Arc::new(TestSink::new());
+        let sink = Arc::new(RecordingSink::new());
         let (result, received) = spawn_recording_actor(
             "recorder",
             sink.clone(),
@@ -461,7 +434,7 @@ mod tests {
         // Given two actors with different subscriptions.
         let runtime = rt();
         let _guard = runtime.enter();
-        let sink = Arc::new(TestSink::new());
+        let sink = Arc::new(RecordingSink::new());
         let (r1, received1) = spawn_recording_actor(
             "actor-a",
             sink.clone(),
@@ -498,7 +471,7 @@ mod tests {
         // Given a host with a recording actor registered for PushChatEntry.
         let runtime = rt();
         let _guard = runtime.enter();
-        let sink = Arc::new(TestSink::new());
+        let sink = Arc::new(RecordingSink::new());
         let (result, received) = spawn_recording_actor(
             "recorder",
             sink.clone(),
@@ -541,7 +514,7 @@ mod tests {
         // Given a host with a recording actor registered for PushChatEntry only.
         let runtime = rt();
         let _guard = runtime.enter();
-        let sink = Arc::new(TestSink::new());
+        let sink = Arc::new(RecordingSink::new());
         let (result, received) = spawn_recording_actor(
             "recorder",
             sink.clone(),
@@ -572,7 +545,7 @@ mod tests {
         // Given a running host with two actors.
         let runtime = rt();
         let _guard = runtime.enter();
-        let sink = Arc::new(TestSink::new());
+        let sink = Arc::new(RecordingSink::new());
         let r1 = spawn_noop_actor("a", sink.clone(), runtime.handle());
         let r2 = spawn_noop_actor("b", sink.clone(), runtime.handle());
         let host =
@@ -592,7 +565,7 @@ mod tests {
         // Given two actors subscribed to the same event.
         let runtime = rt();
         let _guard = runtime.enter();
-        let sink = Arc::new(TestSink::new());
+        let sink = Arc::new(RecordingSink::new());
         let (r1, received1) = spawn_recording_actor(
             "actor-a",
             sink.clone(),
@@ -638,7 +611,7 @@ mod tests {
         // Given two actors with different subscriptions.
         let runtime = rt();
         let _guard = runtime.enter();
-        let sink = Arc::new(TestSink::new());
+        let sink = Arc::new(RecordingSink::new());
         let (r1, received1) = spawn_recording_actor(
             "actor-a",
             sink.clone(),
@@ -692,7 +665,7 @@ mod tests {
         // Given two actors where actor-a holds actor-b's ActorRef.
         let runtime = rt();
         let _guard = runtime.enter();
-        let sink = Arc::new(TestSink::new());
+        let sink = Arc::new(RecordingSink::new());
 
         // Create actor-b first to get its ref.
         let (actor_b, received_b) = RecordingActor::new();

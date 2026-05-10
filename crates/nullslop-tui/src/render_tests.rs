@@ -3,45 +3,26 @@ use crate::scope::Scope;
 use crate::selection::{SelectableRects, SelectionState};
 use nullslop_protocol::Intent;
 use nullslop_selection_widget::compute_popup_rect;
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
+use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use ratatui_spatial_splits::SplitManager;
 
 /// Creates a minimal `TuiApp` for render testing.
 fn render_test_app() -> crate::TuiApp {
-    let services = nullslop_services::Services::new();
-    let (sender, _receiver) = kanal::unbounded();
-    let core = nullslop_core::AppCore {
-        state: nullslop_component::State::new(nullslop_component::AppState::default()),
-        sender,
-    };
-    let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
-    let fake_host = nullslop_actor_host::ActorHostService::new(std::sync::Arc::new(
-        nullslop_actor_host::FakeActorHost::new(),
-    ));
-    let mut ui_registry = nullslop_component::AppUiRegistry::new();
-    nullslop_component::register_all(&mut ui_registry);
-    crate::TuiApp {
-        core,
-        services,
-        actor_host: fake_host,
-        core_receiver: core_rx,
-        ui_registry,
-        events: crate::MsgHandler::new(),
-        which_key: crate::app::WhichKeyInstance::new(crate::keymap::init(), Scope::Normal),
-        suspend: crate::suspend::Suspend::new(),
-        event_task: None,
-        status: crate::AppStatus::Starting,
-        tab_manager: init_tab_manager(),
-        selection: SelectionState::Idle,
-        selectable_rects: SelectableRects::default(),
-        pending_clipboard: false,
-        config: crate::config::TuiConfig::default(),
-        split_manager: SplitManager::new(),
-        pane_focus: crate::app::PaneFocus::Chat,
-        pinned_pane_visible: false,
-        pinned_pane_id: None,
-    }
+    crate::TuiApp::test_builder().build()
 }
+
+/// Creates a test terminal with the given dimensions.
+fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
+    let backend = TestBackend::new(width, height);
+    let terminal = Terminal::new(backend).unwrap();
+    let area = Rect::new(0, 0, width, height);
+    (terminal, area)
+}
+
+
 
 #[rstest::rstest]
 fn app_layout_meets_min_size() {
@@ -159,8 +140,6 @@ fn load_picker_items(
 fn render_provider_picker_shows_telescope_layout() {
     // Given a terminal area and picker state with filter "ol".
     use nullslop_selection_widget::compute_popup_rect;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let (mut state, services) = picker_state_with_ollama();
     state.mode = Mode::Picker;
@@ -169,8 +148,7 @@ fn render_provider_picker_shows_telescope_layout() {
     state.provider_picker.insert_char('o');
     state.provider_picker.insert_char('l');
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering the picker.
     terminal
@@ -231,14 +209,11 @@ fn small_terminal_uses_75_percent_height() {
 fn render_provider_picker_uses_dark_gray_border() {
     // Given a picker render.
     use nullslop_selection_widget::compute_popup_rect;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let (mut state, services) = picker_state_with_ollama();
     load_picker_items(&mut state, &services);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     terminal
         .draw(|frame| {
@@ -258,8 +233,6 @@ fn render_provider_picker_uses_dark_gray_border() {
 fn render_provider_picker_shows_active_model_marker() {
     // Given a state with active_provider set to "ollama/llama3" and items loaded.
     use nullslop_selection_widget::compute_popup_rect;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let (mut state, services) = picker_state_with_ollama();
     state.mode = Mode::Picker;
@@ -267,8 +240,7 @@ fn render_provider_picker_shows_active_model_marker() {
     state.active_picker_kind = Some(PickerKind::Provider);
     load_picker_items(&mut state, &services);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering the picker.
     terminal
@@ -304,15 +276,12 @@ fn strategy_picker_state() -> (nullslop_component::AppState, nullslop_services::
 fn render_context_strategy_picker_shows_telescope_layout() {
     // Given a terminal area and picker state with entries loaded.
     use nullslop_selection_widget::compute_popup_rect;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let (mut state, _services) = strategy_picker_state();
     state.mode = Mode::Picker;
     state.active_picker_kind = Some(PickerKind::ContextAssembly);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering the picker.
     terminal
@@ -340,15 +309,12 @@ fn render_context_strategy_picker_shows_telescope_layout() {
 fn render_context_strategy_picker_shows_active_marker() {
     // Given a state with entries (default is passthrough active).
     use nullslop_selection_widget::compute_popup_rect;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let (mut state, _services) = strategy_picker_state();
     state.mode = Mode::Picker;
     state.active_picker_kind = Some(PickerKind::ContextAssembly);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering the picker.
     terminal
@@ -372,15 +338,12 @@ fn render_context_strategy_picker_shows_active_marker() {
 fn render_context_strategy_picker_shows_footer_with_current_strategy() {
     // Given a state with entries (default is passthrough active).
     use nullslop_selection_widget::compute_popup_rect;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let (mut state, _services) = strategy_picker_state();
     state.mode = Mode::Picker;
     state.active_picker_kind = Some(PickerKind::ContextAssembly);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering the picker.
     terminal
@@ -454,13 +417,10 @@ fn keymap_picker_state() -> nullslop_component::AppState {
 #[rstest::rstest]
 fn render_keymap_picker_shows_telescope_layout() {
     // Given a terminal area with keymap picker state.
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let state = keymap_picker_state();
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering the picker.
     terminal
@@ -496,14 +456,11 @@ fn render_keymap_picker_shows_telescope_layout() {
 #[rstest::rstest]
 fn render_keymap_picker_footer_shows_current_scope() {
     // Given a keymap picker state with show_all = false and origin scope "Normal".
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let mut state = keymap_picker_state();
     state.keymap_picker_show_all = false;
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering the picker.
     terminal
@@ -537,14 +494,11 @@ fn render_keymap_picker_footer_shows_current_scope() {
 #[rstest::rstest]
 fn render_keymap_picker_footer_shows_all_scopes() {
     // Given a keymap picker state with show_all = true and origin scope "Normal".
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let mut state = keymap_picker_state();
     state.keymap_picker_show_all = true;
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering the picker.
     terminal
@@ -888,14 +842,11 @@ fn clipboard_contains_selected_text() {
 #[rstest::rstest]
 fn render_registers_content_rect_for_selectable_chat_log() {
     // Given a TuiApp rendered in Chat tab with a 80x24 terminal.
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let mut app = render_test_app();
     // Default tab is Chat.
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering.
     terminal
@@ -920,16 +871,13 @@ fn render_registers_content_rect_for_selectable_chat_log() {
 #[rstest::rstest]
 fn picker_popup_rect_is_selectable() {
     // Given a TuiApp rendered with Mode::Picker.
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let mut app = render_test_app();
     // Switch to Picker mode with an active provider picker.
     app.core.state.write().mode = nullslop_protocol::Mode::Picker;
     app.core.state.write().active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering.
     terminal
@@ -950,16 +898,13 @@ fn picker_popup_rect_is_selectable() {
 #[rstest::rstest]
 fn content_area_rect_is_selectable() {
     // Given a TuiApp rendered with Mode::Picker.
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let mut app = render_test_app();
     // Switch to Picker mode with an active provider picker.
     app.core.state.write().mode = nullslop_protocol::Mode::Picker;
     app.core.state.write().active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering.
     terminal
@@ -1020,8 +965,6 @@ fn buffer_line(buf: &ratatui::buffer::Buffer, y: u16, start_x: u16, max_len: u16
 fn render_autocomplete_popup_shows_matches() {
     // Given an AppState with autocomplete active and 3 matches.
     use nullslop_component::chat_input_box::state::AutocompleteMatch;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let matches = vec![
         AutocompleteMatch {
@@ -1039,8 +982,7 @@ fn render_autocomplete_popup_shows_matches() {
     ];
     let state = state_with_autocomplete("$co", 0, matches);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
 
     // When rendering the autocomplete popup with a known input area.
     let input_area = Rect::new(0, 20, 80, 4);
@@ -1075,8 +1017,6 @@ fn render_autocomplete_popup_shows_matches() {
 fn render_autocomplete_popup_highlights_selected() {
     // Given an AppState with 2 matches and the second (most-relevant) selected.
     use nullslop_component::chat_input_box::state::AutocompleteMatch;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let matches = vec![
         AutocompleteMatch {
@@ -1093,8 +1033,7 @@ fn render_autocomplete_popup_highlights_selected() {
     // Move selection up to select index 0 ("alpha").
     state.active_chat_input_mut().autocomplete_move_up();
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
     terminal
@@ -1125,13 +1064,10 @@ fn render_autocomplete_popup_highlights_selected() {
 #[rstest::rstest]
 fn render_autocomplete_popup_shows_no_matches_message() {
     // Given an AppState with autocomplete active but 0 matches.
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let state = state_with_autocomplete("$xyz", 0, vec![]);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
     terminal
@@ -1154,8 +1090,6 @@ fn render_autocomplete_popup_shows_no_matches_message() {
 fn render_autocomplete_popup_positioned_above_input() {
     // Given a known input area at row 20.
     use nullslop_component::chat_input_box::state::AutocompleteMatch;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let matches = vec![AutocompleteMatch {
         name: "test".to_owned(),
@@ -1163,8 +1097,7 @@ fn render_autocomplete_popup_positioned_above_input() {
     }];
     let state = state_with_autocomplete("$", 0, matches);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
     terminal
@@ -1189,8 +1122,6 @@ fn render_autocomplete_popup_positioned_above_input() {
 fn render_autocomplete_popup_anchored_at_dollar() {
     // Given a buffer "foo $co" — the $ is at grapheme index 4.
     use nullslop_component::chat_input_box::state::AutocompleteMatch;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let matches = vec![AutocompleteMatch {
         name: "code".to_owned(),
@@ -1198,8 +1129,7 @@ fn render_autocomplete_popup_anchored_at_dollar() {
     }];
     let state = state_with_autocomplete("foo $co", 4, matches);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
     // Input area starts at x=10 to see horizontal anchoring.
     let input_area = Rect::new(10, 20, 70, 4);
 
@@ -1227,8 +1157,6 @@ fn render_autocomplete_popup_anchored_at_dollar() {
 fn render_autocomplete_popup_width_based_on_content() {
     // Given matches with varying name lengths.
     use nullslop_component::chat_input_box::state::AutocompleteMatch;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let matches = vec![
         AutocompleteMatch {
@@ -1242,8 +1170,7 @@ fn render_autocomplete_popup_width_based_on_content() {
     ];
     let state = state_with_autocomplete("$", 0, matches);
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
     terminal
@@ -1267,13 +1194,10 @@ fn render_autocomplete_popup_width_based_on_content() {
 #[rstest::rstest]
 fn render_autocomplete_popup_does_not_render_when_inactive() {
     // Given an AppState with autocomplete inactive.
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     let state = nullslop_component::AppState::default();
 
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
 
     terminal

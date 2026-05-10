@@ -1,51 +1,9 @@
 //! Chat input intent validators.
 //!
-//! Validators for text editing, cursor movement, message submission, autocomplete,
-//! and interrupt intents. Most are infallible; three are fallible.
+//! Validators for message submission, autocomplete confirmation, and interrupt intents.
 
 use nullslop_component::AppState;
-use nullslop_protocol::Mode;
 use wherror::Error;
-
-// --- Infallible validators ---
-
-/// Validates the InsertChar intent.
-pub fn validate_insert_char(_state: &AppState, _ch: char) {}
-
-/// Validates the DeleteGrapheme intent.
-pub fn validate_delete_grapheme(_state: &AppState) {}
-
-/// Validates the DeleteGraphemeForward intent.
-pub fn validate_delete_grapheme_forward(_state: &AppState) {}
-
-/// Validates the MoveCursorLeft intent.
-pub fn validate_move_cursor_left(_state: &AppState) {}
-
-/// Validates the MoveCursorRight intent.
-pub fn validate_move_cursor_right(_state: &AppState) {}
-
-/// Validates the MoveCursorToStart intent.
-pub fn validate_move_cursor_to_start(_state: &AppState) {}
-
-/// Validates the MoveCursorToEnd intent.
-pub fn validate_move_cursor_to_end(_state: &AppState) {}
-
-/// Validates the MoveCursorWordLeft intent.
-pub fn validate_move_cursor_word_left(_state: &AppState) {}
-
-/// Validates the MoveCursorWordRight intent.
-pub fn validate_move_cursor_word_right(_state: &AppState) {}
-
-/// Validates the MoveCursorUp intent.
-pub fn validate_move_cursor_up(_state: &AppState) {}
-
-/// Validates the MoveCursorDown intent.
-pub fn validate_move_cursor_down(_state: &AppState) {}
-
-/// Validates the SetMode intent.
-pub fn validate_set_mode(_state: &AppState, _mode: &Mode) {}
-
-// --- Fallible validators ---
 
 /// Errors from validating a SubmitMessage intent.
 #[derive(Debug, Error)]
@@ -110,80 +68,6 @@ pub fn validate_interrupt(state: &AppState) -> Result<(), InterruptError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // --- Infallible validator tests ---
-
-    #[rstest::rstest]
-    fn validate_insert_char_always_succeeds() {
-        let state = AppState::default();
-        validate_insert_char(&state, 'x');
-    }
-
-    #[rstest::rstest]
-    fn validate_delete_grapheme_always_succeeds() {
-        let state = AppState::default();
-        validate_delete_grapheme(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_delete_grapheme_forward_always_succeeds() {
-        let state = AppState::default();
-        validate_delete_grapheme_forward(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_move_cursor_left_always_succeeds() {
-        let state = AppState::default();
-        validate_move_cursor_left(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_move_cursor_right_always_succeeds() {
-        let state = AppState::default();
-        validate_move_cursor_right(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_move_cursor_to_start_always_succeeds() {
-        let state = AppState::default();
-        validate_move_cursor_to_start(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_move_cursor_to_end_always_succeeds() {
-        let state = AppState::default();
-        validate_move_cursor_to_end(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_move_cursor_word_left_always_succeeds() {
-        let state = AppState::default();
-        validate_move_cursor_word_left(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_move_cursor_word_right_always_succeeds() {
-        let state = AppState::default();
-        validate_move_cursor_word_right(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_move_cursor_up_always_succeeds() {
-        let state = AppState::default();
-        validate_move_cursor_up(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_move_cursor_down_always_succeeds() {
-        let state = AppState::default();
-        validate_move_cursor_down(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_set_mode_always_succeeds() {
-        let state = AppState::default();
-        validate_set_mode(&state, &Mode::Input);
-    }
 
     // --- SubmitMessage tests ---
 
