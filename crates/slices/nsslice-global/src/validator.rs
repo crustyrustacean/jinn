@@ -1,4 +1,4 @@
-//! Global intent validators — quit, toggle which-key, interrupt, and normal escape.
+//! Global intent validators — quit, toggle which-key, and interrupt.
 
 use nullslop_component::AppState;
 use wherror::Error;
@@ -12,11 +12,6 @@ pub fn validate_quit(_state: &AppState) {}
 ///
 /// Toggling the which-key popup can always proceed.
 pub fn validate_toggle_whichkey(_state: &AppState) {}
-
-/// Validates the NormalEscape intent.
-///
-/// Escape in Normal mode can always proceed.
-pub fn validate_normal_escape(_state: &AppState) {}
 
 /// Errors from validating an Interrupt intent.
 #[derive(Debug, Error)]

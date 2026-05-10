@@ -8,7 +8,7 @@ use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
 use nullslop_protocol::Intent;
 use nullslop_protocol::picker_kind::PickerKind;
-use nullslop_protocol::{Key, KeyEvent, Mode, TabDirection};
+use nullslop_protocol::{Key, KeyEvent, TabDirection};
 use ratatui_which_key::CrosstermKeymapExt as _;
 use ratatui_which_key::Key as WhichKeyKey;
 use ratatui_which_key::Keymap;
@@ -50,7 +50,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-p>", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
             .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
             // Input — enter input mode
-            .bind("i", Intent::SetMode { mode: Mode::Input }, KeyCategory::Input)
+            .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
             // Navigation — scrolling and tab switching
             .bind("k", Intent::ChatEntrySelectPrev, KeyCategory::Navigation)
             .bind("j", Intent::ChatEntrySelectNext, KeyCategory::Navigation)
@@ -126,15 +126,15 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Input — external editor
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
             // Input — enter input mode
-            .bind("i", Intent::SetMode { mode: Mode::Input }, KeyCategory::Input);
+            .bind("i", Intent::EnterInsertMode, KeyCategory::Input);
         })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
             b.bind("<enter>", Intent::SubmitMessage, KeyCategory::Input)
             .bind("<s-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .bind("<c-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
-            .bind("<esc>", Intent::SetMode { mode: Mode::Normal }, KeyCategory::General)
-            .bind("<c-c>", Intent::Interrupt, KeyCategory::General)
+            .bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
+            .bind("<c-c>", Intent::Interrupt { session_id: None }, KeyCategory::General)
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
             .bind("<f1>", Intent::ToggleWhichkey, KeyCategory::General)
             .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
@@ -162,7 +162,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 
     keymap
         .scope(Scope::Picker, |b| {
-            b.bind("<esc>", Intent::SetMode { mode: Mode::Normal }, KeyCategory::General)
+            b.bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
             .bind("<enter>", Intent::PickerConfirm, KeyCategory::Model)
             .bind("<up>", Intent::PickerMoveUp, KeyCategory::Navigation)
             .bind("<down>", Intent::PickerMoveDown, KeyCategory::Navigation)

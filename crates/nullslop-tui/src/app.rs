@@ -225,7 +225,7 @@ impl TuiApp {
             }
 
             // Cancel selection when mode changes away from Picker.
-            if matches!(intent, Intent::SetMode { .. } | Intent::NormalEscape) {
+            if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape) {
                 self.selection = mem::take(&mut self.selection).cancel();
                 if !matches!(state.frontend.mode, Mode::Picker) {
                     state.frontend.keymap_picker_origin_scope = None;

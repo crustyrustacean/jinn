@@ -54,6 +54,11 @@ pub fn validate_autocomplete_confirm(state: &AppState) -> Result<(), Autocomplet
     Ok(())
 }
 
+/// Validates the NormalEscape intent.
+///
+/// Escape in Normal mode can always proceed.
+pub fn validate_normal_escape(_state: &AppState) {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

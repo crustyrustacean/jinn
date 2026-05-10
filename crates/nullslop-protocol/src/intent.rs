@@ -1,6 +1,6 @@
 //! The [`Intent`] enum — one variant per user-initiated action.
 
-use crate::{Mode, PickerKind, TabDirection};
+use crate::{PickerKind, SessionId, TabDirection};
 
 /// A user-initiated action.
 ///
@@ -64,15 +64,20 @@ pub enum Intent {
     /// Quit the application.
     Quit,
     /// Context-sensitive interrupt: clear input or cancel stream.
-    Interrupt,
-    /// Set the application interaction mode.
-    SetMode {
-        /// The target mode.
-        mode: Mode,
+    ///
+    /// When `session_id` is `None`, applies to the active session (smart behavior).
+    /// When `session_id` is `Some(id)`, targets a specific session for cancel only.
+    Interrupt {
+        /// The session to target, or `None` for the active session.
+        session_id: Option<SessionId>,
     },
+    /// Enter Insert (Input) mode — the chat input box is active.
+    EnterInsertMode,
+    /// Enter Normal mode — cancel streams, clear picker, return to neutral.
+    EnterNormalMode,
     /// Toggle the which-key popup.
     ToggleWhichkey,
-    /// Escape key in Normal mode: cancel selection, close pinned panel.
+    /// Escape key in Normal mode: cancel selection.
     NormalEscape,
 
     // --- Picker ---
@@ -173,8 +178,9 @@ impl std::fmt::Display for Intent {
             Intent::SwitchTab { direction } => write!(f, "switch tab {direction}"),
             Intent::EditInput => write!(f, "edit in $EDITOR"),
             Intent::Quit => write!(f, "quit"),
-            Intent::Interrupt => write!(f, "interrupt"),
-            Intent::SetMode { mode } => write!(f, "set mode {mode}"),
+            Intent::Interrupt { .. } => write!(f, "interrupt"),
+            Intent::EnterInsertMode => write!(f, "enter insert mode"),
+            Intent::EnterNormalMode => write!(f, "enter normal mode"),
             Intent::ToggleWhichkey => write!(f, "toggle which-key"),
             Intent::NormalEscape => write!(f, "escape"),
             Intent::OpenPicker { kind } => write!(f, "open {kind} picker"),

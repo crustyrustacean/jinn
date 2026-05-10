@@ -2,6 +2,7 @@
 
 use nullslop_component::AppState;
 use nullslop_protocol::provider::CancelStream;
+use nullslop_protocol::session::SessionId;
 use nullslop_protocol::{Command, IntentResult};
 
 use crate::validator;
@@ -26,10 +27,24 @@ pub fn handle_toggle_whichkey(state: &mut AppState) -> IntentResult {
 
 /// Handles the Interrupt intent.
 ///
-/// If the input buffer has text, clears it. If the buffer is empty and a
-/// stream is active, cancels the stream and drains queued messages back
-/// to the input buffer.
-pub fn handle_interrupt(state: &mut AppState) -> IntentResult {
+/// When `target` is `None`, applies to the active session (smart behavior):
+/// validates, deactivates autocomplete, and either clears the input buffer
+/// or cancels the stream and drains queued messages.
+///
+/// When `target` is `Some(id)`, targets a specific session: just cancels
+/// streaming and emits a CancelStream command. No validation, no autocomplete,
+/// no drain.
+pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> IntentResult {
+    if let Some(id) = target {
+        state.session_mut(id).cancel_streaming();
+        return IntentResult::with_commands(vec![Command::CancelStream {
+            payload: CancelStream {
+                session_id: id.clone(),
+            },
+        }]);
+    }
+
+    // None path: smart interrupt on active session
     if validator::validate_interrupt(state).is_err() {
         return IntentResult::empty();
     }
@@ -38,25 +53,13 @@ pub fn handle_interrupt(state: &mut AppState) -> IntentResult {
 
     if state.active_chat_input().is_empty() {
         let session_id = state.session.active_session.clone();
-        cancel_stream_and_drain(state);
+        state.active_session_mut().cancel_stream_and_drain();
         IntentResult::with_commands(vec![Command::CancelStream {
             payload: CancelStream { session_id },
         }])
     } else {
         state.active_chat_input_mut().reset();
         IntentResult::empty()
-    }
-}
-
-/// Cancels streaming on the active session and drains any queued messages
-/// back to the input buffer.
-pub fn cancel_stream_and_drain(state: &mut AppState) {
-    let session = state.active_session_mut();
-    session.cancel_streaming();
-    let drained: Vec<String> = session.drain_queue().into_iter().collect();
-    let drained_text = drained.join("\n");
-    if !drained_text.is_empty() {
-        session.chat_input_mut().replace_all(drained_text);
     }
 }
 
@@ -73,7 +76,7 @@ mod tests {
     }
 
     fn handle_interrupt(state: &mut AppState) -> IntentResult {
-        super::handle_interrupt(state)
+        super::handle_interrupt(state, None)
     }
 
     #[rstest::rstest]
@@ -166,5 +169,28 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Command::CancelStream { .. }))
         );
+    }
+
+    #[rstest::rstest]
+    fn interrupt_with_specific_session_cancels_stream() {
+        // Given two sessions, the second one streaming.
+        use nullslop_protocol::SessionId;
+
+        let mut state = AppState::default();
+        let second_id = SessionId::new();
+        state.session.sessions.insert(second_id.clone(), {
+            let mut s = AppState::default();
+            s.active_session_mut().begin_streaming();
+            s.session.sessions.into_values().next().unwrap()
+        });
+
+        // When handling Interrupt targeting the second session.
+        let result = super::handle_interrupt(&mut state, Some(&second_id));
+
+        // Then the targeted session's stream is cancelled.
+        assert!(state.session.sessions.get(&second_id).unwrap().is_idle());
+        // And a CancelStream command is returned for that session.
+        assert_eq!(result.commands.len(), 1);
+        assert!(matches!(&result.commands[0], Command::CancelStream { payload } if payload.session_id == second_id));
     }
 }
