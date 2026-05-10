@@ -140,8 +140,9 @@ crates/
   nullslop-actor/        # Actor author SDK
   nullslop-cli/        # CLI argument parsing
 actors/
-  nullslop-coordinator/       # Coordinator actor
-  nullslop-projector/         # Projector actor
+  nullslop-provider-actor/     # Provider selection, LLM factory, model cache
+  nullslop-session-actor/      # Session lifecycle, streaming, tool calls, persistence
+  nullslop-context-actor/      # Context assembly, strategy management, pinning, templates
   nullslop-shutdown-tracker/  # ShutdownTracker actor
   nullslop-llm/               # LLM provider actor
   nullslop-session-actor/     # Session persistence actor
@@ -191,7 +192,7 @@ All services within the `Services` struct must either:
 
 ## 3. Data Flow
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full data flow diagram. The flow is unidirectional: user input → IntentHandler → commands → actor system (coordinator, actors) → events → projector → AppState → renderer.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full data flow diagram. The flow is unidirectional: user input → IntentHandler → commands → domain actors (session, provider, context) → write AppState → renderer.
 
 ## 4. Tests
 
@@ -363,7 +364,7 @@ fn submit_message_rejected_when_buffer_empty() {
 }
 ```
 
-**Example — testing a projector:**
+**Example — testing a domain actor:**
 
 ```rust
 #[test]
@@ -371,10 +372,10 @@ fn stream_token_appends_to_assistant_entry() {
     // Given a projector with an active session.
     let state = State::new(AppState::default());
     let sink = RecordingSink::new();
-    let projector = ProjectorActor::new(state.clone());
+    let session_actor = SessionPersistenceActor::activate(&mut ctx);
 
     // When handling StreamToken("Hello").
-    projector.on_stream_token(&StreamToken { /* ... */ }, &sink);
+    session_actor.handle_stream_token(&StreamToken { /* ... */ }, &sink);
 
     // Then the session has an Assistant entry with "Hello".
     let s = state.read();
@@ -468,11 +469,10 @@ When implementing features:
 3. **Add handler match arm** — in `nullslop-intent/src/handler.rs`: call validator (if any), mutate `AppState`, return commands
 4. **Add keymap binding** — in `nullslop-tui/src/keymap.rs`: bind key to `Intent` variant in the right scope (`Normal`, `Input`, `Dashboard`, `Pinned`, `Picker`)
 5. **Add Command/Event if needed** — define domain-only structs in `nullslop-protocol` with corresponding `Command` or `Event` enum variants. Forgetting the enum variant is the most common oversight — the struct alone is not enough.
-6. **Add coordinator logic if needed** — subscribe to the new command in `actors/nullslop-coordinator` and implement the handler
-7. **Add projector handler if needed** — subscribe to the new event in `actors/nullslop-projector` and implement the state mutation
-8. **Add UI element if needed** — in `nullslop-component/src/`, register in `register_all()` in `lib.rs`
-9. **Write tests** — Use Given/When/Then structure: test validator in isolation, test intent handler for state changes and commands, test projector for event→state mapping
-10. **Add documentation** — Module docs, type docs, error docs. Describe behavior and purpose, not technical implementation.
+6. **Add domain actor logic if needed** — subscribe to the new command/event in the appropriate domain actor (`nullslop-session-actor`, `nullslop-provider-actor`, `nullslop-context-actor`) and implement the handler
+7. **Add UI element if needed** — in `nullslop-component/src/`, register in `register_all()` in `lib.rs`
+8. **Write tests** — Use Given/When/Then structure: test validator in isolation, test intent handler for state changes and commands, test domain actor for event→state mapping
+9. **Add documentation** — Module docs, type docs, error docs. Describe behavior and purpose, not technical implementation.
 
 ## 8. Tooling
 

@@ -251,6 +251,7 @@ impl ChatSessionState {
     ///
     /// Searches recent history for a `ToolCall` entry matching the given ID.
     /// If not found (shouldn't happen in normal flow), pushes a new entry.
+    #[allow(dead_code, reason = "used by tool call finalization flow")]
     pub(crate) fn finalize_tool_call(&mut self, id: &str, name: &str, arguments: &str) {
         for entry in self.history.iter_mut().rev() {
             if let ChatEntryKind::ToolCall {
