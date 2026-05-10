@@ -6,7 +6,7 @@ resolver = "3"
 default-run = "nullslop"
 
 [workspace]
-members = ["crates/*", "actors/nullslop-echo", "actors/nullslop-context-actor", "actors/nullslop-llm", "actors/nullslop-llm-discover", "actors/nullslop-prompt-scan", "actors/nullslop-session-actor", "actors/nullslop-shutdown-tracker", "actors/nullslop-coordinator", "actors/nullslop-projector", "tests/*"]
+members = ["crates/*", "actors/nullslop-echo", "actors/nullslop-context-actor", "actors/nullslop-llm", "actors/nullslop-llm-discover", "actors/nullslop-prompt-scan", "actors/nullslop-session-actor", "actors/nullslop-shutdown-tracker", "actors/nullslop-coordinator", "actors/nullslop-projector", "actors/nullslop-provider-actor", "tests/*"]
 
 [lib]
 path = "src/lib.rs"
@@ -80,6 +80,7 @@ nullslop-session = { path = "crates/nullslop-session" }
 nullslop-session-actor = { path = "actors/nullslop-session-actor" }
 nullslop-coordinator = { path = "actors/nullslop-coordinator" }
 nullslop-projector = { path = "actors/nullslop-projector" }
+nullslop-provider-actor = { path = "actors/nullslop-provider-actor" }
 nullslop-intent = { path = "crates/nullslop-intent" }
 nullslop-shutdown-tracker = { path = "actors/nullslop-shutdown-tracker" }
 
