@@ -425,6 +425,8 @@ fn interrupt_cancels_stream_when_buffer_empty() {
     // Then a CancelStream command is returned.
     assert_eq!(result.commands.len(), 1);
     assert!(matches!(&result.commands[0], Command::CancelStream { .. }));
+    // And the session is idle (streaming was cancelled).
+    assert!(state.active_session().is_idle());
 }
 
 #[rstest::rstest]
@@ -437,6 +439,25 @@ fn interrupt_noop_when_idle_and_empty() {
 
     // Then no commands.
     assert!(result.commands.is_empty());
+}
+
+#[rstest::rstest]
+fn interrupt_drains_queued_messages_to_input_buffer() {
+    // Given a streaming session with queued messages and empty input buffer.
+    let mut state = AppState::default();
+    state.active_session_mut().begin_streaming();
+    state.active_session_mut().enqueue_message("queued1".into());
+    state.active_session_mut().enqueue_message("queued2".into());
+
+    // When handling Interrupt.
+    let result = handle(&Intent::Interrupt, &mut state);
+
+    // Then the queued messages are drained to the input buffer.
+    assert_eq!(state.active_chat_input().text(), "queued1\nqueued2");
+    // And the session is idle.
+    assert!(state.active_session().is_idle());
+    // And a CancelStream command is returned.
+    assert!(result.commands.iter().any(|c| matches!(c, Command::CancelStream { .. })));
 }
 
 #[rstest::rstest]
@@ -952,17 +973,23 @@ fn session_new_noop_when_picker_active() {
 // ============================================================
 
 #[rstest::rstest]
-fn refresh_models_returns_command() {
+fn refresh_models_posts_system_message_and_returns_command() {
     // Given a state with a provider.
     let mut state = AppState {
         active_provider: "ollama".to_owned(),
         ..Default::default()
     };
+    let initial_len = state.active_session().history().len();
 
     // When handling RefreshModels.
     let result = handle(&Intent::RefreshModels, &mut state);
 
-    // Then a RefreshModels command is returned.
+    // Then a system message was posted.
+    assert_eq!(
+        state.active_session().history().len(),
+        initial_len + 1
+    );
+    // And a RefreshModels command is returned.
     assert!(result.commands.iter().any(|c| matches!(c, Command::RefreshModels)));
 }
 
@@ -1406,4 +1433,28 @@ fn set_mode_input_to_normal_during_streaming_cancels_stream() {
         c,
         Command::CancelStream { .. }
     )));
+    // And the session is idle (streaming was cancelled).
+    assert!(state.active_session().is_idle());
+}
+
+#[rstest::rstest]
+fn set_mode_input_to_normal_during_streaming_drains_queue() {
+    // Given a state in Input mode with active stream and queued messages.
+    let mut state = AppState {
+        mode: Mode::Input,
+        ..Default::default()
+    };
+    state.active_session_mut().begin_streaming();
+    state.active_session_mut().enqueue_message("msg1".into());
+    state.active_session_mut().enqueue_message("msg2".into());
+
+    // When handling SetMode(Normal).
+    let result = handle(&Intent::SetMode { mode: Mode::Normal }, &mut state);
+
+    // Then the queued messages are drained to the input buffer.
+    assert_eq!(state.active_chat_input().text(), "msg1\nmsg2");
+    // And the session is idle.
+    assert!(state.active_session().is_idle());
+    // And a CancelStream command is returned.
+    assert!(result.commands.iter().any(|c| matches!(c, Command::CancelStream { .. })));
 }

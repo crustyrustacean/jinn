@@ -561,6 +561,7 @@ fn handle_interrupt(state: &mut AppState) -> IntentResult {
 
     if state.active_chat_input().is_empty() {
         let session_id = state.active_session.clone();
+        cancel_stream_and_drain(state);
         IntentResult::with_commands(vec![Command::CancelStream {
             payload: CancelStream { session_id },
         }])
@@ -575,6 +576,7 @@ fn handle_set_mode(state: &mut AppState, mode: Mode) -> IntentResult {
 
     if state.mode == Mode::Input && mode == Mode::Normal && !state.active_session().is_idle() {
         let session_id = state.active_session.clone();
+        cancel_stream_and_drain(state);
         commands.push(Command::CancelStream {
             payload: CancelStream { session_id },
         });
@@ -767,6 +769,11 @@ fn handle_refresh_models(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
+    // Post system message to active session.
+    state.active_session_mut().push_entry(nullslop_protocol::ChatEntry::system(
+        "Refreshing models...",
+    ));
+
     IntentResult::with_commands(vec![Command::RefreshModels])
 }
 
@@ -779,6 +786,18 @@ fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
     ));
 
     IntentResult::with_commands(vec![Command::RescanPromptTemplates])
+}
+
+/// Cancels streaming on the active session and drains any queued messages
+/// back to the input buffer.
+fn cancel_stream_and_drain(state: &mut AppState) {
+    let session = state.active_session_mut();
+    session.cancel_streaming();
+    let drained: Vec<String> = session.drain_queue().into_iter().collect();
+    let drained_text = drained.join("\n");
+    if !drained_text.is_empty() {
+        session.chat_input_mut().replace_all(drained_text);
+    }
 }
 
 // --- Pinned Panel handlers ---
