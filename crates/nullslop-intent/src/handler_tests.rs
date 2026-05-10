@@ -17,82 +17,13 @@
 
 use nullslop_component::keymap_picker::entries::KeymapEntry;
 use nullslop_component::{AppState, FrontendState};
-use nullslop_protocol::{ChatEntry, Command, Mode, PickerKind};
+use nullslop_protocol::{Mode, PickerKind};
 
 use super::IntentHandler;
 use crate::Intent;
 
 fn handle(intent: &Intent, state: &mut AppState) -> super::IntentResult {
     IntentHandler::handle(intent, state)
-}
-
-// ============================================================
-// Mode & App Intents
-// ============================================================
-
-#[rstest::rstest]
-fn set_mode_changes_mode() {
-    // Given a state in Normal mode.
-    let mut state = AppState::default();
-    assert_eq!(state.frontend.mode, Mode::Normal);
-
-    // When handling SetMode(Input).
-    let result = handle(&Intent::SetMode { mode: Mode::Input }, &mut state);
-
-    // Then mode is Input.
-    assert_eq!(state.frontend.mode, Mode::Input);
-    assert!(result.commands.is_empty());
-}
-
-#[rstest::rstest]
-fn set_mode_clears_picker_kind_when_leaving_picker() {
-    // Given a state in Picker mode with active picker kind.
-    let mut state = AppState {
-        frontend: FrontendState {
-            mode: Mode::Picker,
-            ..FrontendState::default()
-        },
-        ..Default::default()
-    };
-    state.frontend.active_picker_kind = Some(PickerKind::Provider);
-
-    // When handling SetMode(Normal).
-    let result = handle(&Intent::SetMode { mode: Mode::Normal }, &mut state);
-
-    // Then active_picker_kind is cleared.
-    assert_eq!(state.frontend.active_picker_kind, None);
-    assert!(result.commands.is_empty());
-}
-
-#[rstest::rstest]
-fn normal_escape_clears_selection() {
-    // Given a state with a selected entry.
-    let mut state = AppState::default();
-    state.active_session_mut().push_entry(ChatEntry::user("hi"));
-    state.active_session_mut().select_next_entry();
-
-    // When handling NormalEscape.
-    let result = handle(&Intent::NormalEscape, &mut state);
-
-    // Then the selection is cleared.
-    assert!(state.active_session().selected_entry_index().is_none());
-    // And pinned_pane_close signal is set.
-    assert!(state.frontend.tui_signals.pinned_pane_close);
-    assert!(result.commands.is_empty());
-}
-
-#[rstest::rstest]
-fn normal_escape_sets_close_signal_even_without_selection() {
-    // Given a state with no selection.
-    let mut state = AppState::default();
-
-    // When handling NormalEscape.
-    let result = handle(&Intent::NormalEscape, &mut state);
-
-    // Then no commands.
-    assert!(result.commands.is_empty());
-    // But pinned_pane_close signal is still set.
-    assert!(state.frontend.tui_signals.pinned_pane_close);
 }
 
 // ============================================================
@@ -148,64 +79,4 @@ fn tui_signals_are_cleared_at_start_of_handle() {
     assert!(!state.frontend.tui_signals.pinned_pane_toggle);
     assert!(state.frontend.should_quit);
     assert!(result.commands.is_empty());
-}
-
-// ============================================================
-// SetMode: CancelStream when leaving Input during streaming
-// ============================================================
-
-#[rstest::rstest]
-fn set_mode_input_to_normal_during_streaming_cancels_stream() {
-    // Given a state in Input mode with active stream.
-    let mut state = AppState {
-        frontend: FrontendState {
-            mode: Mode::Input,
-            ..FrontendState::default()
-        },
-        ..Default::default()
-    };
-    state.active_session_mut().begin_streaming();
-
-    // When handling SetMode(Normal).
-    let result = handle(&Intent::SetMode { mode: Mode::Normal }, &mut state);
-
-    // Then a CancelStream command is returned.
-    assert!(
-        result
-            .commands
-            .iter()
-            .any(|c| matches!(c, Command::CancelStream { .. }))
-    );
-    // And the session is idle (streaming was cancelled).
-    assert!(state.active_session().is_idle());
-}
-
-#[rstest::rstest]
-fn set_mode_input_to_normal_during_streaming_drains_queue() {
-    // Given a state in Input mode with active stream and queued messages.
-    let mut state = AppState {
-        frontend: FrontendState {
-            mode: Mode::Input,
-            ..FrontendState::default()
-        },
-        ..Default::default()
-    };
-    state.active_session_mut().begin_streaming();
-    state.active_session_mut().enqueue_message("msg1".into());
-    state.active_session_mut().enqueue_message("msg2".into());
-
-    // When handling SetMode(Normal).
-    let result = handle(&Intent::SetMode { mode: Mode::Normal }, &mut state);
-
-    // Then the queued messages are drained to the input buffer.
-    assert_eq!(state.active_chat_input().text(), "msg1\nmsg2");
-    // And the session is idle.
-    assert!(state.active_session().is_idle());
-    // And a CancelStream command is returned.
-    assert!(
-        result
-            .commands
-            .iter()
-            .any(|c| matches!(c, Command::CancelStream { .. }))
-    );
 }

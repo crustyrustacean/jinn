@@ -1,6 +1,6 @@
 //! Chat input box intent handlers.
 //!
-//! Handles 13 chat-input intents:
+//! Handles 16 chat-input intents:
 //!
 //! - **InsertChar** — inserts a character, manages autocomplete triggering/filtering/expansion.
 //! - **DeleteGrapheme** — backspace with autocomplete awareness.
@@ -8,13 +8,16 @@
 //! - **SubmitMessage** — validates, extracts text, resets buffer, returns `EnqueueUserMessage`.
 //! - **AutocompleteConfirm** — confirms autocomplete selection or falls back to tab switch.
 //! - **Cursor movement** (8 intents) — move cursor, optionally deactivating autocomplete.
+//! - **EnterInsertMode** — switches to Input mode.
+//! - **EnterNormalMode** — cancels streams, clears picker, switches to Normal mode.
+//! - **NormalEscape** — clears chat entry selection.
 
 use nullslop_component::chat_input_box::AutocompleteMatch;
 use nullslop_component::chat_input_box::ChatInputBoxState;
 use nullslop_component::prompt_template::PromptTemplateStore;
 use nullslop_component::AppState;
 use nullslop_protocol::chat_input::EnqueueUserMessage;
-use nullslop_protocol::{Command, IntentResult};
+use nullslop_protocol::{Command, IntentResult, Mode};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::validator;
@@ -264,6 +267,54 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+// --- Normal Escape ---
+
+/// Handles `NormalEscape` — clears chat entry selection if present.
+///
+/// Does NOT set `pinned_pane_close` — the pinned panel has its own close intent.
+pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
+    crate::validator::validate_normal_escape(state);
+
+    if state.active_session().selected_entry_index().is_some() {
+        state.active_session_mut().clear_selection();
+    }
+
+    IntentResult::empty()
+}
+
+// --- Mode transitions ---
+
+/// Handles `EnterInsertMode` — switches to Input mode.
+pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
+    state.frontend.mode = Mode::Input;
+    IntentResult::empty()
+}
+
+/// Handles `EnterNormalMode` — cancels streams, clears picker, switches to Normal mode.
+///
+/// If currently in Input mode and the session is busy (streaming/sending),
+/// cancels the stream and drains queued messages back to the input buffer.
+/// If in Picker mode, clears the active picker kind.
+pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
+    let mut commands = vec![];
+
+    if state.frontend.mode == Mode::Input && !state.active_session().is_idle() {
+        let session_id = state.session.active_session.clone();
+        state.active_session_mut().cancel_stream_and_drain();
+        commands.push(Command::CancelStream {
+            payload: nullslop_protocol::provider::CancelStream { session_id },
+        });
+    }
+
+    if state.frontend.mode == Mode::Picker {
+        state.frontend.active_picker_kind = None;
+    }
+
+    state.frontend.mode = Mode::Normal;
+
+    IntentResult::with_commands(commands)
+}
+
 // --- Helpers ---
 
 fn is_valid_trigger_position(input: &ChatInputBoxState) -> bool {
@@ -496,6 +547,148 @@ mod tests {
         let result = super::handle_move_cursor_down(&mut state);
 
         // Then no crash and no commands.
+        assert!(result.commands.is_empty());
+    }
+
+    // --- Mode transition tests ---
+
+    #[rstest::rstest]
+    fn enter_insert_mode_sets_mode_to_input() {
+        // Given a state in Normal mode.
+        let mut state = AppState::default();
+
+        // When handling EnterInsertMode.
+        let result = super::handle_enter_insert_mode(&mut state);
+
+        // Then mode is Input.
+        assert_eq!(state.frontend.mode, Mode::Input);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn enter_normal_mode_sets_mode_to_normal() {
+        // Given a state in Input mode.
+        use nullslop_component::FrontendState;
+
+        let mut state = AppState {
+            frontend: FrontendState {
+                mode: Mode::Input,
+                ..FrontendState::default()
+            },
+            ..Default::default()
+        };
+
+        // When handling EnterNormalMode.
+        let result = super::handle_enter_normal_mode(&mut state);
+
+        // Then mode is Normal.
+        assert_eq!(state.frontend.mode, Mode::Normal);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
+        // Given a state in Picker mode with active picker kind.
+        use nullslop_component::FrontendState;
+        use nullslop_protocol::PickerKind;
+
+        let mut state = AppState {
+            frontend: FrontendState {
+                mode: Mode::Picker,
+                ..FrontendState::default()
+            },
+            ..Default::default()
+        };
+        state.frontend.active_picker_kind = Some(PickerKind::Provider);
+
+        // When handling EnterNormalMode.
+        let result = super::handle_enter_normal_mode(&mut state);
+
+        // Then active_picker_kind is cleared.
+        assert_eq!(state.frontend.active_picker_kind, None);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn enter_normal_mode_cancels_stream_when_in_input_mode() {
+        // Given a state in Input mode with active stream.
+        use nullslop_component::FrontendState;
+        use nullslop_protocol::Command;
+
+        let mut state = AppState {
+            frontend: FrontendState {
+                mode: Mode::Input,
+                ..FrontendState::default()
+            },
+            ..Default::default()
+        };
+        state.active_session_mut().begin_streaming();
+
+        // When handling EnterNormalMode.
+        let result = super::handle_enter_normal_mode(&mut state);
+
+        // Then a CancelStream command is returned.
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::CancelStream { .. }))
+        );
+        // And the session is idle (streaming was cancelled).
+        assert!(state.active_session().is_idle());
+    }
+
+    #[rstest::rstest]
+    fn enter_normal_mode_drains_queue_when_cancelling_stream() {
+        // Given a state in Input mode with active stream and queued messages.
+        use nullslop_component::FrontendState;
+        use nullslop_protocol::Command;
+
+        let mut state = AppState {
+            frontend: FrontendState {
+                mode: Mode::Input,
+                ..FrontendState::default()
+            },
+            ..Default::default()
+        };
+        state.active_session_mut().begin_streaming();
+        state.active_session_mut().enqueue_message("msg1".into());
+        state.active_session_mut().enqueue_message("msg2".into());
+
+        // When handling EnterNormalMode.
+        let result = super::handle_enter_normal_mode(&mut state);
+
+        // Then the queued messages are drained to the input buffer.
+        assert_eq!(state.active_chat_input().text(), "msg1\nmsg2");
+        // And the session is idle.
+        assert!(state.active_session().is_idle());
+        // And a CancelStream command is returned.
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::CancelStream { .. }))
+        );
+    }
+
+    // --- NormalEscape tests ---
+
+    #[rstest::rstest]
+    fn normal_escape_clears_selection() {
+        // Given a state with a selected entry.
+        use nullslop_protocol::ChatEntry;
+
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("hi"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling NormalEscape.
+        let result = super::handle_normal_escape(&mut state);
+
+        // Then the selection is cleared.
+        assert!(state.active_session().selected_entry_index().is_none());
+        // And pinned_pane_close signal is NOT set.
+        assert!(!state.frontend.tui_signals.pinned_pane_close);
         assert!(result.commands.is_empty());
     }
 }

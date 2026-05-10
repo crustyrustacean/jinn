@@ -30,8 +30,7 @@
 )]
 
 use nullslop_component::AppState;
-use nullslop_protocol::provider::CancelStream;
-use nullslop_protocol::{Command, Mode, PinPosition};
+use nullslop_protocol::PinPosition;
 
 use crate::Intent;
 
@@ -123,10 +122,19 @@ impl IntentHandler {
 
             // --- Mode & App ---
             Intent::Quit => nsslice_global::intent::handle_quit(state),
-            Intent::Interrupt => nsslice_global::intent::handle_interrupt(state),
-            Intent::SetMode { mode } => handle_set_mode(state, *mode),
+            Intent::Interrupt { session_id } => {
+                nsslice_global::intent::handle_interrupt(state, session_id.as_ref())
+            }
+            Intent::EnterInsertMode => {
+                nsslice_chat_input_box::intent::handle_enter_insert_mode(state)
+            }
+            Intent::EnterNormalMode => {
+                nsslice_chat_input_box::intent::handle_enter_normal_mode(state)
+            }
             Intent::ToggleWhichkey => nsslice_global::intent::handle_toggle_whichkey(state),
-            Intent::NormalEscape => handle_normal_escape(state),
+            Intent::NormalEscape => {
+                nsslice_chat_input_box::intent::handle_normal_escape(state)
+            },
 
             // --- Picker ---
             Intent::OpenPicker { kind } => {
@@ -226,45 +234,6 @@ impl IntentHandler {
             }
         }
     }
-}
-
-// --- Chat input handlers ---
-
-// --- Mode & App handlers ---
-
-fn handle_set_mode(state: &mut AppState, mode: Mode) -> IntentResult {
-    let mut commands = vec![];
-
-    if state.frontend.mode == Mode::Input
-        && mode == Mode::Normal
-        && !state.active_session().is_idle()
-    {
-        let session_id = state.session.active_session.clone();
-        nsslice_global::intent::cancel_stream_and_drain(state);
-        commands.push(Command::CancelStream {
-            payload: CancelStream { session_id },
-        });
-    }
-
-    if state.frontend.mode == Mode::Picker && mode != Mode::Picker {
-        state.frontend.active_picker_kind = None;
-    }
-
-    state.frontend.mode = mode;
-
-    IntentResult::with_commands(commands)
-}
-
-fn handle_normal_escape(state: &mut AppState) -> IntentResult {
-    nsslice_global::validator::validate_normal_escape(state);
-
-    if state.active_session().selected_entry_index().is_some() {
-        state.active_session_mut().clear_selection();
-    }
-
-    state.frontend.tui_signals.pinned_pane_close = true;
-
-    IntentResult::empty()
 }
 
 #[cfg(test)]

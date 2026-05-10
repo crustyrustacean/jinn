@@ -284,7 +284,7 @@ fn normal_scope_mode_category_contains_set_mode_input() {
     let groups = keymap.bindings_for_scope(Scope::Normal);
     let input = groups.iter().find(|g| g.category == "Input");
 
-    // Then the Input group exists and contains 'i' → set mode input.
+    // Then the Input group exists and contains 'i' → enter insert mode.
     assert!(input.is_some(), "Input category should exist");
     let descs: Vec<&str> = input
         .unwrap()
@@ -293,8 +293,8 @@ fn normal_scope_mode_category_contains_set_mode_input() {
         .map(|b| b.description.as_str())
         .collect();
     assert!(
-        descs.iter().any(|d| d.contains("input")),
-        "Input should contain set mode input"
+        descs.iter().any(|d| d.contains("insert mode")),
+        "Input should contain enter insert mode, found: {descs:?}"
     );
 }
 
@@ -607,7 +607,7 @@ fn input_scope_escape_appears_under_general_category() {
     let groups = keymap.bindings_for_scope(Scope::Input);
     let general = groups.iter().find(|g| g.category == "General");
 
-    // Then the General group contains '<esc>' → set mode normal.
+    // Then the General group contains '<esc>' → enter normal mode.
     assert!(general.is_some(), "General category should exist");
     let descs: Vec<&str> = general
         .unwrap()

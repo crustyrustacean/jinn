@@ -239,6 +239,20 @@ impl ChatSessionState {
         self.core.streaming_tool_call_indices.clear();
     }
 
+    /// Cancel streaming and drain queued messages back to the input buffer.
+    ///
+    /// Used when the user interrupts or switches to Normal mode during an
+    /// active stream. The drained queue text is joined with newlines and
+    /// replaces whatever was in the input box.
+    pub fn cancel_stream_and_drain(&mut self) {
+        self.cancel_streaming();
+        let drained: Vec<String> = self.drain_queue().into_iter().collect();
+        let drained_text = drained.join("\n");
+        if !drained_text.is_empty() {
+            self.chat_input_mut().replace_all(drained_text);
+        }
+    }
+
     /// Whether an LLM stream is actively producing tokens.
     pub fn is_streaming(&self) -> bool {
         self.core.is_streaming

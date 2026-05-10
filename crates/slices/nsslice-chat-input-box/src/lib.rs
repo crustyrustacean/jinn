@@ -3,15 +3,12 @@
 //! Co-locates everything about the chat input box:
 //!
 //! - **Element** — renders the input prompt with cursor positioning and mode-aware styling.
-//! - **Validator** — validates message submission, autocomplete confirmation, and interrupt.
-//! - **Intent** — handles 13 chat-input intents (character insertion, deletion, submission,
-//!   autocomplete, cursor movement).
+//! - **Validator** — validates message submission, autocomplete confirmation, and normal escape.
+//! - **Intent** — handles 16 intents: 13 chat-input intents (character insertion, deletion,
+//!   submission, autocomplete, cursor movement), plus EnterInsertMode, EnterNormalMode,
+//!   and NormalEscape.
 //!
 //! State (`ChatInputBoxState`) stays in `nullslop-component` to avoid circular dependencies.
-//!
-//! **Note**: `handle_interrupt` and `handle_set_mode` stay in `nullslop-intent` because
-//! they're cross-cutting (cancel streams, transition modes). They call into this slice's
-//! validators but orchestrate domain logic themselves.
 
 pub mod element;
 pub mod intent;

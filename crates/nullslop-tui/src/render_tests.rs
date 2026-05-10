@@ -399,7 +399,7 @@ fn keymap_picker_state() -> nullslop_component::AppState {
             description: "set mode normal".to_owned(),
             scope: "Picker".to_owned(),
             category: "General".to_owned(),
-            command: Intent::SetMode { mode: Mode::Normal },
+            command: Intent::EnterNormalMode,
             search_text: "<esc> set mode normal".to_owned(),
         },
     ];
