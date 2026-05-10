@@ -76,6 +76,9 @@ pub struct ChatEntry {
     ///
     /// Pinned entries are never discarded by prompt assembly strategies.
     /// `None` (default) means the entry is not pinned.
+    ///
+    /// OWNER: context-actor (individual mutations via PinChatEntry/UnpinChatEntry),
+    ///        session-actor (atomic bulk restore during SessionLoadCompleted via restore_history).
     #[serde(default)]
     pub pin_position: Option<PinPosition>,
 }

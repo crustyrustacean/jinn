@@ -11,7 +11,6 @@
 //! - session input buffers
 //! - session phase (idle → sending → streaming → idle)
 //! - `active_session`, `session_loading`
-//! - `strategy_state` (during `SessionLoadCompleted` only — shared write during transition)
 //!
 //! # Lock discipline
 //!
@@ -372,15 +371,8 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.restore_history(payload.history.clone());
-            session.switch_strategy(payload.active_strategy.clone());
             state.session.active_session = payload.session_id.clone();
             state.session.session_loading = false;
-            for (key, blob) in &payload.blobs {
-                let strat_id = PromptStrategyId::new(key.as_str());
-                state.context
-                    .strategy_state
-                    .insert((payload.session_id.clone(), strat_id), blob.clone());
-            }
         }
 
         if let Err(e) = ctx.send_command(Command::RestoreStrategyState {
