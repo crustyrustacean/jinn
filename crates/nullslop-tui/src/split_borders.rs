@@ -560,9 +560,6 @@ mod tests {
     #[rstest::rstest]
     fn render_vertical_border_draws_line_character() {
         // Given a terminal buffer and a vertical border line.
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-
         let (mut terminal, _area) = setup_term(100, 20);
 
         let lines = vec![BorderLine {
@@ -591,9 +588,6 @@ mod tests {
     #[rstest::rstest]
     fn render_horizontal_border_draws_dash_character() {
         // Given a terminal buffer and a horizontal border line.
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-
         let (mut terminal, _area) = setup_term(100, 20);
 
         let lines = vec![BorderLine {
@@ -622,9 +616,6 @@ mod tests {
     #[rstest::rstest]
     fn crossing_point_is_cross_char() {
         // Given a 4-way grid with crossing borders.
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-
         let (mut terminal, _area) = setup_term(100, 100);
 
         let lines = vec![
@@ -658,9 +649,6 @@ mod tests {
     #[rstest::rstest]
     fn vertical_border_above_crossing() {
         // Given a 4-way grid with crossing borders.
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-
         let (mut terminal, _area) = setup_term(100, 100);
 
         let lines = vec![
@@ -693,9 +681,6 @@ mod tests {
     #[rstest::rstest]
     fn horizontal_border_on_sides() {
         // Given a 4-way grid with crossing borders.
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-
         let (mut terminal, _area) = setup_term(100, 100);
 
         let lines = vec![
@@ -733,9 +718,6 @@ mod tests {
         // Vertical border at x=50 spans full height.
         // Horizontal border at y=50 spans right half (50..100).
         // The junction at (50, 50) should be ├ (vertical continues, horizontal goes right).
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-
         let (mut terminal, _area) = setup_term(100, 100);
 
         let lines = vec![

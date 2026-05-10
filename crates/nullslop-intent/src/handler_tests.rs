@@ -943,7 +943,7 @@ fn session_new_creates_fresh_session() {
         .push_entry(ChatEntry::user("old"));
 
     // When handling SessionNew.
-    let result = handle(&Intent::SessionNew, &mut state);
+    let _result = handle(&Intent::SessionNew, &mut state);
 
     // Then a new session is created.
     assert_ne!(state.active_session, old_id);

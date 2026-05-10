@@ -139,7 +139,6 @@ impl ShutdownTrackerActor {
 #[cfg(test)]
 mod tests {
     use nullslop_component::AppState;
-    use nullslop_protocol::ChatEntry;
 
     use super::*;
 
