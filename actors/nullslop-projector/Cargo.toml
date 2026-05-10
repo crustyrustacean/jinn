@@ -8,16 +8,6 @@ path = "src/lib.rs"
 
 [dependencies]
 nullslop-actor = { workspace = true }
-nullslop-protocol = { workspace = true }
-nullslop-component = { workspace = true }
-nullslop-providers = { workspace = true }
-jiff = { workspace = true }
-tracing = { workspace = true }
-
-[dev-dependencies]
-rstest = { workspace = true }
-tokio = { workspace = true }
-serde_json = { workspace = true }
 
 [lints]
 workspace = true

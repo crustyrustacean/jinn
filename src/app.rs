@@ -336,7 +336,8 @@ fn create_core_with_actor_host(
         kanal::unbounded::<ActorEnvelope<nullslop_context_actor::ContextDirectMsg>>();
     let ctx_ref = ActorRef::new(ctx_tx);
     let mut prompt_ctx = ActorContext::new("context", sink.clone());
-    prompt_ctx.set_description("Assembles LLM prompts from chat history");
+    prompt_ctx.set_description("Context assembly, strategy management, pinning, and templates");
+    prompt_ctx.set_data(state.clone());
     prompt_ctx.set_data::<Box<dyn StrategyFactory>>(Box::new(DefaultStrategyFactory));
     let prompt_actor = PromptAssemblyActor::activate(&mut prompt_ctx);
     let prompt_result = spawn_actor(
@@ -405,9 +406,7 @@ fn create_core_with_actor_host(
         kanal::unbounded::<ActorEnvelope<nullslop_coordinator::CoordinatorDirectMsg>>();
     let coord_ref = ActorRef::new(coord_tx);
     let mut coord_ctx = ActorContext::new("coordinator", sink.clone());
-    coord_ctx.set_description("Orchestrates domain workflows");
-    coord_ctx.set_data(state.clone());
-    coord_ctx.set_data(services.clone());
+    coord_ctx.set_description("Empty shell — migrating to domain actors");
     let coordinator_actor = CoordinatorActor::activate(&mut coord_ctx);
     let coord_result = spawn_actor(
         "coordinator",
@@ -423,8 +422,7 @@ fn create_core_with_actor_host(
         kanal::unbounded::<ActorEnvelope<nullslop_projector::ProjectorDirectMsg>>();
     let proj_ref = ActorRef::new(proj_tx);
     let mut proj_ctx = ActorContext::new("projector", sink.clone());
-    proj_ctx.set_description("Projects events into state");
-    proj_ctx.set_data(state.clone());
+    proj_ctx.set_description("Empty shell — migrating to domain actors");
     let projector_actor = ProjectorActor::activate(&mut proj_ctx);
     let proj_result = spawn_actor(
         "projector",
@@ -459,11 +457,11 @@ fn create_core_with_actor_host(
         ("llm-streaming", "LLM streaming with tool support"),
         ("llm-provider-listing", "Discovers available models"),
         ("tool-orchestrator", "Dispatches and manages tool execution"),
-        ("context", "Assembles LLM prompts from chat history"),
+        ("context", "Context assembly, strategy management, pinning, and templates"),
         ("session-persistence", "Persists session data to disk"),
         ("prompt-scan", "Scans and reloads prompt templates"),
-        ("coordinator", "Orchestrates domain workflows"),
-        ("projector", "Projects events into state"),
+        ("coordinator", "Empty shell — migrating to domain actors"),
+        ("projector", "Empty shell — migrating to domain actors"),
         ("shutdown-tracker", "Tracks actor lifecycle for shutdown coordination"),
     ];
     for (name, desc) in &actor_names {
