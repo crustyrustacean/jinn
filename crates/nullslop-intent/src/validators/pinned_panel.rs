@@ -6,23 +6,6 @@
 use nullslop_component::AppState;
 use wherror::Error;
 
-// --- Infallible validators ---
-
-/// Validates the PinnedPanelToggle intent.
-pub fn validate_pinned_panel_toggle(_state: &AppState) {}
-
-/// Validates the PinnedPanelOpen intent.
-pub fn validate_pinned_panel_open(_state: &AppState) {}
-
-/// Validates the PinnedPanelClose intent.
-pub fn validate_pinned_panel_close(_state: &AppState) {}
-
-/// Validates the PinnedPanelSelectDown intent.
-pub fn validate_pinned_panel_select_down(_state: &AppState) {}
-
-/// Validates the PinnedPanelSelectUp intent.
-pub fn validate_pinned_panel_select_up(_state: &AppState) {}
-
 // --- Fallible validators ---
 
 /// Errors from validating pinned panel pin/unpin intents.
@@ -83,36 +66,29 @@ mod tests {
 
     use super::*;
 
-    // --- Infallible validator tests ---
-
-    #[rstest::rstest]
-    fn validate_pinned_panel_toggle_always_succeeds() {
-        let state = AppState::default();
-        validate_pinned_panel_toggle(&state);
+    fn state_with_selected_pin(text: &str, position: PinPosition) -> AppState {
+        let mut state = AppState::default();
+        let entry_id = {
+            let index = state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(text));
+            state.active_session().history()[index].id.clone()
+        };
+        state.active_session_mut().pin_entry(&entry_id, position);
+        state.pinned_panel.select_by_id(entry_id);
+        state
     }
 
-    #[rstest::rstest]
-    fn validate_pinned_panel_open_always_succeeds() {
-        let state = AppState::default();
-        validate_pinned_panel_open(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_pinned_panel_close_always_succeeds() {
-        let state = AppState::default();
-        validate_pinned_panel_close(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_pinned_panel_select_down_always_succeeds() {
-        let state = AppState::default();
-        validate_pinned_panel_select_down(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_pinned_panel_select_up_always_succeeds() {
-        let state = AppState::default();
-        validate_pinned_panel_select_up(&state);
+    fn state_with_unselected_pin(text: &str, position: PinPosition) -> AppState {
+        let mut state = AppState::default();
+        let entry_id = {
+            let index = state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(text));
+            state.active_session().history()[index].id.clone()
+        };
+        state.active_session_mut().pin_entry(&entry_id, position);
+        state
     }
 
     // --- PinnedPanelUnpin tests ---
@@ -120,15 +96,7 @@ mod tests {
     #[rstest::rstest]
     fn unpin_succeeds_with_selected_pinned_entry() {
         // Given a state with a pinned entry that is selected.
-        let mut state = AppState::default();
-        let index = state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello"));
-        let entry_id = state.active_session().history()[index].id.clone();
-        state
-            .active_session_mut()
-            .pin_entry(&entry_id, PinPosition::Top);
-        state.pinned_panel.select_by_id(entry_id);
+        let state = state_with_selected_pin("hello", PinPosition::Top);
 
         // When validating unpin.
         let result = validate_pinned_panel_unpin(&state);
@@ -152,14 +120,7 @@ mod tests {
     #[rstest::rstest]
     fn unpin_fails_with_no_selection() {
         // Given a state with pinned entries but nothing selected.
-        let mut state = AppState::default();
-        let index = state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello"));
-        let entry_id = state.active_session().history()[index].id.clone();
-        state
-            .active_session_mut()
-            .pin_entry(&entry_id, PinPosition::Top);
+        let state = state_with_unselected_pin("hello", PinPosition::Top);
 
         // When validating unpin.
         let result = validate_pinned_panel_unpin(&state);
@@ -173,15 +134,7 @@ mod tests {
     #[rstest::rstest]
     fn pin_top_succeeds_with_selected_entry() {
         // Given a state with a pinned entry that is selected.
-        let mut state = AppState::default();
-        let index = state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello"));
-        let entry_id = state.active_session().history()[index].id.clone();
-        state
-            .active_session_mut()
-            .pin_entry(&entry_id, PinPosition::Top);
-        state.pinned_panel.select_by_id(entry_id);
+        let state = state_with_selected_pin("hello", PinPosition::Top);
 
         // When validating pin top.
         let result = validate_pinned_panel_pin_top(&state);
@@ -207,15 +160,7 @@ mod tests {
     #[rstest::rstest]
     fn pin_bottom_succeeds_with_selected_entry() {
         // Given a state with a pinned entry that is selected.
-        let mut state = AppState::default();
-        let index = state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello"));
-        let entry_id = state.active_session().history()[index].id.clone();
-        state
-            .active_session_mut()
-            .pin_entry(&entry_id, PinPosition::Top);
-        state.pinned_panel.select_by_id(entry_id);
+        let state = state_with_selected_pin("hello", PinPosition::Top);
 
         // When validating pin bottom.
         let result = validate_pinned_panel_pin_bottom(&state);
@@ -227,14 +172,7 @@ mod tests {
     #[rstest::rstest]
     fn pin_bottom_fails_with_no_selection() {
         // Given a state with pinned entries but nothing selected.
-        let mut state = AppState::default();
-        let index = state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello"));
-        let entry_id = state.active_session().history()[index].id.clone();
-        state
-            .active_session_mut()
-            .pin_entry(&entry_id, PinPosition::Top);
+        let state = state_with_unselected_pin("hello", PinPosition::Top);
 
         // When validating pin bottom.
         let result = validate_pinned_panel_pin_bottom(&state);
@@ -248,15 +186,7 @@ mod tests {
     #[rstest::rstest]
     fn pin_relative_succeeds_with_selected_entry() {
         // Given a state with a pinned entry that is selected.
-        let mut state = AppState::default();
-        let index = state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello"));
-        let entry_id = state.active_session().history()[index].id.clone();
-        state
-            .active_session_mut()
-            .pin_entry(&entry_id, PinPosition::Relative);
-        state.pinned_panel.select_by_id(entry_id);
+        let state = state_with_selected_pin("hello", PinPosition::Relative);
 
         // When validating pin relative.
         let result = validate_pinned_panel_pin_relative(&state);
@@ -282,15 +212,7 @@ mod tests {
     #[rstest::rstest]
     fn pin_cycle_succeeds_with_selected_entry() {
         // Given a state with a pinned entry that is selected.
-        let mut state = AppState::default();
-        let index = state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello"));
-        let entry_id = state.active_session().history()[index].id.clone();
-        state
-            .active_session_mut()
-            .pin_entry(&entry_id, PinPosition::Top);
-        state.pinned_panel.select_by_id(entry_id);
+        let state = state_with_selected_pin("hello", PinPosition::Top);
 
         // When validating pin cycle.
         let result = validate_pinned_panel_pin_cycle(&state);
@@ -302,14 +224,7 @@ mod tests {
     #[rstest::rstest]
     fn pin_cycle_fails_with_no_selection() {
         // Given a state with pinned entries but nothing selected.
-        let mut state = AppState::default();
-        let index = state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello"));
-        let entry_id = state.active_session().history()[index].id.clone();
-        state
-            .active_session_mut()
-            .pin_entry(&entry_id, PinPosition::Top);
+        let state = state_with_unselected_pin("hello", PinPosition::Top);
 
         // When validating pin cycle.
         let result = validate_pinned_panel_pin_cycle(&state);

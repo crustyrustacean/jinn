@@ -5,7 +5,6 @@
 //! the implementation (e.g. one that submits `AppMsg` to `AppCore`'s channel).
 
 use nullslop_protocol::{Command, Event};
-#[cfg(test)]
 use parking_lot::Mutex;
 
 use crate::actor_ref::SendResult;
@@ -33,17 +32,16 @@ pub trait MessageSink: Send + Sync + 'static {
 
 /// A message sink for testing that records sent commands and events.
 ///
-/// Visible within the crate for use in other modules' tests.
-#[cfg(test)]
-pub(crate) struct TestSink {
+/// Shared across the workspace — actor tests, host tests, and integration tests
+/// all use this instead of defining local duplicates.
+pub struct RecordingSink {
     commands: Mutex<Vec<Command>>,
     events: Mutex<Vec<Event>>,
 }
 
-#[cfg(test)]
-impl TestSink {
-    /// Creates a new empty test sink.
-    pub(crate) fn new() -> Self {
+impl RecordingSink {
+    /// Creates a new empty recording sink.
+    pub fn new() -> Self {
         Self {
             commands: Mutex::new(Vec::new()),
             events: Mutex::new(Vec::new()),
@@ -51,18 +49,35 @@ impl TestSink {
     }
 
     /// Returns all commands sent through this sink.
-    pub(crate) fn commands(&self) -> Vec<Command> {
+    pub fn commands(&self) -> Vec<Command> {
         self.commands.lock().clone()
     }
 
     /// Returns all events sent through this sink.
-    pub(crate) fn events(&self) -> Vec<Event> {
+    pub fn events(&self) -> Vec<Event> {
         self.events.lock().clone()
+    }
+
+    /// Drains and returns all events, leaving the sink empty.
+    pub fn take_events(&self) -> Vec<Event> {
+        let mut guard = self.events.lock();
+        std::mem::take(&mut guard)
+    }
+
+    /// Drains and returns all commands, leaving the sink empty.
+    pub fn take_commands(&self) -> Vec<Command> {
+        let mut guard = self.commands.lock();
+        std::mem::take(&mut guard)
+    }
+
+    /// Clears all recorded commands and events.
+    pub fn clear(&self) {
+        self.commands.lock().clear();
+        self.events.lock().clear();
     }
 }
 
-#[cfg(test)]
-impl MessageSink for TestSink {
+impl MessageSink for RecordingSink {
     fn send_command(&self, command: Command) -> SendResult {
         self.commands.lock().push(command);
         Ok(())
@@ -74,5 +89,4 @@ impl MessageSink for TestSink {
     }
 }
 
-#[cfg(test)]
-mod tests {}
+

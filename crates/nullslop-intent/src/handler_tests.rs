@@ -54,8 +54,7 @@ fn insert_char_appends_to_buffer() {
 fn delete_grapheme_removes_last_char() {
     // Given a state with "ab" in the input buffer.
     let mut state = AppState::default();
-    state.active_chat_input_mut().insert_grapheme_at_cursor('a');
-    state.active_chat_input_mut().insert_grapheme_at_cursor('b');
+    state.active_chat_input_mut().insert_text("ab");
 
     // When handling DeleteGrapheme.
     let result = handle(&Intent::DeleteGrapheme, &mut state);
@@ -69,8 +68,7 @@ fn delete_grapheme_removes_last_char() {
 fn delete_grapheme_forward_removes_next_char() {
     // Given a state with "ab" and cursor at start.
     let mut state = AppState::default();
-    state.active_chat_input_mut().insert_grapheme_at_cursor('a');
-    state.active_chat_input_mut().insert_grapheme_at_cursor('b');
+    state.active_chat_input_mut().insert_text("ab");
     state.active_chat_input_mut().move_cursor_to_start();
 
     // When handling DeleteGraphemeForward.
@@ -85,8 +83,7 @@ fn delete_grapheme_forward_removes_next_char() {
 fn submit_message_returns_enqueue_command() {
     // Given a state with "hello" in the buffer.
     let mut state = AppState::default();
-    state.active_chat_input_mut().insert_grapheme_at_cursor('h');
-    state.active_chat_input_mut().insert_grapheme_at_cursor('i');
+    state.active_chat_input_mut().insert_text("hi");
 
     // When handling SubmitMessage.
     let result = handle(&Intent::SubmitMessage, &mut state);
@@ -131,8 +128,7 @@ fn autocomplete_confirm_falls_back_to_switch_tab() {
 fn move_cursor_left_moves_cursor() {
     // Given a state with "ab" in the buffer.
     let mut state = AppState::default();
-    state.active_chat_input_mut().insert_grapheme_at_cursor('a');
-    state.active_chat_input_mut().insert_grapheme_at_cursor('b');
+    state.active_chat_input_mut().insert_text("ab");
     assert_eq!(state.active_chat_input().cursor_pos(), 2);
 
     // When handling MoveCursorLeft.
@@ -147,8 +143,7 @@ fn move_cursor_left_moves_cursor() {
 fn move_cursor_right_moves_cursor() {
     // Given a state with cursor at start.
     let mut state = AppState::default();
-    state.active_chat_input_mut().insert_grapheme_at_cursor('a');
-    state.active_chat_input_mut().insert_grapheme_at_cursor('b');
+    state.active_chat_input_mut().insert_text("ab");
     state.active_chat_input_mut().move_cursor_to_start();
 
     // When handling MoveCursorRight.
@@ -163,8 +158,7 @@ fn move_cursor_right_moves_cursor() {
 fn move_cursor_to_start_moves_cursor() {
     // Given a state with "hello" in the buffer.
     let mut state = AppState::default();
-    state.active_chat_input_mut().insert_grapheme_at_cursor('h');
-    state.active_chat_input_mut().insert_grapheme_at_cursor('i');
+    state.active_chat_input_mut().insert_text("hi");
 
     // When handling MoveCursorToStart.
     let result = handle(&Intent::MoveCursorToStart, &mut state);
@@ -193,12 +187,7 @@ fn move_cursor_to_end_moves_cursor() {
 fn move_cursor_word_left_moves_cursor() {
     // Given a state with "hello world".
     let mut state = AppState::default();
-    state
-        .active_chat_input_mut()
-        .insert_grapheme_at_cursor('h');
-    state
-        .active_chat_input_mut()
-        .insert_grapheme_at_cursor('i');
+    state.active_chat_input_mut().insert_text("hi");
 
     // When handling MoveCursorWordLeft.
     let result = handle(&Intent::MoveCursorWordLeft, &mut state);
@@ -212,12 +201,7 @@ fn move_cursor_word_left_moves_cursor() {
 fn move_cursor_word_right_moves_cursor() {
     // Given a state with "hi" and cursor at start.
     let mut state = AppState::default();
-    state
-        .active_chat_input_mut()
-        .insert_grapheme_at_cursor('h');
-    state
-        .active_chat_input_mut()
-        .insert_grapheme_at_cursor('i');
+    state.active_chat_input_mut().insert_text("hi");
     state.active_chat_input_mut().move_cursor_to_start();
 
     // When handling MoveCursorWordRight.

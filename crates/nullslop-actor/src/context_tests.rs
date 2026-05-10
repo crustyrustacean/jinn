@@ -2,11 +2,11 @@ use super::*;
 use crate::envelope::ActorEnvelope;
 
 fn test_sink() -> Arc<dyn MessageSink> {
-    Arc::new(crate::message_sink::TestSink::new())
+    Arc::new(crate::message_sink::RecordingSink::new())
 }
 
-fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
-    Arc::new(crate::message_sink::TestSink::new())
+fn test_sink_as_concrete() -> Arc<crate::message_sink::RecordingSink> {
+    Arc::new(crate::message_sink::RecordingSink::new())
 }
 
 #[rstest::rstest]

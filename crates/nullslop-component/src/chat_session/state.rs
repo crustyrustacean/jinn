@@ -546,6 +546,100 @@ impl Default for ChatSessionState {
     }
 }
 
+/// Builder for constructing [`ChatSessionState`] in tests.
+///
+/// Replays operations sequentially on `build()`. Example:
+///
+/// ```ignore
+/// let mut session = ChatSessionState::builder()
+///     .with_user_entry("hello")
+///     .begin_streaming()
+///     .build();
+/// session.append_stream_token("world");
+/// ```
+#[cfg(test)]
+#[derive(Debug, Default)]
+pub struct ChatSessionStateBuilder {
+    ops: Vec<BuilderOp>,
+}
+
+#[cfg(test)]
+#[derive(Debug)]
+enum BuilderOp {
+    PushEntry(ChatEntry),
+    BeginStreaming,
+    BeginSending,
+    PinLast(PinPosition),
+}
+
+#[cfg(test)]
+impl ChatSessionStateBuilder {
+    /// Push a user entry onto the history.
+    pub fn with_user_entry(mut self, text: &str) -> Self {
+        self.ops.push(BuilderOp::PushEntry(ChatEntry::user(text)));
+        self
+    }
+
+    /// Push any entry onto the history.
+    pub fn with_entry(mut self, entry: ChatEntry) -> Self {
+        self.ops.push(BuilderOp::PushEntry(entry));
+        self
+    }
+
+    /// Begin streaming (creates an empty Assistant entry and sets `is_streaming`).
+    pub fn begin_streaming(mut self) -> Self {
+        self.ops.push(BuilderOp::BeginStreaming);
+        self
+    }
+
+    /// Mark the session as sending.
+    pub fn begin_sending(mut self) -> Self {
+        self.ops.push(BuilderOp::BeginSending);
+        self
+    }
+
+    /// Pin the most recently pushed entry at the given position.
+    pub fn with_pin(mut self, position: PinPosition) -> Self {
+        self.ops.push(BuilderOp::PinLast(position));
+        self
+    }
+
+    /// Build the session by replaying all stored operations.
+    pub fn build(self) -> ChatSessionState {
+        let mut session = ChatSessionState::new();
+        let mut last_id: Option<ChatEntryId> = None;
+        for op in self.ops {
+            match op {
+                BuilderOp::PushEntry(entry) => {
+                    let id = entry.id.clone();
+                    session.push_entry(entry);
+                    last_id = Some(id);
+                }
+                BuilderOp::BeginStreaming => {
+                    session.begin_streaming();
+                }
+                BuilderOp::BeginSending => {
+                    session.begin_sending();
+                }
+                BuilderOp::PinLast(position) => {
+                    if let Some(ref id) = last_id {
+                        session.pin_entry(id, position);
+                    }
+                }
+            }
+        }
+        session
+    }
+}
+
+#[cfg(test)]
+impl ChatSessionState {
+    /// Create a test builder.
+    pub fn builder() -> ChatSessionStateBuilder {
+        ChatSessionStateBuilder::default()
+    }
+}
+
 #[cfg(test)]
 #[path = "state_tests.rs"]
 mod state_tests;

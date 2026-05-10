@@ -602,51 +602,10 @@ fn execute_file_write(call: ToolCall) -> BoxedToolFuture {
 #[cfg(test)]
 mod tests {
     use nullslop_actor::MessageSink;
+    use nullslop_actor::RecordingSink;
     use nullslop_protocol::tool::{ExecuteToolBatch, RegisterTools};
-    use parking_lot::Mutex;
 
     use super::*;
-
-    /// A message sink that records commands and events for test assertions.
-    struct RecordingSink {
-        commands: Mutex<Vec<Command>>,
-        events: Mutex<Vec<Event>>,
-    }
-
-    impl RecordingSink {
-        fn new() -> Self {
-            Self {
-                commands: Mutex::new(Vec::new()),
-                events: Mutex::new(Vec::new()),
-            }
-        }
-
-        fn events(&self) -> Vec<Event> {
-            self.events.lock().clone()
-        }
-
-        fn take_events(&self) -> Vec<Event> {
-            let mut guard = self.events.lock();
-            std::mem::take(&mut guard)
-        }
-
-        fn clear(&self) {
-            self.commands.lock().clear();
-            self.events.lock().clear();
-        }
-    }
-
-    impl MessageSink for RecordingSink {
-        fn send_command(&self, command: Command) -> nullslop_actor::SendResult {
-            self.commands.lock().push(command);
-            Ok(())
-        }
-
-        fn send_event(&self, event: Event) -> nullslop_actor::SendResult {
-            self.events.lock().push(event);
-            Ok(())
-        }
-    }
 
     /// Creates a test context backed by a recording sink.
     fn test_context(sink: &std::sync::Arc<RecordingSink>) -> ActorContext {

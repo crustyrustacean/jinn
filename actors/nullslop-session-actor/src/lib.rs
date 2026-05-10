@@ -162,37 +162,12 @@ mod tests {
     )]
     use nullslop_actor::Actor;
     use nullslop_actor::{ActorContext, ActorEnvelope, MessageSink};
+    use nullslop_actor::RecordingSink;
     use nullslop_protocol::{ChatEntry, Event, PromptStrategyId, SessionId, SessionSaveRequested};
     use nullslop_session::{JsonlSessionStore, SessionStoreService};
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;
-
-    /// A recording message sink for testing.
-    #[derive(Debug)]
-    struct RecordingSink {
-        events: std::sync::Mutex<Vec<Event>>,
-    }
-
-    impl RecordingSink {
-        fn new() -> Self {
-            Self {
-                events: std::sync::Mutex::new(Vec::new()),
-            }
-        }
-    }
-
-    impl MessageSink for RecordingSink {
-        fn send_command(&self, _command: nullslop_protocol::Command) -> nullslop_actor::SendResult {
-            Ok(())
-        }
-
-        #[expect(clippy::unwrap_in_result, reason = "test code")]
-        fn send_event(&self, event: Event) -> nullslop_actor::SendResult {
-            self.events.lock().unwrap().push(event);
-            Ok(())
-        }
-    }
 
     fn test_context(sink: Arc<RecordingSink>) -> ActorContext {
         ActorContext::new("session-persistence", sink as Arc<dyn MessageSink>)

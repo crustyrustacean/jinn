@@ -495,61 +495,14 @@ impl LlmActor {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
-    use nullslop_actor::MessageSink;
+    use nullslop_actor::RecordingSink;
     use nullslop_protocol::EventMsg as _;
     use nullslop_protocol::tool::{ToolDefinition, ToolsRegistered};
     use nullslop_providers::FakeLlmServiceFactory;
 
     use super::*;
-
-    /// A message sink that records commands and events for test assertions.
-    struct RecordingSink {
-        commands: Mutex<Vec<Command>>,
-        events: Mutex<Vec<Event>>,
-    }
-
-    impl RecordingSink {
-        fn new() -> Self {
-            Self {
-                commands: Mutex::new(Vec::new()),
-                events: Mutex::new(Vec::new()),
-            }
-        }
-
-        fn commands(&self) -> Vec<Command> {
-            self.commands.lock().unwrap().clone()
-        }
-
-        fn events(&self) -> Vec<Event> {
-            self.events.lock().unwrap().clone()
-        }
-
-        fn take_events(&self) -> Vec<Event> {
-            let mut guard = self.events.lock().unwrap();
-            std::mem::take(&mut guard)
-        }
-
-        fn clear(&self) {
-            self.commands.lock().unwrap().clear();
-            self.events.lock().unwrap().clear();
-        }
-    }
-
-    impl MessageSink for RecordingSink {
-        #[expect(clippy::unwrap_in_result, reason = "test code")]
-        fn send_command(&self, command: Command) -> nullslop_actor::SendResult {
-            self.commands.lock().unwrap().push(command);
-            Ok(())
-        }
-
-        #[expect(clippy::unwrap_in_result, reason = "test code")]
-        fn send_event(&self, event: Event) -> nullslop_actor::SendResult {
-            self.events.lock().unwrap().push(event);
-            Ok(())
-        }
-    }
 
     /// Creates a test context backed by a recording sink.
     fn test_context(sink: &Arc<RecordingSink>) -> ActorContext {

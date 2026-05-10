@@ -43,7 +43,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::Intent;
 use crate::validators::{
-    app, chat_entry, chat_input, dashboard, navigation, picker, pinned_panel,
+    app, chat_entry, chat_input, picker, pinned_panel,
 };
 
 /// What the [`IntentHandler`] returns after processing an intent.
@@ -105,7 +105,6 @@ impl IntentHandler {
             Intent::SubmitMessage => handle_submit_message(state),
             Intent::AutocompleteConfirm => handle_autocomplete_confirm(state),
             Intent::MoveCursorLeft => {
-                chat_input::validate_move_cursor_left(state);
                 state.active_chat_input_mut().move_cursor_left();
                 let should_deactivate = should_deactivate_on_cursor_move(state);
                 if should_deactivate {
@@ -114,7 +113,6 @@ impl IntentHandler {
                 IntentResult::empty()
             }
             Intent::MoveCursorRight => {
-                chat_input::validate_move_cursor_right(state);
                 state.active_chat_input_mut().move_cursor_right();
                 let should_deactivate = should_deactivate_on_cursor_move(state);
                 if should_deactivate {
@@ -123,31 +121,26 @@ impl IntentHandler {
                 IntentResult::empty()
             }
             Intent::MoveCursorToStart => {
-                chat_input::validate_move_cursor_to_start(state);
                 state.active_chat_input_mut().deactivate_autocomplete();
                 state.active_chat_input_mut().move_cursor_to_start();
                 IntentResult::empty()
             }
             Intent::MoveCursorToEnd => {
-                chat_input::validate_move_cursor_to_end(state);
                 state.active_chat_input_mut().deactivate_autocomplete();
                 state.active_chat_input_mut().move_cursor_to_end();
                 IntentResult::empty()
             }
             Intent::MoveCursorWordLeft => {
-                chat_input::validate_move_cursor_word_left(state);
                 state.active_chat_input_mut().deactivate_autocomplete();
                 state.active_chat_input_mut().move_cursor_word_left();
                 IntentResult::empty()
             }
             Intent::MoveCursorWordRight => {
-                chat_input::validate_move_cursor_word_right(state);
                 state.active_chat_input_mut().deactivate_autocomplete();
                 state.active_chat_input_mut().move_cursor_word_right();
                 IntentResult::empty()
             }
             Intent::MoveCursorUp => {
-                chat_input::validate_move_cursor_up(state);
                 if state.active_chat_input().autocomplete().is_some() {
                     state.active_chat_input_mut().autocomplete_move_up();
                 } else {
@@ -156,7 +149,6 @@ impl IntentHandler {
                 IntentResult::empty()
             }
             Intent::MoveCursorDown => {
-                chat_input::validate_move_cursor_down(state);
                 if state.active_chat_input().autocomplete().is_some() {
                     state.active_chat_input_mut().autocomplete_move_down();
                 } else {
@@ -167,41 +159,34 @@ impl IntentHandler {
 
             // --- Navigation ---
             Intent::ScrollUp => {
-                navigation::validate_scroll_up(state);
                 state.active_session_mut().scroll_up(Self::SCROLL_STEP);
                 IntentResult::empty()
             }
             Intent::ScrollDown => {
-                navigation::validate_scroll_down(state);
                 state.active_session_mut().scroll_down(Self::SCROLL_STEP);
                 IntentResult::empty()
             }
             Intent::MouseScrollUp => {
-                navigation::validate_mouse_scroll_up(state);
                 state
                     .active_session_mut()
                     .scroll_up(Self::MOUSE_SCROLL_STEP);
                 IntentResult::empty()
             }
             Intent::MouseScrollDown => {
-                navigation::validate_mouse_scroll_down(state);
                 state
                     .active_session_mut()
                     .scroll_down(Self::MOUSE_SCROLL_STEP);
                 IntentResult::empty()
             }
             Intent::ScrollToTop => {
-                navigation::validate_scroll_to_top(state);
                 state.active_session_mut().scroll_to_top();
                 IntentResult::empty()
             }
             Intent::ScrollToBottom => {
-                navigation::validate_scroll_to_bottom(state);
                 state.active_session_mut().scroll_to_bottom();
                 IntentResult::empty()
             }
             Intent::SwitchTab { direction } => {
-                navigation::validate_switch_tab(state, direction);
                 state.active_tab = match direction {
                     TabDirection::Next => state.active_tab.next(),
                     TabDirection::Prev => state.active_tab.prev(),
@@ -209,7 +194,6 @@ impl IntentHandler {
                 IntentResult::empty()
             }
             Intent::EditInput => {
-                navigation::validate_edit_input(state);
                 state.tui_signals.edit_requested = true;
                 IntentResult::empty()
             }
@@ -333,50 +317,41 @@ impl IntentHandler {
 
             // --- Dashboard ---
             Intent::DashboardSelectDown => {
-                dashboard::validate_dashboard_select_down(state);
                 state.dashboard.select_next();
                 IntentResult::empty()
             }
             Intent::DashboardSelectUp => {
-                dashboard::validate_dashboard_select_up(state);
                 state.dashboard.select_prev();
                 IntentResult::empty()
             }
             Intent::DashboardSelectFirst => {
-                dashboard::validate_dashboard_select_first(state);
                 state.dashboard.select_first();
                 IntentResult::empty()
             }
             Intent::DashboardSelectLast => {
-                dashboard::validate_dashboard_select_last(state);
                 state.dashboard.select_last();
                 IntentResult::empty()
             }
 
             // --- Pinned Panel ---
             Intent::PinnedPanelToggle => {
-                pinned_panel::validate_pinned_panel_toggle(state);
                 state.tui_signals.pinned_pane_toggle = true;
                 IntentResult::empty()
             }
             Intent::PinnedPanelOpen => {
-                pinned_panel::validate_pinned_panel_open(state);
                 state.tui_signals.pinned_pane_open = true;
                 IntentResult::empty()
             }
             Intent::PinnedPanelClose => {
-                pinned_panel::validate_pinned_panel_close(state);
                 state.tui_signals.pinned_pane_close = true;
                 IntentResult::empty()
             }
             Intent::PinnedPanelSelectDown => {
-                pinned_panel::validate_pinned_panel_select_down(state);
                 let sorted_ids = state.sorted_pinned_ids();
                 state.pinned_panel.select_next(&sorted_ids);
                 IntentResult::empty()
             }
             Intent::PinnedPanelSelectUp => {
-                pinned_panel::validate_pinned_panel_select_up(state);
                 let sorted_ids = state.sorted_pinned_ids();
                 state.pinned_panel.select_prev(&sorted_ids);
                 IntentResult::empty()
@@ -408,8 +383,6 @@ impl IntentHandler {
 // --- Chat input handlers ---
 
 fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
-    chat_input::validate_insert_char(state, ch);
-
     let is_autocomplete_active = state.active_chat_input().autocomplete().is_some();
 
     if is_autocomplete_active {
@@ -471,8 +444,6 @@ fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
 }
 
 fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
-    chat_input::validate_delete_grapheme(state);
-
     let should_deactivate =
         if let Some(token_start) = state.active_chat_input().autocomplete_token_start() {
             state.active_chat_input().cursor_pos() <= token_start + 1
@@ -507,8 +478,6 @@ fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
 }
 
 fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
-    chat_input::validate_delete_grapheme_forward(state);
-
     let token_start = state.active_chat_input().autocomplete_token_start();
     let cursor = state.active_chat_input().cursor_pos();
 
@@ -602,8 +571,6 @@ fn handle_interrupt(state: &mut AppState) -> IntentResult {
 }
 
 fn handle_set_mode(state: &mut AppState, mode: Mode) -> IntentResult {
-    chat_input::validate_set_mode(state, &mode);
-
     let mut commands = vec![];
 
     if state.mode == Mode::Input && mode == Mode::Normal && !state.active_session().is_idle() {

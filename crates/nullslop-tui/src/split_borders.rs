@@ -389,6 +389,9 @@ fn shrink_height(adjusted: &mut [(AreaId, Rect)], id: AreaId) {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
     use super::*;
 
     /// Helper to create a [`SplitArea`].
@@ -400,6 +403,13 @@ mod tests {
     }
 
     // ── compute_split_borders tests ──────────────────────────────
+
+    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
+        let backend = TestBackend::new(width, height);
+        let terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, width, height);
+        (terminal, area)
+    }
 
     #[rstest::rstest]
     fn vertical_split_produces_border() {
@@ -553,8 +563,7 @@ mod tests {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
-        let backend = TestBackend::new(100, 20);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _area) = setup_term(100, 20);
 
         let lines = vec![BorderLine {
             orientation: BorderOrientation::Vertical,
@@ -585,8 +594,7 @@ mod tests {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
-        let backend = TestBackend::new(100, 20);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _area) = setup_term(100, 20);
 
         let lines = vec![BorderLine {
             orientation: BorderOrientation::Horizontal,
@@ -617,8 +625,7 @@ mod tests {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
-        let backend = TestBackend::new(100, 100);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _area) = setup_term(100, 100);
 
         let lines = vec![
             BorderLine {
@@ -654,8 +661,7 @@ mod tests {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
-        let backend = TestBackend::new(100, 100);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _area) = setup_term(100, 100);
 
         let lines = vec![
             BorderLine {
@@ -690,8 +696,7 @@ mod tests {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
-        let backend = TestBackend::new(100, 100);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _area) = setup_term(100, 100);
 
         let lines = vec![
             BorderLine {
@@ -731,8 +736,7 @@ mod tests {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
-        let backend = TestBackend::new(100, 100);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _area) = setup_term(100, 100);
 
         let lines = vec![
             BorderLine {
