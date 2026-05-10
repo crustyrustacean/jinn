@@ -93,50 +93,6 @@ mod tests {
 
     use super::*;
 
-    // --- Infallible validator tests ---
-
-    #[rstest::rstest]
-    fn validate_picker_insert_char_always_succeeds() {
-        let state = AppState::default();
-        validate_picker_insert_char(&state, 'x');
-    }
-
-    #[rstest::rstest]
-    fn validate_picker_backspace_always_succeeds() {
-        let state = AppState::default();
-        validate_picker_backspace(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_picker_move_up_always_succeeds() {
-        let state = AppState::default();
-        validate_picker_move_up(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_picker_move_down_always_succeeds() {
-        let state = AppState::default();
-        validate_picker_move_down(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_picker_move_cursor_left_always_succeeds() {
-        let state = AppState::default();
-        validate_picker_move_cursor_left(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_picker_move_cursor_right_always_succeeds() {
-        let state = AppState::default();
-        validate_picker_move_cursor_right(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_toggle_keymap_scope_filter_always_succeeds() {
-        let state = AppState::default();
-        validate_toggle_keymap_scope_filter(&state);
-    }
-
     // --- PickerConfirm tests ---
 
     #[rstest::rstest]

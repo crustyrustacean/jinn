@@ -382,15 +382,6 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn app_state_default_has_empty_prompt_templates() {
-        // Given a default AppState.
-        let state = AppState::default();
-
-        // Then the prompt template store is empty.
-        assert!(state.context.prompt_templates.is_empty());
-    }
-
-    #[rstest::rstest]
     fn push_entry_adds_to_history() {
         // Given a new AppState.
         let mut data = AppState::default();

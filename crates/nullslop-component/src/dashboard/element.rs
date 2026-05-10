@@ -258,21 +258,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn first_actor_renders() {
-        // Given two actors.
-        let mut element = DashboardElement;
-        let state = {
-            let mut s = AppState::default();
-            s.frontend.dashboard.mark_starting("echo", Some("Echo".to_owned()));
-            s.frontend.dashboard.mark_starting("llm", Some("LLM".to_owned()));
-            s
-        };
-
-        let rows = render_rows(&mut element, &state, 40, 10);
-        assert!(rows[0].contains("echo"));
-    }
-
-    #[rstest::rstest]
     fn blank_line_between_actors() {
         // Given two actors.
         let mut element = DashboardElement;

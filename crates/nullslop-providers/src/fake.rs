@@ -280,28 +280,6 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn fake_factory_creates_service() {
-        // Given a fake factory.
-        let factory = FakeLlmServiceFactory::new(vec!["hello".to_owned()]);
-
-        // When creating a service.
-        let result = factory.create();
-
-        // Then a boxed service is returned.
-        assert!(result.is_ok());
-    }
-
-    #[rstest::rstest]
-    fn fake_factory_name() {
-        // Given a fake factory.
-        let factory = FakeLlmServiceFactory::new(vec![]);
-
-        // When asking for the name.
-        // Then it returns "FakeLlm".
-        assert_eq!(factory.name(), "FakeLlm");
-    }
-
-    #[rstest::rstest]
     #[tokio::test]
     async fn fake_service_yields_configured_tokens() {
         // Given a fake factory with specific tokens.

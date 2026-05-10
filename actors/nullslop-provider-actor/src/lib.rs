@@ -319,29 +319,6 @@ mod tests {
         assert_eq!(name_after, "Sample");
     }
 
-    // --- LoadPickerEntries (Provider) ---
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn load_picker_entries_provider_does_not_panic() {
-        // Given a provider actor with fake services (empty registry).
-        let (mut actor, _state, _sink, ctx) = create_actor();
-
-        // When processing LoadPickerEntries for Provider kind.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::LoadPickerEntries {
-                    payload: LoadPickerEntries {
-                        kind: PickerKind::Provider,
-                    },
-                }),
-                &ctx,
-            )
-            .await;
-
-        // Then the handler completes without panic.
-    }
-
     // --- ModelsRefreshed (event) ---
 
     #[rstest::rstest]

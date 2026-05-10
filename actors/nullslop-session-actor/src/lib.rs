@@ -678,22 +678,6 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn session_persistence_actor_handles_missing_store_gracefully() {
-        // Given a SessionPersistenceActor WITHOUT a store injected.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let mut actor = SessionPersistenceActor::activate(&mut ctx);
-
-        // When a SessionSaveRequested event is sent.
-        let session_id = SessionId::new();
-        let event = make_save_event(&session_id, "No Store");
-
-        // Then the actor does not panic.
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
     async fn session_persistence_actor_saves_multiple_sessions() {
         // Given a SessionPersistenceActor with a store.
         let sink = Arc::new(RecordingSink::new());

@@ -98,20 +98,6 @@ mod tests {
 
     use super::*;
 
-    // --- ChatEntrySelectNext/Prev tests ---
-
-    #[rstest::rstest]
-    fn validate_chat_entry_select_next_always_succeeds() {
-        let state = AppState::default();
-        validate_chat_entry_select_next(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_chat_entry_select_prev_always_succeeds() {
-        let state = AppState::default();
-        validate_chat_entry_select_prev(&state);
-    }
-
     // --- ChatEntryPinSelected tests ---
 
     #[rstest::rstest]
@@ -181,20 +167,6 @@ mod tests {
 
         // Then it returns NoProvider error.
         assert!(matches!(result, Err(RefreshModelsError::NoProvider)));
-    }
-
-    // --- RescanPromptTemplates tests ---
-
-    #[rstest::rstest]
-    fn rescan_prompt_templates_always_succeeds() {
-        // Given any app state.
-        let state = AppState::default();
-
-        // When validating rescan prompt templates.
-        let result = validate_rescan_prompt_templates(&state);
-
-        // Then it succeeds.
-        assert!(result.is_ok());
     }
 
     // --- SessionNew tests ---

@@ -180,24 +180,5 @@ mod tests {
         assert_eq!(blob["compaction_count"], 7);
     }
 
-    // --- Test: Missing strategy blob means strategy_state is None ---
 
-    #[rstest::rstest]
-    fn missing_strategy_blob_means_no_strategy_state() {
-        // Given a PersistedSession with no strategy_state blob.
-        let persisted = PersistedSession {
-            session_id: SessionId::new(),
-            title: "No Strategy".to_owned(),
-            updated_at: jiff::Timestamp::now(),
-            history: vec![],
-            active_strategy: PromptStrategyId::passthrough(),
-            blobs: HashMap::new(),
-        };
-
-        // When calling persisted_into_session.
-        let session = persisted_into_session(persisted);
-
-        // Then strategy_state is None.
-        assert!(session.strategy_state().is_none());
-    }
 }

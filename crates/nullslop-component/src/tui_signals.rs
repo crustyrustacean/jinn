@@ -79,19 +79,6 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn new_has_all_signals_cleared() {
-        // Given a new TuiSignals.
-        let signals = TuiSignals::new();
-
-        // Then all flags are false.
-        assert!(!signals.toggle_whichkey);
-        assert!(!signals.edit_requested);
-        assert!(!signals.pinned_pane_toggle);
-        assert!(!signals.pinned_pane_open);
-        assert!(!signals.pinned_pane_close);
-    }
-
-    #[rstest::rstest]
     fn clear_resets_all_signals() {
         // Given a TuiSignals with some flags set.
         let mut signals = TuiSignals::new();

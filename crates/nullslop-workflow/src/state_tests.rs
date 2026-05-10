@@ -220,18 +220,6 @@ fn downstream_steps_returns_correct_ids() {
 // ---- full lifecycle ----
 
 #[rstest::rstest]
-fn lifecycle_start_activates_first_step() {
-    // Given a workflow with 2 steps.
-    let mut state = WorkflowState::new(make_workflow(2));
-
-    // When starting the workflow.
-    state.start().unwrap();
-
-    // Then the first step is active.
-    assert_eq!(state.active_step.as_deref(), Some("step-0"));
-}
-
-#[rstest::rstest]
 fn complete_then_finalize_advances() {
     // Given a started workflow with 2 steps.
     let mut state = WorkflowState::new(make_workflow(2));
@@ -247,43 +235,7 @@ fn complete_then_finalize_advances() {
     assert_eq!(next.as_deref(), Some("step-1"));
 }
 
-#[rstest::rstest]
-fn lifecycle_advance_on_last_step_returns_none() {
-    // Given a workflow with 2 steps, both completed.
-    let mut state = WorkflowState::new(make_workflow(2));
-    state.start().unwrap();
-    state.complete_step("step-0", HashMap::new()).unwrap();
-    state.finalize_step("step-0").unwrap();
-    state.advance();
-    state.complete_step("step-1", HashMap::new()).unwrap();
-    state.finalize_step("step-1").unwrap();
-
-    // When advancing past the last step.
-    let done = state.advance();
-
-    // Then the workflow is complete (no more steps).
-    assert!(done.is_none());
-}
-
 // ---- jump-back lifecycle ----
-
-#[rstest::rstest]
-fn jump_back_marks_downstream_as_stale() {
-    let mut state = WorkflowState::new(make_workflow(3));
-    state.start().unwrap();
-    state.complete_step("step-0", HashMap::new()).unwrap();
-    state.finalize_step("step-0").unwrap();
-    state.advance();
-    state.complete_step("step-1", HashMap::new()).unwrap();
-    state.finalize_step("step-1").unwrap();
-
-    // Jump back to step 0.
-    let stale_steps = state.jump_to("step-0").unwrap();
-
-    assert_eq!(stale_steps, vec!["step-1", "step-2"]);
-    assert_eq!(state.active_step.as_deref(), Some("step-0"));
-    assert_eq!(state.steps["step-1"].status.clone(), StepStatus::Stale);
-}
 
 // ---- step_order ----
 

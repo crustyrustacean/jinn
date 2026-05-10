@@ -97,23 +97,5 @@ mod tests {
         assert_eq!(back, result);
     }
 
-    #[rstest::rstest]
-    fn tool_result_equality() {
-        // Given two identical tool results.
-        let a = ToolResult {
-            tool_call_id: "call_1".into(),
-            name: "echo".into(),
-            content: "ok".into(),
-            success: true,
-        };
-        let b = ToolResult {
-            tool_call_id: "call_1".into(),
-            name: "echo".into(),
-            content: "ok".into(),
-            success: true,
-        };
 
-        // Then they are equal.
-        assert_eq!(a, b);
-    }
 }

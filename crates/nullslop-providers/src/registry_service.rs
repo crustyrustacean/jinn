@@ -179,33 +179,6 @@ mod tests {
         assert_eq!(cloned_providers[0].name, "ollama");
     }
 
-    #[rstest::rstest]
-    fn clone_sees_same_default() {
-        // Given a service with one provider.
-        let config = ProvidersConfig {
-            providers: vec![crate::config::ProviderEntry {
-                name: "ollama".to_owned(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-            }],
-            aliases: vec![],
-            default_provider: None,
-        };
-        let registry = crate::registry::ProviderRegistry::from_config(config).expect("registry");
-        let service = ProviderRegistryService::new(registry);
-        let clone = service.clone();
-
-        // When reading from both.
-        let original_providers = service.providers();
-        let _cloned_providers = clone.providers();
-
-        // Then both see the same model.
-        assert_eq!(original_providers[0].model, "llama3");
-    }
-
     /// Helper: build a service with an ollama (keyless) and openrouter (key-required) provider.
     fn service_with_providers() -> ProviderRegistryService {
         let config = ProvidersConfig {

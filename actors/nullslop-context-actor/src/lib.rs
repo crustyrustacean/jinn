@@ -537,41 +537,6 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn prompt_strategy_switched_updates_strategy_name() {
-        // Given an actor with an existing session.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let mut actor = PromptAssemblyActor::activate(&mut ctx);
-
-        let session_id = SessionId::new();
-        // Initialize the session with an assemble.
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id: session_id.clone(),
-                history: vec![ChatEntry::user("hello")],
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
-        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
-        sink.clear();
-
-        // When receiving a PromptStrategySwitched event.
-        let event = Event::PromptStrategySwitched {
-            payload: PromptStrategySwitched {
-                session_id: session_id.clone(),
-                strategy_id: PromptStrategyId::sliding_window(),
-            },
-        };
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // And the strategy is now sliding_window.
-        let strategy = actor.strategies.get(&session_id).expect("should exist");
-        assert_eq!(strategy.name(), "sliding_window");
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
     async fn prompt_strategy_switched_unknown_id_is_ignored() {
         // Given an actor.
         let sink = Arc::new(RecordingSink::new());

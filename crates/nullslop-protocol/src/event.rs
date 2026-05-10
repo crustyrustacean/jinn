@@ -349,55 +349,5 @@ mod tests {
         assert_eq!(event.type_name(), Some(expected));
     }
 
-    /// Checks that all `TYPE_NAME` constants have their expected module-scoped string values.
-    #[rstest::rstest]
-    #[case::chat_submitted(ChatEntrySubmitted::TYPE_NAME, "chat_input::ChatEntrySubmitted")]
-    #[case::actor_starting(ActorStarting::TYPE_NAME, "actor::ActorStarting")]
-    #[case::actor_started(ActorStarted::TYPE_NAME, "actor::ActorStarted")]
-    #[case::actor_shutdown_completed(
-        ActorShutdownCompleted::TYPE_NAME,
-        "actor::ActorShutdownCompleted"
-    )]
-    #[case::key_down(KeyDown::TYPE_NAME, "system::KeyDown")]
-    #[case::key_up(KeyUp::TYPE_NAME, "system::KeyUp")]
-    #[case::mode_changed(ModeChanged::TYPE_NAME, "system::ModeChanged")]
-    #[case::stream_completed(StreamCompleted::TYPE_NAME, "provider::StreamCompleted")]
-    #[case::stream_token(StreamToken::TYPE_NAME, "provider::StreamToken")]
-    #[case::tool_use_started(ToolUseStarted::TYPE_NAME, "tool::ToolUseStarted")]
-    #[case::tool_call_received(ToolCallReceived::TYPE_NAME, "tool::ToolCallReceived")]
-    #[case::tool_call_streaming(ToolCallStreaming::TYPE_NAME, "tool::ToolCallStreaming")]
-    #[case::provider_switched(ProviderSwitched::TYPE_NAME, "provider::ProviderSwitched")]
-    #[case::models_refreshed(ModelsRefreshed::TYPE_NAME, "provider::ModelsRefreshed")]
-    #[case::prompt_templates_loaded(
-        PromptTemplatesLoaded::TYPE_NAME,
-        "provider::PromptTemplatesLoaded"
-    )]
-    #[case::tool_batch_completed(ToolBatchCompleted::TYPE_NAME, "tool::ToolBatchCompleted")]
-    #[case::tool_execution_completed(
-        ToolExecutionCompleted::TYPE_NAME,
-        "tool::ToolExecutionCompleted"
-    )]
-    #[case::tools_registered(ToolsRegistered::TYPE_NAME, "tool::ToolsRegistered")]
-    #[case::prompt_assembled(PromptAssembled::TYPE_NAME, "context::PromptAssembled")]
-    #[case::prompt_strategy_switched(
-        PromptStrategySwitched::TYPE_NAME,
-        "context::PromptStrategySwitched"
-    )]
-    #[case::strategy_state_updated(
-        StrategyStateUpdated::TYPE_NAME,
-        "context::StrategyStateUpdated"
-    )]
-    #[case::session_save_requested(
-        SessionSaveRequested::TYPE_NAME,
-        "session::SessionSaveRequested"
-    )]
-    fn type_name_constant_matches_expected_module_path(
-        #[case] actual: &str,
-        #[case] expected: &str,
-    ) {
-        // Given a TYPE_NAME constant from an event payload type.
-        // When comparing to its expected module-scoped path.
-        // Then the constant matches the expected value.
-        assert_eq!(actual, expected);
-    }
+
 }

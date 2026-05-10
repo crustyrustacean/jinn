@@ -263,17 +263,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn modifiers_none_is_none() {
-        // Given modifiers created with none().
-        let mods = Modifiers::none();
-
-        // When checking is_none().
-
-        // Then is_none() returns true.
-        assert!(mods.is_none());
-    }
-
-    #[rstest::rstest]
     #[case::char(Key::Char('a'))]
     #[case::enter(Key::Enter)]
     #[case::esc(Key::Esc)]

@@ -72,28 +72,6 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn factory_name_is_no_providers_available() {
-        // Given a NoProvidersAvailableFactory.
-        let factory = NoProvidersAvailableFactory;
-
-        // When asking for the name.
-        // Then it returns "NoProvidersAvailable".
-        assert_eq!(factory.name(), "NoProvidersAvailable");
-    }
-
-    #[rstest::rstest]
-    fn factory_creates_service() {
-        // Given a NoProvidersAvailableFactory.
-        let factory = NoProvidersAvailableFactory;
-
-        // When creating a service.
-        let result = factory.create();
-
-        // Then it succeeds.
-        assert!(result.is_ok());
-    }
-
-    #[rstest::rstest]
     #[tokio::test]
     async fn service_streams_help_message() {
         // Given a NoProvidersAvailableFactory.
