@@ -2995,6 +2995,7 @@ dependencies = [
  "nullslop-core",
  "nullslop-intent",
  "nullslop-llm",
+ "nullslop-projector",
  "nullslop-protocol",
  "nullslop-providers",
  "nullslop-services",

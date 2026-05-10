@@ -13,7 +13,7 @@ use nullslop_component::prompt_template::PromptTemplateStore;
 use nullslop_component::State;
 use nullslop_protocol::Event;
 use nullslop_protocol::provider::{ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken};
-use nullslop_protocol::tool::{ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolsRegistered};
+use nullslop_protocol::tool::{ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted, ToolsRegistered};
 use nullslop_protocol::context::{PromptStrategySwitched, StrategyStateUpdated};
 
 /// Direct message type (unused — the projector only responds to bus events).
@@ -34,6 +34,7 @@ impl Actor for ProjectorActor {
         ctx.subscribe_event::<StreamToken>();
         ctx.subscribe_event::<StreamCompleted>();
         ctx.subscribe_event::<ToolCallReceived>();
+        ctx.subscribe_event::<ToolUseStarted>();
         ctx.subscribe_event::<ToolCallStreaming>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
         ctx.subscribe_event::<ToolsRegistered>();
@@ -74,6 +75,7 @@ impl ProjectorActor {
         match event {
             Event::StreamToken { payload } => self.on_stream_token(payload),
             Event::StreamCompleted { payload } => self.on_stream_completed(payload),
+            Event::ToolUseStarted { payload } => self.on_tool_use_started(payload),
             Event::ToolCallReceived { payload } => self.on_tool_call_received(payload),
             Event::ToolCallStreaming { payload } => self.on_tool_call_streaming(payload),
             Event::ToolExecutionCompleted { payload } => {
@@ -111,6 +113,13 @@ impl ProjectorActor {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         session.finish_streaming();
+    }
+
+    /// Begins tracking a streaming tool call.
+    fn on_tool_use_started(&self, event: &ToolUseStarted) {
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&event.session_id);
+        session.begin_tool_call(event.index, &event.id, &event.name);
     }
 
     /// Pushes a tool call entry into the session history.
