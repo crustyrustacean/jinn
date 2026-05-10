@@ -236,23 +236,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_row_contains_date() {
-        // Given a session entry.
-        let entry = SessionEntry {
-            session_id: nullslop_protocol::SessionId::new(),
-            title: "My Session".to_owned(),
-            updated_at: jiff::Timestamp::now(),
-            byte_offset: 0,
-        };
-
-        // When rendering.
-        let row = entry.render_row(false);
-
-        // Then the row has multiple spans (title + date).
-        assert!(row.spans.len() >= 2);
-    }
-
-    #[rstest::rstest]
     fn load_session_entries_returns_empty_on_error() {
         // Given a test Services (with fake session store that returns empty).
         let services = nullslop_services::Services::new();

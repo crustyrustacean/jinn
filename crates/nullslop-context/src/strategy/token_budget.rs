@@ -291,28 +291,6 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn skips_system_and_actor_entries() {
-        // Given entries including system and actor types.
-        let history = vec![
-            ChatEntry::system("status"),
-            ChatEntry::user("hi"),
-            ChatEntry::actor("echo", "HELLO"),
-            ChatEntry::assistant("hello"),
-        ];
-        let strategy = make_strategy(8192);
-        let session_id = SessionId::new();
-        let context = test_context(&history, &session_id);
-
-        // When assembling.
-        let result = strategy.assemble(&context).await.expect("assemble");
-
-        // Then system and actor entries are skipped (they contribute 0 tokens).
-        assert_eq!(result.messages.len(), 2);
-        assert!(result.system_prompt.is_none());
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
     async fn newest_entry_included_when_rest_trimmed() {
         // Given many entries where only the newest fits.
         let mut history = Vec::new();

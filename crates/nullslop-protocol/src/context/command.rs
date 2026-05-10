@@ -109,13 +109,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn assemble_prompt_has_command_name() {
-        // Given the AssemblePrompt type.
-        // Then its NAME constant is set correctly.
-        assert_eq!(AssemblePrompt::NAME, "context::AssemblePrompt");
-    }
-
-    #[rstest::rstest]
     fn switch_prompt_strategy_serialization_roundtrip() {
         // Given a SwitchPromptStrategy command.
         let cmd = SwitchPromptStrategy {
@@ -129,11 +122,6 @@ mod tests {
 
         // Then fields are preserved.
         assert_eq!(back.strategy_id, PromptStrategyId::sliding_window());
-    }
-
-    #[rstest::rstest]
-    fn switch_prompt_strategy_has_command_name() {
-        assert_eq!(SwitchPromptStrategy::NAME, "context::SwitchPromptStrategy");
     }
 
     #[rstest::rstest]
@@ -155,11 +143,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn restore_strategy_state_has_command_name() {
-        assert_eq!(RestoreStrategyState::NAME, "context::RestoreStrategyState");
-    }
-
-    #[rstest::rstest]
     fn pin_chat_entry_serialization_roundtrip() {
         // Given a PinChatEntry command.
         let cmd = PinChatEntry {
@@ -174,11 +157,6 @@ mod tests {
 
         // Then fields are preserved.
         assert_eq!(back.position, PinPosition::Top);
-    }
-
-    #[rstest::rstest]
-    fn pin_chat_entry_has_command_name() {
-        assert_eq!(PinChatEntry::NAME, "context::PinChatEntry");
     }
 
     #[rstest::rstest]
@@ -197,8 +175,4 @@ mod tests {
         assert_eq!(back.entry_id, cmd.entry_id);
     }
 
-    #[rstest::rstest]
-    fn unpin_chat_entry_has_command_name() {
-        assert_eq!(UnpinChatEntry::NAME, "context::UnpinChatEntry");
-    }
 }

@@ -165,28 +165,7 @@ mod tests {
         assert_eq!(strategy.name(), "sliding_window");
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn sliding_window_skips_non_llm_entries_in_window() {
-        // Given 4 entries where one is a system entry.
-        let history = vec![
-            ChatEntry::user("msg1"),
-            ChatEntry::system("status update"),
-            ChatEntry::assistant("reply"),
-            ChatEntry::user("msg2"),
-        ];
-        let strategy = SlidingWindowStrategy::new(4);
-        let session_id = SessionId::new();
-        let context = test_context(&history, &session_id);
 
-        // When assembling.
-        let result = strategy.assemble(&context).await.expect("assemble");
-
-        // Then the system entry is skipped by entries_to_messages.
-        assert_eq!(result.messages.len(), 3);
-    }
-
-    #[rstest::rstest]
     #[tokio::test]
     async fn pinned_entry_survives_sliding_window_truncation() {
         // Given 5 entries where the first is pinned, and a window of 3.

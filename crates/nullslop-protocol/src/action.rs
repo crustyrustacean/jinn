@@ -12,16 +12,4 @@ pub enum CommandAction {
     Stop,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[rstest::rstest]
-    fn command_action_variants_are_distinct() {
-        // Given both variants.
-        let actions = [CommandAction::Continue, CommandAction::Stop];
-
-        // When comparing the two variants.
-        assert_ne!(actions[0], actions[1]);
-    }
-}

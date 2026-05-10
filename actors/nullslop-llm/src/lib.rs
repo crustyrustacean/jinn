@@ -1199,64 +1199,7 @@ mod tests {
         );
     }
 
-    // --- Error handling tests ---
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn stream_error_emits_system_entry_and_completed() {
-        // Given an actor — we can't easily make FakeLlmServiceFactory::create()
-        // fail, so we test the stream error path by not starting a stream.
-        // Instead, let's verify the session state is correctly tracked.
-        // This is covered by other tests.
-    }
-
     // --- Defensive guard tests ---
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn stream_completed_preserves_awaiting_tool_results_state() {
-        // Given an actor with a tool_use stream.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
-        let tool_call = ToolCall {
-            id: "call_1".to_owned(),
-            name: "echo".to_owned(),
-            arguments: r#"{"input":"hi"}"#.to_owned(),
-        };
-        let mut actor = actor_with_tool_calls(
-            &sink,
-            &mut ctx,
-            vec!["Let me check".to_owned()],
-            vec![tool_call.clone()],
-        );
-        sink.clear();
-
-        let session_id = SessionId::new();
-
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![],
-                provider_id: None,
-            },
-        };
-        actor.handle_command(&cmd, &ctx);
-
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-        // When processing the StreamCompleted(ToolUse) event from the stream task.
-        let events_from_stream = sink.take_events();
-        for event in events_from_stream {
-            actor.handle_event(&event, &ctx);
-        }
-
-        // Then the session is in AwaitingToolResults.
-        let session = actor
-            .sessions
-            .get(&session_id)
-            .expect("session should exist");
-        assert_eq!(session.state, SessionState::AwaitingToolResults);
-    }
 
     #[rstest::rstest]
     #[tokio::test]

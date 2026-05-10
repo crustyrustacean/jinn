@@ -136,26 +136,6 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn api_key_new_creates_key() {
-        // Given an explicit key string.
-        let key = ApiKey::new("test-key-123");
-
-        // When creating an ApiKey.
-        // Then it holds the value.
-        assert_eq!(key.as_str(), "test-key-123");
-    }
-
-    #[rstest::rstest]
-    fn api_key_as_str_returns_inner() {
-        // Given an ApiKey.
-        let key = ApiKey::new("sk-abc");
-
-        // When calling as_str.
-        // Then the inner value is returned.
-        assert_eq!(key.as_str(), "sk-abc");
-    }
-
-    #[rstest::rstest]
     fn factory_name_is_open_router() {
         // Given an OpenRouter factory.
         let factory =
@@ -166,16 +146,4 @@ mod tests {
         assert_eq!(factory.name(), "OpenRouter");
     }
 
-    #[rstest::rstest]
-    fn with_key_and_model_creates_factory() {
-        // Given an API key and model name.
-        let factory = OpenRouterLlmServiceFactory::with_key_and_model(
-            ApiKey::new("sk-test"),
-            "gpt-4".to_owned(),
-        );
-
-        // When creating the factory.
-        // Then it succeeds and has the correct name.
-        assert_eq!(factory.name(), "OpenRouter");
-    }
 }

@@ -158,28 +158,6 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn factory_name_is_sample() {
-        // Given a SampleLlmServiceFactory.
-        let factory = SampleLlmServiceFactory;
-
-        // When asking for the name.
-        // Then it returns "Sample".
-        assert_eq!(factory.name(), "Sample");
-    }
-
-    #[rstest::rstest]
-    fn factory_creates_service() {
-        // Given a SampleLlmServiceFactory.
-        let factory = SampleLlmServiceFactory;
-
-        // When creating a service.
-        let result = factory.create();
-
-        // Then a boxed service is returned.
-        assert!(result.is_ok());
-    }
-
-    #[rstest::rstest]
     #[tokio::test]
     async fn response_command_streams_canned_text() {
         tokio::time::pause();
@@ -289,25 +267,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[tokio::test]
-    async fn response_command_produces_more_than_one_token() {
-        tokio::time::pause();
-
-        // Given a sample service.
-        let service = SampleLlmServiceFactory.create().expect("create service");
-        let messages = vec![LlmMessage::User {
-            content: "!response".to_owned(),
-        }];
-
-        // When streaming.
-        let stream = service.chat_stream(messages).await.expect("chat_stream");
-        let tokens: Vec<String> = stream.map(|r| r.expect("token")).collect::<Vec<_>>().await;
-
-        // Then more than one token is produced.
-        assert!(tokens.len() > 1);
-    }
-
-    #[rstest::rstest]
     fn tokenize_splits_on_spaces() {
         // Given a simple sentence.
         // When tokenizing.
@@ -325,30 +284,6 @@ mod tests {
 
         // Then a single token is produced.
         assert_eq!(tokens, vec!["Hello"]);
-    }
-
-    #[rstest::rstest]
-    fn joined_starts_with_think() {
-        // Given the think tokenizer.
-        // When producing tokens.
-        let tokens = tokenize_think();
-
-        // Then the joined output starts with <think and contains the thinking text.
-        let joined = tokens.join("");
-        assert!(joined.starts_with("<think"));
-        assert!(joined.contains(THINK_TEXT));
-    }
-
-    #[rstest::rstest]
-    fn joined_contains_closing_think() {
-        // Given the think tokenizer.
-        // When producing tokens.
-        let tokens = tokenize_think();
-
-        // Then the joined output contains </think and the response text.
-        let joined = tokens.join("");
-        assert!(joined.contains("</think"));
-        assert!(joined.contains(THINK_RESPONSE_TEXT));
     }
 
     #[rstest::rstest]

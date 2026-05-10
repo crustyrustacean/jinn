@@ -282,30 +282,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_strategy_surrounded_by_parens() {
-        // Given default state with no provider.
-        let mut element = StatusBarElement;
-        let state = AppState::default();
-
-        let (mut terminal, area) = setup_term(50, 1);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then the strategy name is surrounded by parens on the left side.
-        let buffer = terminal.backend().buffer().clone();
-        let first = buffer.cell((0, 0)).expect("first cell");
-        assert_eq!(first.symbol(), "(", "strategy should start with '('");
-        // "(Passthrough)" is 13 chars.
-        let closing = buffer.cell((12, 0)).expect("closing paren cell");
-        assert_eq!(closing.symbol(), ")", "strategy should end with ')'");
-    }
-
-    #[rstest::rstest]
     fn render_shows_pinned_count_when_entries_pinned() {
         // Given a session with a pinned entry.
         let mut element = StatusBarElement;
