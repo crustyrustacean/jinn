@@ -2894,6 +2894,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsslice-session-management"
+version = "0.1.0"
+dependencies = [
+ "nullslop-component",
+ "nullslop-protocol",
+ "rstest",
+ "wherror",
+]
+
+[[package]]
 name = "nsslice-status-bar"
 version = "0.1.0"
 dependencies = [
@@ -2933,6 +2943,7 @@ dependencies = [
  "nsslice-picker",
  "nsslice-pinned-panel",
  "nsslice-provider",
+ "nsslice-session-management",
  "nsslice-status-bar",
  "nullslop-actor",
  "nullslop-actor-host",
@@ -3137,6 +3148,7 @@ dependencies = [
  "nsslice-navigation",
  "nsslice-picker",
  "nsslice-pinned-panel",
+ "nsslice-session-management",
  "nullslop-component",
  "nullslop-protocol",
  "rstest",

@@ -31,10 +31,10 @@
 
 use nullslop_component::AppState;
 use nullslop_protocol::provider::CancelStream;
-use nullslop_protocol::{Command, Mode, PinPosition, SessionId};
+use nullslop_protocol::{Command, Mode, PinPosition};
 
 use crate::Intent;
-use crate::validators::{app, chat_entry};
+use crate::validators::app;
 
 
 use nullslop_protocol::IntentResult;
@@ -167,9 +167,15 @@ impl IntentHandler {
             Intent::ToggleKeymapScopeFilter => {
                 nsslice_picker::intent::handle_toggle_keymap_scope_filter(state)
             }
-            Intent::SessionNew => handle_session_new(state),
-            Intent::RefreshModels => handle_refresh_models(state),
-            Intent::RescanPromptTemplates => handle_rescan_prompt_templates(state),
+            Intent::SessionNew => {
+                nsslice_session_management::intent::handle_session_new(state)
+            }
+            Intent::RefreshModels => {
+                nsslice_session_management::intent::handle_refresh_models(state)
+            }
+            Intent::RescanPromptTemplates => {
+                nsslice_session_management::intent::handle_rescan_prompt_templates(state)
+            }
 
             // --- Dashboard ---
             Intent::DashboardSelectDown => {
@@ -287,50 +293,6 @@ fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     state.frontend.tui_signals.pinned_pane_close = true;
 
     IntentResult::empty()
-}
-
-fn handle_session_new(state: &mut AppState) -> IntentResult {
-    if chat_entry::validate_session_new(state).is_err() {
-        return IntentResult::empty();
-    }
-
-    state.session.sessions.remove(&state.session.active_session);
-
-    let new_id = SessionId::new();
-    state.session.sessions.insert(
-        new_id.clone(),
-        nullslop_component::chat_session::ChatSessionState::new(),
-    );
-    state.session.active_session = new_id;
-    state.frontend.mode = Mode::Normal;
-
-    IntentResult::empty()
-}
-
-fn handle_refresh_models(state: &mut AppState) -> IntentResult {
-    if chat_entry::validate_refresh_models(state).is_err() {
-        return IntentResult::empty();
-    }
-
-    // Post system message to active session.
-    state
-        .active_session_mut()
-        .push_entry(nullslop_protocol::ChatEntry::system("Refreshing models..."));
-
-    IntentResult::with_commands(vec![Command::RefreshModels])
-}
-
-fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
-    let _ = chat_entry::validate_rescan_prompt_templates(state);
-
-    // Post system message to active session.
-    state
-        .active_session_mut()
-        .push_entry(nullslop_protocol::ChatEntry::system(
-            "Rescanning prompt templates...",
-        ));
-
-    IntentResult::with_commands(vec![Command::RescanPromptTemplates])
 }
 
 /// Cancels streaming on the active session and drains any queued messages
