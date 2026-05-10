@@ -36,7 +36,7 @@ use nullslop_providers::ProviderRegistryService;
 use nullslop_providers::cache_path;
 use nullslop_services::Services;
 use nullslop_services::actor_channel::ActorChannelService;
-use nullslop_services::core_channel::{CoreChannelService, CoreNotification};
+use nullslop_services::core_channel::CoreChannelService;
 use nullslop_services::strategy_registry::StrategyRegistryService;
 use nullslop_session::{JsonlSessionStore, SessionStoreService};
 use nullslop_session_actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
@@ -121,7 +121,7 @@ impl App {
 
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Tui => {
-                let (core, services) = create_core_with_actor_host(
+                let (core, services, actor_host, core_receiver) = create_core_with_actor_host(
                     &self.handle(),
                     llm_service.clone(),
                     provider_registry.clone(),
@@ -129,21 +129,46 @@ impl App {
                     config_storage.clone(),
                 );
                 core.state.write().active_provider = initial_provider;
-                load_model_cache(&core, &cache_path());
+                load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
-                load_prompt_templates(&core, &nullslop_prompt_template::prompts_dir());
+                load_prompt_templates(&core.state, &nullslop_prompt_template::prompts_dir());
 
                 // Resolve mouse selection config from environment.
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
-                let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
 
-                let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp::new_with_core_and_config(
-                    services, core, tui_config,
-                )));
+                let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
+                let mut ui_registry = nullslop_component::AppUiRegistry::new();
+                nullslop_component::register_tui_elements(&mut ui_registry);
+                let which_key = nullslop_tui::app::WhichKeyInstance::new(
+                    nullslop_tui::keymap::init(),
+                    nullslop_tui::Scope::Normal,
+                );
+
+                let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp {
+                    core,
+                    services,
+                    actor_host,
+                    core_receiver,
+                    ui_registry,
+                    events: nullslop_tui::MsgHandler::new(),
+                    which_key,
+                    suspend: nullslop_tui::suspend::Suspend::new(),
+                    event_task: None,
+                    status: nullslop_tui::AppStatus::Starting,
+                    tab_manager: nullslop_tui::render::init_tab_manager(),
+                    selection: nullslop_tui::selection::SelectionState::Idle,
+                    selectable_rects: Default::default(),
+                    pending_clipboard: false,
+                    config: tui_config,
+                    split_manager: ratatui_spatial_splits::SplitManager::new(),
+                    pane_focus: nullslop_tui::app::PaneFocus::Chat,
+                    pinned_pane_visible: false,
+                    pinned_pane_id: None,
+                }));
                 runner.run().change_context(AppError)?;
             }
             Commands::Headless { command, .. } => {
-                let (core, services) = create_core_with_actor_host(
+                let (core, _services, actor_host, core_receiver) = create_core_with_actor_host(
                     &self.handle(),
                     llm_service.clone(),
                     provider_registry,
@@ -151,10 +176,10 @@ impl App {
                     config_storage,
                 );
                 core.state.write().active_provider = initial_provider;
-                load_model_cache(&core, &cache_path());
+                load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
-                load_prompt_templates(&core, &nullslop_prompt_template::prompts_dir());
-                let mut headless = HeadlessApp::new(core, services);
+                load_prompt_templates(&core.state, &nullslop_prompt_template::prompts_dir());
+                let mut headless = HeadlessApp::new(core, actor_host, core_receiver, self.handle());
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
                         headless.send_chat(&message).change_context(AppError)?;
@@ -235,14 +260,14 @@ fn create_core_with_actor_host(
     provider_registry: ProviderRegistryService,
     api_keys: ApiKeysService,
     config_storage: ConfigStorageService,
-) -> (AppCore, Services) {
+) -> (AppCore, Services, ActorHostService, kanal::Receiver<nullslop_protocol::CoreNotification>) {
     // Create channel first — actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
     // the channel independently.
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
 
     // Create the actor→core notification channel.
-    let (core_notify_tx, core_notify_rx) = kanal::unbounded::<CoreNotification>();
+    let (core_notify_tx, core_notify_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
 
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
@@ -478,25 +503,22 @@ fn create_core_with_actor_host(
     let actor_host_service = ActorHostService::new(host_arc);
     spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
-    // Build AppCore with shared state and the core notification receiver.
+    // Build AppCore with shared state and sender only.
     let core = AppCore {
         state,
         sender,
-        receiver: kanal::unbounded::<AppMsg>().1, // Fresh receiver (old one consumed by forwarding task)
-        actor_host: Some(actor_host_service),
-        core_receiver: Some(core_notify_rx),
     };
     let mut registry = nullslop_component::AppUiRegistry::new();
     nullslop_component::register_all(&mut registry);
 
-    (core, services)
+    (core, services, actor_host_service, core_notify_rx)
 }
 
 /// Loads the model cache from disk into the application state.
 ///
 /// Called once after core creation. Failures are logged but not fatal —
 /// the cache is optional and will be populated on first refresh.
-fn load_model_cache(core: &AppCore, path: &Path) {
+fn load_model_cache(state: &State, path: &Path) {
     let cache = ModelCache::load(path).unwrap_or_else(|e| {
         tracing::warn!("failed to load model cache: {e:?}");
         None
@@ -504,7 +526,7 @@ fn load_model_cache(core: &AppCore, path: &Path) {
     if let Some(ref c) = cache {
         tracing::info!(providers = c.entries.len(), "loaded model cache");
     }
-    let mut state = core.state.write();
+    let mut state = state.write();
     state.last_refreshed_at = cache.as_ref().and_then(|c| c.last_updated_at);
     state.model_cache = cache;
 }
@@ -523,14 +545,14 @@ fn ensure_prompt_example() {
 ///
 /// Called once after core creation. Failures are logged but not fatal —
 /// an empty store is used when the directory is missing or unreadable.
-fn load_prompt_templates(core: &AppCore, path: &Path) {
+fn load_prompt_templates(state: &State, path: &Path) {
     let store =
         nullslop_prompt_template::PromptTemplateStore::load_from_dir(path).unwrap_or_else(|e| {
             tracing::warn!("failed to load prompt templates: {e:?}");
             nullslop_prompt_template::PromptTemplateStore::new()
         });
     tracing::info!(count = store.len(), "loaded prompt templates");
-    core.state.write().prompt_templates = store;
+    state.write().prompt_templates = store;
 }
 
 #[cfg(test)]
@@ -596,13 +618,13 @@ mod tests {
             "+++\nname = \"test\"\ndescription = \"Test template\"\n+++\nTest body.";
         std::fs::write(dir.path().join("test.md"), template_content).expect("write template");
 
-        let core = AppCore::new();
+        let state = State::new(AppState::default());
 
         // When loading prompt templates from the temp directory.
-        load_prompt_templates(&core, dir.path());
+        load_prompt_templates(&state, dir.path());
 
         // Then the template count is correct.
-        let state = core.state.read();
+        let state = state.read();
         assert_eq!(state.prompt_templates.len(), 1);
     }
 
@@ -614,13 +636,13 @@ mod tests {
             "+++\nname = \"test\"\ndescription = \"Test template\"\n+++\nTest body.";
         std::fs::write(dir.path().join("test.md"), template_content).expect("write template");
 
-        let core = AppCore::new();
+        let state = State::new(AppState::default());
 
         // When loading prompt templates from the temp directory.
-        load_prompt_templates(&core, dir.path());
+        load_prompt_templates(&state, dir.path());
 
         // Then the template is findable by name.
-        let state = core.state.read();
+        let state = state.read();
         assert!(state.prompt_templates.find_by_name("test").is_some());
     }
 
@@ -642,13 +664,13 @@ mod tests {
         };
         cache.save(&cache_path).expect("save cache");
 
-        let core = AppCore::new();
+        let state = State::new(AppState::default());
 
         // When loading the model cache from the temp file.
-        load_model_cache(&core, &cache_path);
+        load_model_cache(&state, &cache_path);
 
         // Then the cache is in state with the expected entries.
-        let state = core.state.read();
+        let state = state.read();
         assert!(state.model_cache.is_some());
         let cached = state.model_cache.as_ref().expect("cache present");
         assert_eq!(cached.entries.len(), 1);
@@ -661,13 +683,13 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let cache_path = dir.path().join("nonexistent.json");
 
-        let core = AppCore::new();
+        let state = State::new(AppState::default());
 
         // When loading the model cache from a missing file.
-        load_model_cache(&core, &cache_path);
+        load_model_cache(&state, &cache_path);
 
         // Then the cache is None in state.
-        let state = core.state.read();
+        let state = state.read();
         assert!(state.model_cache.is_none());
     }
 }

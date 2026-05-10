@@ -31,9 +31,8 @@ impl Runner {
                 nullslop_tui::run(*app).change_context(AppError)?;
             }
             Runner::Headless(mut app) => {
-                app.run_until_settled();
-                app.print_history();
                 app.shutdown();
+                app.print_history();
             }
         }
         Ok(())

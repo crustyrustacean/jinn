@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use cucumber::World;
+use nullslop_actor_host::ActorHostService;
 use nullslop_context::DefaultStrategyDiscovery;
 use nullslop_services::strategy_registry::StrategyRegistryService;
 use nullslop_tui::{Scope, TuiApp};
@@ -61,28 +62,63 @@ impl TuiWorld {
             )),
             strategy_registry,
         };
-        Self {
-            app: TuiApp::new(services),
-        }
+
+        // Build a minimal AppCore with struct literal.
+        let (sender, _receiver) = kanal::unbounded();
+        let core = nullslop_core::AppCore {
+            state: nullslop_component::State::new(nullslop_component::AppState::default()),
+            sender,
+        };
+
+        // Create a disconnected core receiver and fake actor host.
+        let (_, tui_core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+        let fake_host = ActorHostService::new(Arc::new(nullslop_actor_host::FakeActorHost::new()));
+
+        let mut ui_registry = nullslop_component::AppUiRegistry::new();
+        nullslop_component::register_all(&mut ui_registry);
+
+        let app = TuiApp {
+            core,
+            services,
+            actor_host: fake_host,
+            core_receiver: tui_core_rx,
+            ui_registry,
+            events: nullslop_tui::MsgHandler::new(),
+            which_key: nullslop_tui::app::WhichKeyInstance::new(
+                nullslop_tui::keymap::init(),
+                Scope::Normal,
+            ),
+            suspend: nullslop_tui::suspend::Suspend::new(),
+            event_task: None,
+            status: nullslop_tui::AppStatus::Starting,
+            tab_manager: nullslop_tui::render::init_tab_manager(),
+            selection: nullslop_tui::selection::SelectionState::Idle,
+            selectable_rects: Default::default(),
+            pending_clipboard: false,
+            config: nullslop_tui::config::TuiConfig::default(),
+            split_manager: ratatui_spatial_splits::SplitManager::new(),
+            pane_focus: nullslop_tui::app::PaneFocus::Chat,
+            pinned_pane_visible: false,
+            pinned_pane_id: None,
+        };
+
+        Self { app }
     }
 
-    /// Sends a keystroke to the app and ticks the core.
+    /// Sends a keystroke to the app.
     fn press_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
         let event = crossterm::event::Event::Key(KeyEvent::new(code, modifiers));
         self.app.handle_msg(nullslop_tui::msg::Msg::Input(event));
-        self.app.core.tick();
     }
 
-    /// Routes a command through the app's message pipeline and ticks the core.
+    /// Routes a command through the app's message pipeline.
     fn route_command(&mut self, cmd: nullslop_protocol::Command) {
         self.app.handle_msg(nullslop_tui::msg::Msg::Command(cmd));
-        self.app.core.tick();
     }
 
-    /// Routes an intent through the app and ticks the core.
+    /// Routes an intent through the app.
     fn route_intent(&mut self, intent: nullslop_intent::Intent) {
         self.app.route_intent(intent);
-        self.app.core.tick();
     }
 }
 

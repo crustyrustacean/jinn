@@ -1,13 +1,12 @@
 //! Headless application state.
 //!
 //! [`HeadlessApp`] owns the processing pipeline for non-interactive mode.
-//! It receives commands, runs the core tick loop until settled, and
-//! shuts down the actor host.
-
-use std::time::{Duration, Instant};
+//! It receives commands, submits them to the core, and shuts down the actor
+//! host gracefully.
 
 use error_stack::{Report, ResultExt};
-use nullslop_core::{AppCore, AppMsg, TickResult};
+use nullslop_actor_host::ActorHostService;
+use nullslop_core::{AppCore, AppMsg};
 use nullslop_intent::IntentHandler;
 use nullslop_protocol::Command;
 use nullslop_protocol::chat_input::EnqueueUserMessage;
@@ -18,29 +17,36 @@ use wherror::Error;
 #[error(debug)]
 pub struct HeadlessError;
 
-/// Maximum time the headless runner will wait for work to settle.
-const HEADLESS_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Sleep duration between ticks to allow async messages to arrive.
-const TICK_INTERVAL: Duration = Duration::from_millis(50);
-
-/// Number of consecutive idle ticks before declaring the system settled.
-const IDLE_TICKS_TO_SETTLE: usize = 3;
-
 /// Headless application state.
 ///
 /// Owns an [`AppCore`] for non-interactive command processing.
-/// Commands are submitted, the core runs until settled, and results can be inspected.
+/// Commands are submitted and results can be inspected after shutdown.
 pub struct HeadlessApp {
     /// Application core (state, message channel).
     core: AppCore,
+    /// Actor host for coordinated shutdown.
+    actor_host: ActorHostService,
+    /// Receiver for core lifecycle notifications (shutdown complete).
+    core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
+    /// Tokio runtime handle for spawning async shutdown task.
+    handle: tokio::runtime::Handle,
 }
 
 impl HeadlessApp {
-    /// Creates a new headless app with the given core.
+    /// Creates a new headless app with the given core, actor host, and core receiver.
     #[must_use]
-    pub fn new(core: AppCore, _services: nullslop_services::Services) -> Self {
-        Self { core }
+    pub fn new(
+        core: AppCore,
+        actor_host: ActorHostService,
+        core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
+        handle: tokio::runtime::Handle,
+    ) -> Self {
+        Self {
+            core,
+            actor_host,
+            core_receiver,
+            handle,
+        }
     }
 
     /// Sends a chat message through the core pipeline.
@@ -72,8 +78,7 @@ impl HeadlessApp {
     ///
     /// Each non-empty, non-comment line read from `reader` is parsed as a key
     /// sequence by [`parse_script`]. Keys are fed to the which-key state machine,
-    /// which resolves them to commands. Commands are submitted to `AppCore` and
-    /// the processing loop runs after each line.
+    /// which resolves them to commands. Commands are submitted to `AppCore`.
     ///
     /// # Errors
     ///
@@ -129,45 +134,9 @@ impl HeadlessApp {
                     }
                 }
             }
-            self.run_until_settled();
         }
 
         Ok(())
-    }
-
-    /// Runs `AppCore::tick()` in a loop until the system settles or times out.
-    ///
-    /// "Settled" means \[`IDLE_TICKS_TO_SETTLE`] consecutive ticks performed no work.
-    pub fn run_until_settled(&mut self) {
-        let start = Instant::now();
-        let mut consecutive_idle = 0;
-
-        loop {
-            let TickResult {
-                should_quit,
-                did_work,
-            } = self.core.tick();
-
-            if should_quit {
-                return;
-            }
-
-            if did_work {
-                consecutive_idle = 0;
-            } else {
-                consecutive_idle += 1;
-                if consecutive_idle >= IDLE_TICKS_TO_SETTLE {
-                    return;
-                }
-            }
-
-            if start.elapsed() > HEADLESS_TIMEOUT {
-                tracing::warn!("headless runner timed out after {:?}", HEADLESS_TIMEOUT);
-                return;
-            }
-
-            std::thread::sleep(TICK_INTERVAL);
-        }
     }
 
     /// Prints the chat history to the log for visibility.
@@ -180,9 +149,11 @@ impl HeadlessApp {
 
     /// Shuts down the actor host gracefully.
     pub fn shutdown(&mut self) {
-        let actor_host = self.core.actor_host.clone().expect("actor host initialized");
-        self.core.coordinated_shutdown(
-            actor_host.backend(),
+        nullslop_core::coordinated_shutdown(
+            self.actor_host.backend(),
+            &self.core.state,
+            self.core_receiver.clone(),
+            self.handle.clone(),
             nullslop_core::SHUTDOWN_TIMEOUT,
         );
     }

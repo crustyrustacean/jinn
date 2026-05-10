@@ -7,12 +7,8 @@
 
 use derive_more::Debug;
 
-/// Lifecycle notifications from the actor system to the core.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CoreNotification {
-    /// The actor system has completed shutdown.
-    ShutdownComplete,
-}
+// Re-export CoreNotification from nullslop-protocol for backward compatibility.
+pub use nullslop_protocol::CoreNotification;
 
 /// Service for sending lifecycle notifications to the core.
 ///

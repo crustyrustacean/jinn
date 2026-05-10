@@ -14,6 +14,7 @@ pub mod actor_name;
 pub mod chat;
 pub mod chat_input;
 pub mod command;
+pub mod core_notification;
 pub mod context;
 pub mod custom;
 pub mod event;
@@ -36,6 +37,7 @@ pub use actor::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 pub use actor_name::ActorName;
 pub use chat::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
 pub use command::Command;
+pub use core_notification::CoreNotification;
 pub use context::{
     AssemblePrompt, PromptAssembled, PromptStrategyId, PromptStrategySwitched, SwitchPromptStrategy,
 };

@@ -1,8 +1,47 @@
 use super::*;
-use crate::selection::SelectionState;
+use crate::scope::Scope;
+use crate::selection::{SelectableRects, SelectionState};
 use nullslop_protocol::Intent;
 use nullslop_selection_widget::compute_popup_rect;
 use ratatui::style::Modifier;
+use ratatui_spatial_splits::SplitManager;
+
+/// Creates a minimal `TuiApp` for render testing.
+fn render_test_app() -> crate::TuiApp {
+    let services = nullslop_services::Services::new();
+    let (sender, _receiver) = kanal::unbounded();
+    let core = nullslop_core::AppCore {
+        state: nullslop_component::State::new(nullslop_component::AppState::default()),
+        sender,
+    };
+    let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+    let fake_host = nullslop_actor_host::ActorHostService::new(std::sync::Arc::new(
+        nullslop_actor_host::FakeActorHost::new(),
+    ));
+    let mut ui_registry = nullslop_component::AppUiRegistry::new();
+    nullslop_component::register_all(&mut ui_registry);
+    crate::TuiApp {
+        core,
+        services,
+        actor_host: fake_host,
+        core_receiver: core_rx,
+        ui_registry,
+        events: crate::MsgHandler::new(),
+        which_key: crate::app::WhichKeyInstance::new(crate::keymap::init(), Scope::Normal),
+        suspend: crate::suspend::Suspend::new(),
+        event_task: None,
+        status: crate::AppStatus::Starting,
+        tab_manager: init_tab_manager(),
+        selection: SelectionState::Idle,
+        selectable_rects: SelectableRects::default(),
+        pending_clipboard: false,
+        config: crate::config::TuiConfig::default(),
+        split_manager: SplitManager::new(),
+        pane_focus: crate::app::PaneFocus::Chat,
+        pinned_pane_visible: false,
+        pinned_pane_id: None,
+    }
+}
 
 #[rstest::rstest]
 fn app_layout_meets_min_size() {
@@ -551,8 +590,7 @@ fn cell_inside_selection_is_inverted() {
     buf.cell_mut((15, 8)).unwrap().set_bg(Color::Green);
 
     // And an app with an Active selection covering (2,2) to (5,4).
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Active {
         anchor: (2, 2),
         focus: (5, 4),
@@ -581,8 +619,7 @@ fn cell_outside_selection_is_unchanged() {
     buf.cell_mut((15, 8)).unwrap().set_bg(Color::Green);
 
     // And an app with an Active selection covering (2,2) to (5,4).
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Active {
         anchor: (2, 2),
         focus: (5, 4),
@@ -616,8 +653,7 @@ fn cell_inside_clamped_selection_is_inverted() {
     // anchor=(0,0) is outside bounds, focus=(8,8) is inside.
     // selection_rect() should clamp to (5,5)-(8,8).
     let bounds = Rect::new(5, 5, 10, 10);
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Active {
         anchor: (0, 0),
         focus: (8, 8),
@@ -651,8 +687,7 @@ fn cell_at_raw_anchor_not_inverted() {
     // anchor=(0,0) is outside bounds, focus=(8,8) is inside.
     // selection_rect() should clamp to (5,5)-(8,8).
     let bounds = Rect::new(5, 5, 10, 10);
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Active {
         anchor: (0, 0),
         focus: (8, 8),
@@ -677,8 +712,7 @@ fn selection_highlight_does_nothing_when_idle() {
     buf.cell_mut((5, 5)).unwrap().set_bg(Color::Blue);
 
     // And an app with an Idle selection.
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Idle;
 
     // When applying selection highlight.
@@ -704,8 +738,7 @@ fn reset_bg_cell_gets_explicit_colors() {
     buf.cell_mut((4, 3)).unwrap().set_fg(Color::Cyan);
 
     // And an Active selection covering both cells.
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Active {
         anchor: (2, 2),
         focus: (5, 4),
@@ -735,8 +768,7 @@ fn distinct_color_cell_gets_swapped() {
     buf.cell_mut((4, 3)).unwrap().set_fg(Color::Cyan);
 
     // And an Active selection covering both cells.
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Active {
         anchor: (2, 2),
         focus: (5, 4),
@@ -757,8 +789,7 @@ fn distinct_color_cell_gets_swapped() {
 #[rstest::rstest]
 fn clipboard_copy_clears_pending_flag_on_idle_selection() {
     // Given an app with pending_clipboard set but Idle selection.
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Idle;
     app.pending_clipboard = true;
 
@@ -778,8 +809,7 @@ fn clipboard_copy_skips_empty_selection() {
     let area = Rect::new(0, 0, 20, 5);
     let buf = ratatui::buffer::Buffer::empty(area);
 
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Active {
         anchor: (0, 0),
         focus: (3, 0),
@@ -806,8 +836,7 @@ fn clipboard_clears_pending_flag_immediately() {
             .set_symbol(&ch.to_string());
     }
 
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Active {
         anchor: (2, 2),
         focus: (6, 2),
@@ -835,8 +864,7 @@ fn clipboard_contains_selected_text() {
             .set_symbol(&ch.to_string());
     }
 
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     app.selection = SelectionState::Active {
         anchor: (2, 2),
         focus: (6, 2),
@@ -863,8 +891,7 @@ fn render_registers_content_rect_for_selectable_chat_log() {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     // Default tab is Chat.
 
     let backend = TestBackend::new(80, 24);
@@ -896,8 +923,7 @@ fn picker_popup_rect_is_selectable() {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     // Switch to Picker mode with an active provider picker.
     app.core.state.write().mode = nullslop_protocol::Mode::Picker;
     app.core.state.write().active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
@@ -927,8 +953,7 @@ fn content_area_rect_is_selectable() {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    let services = nullslop_services::Services::new();
-    let mut app = crate::TuiApp::new(services);
+    let mut app = render_test_app();
     // Switch to Picker mode with an active provider picker.
     app.core.state.write().mode = nullslop_protocol::Mode::Picker;
     app.core.state.write().active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
