@@ -3131,6 +3131,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nullslop-provider-actor"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "nullslop-actor",
+ "nullslop-component",
+ "nullslop-protocol",
+ "nullslop-providers",
+ "nullslop-services",
+ "rstest",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "nullslop-providers"
 version = "0.1.0"
 dependencies = [
