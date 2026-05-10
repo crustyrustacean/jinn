@@ -30,7 +30,6 @@
 )]
 
 use nullslop_component::AppState;
-use nullslop_protocol::context::PinChatEntry;
 use nullslop_protocol::provider::CancelStream;
 use nullslop_protocol::{Command, Mode, PinPosition, SessionId, TabDirection};
 
@@ -248,16 +247,14 @@ impl IntentHandler {
 
             // --- Chat Entry Selection ---
             Intent::ChatEntrySelectNext => {
-                chat_entry::validate_chat_entry_select_next(state);
-                state.active_session_mut().select_next_entry();
-                IntentResult::empty()
+                nsslice_chat_entry_selection::intent::handle_select_next(state)
             }
             Intent::ChatEntrySelectPrev => {
-                chat_entry::validate_chat_entry_select_prev(state);
-                state.active_session_mut().select_prev_entry();
-                IntentResult::empty()
+                nsslice_chat_entry_selection::intent::handle_select_prev(state)
             }
-            Intent::ChatEntryPinSelected => handle_chat_entry_pin_selected(state),
+            Intent::ChatEntryPinSelected => {
+                nsslice_chat_entry_selection::intent::handle_pin_selected(state)
+            }
         }
     }
 }
@@ -374,27 +371,6 @@ fn cancel_stream_and_drain(state: &mut AppState) {
     if !drained_text.is_empty() {
         session.chat_input_mut().replace_all(drained_text);
     }
-}
-
-// --- Chat Entry handlers ---
-
-fn handle_chat_entry_pin_selected(state: &mut AppState) -> IntentResult {
-    if chat_entry::validate_chat_entry_pin_selected(state).is_err() {
-        return IntentResult::empty();
-    }
-
-    let session_id = state.session.active_session.clone();
-    let Some(entry_id) = state.active_session().selected_entry_id().cloned() else {
-        return IntentResult::empty();
-    };
-
-    IntentResult::with_commands(vec![Command::PinChatEntry {
-        payload: PinChatEntry {
-            session_id,
-            entry_id,
-            position: PinPosition::Relative,
-        },
-    }])
 }
 
 #[cfg(test)]

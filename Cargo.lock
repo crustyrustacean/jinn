@@ -2805,6 +2805,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsslice-chat-entry-selection"
+version = "0.1.0"
+dependencies = [
+ "nullslop-component",
+ "nullslop-protocol",
+ "rstest",
+ "wherror",
+]
+
+[[package]]
 name = "nsslice-chat-input-box"
 version = "0.1.0"
 dependencies = [
@@ -2906,6 +2916,7 @@ dependencies = [
  "jiff",
  "kanal",
  "nsslice-char-counter",
+ "nsslice-chat-entry-selection",
  "nsslice-chat-input-box",
  "nsslice-chat-log",
  "nsslice-dashboard",
@@ -3110,6 +3121,7 @@ name = "nullslop-intent"
 version = "0.1.0"
 dependencies = [
  "jiff",
+ "nsslice-chat-entry-selection",
  "nsslice-chat-input-box",
  "nsslice-dashboard",
  "nsslice-picker",

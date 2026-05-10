@@ -10,6 +10,7 @@ nsslice-pinned-panel = { workspace = true }
 nsslice-chat-input-box = { workspace = true }
 nsslice-dashboard = { workspace = true }
 nsslice-picker = { workspace = true }
+nsslice-chat-entry-selection = { workspace = true }
 wherror = { workspace = true }
 
 [dev-dependencies]
