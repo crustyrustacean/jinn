@@ -6,7 +6,7 @@
 //!
 //! The [`IntentHandler`] processes all 55 intents: it validates each intent,
 //! then acts on it — mutating [`AppState`], setting TUI signals, and returning
-//! commands/events for the coordinator actor.
+//! commands/events for the actor system.
 //!
 //! This crate has no TUI or async dependency. It supports headless and
 //! script modes identically to the TUI mode.

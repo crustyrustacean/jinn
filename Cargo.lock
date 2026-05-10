@@ -2819,16 +2819,15 @@ dependencies = [
  "nullslop-component",
  "nullslop-context",
  "nullslop-context-actor",
- "nullslop-coordinator",
  "nullslop-core",
  "nullslop-echo",
  "nullslop-intent",
  "nullslop-llm",
  "nullslop-llm-discover",
- "nullslop-projector",
  "nullslop-prompt-scan",
  "nullslop-prompt-template",
  "nullslop-protocol",
+ "nullslop-provider-actor",
  "nullslop-providers",
  "nullslop-services",
  "nullslop-session",
@@ -2954,13 +2953,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nullslop-coordinator"
-version = "0.1.0"
-dependencies = [
- "nullslop-actor",
-]
-
-[[package]]
 name = "nullslop-core"
 version = "0.1.0"
 dependencies = [
@@ -2989,11 +2981,11 @@ dependencies = [
  "nullslop-core",
  "nullslop-intent",
  "nullslop-llm",
- "nullslop-projector",
  "nullslop-protocol",
  "nullslop-providers",
  "nullslop-services",
  "nullslop-session",
+ "nullslop-session-actor",
  "nullslop-tool-orchestrator",
  "nullslop-tui",
  "ratatui-spatial-splits",
@@ -3054,13 +3046,6 @@ dependencies = [
  "tokio",
  "tracing",
  "wherror",
-]
-
-[[package]]
-name = "nullslop-projector"
-version = "0.1.0"
-dependencies = [
- "nullslop-actor",
 ]
 
 [[package]]

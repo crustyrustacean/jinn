@@ -1,7 +1,7 @@
 //! Provider picker loader — loads provider entries into picker state.
 //!
 //! Extracted from the deleted `handler.rs` so that rendering tests and
-//! the future coordinator actor can still call this function.
+//! the provider actor can still call this function.
 
 use nullslop_services::Services;
 
