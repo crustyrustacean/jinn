@@ -72,8 +72,9 @@ impl Actor for CoordinatorActor {
         ctx.subscribe_command::<PushToolResult>();
         ctx.subscribe_command::<SendMessage>();
 
-        // Subscribe to the PromptAssembled event.
+        // Subscribe to events that trigger follow-up commands.
         ctx.subscribe_event::<nullslop_protocol::context::PromptAssembled>();
+        ctx.subscribe_event::<nullslop_protocol::provider::ModelsRefreshed>();
 
         ctx.set_description("Orchestrates domain workflows: state mutation + side effects");
 
@@ -92,9 +93,14 @@ impl Actor for CoordinatorActor {
         match msg {
             ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx),
             ActorEnvelope::Event(event) => {
-                // Coordinator subscribes to PromptAssembled as an event.
-                if let Event::PromptAssembled { ref payload } = event {
-                    self.handle_prompt_assembled(payload, ctx);
+                match event {
+                    Event::PromptAssembled { ref payload } => {
+                        self.handle_prompt_assembled(payload, ctx);
+                    }
+                    Event::ModelsRefreshed { .. } => {
+                        self.handle_models_refreshed();
+                    }
+                    _ => {}
                 }
             }
             ActorEnvelope::System(SystemMessage::ApplicationReady) => {
@@ -460,6 +466,11 @@ impl CoordinatorActor {
                 "coordinator failed to emit SendToLlmProvider"
             );
         }
+    }
+    /// ModelsRefreshed: reload provider picker entries from updated model cache.
+    fn handle_models_refreshed(&self) {
+        let mut state = self.state.write();
+        load_provider_picker_items(&self.services, &mut state);
     }
 }
 
@@ -872,6 +883,30 @@ mod tests {
 
         // Then the handler completes without panic.
         // (Provider entries loaded from fake services — no models available.)
+    }
+
+    // --- ModelsRefreshed (event) ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_reloads_provider_picker_entries() {
+        // Given a coordinator with fake services (empty registry).
+        let (mut actor, _state, _sink, ctx) = create_actor();
+
+        // When processing ModelsRefreshed event.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::ModelsRefreshed {
+                    payload: nullslop_protocol::provider::ModelsRefreshed {
+                        results: std::collections::HashMap::new(),
+                        errors: std::collections::HashMap::new(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the handler completes without panic (picker entries reloaded).
     }
 
     // --- SessionLoadCompleted ---
