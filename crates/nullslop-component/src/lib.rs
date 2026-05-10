@@ -43,7 +43,7 @@ pub mod status_bar;
 pub mod tab_nav;
 pub mod tui_signals;
 
-pub use app_state::AppState;
+pub use app_state::{AppState, Frontend, Session, Context, Provider, Shutdown};
 pub use nullslop_providers::NO_PROVIDER_ID;
 pub use state::{State, StateReadGuard, StateWriteGuard};
 pub use tui_signals::TuiSignals;

@@ -120,7 +120,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // Split border lines (rendered after elements, before selection highlight).
     let mut borders: Option<Vec<crate::split_borders::BorderLine>> = None;
 
-    match state.active_tab {
+    match state.frontend.active_tab {
         nullslop_protocol::ActiveTab::Chat => {
             let content_area = if app.pinned_pane_visible {
                 app.split_manager.set_viewport(layout.content);
@@ -197,7 +197,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // Which-key popup overlay (app-level, not a component element)
     render_which_key(frame, &mut app.which_key);
 
-    if state.mode == Mode::Picker {
+    if state.frontend.mode == Mode::Picker {
         render_picker(frame, area, &state);
         // Provider picker popup is selectable — not a UiElement, register inline.
         rects.push(nullslop_selection_widget::compute_popup_rect(area));
@@ -311,7 +311,7 @@ fn render_which_key(frame: &mut Frame<'_>, state: &mut crate::app::WhichKeyInsta
 
 /// Renders the active picker overlay, dispatching on [`PickerKind`].
 fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
-    match state.active_picker_kind {
+    match state.frontend.active_picker_kind {
         Some(PickerKind::Provider) => render_provider_picker(frame, area, state),
         Some(PickerKind::ContextAssembly) => {
             render_context_strategy_picker(frame, area, state);
@@ -330,8 +330,8 @@ fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_co
     use nullslop_component::provider_picker::entries;
     use nullslop_selection_widget::SelectionWidget;
 
-    let footer = entries::format_footer(state.last_refreshed_at.as_ref(), area.width as usize);
-    let widget = SelectionWidget::new(&state.provider_picker)
+    let footer = entries::format_footer(state.provider.last_refreshed_at.as_ref(), area.width as usize);
+    let widget = SelectionWidget::new(&state.provider.provider_picker)
         .title(ratatui::text::Line::from(" Model "))
         .footer(footer);
     widget.render(frame, area);
@@ -351,7 +351,7 @@ fn render_context_strategy_picker(
     use nullslop_selection_widget::SelectionWidget;
 
     // Find the active strategy's display name for the footer.
-    let active_name = state
+    let active_name = state.frontend
         .context_strategy_picker
         .items()
         .iter()
@@ -359,7 +359,7 @@ fn render_context_strategy_picker(
         .map_or("unknown", |e| e.name.as_str());
 
     let footer = entries::format_strategy_footer(active_name);
-    let widget = SelectionWidget::new(&state.context_strategy_picker)
+    let widget = SelectionWidget::new(&state.frontend.context_strategy_picker)
         .title(ratatui::text::Line::from(" Context Assembly Strategy "))
         .footer(footer);
     widget.render(frame, area);
@@ -373,16 +373,16 @@ fn render_context_strategy_picker(
 fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
     use nullslop_selection_widget::SelectionWidget;
 
-    let scope_name = state
+    let scope_name = state.frontend
         .keymap_picker_origin_scope
         .as_deref()
         .unwrap_or("unknown");
-    let footer = if state.keymap_picker_show_all {
+    let footer = if state.frontend.keymap_picker_show_all {
         Line::from(format!(" All scopes | CTRL+A to show {scope_name} "))
     } else {
         Line::from(format!(" Scope: {scope_name} | CTRL+A to show all "))
     };
-    let widget = SelectionWidget::new(&state.keymap_picker)
+    let widget = SelectionWidget::new(&state.frontend.keymap_picker)
         .title(Line::from(" Keymaps "))
         .footer(footer);
     widget.render(frame, area);
@@ -400,7 +400,7 @@ fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_com
         "CTRL+N to create a new session",
         Style::default().fg(Color::Rgb(255, 165, 0)),
     );
-    let widget = SelectionWidget::new(&state.session_picker)
+    let widget = SelectionWidget::new(&state.frontend.session_picker)
         .title(Line::from(" Sessions "))
         .footer(footer);
     widget.render(frame, area);

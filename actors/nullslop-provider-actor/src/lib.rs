@@ -121,7 +121,7 @@ impl ProviderActor {
     fn handle_provider_switch(&self, payload: &ProviderSwitch, ctx: &ActorContext) {
         {
             let mut state = self.state.write();
-            state.active_provider = payload.provider_id.clone();
+            state.provider.active_provider = payload.provider_id.clone();
         }
 
         if let Err(e) = ctx.send_event(Event::ProviderSwitched {
@@ -178,11 +178,11 @@ impl ProviderActor {
     fn handle_models_refreshed(&self, event: &ModelsRefreshed) {
         let now = jiff::Timestamp::now();
         let mut state = self.state.write();
-        state.model_cache = Some(nullslop_providers::ModelCache {
+        state.provider.model_cache = Some(nullslop_providers::ModelCache {
             entries: event.results.clone(),
             last_updated_at: Some(now),
         });
-        state.last_refreshed_at = Some(now);
+        state.provider.last_refreshed_at = Some(now);
         // Also reload provider picker entries from updated model cache.
         load_provider_picker_items(&self.services, &mut state);
     }
@@ -242,7 +242,7 @@ mod tests {
         // Then the active provider is updated.
         {
             let guard = state.read();
-            assert_eq!(guard.active_provider, "ollama");
+            assert_eq!(guard.provider.active_provider, "ollama");
         }
 
         // And a ProviderSwitched event was emitted.
@@ -371,8 +371,8 @@ mod tests {
 
         // Then the model cache and last_refreshed_at are updated.
         let guard = state.read();
-        let cache = guard.model_cache.as_ref().expect("model cache should be set");
+        let cache = guard.provider.model_cache.as_ref().expect("model cache should be set");
         assert_eq!(cache.entries.get("Ollama").map(|v| v.len()), Some(2));
-        assert!(guard.last_refreshed_at.is_some());
+        assert!(guard.provider.last_refreshed_at.is_some());
     }
 }

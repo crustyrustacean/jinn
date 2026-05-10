@@ -295,6 +295,7 @@ impl ProviderRegistry {
     }
 
     /// Creates a factory from a statically resolved provider entry.
+    #[expect(clippy::unused_self, reason = "called via self from create_factory")]
     fn create_factory_from_resolved(
         &self,
         resolved: &ResolvedProvider,

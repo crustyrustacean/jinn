@@ -16,6 +16,7 @@ pub use nullslop_protocol::CoreNotification;
 #[derive(Debug, Clone)]
 pub struct CoreChannelService {
     #[debug("CoreChannelService")]
+    /// The sender half of the core notification channel.
     sender: kanal::Sender<CoreNotification>,
 }
 

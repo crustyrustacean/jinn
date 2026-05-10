@@ -31,12 +31,12 @@ impl UiElement<AppState> for StatusBarElement {
             format!("({strategy})")
         };
 
-        let model = if state.active_provider == NO_PROVIDER_ID {
+        let model = if state.provider.active_provider == NO_PROVIDER_ID {
             "no model selected".to_owned()
-        } else if let Some((provider, model)) = state.active_provider.split_once('/') {
+        } else if let Some((provider, model)) = state.provider.active_provider.split_once('/') {
             format!("({provider})/{model}")
         } else {
-            state.active_provider.clone()
+            state.provider.active_provider.clone()
         };
 
         let style = Style::default().fg(Color::DarkGray);
@@ -65,7 +65,7 @@ mod tests {
 
 
     use super::*;
-    use crate::AppState;
+    use crate::{AppState, Provider};
 
     #[rstest::rstest]
     fn name_returns_status_bar() {
@@ -113,10 +113,7 @@ mod tests {
     fn render_shows_provider_and_model() {
         // Given a StatusBarElement with active_provider = "ollama/llama3".
         let mut element = StatusBarElement;
-        let state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
-            ..AppState::default()
-        };
+        let state = AppState { provider: Provider { active_provider: "ollama/llama3".to_owned(), ..Provider::default() }, ..AppState::default() };
 
         let (mut terminal, area) = setup_term(50, 1);
 
@@ -146,10 +143,7 @@ mod tests {
     fn render_right_aligns_text() {
         // Given a StatusBarElement with a short provider string in a wide area.
         let mut element = StatusBarElement;
-        let state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
-            ..AppState::default()
-        };
+        let state = AppState { provider: Provider { active_provider: "ollama/llama3".to_owned(), ..Provider::default() }, ..AppState::default() };
 
         let (mut terminal, area) = setup_term(50, 1);
 
@@ -174,10 +168,7 @@ mod tests {
     fn render_uses_gray_color() {
         // Given a StatusBarElement with a provider set.
         let mut element = StatusBarElement;
-        let state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
-            ..AppState::default()
-        };
+        let state = AppState { provider: Provider { active_provider: "ollama/llama3".to_owned(), ..Provider::default() }, ..AppState::default() };
 
         let (mut terminal, area) = setup_term(40, 1);
 
@@ -202,10 +193,7 @@ mod tests {
     fn render_shows_provider_with_slash_in_model() {
         // Given a StatusBarElement with active_provider = "openrouter/anthropic/claude-sonnet-4".
         let mut element = StatusBarElement;
-        let state = AppState {
-            active_provider: "openrouter/anthropic/claude-sonnet-4".to_owned(),
-            ..AppState::default()
-        };
+        let state = AppState { provider: Provider { active_provider: "openrouter/anthropic/claude-sonnet-4".to_owned(), ..Provider::default() }, ..AppState::default() };
 
         let (mut terminal, area) = setup_term(80, 1);
 
@@ -235,10 +223,7 @@ mod tests {
     fn render_shows_non_default_strategy() {
         // Given a session with sliding_window strategy and an active provider.
         let mut element = StatusBarElement;
-        let mut state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
-            ..AppState::default()
-        };
+        let mut state = AppState { provider: Provider { active_provider: "ollama/llama3".to_owned(), ..Provider::default() }, ..AppState::default() };
         state
             .active_session_mut()
             .switch_strategy(nullslop_protocol::PromptStrategyId::sliding_window());
@@ -295,10 +280,7 @@ mod tests {
     fn render_shows_pinned_count_when_entries_pinned() {
         // Given a session with a pinned entry.
         let mut element = StatusBarElement;
-        let mut state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
-            ..AppState::default()
-        };
+        let mut state = AppState { provider: Provider { active_provider: "ollama/llama3".to_owned(), ..Provider::default() }, ..AppState::default() };
         let idx = state
             .active_session_mut()
             .push_entry(nullslop_protocol::ChatEntry::user("hello"));
@@ -332,10 +314,7 @@ mod tests {
     fn render_hides_pinned_count_when_no_entries_pinned() {
         // Given a session with no pinned entries.
         let mut element = StatusBarElement;
-        let state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
-            ..AppState::default()
-        };
+        let state = AppState { provider: Provider { active_provider: "ollama/llama3".to_owned(), ..Provider::default() }, ..AppState::default() };
 
         let (mut terminal, area) = setup_term(60, 1);
 
