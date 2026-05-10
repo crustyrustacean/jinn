@@ -8,28 +8,18 @@
 //! task to drain the AppMsg channel and forward directly to the actor host.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use cucumber::World;
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef};
-use nullslop_actor_host::{InMemoryActorHost, spawn_actor};
+use nullslop_actor_host::{ActorHostService, InMemoryActorHost, spawn_actor};
 use nullslop_component::AppState;
-use nullslop_core::{ActorMessageSink, AppCore, AppMsg, TickResult};
+use nullslop_core::{ActorMessageSink, AppCore, AppMsg};
 use nullslop_llm::LlmActor;
 use nullslop_protocol::provider::SendToLlmProvider;
 use nullslop_protocol::tool::ToolCall;
 use nullslop_providers::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
 use nullslop_services::Services;
 use nullslop_tool_orchestrator::ToolOrchestratorActor;
-
-/// Maximum time the test will wait for actor messages to settle.
-const SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// Sleep duration between ticks.
-const TICK_INTERVAL: Duration = Duration::from_millis(50);
-
-/// Number of consecutive idle ticks before declaring settled.
-const IDLE_TICKS_TO_SETTLE: usize = 3;
 
 /// Cucumber world wrapping real actors for integration testing.
 ///
@@ -43,6 +33,12 @@ pub struct ActorWorld {
     /// Runtime services.
     #[allow(dead_code)]
     pub services: Services,
+    /// Actor host for coordinated shutdown.
+    actor_host: ActorHostService,
+    /// Tokio runtime handle for spawning async shutdown task.
+    handle: tokio::runtime::Handle,
+    /// Receiver for core lifecycle notifications (shutdown complete).
+    core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
 }
 
 impl std::fmt::Debug for ActorWorld {
@@ -73,8 +69,14 @@ impl ActorWorld {
         );
         let llm_service = LlmServiceFactoryService::new(Arc::new(fake_factory));
 
-        let (core, services) = create_actor_core(&handle, llm_service);
-        Self { core, services }
+        let (core, services, actor_host, core_receiver) = create_actor_core(&handle, llm_service);
+        Self {
+            core,
+            services,
+            actor_host,
+            handle,
+            core_receiver,
+        }
     }
 
     /// Submits a command to the core's message channel.
@@ -82,37 +84,15 @@ impl ActorWorld {
         self.core.submit_command(cmd);
     }
 
-    /// Runs the core tick loop until settled.
-    pub fn run_until_settled(&mut self) {
-        let start = Instant::now();
-        let mut consecutive_idle = 0;
-
-        loop {
-            let TickResult {
-                should_quit,
-                did_work,
-            } = self.core.tick();
-
-            if should_quit {
-                return;
-            }
-
-            if did_work {
-                consecutive_idle = 0;
-            } else {
-                consecutive_idle += 1;
-                if consecutive_idle >= IDLE_TICKS_TO_SETTLE {
-                    return;
-                }
-            }
-
-            if start.elapsed() > SETTLE_TIMEOUT {
-                eprintln!("actor world timed out after {:?}", SETTLE_TIMEOUT);
-                return;
-            }
-
-            std::thread::sleep(TICK_INTERVAL);
-        }
+    /// Runs graceful coordinated shutdown of the actor system.
+    pub fn graceful_shutdown(&mut self) {
+        nullslop_core::coordinated_shutdown(
+            self.actor_host.backend(),
+            &self.core.state,
+            self.core_receiver.clone(),
+            self.handle.clone(),
+            nullslop_core::SHUTDOWN_TIMEOUT,
+        );
     }
 
     /// Returns a read guard to the application state.
@@ -126,8 +106,11 @@ impl ActorWorld {
 fn create_actor_core(
     handle: &tokio::runtime::Handle,
     llm_service: LlmServiceFactoryService,
-) -> (AppCore, Services) {
+) -> (AppCore, Services, ActorHostService, kanal::Receiver<nullslop_protocol::CoreNotification>)
+{
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
+    let (core_notify_tx, core_notify_rx) =
+        kanal::unbounded::<nullslop_protocol::CoreNotification>();
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
 
     // Create tool orchestrator actor.
@@ -176,15 +159,14 @@ fn create_actor_core(
     let core = AppCore {
         state: nullslop_core::State::new(AppState::default()),
         sender,
-        receiver: kanal::unbounded::<AppMsg>().1,
-        actor_host: Some(actor_host_service),
-        core_receiver: None,
     };
 
     let mut registry = nullslop_component::AppUiRegistry::new();
     nullslop_component::register_all(&mut registry);
 
-    (core, services)
+    // Core notification sender is wired into services via builder.
+    let _ = core_notify_tx; // Not used in actor world — the shutdown tracker isn't running.
+    (core, services, actor_host_service, core_notify_rx)
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +188,7 @@ fn when_submit_tool_loop_trigger(world: &mut ActorWorld) {
             provider_id: None,
         },
     });
-    world.run_until_settled();
+    world.graceful_shutdown();
 }
 
 #[cucumber::then(expr = "the chat history should contain at least {int} entries")]

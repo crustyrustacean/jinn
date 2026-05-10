@@ -82,9 +82,11 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
     }
 
     // Shut down actor host — coordinated shutdown.
-    let actor_host = app.core.actor_host.clone().expect("actor host initialized");
-    app.core.coordinated_shutdown(
-        actor_host.backend(),
+    nullslop_core::coordinated_shutdown(
+        app.actor_host.backend(),
+        &app.core.state,
+        app.core_receiver.clone(),
+        app.services.handle.clone(),
         nullslop_core::SHUTDOWN_TIMEOUT,
     );
 

@@ -14,7 +14,7 @@ pub mod app_msg;
 
 // Re-export primary types owned by this crate
 pub use actor_sink::ActorMessageSink;
-pub use app_core::{spawn_forwarding_task, AppCore, SHUTDOWN_TIMEOUT, TickResult};
+pub use app_core::{coordinated_shutdown, spawn_forwarding_task, AppCore, SHUTDOWN_TIMEOUT};
 pub use app_msg::AppMsg;
 // Re-export State from nullslop-component
 pub use nullslop_component::{State, StateReadGuard, StateWriteGuard};

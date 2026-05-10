@@ -8,7 +8,6 @@ nullslop-actor = { workspace = true }
 nullslop-actor-host = { workspace = true }
 nullslop-component = { workspace = true }
 nullslop-protocol = { workspace = true }
-nullslop-services = { workspace = true }
 kanal = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

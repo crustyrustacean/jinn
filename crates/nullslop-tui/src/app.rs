@@ -4,11 +4,11 @@ use std::mem;
 
 use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
+use nullslop_actor_host::ActorHostService;
 use nullslop_component::AppUiRegistry;
 use nullslop_core::{AppCore, AppMsg};
 use nullslop_intent::IntentHandler;
-use nullslop_protocol::{Intent, PickerKind};
-use nullslop_protocol::{ActiveTab, Mode};
+use nullslop_protocol::{ActiveTab, Intent, Mode, PickerKind};
 use ratatui::Frame;
 use ratatui_spatial_splits::{AreaId, SplitManager};
 use ratatui_tabs::TabManager;
@@ -40,18 +40,16 @@ pub type WhichKeyInstance =
     WhichKeyState<nullslop_protocol::KeyEvent, Scope, Intent, crate::keymap::KeyCategory>;
 
 /// Top-level application state and event loop.
-#[expect(
-    clippy::partial_pub_fields,
-    reason = "only public fields exposed externally; pub(crate) fields are internal"
-)]
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "internal fields use pub(crate) for cross-module access within the crate"
-)]
 #[derive(Debug)]
 pub struct TuiApp {
-    /// Application core (bus, state, message channel).
+    /// Application core (state, message channel).
     pub core: AppCore,
+    /// Runtime services.
+    pub services: nullslop_services::Services,
+    /// Actor host for coordinated shutdown.
+    pub actor_host: ActorHostService,
+    /// Receiver for core lifecycle notifications (shutdown complete).
+    pub core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
     /// UI element registry.
     pub ui_registry: AppUiRegistry,
     /// Message channel for the event loop.
@@ -64,116 +62,30 @@ pub struct TuiApp {
     /// Background event stream. Set by [`run`](crate::run::run).
     #[debug(skip)]
     pub event_task: Option<tokio::task::JoinHandle<()>>,
-    /// Runtime services.
-    pub services: nullslop_services::Services,
     /// Current application lifecycle status.
     pub status: AppStatus,
     /// Tab manager for rendering the tab bar.
     pub tab_manager: TabManager,
     /// Mouse text selection state.
-    pub(crate) selection: SelectionState,
+    pub selection: SelectionState,
     /// Selectable screen regions, rebuilt each frame during rendering.
-    pub(crate) selectable_rects: SelectableRects,
+    pub selectable_rects: SelectableRects,
     /// Set to `true` when a selection is finalized and the selected text
     /// should be copied to the system clipboard during the next render.
-    pub(crate) pending_clipboard: bool,
+    pub pending_clipboard: bool,
     /// TUI configuration (mouse capture, etc.).
-    pub(crate) config: TuiConfig,
+    pub config: TuiConfig,
     /// Split manager for the chat tab's pane layout.
-    pub(crate) split_manager: SplitManager,
+    pub split_manager: SplitManager,
     /// Which pane currently has keyboard focus in the Chat tab.
-    pub(crate) pane_focus: PaneFocus,
+    pub pane_focus: PaneFocus,
     /// Whether the pinned context sidebar pane is visible.
-    pub(crate) pinned_pane_visible: bool,
+    pub pinned_pane_visible: bool,
     /// Tracked [`AreaId`] for the pinned context sidebar pane (set when opened, cleared when closed).
-    pub(crate) pinned_pane_id: Option<AreaId>,
+    pub pinned_pane_id: Option<AreaId>,
 }
 
 impl TuiApp {
-    /// Creates a new application with the given services and default config.
-    #[must_use]
-    pub fn new(services: nullslop_services::Services) -> Self {
-        Self::new_with_config(services, TuiConfig::default())
-    }
-
-    /// Creates a new application with the given services and config.
-    #[must_use]
-    pub fn new_with_config(services: nullslop_services::Services, config: TuiConfig) -> Self {
-        let core = AppCore::new();
-        let mut ui_registry = AppUiRegistry::new();
-        nullslop_component::register_all(&mut ui_registry);
-        let keymap = keymap::init();
-        let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
-
-        Self {
-            core,
-            ui_registry,
-            events: MsgHandler::new(),
-            which_key,
-            suspend: Suspend::new(),
-            event_task: None,
-            services,
-            status: AppStatus::Starting,
-            tab_manager: crate::render::init_tab_manager(),
-            selection: SelectionState::Idle,
-            selectable_rects: SelectableRects::default(),
-            pending_clipboard: false,
-            config,
-            split_manager: SplitManager::new(),
-            pane_focus: PaneFocus::Chat,
-            pinned_pane_visible: false,
-            pinned_pane_id: None,
-        }
-    }
-
-    /// Creates a new application with pre-built core, services, and default config.
-    ///
-    /// Use this when the caller has already registered components
-    /// and set up the actor host on the core.
-    #[must_use]
-    pub fn new_with_core(
-        services: nullslop_services::Services,
-        core: nullslop_core::AppCore,
-    ) -> Self {
-        Self::new_with_core_and_config(services, core, TuiConfig::default())
-    }
-
-    /// Creates a new application with pre-built core, services, and config.
-    ///
-    /// Use this when the caller has already registered components
-    /// and set up the actor host on the core.
-    #[must_use]
-    pub fn new_with_core_and_config(
-        services: nullslop_services::Services,
-        core: nullslop_core::AppCore,
-        config: TuiConfig,
-    ) -> Self {
-        let mut ui_registry = AppUiRegistry::new();
-        nullslop_component::register_tui_elements(&mut ui_registry);
-        let keymap = keymap::init();
-        let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
-
-        Self {
-            core,
-            ui_registry,
-            events: MsgHandler::new(),
-            which_key,
-            suspend: Suspend::new(),
-            event_task: None,
-            services,
-            status: AppStatus::Starting,
-            tab_manager: crate::render::init_tab_manager(),
-            selection: SelectionState::Idle,
-            selectable_rects: SelectableRects::default(),
-            pending_clipboard: false,
-            config,
-            split_manager: SplitManager::new(),
-            pane_focus: PaneFocus::Chat,
-            pinned_pane_visible: false,
-            pinned_pane_id: None,
-        }
-    }
-
     /// Processes a single message.
     pub fn handle_msg(&mut self, msg: Msg) {
         match msg {
@@ -464,7 +376,38 @@ mod tests {
     /// Creates a minimal `TuiApp` for testing.
     fn test_app() -> TuiApp {
         let services = nullslop_services::Services::new();
-        TuiApp::new(services)
+        let (sender, _receiver) = kanal::unbounded();
+        let core = nullslop_core::AppCore {
+            state: nullslop_component::State::new(nullslop_component::AppState::default()),
+            sender,
+        };
+        let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+        let fake_host = nullslop_actor_host::ActorHostService::new(std::sync::Arc::new(
+            nullslop_actor_host::FakeActorHost::new(),
+        ));
+        let mut ui_registry = AppUiRegistry::new();
+        nullslop_component::register_all(&mut ui_registry);
+        TuiApp {
+            core,
+            services,
+            actor_host: fake_host,
+            core_receiver: core_rx,
+            ui_registry,
+            events: MsgHandler::new(),
+            which_key: WhichKeyInstance::new(keymap::init(), Scope::Normal),
+            suspend: Suspend::new(),
+            event_task: None,
+            status: AppStatus::Starting,
+            tab_manager: crate::render::init_tab_manager(),
+            selection: SelectionState::Idle,
+            selectable_rects: SelectableRects::default(),
+            pending_clipboard: false,
+            config: TuiConfig::default(),
+            split_manager: SplitManager::new(),
+            pane_focus: PaneFocus::Chat,
+            pinned_pane_visible: false,
+            pinned_pane_id: None,
+        }
     }
 
     #[rstest::rstest]
@@ -629,7 +572,38 @@ mod tests {
     fn mouse_events_not_handled_when_mouse_selection_disabled() {
         // Given an app with mouse selection disabled and a registered selectable rect.
         let services = nullslop_services::Services::new();
-        let mut app = TuiApp::new_with_config(services, crate::config::TuiConfig::new(false));
+        let (sender, _receiver) = kanal::unbounded();
+        let core = nullslop_core::AppCore {
+            state: nullslop_component::State::new(nullslop_component::AppState::default()),
+            sender,
+        };
+        let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+        let fake_host = nullslop_actor_host::ActorHostService::new(std::sync::Arc::new(
+            nullslop_actor_host::FakeActorHost::new(),
+        ));
+        let mut ui_registry = AppUiRegistry::new();
+        nullslop_component::register_all(&mut ui_registry);
+        let mut app = TuiApp {
+            core,
+            services,
+            actor_host: fake_host,
+            core_receiver: core_rx,
+            ui_registry,
+            events: MsgHandler::new(),
+            which_key: WhichKeyInstance::new(keymap::init(), Scope::Normal),
+            suspend: Suspend::new(),
+            event_task: None,
+            status: AppStatus::Starting,
+            tab_manager: crate::render::init_tab_manager(),
+            selection: SelectionState::Idle,
+            selectable_rects: SelectableRects::default(),
+            pending_clipboard: false,
+            config: crate::config::TuiConfig::new(false),
+            split_manager: SplitManager::new(),
+            pane_focus: PaneFocus::Chat,
+            pinned_pane_visible: false,
+            pinned_pane_id: None,
+        };
         let rect = Rect::new(5, 5, 20, 10);
         app.selectable_rects.rebuild(vec![rect]);
 

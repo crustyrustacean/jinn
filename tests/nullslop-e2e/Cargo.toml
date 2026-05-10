@@ -18,6 +18,7 @@ nullslop-actor-host = { workspace = true }
 nullslop-component = { workspace = true }
 crossterm = { workspace = true }
 ratatui-which-key = { workspace = true }
+ratatui-spatial-splits = { workspace = true }
 nullslop-core = { workspace = true }
 nullslop-actor = { workspace = true }
 nullslop-intent = { workspace = true }
