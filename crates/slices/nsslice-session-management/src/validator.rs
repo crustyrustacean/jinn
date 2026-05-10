@@ -1,7 +1,6 @@
 //! Session and model intent validators.
 //!
 //! Validators for model refresh, prompt template rescan, and session creation.
-//! Chat entry selection validators have moved to `nsslice-chat-entry-selection`.
 
 use nullslop_component::AppState;
 use wherror::Error;
@@ -73,6 +72,8 @@ pub fn validate_session_new(state: &AppState) -> Result<(), SessionNewError> {
 
 #[cfg(test)]
 mod tests {
+    use nullslop_protocol::PickerKind;
+
     use super::*;
 
     // --- RefreshModels tests ---
@@ -120,7 +121,7 @@ mod tests {
     fn session_new_fails_when_picker_active() {
         // Given a state with an active picker.
         let mut state = AppState::default();
-        state.frontend.active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
+        state.frontend.active_picker_kind = Some(PickerKind::Provider);
 
         // When validating session new.
         let result = validate_session_new(&state);

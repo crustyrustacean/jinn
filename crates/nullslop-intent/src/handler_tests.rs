@@ -16,7 +16,7 @@
 //! Tests for the [`IntentHandler`] — one test per Intent variant.
 
 use nullslop_component::keymap_picker::entries::KeymapEntry;
-use nullslop_component::{AppState, FrontendState, ProviderState};
+use nullslop_component::{AppState, FrontendState};
 use nullslop_protocol::{ChatEntry, Command, Mode, PickerKind};
 
 use super::IntentHandler;
@@ -217,110 +217,6 @@ fn picker_confirm_keymap_sets_mode_and_signal() {
     assert_eq!(state.frontend.mode, Mode::Normal);
     assert!(state.frontend.should_quit);
     assert!(result.commands.is_empty());
-}
-
-// ============================================================
-// SessionNew Intent
-// ============================================================
-
-#[rstest::rstest]
-fn session_new_creates_fresh_session() {
-    // Given a state with an existing session.
-    let mut state = AppState::default();
-    let old_id = state.session.active_session.clone();
-    state
-        .active_session_mut()
-        .push_entry(ChatEntry::user("old"));
-
-    // When handling SessionNew.
-    let _result = handle(&Intent::SessionNew, &mut state);
-
-    // Then a new session is created.
-    assert_ne!(state.session.active_session, old_id);
-    assert!(state.active_session().history().is_empty());
-    assert_eq!(state.frontend.mode, Mode::Normal);
-}
-
-#[rstest::rstest]
-fn session_new_noop_when_picker_active() {
-    // Given a state with an active picker.
-    let mut state = AppState {
-        frontend: FrontendState {
-            active_picker_kind: Some(PickerKind::Provider),
-            ..FrontendState::default()
-        },
-        ..Default::default()
-    };
-    let old_id = state.session.active_session.clone();
-
-    // When handling SessionNew.
-    let result = handle(&Intent::SessionNew, &mut state);
-
-    // Then nothing changed.
-    assert_eq!(state.session.active_session, old_id);
-    assert!(result.commands.is_empty());
-}
-
-// ============================================================
-// RefreshModels & RescanPromptTemplates
-// ============================================================
-
-#[rstest::rstest]
-fn refresh_models_posts_system_message_and_returns_command() {
-    // Given a state with a provider.
-    let mut state = AppState {
-        provider: ProviderState {
-            active_provider: "ollama".to_owned(),
-            ..ProviderState::default()
-        },
-        ..Default::default()
-    };
-    let initial_len = state.active_session().history().len();
-
-    // When handling RefreshModels.
-    let result = handle(&Intent::RefreshModels, &mut state);
-
-    // Then a system message was posted.
-    assert_eq!(state.active_session().history().len(), initial_len + 1);
-    // And a RefreshModels command is returned.
-    assert!(
-        result
-            .commands
-            .iter()
-            .any(|c| matches!(c, Command::RefreshModels))
-    );
-}
-
-#[rstest::rstest]
-fn refresh_models_noop_with_no_provider() {
-    // Given a state with no provider.
-    let mut state = AppState::default();
-
-    // When handling RefreshModels.
-    let result = handle(&Intent::RefreshModels, &mut state);
-
-    // Then no commands.
-    assert!(result.commands.is_empty());
-}
-
-#[rstest::rstest]
-fn rescan_prompt_templates_posts_system_message_and_returns_command() {
-    // Given a default state.
-    let mut state = AppState::default();
-    let initial_len = state.active_session().history().len();
-
-    // When handling RescanPromptTemplates.
-    let result = handle(&Intent::RescanPromptTemplates, &mut state);
-
-    // Then a system message was posted.
-    assert_eq!(state.active_session().history().len(), initial_len + 1);
-    // And a RescanPromptTemplates command is returned.
-    assert!(
-        result
-            .commands
-            .iter()
-            .any(|c| matches!(c, Command::RescanPromptTemplates))
-    );
 }
 
 // ============================================================

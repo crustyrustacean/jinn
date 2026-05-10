@@ -4,4 +4,3 @@
 //! Fallible intents return `Result<(), SpecificError>`.
 
 pub mod app;
-pub mod chat_entry;
