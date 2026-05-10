@@ -18,6 +18,7 @@ pub enum LLMBackend {
     OpenRouter,
     HuggingFace,
     AwsBedrock,
+    LmStudio,
 }
 
 impl std::str::FromStr for LLMBackend {
@@ -40,6 +41,7 @@ impl std::str::FromStr for LLMBackend {
             "openrouter" => Ok(LLMBackend::OpenRouter),
             "huggingface" => Ok(LLMBackend::HuggingFace),
             "aws-bedrock" => Ok(LLMBackend::AwsBedrock),
+            "lmstudio" => Ok(LLMBackend::LmStudio),
             _ => Err(LLMError::InvalidRequest(format!(
                 "Unknown LLM backend: {s}"
             ))),

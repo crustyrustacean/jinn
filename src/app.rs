@@ -30,7 +30,6 @@ use nullslop_providers::FilesystemConfigStorage;
 use nullslop_providers::LlmServiceFactoryService;
 use nullslop_providers::ModelCache;
 use nullslop_providers::NoProvidersAvailableFactory;
-use nullslop_providers::ProviderId;
 use nullslop_providers::ProviderRegistry;
 use nullslop_providers::ProviderRegistryService;
 use nullslop_providers::cache_path;
@@ -227,14 +226,13 @@ fn resolve_initial_factory(
 
     // Fallback: first available provider.
     for provider in registry_guard.providers() {
-        let id = ProviderId::new(provider.name.clone());
-        if registry_guard.is_available(&id, &api_keys_guard)
-            && let Ok(factory) = registry_guard.create_factory(&id, &api_keys_guard)
+        if registry_guard.is_available(&provider.id, &api_keys_guard)
+            && let Ok(factory) = registry_guard.create_factory(&provider.id, &api_keys_guard)
         {
-            tracing::info!("using first available provider: {}", provider.name);
+            tracing::info!("using first available provider: {}", provider.id.as_str());
             return (
                 LlmServiceFactoryService::new(Arc::from(factory)),
-                provider.name.clone(),
+                provider.id.to_string(),
             );
         }
     }
@@ -691,5 +689,33 @@ mod tests {
         // Then the cache is None in state.
         let state = state.read();
         assert!(state.model_cache.is_none());
+    }
+
+    #[rstest::rstest]
+    fn resolve_initial_factory_finds_keyless_provider_without_default() {
+        // Given a registry with a keyless lmstudio provider (no default set).
+        let config = nullslop_providers::ProvidersConfig {
+            providers: vec![nullslop_providers::ProviderEntry {
+                name: "lmstudio".to_owned(),
+                backend: "ollama".to_owned(),
+                models: vec!["my-model".to_owned()],
+                base_url: Some("http://localhost:1234/v1".to_owned()),
+                api_key_env: None,
+                requires_key: false,
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+        let registry = nullslop_providers::ProviderRegistry::from_config(config).expect("registry");
+        let registry_service = nullslop_providers::ProviderRegistryService::new(registry);
+        let api_keys_service = nullslop_providers::ApiKeysService::new(nullslop_providers::ApiKeys::new());
+
+        // When resolving the initial factory.
+        let (factory, name) = resolve_initial_factory(&registry_service, &api_keys_service);
+
+        // Then a real factory is returned (not the no-provider sentinel).
+        assert_ne!(name, nullslop_providers::NO_PROVIDER_ID);
+        assert_eq!(name, "lmstudio/my-model");
+        assert_ne!(factory.name(), "NoProvidersAvailable");
     }
 }
