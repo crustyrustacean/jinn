@@ -5,13 +5,12 @@
 //! when tokens are arriving, and renders nothing when the session is idle.
 //! Queue count is shown when messages are waiting.
 
+use nullslop_component::AppState;
 use nullslop_component_ui::UiElement;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse};
-
-use crate::AppState;
 
 /// Displays an animated streaming indicator when the active session is sending or streaming.
 #[derive(Debug)]

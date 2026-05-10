@@ -2805,6 +2805,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsslice-chat-log"
+version = "0.1.0"
+dependencies = [
+ "nullslop-component",
+ "nullslop-component-ui",
+ "nullslop-protocol",
+ "ratatui",
+ "rstest",
+]
+
+[[package]]
 name = "nsslice-dashboard"
 version = "0.1.0"
 dependencies = [
@@ -2812,6 +2823,30 @@ dependencies = [
  "nullslop-component-ui",
  "ratatui",
  "rstest",
+]
+
+[[package]]
+name = "nsslice-pinned-panel"
+version = "0.1.0"
+dependencies = [
+ "nullslop-component",
+ "nullslop-component-ui",
+ "nullslop-protocol",
+ "ratatui",
+ "rstest",
+ "wherror",
+]
+
+[[package]]
+name = "nsslice-provider"
+version = "0.1.0"
+dependencies = [
+ "nullslop-component",
+ "nullslop-component-ui",
+ "ratatui",
+ "rstest",
+ "throbber-widgets-tui",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -2846,7 +2881,10 @@ dependencies = [
  "jiff",
  "kanal",
  "nsslice-char-counter",
+ "nsslice-chat-log",
  "nsslice-dashboard",
+ "nsslice-pinned-panel",
+ "nsslice-provider",
  "nsslice-status-bar",
  "nullslop-actor",
  "nullslop-actor-host",
@@ -3045,6 +3083,7 @@ name = "nullslop-intent"
 version = "0.1.0"
 dependencies = [
  "jiff",
+ "nsslice-pinned-panel",
  "nullslop-component",
  "nullslop-protocol",
  "rstest",
@@ -3272,6 +3311,12 @@ dependencies = [
  "error-stack",
  "futures",
  "kanal",
+ "nsslice-char-counter",
+ "nsslice-chat-log",
+ "nsslice-dashboard",
+ "nsslice-pinned-panel",
+ "nsslice-provider",
+ "nsslice-status-bar",
  "nullslop-actor-host",
  "nullslop-component",
  "nullslop-component-ui",

@@ -32,7 +32,7 @@
 use nullslop_component::AppState;
 use nullslop_component::chat_input_box::AutocompleteMatch;
 use nullslop_component::prompt_template::PromptTemplateStore;
-use nullslop_protocol::context::{PinChatEntry, SwitchPromptStrategy, UnpinChatEntry};
+use nullslop_protocol::context::{PinChatEntry, SwitchPromptStrategy};
 use nullslop_protocol::provider::{CancelStream, ProviderSwitch};
 use nullslop_protocol::session::SessionLoadRequested;
 use nullslop_protocol::system::LoadPickerEntries;
@@ -40,28 +40,9 @@ use nullslop_protocol::{Command, Mode, PickerKind, PinPosition, SessionId, TabDi
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::Intent;
-use crate::validators::{app, chat_entry, chat_input, picker, pinned_panel};
+use crate::validators::{app, chat_entry, chat_input, picker};
 
-/// What the [`IntentHandler`] returns after processing an intent.
-#[derive(Debug)]
-pub struct IntentResult {
-    /// Commands to send to the actor system.
-    pub commands: Vec<Command>,
-}
-
-impl IntentResult {
-    /// An empty result with no commands.
-    #[must_use]
-    pub fn empty() -> Self {
-        Self { commands: vec![] }
-    }
-
-    /// A result with commands.
-    #[must_use]
-    pub fn with_commands(commands: Vec<Command>) -> Self {
-        Self { commands }
-    }
-}
+use nullslop_protocol::IntentResult;
 
 /// Processes user intents — the single decision point for all user input.
 ///
@@ -353,32 +334,35 @@ impl IntentHandler {
 
             // --- Pinned Panel ---
             Intent::PinnedPanelToggle => {
-                state.frontend.tui_signals.pinned_pane_toggle = true;
-                IntentResult::empty()
+                nsslice_pinned_panel::intent::handle_toggle(state)
             }
             Intent::PinnedPanelOpen => {
-                state.frontend.tui_signals.pinned_pane_open = true;
-                IntentResult::empty()
+                nsslice_pinned_panel::intent::handle_open(state)
             }
             Intent::PinnedPanelClose => {
-                state.frontend.tui_signals.pinned_pane_close = true;
-                IntentResult::empty()
+                nsslice_pinned_panel::intent::handle_close(state)
             }
             Intent::PinnedPanelSelectDown => {
-                let sorted_ids = state.sorted_pinned_ids();
-                state.frontend.pinned_panel.select_next(&sorted_ids);
-                IntentResult::empty()
+                nsslice_pinned_panel::intent::handle_select_down(state)
             }
             Intent::PinnedPanelSelectUp => {
-                let sorted_ids = state.sorted_pinned_ids();
-                state.frontend.pinned_panel.select_prev(&sorted_ids);
-                IntentResult::empty()
+                nsslice_pinned_panel::intent::handle_select_up(state)
             }
-            Intent::PinnedPanelUnpin => handle_pinned_panel_unpin(state),
-            Intent::PinnedPanelPinTop => handle_pinned_panel_pin(state, PinPosition::Top),
-            Intent::PinnedPanelPinBottom => handle_pinned_panel_pin(state, PinPosition::Bottom),
-            Intent::PinnedPanelPinRelative => handle_pinned_panel_pin(state, PinPosition::Relative),
-            Intent::PinnedPanelPinCycle => handle_pinned_panel_pin_cycle(state),
+            Intent::PinnedPanelUnpin => {
+                nsslice_pinned_panel::intent::handle_pinned_panel_unpin(state)
+            }
+            Intent::PinnedPanelPinTop => {
+                nsslice_pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Top)
+            }
+            Intent::PinnedPanelPinBottom => {
+                nsslice_pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Bottom)
+            }
+            Intent::PinnedPanelPinRelative => {
+                nsslice_pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Relative)
+            }
+            Intent::PinnedPanelPinCycle => {
+                nsslice_pinned_panel::intent::handle_pinned_panel_pin_cycle(state)
+            }
 
             // --- Chat Entry Selection ---
             Intent::ChatEntrySelectNext => {
@@ -809,94 +793,6 @@ fn cancel_stream_and_drain(state: &mut AppState) {
     if !drained_text.is_empty() {
         session.chat_input_mut().replace_all(drained_text);
     }
-}
-
-// --- Pinned Panel handlers ---
-
-fn resolve_selected_entry_id(
-    state: &AppState,
-) -> Option<(SessionId, nullslop_protocol::ChatEntryId)> {
-    let sorted_ids = state.sorted_pinned_ids();
-    let index = state.frontend.pinned_panel.selection_index(&sorted_ids);
-    let session_id = state.session.active_session.clone();
-
-    let mut pinned = state.active_session().pinned_entries();
-    pinned.sort_by_key(|entry| nullslop_component::app_state::pin_sort_key(entry.pin_position));
-
-    let entry = pinned.get(index)?;
-    Some((session_id, entry.id.clone()))
-}
-
-fn cycle_position(pos: PinPosition) -> PinPosition {
-    match pos {
-        PinPosition::Top => PinPosition::Bottom,
-        PinPosition::Bottom => PinPosition::Relative,
-        PinPosition::Relative => PinPosition::Top,
-    }
-}
-
-fn handle_pinned_panel_unpin(state: &mut AppState) -> IntentResult {
-    if pinned_panel::validate_pinned_panel_unpin(state).is_err() {
-        return IntentResult::empty();
-    }
-
-    if let Some((session_id, entry_id)) = resolve_selected_entry_id(state) {
-        IntentResult::with_commands(vec![Command::UnpinChatEntry {
-            payload: UnpinChatEntry {
-                session_id,
-                entry_id,
-            },
-        }])
-    } else {
-        IntentResult::empty()
-    }
-}
-
-fn handle_pinned_panel_pin(state: &mut AppState, position: PinPosition) -> IntentResult {
-    if pinned_panel::validate_pinned_panel_pin_top(state).is_err() {
-        return IntentResult::empty();
-    }
-
-    if let Some((session_id, entry_id)) = resolve_selected_entry_id(state) {
-        IntentResult::with_commands(vec![Command::PinChatEntry {
-            payload: PinChatEntry {
-                session_id,
-                entry_id,
-                position,
-            },
-        }])
-    } else {
-        IntentResult::empty()
-    }
-}
-
-fn handle_pinned_panel_pin_cycle(state: &mut AppState) -> IntentResult {
-    if pinned_panel::validate_pinned_panel_pin_cycle(state).is_err() {
-        return IntentResult::empty();
-    }
-
-    let sorted_ids = state.sorted_pinned_ids();
-    let index = state.frontend.pinned_panel.selection_index(&sorted_ids);
-
-    let mut pinned = state.active_session().pinned_entries();
-    pinned.sort_by_key(|entry| nullslop_component::app_state::pin_sort_key(entry.pin_position));
-
-    let Some(entry) = pinned.get(index) else {
-        return IntentResult::empty();
-    };
-
-    let current = entry.pin_position.unwrap_or(PinPosition::Relative);
-    let next = cycle_position(current);
-    let session_id = state.session.active_session.clone();
-    let entry_id = entry.id.clone();
-
-    IntentResult::with_commands(vec![Command::PinChatEntry {
-        payload: PinChatEntry {
-            session_id,
-            entry_id,
-            position: next,
-        },
-    }])
 }
 
 // --- Chat Entry handlers ---

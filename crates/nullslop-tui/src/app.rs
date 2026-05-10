@@ -403,6 +403,12 @@ mod tests {
         ));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_component::register_all(&mut ui_registry);
+        nsslice_status_bar::register(&mut ui_registry);
+        nsslice_char_counter::register(&mut ui_registry);
+        nsslice_dashboard::register(&mut ui_registry);
+        nsslice_chat_log::register(&mut ui_registry);
+        nsslice_provider::register(&mut ui_registry);
+        nsslice_pinned_panel::register(&mut ui_registry);
         TuiApp {
             core,
             services,
@@ -599,6 +605,12 @@ mod tests {
         ));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_component::register_all(&mut ui_registry);
+        nsslice_status_bar::register(&mut ui_registry);
+        nsslice_char_counter::register(&mut ui_registry);
+        nsslice_dashboard::register(&mut ui_registry);
+        nsslice_chat_log::register(&mut ui_registry);
+        nsslice_provider::register(&mut ui_registry);
+        nsslice_pinned_panel::register(&mut ui_registry);
         let mut app = TuiApp {
             core,
             services,
@@ -917,6 +929,12 @@ impl TuiAppBuilder {
         ));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_component::register_all(&mut ui_registry);
+        nsslice_status_bar::register(&mut ui_registry);
+        nsslice_char_counter::register(&mut ui_registry);
+        nsslice_dashboard::register(&mut ui_registry);
+        nsslice_chat_log::register(&mut ui_registry);
+        nsslice_provider::register(&mut ui_registry);
+        nsslice_pinned_panel::register(&mut ui_registry);
 
         TuiApp {
             core,

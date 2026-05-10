@@ -1,18 +1,17 @@
 [package]
-name = "nullslop-intent"
+name = "nsslice-provider"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-nullslop-protocol = { workspace = true }
+nullslop-component-ui = { workspace = true }
 nullslop-component = { workspace = true }
-nsslice-pinned-panel = { workspace = true }
-wherror = { workspace = true }
+ratatui = { workspace = true }
+throbber-widgets-tui = { workspace = true }
 unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
-jiff = { workspace = true }
 
 [lints]
 workspace = true
