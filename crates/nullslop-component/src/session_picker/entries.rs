@@ -196,7 +196,7 @@ pub fn load_session_entries(services: &Services) -> Vec<SessionEntry> {
 /// [`SelectionState`]: nullslop_selection_widget::SelectionState
 pub fn load_session_picker_items(services: &Services, state: &mut crate::AppState) {
     let entries = load_session_entries(services);
-    state.session_picker.set_items(entries);
+    state.frontend.session_picker.set_items(entries);
 }
 
 #[cfg(test)]

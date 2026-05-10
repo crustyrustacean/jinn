@@ -5,7 +5,7 @@ use crate::{Mode, PickerKind, TabDirection};
 /// A user-initiated action.
 ///
 /// Every keymap binding and mouse event produces exactly one [`Intent`] variant.
-/// The keymap decides the intent; the IntentHandler decides what to do with it.
+/// The keymap decides the intent; the `IntentHandler` decides what to do with it.
 #[derive(Debug, Clone)]
 pub enum Intent {
     // --- Chat Input ---
@@ -149,10 +149,6 @@ pub enum Intent {
 }
 
 impl std::fmt::Display for Intent {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "exhaustive match on all Intent variants"
-    )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Intent::InsertChar { ch } => write!(f, "insert '{ch}'"),

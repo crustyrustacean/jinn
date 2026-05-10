@@ -94,7 +94,7 @@ impl ShutdownTrackerActor {
 
     /// Records that an actor is starting up.
     fn on_actor_starting(&mut self, name: &str) {
-        self.state.write().shutdown_tracker.track(name);
+        self.state.write().shutdown.shutdown_tracker.track(name);
     }
 
     /// Records that an actor has completed shutdown.
@@ -104,8 +104,8 @@ impl ShutdownTrackerActor {
     fn on_actor_shutdown_completed(&mut self, name: &str, ctx: &ActorContext) {
         let should_emit = {
             let mut state = self.state.write();
-            state.shutdown_tracker.complete(name);
-            state.shutdown_tracker.is_complete()
+            state.shutdown.shutdown_tracker.complete(name);
+            state.shutdown.shutdown_tracker.is_complete()
         };
 
         if !should_emit {
@@ -125,7 +125,7 @@ impl ShutdownTrackerActor {
 
     /// Sets `should_quit` on `AppState` when `ProceedWithShutdown` is received.
     fn on_proceed_with_shutdown(&mut self) {
-        self.state.write().should_quit = true;
+        self.state.write().frontend.should_quit = true;
 
         // Notify the core that shutdown is complete.
         if let Some(ref services) = self.services {
@@ -156,7 +156,7 @@ mod tests {
         actor.on_actor_starting("echo-actor");
 
         // Then the actor name is in the pending set.
-        let pending = actor.state.read().shutdown_tracker.pending_names();
+        let pending = actor.state.read().shutdown.shutdown_tracker.pending_names();
         assert_eq!(pending, vec!["echo-actor"]);
     }
 
@@ -164,40 +164,40 @@ mod tests {
     fn actor_shutdown_completed_removes_actor() {
         // Given a tracker with one actor tracked and shutdown active.
         let state = fresh_state();
-        state.write().shutdown_tracker.track("echo-actor");
-        state.write().shutdown_tracker.begin_shutdown();
+        state.write().shutdown.shutdown_tracker.track("echo-actor");
+        state.write().shutdown.shutdown_tracker.begin_shutdown();
         let mut actor = ShutdownTrackerActor { state: state.clone(), services: None };
 
         // When the actor completes shutdown.
         actor.on_actor_shutdown_completed("echo-actor", &create_noop_ctx());
 
         // Then shutdown is complete.
-        assert!(actor.state.read().shutdown_tracker.is_complete());
+        assert!(actor.state.read().shutdown.shutdown_tracker.is_complete());
     }
 
     #[rstest::rstest]
     fn shutdown_not_complete_while_actors_pending() {
         // Given a tracker with two actors and shutdown active.
         let state = fresh_state();
-        state.write().shutdown_tracker.track("actor-a");
-        state.write().shutdown_tracker.track("actor-b");
-        state.write().shutdown_tracker.begin_shutdown();
+        state.write().shutdown.shutdown_tracker.track("actor-a");
+        state.write().shutdown.shutdown_tracker.track("actor-b");
+        state.write().shutdown.shutdown_tracker.begin_shutdown();
         let mut actor = ShutdownTrackerActor { state: state.clone(), services: None };
 
         // When only one actor completes shutdown.
         actor.on_actor_shutdown_completed("actor-a", &create_noop_ctx());
 
         // Then shutdown is NOT complete — actor-b is still pending.
-        assert!(!actor.state.read().shutdown_tracker.is_complete());
+        assert!(!actor.state.read().shutdown.shutdown_tracker.is_complete());
     }
 
     #[rstest::rstest]
     fn shutdown_complete_when_all_actors_done() {
         // Given a tracker with two actors and shutdown active.
         let state = fresh_state();
-        state.write().shutdown_tracker.track("actor-a");
-        state.write().shutdown_tracker.track("actor-b");
-        state.write().shutdown_tracker.begin_shutdown();
+        state.write().shutdown.shutdown_tracker.track("actor-a");
+        state.write().shutdown.shutdown_tracker.track("actor-b");
+        state.write().shutdown.shutdown_tracker.begin_shutdown();
         let mut actor = ShutdownTrackerActor { state: state.clone(), services: None };
 
         // When both actors complete shutdown.
@@ -205,7 +205,7 @@ mod tests {
         actor.on_actor_shutdown_completed("actor-b", &create_noop_ctx());
 
         // Then shutdown is complete.
-        assert!(actor.state.read().shutdown_tracker.is_complete());
+        assert!(actor.state.read().shutdown.shutdown_tracker.is_complete());
     }
 
     #[rstest::rstest]
@@ -218,7 +218,7 @@ mod tests {
         actor.on_proceed_with_shutdown();
 
         // Then should_quit is set.
-        assert!(actor.state.read().should_quit);
+        assert!(actor.state.read().frontend.should_quit);
     }
 
     /// Create a no-op ActorContext for testing (no message sink).

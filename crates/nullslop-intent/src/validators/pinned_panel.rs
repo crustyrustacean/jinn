@@ -54,7 +54,7 @@ fn validate_pin_action(state: &AppState) -> Result<(), PinnedPanelActionError> {
     if state.sorted_pinned_ids().is_empty() {
         return Err(PinnedPanelActionError::Empty);
     }
-    if state.pinned_panel.selected_id().is_none() {
+    if state.frontend.pinned_panel.selected_id().is_none() {
         return Err(PinnedPanelActionError::NoSelection);
     }
     Ok(())
@@ -75,7 +75,7 @@ mod tests {
             state.active_session().history()[index].id.clone()
         };
         state.active_session_mut().pin_entry(&entry_id, position);
-        state.pinned_panel.select_by_id(entry_id);
+        state.frontend.pinned_panel.select_by_id(entry_id);
         state
     }
 

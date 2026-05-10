@@ -270,7 +270,7 @@ impl SessionPersistenceActor {
             EnqueueAction::AssemblePrompt => {
                 let state = self.state.read();
                 let history = state.session(&payload.session_id).history().to_vec();
-                let model_name = state.active_provider.clone();
+                let model_name = state.provider.active_provider.clone();
                 (history, model_name)
             }
             EnqueueAction::Queued => (vec![], String::new()),
@@ -373,11 +373,11 @@ impl SessionPersistenceActor {
             let session = state.session_mut_or_create(&payload.session_id);
             session.restore_history(payload.history.clone());
             session.switch_strategy(payload.active_strategy.clone());
-            state.active_session = payload.session_id.clone();
-            state.session_loading = false;
+            state.session.active_session = payload.session_id.clone();
+            state.session.session_loading = false;
             for (key, blob) in &payload.blobs {
                 let strat_id = PromptStrategyId::new(key.as_str());
-                state
+                state.context
                     .strategy_state
                     .insert((payload.session_id.clone(), strat_id), blob.clone());
             }
@@ -882,7 +882,7 @@ mod tests {
         let session_id = SessionId::new();
         {
             let mut guard = state.write();
-            guard.active_provider = "lmstudio/my-model".to_owned();
+            guard.provider.active_provider = "lmstudio/my-model".to_owned();
         }
 
         // When processing EnqueueUserMessage while idle.
@@ -1215,13 +1215,13 @@ mod tests {
         // And the active session is set.
         {
             let guard = state.read();
-            assert_eq!(guard.active_session, session_id);
+            assert_eq!(guard.session.active_session, session_id);
         }
 
         // And session_loading is cleared.
         {
             let guard = state.read();
-            assert!(!guard.session_loading);
+            assert!(!guard.session.session_loading);
         }
 
         // And RestoreStrategyState and SwitchPromptStrategy were emitted.

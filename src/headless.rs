@@ -57,7 +57,7 @@ impl HeadlessApp {
     pub fn send_chat(&self, message: &str) -> Result<(), Report<HeadlessError>> {
         let session_id = {
             let state = self.core.state.read();
-            state.active_session.clone()
+            state.session.active_session.clone()
         };
         self.core
             .sender()
@@ -108,8 +108,8 @@ impl HeadlessApp {
             for key in keys {
                 let state_read = self.core.state.read();
                 let scope = nullslop_tui::app::scope_for_mode(
-                    state_read.mode,
-                    state_read.active_tab,
+                    state_read.frontend.mode,
+                    state_read.frontend.active_tab,
                     nullslop_tui::app::PaneFocus::Chat,
                 );
                 drop(state_read);

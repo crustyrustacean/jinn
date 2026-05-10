@@ -12,6 +12,7 @@ use nullslop_protocol::{AppMsg, Command, Event};
 #[derive(Debug, Clone)]
 pub struct ActorChannelService {
     #[debug("ActorChannelService")]
+    /// The sender half of the actor message channel.
     sender: kanal::Sender<AppMsg>,
 }
 

@@ -46,15 +46,15 @@ pub enum PickerConfirmError {
 ///
 /// Returns an error if no picker is active or no item is selected.
 pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmError> {
-    let kind = state
+    let kind = state.frontend
         .active_picker_kind
         .ok_or(PickerConfirmError::NoActivePicker)?;
 
     let has_selection = match kind {
-        PickerKind::Provider => state.provider_picker.selected_item().is_some(),
-        PickerKind::ContextAssembly => state.context_strategy_picker.selected_item().is_some(),
-        PickerKind::Keymap => state.keymap_picker.selected_item().is_some(),
-        PickerKind::Session => state.session_picker.selected_item().is_some(),
+        PickerKind::Provider => state.provider.provider_picker.selected_item().is_some(),
+        PickerKind::ContextAssembly => state.frontend.context_strategy_picker.selected_item().is_some(),
+        PickerKind::Keymap => state.frontend.keymap_picker.selected_item().is_some(),
+        PickerKind::Session => state.frontend.session_picker.selected_item().is_some(),
     };
 
     if has_selection {
@@ -79,7 +79,7 @@ pub fn validate_open_picker(
     state: &AppState,
     _kind: &PickerKind,
 ) -> Result<(), OpenPickerError> {
-    if state.active_picker_kind.is_some() {
+    if state.frontend.active_picker_kind.is_some() {
         return Err(OpenPickerError::AlreadyInPicker);
     }
     Ok(())
@@ -155,7 +155,7 @@ mod tests {
     fn picker_confirm_fails_with_no_selection() {
         // Given a state with an active picker but no items.
         let mut state = AppState::default();
-        state.active_picker_kind = Some(PickerKind::Provider);
+        state.frontend.active_picker_kind = Some(PickerKind::Provider);
 
         // When validating picker confirm.
         let result = validate_picker_confirm(&state);
@@ -169,8 +169,8 @@ mod tests {
         // Given a state with an active provider picker and items.
         use nullslop_component::provider_picker::entries::PickerEntry;
         let mut state = AppState::default();
-        state.active_picker_kind = Some(PickerKind::Provider);
-        state.provider_picker.set_items(vec![PickerEntry {
+        state.frontend.active_picker_kind = Some(PickerKind::Provider);
+        state.provider.provider_picker.set_items(vec![PickerEntry {
             provider_id: "test/test-model".to_owned(),
             name: "test".to_owned(),
             provider_name: "test".to_owned(),
@@ -195,8 +195,8 @@ mod tests {
         // Given a state with an active keymap picker and items.
         use nullslop_component::keymap_picker::entries::KeymapEntry;
         let mut state = AppState::default();
-        state.active_picker_kind = Some(PickerKind::Keymap);
-        state.keymap_picker.set_items(vec![KeymapEntry {
+        state.frontend.active_picker_kind = Some(PickerKind::Keymap);
+        state.frontend.keymap_picker.set_items(vec![KeymapEntry {
             key_sequence: "q".to_owned(),
             description: "quit".to_owned(),
             scope: "normal".to_owned(),
@@ -217,8 +217,8 @@ mod tests {
         // Given a state with an active session picker and items.
         use nullslop_component::session_picker::entries::SessionEntry;
         let mut state = AppState::default();
-        state.active_picker_kind = Some(PickerKind::Session);
-        state.session_picker.set_items(vec![SessionEntry {
+        state.frontend.active_picker_kind = Some(PickerKind::Session);
+        state.frontend.session_picker.set_items(vec![SessionEntry {
             session_id: nullslop_protocol::SessionId::new(),
             title: "Test Session".to_owned(),
             updated_at: jiff::Timestamp::now(),
@@ -237,8 +237,8 @@ mod tests {
         // Given a state with an active context strategy picker and items.
         use nullslop_component::context_strategy_picker::entries::StrategyEntry;
         let mut state = AppState::default();
-        state.active_picker_kind = Some(PickerKind::ContextAssembly);
-        state.context_strategy_picker.set_items(vec![StrategyEntry {
+        state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
+        state.frontend.context_strategy_picker.set_items(vec![StrategyEntry {
             strategy_id: nullslop_protocol::PromptStrategyId::passthrough(),
             name: "passthrough".to_owned(),
             description: "No processing".to_owned(),
@@ -270,7 +270,7 @@ mod tests {
     fn open_picker_fails_when_already_in_picker() {
         // Given a state with an active picker.
         let mut state = AppState::default();
-        state.active_picker_kind = Some(PickerKind::Keymap);
+        state.frontend.active_picker_kind = Some(PickerKind::Keymap);
 
         // When validating open provider picker.
         let result = validate_open_picker(&state, &PickerKind::Provider);

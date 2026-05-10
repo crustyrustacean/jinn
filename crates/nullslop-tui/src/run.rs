@@ -130,8 +130,8 @@ fn run_main_loop(
 
         // Check should_quit from shared state (async forwarding task handles messages).
         let state_read = app.core.state.read();
-        let should_quit = state_read.should_quit;
-        let scope = scope_for_mode(state_read.mode, state_read.active_tab, app.pane_focus);
+        let should_quit = state_read.frontend.should_quit;
+        let scope = scope_for_mode(state_read.frontend.mode, state_read.frontend.active_tab, app.pane_focus);
         drop(state_read);
         app.which_key.set_scope(scope);
 
@@ -221,7 +221,7 @@ fn handle_suspend_action(
 
 /// Sync the tab manager's active tab index to match `AppState.active_tab`.
 fn sync_tab_manager(app: &mut TuiApp) {
-    let active_tab = app.core.state.read().active_tab;
+    let active_tab = app.core.state.read().frontend.active_tab;
     let target_idx = match active_tab {
         ActiveTab::Chat => 0,
         ActiveTab::Dashboard => 1,

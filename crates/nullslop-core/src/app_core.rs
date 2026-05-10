@@ -111,7 +111,7 @@ pub fn coordinated_shutdown(
     timeout: Duration,
 ) {
     // 1. Mark shutdown active.
-    state.write().shutdown_tracker.begin_shutdown();
+    state.write().shutdown.shutdown_tracker.begin_shutdown();
 
     // 2. Send ApplicationShuttingDown to all actors.
     actor_host.send_system(SystemMessage::ApplicationShuttingDown);

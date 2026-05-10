@@ -202,29 +202,29 @@ impl TuiApp {
             // Populate keymap picker entries if opening the keymap picker.
             if matches!(intent, Intent::OpenPicker { kind: PickerKind::Keymap }) {
                 let scope = *self.which_key.scope();
-                state.keymap_picker_origin_scope = Some(scope.to_string());
-                let intent_entries = if state.keymap_picker_show_all {
+                state.frontend.keymap_picker_origin_scope = Some(scope.to_string());
+                let intent_entries = if state.frontend.keymap_picker_show_all {
                     keymap::collect_all_bindings(self.which_key.keymap())
                 } else {
                     keymap::collect_bindings_for_scope(self.which_key.keymap(), &scope)
                 };
                 // Entries now carry Intent directly — store them in AppState.
-                state.keymap_picker.set_items(intent_entries);
+                state.frontend.keymap_picker.set_items(intent_entries);
                 // Also populate all_keymap_entries for scope toggle.
-                state.all_keymap_entries = keymap::collect_all_bindings(self.which_key.keymap());
+                state.frontend.all_keymap_entries = keymap::collect_all_bindings(self.which_key.keymap());
             }
 
             // Cancel selection when mode changes away from Picker.
             if matches!(intent, Intent::SetMode { .. } | Intent::NormalEscape) {
                 self.selection = mem::take(&mut self.selection).cancel();
-                if !matches!(state.mode, Mode::Picker) {
-                    state.keymap_picker_origin_scope = None;
+                if !matches!(state.frontend.mode, Mode::Picker) {
+                    state.frontend.keymap_picker_origin_scope = None;
                 }
             }
 
             // Collect signals and mode before releasing lock.
             let signals = TuiSignalsSnapshot::from_state(&state);
-            let mode = state.mode;
+            let mode = state.frontend.mode;
             let commands = result.commands;
 
             (commands, signals, mode)
@@ -260,7 +260,7 @@ impl TuiApp {
         }
 
         // Step 6: Update scope based on new mode.
-        let active_tab = self.core.state.read().active_tab;
+        let active_tab = self.core.state.read().frontend.active_tab;
         let new_scope = scope_for_mode(mode, active_tab, self.pane_focus);
         self.which_key.set_scope(new_scope);
     }
@@ -339,11 +339,11 @@ struct TuiSignalsSnapshot {
 impl TuiSignalsSnapshot {
     fn from_state(state: &nullslop_component::AppState) -> Self {
         Self {
-            toggle_whichkey: state.tui_signals.toggle_whichkey,
-            edit_requested: state.tui_signals.edit_requested,
-            pinned_pane_toggle: state.tui_signals.pinned_pane_toggle,
-            pinned_pane_open: state.tui_signals.pinned_pane_open,
-            pinned_pane_close: state.tui_signals.pinned_pane_close,
+            toggle_whichkey: state.frontend.tui_signals.toggle_whichkey,
+            edit_requested: state.frontend.tui_signals.edit_requested,
+            pinned_pane_toggle: state.frontend.tui_signals.pinned_pane_toggle,
+            pinned_pane_open: state.frontend.tui_signals.pinned_pane_open,
+            pinned_pane_close: state.frontend.tui_signals.pinned_pane_close,
         }
     }
 }
@@ -638,8 +638,8 @@ mod tests {
         // Then show_all is true and entries include multiple scopes.
         {
             let state = app.core.state.read();
-            assert!(state.keymap_picker_show_all, "should be true after toggle");
-            let all_entries = state.keymap_picker.items();
+            assert!(state.frontend.keymap_picker_show_all, "should be true after toggle");
+            let all_entries = state.frontend.keymap_picker.items();
             assert!(!all_entries.is_empty(), "should have entries");
             let scopes: std::collections::HashSet<&str> =
                 all_entries.iter().map(|e| e.scope.as_str()).collect();
@@ -668,10 +668,10 @@ mod tests {
         {
             let state = app.core.state.read();
             assert!(
-                !state.keymap_picker_show_all,
+                !state.frontend.keymap_picker_show_all,
                 "should be false after second toggle"
             );
-            let scope_entries = state.keymap_picker.items();
+            let scope_entries = state.frontend.keymap_picker.items();
             assert!(!scope_entries.is_empty(), "should have Normal entries");
             for entry in scope_entries {
                 assert_eq!(
@@ -697,7 +697,7 @@ mod tests {
         // Insert filter text.
         {
             let mut state = app.core.state.write();
-            state.keymap_picker.insert_char('q');
+            state.frontend.keymap_picker.insert_char('q');
         }
 
         // When toggling the scope filter.
@@ -706,7 +706,7 @@ mod tests {
         // Then the filter text is preserved.
         let state = app.core.state.read();
         assert_eq!(
-            state.keymap_picker.filter(),
+            state.frontend.keymap_picker.filter(),
             "q",
             "filter text should be preserved after toggle"
         );

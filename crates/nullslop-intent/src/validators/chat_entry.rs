@@ -53,7 +53,7 @@ pub enum RefreshModelsError {
 ///
 /// Returns an error if no provider is configured.
 pub fn validate_refresh_models(state: &AppState) -> Result<(), RefreshModelsError> {
-    if state.active_provider == nullslop_component::NO_PROVIDER_ID {
+    if state.provider.active_provider == nullslop_component::NO_PROVIDER_ID {
         return Err(RefreshModelsError::NoProvider);
     }
     Ok(())
@@ -86,7 +86,7 @@ pub enum SessionNewError {
 ///
 /// Returns an error if a picker is currently active.
 pub fn validate_session_new(state: &AppState) -> Result<(), SessionNewError> {
-    if state.active_picker_kind.is_some() {
+    if state.frontend.active_picker_kind.is_some() {
         return Err(SessionNewError::PickerActive);
     }
     Ok(())
@@ -162,7 +162,7 @@ mod tests {
     fn refresh_models_succeeds_with_provider() {
         // Given a state with a configured provider.
         let mut state = AppState::default();
-        state.active_provider = "ollama".to_owned();
+        state.provider.active_provider = "ollama".to_owned();
 
         // When validating refresh models.
         let result = validate_refresh_models(&state);
@@ -215,7 +215,7 @@ mod tests {
     fn session_new_fails_when_picker_active() {
         // Given a state with an active picker.
         let mut state = AppState::default();
-        state.active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
+        state.frontend.active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
 
         // When validating session new.
         let result = validate_session_new(&state);

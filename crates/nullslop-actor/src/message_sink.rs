@@ -35,8 +35,16 @@ pub trait MessageSink: Send + Sync + 'static {
 /// Shared across the workspace — actor tests, host tests, and integration tests
 /// all use this instead of defining local duplicates.
 pub struct RecordingSink {
+    /// Recorded commands.
     commands: Mutex<Vec<Command>>,
+    /// Recorded events.
     events: Mutex<Vec<Event>>,
+}
+
+impl Default for RecordingSink {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RecordingSink {
