@@ -118,8 +118,9 @@ pub fn coordinated_shutdown(
 
     // 3. Block until shutdown complete notification (with timeout).
     //    Spawns an async task that does proper async recv + timeout,
-    //    communicates the result via oneshot, and blocks the sync
-    //    calling thread on oneshot::blocking_recv().
+    //    communicates the result via a oneshot channel, and blocks
+    //    the calling thread on blocking_recv(). Must be called from
+    //    outside the tokio runtime (e.g., main thread or spawn_blocking).
     let (tx, rx) = tokio::sync::oneshot::channel();
     let cloned = core_receiver.clone();
     handle.spawn(async move {
@@ -127,8 +128,9 @@ pub fn coordinated_shutdown(
         let result = tokio::time::timeout(timeout, async_rx.recv()).await;
         let _ = tx.send(result);
     });
-    if rx.blocking_recv().is_ok_and(|r| r.is_err()) {
-        tracing::warn!(?timeout, "coordinated shutdown timed out");
+    match rx.blocking_recv() {
+        Ok(Ok(Ok(_))) => {}
+        _ => tracing::warn!(?timeout, "coordinated shutdown timed out"),
     }
 
     // 4. Join actor tasks.

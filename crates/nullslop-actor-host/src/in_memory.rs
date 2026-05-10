@@ -220,11 +220,12 @@ impl InMemoryActorHost {
             (entry.send_shutdown)();
         }
 
-        // Join all tasks with timeout.
-        let handle = &self.handle;
-        let mut lifecycle = self.lifecycle.lock();
-        for task in lifecycle.tasks.drain(..) {
-            let result = handle.block_on(async { tokio::time::timeout(timeout, task).await });
+        // Drain tasks and join.
+        let tasks: Vec<_> = self.lifecycle.lock().tasks.drain(..).collect();
+        for task in tasks {
+            let result = self.handle.block_on(async {
+                tokio::time::timeout(timeout, task).await
+            });
             if result.is_err() {
                 tracing::warn!("actor task did not exit within {:?}", timeout);
             }

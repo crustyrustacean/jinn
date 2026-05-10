@@ -28,6 +28,7 @@ nullslop-session = { workspace = true }
 tempfile = { workspace = true }
 kanal = { workspace = true }
 nullslop-tool-orchestrator = { workspace = true }
+nullslop-projector = { workspace = true }
 
 [lints.clippy]
 # Test-only crate: relax production lints.

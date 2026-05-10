@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use cucumber::World;
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef};
+use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use nullslop_actor_host::{ActorHostService, InMemoryActorHost, spawn_actor};
 use nullslop_component::AppState;
 use nullslop_core::{ActorMessageSink, AppCore, AppMsg};
@@ -19,6 +19,7 @@ use nullslop_protocol::provider::SendToLlmProvider;
 use nullslop_protocol::tool::ToolCall;
 use nullslop_providers::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
 use nullslop_services::Services;
+use nullslop_projector::ProjectorActor;
 use nullslop_tool_orchestrator::ToolOrchestratorActor;
 
 /// Cucumber world wrapping real actors for integration testing.
@@ -143,8 +144,26 @@ fn create_actor_core(
         handle,
     );
 
+    // Create projector actor to write events into state.
+    // State is shared between AppCore and the projector via Arc clone.
+    let state = nullslop_core::State::new(AppState::default());
+    let (proj_tx, proj_rx) =
+        kanal::unbounded::<ActorEnvelope<nullslop_projector::ProjectorDirectMsg>>();
+    let proj_ref = ActorRef::new(proj_tx);
+    let mut proj_ctx = ActorContext::new("projector", sink.clone());
+    proj_ctx.set_data(state.clone());
+    let proj_actor = ProjectorActor::activate(&mut proj_ctx);
+    let proj_result = spawn_actor(
+        "projector",
+        proj_actor,
+        &proj_ref,
+        proj_rx,
+        proj_ctx,
+        handle,
+    );
+
     let host =
-        InMemoryActorHost::from_actors_with_handle(vec![orch_result, llm_result], handle.clone());
+        InMemoryActorHost::from_actors_with_handle(vec![orch_result, llm_result, proj_result], handle.clone());
     let host_arc: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(host);
 
     let services = nullslop_services::test_services::TestServices::builder()
@@ -157,12 +176,23 @@ fn create_actor_core(
     nullslop_core::spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
     let core = AppCore {
-        state: nullslop_core::State::new(AppState::default()),
+        state: state.clone(),
         sender,
     };
 
-    let mut registry = nullslop_component::AppUiRegistry::new();
-    nullslop_component::register_all(&mut registry);
+    // Emit lifecycle events for the projector.
+    let _ = sink.send_event(nullslop_protocol::Event::ActorStarting {
+        payload: nullslop_protocol::ActorStarting {
+            name: "projector".to_string(),
+            description: Some("Projects events into state".to_string()),
+        },
+    });
+    let _ = sink.send_event(nullslop_protocol::Event::ActorStarted {
+        payload: nullslop_protocol::ActorStarted {
+            name: "projector".to_string(),
+            description: Some("Projects events into state".to_string()),
+        },
+    });
 
     // Core notification sender is wired into services via builder.
     let _ = core_notify_tx; // Not used in actor world — the shutdown tracker isn't running.
@@ -177,7 +207,7 @@ fn create_actor_core(
 fn given_fresh_actor_world(_world: &mut ActorWorld) {}
 
 #[cucumber::when(expr = "I submit SendToLlmProvider with the tool loop trigger")]
-fn when_submit_tool_loop_trigger(world: &mut ActorWorld) {
+async fn when_submit_tool_loop_trigger(world: &mut ActorWorld) {
     let session_id = world.state().active_session.clone();
     world.submit_command(nullslop_protocol::Command::SendToLlmProvider {
         payload: SendToLlmProvider {
@@ -188,7 +218,32 @@ fn when_submit_tool_loop_trigger(world: &mut ActorWorld) {
             provider_id: None,
         },
     });
-    world.graceful_shutdown();
+
+    // Async poll until the multi-turn tool loop completes.
+    // The session starts idle, so we first wait for it to become
+    // non-idle (processing started), then wait for it to return
+    // to idle (processing finished).
+    let state = world.core.state.clone();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        if !state.read().active_session().is_idle() {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        if state.read().active_session().is_idle() {
+            break;
+        }
+        if tokio::time::Instant::now() > deadline {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
 }
 
 #[cucumber::then(expr = "the chat history should contain at least {int} entries")]
