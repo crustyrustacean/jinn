@@ -2959,6 +2959,7 @@ dependencies = [
  "nullslop-actor",
  "nullslop-component",
  "nullslop-protocol",
+ "nullslop-providers",
  "nullslop-services",
  "rstest",
  "serde_json",

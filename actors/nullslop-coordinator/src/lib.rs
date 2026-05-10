@@ -11,6 +11,8 @@
 //! All handlers follow the same pattern: acquire state lock → mutate → release →
 //! then emit. Never hold the lock during emission.
 
+use std::sync::Arc;
+
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_component::provider_picker::loader::load_provider_picker_items;
 use nullslop_component::State;
@@ -189,6 +191,9 @@ impl CoordinatorActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             if session.is_idle() {
+                // Push the user's message to history before transitioning state
+                // so AssemblePrompt picks it up.
+                session.push_entry(ChatEntry::user(&payload.text));
                 session.begin_sending();
                 EnqueueAction::AssemblePrompt
             } else if session.is_streaming() {
@@ -199,17 +204,42 @@ impl CoordinatorActor {
             }
         };
 
+        // Gather data for AssemblePrompt while the decision is fresh.
+        let (history, model_name) = match action {
+            EnqueueAction::AssemblePrompt => {
+                let state = self.state.read();
+                let history = state
+                    .session(&payload.session_id)
+                    .history()
+                    .to_vec();
+                let model_name = state.active_provider.clone();
+                (history, model_name)
+            }
+            EnqueueAction::Queued => (vec![], String::new()),
+            EnqueueAction::SetInputText(_) => (vec![], String::new()),
+        };
+
         match action {
             EnqueueAction::AssemblePrompt => {
                 if let Err(e) = ctx.send_command(Command::AssemblePrompt {
                     payload: AssemblePrompt {
                         session_id: payload.session_id.clone(),
-                        history: vec![],
+                        history,
                         tools: vec![],
-                        model_name: String::new(),
+                        model_name,
                     },
                 }) {
                     tracing::warn!(err = ?e, "coordinator failed to emit AssemblePrompt");
+                }
+
+                // Notify subscribers (session persistence, echo actor, etc.).
+                if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted {
+                    payload: nullslop_protocol::chat_input::ChatEntrySubmitted {
+                        session_id: payload.session_id.clone(),
+                        entry: ChatEntry::user(&payload.text),
+                    },
+                }) {
+                    tracing::warn!(err = ?e, "coordinator failed to emit ChatEntrySubmitted");
                 }
             }
             EnqueueAction::Queued => {}
@@ -280,7 +310,8 @@ impl CoordinatorActor {
         }
     }
 
-    /// ProviderSwitch: update active provider, emit ProviderSwitched event.
+    /// ProviderSwitch: update active provider, emit ProviderSwitched event,
+    /// and swap the LLM factory so subsequent messages use the new provider.
     fn handle_provider_switch(&self, payload: &ProviderSwitch, ctx: &ActorContext) {
         {
             let mut state = self.state.write();
@@ -293,6 +324,31 @@ impl CoordinatorActor {
             },
         }) {
             tracing::warn!(err = ?e, "coordinator failed to emit ProviderSwitched");
+        }
+
+        // Swap the LLM factory to the newly selected provider.
+        let provider_id =
+            nullslop_providers::ProviderId::new(payload.provider_id.clone());
+        let api_keys = self.services.api_keys.read();
+        match self
+            .services
+            .provider_registry
+            .create_factory(&provider_id, &api_keys)
+        {
+            Ok(factory) => {
+                self.services.llm_service.swap(Arc::from(factory));
+                tracing::info!(
+                    provider = %payload.provider_id,
+                    "swapped LLM factory"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    err = ?e,
+                    provider = %payload.provider_id,
+                    "failed to create factory for provider; leaving existing factory in place"
+                );
+            }
         }
     }
 
@@ -579,10 +635,16 @@ mod tests {
 
     /// Creates a test actor with a fresh AppState and fake services.
     fn create_actor() -> (CoordinatorActor, State, Arc<RecordingSink>, ActorContext) {
+        create_actor_with_services(Services::new())
+    }
+
+    /// Creates a test actor with custom services.
+    fn create_actor_with_services(
+        services: Services,
+    ) -> (CoordinatorActor, State, Arc<RecordingSink>, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("coordinator", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        let services = Services::new();
         ctx.set_data(state.clone());
         ctx.set_data(services);
         let actor = CoordinatorActor::activate(&mut ctx);
@@ -621,6 +683,143 @@ mod tests {
         // And an AssemblePrompt command was emitted.
         let cmds = sink.commands();
         assert!(cmds.iter().any(|c| matches!(c, Command::AssemblePrompt { .. })));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn assemble_prompt_includes_session_history() {
+        // Given a coordinator with a session that has existing history.
+        let (mut actor, state, sink, ctx) = create_actor();
+        let session_id = SessionId::new();
+        {
+            let mut guard = state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.push_entry(ChatEntry::user("previous message"));
+            session.push_entry(ChatEntry::assistant("previous reply"));
+        }
+
+        // When processing EnqueueUserMessage while idle.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::EnqueueUserMessage {
+                    payload: EnqueueUserMessage {
+                        session_id: session_id.clone(),
+                        text: "new message".into(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the emitted AssemblePrompt contains the session history entries
+        // (2 pre-existing + the user's own message).
+        let cmds = sink.commands();
+        let cmd = cmds.iter().find_map(|c| match c {
+            Command::AssemblePrompt { payload } => Some(payload.clone()),
+            _ => None,
+        });
+        let prompt = cmd.expect("expected AssemblePrompt command");
+        assert_eq!(prompt.history.len(), 3);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn assemble_prompt_includes_active_provider_as_model_name() {
+        // Given a coordinator with an active provider set.
+        let (mut actor, state, sink, ctx) = create_actor();
+        let session_id = SessionId::new();
+        {
+            let mut guard = state.write();
+            guard.active_provider = "lmstudio/my-model".to_owned();
+        }
+
+        // When processing EnqueueUserMessage while idle.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::EnqueueUserMessage {
+                    payload: EnqueueUserMessage {
+                        session_id: session_id.clone(),
+                        text: "hello".into(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the emitted AssemblePrompt has the active provider as model_name.
+        let cmds = sink.commands();
+        let cmd = cmds.iter().find_map(|c| match c {
+            Command::AssemblePrompt { payload } => Some(payload.clone()),
+            _ => None,
+        });
+        let prompt = cmd.expect("expected AssemblePrompt command");
+        assert_eq!(prompt.model_name, "lmstudio/my-model");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn first_message_to_new_session_includes_user_entry_in_history() {
+        // Given a coordinator with a brand new session (no history).
+        let (mut actor, _state, sink, ctx) = create_actor();
+        let session_id = SessionId::new();
+
+        // When processing EnqueueUserMessage while idle.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::EnqueueUserMessage {
+                    payload: EnqueueUserMessage {
+                        session_id: session_id.clone(),
+                        text: "hello".into(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the emitted AssemblePrompt contains the user's message in history.
+        let cmds = sink.commands();
+        let cmd = cmds.iter().find_map(|c| match c {
+            Command::AssemblePrompt { payload } => Some(payload.clone()),
+            _ => None,
+        });
+        let prompt = cmd.expect("expected AssemblePrompt command");
+        assert_eq!(prompt.history.len(), 1, "history must not be empty for first message");
+        assert!(matches!(
+            &prompt.history[0].kind,
+            ChatEntryKind::User(t) if t == "hello"
+        ));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn enqueue_user_message_emits_chat_entry_submitted() {
+        // Given a coordinator with an idle session.
+        let (mut actor, _state, sink, ctx) = create_actor();
+        let session_id = SessionId::new();
+
+        // When processing EnqueueUserMessage while idle.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::EnqueueUserMessage {
+                    payload: EnqueueUserMessage {
+                        session_id: session_id.clone(),
+                        text: "hello".into(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then a ChatEntrySubmitted event was emitted.
+        let events = sink.events();
+        let found = events.iter().any(|e| match e {
+            Event::ChatEntrySubmitted { payload } => {
+                payload.session_id == session_id
+                    && matches!(&payload.entry.kind, ChatEntryKind::User(t) if t == "hello")
+            }
+            _ => false,
+        });
+        assert!(found, "expected ChatEntrySubmitted event with user message");
     }
 
     #[rstest::rstest]
@@ -866,6 +1065,74 @@ mod tests {
         let events = sink.events();
         let found = events.iter().any(|e| matches!(e, Event::ProviderSwitched { .. }));
         assert!(found, "expected ProviderSwitched event");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn provider_switch_leaves_factory_unchanged_for_unknown_provider() {
+        // Given a coordinator with a fake factory.
+        let (mut actor, _state, _sink, ctx) = create_actor();
+        let name_before = actor.services.llm_service.name();
+
+        // When switching to an unknown provider.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::ProviderSwitch {
+                    payload: ProviderSwitch {
+                        provider_id: "nonexistent/unknown".into(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the factory name is unchanged.
+        let name_after = actor.services.llm_service.name();
+        assert_eq!(name_before, name_after);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn provider_switch_swaps_factory_for_valid_provider() {
+        // Given a coordinator with a registry containing a sample provider.
+        use nullslop_providers::{ProviderEntry, ProvidersConfig};
+        use nullslop_services::test_services::TestServices;
+
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "sample".to_owned(),
+                backend: "sample".to_owned(),
+                models: vec!["sample".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+        let services = TestServices::builder()
+            .with_providers(config)
+            .build();
+
+        let (mut actor, _state, _sink, ctx) = create_actor_with_services(services);
+        let name_before = actor.services.llm_service.name();
+
+        // When switching to a known provider.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::ProviderSwitch {
+                    payload: ProviderSwitch {
+                        provider_id: "sample/sample".into(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the factory name changes to the new provider.
+        let name_after = actor.services.llm_service.name();
+        assert_ne!(name_before, name_after);
+        assert_eq!(name_after, "Sample");
     }
 
     // --- PinChatEntry ---
