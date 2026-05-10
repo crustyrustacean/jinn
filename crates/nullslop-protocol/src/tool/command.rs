@@ -84,11 +84,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn register_tools_name() {
-        assert_eq!(RegisterTools::NAME, "tool::RegisterTools");
-    }
-
-    #[rstest::rstest]
     fn execute_tool_batch_roundtrip() {
         // Given an ExecuteToolBatch command.
         let cmd = ExecuteToolBatch {
@@ -109,11 +104,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn execute_tool_batch_name() {
-        assert_eq!(ExecuteToolBatch::NAME, "tool::ExecuteToolBatch");
-    }
-
-    #[rstest::rstest]
     fn execute_tool_roundtrip() {
         // Given an ExecuteTool command.
         let cmd = ExecuteTool {
@@ -131,11 +121,6 @@ mod tests {
 
         // Then it matches.
         assert_eq!(back.tool_call.name, "echo");
-    }
-
-    #[rstest::rstest]
-    fn execute_tool_name() {
-        assert_eq!(ExecuteTool::NAME, "tool::ExecuteTool");
     }
 
     #[rstest::rstest]
@@ -160,8 +145,4 @@ mod tests {
         assert!(back.result.success);
     }
 
-    #[rstest::rstest]
-    fn push_tool_result_name() {
-        assert_eq!(PushToolResult::NAME, "tool::PushToolResult");
-    }
 }

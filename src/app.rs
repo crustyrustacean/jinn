@@ -126,7 +126,7 @@ impl App {
                     resolved_api_keys.clone(),
                     config_storage.clone(),
                 );
-                core.state.write().active_provider = initial_provider;
+                core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_prompt_template::prompts_dir());
@@ -173,7 +173,7 @@ impl App {
                     resolved_api_keys,
                     config_storage,
                 );
-                core.state.write().active_provider = initial_provider;
+                core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_prompt_template::prompts_dir());
@@ -507,8 +507,8 @@ fn load_model_cache(state: &State, path: &Path) {
         tracing::info!(providers = c.entries.len(), "loaded model cache");
     }
     let mut state = state.write();
-    state.last_refreshed_at = cache.as_ref().and_then(|c| c.last_updated_at);
-    state.model_cache = cache;
+    state.provider.last_refreshed_at = cache.as_ref().and_then(|c| c.last_updated_at);
+    state.provider.model_cache = cache;
 }
 
 /// Ensures the prompts directory exists and contains an example template.
@@ -532,7 +532,7 @@ fn load_prompt_templates(state: &State, path: &Path) {
             nullslop_prompt_template::PromptTemplateStore::new()
         });
     tracing::info!(count = store.len(), "loaded prompt templates");
-    state.write().prompt_templates = store;
+    state.write().context.prompt_templates = store;
 }
 
 #[cfg(test)]
@@ -605,7 +605,7 @@ mod tests {
 
         // Then the template count is correct.
         let state = state.read();
-        assert_eq!(state.prompt_templates.len(), 1);
+        assert_eq!(state.context.prompt_templates.len(), 1);
     }
 
     #[rstest::rstest]
@@ -623,7 +623,7 @@ mod tests {
 
         // Then the template is findable by name.
         let state = state.read();
-        assert!(state.prompt_templates.find_by_name("test").is_some());
+        assert!(state.context.prompt_templates.find_by_name("test").is_some());
     }
 
     #[rstest::rstest]
@@ -651,8 +651,8 @@ mod tests {
 
         // Then the cache is in state with the expected entries.
         let state = state.read();
-        assert!(state.model_cache.is_some());
-        let cached = state.model_cache.as_ref().expect("cache present");
+        assert!(state.provider.model_cache.is_some());
+        let cached = state.provider.model_cache.as_ref().expect("cache present");
         assert_eq!(cached.entries.len(), 1);
         assert_eq!(cached.entries["ollama"].len(), 2);
     }
@@ -670,7 +670,7 @@ mod tests {
 
         // Then the cache is None in state.
         let state = state.read();
-        assert!(state.model_cache.is_none());
+        assert!(state.provider.model_cache.is_none());
     }
 
     #[rstest::rstest]

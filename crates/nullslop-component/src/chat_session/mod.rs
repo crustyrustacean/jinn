@@ -6,4 +6,4 @@
 
 mod state;
 
-pub use state::ChatSessionState;
+pub use state::{ChatSessionState, SessionCore, SessionUi};

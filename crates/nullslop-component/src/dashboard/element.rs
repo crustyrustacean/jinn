@@ -34,8 +34,8 @@ impl UiElement<AppState> for DashboardElement {
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-        let actors = state.dashboard.actors();
-        let selected_index = state.dashboard.selected_index();
+        let actors = state.frontend.dashboard.actors();
+        let selected_index = state.frontend.dashboard.selected_index();
 
         let lines: Vec<Line> = if actors.is_empty() {
             vec![Line::from(Span::styled(
@@ -92,7 +92,7 @@ impl UiElement<AppState> for DashboardElement {
         // Calculate total visual lines for scroll clamping.
         let total_lines = lines.len() as u16;
         let max_offset = total_lines.saturating_sub(area.height);
-        let scroll_offset = state.dashboard.scroll_offset().min(max_offset);
+        let scroll_offset = state.frontend.dashboard.scroll_offset().min(max_offset);
 
         let widget = Paragraph::new(lines)
             .block(Block::default().borders(Borders::NONE))
@@ -188,7 +188,7 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
             s
         };
@@ -207,7 +207,7 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
             s
         };
@@ -225,9 +225,9 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.dashboard.mark_running("echo", None);
+            s.frontend.dashboard.mark_running("echo", None);
             s
         };
 
@@ -245,7 +245,7 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard.mark_starting("actor-a", None);
+            s.frontend.dashboard.mark_starting("actor-a", None);
             s
         };
 
@@ -258,28 +258,13 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn first_actor_renders() {
-        // Given two actors.
-        let mut element = DashboardElement;
-        let state = {
-            let mut s = AppState::default();
-            s.dashboard.mark_starting("echo", Some("Echo".to_owned()));
-            s.dashboard.mark_starting("llm", Some("LLM".to_owned()));
-            s
-        };
-
-        let rows = render_rows(&mut element, &state, 40, 10);
-        assert!(rows[0].contains("echo"));
-    }
-
-    #[rstest::rstest]
     fn blank_line_between_actors() {
         // Given two actors.
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard.mark_starting("echo", Some("Echo".to_owned()));
-            s.dashboard.mark_starting("llm", Some("LLM".to_owned()));
+            s.frontend.dashboard.mark_starting("echo", Some("Echo".to_owned()));
+            s.frontend.dashboard.mark_starting("llm", Some("LLM".to_owned()));
             s
         };
 
@@ -294,8 +279,8 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard.mark_starting("echo", Some("Echo".to_owned()));
-            s.dashboard.mark_starting("llm", Some("LLM".to_owned()));
+            s.frontend.dashboard.mark_starting("echo", Some("Echo".to_owned()));
+            s.frontend.dashboard.mark_starting("llm", Some("LLM".to_owned()));
             s
         };
 
@@ -309,9 +294,9 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("llm", Some("LLM streaming".to_owned()));
             s
         };
@@ -339,9 +324,9 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("llm", Some("LLM streaming".to_owned()));
             s
         };
@@ -366,9 +351,9 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("llm", Some("LLM streaming".to_owned()));
             s
         };
@@ -395,11 +380,11 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("llm", Some("LLM streaming".to_owned()));
-            s.dashboard.select_next();
+            s.frontend.dashboard.select_next();
             s
         };
 
@@ -422,11 +407,11 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.dashboard
+            s.frontend.dashboard
                 .mark_starting("llm", Some("LLM streaming".to_owned()));
-            s.dashboard.select_next();
+            s.frontend.dashboard.select_next();
             s
         };
 

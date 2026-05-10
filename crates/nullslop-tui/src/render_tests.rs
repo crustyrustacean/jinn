@@ -140,11 +140,11 @@ fn render_provider_picker_shows_telescope_layout() {
     use nullslop_selection_widget::compute_popup_rect;
 
     let (mut state, services) = picker_state_with_ollama();
-    state.mode = Mode::Picker;
-    state.active_picker_kind = Some(PickerKind::Provider);
+    state.frontend.mode = Mode::Picker;
+    state.frontend.active_picker_kind = Some(PickerKind::Provider);
     load_picker_items(&mut state, &services);
-    state.provider_picker.insert_char('o');
-    state.provider_picker.insert_char('l');
+    state.provider.provider_picker.insert_char('o');
+    state.provider.provider_picker.insert_char('l');
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -233,9 +233,9 @@ fn render_provider_picker_shows_active_model_marker() {
     use nullslop_selection_widget::compute_popup_rect;
 
     let (mut state, services) = picker_state_with_ollama();
-    state.mode = Mode::Picker;
-    state.active_provider = "ollama/llama3".to_owned();
-    state.active_picker_kind = Some(PickerKind::Provider);
+    state.frontend.mode = Mode::Picker;
+    state.provider.active_provider = "ollama/llama3".to_owned();
+    state.frontend.active_picker_kind = Some(PickerKind::Provider);
     load_picker_items(&mut state, &services);
 
     let (mut terminal, _area) = setup_term(80, 24);
@@ -276,8 +276,8 @@ fn render_context_strategy_picker_shows_telescope_layout() {
     use nullslop_selection_widget::compute_popup_rect;
 
     let (mut state, _services) = strategy_picker_state();
-    state.mode = Mode::Picker;
-    state.active_picker_kind = Some(PickerKind::ContextAssembly);
+    state.frontend.mode = Mode::Picker;
+    state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -309,8 +309,8 @@ fn render_context_strategy_picker_shows_active_marker() {
     use nullslop_selection_widget::compute_popup_rect;
 
     let (mut state, _services) = strategy_picker_state();
-    state.mode = Mode::Picker;
-    state.active_picker_kind = Some(PickerKind::ContextAssembly);
+    state.frontend.mode = Mode::Picker;
+    state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -338,8 +338,8 @@ fn render_context_strategy_picker_shows_footer_with_current_strategy() {
     use nullslop_selection_widget::compute_popup_rect;
 
     let (mut state, _services) = strategy_picker_state();
-    state.mode = Mode::Picker;
-    state.active_picker_kind = Some(PickerKind::ContextAssembly);
+    state.frontend.mode = Mode::Picker;
+    state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -405,10 +405,10 @@ fn keymap_picker_state() -> nullslop_component::AppState {
             search_text: "<esc> set mode normal".to_owned(),
         },
     ];
-    state.keymap_picker.set_items(entries);
-    state.mode = Mode::Picker;
-    state.active_picker_kind = Some(PickerKind::Keymap);
-    state.keymap_picker_origin_scope = Some("Normal".to_owned());
+    state.frontend.keymap_picker.set_items(entries);
+    state.frontend.mode = Mode::Picker;
+    state.frontend.active_picker_kind = Some(PickerKind::Keymap);
+    state.frontend.keymap_picker_origin_scope = Some("Normal".to_owned());
     state
 }
 
@@ -456,7 +456,7 @@ fn render_keymap_picker_footer_shows_current_scope() {
     // Given a keymap picker state with show_all = false and origin scope "Normal".
 
     let mut state = keymap_picker_state();
-    state.keymap_picker_show_all = false;
+    state.frontend.keymap_picker_show_all = false;
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -494,7 +494,7 @@ fn render_keymap_picker_footer_shows_all_scopes() {
     // Given a keymap picker state with show_all = true and origin scope "Normal".
 
     let mut state = keymap_picker_state();
-    state.keymap_picker_show_all = true;
+    state.frontend.keymap_picker_show_all = true;
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -872,8 +872,8 @@ fn picker_popup_rect_is_selectable() {
 
     let mut app = render_test_app();
     // Switch to Picker mode with an active provider picker.
-    app.core.state.write().mode = nullslop_protocol::Mode::Picker;
-    app.core.state.write().active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
+    app.core.state.write().frontend.mode = nullslop_protocol::Mode::Picker;
+    app.core.state.write().frontend.active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -899,8 +899,8 @@ fn content_area_rect_is_selectable() {
 
     let mut app = render_test_app();
     // Switch to Picker mode with an active provider picker.
-    app.core.state.write().mode = nullslop_protocol::Mode::Picker;
-    app.core.state.write().active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
+    app.core.state.write().frontend.mode = nullslop_protocol::Mode::Picker;
+    app.core.state.write().frontend.active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
 
     let (mut terminal, _area) = setup_term(80, 24);
 

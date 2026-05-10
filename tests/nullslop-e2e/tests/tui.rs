@@ -162,7 +162,7 @@ fn given_input_buffer_contains(world: &mut TuiWorld, text: String) {
 /// Sets the active provider to a dummy value so message submission works.
 #[cucumber::given(expr = "the active provider is set")]
 fn given_active_provider_set(world: &mut TuiWorld) {
-    world.app.core.state.write().active_provider = "test".to_owned();
+    world.app.core.state.write().provider.active_provider = "test".to_owned();
 }
 
 // --- When steps ---
@@ -207,7 +207,7 @@ fn when_routes_toggle_which_key(world: &mut TuiWorld) {
 #[cucumber::then(expr = "the mode should be {word}")]
 fn then_mode_should_be(world: &mut TuiWorld, mode: String) {
     let expected = parse_mode(&mode);
-    let actual = world.app.core.state.read().mode;
+    let actual = world.app.core.state.read().frontend.mode;
     assert_eq!(
         actual, expected,
         "expected mode {expected:?}, got {actual:?}"
@@ -217,7 +217,7 @@ fn then_mode_should_be(world: &mut TuiWorld, mode: String) {
 /// Asserts the application has requested to quit.
 #[cucumber::then(expr = "the app should quit")]
 fn then_app_should_quit(world: &mut TuiWorld) {
-    let should_quit = world.app.core.state.read().should_quit;
+    let should_quit = world.app.core.state.read().frontend.should_quit;
     assert!(
         should_quit,
         "expected app to quit, but should_quit is false"
@@ -358,8 +358,8 @@ fn run_headless_script(world: &mut TuiWorld, content: &str) {
         for key in keys {
             let state_read = world.app.core.state.read();
             let scope = nullslop_tui::app::scope_for_mode(
-                state_read.mode,
-                state_read.active_tab,
+                state_read.frontend.mode,
+                state_read.frontend.active_tab,
                 nullslop_tui::app::PaneFocus::Chat,
             );
             drop(state_read);
@@ -374,7 +374,7 @@ fn run_headless_script(world: &mut TuiWorld, content: &str) {
 /// Asserts the application has NOT requested to quit.
 #[cucumber::then(expr = "the app should not quit")]
 fn then_app_should_not_quit(world: &mut TuiWorld) {
-    let should_quit = world.app.core.state.read().should_quit;
+    let should_quit = world.app.core.state.read().frontend.should_quit;
     assert!(
         !should_quit,
         "expected app to not quit, but should_quit is true"

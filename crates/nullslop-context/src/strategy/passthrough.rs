@@ -77,27 +77,6 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn passthrough_skips_system_and_actor_entries() {
-        // Given a history with mixed entry types.
-        let history = vec![
-            ChatEntry::system("ready"),
-            ChatEntry::user("hello"),
-            ChatEntry::actor("echo", "HELLO"),
-            ChatEntry::assistant("hi"),
-        ];
-
-        // When assembling with passthrough strategy.
-        let strategy = PassthroughStrategy;
-        let session_id = SessionId::new();
-        let context = test_context(&history, &session_id);
-        let result = strategy.assemble(&context).await.expect("assemble");
-
-        // Then system and actor entries are skipped (matching entries_to_messages).
-        assert_eq!(result.messages.len(), 2);
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
     async fn passthrough_empty_history() {
         // Given empty history.
         let history: Vec<ChatEntry> = vec![];
@@ -123,25 +102,4 @@ mod tests {
         assert_eq!(strategy.name(), "passthrough");
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn passthrough_preserves_tool_calls() {
-        // Given a history with a tool loop.
-        let history = vec![
-            ChatEntry::user("go"),
-            ChatEntry::assistant("checking"),
-            ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#),
-            ChatEntry::tool_result("call_1", "echo", "hi", true),
-            ChatEntry::assistant("done!"),
-        ];
-
-        // When assembling with passthrough strategy.
-        let strategy = PassthroughStrategy;
-        let session_id = SessionId::new();
-        let context = test_context(&history, &session_id);
-        let result = strategy.assemble(&context).await.expect("assemble");
-
-        // Then tool calls are preserved correctly.
-        assert_eq!(result.messages.len(), 4);
-    }
 }

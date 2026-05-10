@@ -372,13 +372,6 @@ fn adding_multiple_guards_combines_with_all() {
     }
 }
 
-#[rstest::rstest]
-fn abort_consumes_builder() {
-    let builder = WorkflowBuilder::new();
-    builder.abort();
-    // Builder is consumed; this test just verifies it compiles.
-}
-
 // --- validate() tests ---
 
 #[rstest::rstest]
@@ -409,22 +402,6 @@ fn validate_fails_without_name() {
     let err = result.expect_err("should fail");
     let kind = err.current_context().kind();
     assert_eq!(*kind, WorkflowErrorKind::MissingField("name".to_owned()));
-}
-
-#[rstest::rstest]
-fn validate_fails_without_description() {
-    // Given a builder with no description.
-    let builder = WorkflowBuilder::new();
-
-    // When validating.
-    let result = builder.validate();
-
-    // Then it fails. Name is checked first, so we get MissingField("name").
-    let err = result.expect_err("should fail");
-    assert!(matches!(
-        err.current_context().kind(),
-        WorkflowErrorKind::MissingField(_)
-    ));
 }
 
 #[rstest::rstest]

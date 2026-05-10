@@ -160,6 +160,10 @@ impl InMemoryActorHost {
     ///
     /// Reads `subscriptions` and `commands` from each [`RoutingEntry`] to
     /// build the routing `HashMaps`. Collects task handles for shutdown.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any command is subscribed by more than one actor.
     #[must_use]
     pub fn from_actors_with_handle(
         results: Vec<ActorSpawnResult>,

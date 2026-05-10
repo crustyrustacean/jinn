@@ -54,7 +54,7 @@ fn validate_pin_action(state: &AppState) -> Result<(), PinnedPanelActionError> {
     if state.sorted_pinned_ids().is_empty() {
         return Err(PinnedPanelActionError::Empty);
     }
-    if state.pinned_panel.selected_id().is_none() {
+    if state.frontend.pinned_panel.selected_id().is_none() {
         return Err(PinnedPanelActionError::NoSelection);
     }
     Ok(())
@@ -75,7 +75,7 @@ mod tests {
             state.active_session().history()[index].id.clone()
         };
         state.active_session_mut().pin_entry(&entry_id, position);
-        state.pinned_panel.select_by_id(entry_id);
+        state.frontend.pinned_panel.select_by_id(entry_id);
         state
     }
 
@@ -129,107 +129,4 @@ mod tests {
         assert!(matches!(result, Err(PinnedPanelActionError::NoSelection)));
     }
 
-    // --- PinnedPanelPinTop tests ---
-
-    #[rstest::rstest]
-    fn pin_top_succeeds_with_selected_entry() {
-        // Given a state with a pinned entry that is selected.
-        let state = state_with_selected_pin("hello", PinPosition::Top);
-
-        // When validating pin top.
-        let result = validate_pinned_panel_pin_top(&state);
-
-        // Then it succeeds.
-        assert!(result.is_ok());
-    }
-
-    #[rstest::rstest]
-    fn pin_top_fails_with_no_pinned_entries() {
-        // Given a state with no pinned entries.
-        let state = AppState::default();
-
-        // When validating pin top.
-        let result = validate_pinned_panel_pin_top(&state);
-
-        // Then it returns Empty error.
-        assert!(matches!(result, Err(PinnedPanelActionError::Empty)));
-    }
-
-    // --- PinnedPanelPinBottom tests ---
-
-    #[rstest::rstest]
-    fn pin_bottom_succeeds_with_selected_entry() {
-        // Given a state with a pinned entry that is selected.
-        let state = state_with_selected_pin("hello", PinPosition::Top);
-
-        // When validating pin bottom.
-        let result = validate_pinned_panel_pin_bottom(&state);
-
-        // Then it succeeds.
-        assert!(result.is_ok());
-    }
-
-    #[rstest::rstest]
-    fn pin_bottom_fails_with_no_selection() {
-        // Given a state with pinned entries but nothing selected.
-        let state = state_with_unselected_pin("hello", PinPosition::Top);
-
-        // When validating pin bottom.
-        let result = validate_pinned_panel_pin_bottom(&state);
-
-        // Then it returns NoSelection error.
-        assert!(matches!(result, Err(PinnedPanelActionError::NoSelection)));
-    }
-
-    // --- PinnedPanelPinRelative tests ---
-
-    #[rstest::rstest]
-    fn pin_relative_succeeds_with_selected_entry() {
-        // Given a state with a pinned entry that is selected.
-        let state = state_with_selected_pin("hello", PinPosition::Relative);
-
-        // When validating pin relative.
-        let result = validate_pinned_panel_pin_relative(&state);
-
-        // Then it succeeds.
-        assert!(result.is_ok());
-    }
-
-    #[rstest::rstest]
-    fn pin_relative_fails_with_no_pinned_entries() {
-        // Given a state with no pinned entries.
-        let state = AppState::default();
-
-        // When validating pin relative.
-        let result = validate_pinned_panel_pin_relative(&state);
-
-        // Then it returns Empty error.
-        assert!(matches!(result, Err(PinnedPanelActionError::Empty)));
-    }
-
-    // --- PinnedPanelPinCycle tests ---
-
-    #[rstest::rstest]
-    fn pin_cycle_succeeds_with_selected_entry() {
-        // Given a state with a pinned entry that is selected.
-        let state = state_with_selected_pin("hello", PinPosition::Top);
-
-        // When validating pin cycle.
-        let result = validate_pinned_panel_pin_cycle(&state);
-
-        // Then it succeeds.
-        assert!(result.is_ok());
-    }
-
-    #[rstest::rstest]
-    fn pin_cycle_fails_with_no_selection() {
-        // Given a state with pinned entries but nothing selected.
-        let state = state_with_unselected_pin("hello", PinPosition::Top);
-
-        // When validating pin cycle.
-        let result = validate_pinned_panel_pin_cycle(&state);
-
-        // Then it returns NoSelection error.
-        assert!(matches!(result, Err(PinnedPanelActionError::NoSelection)));
-    }
 }

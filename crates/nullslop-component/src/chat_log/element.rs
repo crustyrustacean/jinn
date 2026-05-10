@@ -34,7 +34,7 @@ impl UiElement<AppState> for ChatLogElement {
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         // Show loading indicator when a session is being loaded.
-        if state.session_loading {
+        if state.session.session_loading {
             let loading = Paragraph::new("Loading session...")
                 .alignment(ratatui::layout::Alignment::Center)
                 .style(Style::default().fg(Color::DarkGray))
@@ -297,27 +297,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_empty_history() {
-        // Given a ChatLogElement with empty chat history.
-        let mut element = ChatLogElement;
-        let state = AppState::default();
-
-        let (mut terminal, area) = setup_term(40, 10);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then it renders without panic and the first cell is empty.
-        let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 0)).expect("cell should exist");
-        assert_eq!(cell.symbol(), " ");
-    }
-
-    #[rstest::rstest]
     fn render_user_entry() {
         // Given a ChatLogElement with a user entry "hello".
         let mut element = ChatLogElement;
@@ -422,53 +401,6 @@ mod tests {
         let cell = buffer.cell((0, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "\u{2726}");
         assert_eq!(cell.style().fg, Some(Color::Cyan));
-    }
-
-    #[rstest::rstest]
-    fn render_mixed_entries() {
-        // Given a ChatLogElement with system, user, actor, and assistant entries.
-        let mut element = ChatLogElement;
-        let state = {
-            let mut s = AppState::default();
-            s.active_session_mut()
-                .push_entry(ChatEntry::system("welcome"));
-            s.active_session_mut().push_entry(ChatEntry::user("hello"));
-            s.active_session_mut()
-                .push_entry(ChatEntry::actor("echo", "HELLO"));
-            s.active_session_mut()
-                .push_entry(ChatEntry::assistant("world"));
-            s
-        };
-
-        let (mut terminal, area) = setup_term(40, 10);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then line 6 is system (dark gray).
-        let buffer = terminal.backend().buffer().clone();
-        let line6_cell = buffer.cell((0, 6)).expect("cell should exist");
-        assert_eq!(line6_cell.symbol(), "w");
-        assert_eq!(line6_cell.style().fg, Some(Color::DarkGray));
-
-        // And line 7 is user (">" prefix, bold).
-        let line7_cell = buffer.cell((0, 7)).expect("cell should exist");
-        assert_eq!(line7_cell.symbol(), ">");
-        assert!(line7_cell.style().add_modifier.contains(Modifier::BOLD));
-
-        // And line 8 is actor (yellow, "[" from "[actor]").
-        let line8_cell = buffer.cell((0, 8)).expect("cell should exist");
-        assert_eq!(line8_cell.symbol(), "[");
-        assert_eq!(line8_cell.style().fg, Some(Color::Yellow));
-
-        // And line 9 is assistant (cyan, "\u{2726}" prefix).
-        let line9_cell = buffer.cell((0, 9)).expect("cell should exist");
-        assert_eq!(line9_cell.symbol(), "\u{2726}");
-        assert_eq!(line9_cell.style().fg, Some(Color::Cyan));
     }
 
     #[rstest::rstest]

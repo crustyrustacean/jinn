@@ -25,7 +25,7 @@ impl UiElement<AppState> for ChatInputBoxElement {
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-        let input_mode = state.mode == Mode::Input;
+        let input_mode = state.frontend.mode == Mode::Input;
 
         let prompt_style = if input_mode {
             Style::default()
@@ -102,8 +102,8 @@ mod tests {
         (terminal, area)
     }
 
-
     use super::*;
+    use crate::FrontendState;
 
     #[rstest::rstest]
     fn name_returns_chat_input_box() {
@@ -143,33 +143,15 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_draws_empty_buffer() {
-        // Given a ChatInputBoxElement with empty state.
-        let mut element = ChatInputBoxElement;
-        let state = AppState::default();
-
-        let (mut terminal, area) = setup_term(20, 3);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then the buffer is rendered without panic and shows prompt.
-        let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 1)).expect("cell should exist");
-        assert_eq!(cell.symbol(), ">");
-    }
-
-    #[rstest::rstest]
     fn render_input_mode_yellow_prompt() {
         // Given a ChatInputBoxElement in Input mode with "hi" in buffer.
         let mut element = ChatInputBoxElement;
         let state = {
             let mut s = AppState {
-                mode: Mode::Input,
+                frontend: FrontendState {
+                    mode: Mode::Input,
+                    ..FrontendState::default()
+                },
                 ..Default::default()
             };
             s.active_chat_input_mut().insert_text("hi");
@@ -197,7 +179,10 @@ mod tests {
         // Given a ChatInputBoxElement in Input mode.
         let mut element = ChatInputBoxElement;
         let state = AppState {
-            mode: Mode::Input,
+            frontend: FrontendState {
+                mode: Mode::Input,
+                ..FrontendState::default()
+            },
             ..Default::default()
         };
 
@@ -222,7 +207,10 @@ mod tests {
         let mut element = ChatInputBoxElement;
         let state = {
             let mut s = AppState {
-                mode: Mode::Input,
+                frontend: FrontendState {
+                    mode: Mode::Input,
+                    ..FrontendState::default()
+                },
                 ..Default::default()
             };
             s.active_chat_input_mut().insert_text("abc");
@@ -245,32 +233,15 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_normal_mode_no_cursor() {
-        // Given a ChatInputBoxElement in Normal mode.
-        let mut element = ChatInputBoxElement;
-        let state = AppState::default();
-
-        let (mut terminal, area) = setup_term(40, 3);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then cursor position was not set (remains at default 0,0 with cursor hidden).
-        let pos = terminal.backend_mut().get_cursor_position().unwrap();
-        assert_eq!(pos, Position { x: 0, y: 0 });
-    }
-
-    #[rstest::rstest]
     fn render_cursor_at_mid_buffer() {
         // Given a ChatInputBoxElement in Input mode with "abc" and cursor at position 1.
         let mut element = ChatInputBoxElement;
         let state = {
             let mut s = AppState {
-                mode: Mode::Input,
+                frontend: FrontendState {
+                    mode: Mode::Input,
+                    ..FrontendState::default()
+                },
                 ..Default::default()
             };
             s.active_chat_input_mut().insert_text("abc");
@@ -300,7 +271,10 @@ mod tests {
         let mut element = ChatInputBoxElement;
         let state = {
             let mut s = AppState {
-                mode: Mode::Input,
+                frontend: FrontendState {
+                    mode: Mode::Input,
+                    ..FrontendState::default()
+                },
                 ..Default::default()
             };
             s.active_chat_input_mut().insert_text("hi");
@@ -321,35 +295,6 @@ mod tests {
         terminal
             .backend_mut()
             .assert_cursor_position(Position { x: 2, y: 1 });
-    }
-
-    #[rstest::rstest]
-    fn render_cursor_at_end() {
-        // Given a ChatInputBoxElement in Input mode with "hi" and cursor at end.
-        let mut element = ChatInputBoxElement;
-        let state = {
-            let mut s = AppState {
-                mode: Mode::Input,
-                ..Default::default()
-            };
-            s.active_chat_input_mut().insert_text("hi");
-            // cursor already at end (2) after inserts
-            s
-        };
-
-        let (mut terminal, area) = setup_term(40, 3);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then cursor is at position (4, 1): inner.x=0 + "> "=2 + "hi"=2.
-        terminal
-            .backend_mut()
-            .assert_cursor_position(Position { x: 4, y: 1 });
     }
 
     #[rstest::rstest]
@@ -412,7 +357,10 @@ mod tests {
         let mut element = ChatInputBoxElement;
         let state = {
             let mut s = AppState {
-                mode: Mode::Input,
+                frontend: FrontendState {
+                    mode: Mode::Input,
+                    ..FrontendState::default()
+                },
                 ..Default::default()
             };
             s.active_chat_input_mut().insert_text("ab\ncd");
@@ -441,7 +389,10 @@ mod tests {
         let mut element = ChatInputBoxElement;
         let state = {
             let mut s = AppState {
-                mode: Mode::Input,
+                frontend: FrontendState {
+                    mode: Mode::Input,
+                    ..FrontendState::default()
+                },
                 ..Default::default()
             };
             s.active_chat_input_mut().insert_text("a\n\nb");

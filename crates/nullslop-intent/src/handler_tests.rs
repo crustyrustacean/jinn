@@ -19,12 +19,10 @@ use nullslop_component::context_strategy_picker::entries::StrategyEntry;
 use nullslop_component::keymap_picker::entries::KeymapEntry;
 use nullslop_component::provider_picker::entries::PickerEntry;
 use nullslop_component::session_picker::entries::SessionEntry;
-use nullslop_component::AppState;
+use nullslop_component::{AppState, FrontendState, ProviderState};
 use nullslop_protocol::context::PinChatEntry;
 use nullslop_protocol::tab::TabDirection;
-use nullslop_protocol::{
-    ChatEntry, Command, Mode, PickerKind, PinPosition, SessionId,
-};
+use nullslop_protocol::{ChatEntry, Command, Mode, PickerKind, PinPosition, SessionId};
 
 use super::IntentHandler;
 use crate::Intent;
@@ -114,13 +112,13 @@ fn submit_message_noop_with_empty_buffer() {
 fn autocomplete_confirm_falls_back_to_switch_tab() {
     // Given a state with no autocomplete active.
     let mut state = AppState::default();
-    let prev_tab = state.active_tab;
+    let prev_tab = state.frontend.active_tab;
 
     // When handling AutocompleteConfirm.
     let result = handle(&Intent::AutocompleteConfirm, &mut state);
 
     // Then the tab has advanced.
-    assert_ne!(state.active_tab, prev_tab);
+    assert_ne!(state.frontend.active_tab, prev_tab);
     assert!(result.commands.is_empty());
 }
 
@@ -354,7 +352,10 @@ fn scroll_to_bottom_resets_scroll() {
 fn switch_tab_next_advances_tab() {
     // Given a state on Chat tab.
     let mut state = AppState::default();
-    assert_eq!(state.active_tab, nullslop_protocol::ActiveTab::Chat);
+    assert_eq!(
+        state.frontend.active_tab,
+        nullslop_protocol::ActiveTab::Chat
+    );
 
     // When handling SwitchTab(Next).
     let result = handle(
@@ -365,7 +366,10 @@ fn switch_tab_next_advances_tab() {
     );
 
     // Then the tab has advanced.
-    assert_eq!(state.active_tab, nullslop_protocol::ActiveTab::Dashboard);
+    assert_eq!(
+        state.frontend.active_tab,
+        nullslop_protocol::ActiveTab::Dashboard
+    );
     assert!(result.commands.is_empty());
 }
 
@@ -378,7 +382,7 @@ fn edit_input_sets_tui_signal() {
     let result = handle(&Intent::EditInput, &mut state);
 
     // Then the edit_requested signal is set.
-    assert!(state.tui_signals.edit_requested);
+    assert!(state.frontend.tui_signals.edit_requested);
     assert!(result.commands.is_empty());
 }
 
@@ -395,7 +399,7 @@ fn quit_sets_should_quit() {
     let result = handle(&Intent::Quit, &mut state);
 
     // Then should_quit is true.
-    assert!(state.should_quit);
+    assert!(state.frontend.should_quit);
     assert!(result.commands.is_empty());
 }
 
@@ -457,20 +461,25 @@ fn interrupt_drains_queued_messages_to_input_buffer() {
     // And the session is idle.
     assert!(state.active_session().is_idle());
     // And a CancelStream command is returned.
-    assert!(result.commands.iter().any(|c| matches!(c, Command::CancelStream { .. })));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::CancelStream { .. }))
+    );
 }
 
 #[rstest::rstest]
 fn set_mode_changes_mode() {
     // Given a state in Normal mode.
     let mut state = AppState::default();
-    assert_eq!(state.mode, Mode::Normal);
+    assert_eq!(state.frontend.mode, Mode::Normal);
 
     // When handling SetMode(Input).
     let result = handle(&Intent::SetMode { mode: Mode::Input }, &mut state);
 
     // Then mode is Input.
-    assert_eq!(state.mode, Mode::Input);
+    assert_eq!(state.frontend.mode, Mode::Input);
     assert!(result.commands.is_empty());
 }
 
@@ -478,16 +487,19 @@ fn set_mode_changes_mode() {
 fn set_mode_clears_picker_kind_when_leaving_picker() {
     // Given a state in Picker mode with active picker kind.
     let mut state = AppState {
-        mode: Mode::Picker,
+        frontend: FrontendState {
+            mode: Mode::Picker,
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.active_picker_kind = Some(PickerKind::Provider);
+    state.frontend.active_picker_kind = Some(PickerKind::Provider);
 
     // When handling SetMode(Normal).
     let result = handle(&Intent::SetMode { mode: Mode::Normal }, &mut state);
 
     // Then active_picker_kind is cleared.
-    assert_eq!(state.active_picker_kind, None);
+    assert_eq!(state.frontend.active_picker_kind, None);
     assert!(result.commands.is_empty());
 }
 
@@ -500,7 +512,7 @@ fn toggle_whichkey_sets_tui_signal() {
     let result = handle(&Intent::ToggleWhichkey, &mut state);
 
     // Then the toggle_whichkey signal is set.
-    assert!(state.tui_signals.toggle_whichkey);
+    assert!(state.frontend.tui_signals.toggle_whichkey);
     assert!(result.commands.is_empty());
 }
 
@@ -517,7 +529,7 @@ fn normal_escape_clears_selection() {
     // Then the selection is cleared.
     assert!(state.active_session().selected_entry_index().is_none());
     // And pinned_pane_close signal is set.
-    assert!(state.tui_signals.pinned_pane_close);
+    assert!(state.frontend.tui_signals.pinned_pane_close);
     assert!(result.commands.is_empty());
 }
 
@@ -532,7 +544,7 @@ fn normal_escape_sets_close_signal_even_without_selection() {
     // Then no commands.
     assert!(result.commands.is_empty());
     // But pinned_pane_close signal is still set.
-    assert!(state.tui_signals.pinned_pane_close);
+    assert!(state.frontend.tui_signals.pinned_pane_close);
 }
 
 // ============================================================
@@ -545,32 +557,50 @@ fn open_picker_provider_sets_kind_and_mode() {
     let mut state = AppState::default();
 
     // When handling OpenPicker(Provider).
-    let result = handle(&Intent::OpenPicker { kind: PickerKind::Provider }, &mut state);
+    let result = handle(
+        &Intent::OpenPicker {
+            kind: PickerKind::Provider,
+        },
+        &mut state,
+    );
 
     // Then active_picker_kind and mode are set.
-    assert_eq!(state.active_picker_kind, Some(PickerKind::Provider));
-    assert_eq!(state.mode, Mode::Picker);
+    assert_eq!(
+        state.frontend.active_picker_kind,
+        Some(PickerKind::Provider)
+    );
+    assert_eq!(state.frontend.mode, Mode::Picker);
     // And a LoadPickerEntries command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::LoadPickerEntries { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::LoadPickerEntries { .. }))
+    );
 }
 
 #[rstest::rstest]
 fn open_picker_keymap_resets_show_all() {
     // Given a state with show_all=true.
     let mut state = AppState {
-        keymap_picker_show_all: true,
+        frontend: FrontendState {
+            keymap_picker_show_all: true,
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
 
     // When handling OpenPicker(Keymap).
-    let result = handle(&Intent::OpenPicker { kind: PickerKind::Keymap }, &mut state);
+    let result = handle(
+        &Intent::OpenPicker {
+            kind: PickerKind::Keymap,
+        },
+        &mut state,
+    );
 
     // Then show_all is false.
-    assert!(!state.keymap_picker_show_all);
-    assert_eq!(state.active_picker_kind, Some(PickerKind::Keymap));
+    assert!(!state.frontend.keymap_picker_show_all);
+    assert_eq!(state.frontend.active_picker_kind, Some(PickerKind::Keymap));
     assert!(result.commands.is_empty());
 }
 
@@ -578,15 +608,23 @@ fn open_picker_keymap_resets_show_all() {
 fn open_picker_noop_when_already_in_picker() {
     // Given a state already in picker mode.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Session),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Session),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
 
     // When handling OpenPicker(Provider).
-    let result = handle(&Intent::OpenPicker { kind: PickerKind::Provider }, &mut state);
+    let result = handle(
+        &Intent::OpenPicker {
+            kind: PickerKind::Provider,
+        },
+        &mut state,
+    );
 
     // Then nothing changed.
-    assert_eq!(state.active_picker_kind, Some(PickerKind::Session));
+    assert_eq!(state.frontend.active_picker_kind, Some(PickerKind::Session));
     assert!(result.commands.is_empty());
 }
 
@@ -594,10 +632,13 @@ fn open_picker_noop_when_already_in_picker() {
 fn picker_insert_char_updates_filter() {
     // Given a state with active provider picker.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Provider),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.provider_picker.set_items(vec![PickerEntry {
+    state.provider.provider_picker.set_items(vec![PickerEntry {
         provider_id: "test/model".to_owned(),
         name: "test".to_owned(),
         provider_name: "test".to_owned(),
@@ -614,7 +655,7 @@ fn picker_insert_char_updates_filter() {
     let result = handle(&Intent::PickerInsertChar { ch: 't' }, &mut state);
 
     // Then the filter contains "t".
-    assert_eq!(state.provider_picker.filter(), "t");
+    assert_eq!(state.provider.provider_picker.filter(), "t");
     assert!(result.commands.is_empty());
 }
 
@@ -622,10 +663,13 @@ fn picker_insert_char_updates_filter() {
 fn picker_backspace_removes_from_filter() {
     // Given a state with active provider picker and "te" in filter.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Provider),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.provider_picker.set_items(vec![PickerEntry {
+    state.provider.provider_picker.set_items(vec![PickerEntry {
         provider_id: "test/model".to_owned(),
         name: "test".to_owned(),
         provider_name: "test".to_owned(),
@@ -637,14 +681,14 @@ fn picker_backspace_removes_from_filter() {
         is_remote: false,
         is_active: false,
     }]);
-    state.provider_picker.insert_char('t');
-    state.provider_picker.insert_char('e');
+    state.provider.provider_picker.insert_char('t');
+    state.provider.provider_picker.insert_char('e');
 
     // When handling PickerBackspace.
     let result = handle(&Intent::PickerBackspace, &mut state);
 
     // Then the filter is "t".
-    assert_eq!(state.provider_picker.filter(), "t");
+    assert_eq!(state.provider.provider_picker.filter(), "t");
     assert!(result.commands.is_empty());
 }
 
@@ -652,10 +696,13 @@ fn picker_backspace_removes_from_filter() {
 fn picker_confirm_provider_returns_provider_switch() {
     // Given a state with active provider picker and a selected entry.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Provider),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.provider_picker.set_items(vec![PickerEntry {
+    state.provider.provider_picker.set_items(vec![PickerEntry {
         provider_id: "test/model".to_owned(),
         name: "test".to_owned(),
         provider_name: "test".to_owned(),
@@ -672,21 +719,26 @@ fn picker_confirm_provider_returns_provider_switch() {
     let result = handle(&Intent::PickerConfirm, &mut state);
 
     // Then a ProviderSwitch command is returned and mode is Normal.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::ProviderSwitch { .. }
-    )));
-    assert_eq!(state.mode, Mode::Normal);
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::ProviderSwitch { .. }))
+    );
+    assert_eq!(state.frontend.mode, Mode::Normal);
 }
 
 #[rstest::rstest]
 fn picker_confirm_session_returns_session_load_command() {
     // Given a state with active session picker and a selected entry.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Session),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Session),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.session_picker.set_items(vec![SessionEntry {
+    state.frontend.session_picker.set_items(vec![SessionEntry {
         session_id: SessionId::new(),
         title: "Test".to_owned(),
         updated_at: jiff::Timestamp::now(),
@@ -697,24 +749,29 @@ fn picker_confirm_session_returns_session_load_command() {
     let result = handle(&Intent::PickerConfirm, &mut state);
 
     // Then session_loading is true.
-    assert!(state.session_loading);
+    assert!(state.session.session_loading);
     // And a SessionLoadRequested command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::SessionLoadRequested { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::SessionLoadRequested { .. }))
+    );
     // And mode is Normal.
-    assert_eq!(state.mode, Mode::Normal);
+    assert_eq!(state.frontend.mode, Mode::Normal);
 }
 
 #[rstest::rstest]
 fn picker_confirm_keymap_sets_mode_and_signal() {
     // Given a state with active keymap picker.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Keymap),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Keymap),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.keymap_picker.set_items(vec![KeymapEntry {
+    state.frontend.keymap_picker.set_items(vec![KeymapEntry {
         key_sequence: "q".to_owned(),
         description: "quit".to_owned(),
         scope: "Normal".to_owned(),
@@ -727,8 +784,8 @@ fn picker_confirm_keymap_sets_mode_and_signal() {
     let result = handle(&Intent::PickerConfirm, &mut state);
 
     // Then mode is Normal and the intent was executed (should_quit is set).
-    assert_eq!(state.mode, Mode::Normal);
-    assert!(state.should_quit);
+    assert_eq!(state.frontend.mode, Mode::Normal);
+    assert!(state.frontend.should_quit);
     assert!(result.commands.is_empty());
 }
 
@@ -748,10 +805,13 @@ fn picker_confirm_noop_with_no_active_picker() {
 fn picker_confirm_strategy_updates_default() {
     // Given a state with active context strategy picker and manual entries.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::ContextAssembly),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::ContextAssembly),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.context_strategy_picker.set_items(vec![
+    state.frontend.context_strategy_picker.set_items(vec![
         StrategyEntry {
             strategy_id: nullslop_protocol::PromptStrategyId::passthrough(),
             name: "Passthrough".to_owned(),
@@ -766,33 +826,38 @@ fn picker_confirm_strategy_updates_default() {
         },
     ]);
     // Navigate to second entry.
-    state.context_strategy_picker.move_down(100);
+    state.frontend.context_strategy_picker.move_down(100);
 
     // When handling PickerConfirm.
     let result = handle(&Intent::PickerConfirm, &mut state);
 
     // Then default_strategy was updated.
     assert_ne!(
-        state.default_strategy,
+        state.frontend.default_strategy,
         nullslop_protocol::PromptStrategyId::passthrough()
     );
     // And SwitchPromptStrategy command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::SwitchPromptStrategy { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::SwitchPromptStrategy { .. }))
+    );
     // And mode is Normal.
-    assert_eq!(state.mode, Mode::Normal);
+    assert_eq!(state.frontend.mode, Mode::Normal);
 }
 
 #[rstest::rstest]
 fn picker_move_up_decrements_selection() {
     // Given a state with active provider picker at index 1.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Provider),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.provider_picker.set_items(vec![
+    state.provider.provider_picker.set_items(vec![
         PickerEntry {
             provider_id: "a".to_owned(),
             name: "a".to_owned(),
@@ -818,14 +883,14 @@ fn picker_move_up_decrements_selection() {
             is_active: false,
         },
     ]);
-    state.provider_picker.move_down(100);
-    assert_eq!(state.provider_picker.selection(), 1);
+    state.provider.provider_picker.move_down(100);
+    assert_eq!(state.provider.provider_picker.selection(), 1);
 
     // When handling PickerMoveUp.
     let result = handle(&Intent::PickerMoveUp, &mut state);
 
     // Then selection is 0.
-    assert_eq!(state.provider_picker.selection(), 0);
+    assert_eq!(state.provider.provider_picker.selection(), 0);
     assert!(result.commands.is_empty());
 }
 
@@ -833,10 +898,13 @@ fn picker_move_up_decrements_selection() {
 fn picker_move_down_increments_selection() {
     // Given a state with active provider picker at index 0.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Provider),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.provider_picker.set_items(vec![
+    state.provider.provider_picker.set_items(vec![
         PickerEntry {
             provider_id: "a".to_owned(),
             name: "a".to_owned(),
@@ -867,7 +935,7 @@ fn picker_move_down_increments_selection() {
     let result = handle(&Intent::PickerMoveDown, &mut state);
 
     // Then selection is 1.
-    assert_eq!(state.provider_picker.selection(), 1);
+    assert_eq!(state.provider.provider_picker.selection(), 1);
     assert!(result.commands.is_empty());
 }
 
@@ -875,17 +943,20 @@ fn picker_move_down_increments_selection() {
 fn picker_move_cursor_left_moves_cursor() {
     // Given a state with active provider picker with "ab" in filter.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Provider),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.provider_picker.insert_char('a');
-    state.provider_picker.insert_char('b');
+    state.provider.provider_picker.insert_char('a');
+    state.provider.provider_picker.insert_char('b');
 
     // When handling PickerMoveCursorLeft.
     let result = handle(&Intent::PickerMoveCursorLeft, &mut state);
 
     // Then cursor moved.
-    assert_eq!(state.provider_picker.cursor_pos(), 1);
+    assert_eq!(state.provider.provider_picker.cursor_pos(), 1);
     assert!(result.commands.is_empty());
 }
 
@@ -893,19 +964,22 @@ fn picker_move_cursor_left_moves_cursor() {
 fn picker_move_cursor_right_moves_cursor() {
     // Given a state with cursor at start of filter.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Provider),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    state.provider_picker.insert_char('a');
-    state.provider_picker.insert_char('b');
-    state.provider_picker.move_cursor_left();
-    state.provider_picker.move_cursor_left();
+    state.provider.provider_picker.insert_char('a');
+    state.provider.provider_picker.insert_char('b');
+    state.provider.provider_picker.move_cursor_left();
+    state.provider.provider_picker.move_cursor_left();
 
     // When handling PickerMoveCursorRight.
     let result = handle(&Intent::PickerMoveCursorRight, &mut state);
 
     // Then cursor moved.
-    assert_eq!(state.provider_picker.cursor_pos(), 1);
+    assert_eq!(state.provider.provider_picker.cursor_pos(), 1);
     assert!(result.commands.is_empty());
 }
 
@@ -913,15 +987,18 @@ fn picker_move_cursor_right_moves_cursor() {
 fn toggle_keymap_scope_filter_toggles_flag() {
     // Given a state with keymap entries.
     let mut state = AppState {
-        all_keymap_entries: vec![KeymapEntry {
-            key_sequence: "q".to_owned(),
-            description: "quit".to_owned(),
-            scope: "Normal".to_owned(),
-            category: "General".to_owned(),
-            command: Intent::Quit,
-            search_text: "q quit".to_owned(),
-        }],
-        keymap_picker_origin_scope: Some("Input".to_owned()),
+        frontend: FrontendState {
+            all_keymap_entries: vec![KeymapEntry {
+                key_sequence: "q".to_owned(),
+                description: "quit".to_owned(),
+                scope: "Normal".to_owned(),
+                category: "General".to_owned(),
+                command: Intent::Quit,
+                search_text: "q quit".to_owned(),
+            }],
+            keymap_picker_origin_scope: Some("Input".to_owned()),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
 
@@ -929,7 +1006,7 @@ fn toggle_keymap_scope_filter_toggles_flag() {
     let result = handle(&Intent::ToggleKeymapScopeFilter, &mut state);
 
     // Then show_all is toggled to true.
-    assert!(state.keymap_picker_show_all);
+    assert!(state.frontend.keymap_picker_show_all);
     assert!(result.commands.is_empty());
 }
 
@@ -937,7 +1014,7 @@ fn toggle_keymap_scope_filter_toggles_flag() {
 fn session_new_creates_fresh_session() {
     // Given a state with an existing session.
     let mut state = AppState::default();
-    let old_id = state.active_session.clone();
+    let old_id = state.session.active_session.clone();
     state
         .active_session_mut()
         .push_entry(ChatEntry::user("old"));
@@ -946,25 +1023,28 @@ fn session_new_creates_fresh_session() {
     let _result = handle(&Intent::SessionNew, &mut state);
 
     // Then a new session is created.
-    assert_ne!(state.active_session, old_id);
+    assert_ne!(state.session.active_session, old_id);
     assert!(state.active_session().history().is_empty());
-    assert_eq!(state.mode, Mode::Normal);
+    assert_eq!(state.frontend.mode, Mode::Normal);
 }
 
 #[rstest::rstest]
 fn session_new_noop_when_picker_active() {
     // Given a state with an active picker.
     let mut state = AppState {
-        active_picker_kind: Some(PickerKind::Provider),
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
-    let old_id = state.active_session.clone();
+    let old_id = state.session.active_session.clone();
 
     // When handling SessionNew.
     let result = handle(&Intent::SessionNew, &mut state);
 
     // Then nothing changed.
-    assert_eq!(state.active_session, old_id);
+    assert_eq!(state.session.active_session, old_id);
     assert!(result.commands.is_empty());
 }
 
@@ -976,7 +1056,10 @@ fn session_new_noop_when_picker_active() {
 fn refresh_models_posts_system_message_and_returns_command() {
     // Given a state with a provider.
     let mut state = AppState {
-        active_provider: "ollama".to_owned(),
+        provider: ProviderState {
+            active_provider: "ollama".to_owned(),
+            ..ProviderState::default()
+        },
         ..Default::default()
     };
     let initial_len = state.active_session().history().len();
@@ -985,12 +1068,14 @@ fn refresh_models_posts_system_message_and_returns_command() {
     let result = handle(&Intent::RefreshModels, &mut state);
 
     // Then a system message was posted.
-    assert_eq!(
-        state.active_session().history().len(),
-        initial_len + 1
-    );
+    assert_eq!(state.active_session().history().len(), initial_len + 1);
     // And a RefreshModels command is returned.
-    assert!(result.commands.iter().any(|c| matches!(c, Command::RefreshModels)));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::RefreshModels))
+    );
 }
 
 #[rstest::rstest]
@@ -1015,15 +1100,14 @@ fn rescan_prompt_templates_posts_system_message_and_returns_command() {
     let result = handle(&Intent::RescanPromptTemplates, &mut state);
 
     // Then a system message was posted.
-    assert_eq!(
-        state.active_session().history().len(),
-        initial_len + 1
-    );
+    assert_eq!(state.active_session().history().len(), initial_len + 1);
     // And a RescanPromptTemplates command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::RescanPromptTemplates
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::RescanPromptTemplates))
+    );
 }
 
 // ============================================================
@@ -1034,14 +1118,14 @@ fn rescan_prompt_templates_posts_system_message_and_returns_command() {
 fn dashboard_select_down_moves_selection() {
     // Given a state with dashboard entries.
     let mut state = AppState::default();
-    state.dashboard.mark_starting("echo", None);
-    state.dashboard.mark_starting("llm", None);
+    state.frontend.dashboard.mark_starting("echo", None);
+    state.frontend.dashboard.mark_starting("llm", None);
 
     // When handling DashboardSelectDown.
     let result = handle(&Intent::DashboardSelectDown, &mut state);
 
     // Then the selection has moved.
-    assert_eq!(state.dashboard.selected_index(), 1);
+    assert_eq!(state.frontend.dashboard.selected_index(), 1);
     assert!(result.commands.is_empty());
 }
 
@@ -1049,15 +1133,15 @@ fn dashboard_select_down_moves_selection() {
 fn dashboard_select_up_moves_selection() {
     // Given a state with dashboard entries at index 1.
     let mut state = AppState::default();
-    state.dashboard.mark_starting("echo", None);
-    state.dashboard.mark_starting("llm", None);
-    state.dashboard.select_next();
+    state.frontend.dashboard.mark_starting("echo", None);
+    state.frontend.dashboard.mark_starting("llm", None);
+    state.frontend.dashboard.select_next();
 
     // When handling DashboardSelectUp.
     let result = handle(&Intent::DashboardSelectUp, &mut state);
 
     // Then the selection is at 0.
-    assert_eq!(state.dashboard.selected_index(), 0);
+    assert_eq!(state.frontend.dashboard.selected_index(), 0);
     assert!(result.commands.is_empty());
 }
 
@@ -1065,17 +1149,17 @@ fn dashboard_select_up_moves_selection() {
 fn dashboard_select_first_moves_to_first() {
     // Given a state with entries at last index.
     let mut state = AppState::default();
-    state.dashboard.mark_starting("echo", None);
-    state.dashboard.mark_starting("llm", None);
-    state.dashboard.mark_starting("ctx", None);
-    state.dashboard.select_next();
-    state.dashboard.select_next();
+    state.frontend.dashboard.mark_starting("echo", None);
+    state.frontend.dashboard.mark_starting("llm", None);
+    state.frontend.dashboard.mark_starting("ctx", None);
+    state.frontend.dashboard.select_next();
+    state.frontend.dashboard.select_next();
 
     // When handling DashboardSelectFirst.
     let result = handle(&Intent::DashboardSelectFirst, &mut state);
 
     // Then the selection is at 0.
-    assert_eq!(state.dashboard.selected_index(), 0);
+    assert_eq!(state.frontend.dashboard.selected_index(), 0);
     assert!(result.commands.is_empty());
 }
 
@@ -1083,15 +1167,15 @@ fn dashboard_select_first_moves_to_first() {
 fn dashboard_select_last_moves_to_last() {
     // Given a state with 3 dashboard entries.
     let mut state = AppState::default();
-    state.dashboard.mark_starting("echo", None);
-    state.dashboard.mark_starting("llm", None);
-    state.dashboard.mark_starting("ctx", None);
+    state.frontend.dashboard.mark_starting("echo", None);
+    state.frontend.dashboard.mark_starting("llm", None);
+    state.frontend.dashboard.mark_starting("ctx", None);
 
     // When handling DashboardSelectLast.
     let result = handle(&Intent::DashboardSelectLast, &mut state);
 
     // Then the selection is at the last index.
-    assert_eq!(state.dashboard.selected_index(), 2);
+    assert_eq!(state.frontend.dashboard.selected_index(), 2);
     assert!(result.commands.is_empty());
 }
 
@@ -1108,7 +1192,7 @@ fn pinned_panel_toggle_sets_signal() {
     let result = handle(&Intent::PinnedPanelToggle, &mut state);
 
     // Then the toggle signal is set.
-    assert!(state.tui_signals.pinned_pane_toggle);
+    assert!(state.frontend.tui_signals.pinned_pane_toggle);
     assert!(result.commands.is_empty());
 }
 
@@ -1121,7 +1205,7 @@ fn pinned_panel_open_sets_signal() {
     let result = handle(&Intent::PinnedPanelOpen, &mut state);
 
     // Then the open signal is set.
-    assert!(state.tui_signals.pinned_pane_open);
+    assert!(state.frontend.tui_signals.pinned_pane_open);
     assert!(result.commands.is_empty());
 }
 
@@ -1134,7 +1218,7 @@ fn pinned_panel_close_sets_signal() {
     let result = handle(&Intent::PinnedPanelClose, &mut state);
 
     // Then the close signal is set.
-    assert!(state.tui_signals.pinned_pane_close);
+    assert!(state.frontend.tui_signals.pinned_pane_close);
     assert!(result.commands.is_empty());
 }
 
@@ -1152,7 +1236,7 @@ fn state_with_pinned(count: usize) -> AppState {
     }
     // Select the first pinned entry.
     if let Some(first_id) = ids.first() {
-        state.pinned_panel.select_by_id(first_id.clone());
+        state.frontend.pinned_panel.select_by_id(first_id.clone());
     }
     state
 }
@@ -1167,7 +1251,10 @@ fn pinned_panel_select_down_moves_selection() {
 
     // Then selection moved.
     let sorted_ids = state.sorted_pinned_ids();
-    assert_eq!(state.pinned_panel.selected_id(), Some(&sorted_ids[1]));
+    assert_eq!(
+        state.frontend.pinned_panel.selected_id(),
+        Some(&sorted_ids[1])
+    );
     assert!(result.commands.is_empty());
 }
 
@@ -1176,14 +1263,17 @@ fn pinned_panel_select_up_moves_selection() {
     // Given a state with 3 pinned entries at index 1.
     let mut state = state_with_pinned(3);
     let sorted_ids = state.sorted_pinned_ids();
-    state.pinned_panel.select_next(&sorted_ids);
+    state.frontend.pinned_panel.select_next(&sorted_ids);
 
     // When handling PinnedPanelSelectUp.
     let result = handle(&Intent::PinnedPanelSelectUp, &mut state);
 
     // Then selection moved back.
     let sorted_ids = state.sorted_pinned_ids();
-    assert_eq!(state.pinned_panel.selected_id(), Some(&sorted_ids[0]));
+    assert_eq!(
+        state.frontend.pinned_panel.selected_id(),
+        Some(&sorted_ids[0])
+    );
     assert!(result.commands.is_empty());
 }
 
@@ -1196,10 +1286,12 @@ fn pinned_panel_unpin_returns_command() {
     let result = handle(&Intent::PinnedPanelUnpin, &mut state);
 
     // Then an UnpinChatEntry command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::UnpinChatEntry { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::UnpinChatEntry { .. }))
+    );
 }
 
 #[rstest::rstest]
@@ -1273,7 +1365,10 @@ fn pinned_panel_pin_cycle_rotates_top_to_bottom() {
         .active_session_mut()
         .pin_entry(&entry_id, PinPosition::Top);
     let sorted_ids = state.sorted_pinned_ids();
-    state.pinned_panel.select_by_id(sorted_ids[0].clone());
+    state
+        .frontend
+        .pinned_panel
+        .select_by_id(sorted_ids[0].clone());
 
     // When handling PinnedPanelPinCycle.
     let result = handle(&Intent::PinnedPanelPinCycle, &mut state);
@@ -1356,7 +1451,9 @@ fn chat_entry_select_prev_decrements_index() {
 fn chat_entry_pin_selected_returns_pin_command() {
     // Given a state with a selected entry.
     let mut state = AppState::default();
-    state.active_session_mut().push_entry(ChatEntry::user("hello"));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::user("hello"));
     state.active_session_mut().select_next_entry();
 
     // When handling ChatEntryPinSelected.
@@ -1380,7 +1477,9 @@ fn chat_entry_pin_selected_returns_pin_command() {
 fn chat_entry_pin_selected_noop_with_no_selection() {
     // Given a state with entries but no selection.
     let mut state = AppState::default();
-    state.active_session_mut().push_entry(ChatEntry::user("hello"));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::user("hello"));
 
     // When handling ChatEntryPinSelected.
     let result = handle(&Intent::ChatEntryPinSelected, &mut state);
@@ -1397,18 +1496,18 @@ fn chat_entry_pin_selected_noop_with_no_selection() {
 fn tui_signals_are_cleared_at_start_of_handle() {
     // Given a state with stale signals from a previous call.
     let mut state = AppState::default();
-    state.tui_signals.toggle_whichkey = true;
-    state.tui_signals.edit_requested = true;
-    state.tui_signals.pinned_pane_toggle = true;
+    state.frontend.tui_signals.toggle_whichkey = true;
+    state.frontend.tui_signals.edit_requested = true;
+    state.frontend.tui_signals.pinned_pane_toggle = true;
 
     // When handling any intent that doesn't set signals.
     let result = handle(&Intent::Quit, &mut state);
 
     // Then the previous signals are cleared (only should_quit is set).
-    assert!(!state.tui_signals.toggle_whichkey);
-    assert!(!state.tui_signals.edit_requested);
-    assert!(!state.tui_signals.pinned_pane_toggle);
-    assert!(state.should_quit);
+    assert!(!state.frontend.tui_signals.toggle_whichkey);
+    assert!(!state.frontend.tui_signals.edit_requested);
+    assert!(!state.frontend.tui_signals.pinned_pane_toggle);
+    assert!(state.frontend.should_quit);
     assert!(result.commands.is_empty());
 }
 
@@ -1420,7 +1519,10 @@ fn tui_signals_are_cleared_at_start_of_handle() {
 fn set_mode_input_to_normal_during_streaming_cancels_stream() {
     // Given a state in Input mode with active stream.
     let mut state = AppState {
-        mode: Mode::Input,
+        frontend: FrontendState {
+            mode: Mode::Input,
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
     state.active_session_mut().begin_streaming();
@@ -1429,10 +1531,12 @@ fn set_mode_input_to_normal_during_streaming_cancels_stream() {
     let result = handle(&Intent::SetMode { mode: Mode::Normal }, &mut state);
 
     // Then a CancelStream command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::CancelStream { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::CancelStream { .. }))
+    );
     // And the session is idle (streaming was cancelled).
     assert!(state.active_session().is_idle());
 }
@@ -1441,7 +1545,10 @@ fn set_mode_input_to_normal_during_streaming_cancels_stream() {
 fn set_mode_input_to_normal_during_streaming_drains_queue() {
     // Given a state in Input mode with active stream and queued messages.
     let mut state = AppState {
-        mode: Mode::Input,
+        frontend: FrontendState {
+            mode: Mode::Input,
+            ..FrontendState::default()
+        },
         ..Default::default()
     };
     state.active_session_mut().begin_streaming();
@@ -1456,5 +1563,10 @@ fn set_mode_input_to_normal_during_streaming_drains_queue() {
     // And the session is idle.
     assert!(state.active_session().is_idle());
     // And a CancelStream command is returned.
-    assert!(result.commands.iter().any(|c| matches!(c, Command::CancelStream { .. })));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::CancelStream { .. }))
+    );
 }

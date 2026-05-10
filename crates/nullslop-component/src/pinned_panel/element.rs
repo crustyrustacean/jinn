@@ -50,7 +50,7 @@ impl UiElement<AppState> for PinnedPanelElement {
             return;
         }
 
-        let selected_index = state.pinned_panel.selection_index(&sorted_ids);
+        let selected_index = state.frontend.pinned_panel.selection_index(&sorted_ids);
         let lines = build_entry_list(&pinned, selected_index, inner.width);
 
         let total_lines = lines.len() as u16;

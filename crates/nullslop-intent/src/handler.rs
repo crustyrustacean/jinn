@@ -72,7 +72,7 @@ impl IntentResult {
 /// For each [`Intent`] variant: call the validator, then act.
 /// On validation failure, the handler does nothing (no-op).
 ///
-/// Some intents set "TUI signals" on `state.tui_signals` — flags that the
+/// Some intents set "TUI signals" on `state.frontend.tui_signals` — flags that the
 /// outer platform layer reads after `handle()` returns and acts upon
 /// (e.g., opening an external editor, toggling a popup).
 pub struct IntentHandler;
@@ -95,7 +95,7 @@ impl IntentHandler {
         reason = "exhaustive match on all Intent variants"
     )]
     pub fn handle(intent: &Intent, state: &mut AppState) -> IntentResult {
-        state.tui_signals.clear();
+        state.frontend.tui_signals.clear();
 
         match intent {
             // --- Chat Input ---
@@ -187,28 +187,28 @@ impl IntentHandler {
                 IntentResult::empty()
             }
             Intent::SwitchTab { direction } => {
-                state.active_tab = match direction {
-                    TabDirection::Next => state.active_tab.next(),
-                    TabDirection::Prev => state.active_tab.prev(),
+                state.frontend.active_tab = match direction {
+                    TabDirection::Next => state.frontend.active_tab.next(),
+                    TabDirection::Prev => state.frontend.active_tab.prev(),
                 };
                 IntentResult::empty()
             }
             Intent::EditInput => {
-                state.tui_signals.edit_requested = true;
+                state.frontend.tui_signals.edit_requested = true;
                 IntentResult::empty()
             }
 
             // --- Mode & App ---
             Intent::Quit => {
                 app::validate_quit(state);
-                state.should_quit = true;
+                state.frontend.should_quit = true;
                 IntentResult::empty()
             }
             Intent::Interrupt => handle_interrupt(state),
             Intent::SetMode { mode } => handle_set_mode(state, *mode),
             Intent::ToggleWhichkey => {
                 app::validate_toggle_whichkey(state);
-                state.tui_signals.toggle_whichkey = true;
+                state.frontend.tui_signals.toggle_whichkey = true;
                 IntentResult::empty()
             }
             Intent::NormalEscape => handle_normal_escape(state),
@@ -217,26 +217,26 @@ impl IntentHandler {
             Intent::OpenPicker { kind } => handle_open_picker(state, *kind),
             Intent::PickerInsertChar { ch } => {
                 picker::validate_picker_insert_char(state, *ch);
-                match state.active_picker_kind {
-                    Some(PickerKind::Provider) => state.provider_picker.insert_char(*ch),
+                match state.frontend.active_picker_kind {
+                    Some(PickerKind::Provider) => state.provider.provider_picker.insert_char(*ch),
                     Some(PickerKind::ContextAssembly) => {
-                        state.context_strategy_picker.insert_char(*ch);
+                        state.frontend.context_strategy_picker.insert_char(*ch);
                     }
-                    Some(PickerKind::Keymap) => state.keymap_picker.insert_char(*ch),
-                    Some(PickerKind::Session) => state.session_picker.insert_char(*ch),
+                    Some(PickerKind::Keymap) => state.frontend.keymap_picker.insert_char(*ch),
+                    Some(PickerKind::Session) => state.frontend.session_picker.insert_char(*ch),
                     None => {}
                 }
                 IntentResult::empty()
             }
             Intent::PickerBackspace => {
                 picker::validate_picker_backspace(state);
-                match state.active_picker_kind {
-                    Some(PickerKind::Provider) => state.provider_picker.backspace(),
+                match state.frontend.active_picker_kind {
+                    Some(PickerKind::Provider) => state.provider.provider_picker.backspace(),
                     Some(PickerKind::ContextAssembly) => {
-                        state.context_strategy_picker.backspace();
+                        state.frontend.context_strategy_picker.backspace();
                     }
-                    Some(PickerKind::Keymap) => state.keymap_picker.backspace(),
-                    Some(PickerKind::Session) => state.session_picker.backspace(),
+                    Some(PickerKind::Keymap) => state.frontend.keymap_picker.backspace(),
+                    Some(PickerKind::Session) => state.frontend.session_picker.backspace(),
                     None => {}
                 }
                 IntentResult::empty()
@@ -244,20 +244,20 @@ impl IntentHandler {
             Intent::PickerConfirm => handle_picker_confirm(state),
             Intent::PickerMoveUp => {
                 picker::validate_picker_move_up(state);
-                match state.active_picker_kind {
+                match state.frontend.active_picker_kind {
                     Some(PickerKind::Provider) => {
-                        state.provider_picker.move_up(Self::PICKER_MAX_VISIBLE);
+                        state.provider.provider_picker.move_up(Self::PICKER_MAX_VISIBLE);
                     }
                     Some(PickerKind::ContextAssembly) => {
-                        state
+                        state.frontend
                             .context_strategy_picker
                             .move_up(Self::PICKER_MAX_VISIBLE);
                     }
                     Some(PickerKind::Keymap) => {
-                        state.keymap_picker.move_up(Self::PICKER_MAX_VISIBLE);
+                        state.frontend.keymap_picker.move_up(Self::PICKER_MAX_VISIBLE);
                     }
                     Some(PickerKind::Session) => {
-                        state.session_picker.move_up(Self::PICKER_MAX_VISIBLE);
+                        state.frontend.session_picker.move_up(Self::PICKER_MAX_VISIBLE);
                     }
                     None => {}
                 }
@@ -265,20 +265,20 @@ impl IntentHandler {
             }
             Intent::PickerMoveDown => {
                 picker::validate_picker_move_down(state);
-                match state.active_picker_kind {
+                match state.frontend.active_picker_kind {
                     Some(PickerKind::Provider) => {
-                        state.provider_picker.move_down(Self::PICKER_MAX_VISIBLE);
+                        state.provider.provider_picker.move_down(Self::PICKER_MAX_VISIBLE);
                     }
                     Some(PickerKind::ContextAssembly) => {
-                        state
+                        state.frontend
                             .context_strategy_picker
                             .move_down(Self::PICKER_MAX_VISIBLE);
                     }
                     Some(PickerKind::Keymap) => {
-                        state.keymap_picker.move_down(Self::PICKER_MAX_VISIBLE);
+                        state.frontend.keymap_picker.move_down(Self::PICKER_MAX_VISIBLE);
                     }
                     Some(PickerKind::Session) => {
-                        state.session_picker.move_down(Self::PICKER_MAX_VISIBLE);
+                        state.frontend.session_picker.move_down(Self::PICKER_MAX_VISIBLE);
                     }
                     None => {}
                 }
@@ -286,26 +286,26 @@ impl IntentHandler {
             }
             Intent::PickerMoveCursorLeft => {
                 picker::validate_picker_move_cursor_left(state);
-                match state.active_picker_kind {
-                    Some(PickerKind::Provider) => state.provider_picker.move_cursor_left(),
+                match state.frontend.active_picker_kind {
+                    Some(PickerKind::Provider) => state.provider.provider_picker.move_cursor_left(),
                     Some(PickerKind::ContextAssembly) => {
-                        state.context_strategy_picker.move_cursor_left();
+                        state.frontend.context_strategy_picker.move_cursor_left();
                     }
-                    Some(PickerKind::Keymap) => state.keymap_picker.move_cursor_left(),
-                    Some(PickerKind::Session) => state.session_picker.move_cursor_left(),
+                    Some(PickerKind::Keymap) => state.frontend.keymap_picker.move_cursor_left(),
+                    Some(PickerKind::Session) => state.frontend.session_picker.move_cursor_left(),
                     None => {}
                 }
                 IntentResult::empty()
             }
             Intent::PickerMoveCursorRight => {
                 picker::validate_picker_move_cursor_right(state);
-                match state.active_picker_kind {
-                    Some(PickerKind::Provider) => state.provider_picker.move_cursor_right(),
+                match state.frontend.active_picker_kind {
+                    Some(PickerKind::Provider) => state.provider.provider_picker.move_cursor_right(),
                     Some(PickerKind::ContextAssembly) => {
-                        state.context_strategy_picker.move_cursor_right();
+                        state.frontend.context_strategy_picker.move_cursor_right();
                     }
-                    Some(PickerKind::Keymap) => state.keymap_picker.move_cursor_right(),
-                    Some(PickerKind::Session) => state.session_picker.move_cursor_right(),
+                    Some(PickerKind::Keymap) => state.frontend.keymap_picker.move_cursor_right(),
+                    Some(PickerKind::Session) => state.frontend.session_picker.move_cursor_right(),
                     None => {}
                 }
                 IntentResult::empty()
@@ -317,43 +317,43 @@ impl IntentHandler {
 
             // --- Dashboard ---
             Intent::DashboardSelectDown => {
-                state.dashboard.select_next();
+                state.frontend.dashboard.select_next();
                 IntentResult::empty()
             }
             Intent::DashboardSelectUp => {
-                state.dashboard.select_prev();
+                state.frontend.dashboard.select_prev();
                 IntentResult::empty()
             }
             Intent::DashboardSelectFirst => {
-                state.dashboard.select_first();
+                state.frontend.dashboard.select_first();
                 IntentResult::empty()
             }
             Intent::DashboardSelectLast => {
-                state.dashboard.select_last();
+                state.frontend.dashboard.select_last();
                 IntentResult::empty()
             }
 
             // --- Pinned Panel ---
             Intent::PinnedPanelToggle => {
-                state.tui_signals.pinned_pane_toggle = true;
+                state.frontend.tui_signals.pinned_pane_toggle = true;
                 IntentResult::empty()
             }
             Intent::PinnedPanelOpen => {
-                state.tui_signals.pinned_pane_open = true;
+                state.frontend.tui_signals.pinned_pane_open = true;
                 IntentResult::empty()
             }
             Intent::PinnedPanelClose => {
-                state.tui_signals.pinned_pane_close = true;
+                state.frontend.tui_signals.pinned_pane_close = true;
                 IntentResult::empty()
             }
             Intent::PinnedPanelSelectDown => {
                 let sorted_ids = state.sorted_pinned_ids();
-                state.pinned_panel.select_next(&sorted_ids);
+                state.frontend.pinned_panel.select_next(&sorted_ids);
                 IntentResult::empty()
             }
             Intent::PinnedPanelSelectUp => {
                 let sorted_ids = state.sorted_pinned_ids();
-                state.pinned_panel.select_prev(&sorted_ids);
+                state.frontend.pinned_panel.select_prev(&sorted_ids);
                 IntentResult::empty()
             }
             Intent::PinnedPanelUnpin => handle_pinned_panel_unpin(state),
@@ -407,7 +407,7 @@ fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
                     .take_while(|(i, _)| *i < cursor_before_insert)
                     .map(|(_, g)| g)
                     .collect();
-                if let Some(template) = state.prompt_templates.find_by_name(&filter) {
+                if let Some(template) = state.context.prompt_templates.find_by_name(&filter) {
                     let body = template.body.clone();
                     state.active_chat_input_mut().expand_autocomplete(&body);
                 } else {
@@ -419,7 +419,7 @@ fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
                     .active_chat_input()
                     .autocomplete_filter()
                     .unwrap_or_default();
-                let matches = compute_matches(&state.prompt_templates, &filter);
+                let matches = compute_matches(&state.context.prompt_templates, &filter);
                 state
                     .active_chat_input_mut()
                     .update_autocomplete_matches(matches);
@@ -432,7 +432,7 @@ fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
             let input = state.active_chat_input();
             if is_valid_trigger_position(input) {
                 let token_start = input.cursor_pos() - 1;
-                let matches = compute_matches(&state.prompt_templates, "");
+                let matches = compute_matches(&state.context.prompt_templates, "");
                 state
                     .active_chat_input_mut()
                     .activate_autocomplete(token_start, matches);
@@ -464,7 +464,7 @@ fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
             .active_chat_input()
             .autocomplete_filter()
             .unwrap_or_default();
-        let matches = compute_matches(&state.prompt_templates, &filter);
+        let matches = compute_matches(&state.context.prompt_templates, &filter);
         state
             .active_chat_input_mut()
             .update_autocomplete_matches(matches);
@@ -499,7 +499,7 @@ fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
                     .active_chat_input()
                     .autocomplete_filter()
                     .unwrap_or_default();
-                let matches = compute_matches(&state.prompt_templates, &filter);
+                let matches = compute_matches(&state.context.prompt_templates, &filter);
                 state
                     .active_chat_input_mut()
                     .update_autocomplete_matches(matches);
@@ -520,7 +520,7 @@ fn handle_submit_message(state: &mut AppState) -> IntentResult {
     }
 
     let text = state.active_chat_input().text().to_owned();
-    let session_id = state.active_session.clone();
+    let session_id = state.session.active_session.clone();
     state.active_chat_input_mut().reset();
 
     IntentResult::with_commands(vec![Command::EnqueueUserMessage {
@@ -537,7 +537,7 @@ fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
                 .active_chat_input()
                 .autocomplete_filter()
                 .unwrap_or_default();
-            let matches = compute_matches(&state.prompt_templates, &filter);
+            let matches = compute_matches(&state.context.prompt_templates, &filter);
             state
                 .active_chat_input_mut()
                 .update_autocomplete_matches(matches);
@@ -545,7 +545,7 @@ fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
         IntentResult::empty()
     } else {
         // Fallback: switch tab when autocomplete is inactive.
-        state.active_tab = state.active_tab.next();
+        state.frontend.active_tab = state.frontend.active_tab.next();
         IntentResult::empty()
     }
 }
@@ -560,7 +560,7 @@ fn handle_interrupt(state: &mut AppState) -> IntentResult {
     state.active_chat_input_mut().deactivate_autocomplete();
 
     if state.active_chat_input().is_empty() {
-        let session_id = state.active_session.clone();
+        let session_id = state.session.active_session.clone();
         cancel_stream_and_drain(state);
         IntentResult::with_commands(vec![Command::CancelStream {
             payload: CancelStream { session_id },
@@ -574,19 +574,19 @@ fn handle_interrupt(state: &mut AppState) -> IntentResult {
 fn handle_set_mode(state: &mut AppState, mode: Mode) -> IntentResult {
     let mut commands = vec![];
 
-    if state.mode == Mode::Input && mode == Mode::Normal && !state.active_session().is_idle() {
-        let session_id = state.active_session.clone();
+    if state.frontend.mode == Mode::Input && mode == Mode::Normal && !state.active_session().is_idle() {
+        let session_id = state.session.active_session.clone();
         cancel_stream_and_drain(state);
         commands.push(Command::CancelStream {
             payload: CancelStream { session_id },
         });
     }
 
-    if state.mode == Mode::Picker && mode != Mode::Picker {
-        state.active_picker_kind = None;
+    if state.frontend.mode == Mode::Picker && mode != Mode::Picker {
+        state.frontend.active_picker_kind = None;
     }
 
-    state.mode = mode;
+    state.frontend.mode = mode;
 
     IntentResult::with_commands(commands)
 }
@@ -598,7 +598,7 @@ fn handle_normal_escape(state: &mut AppState) -> IntentResult {
         state.active_session_mut().clear_selection();
     }
 
-    state.tui_signals.pinned_pane_close = true;
+    state.frontend.tui_signals.pinned_pane_close = true;
 
     IntentResult::empty()
 }
@@ -610,25 +610,25 @@ fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResult {
         return IntentResult::empty();
     }
 
-    state.active_picker_kind = Some(kind);
+    state.frontend.active_picker_kind = Some(kind);
 
     match kind {
         PickerKind::Provider => {
-            state.provider_picker.reset();
+            state.provider.provider_picker.reset();
         }
         PickerKind::ContextAssembly => {
-            state.context_strategy_picker.reset();
+            state.frontend.context_strategy_picker.reset();
         }
         PickerKind::Keymap => {
-            state.keymap_picker.reset();
-            state.keymap_picker_show_all = false;
+            state.frontend.keymap_picker.reset();
+            state.frontend.keymap_picker_show_all = false;
         }
         PickerKind::Session => {
-            state.session_picker.reset();
+            state.frontend.session_picker.reset();
         }
     }
 
-    state.mode = Mode::Picker;
+    state.frontend.mode = Mode::Picker;
 
     // Keymap entries come from state, not services.
     if matches!(kind, PickerKind::Keymap) {
@@ -645,7 +645,7 @@ fn handle_picker_confirm(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
-    match state.active_picker_kind {
+    match state.frontend.active_picker_kind {
         Some(PickerKind::Provider) => confirm_provider(state),
         Some(PickerKind::ContextAssembly) => confirm_strategy(state),
         Some(PickerKind::Keymap) => confirm_keymap(state),
@@ -655,7 +655,7 @@ fn handle_picker_confirm(state: &mut AppState) -> IntentResult {
 }
 
 fn confirm_provider(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.provider_picker.selected_item() else {
+    let Some(entry) = state.provider.provider_picker.selected_item() else {
         return IntentResult::empty();
     };
     if !entry.is_available {
@@ -663,7 +663,7 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     }
     let provider_id = entry.provider_id.clone();
 
-    state.mode = Mode::Normal;
+    state.frontend.mode = Mode::Normal;
     IntentResult::with_commands(vec![
         Command::ProviderSwitch {
             payload: ProviderSwitch { provider_id },
@@ -672,15 +672,15 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
 }
 
 fn confirm_strategy(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.context_strategy_picker.selected_item() else {
+    let Some(entry) = state.frontend.context_strategy_picker.selected_item() else {
         return IntentResult::empty();
     };
     let strategy_id = entry.strategy_id.clone();
-    let session_id = state.active_session.clone();
+    let session_id = state.session.active_session.clone();
 
     state.set_default_strategy(strategy_id.clone());
 
-    state.mode = Mode::Normal;
+    state.frontend.mode = Mode::Normal;
     IntentResult::with_commands(vec![
         Command::SwitchPromptStrategy {
             payload: SwitchPromptStrategy {
@@ -692,25 +692,25 @@ fn confirm_strategy(state: &mut AppState) -> IntentResult {
 }
 
 fn confirm_keymap(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.keymap_picker.selected_item() else {
+    let Some(entry) = state.frontend.keymap_picker.selected_item() else {
         return IntentResult::empty();
     };
     let intent = entry.command.clone();
 
     // Set mode to Normal, then execute the selected keymap intent.
-    state.mode = Mode::Normal;
+    state.frontend.mode = Mode::Normal;
     IntentHandler::handle(&intent, state)
 }
 
 fn confirm_session(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.session_picker.selected_item() else {
+    let Some(entry) = state.frontend.session_picker.selected_item() else {
         return IntentResult::empty();
     };
     let session_id = entry.session_id.clone();
     let byte_offset = entry.byte_offset;
 
-    state.session_loading = true;
-    state.mode = Mode::Normal;
+    state.session.session_loading = true;
+    state.frontend.mode = Mode::Normal;
 
     IntentResult::with_commands(vec![
         Command::SessionLoadRequested {
@@ -725,17 +725,17 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 fn handle_toggle_keymap_scope_filter(state: &mut AppState) -> IntentResult {
     picker::validate_toggle_keymap_scope_filter(state);
 
-    state.keymap_picker_show_all = !state.keymap_picker_show_all;
+    state.frontend.keymap_picker_show_all = !state.frontend.keymap_picker_show_all;
 
-    let scope = state
+    let scope = state.frontend
         .keymap_picker_origin_scope
         .clone()
         .unwrap_or_default();
 
-    let filtered: Vec<_> = if state.keymap_picker_show_all {
-        state.all_keymap_entries.clone()
+    let filtered: Vec<_> = if state.frontend.keymap_picker_show_all {
+        state.frontend.all_keymap_entries.clone()
     } else {
-        state
+        state.frontend
             .all_keymap_entries
             .iter()
             .filter(|e| e.scope == scope)
@@ -743,7 +743,7 @@ fn handle_toggle_keymap_scope_filter(state: &mut AppState) -> IntentResult {
             .collect()
     };
 
-    state.keymap_picker.set_items(filtered);
+    state.frontend.keymap_picker.set_items(filtered);
     IntentResult::empty()
 }
 
@@ -752,14 +752,14 @@ fn handle_session_new(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
-    state.sessions.remove(&state.active_session);
+    state.session.sessions.remove(&state.session.active_session);
 
     let new_id = SessionId::new();
-    state
+    state.session
         .sessions
         .insert(new_id.clone(), nullslop_component::chat_session::ChatSessionState::new());
-    state.active_session = new_id;
-    state.mode = Mode::Normal;
+    state.session.active_session = new_id;
+    state.frontend.mode = Mode::Normal;
 
     IntentResult::empty()
 }
@@ -805,8 +805,8 @@ fn cancel_stream_and_drain(state: &mut AppState) {
 fn resolve_selected_entry_id(state: &AppState) -> Option<(SessionId, nullslop_protocol::ChatEntryId)>
 {
     let sorted_ids = state.sorted_pinned_ids();
-    let index = state.pinned_panel.selection_index(&sorted_ids);
-    let session_id = state.active_session.clone();
+    let index = state.frontend.pinned_panel.selection_index(&sorted_ids);
+    let session_id = state.session.active_session.clone();
 
     let mut pinned = state.active_session().pinned_entries();
     pinned.sort_by_key(|entry| nullslop_component::app_state::pin_sort_key(entry.pin_position));
@@ -864,7 +864,7 @@ fn handle_pinned_panel_pin_cycle(state: &mut AppState) -> IntentResult {
     }
 
     let sorted_ids = state.sorted_pinned_ids();
-    let index = state.pinned_panel.selection_index(&sorted_ids);
+    let index = state.frontend.pinned_panel.selection_index(&sorted_ids);
 
     let mut pinned = state.active_session().pinned_entries();
     pinned.sort_by_key(|entry| nullslop_component::app_state::pin_sort_key(entry.pin_position));
@@ -875,7 +875,7 @@ fn handle_pinned_panel_pin_cycle(state: &mut AppState) -> IntentResult {
 
     let current = entry.pin_position.unwrap_or(PinPosition::Relative);
     let next = cycle_position(current);
-    let session_id = state.active_session.clone();
+    let session_id = state.session.active_session.clone();
     let entry_id = entry.id.clone();
 
     IntentResult::with_commands(vec![Command::PinChatEntry {
@@ -894,7 +894,7 @@ fn handle_chat_entry_pin_selected(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
-    let session_id = state.active_session.clone();
+    let session_id = state.session.active_session.clone();
     let Some(entry_id) = state.active_session().selected_entry_id().cloned() else {
         return IntentResult::empty();
     };

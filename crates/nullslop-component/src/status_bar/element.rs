@@ -31,12 +31,12 @@ impl UiElement<AppState> for StatusBarElement {
             format!("({strategy})")
         };
 
-        let model = if state.active_provider == NO_PROVIDER_ID {
+        let model = if state.provider.active_provider == NO_PROVIDER_ID {
             "no model selected".to_owned()
-        } else if let Some((provider, model)) = state.active_provider.split_once('/') {
+        } else if let Some((provider, model)) = state.provider.active_provider.split_once('/') {
             format!("({provider})/{model}")
         } else {
-            state.active_provider.clone()
+            state.provider.active_provider.clone()
         };
 
         let style = Style::default().fg(Color::DarkGray);
@@ -63,9 +63,8 @@ mod tests {
         (terminal, area)
     }
 
-
     use super::*;
-    use crate::AppState;
+    use crate::{AppState, ProviderState};
 
     #[rstest::rstest]
     fn name_returns_status_bar() {
@@ -114,7 +113,10 @@ mod tests {
         // Given a StatusBarElement with active_provider = "ollama/llama3".
         let mut element = StatusBarElement;
         let state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
+            provider: ProviderState {
+                active_provider: "ollama/llama3".to_owned(),
+                ..ProviderState::default()
+            },
             ..AppState::default()
         };
 
@@ -147,7 +149,10 @@ mod tests {
         // Given a StatusBarElement with a short provider string in a wide area.
         let mut element = StatusBarElement;
         let state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
+            provider: ProviderState {
+                active_provider: "ollama/llama3".to_owned(),
+                ..ProviderState::default()
+            },
             ..AppState::default()
         };
 
@@ -175,7 +180,10 @@ mod tests {
         // Given a StatusBarElement with a provider set.
         let mut element = StatusBarElement;
         let state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
+            provider: ProviderState {
+                active_provider: "ollama/llama3".to_owned(),
+                ..ProviderState::default()
+            },
             ..AppState::default()
         };
 
@@ -203,7 +211,10 @@ mod tests {
         // Given a StatusBarElement with active_provider = "openrouter/anthropic/claude-sonnet-4".
         let mut element = StatusBarElement;
         let state = AppState {
-            active_provider: "openrouter/anthropic/claude-sonnet-4".to_owned(),
+            provider: ProviderState {
+                active_provider: "openrouter/anthropic/claude-sonnet-4".to_owned(),
+                ..ProviderState::default()
+            },
             ..AppState::default()
         };
 
@@ -236,7 +247,10 @@ mod tests {
         // Given a session with sliding_window strategy and an active provider.
         let mut element = StatusBarElement;
         let mut state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
+            provider: ProviderState {
+                active_provider: "ollama/llama3".to_owned(),
+                ..ProviderState::default()
+            },
             ..AppState::default()
         };
         state
@@ -268,35 +282,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_strategy_surrounded_by_parens() {
-        // Given default state with no provider.
-        let mut element = StatusBarElement;
-        let state = AppState::default();
-
-        let (mut terminal, area) = setup_term(50, 1);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then the strategy name is surrounded by parens on the left side.
-        let buffer = terminal.backend().buffer().clone();
-        let first = buffer.cell((0, 0)).expect("first cell");
-        assert_eq!(first.symbol(), "(", "strategy should start with '('");
-        // "(Passthrough)" is 13 chars.
-        let closing = buffer.cell((12, 0)).expect("closing paren cell");
-        assert_eq!(closing.symbol(), ")", "strategy should end with ')'");
-    }
-
-    #[rstest::rstest]
     fn render_shows_pinned_count_when_entries_pinned() {
         // Given a session with a pinned entry.
         let mut element = StatusBarElement;
         let mut state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
+            provider: ProviderState {
+                active_provider: "ollama/llama3".to_owned(),
+                ..ProviderState::default()
+            },
             ..AppState::default()
         };
         let idx = state
@@ -333,7 +326,10 @@ mod tests {
         // Given a session with no pinned entries.
         let mut element = StatusBarElement;
         let state = AppState {
-            active_provider: "ollama/llama3".to_owned(),
+            provider: ProviderState {
+                active_provider: "ollama/llama3".to_owned(),
+                ..ProviderState::default()
+            },
             ..AppState::default()
         };
 

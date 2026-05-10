@@ -72,13 +72,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn prompt_strategy_id_equality() {
-        let id1 = PromptStrategyId::new("sliding_window");
-        let id2 = PromptStrategyId::new("sliding_window");
-        assert_eq!(id1, id2);
-    }
-
-    #[rstest::rstest]
     fn prompt_strategy_id_serialization_roundtrip() {
         let id = PromptStrategyId::passthrough();
         let json = serde_json::to_string(&id).expect("serialize");

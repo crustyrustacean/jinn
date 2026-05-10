@@ -161,7 +161,7 @@ pub fn load_strategy_picker_items(services: &Services, state: &mut AppState) {
     let active_strategy = state.active_session().active_strategy().clone();
     let all = load_strategy_entries(services, &active_strategy);
     let entries = sorted_strategy_entries(&all, "");
-    state.context_strategy_picker.set_items(entries);
+    state.frontend.context_strategy_picker.set_items(entries);
 }
 
 /// Formats the footer line showing the current strategy.

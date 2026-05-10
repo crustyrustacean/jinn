@@ -213,7 +213,7 @@ fn given_fresh_actor_world(_world: &mut ActorWorld) {}
 
 #[cucumber::when(expr = "I submit SendToLlmProvider with the tool loop trigger")]
 async fn when_submit_tool_loop_trigger(world: &mut ActorWorld) {
-    let session_id = world.state().active_session.clone();
+    let session_id = world.state().session.active_session.clone();
     world.submit_command(nullslop_protocol::Command::SendToLlmProvider {
         payload: SendToLlmProvider {
             session_id,

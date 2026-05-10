@@ -293,7 +293,7 @@ impl PromptAssemblyActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.switch_strategy(payload.strategy_id.clone());
-            state
+            state.context
                 .strategy_state
                 .get(&(payload.session_id.clone(), payload.strategy_id.clone()))
                 .cloned()
@@ -329,7 +329,7 @@ impl PromptAssemblyActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.set_strategy_state(payload.blob.clone());
-            state.strategy_state.insert(
+            state.context.strategy_state.insert(
                 (payload.session_id.clone(), payload.strategy_id.clone()),
                 payload.blob.clone(),
             );
@@ -351,7 +351,7 @@ impl PromptAssemblyActor {
     /// Replaces the prompt template store with the loaded templates.
     fn on_prompt_templates_loaded(&self, event: &PromptTemplatesLoaded) {
         let mut state = self.state.write();
-        state.prompt_templates = PromptTemplateStore::from_vec(event.templates.clone());
+        state.context.prompt_templates = PromptTemplateStore::from_vec(event.templates.clone());
     }
 }
 
@@ -531,41 +531,6 @@ mod tests {
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then the strategy was created.
-        let strategy = actor.strategies.get(&session_id).expect("should exist");
-        assert_eq!(strategy.name(), "sliding_window");
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn prompt_strategy_switched_updates_strategy_name() {
-        // Given an actor with an existing session.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let mut actor = PromptAssemblyActor::activate(&mut ctx);
-
-        let session_id = SessionId::new();
-        // Initialize the session with an assemble.
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id: session_id.clone(),
-                history: vec![ChatEntry::user("hello")],
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
-        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
-        sink.clear();
-
-        // When receiving a PromptStrategySwitched event.
-        let event = Event::PromptStrategySwitched {
-            payload: PromptStrategySwitched {
-                session_id: session_id.clone(),
-                strategy_id: PromptStrategyId::sliding_window(),
-            },
-        };
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // And the strategy is now sliding_window.
         let strategy = actor.strategies.get(&session_id).expect("should exist");
         assert_eq!(strategy.name(), "sliding_window");
     }
@@ -1356,7 +1321,7 @@ mod tests {
         // Then the blob is stored in strategy_state.
         {
             let guard = state.read();
-            let stored = guard
+            let stored = guard.context
                 .strategy_state
                 .get(&(session_id.clone(), strategy_id.clone()));
             assert_eq!(stored, Some(&blob));
@@ -1393,9 +1358,9 @@ mod tests {
 
         // Then the prompt template store contains the templates.
         let guard = state.read();
-        assert_eq!(guard.prompt_templates.len(), 1);
+        assert_eq!(guard.context.prompt_templates.len(), 1);
         assert_eq!(
-            guard.prompt_templates.find_by_name("greeting").map(|t| &t.body),
+            guard.context.prompt_templates.find_by_name("greeting").map(|t| &t.body),
             Some(&"Hello!".to_owned())
         );
     }

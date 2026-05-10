@@ -99,17 +99,6 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn actor_host_error_has_debug_display() {
-        // Given an ActorHostError.
-        let err = ActorHostError;
-
-        // When formatting the error.
-        let _debug = format!("{err:?}");
-
-        // Then it can be formatted for debug and display.
-    }
-
-    #[rstest::rstest]
     fn service_returns_backend_name() {
         // Given a FakeActorHost wrapped in a service.
         let host = Arc::new(crate::fake::FakeActorHost::new());

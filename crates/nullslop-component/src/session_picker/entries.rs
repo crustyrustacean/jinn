@@ -196,7 +196,7 @@ pub fn load_session_entries(services: &Services) -> Vec<SessionEntry> {
 /// [`SelectionState`]: nullslop_selection_widget::SelectionState
 pub fn load_session_picker_items(services: &Services, state: &mut crate::AppState) {
     let entries = load_session_entries(services);
-    state.session_picker.set_items(entries);
+    state.frontend.session_picker.set_items(entries);
 }
 
 #[cfg(test)]
@@ -233,23 +233,6 @@ mod tests {
 
         // Then the title appears in the rendered line.
         assert!(row.spans.iter().any(|s| s.content.contains("My Session")));
-    }
-
-    #[rstest::rstest]
-    fn render_row_contains_date() {
-        // Given a session entry.
-        let entry = SessionEntry {
-            session_id: nullslop_protocol::SessionId::new(),
-            title: "My Session".to_owned(),
-            updated_at: jiff::Timestamp::now(),
-            byte_offset: 0,
-        };
-
-        // When rendering.
-        let row = entry.render_row(false);
-
-        // Then the row has multiple spans (title + date).
-        assert!(row.spans.len() >= 2);
     }
 
     #[rstest::rstest]

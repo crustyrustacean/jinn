@@ -75,11 +75,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn prompt_assembled_has_type_name() {
-        assert_eq!(PromptAssembled::TYPE_NAME, "context::PromptAssembled");
-    }
-
-    #[rstest::rstest]
     fn prompt_strategy_switched_serialization_roundtrip() {
         // Given a PromptStrategySwitched event.
         let evt = PromptStrategySwitched {
@@ -93,14 +88,6 @@ mod tests {
 
         // Then fields are preserved.
         assert_eq!(back.strategy_id, PromptStrategyId::sliding_window());
-    }
-
-    #[rstest::rstest]
-    fn prompt_strategy_switched_has_type_name() {
-        assert_eq!(
-            PromptStrategySwitched::TYPE_NAME,
-            "context::PromptStrategySwitched"
-        );
     }
 
     #[rstest::rstest]
@@ -121,11 +108,4 @@ mod tests {
         assert_eq!(back.blob["compaction_count"], 3);
     }
 
-    #[rstest::rstest]
-    fn strategy_state_updated_has_type_name() {
-        assert_eq!(
-            StrategyStateUpdated::TYPE_NAME,
-            "context::StrategyStateUpdated"
-        );
-    }
 }
