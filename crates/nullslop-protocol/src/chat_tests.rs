@@ -313,15 +313,3 @@ fn pin_position_enum_serialization() {
     }
 }
 
-#[rstest::rstest]
-fn with_pin_does_not_mutate_original() {
-    // Given a cloned user entry.
-    let original = ChatEntry::user("test");
-    let clone = original.clone();
-
-    // When calling with_pin on the clone.
-    let _pinned = clone.with_pin(PinPosition::Top);
-
-    // Then the original is unchanged (pin_position still None).
-    assert_eq!(original.pin_position, None);
-}

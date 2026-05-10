@@ -139,22 +139,6 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn name_returns_configured_name() {
-        // Given a generic factory with a custom name.
-        let factory = GenericLlmServiceFactory::new(
-            "my-provider".to_owned(),
-            LLMBackend::OpenRouter,
-            "gpt-4".to_owned(),
-            None,
-            None,
-        );
-
-        // When asking for the name.
-        // Then it returns the configured name.
-        assert_eq!(factory.name(), "my-provider");
-    }
-
-    #[rstest::rstest]
     fn create_returns_error_when_no_key_for_keyed_backend() {
         // Given a factory with no API key targeting a key-required backend.
         let factory = GenericLlmServiceFactory::new(

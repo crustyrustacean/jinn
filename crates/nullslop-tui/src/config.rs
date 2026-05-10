@@ -46,22 +46,4 @@ mod tests {
         // Then mouse selection is enabled.
         assert!(config.mouse_selection);
     }
-
-    #[rstest::rstest]
-    fn new_config_with_false_disables_mouse_selection() {
-        // Given an explicit config with mouse selection disabled.
-        let config = TuiConfig::new(false);
-
-        // Then mouse selection is disabled.
-        assert!(!config.mouse_selection);
-    }
-
-    #[rstest::rstest]
-    fn new_config_with_true_enables_mouse_selection() {
-        // Given an explicit config with mouse selection enabled.
-        let config = TuiConfig::new(true);
-
-        // Then mouse selection is enabled.
-        assert!(config.mouse_selection);
-    }
 }

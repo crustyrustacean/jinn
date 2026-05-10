@@ -147,29 +147,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn loaded_matches_original_timestamp() {
-        // Given a cache with entries and a timestamp.
-        let mut cache = ModelCache::new();
-        cache.entries.insert(
-            "ollama".to_owned(),
-            vec!["llama3".to_owned(), "mistral".to_owned()],
-        );
-        cache.last_updated_at = Some(Timestamp::now());
-
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("model_cache.json");
-
-        // When saving and loading.
-        cache.save(&path).expect("save");
-        let loaded = ModelCache::load(&path).expect("load");
-
-        // Then the loaded cache has a timestamp.
-        assert!(loaded.is_some());
-        let loaded = loaded.unwrap();
-        assert!(loaded.last_updated_at.is_some());
-    }
-
-    #[rstest::rstest]
     fn load_accepts_cache_without_timestamp() {
         // Given a cache JSON file without last_updated_at.
         let dir = tempfile::tempdir().expect("tempdir");

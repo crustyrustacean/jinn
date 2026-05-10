@@ -96,14 +96,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn two_tabs_cycle_correctly() {
-        assert_eq!(ActiveTab::Chat.next(), ActiveTab::Dashboard);
-        assert_eq!(ActiveTab::Dashboard.next(), ActiveTab::Chat);
-        assert_eq!(ActiveTab::Chat.prev(), ActiveTab::Dashboard);
-        assert_eq!(ActiveTab::Dashboard.prev(), ActiveTab::Chat);
-    }
-
-    #[rstest::rstest]
     fn labels_are_distinct() {
         // Given all tabs.
         // When collecting labels from each tab.

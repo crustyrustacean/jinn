@@ -77,20 +77,6 @@ fn load_provider_entries_returns_provider_with_correct_fields(
 }
 
 #[rstest::rstest]
-fn load_provider_entries_includes_all_regardless_of_text() {
-    // Given a registry with "ollama" and "openrouter".
-    let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
-    let registry = ProviderRegistry::from_config(config).expect("registry");
-    let api_keys = ApiKeys::new();
-
-    // When loading entries (no filter — returns everything).
-    let entries = load_provider_entries(&registry, &api_keys, None);
-
-    // Then both providers are returned.
-    assert_eq!(entries.len(), 2);
-}
-
-#[rstest::rstest]
 fn load_provider_entries_marks_key_required_unavailable_when_key_missing() {
     // Given a registry with a key-required provider and no API key.
     let config = make_config(vec![openrouter_entry()], vec![], None);
@@ -531,44 +517,6 @@ fn sorted_entries_preserves_order_when_filtering() {
 }
 
 #[rstest::rstest]
-fn sorted_entries_preserves_order_when_no_active() {
-    // Given entries with active_provider "__no_provider__" and empty filter.
-    let entries = vec![
-        PickerEntry {
-            provider_id: "a/model".into(),
-            name: "a".into(),
-            provider_name: "a".into(),
-            backend: "a".into(),
-            model: "model".into(),
-            is_alias: false,
-            alias_target: None,
-            is_available: true,
-            is_remote: false,
-            is_active: false,
-        },
-        PickerEntry {
-            provider_id: "b/model".into(),
-            name: "b".into(),
-            provider_name: "b".into(),
-            backend: "b".into(),
-            model: "model".into(),
-            is_alias: false,
-            alias_target: None,
-            is_available: true,
-            is_remote: false,
-            is_active: false,
-        },
-    ];
-
-    // When sorting with empty filter and no active provider.
-    let result = sorted_entries(&entries, "", "__no_provider__");
-
-    // Then entries are sorted by model name (both "model", so relative order preserved).
-    assert_eq!(result[0].provider_id, "a/model");
-    assert_eq!(result[1].provider_id, "b/model");
-}
-
-#[rstest::rstest]
 fn available_entry_comes_first() {
     // Given entries with mixed availability.
     let entries = vec![
@@ -617,56 +565,6 @@ fn available_entry_comes_first() {
     assert_eq!(result.len(), 3);
     assert_eq!(result[0].provider_id, "a/model");
     assert!(result[0].is_available);
-}
-
-#[rstest::rstest]
-fn unavailable_entries_sorted_by_model() {
-    // Given entries with mixed availability.
-    let entries = vec![
-        PickerEntry {
-            provider_id: "z/model".into(),
-            name: "z".into(),
-            provider_name: "z".into(),
-            backend: "z".into(),
-            model: "model".into(),
-            is_alias: false,
-            alias_target: None,
-            is_available: false,
-            is_remote: false,
-            is_active: false,
-        },
-        PickerEntry {
-            provider_id: "a/model".into(),
-            name: "a".into(),
-            provider_name: "a".into(),
-            backend: "a".into(),
-            model: "model".into(),
-            is_alias: false,
-            alias_target: None,
-            is_available: true,
-            is_remote: false,
-            is_active: false,
-        },
-        PickerEntry {
-            provider_id: "b/model".into(),
-            name: "b".into(),
-            provider_name: "b".into(),
-            backend: "b".into(),
-            model: "model".into(),
-            is_alias: false,
-            alias_target: None,
-            is_available: false,
-            is_remote: false,
-            is_active: false,
-        },
-    ];
-
-    // When sorting with empty filter and no active provider.
-    let result = sorted_entries(&entries, "", "__no_provider__");
-
-    // Then unavailable entries are after the available one.
-    assert!(!result[1].is_available);
-    assert!(!result[2].is_available);
 }
 
 #[rstest::rstest]

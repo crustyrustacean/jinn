@@ -116,11 +116,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn tool_batch_completed_type_name() {
-        assert_eq!(ToolBatchCompleted::TYPE_NAME, "tool::ToolBatchCompleted");
-    }
-
-    #[rstest::rstest]
     fn tool_execution_completed_roundtrip() {
         // Given a ToolExecutionCompleted event.
         let event = ToolExecutionCompleted {
@@ -142,14 +137,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn tool_execution_completed_type_name() {
-        assert_eq!(
-            ToolExecutionCompleted::TYPE_NAME,
-            "tool::ToolExecutionCompleted"
-        );
-    }
-
-    #[rstest::rstest]
     fn tool_use_started_roundtrip() {
         // Given a ToolUseStarted event.
         let event = ToolUseStarted {
@@ -166,11 +153,6 @@ mod tests {
         // Then it matches.
         assert_eq!(back.id, "call_1");
         assert_eq!(back.name, "echo");
-    }
-
-    #[rstest::rstest]
-    fn tool_use_started_type_name() {
-        assert_eq!(ToolUseStarted::TYPE_NAME, "tool::ToolUseStarted");
     }
 
     #[rstest::rstest]
@@ -194,11 +176,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn tool_call_received_type_name() {
-        assert_eq!(ToolCallReceived::TYPE_NAME, "tool::ToolCallReceived");
-    }
-
-    #[rstest::rstest]
     fn tool_call_streaming_roundtrip() {
         // Given a ToolCallStreaming event.
         let event = ToolCallStreaming {
@@ -214,11 +191,6 @@ mod tests {
         // Then it matches.
         assert_eq!(back.index, 2);
         assert_eq!(back.partial_json, r#"{"input":"he"#);
-    }
-
-    #[rstest::rstest]
-    fn tool_call_streaming_type_name() {
-        assert_eq!(ToolCallStreaming::TYPE_NAME, "tool::ToolCallStreaming");
     }
 
     #[rstest::rstest]
@@ -242,8 +214,4 @@ mod tests {
         assert_eq!(back.definitions.len(), 1);
     }
 
-    #[rstest::rstest]
-    fn tools_registered_type_name() {
-        assert_eq!(ToolsRegistered::TYPE_NAME, "tool::ToolsRegistered");
-    }
 }

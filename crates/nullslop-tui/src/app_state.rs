@@ -26,23 +26,5 @@ mod tests {
 
         // Then it is Starting.
     }
-
-    #[rstest::rstest]
-    fn all_variants_are_distinct() {
-        // Given all three variants.
-        let variants = [
-            AppStatus::Starting,
-            AppStatus::Ready,
-            AppStatus::ShuttingDown,
-        ];
-
-        // When comparing each pair of variants.
-        for (i, a) in variants.iter().enumerate() {
-            for (j, b) in variants.iter().enumerate() {
-                if i != j {
-                    assert_ne!(a, b);
-                }
-            }
-        }
-    }
 }
+

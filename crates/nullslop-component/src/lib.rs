@@ -22,7 +22,6 @@
 
 pub mod app_quit;
 pub mod app_state;
-pub mod state;
 pub mod char_counter;
 pub mod chat_entry_selection;
 pub mod chat_input_box;
@@ -39,18 +38,22 @@ pub mod provider;
 pub mod provider_picker;
 pub mod session_picker;
 pub mod shutdown_tracker;
+pub mod state;
 pub mod status_bar;
 pub mod tab_nav;
 pub mod tui_signals;
 
-pub use app_state::AppState;
-pub use nullslop_providers::NO_PROVIDER_ID;
-pub use state::{State, StateReadGuard, StateWriteGuard};
-pub use tui_signals::TuiSignals;
+pub use app_state::{
+    AppState, ContextAssemblyState, FrontendState, ProviderState, SessionState,
+    ShutdownCoordinatorState,
+};
 pub use chat_input_box::ChatInputBoxState;
 pub use chat_session::ChatSessionState;
 pub use dashboard::DashboardState;
+pub use nullslop_providers::NO_PROVIDER_ID;
 pub use shutdown_tracker::ShutdownTrackerState;
+pub use state::{State, StateReadGuard, StateWriteGuard};
+pub use tui_signals::TuiSignals;
 
 /// Test utilities shared across the crate.
 ///

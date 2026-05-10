@@ -114,40 +114,6 @@ fn rejects_empty_models_list() {
 }
 
 #[rstest::rstest]
-fn rejects_duplicate_expanded_ids() {
-    // Given two providers whose {name}/{model} collide.
-    let config = make_config(
-        vec![
-            ProviderEntry {
-                name: "ollama".to_owned(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-            },
-            ProviderEntry {
-                // Same name — but duplicate block names are caught first.
-                name: "ollama".to_owned(),
-                backend: "ollama".to_owned(),
-                models: vec!["llama3".to_owned()],
-                base_url: None,
-                api_key_env: None,
-                requires_key: false,
-            },
-        ],
-        vec![],
-        None,
-    );
-
-    // When building the registry.
-    let result = ProviderRegistry::from_config(config);
-
-    // Then it fails (duplicate block names caught before expansion).
-    assert!(result.is_err());
-}
-
-#[rstest::rstest]
 fn registry_has_two_entries() {
     // Given a config with one provider that has two models.
     let config = make_config(

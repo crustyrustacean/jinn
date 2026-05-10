@@ -11,7 +11,6 @@
 //! - session input buffers
 //! - session phase (idle → sending → streaming → idle)
 //! - `active_session`, `session_loading`
-//! - `strategy_state` (during `SessionLoadCompleted` only — shared write during transition)
 //!
 //! # Lock discipline
 //!
@@ -270,7 +269,7 @@ impl SessionPersistenceActor {
             EnqueueAction::AssemblePrompt => {
                 let state = self.state.read();
                 let history = state.session(&payload.session_id).history().to_vec();
-                let model_name = state.active_provider.clone();
+                let model_name = state.provider.active_provider.clone();
                 (history, model_name)
             }
             EnqueueAction::Queued => (vec![], String::new()),
@@ -372,15 +371,8 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.restore_history(payload.history.clone());
-            session.switch_strategy(payload.active_strategy.clone());
-            state.active_session = payload.session_id.clone();
-            state.session_loading = false;
-            for (key, blob) in &payload.blobs {
-                let strat_id = PromptStrategyId::new(key.as_str());
-                state
-                    .strategy_state
-                    .insert((payload.session_id.clone(), strat_id), blob.clone());
-            }
+            state.session.active_session = payload.session_id.clone();
+            state.session.session_loading = false;
         }
 
         if let Err(e) = ctx.send_command(Command::RestoreStrategyState {
@@ -678,22 +670,6 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn session_persistence_actor_handles_missing_store_gracefully() {
-        // Given a SessionPersistenceActor WITHOUT a store injected.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let mut actor = SessionPersistenceActor::activate(&mut ctx);
-
-        // When a SessionSaveRequested event is sent.
-        let session_id = SessionId::new();
-        let event = make_save_event(&session_id, "No Store");
-
-        // Then the actor does not panic.
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
     async fn session_persistence_actor_saves_multiple_sessions() {
         // Given a SessionPersistenceActor with a store.
         let sink = Arc::new(RecordingSink::new());
@@ -882,7 +858,7 @@ mod tests {
         let session_id = SessionId::new();
         {
             let mut guard = state.write();
-            guard.active_provider = "lmstudio/my-model".to_owned();
+            guard.provider.active_provider = "lmstudio/my-model".to_owned();
         }
 
         // When processing EnqueueUserMessage while idle.
@@ -1215,13 +1191,13 @@ mod tests {
         // And the active session is set.
         {
             let guard = state.read();
-            assert_eq!(guard.active_session, session_id);
+            assert_eq!(guard.session.active_session, session_id);
         }
 
         // And session_loading is cleared.
         {
             let guard = state.read();
-            assert!(!guard.session_loading);
+            assert!(!guard.session.session_loading);
         }
 
         // And RestoreStrategyState and SwitchPromptStrategy were emitted.

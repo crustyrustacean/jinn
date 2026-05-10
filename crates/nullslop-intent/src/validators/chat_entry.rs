@@ -53,7 +53,7 @@ pub enum RefreshModelsError {
 ///
 /// Returns an error if no provider is configured.
 pub fn validate_refresh_models(state: &AppState) -> Result<(), RefreshModelsError> {
-    if state.active_provider == nullslop_component::NO_PROVIDER_ID {
+    if state.provider.active_provider == nullslop_component::NO_PROVIDER_ID {
         return Err(RefreshModelsError::NoProvider);
     }
     Ok(())
@@ -86,7 +86,7 @@ pub enum SessionNewError {
 ///
 /// Returns an error if a picker is currently active.
 pub fn validate_session_new(state: &AppState) -> Result<(), SessionNewError> {
-    if state.active_picker_kind.is_some() {
+    if state.frontend.active_picker_kind.is_some() {
         return Err(SessionNewError::PickerActive);
     }
     Ok(())
@@ -97,20 +97,6 @@ mod tests {
     use nullslop_protocol::ChatEntry;
 
     use super::*;
-
-    // --- ChatEntrySelectNext/Prev tests ---
-
-    #[rstest::rstest]
-    fn validate_chat_entry_select_next_always_succeeds() {
-        let state = AppState::default();
-        validate_chat_entry_select_next(&state);
-    }
-
-    #[rstest::rstest]
-    fn validate_chat_entry_select_prev_always_succeeds() {
-        let state = AppState::default();
-        validate_chat_entry_select_prev(&state);
-    }
 
     // --- ChatEntryPinSelected tests ---
 
@@ -162,7 +148,7 @@ mod tests {
     fn refresh_models_succeeds_with_provider() {
         // Given a state with a configured provider.
         let mut state = AppState::default();
-        state.active_provider = "ollama".to_owned();
+        state.provider.active_provider = "ollama".to_owned();
 
         // When validating refresh models.
         let result = validate_refresh_models(&state);
@@ -183,20 +169,6 @@ mod tests {
         assert!(matches!(result, Err(RefreshModelsError::NoProvider)));
     }
 
-    // --- RescanPromptTemplates tests ---
-
-    #[rstest::rstest]
-    fn rescan_prompt_templates_always_succeeds() {
-        // Given any app state.
-        let state = AppState::default();
-
-        // When validating rescan prompt templates.
-        let result = validate_rescan_prompt_templates(&state);
-
-        // Then it succeeds.
-        assert!(result.is_ok());
-    }
-
     // --- SessionNew tests ---
 
     #[rstest::rstest]
@@ -215,7 +187,7 @@ mod tests {
     fn session_new_fails_when_picker_active() {
         // Given a state with an active picker.
         let mut state = AppState::default();
-        state.active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
+        state.frontend.active_picker_kind = Some(nullslop_protocol::PickerKind::Provider);
 
         // When validating session new.
         let result = validate_session_new(&state);

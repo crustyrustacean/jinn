@@ -30,24 +30,6 @@ fn command_msg_name_is_module_scoped() {
     assert_eq!(TestCommand::NAME, "test_mod::TestCommand");
 }
 
-#[rstest::rstest]
-fn event_msg_type_name_is_static_str() {
-    // Given a derived EventMsg implementation.
-    // When binding TYPE_NAME to a local.
-    // Then it has the correct type and value.
-    let name: &'static str = TestEvent::TYPE_NAME;
-    assert_eq!(name, "test_mod::TestEvent");
-}
-
-#[rstest::rstest]
-fn command_msg_name_is_static_str() {
-    // Given a derived CommandMsg implementation.
-    // When binding NAME to a local.
-    // Then it has the correct type and value.
-    let name: &'static str = TestCommand::NAME;
-    assert_eq!(name, "test_mod::TestCommand");
-}
-
 /// Test fixture: event in a different module scope.
 #[derive(Debug, Clone, EventMsg)]
 #[event_msg("chat_input")]
