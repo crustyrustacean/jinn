@@ -6,7 +6,8 @@ resolver = "3"
 default-run = "nullslop"
 
 [workspace]
-members = ["crates/*", "actors/*", "tests/*"]
+members = ["crates/*", "crates/slices/nsslice-status-bar", "crates/slices/nsslice-char-counter", "crates/slices/nsslice-dashboard", "actors/*", "tests/*"]
+exclude = ["crates/slices"]
 
 [lib]
 path = "src/lib.rs"
@@ -32,6 +33,9 @@ nullslop-session = { workspace = true }
 nullslop-session-actor = { workspace = true }
 nullslop-tool-orchestrator = { workspace = true }
 nullslop-provider-actor = { workspace = true }
+nsslice-status-bar = { workspace = true }
+nsslice-char-counter = { workspace = true }
+nsslice-dashboard = { workspace = true }
 nullslop-shutdown-tracker = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
@@ -80,6 +84,9 @@ nullslop-session-actor = { path = "actors/nullslop-session-actor" }
 nullslop-provider-actor = { path = "actors/nullslop-provider-actor" }
 nullslop-intent = { path = "crates/nullslop-intent" }
 nullslop-shutdown-tracker = { path = "actors/nullslop-shutdown-tracker" }
+nsslice-status-bar = { path = "crates/slices/nsslice-status-bar" }
+nsslice-char-counter = { path = "crates/slices/nsslice-char-counter" }
+nsslice-dashboard = { path = "crates/slices/nsslice-dashboard" }
 
 # Error handling
 wherror = "2.3.1"

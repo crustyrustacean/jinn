@@ -137,6 +137,9 @@ impl App {
                 let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
                 let mut ui_registry = nullslop_component::AppUiRegistry::new();
                 nullslop_component::register_tui_elements(&mut ui_registry);
+                nsslice_status_bar::register(&mut ui_registry);
+                nsslice_char_counter::register(&mut ui_registry);
+                nsslice_dashboard::register(&mut ui_registry);
                 let which_key = nullslop_tui::app::WhichKeyInstance::new(
                     nullslop_tui::keymap::init(),
                     nullslop_tui::Scope::Normal,
@@ -502,6 +505,9 @@ fn create_core_with_actor_host(
     let core = AppCore { state, sender };
     let mut registry = nullslop_component::AppUiRegistry::new();
     nullslop_component::register_all(&mut registry);
+    nsslice_status_bar::register(&mut registry);
+    nsslice_char_counter::register(&mut registry);
+    nsslice_dashboard::register(&mut registry);
 
     (core, services, actor_host_service, core_notify_rx)
 }

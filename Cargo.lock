@@ -2795,6 +2795,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsslice-char-counter"
+version = "0.1.0"
+dependencies = [
+ "nullslop-component",
+ "nullslop-component-ui",
+ "ratatui",
+ "rstest",
+]
+
+[[package]]
+name = "nsslice-dashboard"
+version = "0.1.0"
+dependencies = [
+ "nullslop-component",
+ "nullslop-component-ui",
+ "ratatui",
+ "rstest",
+]
+
+[[package]]
+name = "nsslice-status-bar"
+version = "0.1.0"
+dependencies = [
+ "nullslop-component",
+ "nullslop-component-ui",
+ "nullslop-protocol",
+ "nullslop-providers",
+ "ratatui",
+ "rstest",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2813,6 +2845,9 @@ dependencies = [
  "error-stack",
  "jiff",
  "kanal",
+ "nsslice-char-counter",
+ "nsslice-dashboard",
+ "nsslice-status-bar",
  "nullslop-actor",
  "nullslop-actor-host",
  "nullslop-cli",
