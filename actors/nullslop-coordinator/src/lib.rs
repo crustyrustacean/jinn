@@ -23,7 +23,7 @@ use nullslop_protocol::provider::{
     ProviderSwitch, ProviderSwitched, SendMessage, SendToLlmProvider,
 };
 use nullslop_protocol::session::SessionLoadCompleted;
-use nullslop_protocol::tool::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
+use nullslop_protocol::tool::PushToolResult;
 use nullslop_protocol::system::LoadPickerEntries;
 use nullslop_protocol::{
     ChatEntry, Command, Event, PickerKind, PromptStrategyId,
@@ -69,10 +69,8 @@ impl Actor for CoordinatorActor {
         ctx.subscribe_command::<RestoreStrategyState>();
         ctx.subscribe_command::<LoadPickerEntries>();
         ctx.subscribe_command::<SessionLoadCompleted>();
-        ctx.subscribe_command::<ExecuteToolBatch>();
         ctx.subscribe_command::<PushToolResult>();
         ctx.subscribe_command::<SendMessage>();
-        ctx.subscribe_command::<RegisterTools>();
 
         // Subscribe to the PromptAssembled event.
         ctx.subscribe_event::<nullslop_protocol::context::PromptAssembled>();
@@ -146,17 +144,11 @@ impl CoordinatorActor {
             Command::SessionLoadCompleted { payload } => {
                 self.handle_session_load_completed(payload, ctx);
             }
-            Command::ExecuteToolBatch { payload } => {
-                self.handle_execute_tool_batch(payload, ctx);
-            }
             Command::PushToolResult { payload } => {
                 self.handle_push_tool_result(payload);
             }
             Command::SendMessage { payload } => {
                 self.handle_send_message(payload, ctx);
-            }
-            Command::RegisterTools { .. } => {
-                // Forward-only; LLM actor subscribes to RegisterTools directly.
             }
             // Commands NOT subscribed to — these should not arrive.
             Command::AssemblePrompt { .. }
@@ -166,7 +158,9 @@ impl CoordinatorActor {
             | Command::SessionLoadRequested { .. }
             | Command::CancelStream { .. }
             | Command::RefreshModels
-            | Command::RescanPromptTemplates => {}
+            | Command::RescanPromptTemplates
+            | Command::ExecuteToolBatch { .. }
+            | Command::RegisterTools { .. } => {}
         }
     }
 
@@ -409,24 +403,6 @@ impl CoordinatorActor {
         }
     }
 
-    /// ExecuteToolBatch: emit individual ExecuteTool commands for each tool call.
-    fn handle_execute_tool_batch(&self, payload: &ExecuteToolBatch, ctx: &ActorContext) {
-        for tool_call in &payload.tool_calls {
-            if let Err(e) = ctx.send_command(Command::ExecuteTool {
-                payload: ExecuteTool {
-                    session_id: payload.session_id.clone(),
-                    tool_call: tool_call.clone(),
-                },
-            }) {
-                tracing::warn!(
-                    err = ?e,
-                    tool_call_id = %tool_call.id,
-                    "coordinator failed to emit ExecuteTool"
-                );
-            }
-        }
-    }
-
     /// PushToolResult: add tool result to session history.
     fn handle_push_tool_result(&self, payload: &PushToolResult) {
         let mut state = self.state.write();
@@ -499,11 +475,11 @@ mod tests {
     };
     use nullslop_protocol::provider::{ProviderSwitch, SendMessage};
     use nullslop_protocol::session::SessionLoadCompleted;
-    use nullslop_protocol::tool::{ExecuteToolBatch, PushToolResult};
+    use nullslop_protocol::tool::PushToolResult;
     use nullslop_protocol::system::LoadPickerEntries;
     use nullslop_protocol::{
         ChatEntry, ChatEntryKind, Command, Event, PickerKind, PinPosition, PromptStrategyId,
-        SessionId, ToolCall, ToolResult,
+        SessionId, ToolResult,
     };
     use nullslop_services::Services;
 
@@ -946,48 +922,6 @@ mod tests {
         let cmds = sink.commands();
         assert!(cmds.iter().any(|c| matches!(c, Command::RestoreStrategyState { .. })));
         assert!(cmds.iter().any(|c| matches!(c, Command::SwitchPromptStrategy { .. })));
-    }
-
-    // --- ExecuteToolBatch ---
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn execute_tool_batch_emits_individual_execute_tool_commands() {
-        // Given a coordinator.
-        let (mut actor, _state, sink, ctx) = create_actor();
-        let session_id = SessionId::new();
-
-        // When processing ExecuteToolBatch with two tool calls.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::ExecuteToolBatch {
-                    payload: ExecuteToolBatch {
-                        session_id: session_id.clone(),
-                        tool_calls: vec![
-                            ToolCall {
-                                id: "call_1".into(),
-                                name: "echo".into(),
-                                arguments: "{}".into(),
-                            },
-                            ToolCall {
-                                id: "call_2".into(),
-                                name: "read_file".into(),
-                                arguments: r#"{"path":"test.rs"}"#.into(),
-                            },
-                        ],
-                    },
-                }),
-                &ctx,
-            )
-            .await;
-
-        // Then two ExecuteTool commands were emitted.
-        let cmds = sink.commands();
-        let execute_cmds: Vec<_> = cmds
-            .iter()
-            .filter(|c| matches!(c, Command::ExecuteTool { .. }))
-            .collect();
-        assert_eq!(execute_cmds.len(), 2);
     }
 
     // --- PushToolResult ---
