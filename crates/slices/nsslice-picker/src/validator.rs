@@ -97,10 +97,6 @@ pub fn validate_open_picker(state: &AppState, _kind: &PickerKind) -> Result<(), 
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::PickerKind;
-
-    use crate::validators::picker::{OpenPickerError, PickerConfirmError};
-
     use super::*;
 
     // --- PickerConfirm tests ---

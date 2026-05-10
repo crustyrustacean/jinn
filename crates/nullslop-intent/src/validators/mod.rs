@@ -5,5 +5,3 @@
 
 pub mod app;
 pub mod chat_entry;
-pub mod dashboard;
-pub mod picker;

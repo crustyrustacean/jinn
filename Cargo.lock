@@ -2834,8 +2834,20 @@ version = "0.1.0"
 dependencies = [
  "nullslop-component",
  "nullslop-component-ui",
+ "nullslop-protocol",
  "ratatui",
  "rstest",
+]
+
+[[package]]
+name = "nsslice-picker"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "nullslop-component",
+ "nullslop-protocol",
+ "rstest",
+ "wherror",
 ]
 
 [[package]]
@@ -2897,6 +2909,7 @@ dependencies = [
  "nsslice-chat-input-box",
  "nsslice-chat-log",
  "nsslice-dashboard",
+ "nsslice-picker",
  "nsslice-pinned-panel",
  "nsslice-provider",
  "nsslice-status-bar",
@@ -3098,6 +3111,8 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "nsslice-chat-input-box",
+ "nsslice-dashboard",
+ "nsslice-picker",
  "nsslice-pinned-panel",
  "nullslop-component",
  "nullslop-protocol",
