@@ -280,9 +280,26 @@ impl ProviderRegistry {
         id: &ProviderId,
         api_keys: &ApiKeys,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
-        let resolved = self.get(id).ok_or_else(|| {
-            Report::new(LlmServiceError::Config).attach(format!("unknown provider: {id}"))
-        })?;
+        // Try static (config) lookup first.
+        if let Some(resolved) = self.get(id) {
+            return self.create_factory_from_resolved(resolved, api_keys);
+        }
+
+        // Fallback: remote/cache-discovered model. Parse "{name}/{model}"
+        // and delegate to create_factory_for_model.
+        if let Some((provider_name, model)) = id.as_str().split_once('/') {
+            return self.create_factory_for_model(provider_name, model, api_keys);
+        }
+
+        Err(Report::new(LlmServiceError::Config).attach(format!("unknown provider: {id}")))
+    }
+
+    /// Creates a factory from a statically resolved provider entry.
+    fn create_factory_from_resolved(
+        &self,
+        resolved: &ResolvedProvider,
+        api_keys: &ApiKeys,
+    ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
 
         if resolved.backend == "sample" {
             let factory: Box<dyn LlmServiceFactory> = Box::new(SampleLlmServiceFactory);
