@@ -20,8 +20,7 @@ use nullslop_protocol::context::{
     StrategyStateUpdated, SwitchPromptStrategy, UnpinChatEntry,
 };
 use nullslop_protocol::provider::{
-    CancelStream, ProviderSwitch, ProviderSwitched, RefreshModels, RescanPromptTemplates,
-    SendMessage, SendToLlmProvider,
+    ProviderSwitch, ProviderSwitched, SendMessage, SendToLlmProvider,
 };
 use nullslop_protocol::session::SessionLoadCompleted;
 use nullslop_protocol::tool::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
@@ -62,15 +61,12 @@ impl Actor for CoordinatorActor {
         // Subscribe to commands the coordinator orchestrates.
         ctx.subscribe_command::<EnqueueUserMessage>();
         ctx.subscribe_command::<SetChatInputText>();
-        ctx.subscribe_command::<CancelStream>();
         ctx.subscribe_command::<PushChatEntry>();
         ctx.subscribe_command::<ProviderSwitch>();
         ctx.subscribe_command::<PinChatEntry>();
         ctx.subscribe_command::<UnpinChatEntry>();
         ctx.subscribe_command::<SwitchPromptStrategy>();
         ctx.subscribe_command::<RestoreStrategyState>();
-        ctx.subscribe_command::<RefreshModels>();
-        ctx.subscribe_command::<RescanPromptTemplates>();
         ctx.subscribe_command::<LoadPickerEntries>();
         ctx.subscribe_command::<SessionLoadCompleted>();
         ctx.subscribe_command::<ExecuteToolBatch>();
@@ -126,9 +122,6 @@ impl CoordinatorActor {
             Command::SetChatInputText { payload } => {
                 self.handle_set_chat_input_text(payload);
             }
-            Command::CancelStream { payload } => {
-                self.handle_cancel_stream(payload, ctx);
-            }
             Command::PushChatEntry { payload } => {
                 self.handle_push_chat_entry(payload, ctx);
             }
@@ -146,12 +139,6 @@ impl CoordinatorActor {
             }
             Command::RestoreStrategyState { payload } => {
                 self.handle_restore_strategy_state(payload, ctx);
-            }
-            Command::RefreshModels => {
-                self.handle_refresh_models(ctx);
-            }
-            Command::RescanPromptTemplates => {
-                self.handle_rescan_prompt_templates(ctx);
             }
             Command::LoadPickerEntries { payload } => {
                 self.handle_load_picker_entries(payload);
@@ -176,7 +163,10 @@ impl CoordinatorActor {
             | Command::SendToLlmProvider { .. }
             | Command::ExecuteTool { .. }
             | Command::ProceedWithShutdown { .. }
-            | Command::SessionLoadRequested { .. } => {}
+            | Command::SessionLoadRequested { .. }
+            | Command::CancelStream { .. }
+            | Command::RefreshModels
+            | Command::RescanPromptTemplates => {}
         }
     }
 
@@ -231,35 +221,6 @@ impl CoordinatorActor {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&payload.session_id);
         session.chat_input_mut().replace_all(payload.text.clone());
-    }
-
-    /// CancelStream: cancel streaming, drain queue to input, forward cancel to LLM.
-    fn handle_cancel_stream(&self, payload: &CancelStream, ctx: &ActorContext) {
-        let drained_text = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.cancel_streaming();
-            let drained: Vec<String> = session.drain_queue().into_iter().collect();
-            drained.join("\n")
-        };
-
-        if !drained_text.is_empty() {
-            if let Err(e) = ctx.send_command(Command::SetChatInputText {
-                payload: SetChatInputText {
-                    session_id: payload.session_id.clone(),
-                    text: drained_text,
-                },
-            }) {
-                tracing::warn!(err = ?e, "coordinator failed to emit SetChatInputText");
-            }
-        }
-
-        // Forward CancelStream to LLM actor.
-        if let Err(e) = ctx.send_command(Command::CancelStream {
-            payload: payload.clone(),
-        }) {
-            tracing::warn!(err = ?e, "coordinator failed to forward CancelStream");
-        }
     }
 
     /// PushChatEntry: push entry to session history, emit ChatEntrySubmitted event.
@@ -374,35 +335,6 @@ impl CoordinatorActor {
             },
         }) {
             tracing::warn!(err = ?e, "coordinator failed to emit StrategyStateUpdated");
-        }
-    }
-
-    /// RefreshModels: post system message, forward RefreshModels command.
-    fn handle_refresh_models(&self, ctx: &ActorContext) {
-        {
-            let mut state = self.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::system("Refreshing models..."));
-        }
-
-        if let Err(e) = ctx.send_command(Command::RefreshModels) {
-            tracing::warn!(err = ?e, "coordinator failed to forward RefreshModels");
-        }
-    }
-
-    /// RescanPromptTemplates: post system message, forward RescanPromptTemplates command.
-    fn handle_rescan_prompt_templates(&self, ctx: &ActorContext) {
-        {
-            let mut state = self.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::system("Scanning prompt templates..."));
-        }
-
-        if let Err(e) = ctx.send_command(Command::RescanPromptTemplates) {
-            tracing::warn!(
-                err = ?e,
-                "coordinator failed to forward RescanPromptTemplates"
-            );
         }
     }
 
@@ -565,7 +497,7 @@ mod tests {
     use nullslop_protocol::context::{
         PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
     };
-    use nullslop_protocol::provider::{CancelStream, ProviderSwitch, SendMessage};
+    use nullslop_protocol::provider::{ProviderSwitch, SendMessage};
     use nullslop_protocol::session::SessionLoadCompleted;
     use nullslop_protocol::tool::{ExecuteToolBatch, PushToolResult};
     use nullslop_protocol::system::LoadPickerEntries;
@@ -721,83 +653,6 @@ mod tests {
         let guard = state.read();
         let session = guard.session(&session_id);
         assert_eq!(session.chat_input().text(), "new text");
-    }
-
-    // --- CancelStream ---
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn cancel_stream_stops_streaming() {
-        // Given a coordinator with a streaming session.
-        let (mut actor, state, _sink, ctx) = create_actor();
-        let session_id = SessionId::new();
-
-        {
-            let mut guard = state.write();
-            let session = guard.session_mut_or_create(&session_id);
-            session.begin_sending();
-            session.begin_streaming();
-        }
-
-        // When processing CancelStream.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::CancelStream {
-                    payload: CancelStream {
-                        session_id: session_id.clone(),
-                    },
-                }),
-                &ctx,
-            )
-            .await;
-
-        // Then the session is no longer streaming.
-        {
-            let guard = state.read();
-            let session = guard.session(&session_id);
-            assert!(!session.is_streaming());
-            assert!(session.is_idle());
-        }
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn cancel_stream_drains_queue_to_input_text() {
-        // Given a coordinator with a streaming session that has queued messages.
-        let (mut actor, state, sink, ctx) = create_actor();
-        let session_id = SessionId::new();
-
-        {
-            let mut guard = state.write();
-            let session = guard.session_mut_or_create(&session_id);
-            session.begin_sending();
-            session.begin_streaming();
-            session.enqueue_message("queued1".into());
-            session.enqueue_message("queued2".into());
-        }
-
-        // When processing CancelStream.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::CancelStream {
-                    payload: CancelStream {
-                        session_id: session_id.clone(),
-                    },
-                }),
-                &ctx,
-            )
-            .await;
-
-        // Then a SetChatInputText command was emitted with drained text.
-        let cmds = sink.commands();
-        let found = cmds.iter().any(|c| match c {
-            Command::SetChatInputText { payload } => {
-                payload.text == "queued1\nqueued2"
-                    || payload.text == "queued1\nqueued2"
-            }
-            _ => false,
-        });
-        assert!(found, "expected SetChatInputText with drained queue text");
     }
 
     // --- PushChatEntry ---
@@ -1017,64 +872,6 @@ mod tests {
         let events = sink.events();
         let found = events.iter().any(|e| matches!(e, Event::StrategyStateUpdated { .. }));
         assert!(found, "expected StrategyStateUpdated event");
-    }
-
-    // --- RefreshModels ---
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn refresh_models_posts_system_message() {
-        // Given a coordinator.
-        let (mut actor, state, sink, ctx) = create_actor();
-
-        // When processing RefreshModels.
-        actor
-            .handle(ActorEnvelope::Command(Command::RefreshModels), &ctx)
-            .await;
-
-        // Then a system message was posted to the active session.
-        {
-            let guard = state.read();
-            let last_entry = guard.active_session().history().last();
-            assert!(last_entry.is_some());
-            assert!(matches!(
-                last_entry.unwrap().kind,
-                ChatEntryKind::System(ref t) if t.contains("Refreshing models")
-            ));
-        }
-
-        // And a RefreshModels command was forwarded.
-        let cmds = sink.commands();
-        assert!(cmds.iter().any(|c| matches!(c, Command::RefreshModels)));
-    }
-
-    // --- RescanPromptTemplates ---
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn rescan_prompt_templates_posts_system_message() {
-        // Given a coordinator.
-        let (mut actor, state, sink, ctx) = create_actor();
-
-        // When processing RescanPromptTemplates.
-        actor
-            .handle(ActorEnvelope::Command(Command::RescanPromptTemplates), &ctx)
-            .await;
-
-        // Then a system message was posted.
-        {
-            let guard = state.read();
-            let last_entry = guard.active_session().history().last();
-            assert!(last_entry.is_some());
-            assert!(matches!(
-                last_entry.unwrap().kind,
-                ChatEntryKind::System(ref t) if t.contains("Scanning prompt templates")
-            ));
-        }
-
-        // And a RescanPromptTemplates command was forwarded.
-        let cmds = sink.commands();
-        assert!(cmds.iter().any(|c| matches!(c, Command::RescanPromptTemplates)));
     }
 
     // --- LoadPickerEntries (Provider) ---
