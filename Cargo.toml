@@ -6,7 +6,7 @@ resolver = "3"
 default-run = "nullslop"
 
 [workspace]
-members = ["crates/*", "crates/slices/nsslice-status-bar", "crates/slices/nsslice-char-counter", "crates/slices/nsslice-dashboard", "actors/*", "tests/*"]
+members = ["crates/*", "crates/slices/nsslice-status-bar", "crates/slices/nsslice-char-counter", "crates/slices/nsslice-dashboard", "crates/slices/nsslice-chat-log", "crates/slices/nsslice-provider", "crates/slices/nsslice-pinned-panel", "actors/*", "tests/*"]
 exclude = ["crates/slices"]
 
 [lib]
@@ -36,6 +36,9 @@ nullslop-provider-actor = { workspace = true }
 nsslice-status-bar = { workspace = true }
 nsslice-char-counter = { workspace = true }
 nsslice-dashboard = { workspace = true }
+nsslice-chat-log = { workspace = true }
+nsslice-provider = { workspace = true }
+nsslice-pinned-panel = { workspace = true }
 nullslop-shutdown-tracker = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
@@ -87,6 +90,9 @@ nullslop-shutdown-tracker = { path = "actors/nullslop-shutdown-tracker" }
 nsslice-status-bar = { path = "crates/slices/nsslice-status-bar" }
 nsslice-char-counter = { path = "crates/slices/nsslice-char-counter" }
 nsslice-dashboard = { path = "crates/slices/nsslice-dashboard" }
+nsslice-chat-log = { path = "crates/slices/nsslice-chat-log" }
+nsslice-provider = { path = "crates/slices/nsslice-provider" }
+nsslice-pinned-panel = { path = "crates/slices/nsslice-pinned-panel" }
 
 # Error handling
 wherror = "2.3.1"

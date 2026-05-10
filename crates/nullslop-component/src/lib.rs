@@ -24,7 +24,6 @@ pub mod app_quit;
 pub mod app_state;
 pub mod chat_entry_selection;
 pub mod chat_input_box;
-pub mod chat_log;
 pub mod chat_session;
 pub mod context_pin;
 pub mod context_strategy_picker;
@@ -33,7 +32,6 @@ pub mod keymap_picker;
 pub mod picker_highlight;
 pub mod pinned_panel;
 pub mod prompt_template;
-pub mod provider;
 pub mod provider_picker;
 pub mod session_picker;
 pub mod shutdown_tracker;
@@ -81,12 +79,7 @@ pub fn register_all(registry: &mut AppUiRegistry) {
 /// Populates the UI element registry with all built-in elements.
 pub fn register_tui_elements(registry: &mut AppUiRegistry) {
     registry.register(Box::new(chat_input_box::ChatInputBoxElement));
-    registry.register(Box::new(chat_log::ChatLogElement));
-    registry.register(Box::new(pinned_panel::PinnedPanelElement));
-    registry.register(Box::new(
-        provider::indicator::StreamingIndicatorElement::new(),
-    ));
-    registry.register(Box::new(provider::queue_element::QueueDisplayElement));
+
 }
 
 /// Test utilities shared across the crate.

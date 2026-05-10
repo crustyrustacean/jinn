@@ -28,6 +28,12 @@ dialoguer = { workspace = true }
 arboard = { workspace = true }
 tracing = { workspace = true }
 nullslop-selection-widget = { workspace = true }
+nsslice-status-bar = { workspace = true }
+nsslice-char-counter = { workspace = true }
+nsslice-dashboard = { workspace = true }
+nsslice-chat-log = { workspace = true }
+nsslice-provider = { workspace = true }
+nsslice-pinned-panel = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

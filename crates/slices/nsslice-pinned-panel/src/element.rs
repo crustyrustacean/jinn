@@ -5,6 +5,8 @@
 //! The selected entry is highlighted with a yellow marker and reversed style.
 //! When no entries are pinned, shows a dimmed "No pinned entries." message.
 
+use nullslop_component::AppState;
+use nullslop_component::app_state::pin_sort_key;
 use nullslop_component_ui::UiElement;
 use nullslop_protocol::{ChatEntryKind, PinPosition};
 use ratatui::Frame;
@@ -12,9 +14,6 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
-
-use crate::AppState;
-use crate::app_state::pin_sort_key;
 
 /// Solid yellow full block used as the selection indicator.
 const SELECTED_INDICATOR: &str = "\u{2588}\u{2588}";
@@ -177,19 +176,20 @@ fn build_entry_list(
 
 #[cfg(test)]
 mod tests {
+    use nullslop_component::AppState;
     use nullslop_protocol::{ChatEntry, PinPosition};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
+
+    use super::*;
+
     fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
         let backend = TestBackend::new(width, height);
         let terminal = Terminal::new(backend).unwrap();
         let area = Rect::new(0, 0, width, height);
         (terminal, area)
     }
-
-    use super::*;
-    use crate::AppState;
 
     fn state_with_pinned(count: usize) -> AppState {
         let mut state = AppState::default();

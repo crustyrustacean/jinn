@@ -17,7 +17,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use crate::AppState;
+use nullslop_component::AppState;
 
 /// Display element for the full conversation history.
 #[derive(Debug)]
@@ -281,7 +281,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::AppState;
+    use nullslop_component::AppState;
 
     #[rstest::rstest]
     fn name_returns_chat_log() {

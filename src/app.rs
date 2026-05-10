@@ -140,6 +140,9 @@ impl App {
                 nsslice_status_bar::register(&mut ui_registry);
                 nsslice_char_counter::register(&mut ui_registry);
                 nsslice_dashboard::register(&mut ui_registry);
+                nsslice_chat_log::register(&mut ui_registry);
+                nsslice_provider::register(&mut ui_registry);
+                nsslice_pinned_panel::register(&mut ui_registry);
                 let which_key = nullslop_tui::app::WhichKeyInstance::new(
                     nullslop_tui::keymap::init(),
                     nullslop_tui::Scope::Normal,
@@ -508,6 +511,9 @@ fn create_core_with_actor_host(
     nsslice_status_bar::register(&mut registry);
     nsslice_char_counter::register(&mut registry);
     nsslice_dashboard::register(&mut registry);
+    nsslice_chat_log::register(&mut registry);
+    nsslice_provider::register(&mut registry);
+    nsslice_pinned_panel::register(&mut registry);
 
     (core, services, actor_host_service, core_notify_rx)
 }
