@@ -82,8 +82,11 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
     }
 
     // Shut down actor host — coordinated shutdown.
-    app.core.coordinated_shutdown(
-        app.services.actor_host.backend(),
+    nullslop_core::coordinated_shutdown(
+        app.actor_host.backend(),
+        &app.core.state,
+        app.core_receiver.clone(),
+        app.services.handle.clone(),
         nullslop_core::SHUTDOWN_TIMEOUT,
     );
 
@@ -125,9 +128,9 @@ fn run_main_loop(
             app.handle_msg(event);
         }
 
-        // Core processing: drain messages, process bus, forward events.
-        let should_quit = app.core.tick().should_quit;
+        // Check should_quit from shared state (async forwarding task handles messages).
         let state_read = app.core.state.read();
+        let should_quit = state_read.should_quit;
         let scope = scope_for_mode(state_read.mode, state_read.active_tab, app.pane_focus);
         drop(state_read);
         app.which_key.set_scope(scope);

@@ -6,19 +6,19 @@ resolver = "3"
 default-run = "nullslop"
 
 [workspace]
-members = ["crates/*", "actors/nullslop-echo", "actors/nullslop-context-actor", "actors/nullslop-llm", "actors/nullslop-llm-discover", "actors/nullslop-prompt-scan", "actors/nullslop-session-actor", "tests/*"]
+members = ["crates/*", "actors/nullslop-echo", "actors/nullslop-context-actor", "actors/nullslop-llm", "actors/nullslop-llm-discover", "actors/nullslop-prompt-scan", "actors/nullslop-session-actor", "actors/nullslop-shutdown-tracker", "actors/nullslop-coordinator", "actors/nullslop-projector", "tests/*"]
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
 nullslop-cli = { workspace = true }
-nullslop-tui = { workspace = true }
 nullslop-core = { workspace = true }
+nullslop-intent = { workspace = true }
+nullslop-tui = { workspace = true }
 nullslop-services = { workspace = true }
 nullslop-providers = { workspace = true }
 nullslop-component = { workspace = true }
-nullslop-component-core = { workspace = true }
 nullslop-actor-host = { workspace = true }
 nullslop-actor = { workspace = true }
 nullslop-echo = { workspace = true }
@@ -31,6 +31,9 @@ nullslop-context = { workspace = true }
 nullslop-session = { workspace = true }
 nullslop-session-actor = { workspace = true }
 nullslop-tool-orchestrator = { workspace = true }
+nullslop-coordinator = { workspace = true }
+nullslop-projector = { workspace = true }
+nullslop-shutdown-tracker = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
 wherror = { workspace = true }
@@ -42,6 +45,7 @@ tracing-subscriber = { workspace = true }
 clap = { workspace = true }
 clap-verbosity-flag = { workspace = true }
 ratatui-which-key = { workspace = true }
+ratatui-spatial-splits = { workspace = true }
 nullslop-protocol = { workspace = true, features = ["which-key"] }
 tempfile = { workspace = true }
 dotenvy = { workspace = true }
@@ -57,7 +61,6 @@ nullslop-protocol = { path = "crates/nullslop-protocol" }
 nullslop-context = { path = "crates/nullslop-context" }
 nullslop-core = { path = "crates/nullslop-core" }
 nullslop-tui = { path = "crates/nullslop-tui" }
-nullslop-component-core = { path = "crates/nullslop-component-core" }
 nullslop-component-ui = { path = "crates/nullslop-component-ui" }
 nullslop-component = { path = "crates/nullslop-component" }
 nullslop-cli = { path = "crates/nullslop-cli" }
@@ -75,6 +78,10 @@ nullslop-workflow = { path = "crates/nullslop-workflow" }
 nullslop-tool-orchestrator = { path = "actors/nullslop-tool-orchestrator" }
 nullslop-session = { path = "crates/nullslop-session" }
 nullslop-session-actor = { path = "actors/nullslop-session-actor" }
+nullslop-coordinator = { path = "actors/nullslop-coordinator" }
+nullslop-projector = { path = "actors/nullslop-projector" }
+nullslop-intent = { path = "crates/nullslop-intent" }
+nullslop-shutdown-tracker = { path = "actors/nullslop-shutdown-tracker" }
 
 # Error handling
 wherror = "2.3.1"

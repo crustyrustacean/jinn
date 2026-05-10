@@ -28,10 +28,7 @@ pub type RenderCall = (Rect, String);
 /// Fake UI element that records render calls.
 ///
 /// The call log remains accessible to the test even after the element
-/// is moved into the registry, following the same pattern as
-/// `FakeCommandHandler` in `nullslop-component-core`.
-///
-/// `FakeCommandHandler` in `nullslop-component-core`.
+/// is moved into the registry.
 #[derive(Debug)]
 pub struct FakeUiElement<S> {
     /// Element name used for lookup.

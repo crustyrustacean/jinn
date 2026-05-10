@@ -4,12 +4,11 @@ use std::mem;
 
 use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
+use nullslop_actor_host::ActorHostService;
 use nullslop_component::AppUiRegistry;
 use nullslop_core::{AppCore, AppMsg};
-use nullslop_protocol::PinPosition;
-use nullslop_protocol::chat_input::ChatEntrySelectCancel;
-use nullslop_protocol::context::PinChatEntry;
-use nullslop_protocol::{ActiveTab, Command, Mode};
+use nullslop_intent::IntentHandler;
+use nullslop_protocol::{ActiveTab, Intent, Mode, PickerKind};
 use ratatui::Frame;
 use ratatui_spatial_splits::{AreaId, SplitManager};
 use ratatui_tabs::TabManager;
@@ -38,21 +37,19 @@ pub enum PaneFocus {
 
 /// Type alias for the which-key state parameterized for nullslop.
 pub type WhichKeyInstance =
-    WhichKeyState<nullslop_protocol::KeyEvent, Scope, Command, crate::keymap::KeyCategory>;
+    WhichKeyState<nullslop_protocol::KeyEvent, Scope, Intent, crate::keymap::KeyCategory>;
 
 /// Top-level application state and event loop.
-#[expect(
-    clippy::partial_pub_fields,
-    reason = "only public fields exposed externally; pub(crate) fields are internal"
-)]
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "internal fields use pub(crate) for cross-module access within the crate"
-)]
 #[derive(Debug)]
 pub struct TuiApp {
-    /// Application core (bus, state, message channel).
+    /// Application core (state, message channel).
     pub core: AppCore,
+    /// Runtime services.
+    pub services: nullslop_services::Services,
+    /// Actor host for coordinated shutdown.
+    pub actor_host: ActorHostService,
+    /// Receiver for core lifecycle notifications (shutdown complete).
+    pub core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
     /// UI element registry.
     pub ui_registry: AppUiRegistry,
     /// Message channel for the event loop.
@@ -65,116 +62,30 @@ pub struct TuiApp {
     /// Background event stream. Set by [`run`](crate::run::run).
     #[debug(skip)]
     pub event_task: Option<tokio::task::JoinHandle<()>>,
-    /// Runtime services.
-    pub services: nullslop_services::Services,
     /// Current application lifecycle status.
     pub status: AppStatus,
     /// Tab manager for rendering the tab bar.
     pub tab_manager: TabManager,
     /// Mouse text selection state.
-    pub(crate) selection: SelectionState,
+    pub selection: SelectionState,
     /// Selectable screen regions, rebuilt each frame during rendering.
-    pub(crate) selectable_rects: SelectableRects,
+    pub selectable_rects: SelectableRects,
     /// Set to `true` when a selection is finalized and the selected text
     /// should be copied to the system clipboard during the next render.
-    pub(crate) pending_clipboard: bool,
+    pub pending_clipboard: bool,
     /// TUI configuration (mouse capture, etc.).
-    pub(crate) config: TuiConfig,
+    pub config: TuiConfig,
     /// Split manager for the chat tab's pane layout.
-    pub(crate) split_manager: SplitManager,
+    pub split_manager: SplitManager,
     /// Which pane currently has keyboard focus in the Chat tab.
-    pub(crate) pane_focus: PaneFocus,
+    pub pane_focus: PaneFocus,
     /// Whether the pinned context sidebar pane is visible.
-    pub(crate) pinned_pane_visible: bool,
+    pub pinned_pane_visible: bool,
     /// Tracked [`AreaId`] for the pinned context sidebar pane (set when opened, cleared when closed).
-    pub(crate) pinned_pane_id: Option<AreaId>,
+    pub pinned_pane_id: Option<AreaId>,
 }
 
 impl TuiApp {
-    /// Creates a new application with the given services and default config.
-    #[must_use]
-    pub fn new(services: nullslop_services::Services) -> Self {
-        Self::new_with_config(services, TuiConfig::default())
-    }
-
-    /// Creates a new application with the given services and config.
-    #[must_use]
-    pub fn new_with_config(services: nullslop_services::Services, config: TuiConfig) -> Self {
-        let mut core = AppCore::new(services.clone());
-        let mut ui_registry = AppUiRegistry::new();
-        nullslop_component::register_all(&mut core.bus, &mut ui_registry);
-        let keymap = keymap::init();
-        let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
-
-        Self {
-            core,
-            ui_registry,
-            events: MsgHandler::new(),
-            which_key,
-            suspend: Suspend::new(),
-            event_task: None,
-            services,
-            status: AppStatus::Starting,
-            tab_manager: crate::render::init_tab_manager(),
-            selection: SelectionState::Idle,
-            selectable_rects: SelectableRects::default(),
-            pending_clipboard: false,
-            config,
-            split_manager: SplitManager::new(),
-            pane_focus: PaneFocus::Chat,
-            pinned_pane_visible: false,
-            pinned_pane_id: None,
-        }
-    }
-
-    /// Creates a new application with pre-built core, services, and default config.
-    ///
-    /// Use this when the caller has already registered components
-    /// and set up the actor host on the core.
-    #[must_use]
-    pub fn new_with_core(
-        services: nullslop_services::Services,
-        core: nullslop_core::AppCore,
-    ) -> Self {
-        Self::new_with_core_and_config(services, core, TuiConfig::default())
-    }
-
-    /// Creates a new application with pre-built core, services, and config.
-    ///
-    /// Use this when the caller has already registered components
-    /// and set up the actor host on the core.
-    #[must_use]
-    pub fn new_with_core_and_config(
-        services: nullslop_services::Services,
-        core: nullslop_core::AppCore,
-        config: TuiConfig,
-    ) -> Self {
-        let mut ui_registry = AppUiRegistry::new();
-        nullslop_component::register_tui_elements(&mut ui_registry);
-        let keymap = keymap::init();
-        let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
-
-        Self {
-            core,
-            ui_registry,
-            events: MsgHandler::new(),
-            which_key,
-            suspend: Suspend::new(),
-            event_task: None,
-            services,
-            status: AppStatus::Starting,
-            tab_manager: crate::render::init_tab_manager(),
-            selection: SelectionState::Idle,
-            selectable_rects: SelectableRects::default(),
-            pending_clipboard: false,
-            config,
-            split_manager: SplitManager::new(),
-            pane_focus: PaneFocus::Chat,
-            pinned_pane_visible: false,
-            pinned_pane_id: None,
-        }
-    }
-
     /// Processes a single message.
     pub fn handle_msg(&mut self, msg: Msg) {
         match msg {
@@ -199,10 +110,10 @@ impl TuiApp {
                             scope = ?self.which_key.scope(),
                             "key event received"
                         );
-                        let Some(cmd) = self.which_key.handle_key(protocol_key) else {
+                        let Some(intent) = self.which_key.handle_key(protocol_key) else {
                             return;
                         };
-                        self.route_command(cmd);
+                        self.route_intent(intent);
                     }
                     crossterm::event::Event::Mouse(mouse) => {
                         // Selection handling — intercept before keymap
@@ -212,7 +123,7 @@ impl TuiApp {
                         }
                         // Fall through to keymap for scroll, etc.
                         let scope = *self.which_key.scope();
-                        let Some(cmd) = self
+                        let Some(intent) = self
                             .which_key
                             .keymap()
                             .mouse_handler()
@@ -220,13 +131,16 @@ impl TuiApp {
                         else {
                             return;
                         };
-                        self.route_command(cmd);
+                        self.route_intent(intent);
                     }
                     _ => {}
                 }
             }
             Msg::Command(cmd) => {
-                self.route_command(cmd);
+                let _ = self.core.sender().send(AppMsg::Command {
+                    command: cmd,
+                    source: None,
+                });
             }
         }
     }
@@ -271,125 +185,84 @@ impl TuiApp {
         }
     }
 
-    /// Routes a command to the appropriate handler.
+    /// Routes an intent through the [`IntentHandler`] and handles TUI signals.
     ///
-    /// Commands that need `TuiApp`-level state (which-key toggle, editor suspend)
-    /// are handled directly. All other commands go through the core channel.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "command routing is inherently a large match"
-    )]
-    fn route_command(&mut self, cmd: Command) {
-        match cmd {
-            Command::ToggleWhichKey => {
-                self.which_key.toggle();
-            }
-            Command::EditInput => {
-                let initial_content = self.core.state.read().active_chat_input().text().to_owned();
-                self.suspend.request(SuspendAction::Edit {
-                    initial_content,
-                    on_result: Box::new(|result| result),
-                });
-            }
-            Command::SetMode { payload } => {
-                // Cancel any active selection when mode changes.
-                // The selectable rects are rebuilt next frame, but the selection's
-                // `bounds` may reference a now-invalid rect (e.g. a closed picker popup).
-                self.selection = mem::take(&mut self.selection).cancel();
-                // Clear keymap picker origin scope when leaving picker mode.
-                if payload.mode != Mode::Picker {
-                    self.core.state.write().keymap_picker_origin_scope = None;
-                }
-                let _ = self.core.sender().send(AppMsg::Command {
-                    command: Command::SetMode { payload },
-                    source: None,
-                });
-            }
-            Command::OpenPicker { ref payload }
-                if payload.kind == nullslop_protocol::PickerKind::Keymap =>
-            {
+    /// 1. Acquires the state write lock and calls [`IntentHandler::handle`].
+    /// 2. Collects TUI signals, commands, and mode from the result.
+    /// 3. Drops the write lock.
+    /// 4. Sends commands to the core channel.
+    /// 5. Handles TUI signals (which-key toggle, editor, pinned pane, etc.).
+    /// 6. Updates the keymap scope based on the new mode.
+    pub fn route_intent(&mut self, intent: Intent) {
+        // Step 1–3: Handle intent, collect results, release lock.
+        let (commands, signals, mode) = {
+            let mut state = self.core.state.write();
+            let result = IntentHandler::handle(&intent, &mut state);
+
+            // Populate keymap picker entries if opening the keymap picker.
+            if matches!(intent, Intent::OpenPicker { kind: PickerKind::Keymap }) {
                 let scope = *self.which_key.scope();
-                {
-                    let mut state = self.core.state.write();
-                    state.keymap_picker_origin_scope = Some(scope.to_string());
-                    let entries = if state.keymap_picker_show_all {
-                        keymap::collect_all_bindings(self.which_key.keymap())
-                    } else {
-                        keymap::collect_bindings_for_scope(self.which_key.keymap(), &scope)
-                    };
-                    state.keymap_picker.set_items(entries);
-                    state.keymap_picker.reset();
-                }
-                let _ = self.core.sender().send(AppMsg::Command {
-                    command: cmd,
-                    source: None,
-                });
-            }
-            Command::ToggleKeymapScopeFilter => {
-                let mut state = self.core.state.write();
-                state.keymap_picker_show_all = !state.keymap_picker_show_all;
-                let scope: Scope = state
-                    .keymap_picker_origin_scope
-                    .as_deref()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(*self.which_key.scope());
-                let entries = if state.keymap_picker_show_all {
+                state.keymap_picker_origin_scope = Some(scope.to_string());
+                let intent_entries = if state.keymap_picker_show_all {
                     keymap::collect_all_bindings(self.which_key.keymap())
                 } else {
                     keymap::collect_bindings_for_scope(self.which_key.keymap(), &scope)
                 };
-                state.keymap_picker.set_items(entries);
+                // Entries now carry Intent directly — store them in AppState.
+                state.keymap_picker.set_items(intent_entries);
+                // Also populate all_keymap_entries for scope toggle.
+                state.all_keymap_entries = keymap::collect_all_bindings(self.which_key.keymap());
             }
-            Command::PinnedPanelToggle => self.toggle_pinned_pane(),
-            Command::PinnedPanelOpen => self.open_pinned_pane(),
-            Command::PinnedPanelClose => self.close_pinned_pane(),
-            Command::ChatEntryPinSelected => {
-                let (session_id, entry_id) = {
-                    let state = self.core.state.read();
-                    match state.active_session().selected_entry_id() {
-                        Some(id) => (state.active_session.clone(), id.clone()),
-                        None => return,
-                    }
-                };
-                let _ = self.core.sender().send(AppMsg::Command {
-                    command: Command::PinChatEntry {
-                        payload: PinChatEntry {
-                            session_id,
-                            entry_id,
-                            position: PinPosition::Relative,
-                        },
-                    },
-                    source: None,
-                });
-            }
-            Command::NormalEscape => {
-                let session_id = self.core.state.read().active_session.clone();
-                let has_selection = self
-                    .core
-                    .state
-                    .read()
-                    .active_session()
-                    .selected_entry_index()
-                    .is_some();
-                if has_selection {
-                    let _ = self.core.sender().send(AppMsg::Command {
-                        command: Command::ChatEntrySelectCancel {
-                            payload: ChatEntrySelectCancel { session_id },
-                        },
-                        source: None,
-                    });
-                }
-                if self.pinned_pane_visible {
-                    self.close_pinned_pane();
+
+            // Cancel selection when mode changes away from Picker.
+            if matches!(intent, Intent::SetMode { .. } | Intent::NormalEscape) {
+                self.selection = mem::take(&mut self.selection).cancel();
+                if !matches!(state.mode, Mode::Picker) {
+                    state.keymap_picker_origin_scope = None;
                 }
             }
-            _ => {
-                let _ = self.core.sender().send(AppMsg::Command {
-                    command: cmd,
-                    source: None,
-                });
-            }
+
+            // Collect signals and mode before releasing lock.
+            let signals = TuiSignalsSnapshot::from_state(&state);
+            let mode = state.mode;
+            let commands = result.commands;
+
+            (commands, signals, mode)
+        };
+
+        // Step 4: Send commands to core channel.
+        for cmd in commands {
+            let _ = self.core.sender().send(AppMsg::Command {
+                command: cmd,
+                source: None,
+            });
         }
+
+        // Step 5: Handle TUI signals.
+        if signals.toggle_whichkey {
+            self.which_key.toggle();
+        }
+        if signals.edit_requested {
+            let initial_content = self.core.state.read().active_chat_input().text().to_owned();
+            self.suspend.request(SuspendAction::Edit {
+                initial_content,
+                on_result: Box::new(|result| result),
+            });
+        }
+        if signals.pinned_pane_toggle {
+            self.toggle_pinned_pane();
+        }
+        if signals.pinned_pane_open {
+            self.open_pinned_pane();
+        }
+        if signals.pinned_pane_close {
+            self.close_pinned_pane();
+        }
+
+        // Step 6: Update scope based on new mode.
+        let active_tab = self.core.state.read().active_tab;
+        let new_scope = scope_for_mode(mode, active_tab, self.pane_focus);
+        self.which_key.set_scope(new_scope);
     }
 
     /// Renders the application for a single frame.
@@ -452,6 +325,29 @@ impl TuiApp {
     }
 }
 
+/// Snapshot of [`nullslop_component::tui_signals::TuiSignals`] fields, copied
+/// out of AppState before releasing the write lock.
+#[derive(Debug)]
+struct TuiSignalsSnapshot {
+    toggle_whichkey: bool,
+    edit_requested: bool,
+    pinned_pane_toggle: bool,
+    pinned_pane_open: bool,
+    pinned_pane_close: bool,
+}
+
+impl TuiSignalsSnapshot {
+    fn from_state(state: &nullslop_component::AppState) -> Self {
+        Self {
+            toggle_whichkey: state.tui_signals.toggle_whichkey,
+            edit_requested: state.tui_signals.edit_requested,
+            pinned_pane_toggle: state.tui_signals.pinned_pane_toggle,
+            pinned_pane_open: state.tui_signals.pinned_pane_open,
+            pinned_pane_close: state.tui_signals.pinned_pane_close,
+        }
+    }
+}
+
 /// Returns the scope corresponding to the given mode, active tab, and pane focus.
 pub fn scope_for_mode(mode: Mode, active_tab: ActiveTab, pane_focus: PaneFocus) -> Scope {
     match mode {
@@ -480,7 +376,38 @@ mod tests {
     /// Creates a minimal `TuiApp` for testing.
     fn test_app() -> TuiApp {
         let services = nullslop_services::Services::new();
-        TuiApp::new(services)
+        let (sender, _receiver) = kanal::unbounded();
+        let core = nullslop_core::AppCore {
+            state: nullslop_component::State::new(nullslop_component::AppState::default()),
+            sender,
+        };
+        let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+        let fake_host = nullslop_actor_host::ActorHostService::new(std::sync::Arc::new(
+            nullslop_actor_host::FakeActorHost::new(),
+        ));
+        let mut ui_registry = AppUiRegistry::new();
+        nullslop_component::register_all(&mut ui_registry);
+        TuiApp {
+            core,
+            services,
+            actor_host: fake_host,
+            core_receiver: core_rx,
+            ui_registry,
+            events: MsgHandler::new(),
+            which_key: WhichKeyInstance::new(keymap::init(), Scope::Normal),
+            suspend: Suspend::new(),
+            event_task: None,
+            status: AppStatus::Starting,
+            tab_manager: crate::render::init_tab_manager(),
+            selection: SelectionState::Idle,
+            selectable_rects: SelectableRects::default(),
+            pending_clipboard: false,
+            config: TuiConfig::default(),
+            split_manager: SplitManager::new(),
+            pane_focus: PaneFocus::Chat,
+            pinned_pane_visible: false,
+            pinned_pane_id: None,
+        }
     }
 
     #[rstest::rstest]
@@ -645,7 +572,38 @@ mod tests {
     fn mouse_events_not_handled_when_mouse_selection_disabled() {
         // Given an app with mouse selection disabled and a registered selectable rect.
         let services = nullslop_services::Services::new();
-        let mut app = TuiApp::new_with_config(services, crate::config::TuiConfig::new(false));
+        let (sender, _receiver) = kanal::unbounded();
+        let core = nullslop_core::AppCore {
+            state: nullslop_component::State::new(nullslop_component::AppState::default()),
+            sender,
+        };
+        let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+        let fake_host = nullslop_actor_host::ActorHostService::new(std::sync::Arc::new(
+            nullslop_actor_host::FakeActorHost::new(),
+        ));
+        let mut ui_registry = AppUiRegistry::new();
+        nullslop_component::register_all(&mut ui_registry);
+        let mut app = TuiApp {
+            core,
+            services,
+            actor_host: fake_host,
+            core_receiver: core_rx,
+            ui_registry,
+            events: MsgHandler::new(),
+            which_key: WhichKeyInstance::new(keymap::init(), Scope::Normal),
+            suspend: Suspend::new(),
+            event_task: None,
+            status: AppStatus::Starting,
+            tab_manager: crate::render::init_tab_manager(),
+            selection: SelectionState::Idle,
+            selectable_rects: SelectableRects::default(),
+            pending_clipboard: false,
+            config: crate::config::TuiConfig::new(false),
+            split_manager: SplitManager::new(),
+            pane_focus: PaneFocus::Chat,
+            pinned_pane_visible: false,
+            pinned_pane_id: None,
+        };
         let rect = Rect::new(5, 5, 20, 10);
         app.selectable_rects.rebuild(vec![rect]);
 
@@ -670,14 +628,12 @@ mod tests {
         let mut app = test_app();
         app.which_key.set_scope(Scope::Normal);
 
-        app.route_command(Command::OpenPicker {
-            payload: nullslop_protocol::system::OpenPicker {
-                kind: nullslop_protocol::PickerKind::Keymap,
-            },
+        app.route_intent(Intent::OpenPicker {
+            kind: PickerKind::Keymap,
         });
 
         // When toggling the scope filter (false -> true).
-        app.route_command(Command::ToggleKeymapScopeFilter);
+        app.route_intent(Intent::ToggleKeymapScopeFilter);
 
         // Then show_all is true and entries include multiple scopes.
         {
@@ -700,15 +656,13 @@ mod tests {
         let mut app = test_app();
         app.which_key.set_scope(Scope::Normal);
 
-        app.route_command(Command::OpenPicker {
-            payload: nullslop_protocol::system::OpenPicker {
-                kind: nullslop_protocol::PickerKind::Keymap,
-            },
+        app.route_intent(Intent::OpenPicker {
+            kind: PickerKind::Keymap,
         });
 
         // When toggling twice (false -> true -> false).
-        app.route_command(Command::ToggleKeymapScopeFilter);
-        app.route_command(Command::ToggleKeymapScopeFilter);
+        app.route_intent(Intent::ToggleKeymapScopeFilter);
+        app.route_intent(Intent::ToggleKeymapScopeFilter);
 
         // Then show_all is false and entries are Normal-scope only (the origin scope).
         {
@@ -736,10 +690,8 @@ mod tests {
         app.which_key.set_scope(Scope::Normal);
 
         // Populate initial entries (stores origin scope).
-        app.route_command(Command::OpenPicker {
-            payload: nullslop_protocol::system::OpenPicker {
-                kind: nullslop_protocol::PickerKind::Keymap,
-            },
+        app.route_intent(Intent::OpenPicker {
+            kind: PickerKind::Keymap,
         });
 
         // Insert filter text.
@@ -749,7 +701,7 @@ mod tests {
         }
 
         // When toggling the scope filter.
-        app.route_command(Command::ToggleKeymapScopeFilter);
+        app.route_intent(Intent::ToggleKeymapScopeFilter);
 
         // Then the filter text is preserved.
         let state = app.core.state.read();
@@ -895,5 +847,81 @@ mod tests {
 
         // Then there is still exactly 1 leaf (the chat pane).
         assert_eq!(app.split_manager.leaves().len(), 1);
+    }
+}
+
+/// Builder for constructing a [`TuiApp`] with sensible defaults for tests.
+///
+/// All fields default to fake/noop implementations. Override only what the test needs.
+///
+/// ```ignore
+/// let app = TuiApp::test_builder()
+///     .services(custom_services)
+///     .build();
+/// ```
+#[derive(Default)]
+pub struct TuiAppBuilder {
+    services: Option<nullslop_services::Services>,
+    state: Option<nullslop_component::AppState>,
+}
+
+impl TuiAppBuilder {
+    /// Override the default services.
+    pub fn services(mut self, services: nullslop_services::Services) -> Self {
+        self.services = Some(services);
+        self
+    }
+
+    /// Override the default app state.
+    pub fn state(mut self, state: nullslop_component::AppState) -> Self {
+        self.state = Some(state);
+        self
+    }
+
+    /// Build the `TuiApp` with the configured overrides.
+    pub fn build(self) -> TuiApp {
+        let services = self.services.unwrap_or_else(nullslop_services::Services::new);
+        let state = self.state.unwrap_or_default();
+
+        let (sender, _receiver) = kanal::unbounded();
+        let core = AppCore {
+            state: nullslop_component::State::new(state),
+            sender,
+        };
+        let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+        let fake_host = ActorHostService::new(std::sync::Arc::new(
+            nullslop_actor_host::FakeActorHost::new(),
+        ));
+        let mut ui_registry = AppUiRegistry::new();
+        nullslop_component::register_all(&mut ui_registry);
+
+        TuiApp {
+            core,
+            services,
+            actor_host: fake_host,
+            core_receiver: core_rx,
+            ui_registry,
+            events: MsgHandler::new(),
+            which_key: WhichKeyInstance::new(crate::keymap::init(), Scope::Normal),
+            suspend: Suspend::new(),
+            event_task: None,
+            status: AppStatus::Starting,
+            tab_manager: crate::render::init_tab_manager(),
+            selection: SelectionState::Idle,
+            selectable_rects: SelectableRects::default(),
+            pending_clipboard: false,
+            config: TuiConfig::default(),
+            split_manager: SplitManager::new(),
+            pane_focus: PaneFocus::Chat,
+            pinned_pane_visible: false,
+            pinned_pane_id: None,
+        }
+    }
+}
+
+impl TuiApp {
+    /// Create a test builder with sensible defaults.
+    pub fn test_builder() -> TuiAppBuilder {
+        TuiAppBuilder::default()
     }
 }

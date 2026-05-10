@@ -56,6 +56,13 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
+    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
+        let backend = TestBackend::new(width, height);
+        let terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, width, height);
+        (terminal, area)
+    }
+
 
     use super::*;
     use crate::AppState;
@@ -78,9 +85,7 @@ mod tests {
         let mut element = StatusBarElement;
         let state = AppState::default();
 
-        let backend = TestBackend::new(50, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 50, 1);
+        let (mut terminal, area) = setup_term(50, 1);
 
         // When rendering.
         terminal
@@ -113,9 +118,7 @@ mod tests {
             ..AppState::default()
         };
 
-        let backend = TestBackend::new(50, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 50, 1);
+        let (mut terminal, area) = setup_term(50, 1);
 
         // When rendering.
         terminal
@@ -148,9 +151,7 @@ mod tests {
             ..AppState::default()
         };
 
-        let backend = TestBackend::new(50, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 50, 1);
+        let (mut terminal, area) = setup_term(50, 1);
 
         // When rendering.
         terminal
@@ -178,9 +179,7 @@ mod tests {
             ..AppState::default()
         };
 
-        let backend = TestBackend::new(40, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 1);
+        let (mut terminal, area) = setup_term(40, 1);
 
         // When rendering.
         terminal
@@ -208,9 +207,7 @@ mod tests {
             ..AppState::default()
         };
 
-        let backend = TestBackend::new(80, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 80, 1);
+        let (mut terminal, area) = setup_term(80, 1);
 
         // When rendering.
         terminal
@@ -246,9 +243,7 @@ mod tests {
             .active_session_mut()
             .switch_strategy(nullslop_protocol::PromptStrategyId::sliding_window());
 
-        let backend = TestBackend::new(50, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 50, 1);
+        let (mut terminal, area) = setup_term(50, 1);
 
         // When rendering.
         terminal
@@ -278,9 +273,7 @@ mod tests {
         let mut element = StatusBarElement;
         let state = AppState::default();
 
-        let backend = TestBackend::new(50, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 50, 1);
+        let (mut terminal, area) = setup_term(50, 1);
 
         // When rendering.
         terminal
@@ -314,9 +307,7 @@ mod tests {
             .active_session_mut()
             .pin_entry(&entry_id, nullslop_protocol::PinPosition::Relative);
 
-        let backend = TestBackend::new(60, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 60, 1);
+        let (mut terminal, area) = setup_term(60, 1);
 
         // When rendering.
         terminal
@@ -346,9 +337,7 @@ mod tests {
             ..AppState::default()
         };
 
-        let backend = TestBackend::new(60, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 60, 1);
+        let (mut terminal, area) = setup_term(60, 1);
 
         // When rendering.
         terminal

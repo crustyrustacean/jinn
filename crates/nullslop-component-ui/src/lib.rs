@@ -5,23 +5,16 @@
 //! Components register elements during startup, and the TUI layer iterates
 //! them each frame.
 //!
-//! # Two-struct pattern
+//! # Elements
 //!
-//! Handlers and elements are separate structs that communicate through
-//! `AppState`:
-//!
-//! - **Handlers** implement `CommandHandler`
-//!   or `EventHandler` and mutate state
-//!   during command/event processing.
-//! - **Elements** implement [`UiElement`] and read state during rendering.
-//!
-//! Handlers and elements do not share instances. If a handler and element
-//! genuinely need shared internal state, they set it up explicitly.
+//! Elements implement [`UiElement`] and read state during rendering.
+//! They are registered during startup via [`UiRegistry`] and iterated
+//! by the render loop each frame.
 //!
 //! # Architecture
 //!
 //! ```text
-//! nullslop-component-core     (bus, Handler traits)
+//! nullslop-component-core     (bus, message queue)
 //!       │
 //!       ▼
 //! nullslop-component-ui       (UiElement trait + UiRegistry)

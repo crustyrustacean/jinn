@@ -1,13 +1,10 @@
 //! Command types for the component command pipeline.
 //!
-//! The [`Command`] enum is the unified type the host uses to receive and
-//! dispatch instructions from both internal handlers and actors.
+//! The [`Command`] enum contains only domain-level variants. All UI operations
+//! are handled by the [`IntentHandler`](nullslop_intent::IntentHandler) via the
+//! [`Intent`](nullslop_intent::Intent) enum.
 //!
-//! Individual command structs live in domain modules (`chat_input`, `system`,
-//! `custom`, `actor`, `provider`, `tab`). Consumers import structs
-//! directly from those modules — this facade only re-exports infrastructure types.
-//!
-//! # When adding a new command
+//! # When adding a new domain command
 //!
 //! Every new command struct **must** be added as a variant on the [`Command`] enum
 //! below. Creating the struct alone is not enough — the bus dispatches based on
@@ -15,149 +12,37 @@
 
 use serde::{Deserialize, Serialize};
 
-// Internal imports for enum definition and Display impl.
 use crate::actor::ProceedWithShutdown;
-use crate::chat_input::{
-    AutocompleteConfirm, ChatEntrySelectCancel, ChatEntrySelectNext, ChatEntrySelectPrev,
-    MoveCursorLeft, MoveCursorRight,
-};
-use crate::chat_input::{
-    Clear, DeleteGrapheme, DeleteGraphemeForward, EnqueueUserMessage, InsertChar, Interrupt,
-    MoveCursorDown, MoveCursorToEnd, MoveCursorToStart, MoveCursorUp, MoveCursorWordLeft,
-    MoveCursorWordRight, PushChatEntry, SetChatInputText, SubmitMessage,
-};
+use crate::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
 use crate::context::AssemblePrompt;
 use crate::context::PinChatEntry;
 use crate::context::RestoreStrategyState;
 use crate::context::SwitchPromptStrategy;
 use crate::context::UnpinChatEntry;
-// Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::custom::CommandMsg;
 use crate::provider::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
     SendToLlmProvider,
 };
-use crate::provider_picker::{
-    PickerBackspace, PickerConfirm, PickerInsertChar, PickerMoveCursorLeft, PickerMoveCursorRight,
-    PickerMoveDown, PickerMoveUp,
-};
 use crate::session::SessionLoadCompleted;
-use crate::system::OpenPicker;
-use crate::system::SetMode;
-use crate::tab::SwitchTab;
+use crate::session::SessionLoadRequested;
+use crate::system::LoadPickerEntries;
 use crate::tool::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
 
-/// Every command the host can receive.
+/// Every domain command the coordinator actor can receive.
 ///
-/// Actors and internal handlers produce these; the host dispatches
-/// them to the appropriate domain handler.
-///
-/// **When adding a new command struct**, you must add a corresponding variant to
-/// this enum. A command struct defined in a domain module without an enum variant
-/// here will not be dispatched by the bus.
+/// UI operations have been migrated to the Intent/IntentHandler pipeline.
+/// This enum contains only commands that require actor coordination
+/// or domain processing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Command {
-    /// Insert a character into the chat input buffer.
-    #[serde(rename = "insert_char")]
-    InsertChar {
-        /// Details of the character to insert.
-        #[serde(flatten)]
-        payload: InsertChar,
-    },
-    /// Delete the last grapheme from the chat input buffer.
-    #[serde(rename = "delete_grapheme")]
-    DeleteGrapheme,
-    /// Submit the chat input buffer as a message.
-    #[serde(rename = "submit_message")]
-    SubmitMessage {
-        /// The message being submitted.
-        #[serde(flatten)]
-        payload: SubmitMessage,
-    },
-    /// Clear the chat input buffer.
-    #[serde(rename = "clear")]
-    Clear,
-    /// Context-sensitive interrupt: clear input if non-empty, otherwise quit.
-    #[serde(rename = "interrupt")]
-    Interrupt,
-    /// Move the cursor one grapheme to the left.
-    #[serde(rename = "move_cursor_left")]
-    MoveCursorLeft,
-    /// Move the cursor one grapheme to the right.
-    #[serde(rename = "move_cursor_right")]
-    MoveCursorRight,
-    /// Move the cursor to the beginning of the input buffer.
-    #[serde(rename = "move_cursor_to_start")]
-    MoveCursorToStart,
-    /// Move the cursor to the end of the input buffer.
-    #[serde(rename = "move_cursor_to_end")]
-    MoveCursorToEnd,
-    /// Delete the grapheme after the cursor (forward delete).
-    #[serde(rename = "delete_grapheme_forward")]
-    DeleteGraphemeForward,
-    /// Move the cursor one word to the left.
-    #[serde(rename = "move_cursor_word_left")]
-    MoveCursorWordLeft,
-    /// Move the cursor one word to the right.
-    #[serde(rename = "move_cursor_word_right")]
-    MoveCursorWordRight,
-    /// Move the cursor up one visual line.
-    #[serde(rename = "move_cursor_up")]
-    MoveCursorUp,
-    /// Move the cursor down one visual line.
-    #[serde(rename = "move_cursor_down")]
-    MoveCursorDown,
-    /// Set the application interaction mode.
-    #[serde(rename = "set_mode")]
-    SetMode {
-        /// The target mode.
-        #[serde(flatten)]
-        payload: SetMode,
-    },
-    /// Quit the application.
-    #[serde(rename = "quit")]
-    Quit,
-    /// Open an external editor for the input buffer.
-    #[serde(rename = "edit_input")]
-    EditInput,
-    /// Toggle the which-key popup.
-    #[serde(rename = "toggle_which_key")]
-    ToggleWhichKey,
-    /// Switch to a different tab.
-    #[serde(rename = "switch_tab")]
-    SwitchTab {
-        /// The tab to switch to.
-        #[serde(flatten)]
-        payload: SwitchTab,
-    },
     /// Send a message to the AI provider.
     #[serde(rename = "send_message")]
     SendMessage {
         /// The message to send.
         #[serde(flatten)]
         payload: SendMessage,
-    },
-    /// Cancel the active provider stream.
-    #[serde(rename = "cancel_stream")]
-    CancelStream {
-        /// The cancel stream command.
-        #[serde(flatten)]
-        payload: CancelStream,
-    },
-    /// Send conversation context to the LLM provider.
-    #[serde(rename = "send_to_llm_provider")]
-    SendToLlmProvider {
-        /// The full conversation history as LLM messages.
-        #[serde(flatten)]
-        payload: SendToLlmProvider,
-    },
-    /// Request prompt assembly from the context actor.
-    #[serde(rename = "assemble_prompt")]
-    AssemblePrompt {
-        /// The assembly request.
-        #[serde(flatten)]
-        payload: AssemblePrompt,
     },
     /// Switch the prompt assembly strategy for a session.
     #[serde(rename = "switch_prompt_strategy")]
@@ -187,34 +72,6 @@ pub enum Command {
         #[serde(flatten)]
         payload: UnpinChatEntry,
     },
-    /// Select the next chat entry in the chat log.
-    #[serde(rename = "chat_entry_select_next")]
-    ChatEntrySelectNext {
-        /// The session to navigate.
-        #[serde(flatten)]
-        payload: ChatEntrySelectNext,
-    },
-    /// Select the previous chat entry in the chat log.
-    #[serde(rename = "chat_entry_select_prev")]
-    ChatEntrySelectPrev {
-        /// The session to navigate.
-        #[serde(flatten)]
-        payload: ChatEntrySelectPrev,
-    },
-    /// Cancel entry selection in the chat log.
-    #[serde(rename = "chat_entry_select_cancel")]
-    ChatEntrySelectCancel {
-        /// The session to clear selection on.
-        #[serde(flatten)]
-        payload: ChatEntrySelectCancel,
-    },
-    /// Push a chat entry into the conversation history.
-    #[serde(rename = "push_chat_entry")]
-    PushChatEntry {
-        /// The chat entry to add.
-        #[serde(flatten)]
-        payload: PushChatEntry,
-    },
     /// Enqueue a user message for queued processing.
     #[serde(rename = "enqueue_user_message")]
     EnqueueUserMessage {
@@ -229,15 +86,19 @@ pub enum Command {
         #[serde(flatten)]
         payload: SetChatInputText,
     },
-    /// Confirm the autocomplete selection (Tab in Input scope).
-    #[serde(rename = "autocomplete_confirm")]
-    AutocompleteConfirm,
-    /// Proceed with shutdown after actor coordination.
-    #[serde(rename = "proceed_with_shutdown")]
-    ProceedWithShutdown {
-        /// Which actors finished or timed out.
+    /// Push a chat entry into the conversation history.
+    #[serde(rename = "push_chat_entry")]
+    PushChatEntry {
+        /// The chat entry to add.
         #[serde(flatten)]
-        payload: ProceedWithShutdown,
+        payload: PushChatEntry,
+    },
+    /// Cancel the active provider stream.
+    #[serde(rename = "cancel_stream")]
+    CancelStream {
+        /// The cancel stream command.
+        #[serde(flatten)]
+        payload: CancelStream,
     },
     /// Switch the active LLM provider.
     #[serde(rename = "provider_switch")]
@@ -246,30 +107,20 @@ pub enum Command {
         #[serde(flatten)]
         payload: ProviderSwitch,
     },
-    /// Scroll the chat log up (toward older messages).
-    #[serde(rename = "scroll_up")]
-    ScrollUp,
-    /// Scroll the chat log down (toward newer messages).
-    #[serde(rename = "scroll_down")]
-    ScrollDown,
-    /// Scroll the chat log up by a small amount (mouse wheel).
-    #[serde(rename = "mouse_scroll_up")]
-    MouseScrollUp,
-    /// Scroll the chat log down by a small amount (mouse wheel).
-    #[serde(rename = "mouse_scroll_down")]
-    MouseScrollDown,
-    /// Scroll the chat log up by one line.
-    #[serde(rename = "scroll_line_up")]
-    ScrollLineUp,
-    /// Scroll the chat log down by one line.
-    #[serde(rename = "scroll_line_down")]
-    ScrollLineDown,
-    /// Scroll the chat log to the very top.
-    #[serde(rename = "scroll_to_top")]
-    ScrollToTop,
-    /// Scroll the chat log to the very bottom.
-    #[serde(rename = "scroll_to_bottom")]
-    ScrollToBottom,
+    /// Request prompt assembly from the context actor.
+    #[serde(rename = "assemble_prompt")]
+    AssemblePrompt {
+        /// The assembly request.
+        #[serde(flatten)]
+        payload: AssemblePrompt,
+    },
+    /// Send conversation context to the LLM provider.
+    #[serde(rename = "send_to_llm_provider")]
+    SendToLlmProvider {
+        /// The full conversation history as LLM messages.
+        #[serde(flatten)]
+        payload: SendToLlmProvider,
+    },
     /// Refresh the model list from all providers.
     #[serde(rename = "refresh_models")]
     RefreshModels,
@@ -304,54 +155,13 @@ pub enum Command {
         #[serde(flatten)]
         payload: PushToolResult,
     },
-    /// Move the dashboard selection down one entry.
-    #[serde(rename = "dashboard_select_down")]
-    DashboardSelectDown,
-    /// Move the dashboard selection up one entry.
-    #[serde(rename = "dashboard_select_up")]
-    DashboardSelectUp,
-    /// Move the dashboard selection to the first entry.
-    #[serde(rename = "dashboard_select_first")]
-    DashboardSelectFirst,
-    /// Move the dashboard selection to the last entry.
-    #[serde(rename = "dashboard_select_last")]
-    DashboardSelectLast,
-    /// Insert a character into the picker filter.
-    #[serde(rename = "picker_insert_char")]
-    PickerInsertChar {
-        /// The character to insert.
+    /// Proceed with shutdown after actor coordination.
+    #[serde(rename = "proceed_with_shutdown")]
+    ProceedWithShutdown {
+        /// Which actors finished or timed out.
         #[serde(flatten)]
-        payload: PickerInsertChar,
+        payload: ProceedWithShutdown,
     },
-    /// Delete the last character from the picker filter.
-    #[serde(rename = "picker_backspace")]
-    PickerBackspace,
-    /// Confirm the current picker selection.
-    #[serde(rename = "picker_confirm")]
-    PickerConfirm,
-    /// Move the picker selection up.
-    #[serde(rename = "picker_move_up")]
-    PickerMoveUp,
-    /// Move the picker selection down.
-    #[serde(rename = "picker_move_down")]
-    PickerMoveDown,
-    /// Move the picker filter cursor left.
-    #[serde(rename = "picker_move_cursor_left")]
-    PickerMoveCursorLeft,
-    /// Move the picker filter cursor right.
-    #[serde(rename = "picker_move_cursor_right")]
-    PickerMoveCursorRight,
-    /// Open a picker of the specified kind.
-    #[serde(rename = "open_picker")]
-    OpenPicker {
-        /// Which picker to open.
-        #[serde(flatten)]
-        payload: OpenPicker,
-    },
-    /// Toggle the keymap picker scope filter (current scope ↔ all scopes).
-    #[serde(rename = "toggle_keymap_scope_filter")]
-    ToggleKeymapScopeFilter,
-    // --- Session ---
     /// Session data loaded from disk by the persistence actor.
     #[serde(rename = "session_load_completed")]
     SessionLoadCompleted {
@@ -359,166 +169,57 @@ pub enum Command {
         #[serde(flatten)]
         payload: SessionLoadCompleted,
     },
-    /// Close the session picker and start a fresh empty session.
-    #[serde(rename = "session_new")]
-    SessionNew,
-    /// Toggle the pinned context panel visibility.
-    #[serde(rename = "pinned_panel_toggle")]
-    PinnedPanelToggle,
-    /// Open the pinned context panel.
-    #[serde(rename = "pinned_panel_open")]
-    PinnedPanelOpen,
-    /// Close the pinned context panel.
-    #[serde(rename = "pinned_panel_close")]
-    PinnedPanelClose,
-    /// Move the pinned panel selection down one entry.
-    #[serde(rename = "pinned_panel_select_down")]
-    PinnedPanelSelectDown,
-    /// Move the pinned panel selection up one entry.
-    #[serde(rename = "pinned_panel_select_up")]
-    PinnedPanelSelectUp,
-    /// Unpin the currently selected pinned entry from the pinned panel.
-    #[serde(rename = "pinned_panel_unpin")]
-    PinnedPanelUnpin,
-    /// Set the selected pinned entry's position to TOP.
-    #[serde(rename = "pinned_panel_pin_top")]
-    PinnedPanelPinTop,
-    /// Set the selected pinned entry's position to BOTTOM.
-    #[serde(rename = "pinned_panel_pin_bottom")]
-    PinnedPanelPinBottom,
-    /// Set the selected pinned entry's position to RELATIVE.
-    #[serde(rename = "pinned_panel_pin_relative")]
-    PinnedPanelPinRelative,
-    /// Cycle the selected pinned entry's position.
-    #[serde(rename = "pinned_panel_pin_cycle")]
-    PinnedPanelPinCycle,
-    /// Pin the currently selected chat entry.
-    #[serde(rename = "chat_entry_pin_selected")]
-    ChatEntryPinSelected,
-    /// Escape key in Normal mode: cancel selection and close pinned panel.
-    #[serde(rename = "normal_escape")]
-    NormalEscape,
+    /// Load entries for the active picker from the actor system.
+    #[serde(rename = "load_picker_entries")]
+    LoadPickerEntries {
+        /// Which picker kind to load entries for.
+        #[serde(flatten)]
+        payload: LoadPickerEntries,
+    },
+    /// Request to load a full session from disk by byte offset.
+    #[serde(rename = "session_load_requested")]
+    SessionLoadRequested {
+        /// The session to load.
+        #[serde(flatten)]
+        payload: SessionLoadRequested,
+    },
 }
 
 impl Command {
     /// Returns the routing name for this command, if it has one.
-    ///
-    /// Analogous to `Event::type_name()`. Returns `None` for commands
-    /// that are not routed to actors (e.g., internal UI commands).
     #[must_use]
     pub fn command_name(&self) -> Option<&'static str> {
         match self {
-            Self::InsertChar { .. } => Some(InsertChar::NAME),
-            Self::DeleteGrapheme => Some(DeleteGrapheme::NAME),
-            Self::SubmitMessage { .. } => Some(SubmitMessage::NAME),
-            Self::Clear => Some(Clear::NAME),
-            Self::Interrupt => Some(Interrupt::NAME),
-            Self::MoveCursorLeft => Some(MoveCursorLeft::NAME),
-            Self::MoveCursorRight => Some(MoveCursorRight::NAME),
-            Self::MoveCursorToStart => Some(MoveCursorToStart::NAME),
-            Self::MoveCursorToEnd => Some(MoveCursorToEnd::NAME),
-            Self::DeleteGraphemeForward => Some(DeleteGraphemeForward::NAME),
-            Self::MoveCursorWordLeft => Some(MoveCursorWordLeft::NAME),
-            Self::MoveCursorWordRight => Some(MoveCursorWordRight::NAME),
-            Self::MoveCursorUp => Some(MoveCursorUp::NAME),
-            Self::MoveCursorDown => Some(MoveCursorDown::NAME),
-            Self::SetMode { .. } => Some(SetMode::NAME),
-            Self::Quit
-            | Self::EditInput
-            | Self::ToggleWhichKey
-            | Self::ScrollUp
-            | Self::ScrollDown
-            | Self::MouseScrollUp
-            | Self::MouseScrollDown
-            | Self::ScrollLineUp
-            | Self::ScrollLineDown
-            | Self::ScrollToTop
-            | Self::ScrollToBottom
-            | Self::DashboardSelectDown
-            | Self::DashboardSelectUp
-            | Self::DashboardSelectFirst
-            | Self::DashboardSelectLast
-            | Self::PinnedPanelToggle
-            | Self::PinnedPanelOpen
-            | Self::PinnedPanelClose
-            | Self::PinnedPanelSelectDown
-            | Self::PinnedPanelSelectUp
-            | Self::PinnedPanelUnpin
-            | Self::PinnedPanelPinTop
-            | Self::PinnedPanelPinBottom
-            | Self::PinnedPanelPinRelative
-            | Self::PinnedPanelPinCycle
-            | Self::ChatEntryPinSelected
-            | Self::NormalEscape
-            | Self::ToggleKeymapScopeFilter
-            | Self::SessionNew => None,
-            Self::SwitchTab { .. } => Some(SwitchTab::NAME),
             Self::SendMessage { .. } => Some(SendMessage::NAME),
-            Self::CancelStream { .. } => Some(CancelStream::NAME),
-            Self::SendToLlmProvider { .. } => Some(SendToLlmProvider::NAME),
-            Self::AssemblePrompt { .. } => Some(AssemblePrompt::NAME),
             Self::SwitchPromptStrategy { .. } => Some(SwitchPromptStrategy::NAME),
             Self::RestoreStrategyState { .. } => Some(RestoreStrategyState::NAME),
             Self::PinChatEntry { .. } => Some(PinChatEntry::NAME),
             Self::UnpinChatEntry { .. } => Some(UnpinChatEntry::NAME),
-            Self::ChatEntrySelectNext { .. } => Some(ChatEntrySelectNext::NAME),
-            Self::ChatEntrySelectPrev { .. } => Some(ChatEntrySelectPrev::NAME),
-            Self::ChatEntrySelectCancel { .. } => Some(ChatEntrySelectCancel::NAME),
-            Self::PushChatEntry { .. } => Some(PushChatEntry::NAME),
             Self::EnqueueUserMessage { .. } => Some(EnqueueUserMessage::NAME),
             Self::SetChatInputText { .. } => Some(SetChatInputText::NAME),
-            Self::AutocompleteConfirm => Some(AutocompleteConfirm::NAME),
-            Self::ProceedWithShutdown { .. } => Some(ProceedWithShutdown::NAME),
+            Self::PushChatEntry { .. } => Some(PushChatEntry::NAME),
+            Self::CancelStream { .. } => Some(CancelStream::NAME),
             Self::ProviderSwitch { .. } => Some(ProviderSwitch::NAME),
+            Self::AssemblePrompt { .. } => Some(AssemblePrompt::NAME),
+            Self::SendToLlmProvider { .. } => Some(SendToLlmProvider::NAME),
             Self::RefreshModels => Some(RefreshModels::NAME),
             Self::RescanPromptTemplates => Some(RescanPromptTemplates::NAME),
-            Self::PickerInsertChar { .. } => Some(PickerInsertChar::NAME),
-            Self::PickerBackspace => Some(PickerBackspace::NAME),
-            Self::PickerConfirm => Some(PickerConfirm::NAME),
-            Self::PickerMoveUp => Some(PickerMoveUp::NAME),
-            Self::PickerMoveDown => Some(PickerMoveDown::NAME),
-            Self::PickerMoveCursorLeft => Some(PickerMoveCursorLeft::NAME),
-            Self::PickerMoveCursorRight => Some(PickerMoveCursorRight::NAME),
-            Self::OpenPicker { .. } => Some(OpenPicker::NAME),
-            Self::SessionLoadCompleted { .. } => Some(SessionLoadCompleted::NAME),
             Self::RegisterTools { .. } => Some(RegisterTools::NAME),
             Self::ExecuteToolBatch { .. } => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool { .. } => Some(ExecuteTool::NAME),
             Self::PushToolResult { .. } => Some(PushToolResult::NAME),
+            Self::ProceedWithShutdown { .. } => Some(ProceedWithShutdown::NAME),
+            Self::SessionLoadCompleted { .. } => Some(SessionLoadCompleted::NAME),
+            Self::LoadPickerEntries { .. } => Some(LoadPickerEntries::NAME),
+            Self::SessionLoadRequested { .. } => Some("SessionLoadRequested"),
         }
     }
 }
 
 impl std::fmt::Display for Command {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "exhaustive match on all Command variants"
-    )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Command::InsertChar { payload } => write!(f, "insert '{}'", payload.ch),
-            Command::DeleteGrapheme => write!(f, "delete"),
-            Command::SubmitMessage { .. } => write!(f, "submit chat"),
-            Command::Clear => write!(f, "clear"),
-            Command::Interrupt => write!(f, "interrupt"),
-            Command::MoveCursorLeft => write!(f, "cursor left"),
-            Command::MoveCursorRight => write!(f, "cursor right"),
-            Command::MoveCursorToStart => write!(f, "cursor home"),
-            Command::MoveCursorToEnd => write!(f, "cursor end"),
-            Command::DeleteGraphemeForward => write!(f, "forward delete"),
-            Command::MoveCursorWordLeft => write!(f, "cursor word left"),
-            Command::MoveCursorWordRight => write!(f, "cursor word right"),
-            Command::MoveCursorUp => write!(f, "cursor up"),
-            Command::MoveCursorDown => write!(f, "cursor down"),
-            Command::SetMode { payload } => write!(f, "set mode {}", payload.mode),
-            Command::Quit => write!(f, "quit"),
-            Command::EditInput => write!(f, "edit in $EDITOR"),
-            Command::ToggleWhichKey => write!(f, "toggle which-key"),
-            Command::SwitchTab { payload } => write!(f, "switch tab {}", payload.direction),
             Command::SendMessage { .. } => write!(f, "send message"),
-            Command::CancelStream { .. } => write!(f, "cancel stream"),
-            Command::SendToLlmProvider { .. } => write!(f, "send to LLM provider"),
-            Command::AssemblePrompt { .. } => write!(f, "assemble prompt"),
             Command::SwitchPromptStrategy { .. } => write!(f, "switch prompt strategy"),
             Command::RestoreStrategyState { .. } => write!(f, "restore strategy state"),
             Command::PinChatEntry { payload } => {
@@ -531,42 +232,17 @@ impl std::fmt::Display for Command {
             Command::UnpinChatEntry { payload } => {
                 write!(f, "unpin entry '{}'", payload.entry_id)
             }
-            Command::ChatEntrySelectNext { .. } => write!(f, "select next entry"),
-            Command::ChatEntrySelectPrev { .. } => write!(f, "select prev entry"),
-            Command::ChatEntrySelectCancel { .. } => write!(f, "cancel entry selection"),
-            Command::PushChatEntry { .. } => write!(f, "push chat entry"),
             Command::EnqueueUserMessage { .. } => write!(f, "enqueue user message"),
             Command::SetChatInputText { .. } => write!(f, "set chat input text"),
-            Command::AutocompleteConfirm => write!(f, "autocomplete confirm"),
-            Command::ProceedWithShutdown { payload } => {
-                write!(
-                    f,
-                    "proceed with shutdown ({} completed, {} timed out)",
-                    payload.completed.len(),
-                    payload.timed_out.len()
-                )
-            }
+            Command::PushChatEntry { .. } => write!(f, "push chat entry"),
+            Command::CancelStream { .. } => write!(f, "cancel stream"),
             Command::ProviderSwitch { payload } => {
                 write!(f, "provider switch to '{}'", payload.provider_id)
             }
-            Command::ScrollUp => write!(f, "scroll up"),
-            Command::ScrollDown => write!(f, "scroll down"),
-            Command::MouseScrollUp => write!(f, "mouse scroll up"),
-            Command::MouseScrollDown => write!(f, "mouse scroll down"),
-            Command::ScrollLineUp => write!(f, "scroll line up"),
-            Command::ScrollLineDown => write!(f, "scroll line down"),
-            Command::ScrollToTop => write!(f, "scroll to top"),
-            Command::ScrollToBottom => write!(f, "scroll to bottom"),
+            Command::AssemblePrompt { .. } => write!(f, "assemble prompt"),
+            Command::SendToLlmProvider { .. } => write!(f, "send to LLM provider"),
             Command::RefreshModels => write!(f, "refresh models"),
             Command::RescanPromptTemplates => write!(f, "rescan prompt templates"),
-            Command::PickerInsertChar { payload } => write!(f, "picker insert '{}'", payload.ch),
-            Command::PickerBackspace => write!(f, "picker backspace"),
-            Command::PickerConfirm => write!(f, "picker confirm"),
-            Command::PickerMoveUp => write!(f, "picker move up"),
-            Command::PickerMoveDown => write!(f, "picker move down"),
-            Command::PickerMoveCursorLeft => write!(f, "picker cursor left"),
-            Command::PickerMoveCursorRight => write!(f, "picker cursor right"),
-            Command::OpenPicker { payload } => write!(f, "open {} picker", payload.kind),
             Command::RegisterTools { payload } => {
                 write!(
                     f,
@@ -592,26 +268,19 @@ impl std::fmt::Display for Command {
                     payload.result.name, payload.result.tool_call_id
                 )
             }
-            Command::DashboardSelectDown => write!(f, "dashboard select down"),
-            Command::DashboardSelectUp => write!(f, "dashboard select up"),
-            Command::DashboardSelectFirst => write!(f, "dashboard select first"),
-            Command::DashboardSelectLast => write!(f, "dashboard select last"),
-            Command::ToggleKeymapScopeFilter => write!(f, "toggle keymap scope filter"),
-
-            Command::PinnedPanelToggle => write!(f, "toggle pinned panel"),
-            Command::PinnedPanelOpen => write!(f, "open pinned panel"),
-            Command::PinnedPanelClose => write!(f, "close pinned panel"),
-            Command::PinnedPanelSelectDown => write!(f, "pinned panel select down"),
-            Command::PinnedPanelSelectUp => write!(f, "pinned panel select up"),
-            Command::PinnedPanelUnpin => write!(f, "pinned panel unpin"),
-            Command::PinnedPanelPinTop => write!(f, "pinned panel pin top"),
-            Command::PinnedPanelPinBottom => write!(f, "pinned panel pin bottom"),
-            Command::PinnedPanelPinRelative => write!(f, "pinned panel pin relative"),
-            Command::PinnedPanelPinCycle => write!(f, "pinned panel pin cycle"),
-            Command::ChatEntryPinSelected => write!(f, "pin selected entry"),
-            Command::NormalEscape => write!(f, "escape"),
+            Command::ProceedWithShutdown { payload } => {
+                write!(
+                    f,
+                    "proceed with shutdown ({} completed, {} timed out)",
+                    payload.completed.len(),
+                    payload.timed_out.len()
+                )
+            }
             Command::SessionLoadCompleted { .. } => write!(f, "session load completed"),
-            Command::SessionNew => write!(f, "session new"),
+            Command::LoadPickerEntries { payload } => {
+                write!(f, "load {} picker entries", payload.kind)
+            }
+            Command::SessionLoadRequested { .. } => write!(f, "session load requested"),
         }
     }
 }
@@ -619,98 +288,26 @@ impl std::fmt::Display for Command {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Mode;
-    use crate::OpenPicker;
-    use crate::PickerKind;
     use crate::SessionId;
 
     #[rstest::rstest]
-    fn command_insert_char_serialization() {
-        // Given an InsertChar command.
-        let cmd = Command::InsertChar {
-            payload: InsertChar { ch: 'a' },
-        };
-
-        // When serialized.
-        let json = serde_json::to_string(&cmd).expect("serialize");
-
-        // Then it contains the type tag and the character.
-        assert!(json.contains(r#""type":"insert_char""#));
-        assert!(json.contains(r#""ch":"a""#));
-    }
-
-    #[rstest::rstest]
-    fn command_app_quit_serialization() {
-        // Given a Quit command.
-        let cmd = Command::Quit;
-
-        // When serialized.
-        let json = serde_json::to_string(&cmd).expect("serialize");
-
-        // Then it is {"type":"quit"}.
-        assert_eq!(json, r#"{"type":"quit"}"#);
-    }
-
-    #[rstest::rstest]
-    #[case::insert_char(Command::InsertChar { payload: InsertChar { ch: 'x' } })]
-    #[case::delete_grapheme(Command::DeleteGrapheme)]
-    #[case::submit_message(Command::SubmitMessage { payload: SubmitMessage { session_id: SessionId::new(), text: "hello".into() } })]
-    #[case::clear(Command::Clear)]
-    #[case::interrupt(Command::Interrupt)]
-    #[case::set_mode(Command::SetMode { payload: SetMode { mode: Mode::Input } })]
-    #[case::quit(Command::Quit)]
-    #[case::edit_input(Command::EditInput)]
-    #[case::toggle_which_key(Command::ToggleWhichKey)]
-    #[case::switch_tab(Command::SwitchTab { payload: SwitchTab { direction: crate::TabDirection::Next } })]
     #[case::send_message(Command::SendMessage { payload: SendMessage { session_id: SessionId::new(), text: "hi".into() } })]
-    #[case::cancel_stream(Command::CancelStream { payload: CancelStream { session_id: SessionId::new() } })]
-    #[case::send_to_llm_provider(Command::SendToLlmProvider { payload: SendToLlmProvider { session_id: SessionId::new(), messages: vec![], provider_id: None } })]
     #[case::assemble_prompt(Command::AssemblePrompt { payload: AssemblePrompt { session_id: SessionId::new(), history: vec![], tools: vec![], model_name: "test".to_owned() } })]
     #[case::switch_prompt_strategy(Command::SwitchPromptStrategy { payload: SwitchPromptStrategy { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::sliding_window() } })]
     #[case::restore_strategy_state(Command::RestoreStrategyState { payload: RestoreStrategyState { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::compaction(), blob: serde_json::json!({}) } })]
     #[case::push_chat_entry(Command::PushChatEntry { payload: PushChatEntry { session_id: SessionId::new(), entry: crate::ChatEntry::user("hi") } })]
-    #[case::proceed_with_shutdown(Command::ProceedWithShutdown { payload: ProceedWithShutdown { completed: vec!["ext-a".into()], timed_out: vec!["ext-b".into()] } })]
-    #[case::move_cursor_left(Command::MoveCursorLeft)]
-    #[case::move_cursor_right(Command::MoveCursorRight)]
-    #[case::move_cursor_to_start(Command::MoveCursorToStart)]
-    #[case::move_cursor_to_end(Command::MoveCursorToEnd)]
-    #[case::delete_forward(Command::DeleteGraphemeForward)]
-    #[case::move_cursor_word_left(Command::MoveCursorWordLeft)]
-    #[case::move_cursor_word_right(Command::MoveCursorWordRight)]
     #[case::enqueue_user_message(Command::EnqueueUserMessage { payload: EnqueueUserMessage { session_id: SessionId::new(), text: "hello".into() } })]
     #[case::set_chat_input_text(Command::SetChatInputText { payload: SetChatInputText { session_id: SessionId::new(), text: "restored".into() } })]
-    #[case::autocomplete_confirm(Command::AutocompleteConfirm)]
+    #[case::cancel_stream(Command::CancelStream { payload: CancelStream { session_id: SessionId::new() } })]
     #[case::provider_switch(Command::ProviderSwitch { payload: ProviderSwitch { provider_id: "ollama".into() } })]
-    #[case::scroll_up(Command::ScrollUp)]
-    #[case::scroll_down(Command::ScrollDown)]
-    #[case::mouse_scroll_up(Command::MouseScrollUp)]
-    #[case::mouse_scroll_down(Command::MouseScrollDown)]
-    #[case::scroll_line_up(Command::ScrollLineUp)]
-    #[case::scroll_line_down(Command::ScrollLineDown)]
-    #[case::scroll_to_top(Command::ScrollToTop)]
-    #[case::scroll_to_bottom(Command::ScrollToBottom)]
-    #[case::move_cursor_up(Command::MoveCursorUp)]
-    #[case::move_cursor_down(Command::MoveCursorDown)]
-    #[case::picker_insert_char(Command::PickerInsertChar { payload: PickerInsertChar { ch: 'x' } })]
-    #[case::picker_backspace(Command::PickerBackspace)]
-    #[case::picker_confirm(Command::PickerConfirm)]
-    #[case::picker_move_up(Command::PickerMoveUp)]
-    #[case::picker_move_down(Command::PickerMoveDown)]
-    #[case::picker_move_cursor_left(Command::PickerMoveCursorLeft)]
-    #[case::picker_move_cursor_right(Command::PickerMoveCursorRight)]
+    #[case::send_to_llm_provider(Command::SendToLlmProvider { payload: SendToLlmProvider { session_id: SessionId::new(), messages: vec![], provider_id: None } })]
     #[case::refresh_models(Command::RefreshModels)]
     #[case::rescan_prompt_templates(Command::RescanPromptTemplates)]
     #[case::register_tools(Command::RegisterTools { payload: RegisterTools { provider: "echo-actor".into(), definitions: vec![crate::ToolDefinition { name: "echo".into(), description: "echo".into(), parameters: serde_json::json!({}) }] } })]
     #[case::execute_tool_batch(Command::ExecuteToolBatch { payload: ExecuteToolBatch { session_id: SessionId::new(), tool_calls: vec![crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() }] } })]
     #[case::execute_tool(Command::ExecuteTool { payload: ExecuteTool { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
     #[case::push_tool_result(Command::PushToolResult { payload: PushToolResult { session_id: SessionId::new(), result: crate::ToolResult { tool_call_id: "call_1".into(), name: "echo".into(), content: "hi".into(), success: true } } })]
-    #[case::dashboard_select_down(Command::DashboardSelectDown)]
-    #[case::dashboard_select_up(Command::DashboardSelectUp)]
-    #[case::dashboard_select_first(Command::DashboardSelectFirst)]
-    #[case::dashboard_select_last(Command::DashboardSelectLast)]
-    #[case::open_picker(Command::OpenPicker { payload: OpenPicker { kind: PickerKind::ContextAssembly } })]
-    #[case::open_picker_keymap(Command::OpenPicker { payload: OpenPicker { kind: PickerKind::Keymap } })]
-    #[case::toggle_keymap_scope_filter(Command::ToggleKeymapScopeFilter)]
+    #[case::proceed_with_shutdown(Command::ProceedWithShutdown { payload: ProceedWithShutdown { completed: vec!["ext-a".into()], timed_out: vec!["ext-b".into()] } })]
     #[case::session_load_completed(Command::SessionLoadCompleted { payload: SessionLoadCompleted {
         session_id: SessionId::new(),
         title: "Test".to_owned(),
@@ -718,24 +315,12 @@ mod tests {
         active_strategy: crate::PromptStrategyId::passthrough(),
         blobs: std::collections::HashMap::new(),
     } })]
-    #[case::session_new(Command::SessionNew)]
-    #[case::pinned_panel_toggle(Command::PinnedPanelToggle)]
-    #[case::pinned_panel_open(Command::PinnedPanelOpen)]
-    #[case::pinned_panel_close(Command::PinnedPanelClose)]
-    #[case::pinned_panel_select_down(Command::PinnedPanelSelectDown)]
-    #[case::pinned_panel_select_up(Command::PinnedPanelSelectUp)]
-    #[case::pinned_panel_unpin(Command::PinnedPanelUnpin)]
-    #[case::pinned_panel_pin_top(Command::PinnedPanelPinTop)]
-    #[case::pinned_panel_pin_bottom(Command::PinnedPanelPinBottom)]
-    #[case::pinned_panel_pin_relative(Command::PinnedPanelPinRelative)]
-    #[case::pinned_panel_pin_cycle(Command::PinnedPanelPinCycle)]
-    #[case::chat_entry_pin_selected(Command::ChatEntryPinSelected)]
-    #[case::normal_escape(Command::NormalEscape)]
     #[case::pin_chat_entry(Command::PinChatEntry { payload: PinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new(), position: crate::PinPosition::Top } })]
     #[case::unpin_chat_entry(Command::UnpinChatEntry { payload: UnpinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new() } })]
-    #[case::chat_entry_select_next(Command::ChatEntrySelectNext { payload: ChatEntrySelectNext { session_id: SessionId::new() } })]
-    #[case::chat_entry_select_prev(Command::ChatEntrySelectPrev { payload: ChatEntrySelectPrev { session_id: SessionId::new() } })]
-    #[case::chat_entry_select_cancel(Command::ChatEntrySelectCancel { payload: ChatEntrySelectCancel { session_id: SessionId::new() } })]
+    #[case::load_picker_entries(Command::LoadPickerEntries { payload: LoadPickerEntries { kind: crate::PickerKind::Provider } })]
+    #[case::session_load_requested(Command::SessionLoadRequested { payload: SessionLoadRequested {
+        session_id: SessionId::new(), byte_offset: 42u64,
+    } })]
     fn command_roundtrip_all_variants(#[case] cmd: Command) {
         // Given a command variant.
         let json = serde_json::to_string(&cmd).expect("serialize");
@@ -775,38 +360,11 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn command_name_returns_none_for_internal_commands() {
-        // Given internal UI commands.
-        // When calling command_name().
-        // Then they return None (not routed to actors).
-        assert_eq!(Command::Quit.command_name(), None);
-        assert_eq!(Command::EditInput.command_name(), None);
-        assert_eq!(Command::ToggleWhichKey.command_name(), None);
-    }
-
-    #[rstest::rstest]
-    fn open_picker_command_name() {
-        // Given an OpenPicker command.
-        let cmd = Command::OpenPicker {
-            payload: OpenPicker {
-                kind: PickerKind::ContextAssembly,
-            },
-        };
-
-        // When calling command_name().
-        // Then it returns the OpenPicker routing name.
-        assert_eq!(cmd.command_name(), Some(OpenPicker::NAME));
-    }
-
-    #[rstest::rstest]
-    #[case::provider(PickerKind::Provider, "provider")]
-    #[case::context_assembly(PickerKind::ContextAssembly, "context-assembly")]
-    #[case::keymap(PickerKind::Keymap, "keymap")]
-    #[case::session(PickerKind::Session, "session")]
-    fn picker_kind_display(#[case] kind: PickerKind, #[case] expected: &str) {
-        // Given a picker kind.
-        // When formatting it.
-        // Then it shows the expected string.
+    #[case::provider(crate::PickerKind::Provider, "provider")]
+    #[case::context_assembly(crate::PickerKind::ContextAssembly, "context-assembly")]
+    #[case::keymap(crate::PickerKind::Keymap, "keymap")]
+    #[case::session(crate::PickerKind::Session, "session")]
+    fn picker_kind_display(#[case] kind: crate::PickerKind, #[case] expected: &str) {
         assert_eq!(kind.to_string(), expected);
     }
 }

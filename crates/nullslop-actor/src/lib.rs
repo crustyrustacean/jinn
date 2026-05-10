@@ -23,3 +23,9 @@ pub use actor_ref::{ActorSendError, SendResult};
 pub use context::ActorContext;
 pub use envelope::{ActorEnvelope, SystemMessage};
 pub use message_sink::MessageSink;
+
+/// Shared test utilities.
+///
+/// Provides a canonical [`RecordingSink`] that replaces local duplicates
+/// across actor crates.
+pub use message_sink::RecordingSink;

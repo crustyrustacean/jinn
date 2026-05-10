@@ -6,11 +6,3 @@
 pub mod element;
 
 pub use element::CharCounterElement;
-
-use crate::AppBus;
-use crate::AppUiRegistry;
-
-/// Register the character counter UI element.
-pub(crate) fn register(_bus: &mut AppBus, registry: &mut AppUiRegistry) {
-    registry.register(Box::new(CharCounterElement));
-}

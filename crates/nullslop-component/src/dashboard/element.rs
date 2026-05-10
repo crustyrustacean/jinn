@@ -120,6 +120,13 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
+    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
+        let backend = TestBackend::new(width, height);
+        let terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, width, height);
+        (terminal, area)
+    }
+
 
     use super::*;
     use crate::AppState;
@@ -130,9 +137,7 @@ mod tests {
         width: u16,
         height: u16,
     ) -> Vec<String> {
-        let backend = TestBackend::new(width, height);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, width, height);
+        let (mut terminal, area) = setup_term(width, height);
         terminal
             .draw(|frame| {
                 element.render(frame, area, state);
@@ -311,9 +316,7 @@ mod tests {
             s
         };
 
-        let backend = TestBackend::new(40, 10);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 10);
+        let (mut terminal, area) = setup_term(40, 10);
         terminal
             .draw(|frame| {
                 element.render(frame, area, &state);
@@ -343,9 +346,7 @@ mod tests {
             s
         };
 
-        let backend = TestBackend::new(40, 10);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 10);
+        let (mut terminal, area) = setup_term(40, 10);
         terminal
             .draw(|frame| {
                 element.render(frame, area, &state);
@@ -373,9 +374,7 @@ mod tests {
         };
 
         // When rendering.
-        let backend = TestBackend::new(40, 10);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 10);
+        let (mut terminal, area) = setup_term(40, 10);
         terminal
             .draw(|frame| {
                 element.render(frame, area, &state);
@@ -404,9 +403,7 @@ mod tests {
             s
         };
 
-        let backend = TestBackend::new(40, 10);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 10);
+        let (mut terminal, area) = setup_term(40, 10);
         terminal
             .draw(|frame| {
                 element.render(frame, area, &state);
@@ -433,9 +430,7 @@ mod tests {
             s
         };
 
-        let backend = TestBackend::new(40, 10);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 10);
+        let (mut terminal, area) = setup_term(40, 10);
         terminal
             .draw(|frame| {
                 element.render(frame, area, &state);

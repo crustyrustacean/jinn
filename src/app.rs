@@ -12,13 +12,14 @@ use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use nullslop_actor_host::{ActorHostService, InMemoryActorHost, spawn_actor};
 use nullslop_cli::Cli;
 use nullslop_component::AppState;
-use nullslop_component_core::Bus;
 use nullslop_context::{DefaultStrategyFactory, StrategyFactory};
 use nullslop_context_actor::PromptAssemblyActor;
-use nullslop_core::{ActorMessageSink, AppCore, AppMsg, State};
+use nullslop_coordinator::CoordinatorActor;
+use nullslop_core::{ActorMessageSink, AppCore, AppMsg, State, spawn_forwarding_task};
 use nullslop_echo::EchoActor;
 use nullslop_llm::LlmActor;
 use nullslop_llm_discover::DiscoverActor;
+use nullslop_projector::ProjectorActor;
 use nullslop_prompt_scan::PromptScanActor;
 use nullslop_protocol::Event;
 use nullslop_protocol::actor::{ActorStarted, ActorStarting};
@@ -34,9 +35,12 @@ use nullslop_providers::ProviderRegistry;
 use nullslop_providers::ProviderRegistryService;
 use nullslop_providers::cache_path;
 use nullslop_services::Services;
+use nullslop_services::actor_channel::ActorChannelService;
+use nullslop_services::core_channel::CoreChannelService;
 use nullslop_services::strategy_registry::StrategyRegistryService;
 use nullslop_session::{JsonlSessionStore, SessionStoreService};
 use nullslop_session_actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
+use nullslop_shutdown_tracker::ShutdownTrackerActor;
 use nullslop_tool_orchestrator::ToolOrchestratorActor;
 use tokio::runtime::Runtime;
 use wherror::Error;
@@ -117,7 +121,7 @@ impl App {
 
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Tui => {
-                let (core, services) = create_core_with_actor_host(
+                let (core, services, actor_host, core_receiver) = create_core_with_actor_host(
                     &self.handle(),
                     llm_service.clone(),
                     provider_registry.clone(),
@@ -125,21 +129,46 @@ impl App {
                     config_storage.clone(),
                 );
                 core.state.write().active_provider = initial_provider;
-                load_model_cache(&core, &cache_path());
+                load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
-                load_prompt_templates(&core, &nullslop_prompt_template::prompts_dir());
+                load_prompt_templates(&core.state, &nullslop_prompt_template::prompts_dir());
 
                 // Resolve mouse selection config from environment.
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
-                let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
 
-                let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp::new_with_core_and_config(
-                    services, core, tui_config,
-                )));
+                let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
+                let mut ui_registry = nullslop_component::AppUiRegistry::new();
+                nullslop_component::register_tui_elements(&mut ui_registry);
+                let which_key = nullslop_tui::app::WhichKeyInstance::new(
+                    nullslop_tui::keymap::init(),
+                    nullslop_tui::Scope::Normal,
+                );
+
+                let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp {
+                    core,
+                    services,
+                    actor_host,
+                    core_receiver,
+                    ui_registry,
+                    events: nullslop_tui::MsgHandler::new(),
+                    which_key,
+                    suspend: nullslop_tui::suspend::Suspend::new(),
+                    event_task: None,
+                    status: nullslop_tui::AppStatus::Starting,
+                    tab_manager: nullslop_tui::render::init_tab_manager(),
+                    selection: nullslop_tui::selection::SelectionState::Idle,
+                    selectable_rects: Default::default(),
+                    pending_clipboard: false,
+                    config: tui_config,
+                    split_manager: ratatui_spatial_splits::SplitManager::new(),
+                    pane_focus: nullslop_tui::app::PaneFocus::Chat,
+                    pinned_pane_visible: false,
+                    pinned_pane_id: None,
+                }));
                 runner.run().change_context(AppError)?;
             }
             Commands::Headless { command, .. } => {
-                let (core, services) = create_core_with_actor_host(
+                let (core, _services, actor_host, core_receiver) = create_core_with_actor_host(
                     &self.handle(),
                     llm_service.clone(),
                     provider_registry,
@@ -147,10 +176,10 @@ impl App {
                     config_storage,
                 );
                 core.state.write().active_provider = initial_provider;
-                load_model_cache(&core, &cache_path());
+                load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
-                load_prompt_templates(&core, &nullslop_prompt_template::prompts_dir());
-                let mut headless = HeadlessApp::new(core, services);
+                load_prompt_templates(&core.state, &nullslop_prompt_template::prompts_dir());
+                let mut headless = HeadlessApp::new(core, actor_host, core_receiver, self.handle());
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
                         headless.send_chat(&message).change_context(AppError)?;
@@ -224,23 +253,29 @@ impl Default for App {
     }
 }
 
-/// Creates an `AppCore` with all components registered and the actor host started.
+/// Creates an `AppCore` with all actors registered and the async forwarding task started.
 fn create_core_with_actor_host(
     handle: &tokio::runtime::Handle,
     llm_service: LlmServiceFactoryService,
     provider_registry: ProviderRegistryService,
     api_keys: ApiKeysService,
     config_storage: ConfigStorageService,
-) -> (AppCore, Services) {
+) -> (AppCore, Services, ActorHostService, kanal::Receiver<nullslop_protocol::CoreNotification>) {
     // Create channel first — actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
     // the channel independently.
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
 
+    // Create the actor→core notification channel.
+    let (core_notify_tx, core_notify_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
 
-    // Create echo actor using two-phase startup.
+    // Create shared State FIRST — injected into multiple actors.
+    let state = State::new(AppState::default());
+
+    // --- Echo actor ---
     let (echo_tx, echo_rx) = kanal::unbounded::<ActorEnvelope<nullslop_echo::EchoDirectMsg>>();
     let echo_ref = ActorRef::new(echo_tx);
     let mut echo_ctx = ActorContext::new("echo", sink.clone());
@@ -248,7 +283,7 @@ fn create_core_with_actor_host(
     let echo_actor = EchoActor::activate(&mut echo_ctx);
     let echo_result = spawn_actor("echo", echo_actor, &echo_ref, echo_rx, echo_ctx, handle);
 
-    // Create LLM actor with data injection.
+    // --- LLM actor with data injection ---
     let (llm_tx, llm_rx) = kanal::unbounded::<ActorEnvelope<nullslop_llm::LlmDirectMsg>>();
     let llm_ref = ActorRef::new(llm_tx);
     let mut llm_ctx = ActorContext::new("llm-streaming", sink.clone());
@@ -264,7 +299,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create discover actor with data injection.
+    // --- Discover actor with data injection ---
     let (discover_tx, discover_rx) =
         kanal::unbounded::<ActorEnvelope<nullslop_llm_discover::DiscoverDirectMsg>>();
     let discover_ref = ActorRef::new(discover_tx);
@@ -282,7 +317,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create tool orchestrator actor.
+    // --- Tool orchestrator actor ---
     let (orch_tx, orch_rx) =
         kanal::unbounded::<ActorEnvelope<nullslop_tool_orchestrator::ToolOrchestratorDirectMsg>>();
     let orch_ref = ActorRef::new(orch_tx);
@@ -298,7 +333,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create prompt assembly actor.
+    // --- Prompt assembly actor ---
     let (ctx_tx, ctx_rx) =
         kanal::unbounded::<ActorEnvelope<nullslop_context_actor::ContextDirectMsg>>();
     let ctx_ref = ActorRef::new(ctx_tx);
@@ -315,7 +350,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create session store and persistence actor.
+    // --- Session persistence actor ---
     let session_store = JsonlSessionStore::new();
     let session_store_service = SessionStoreService::new(Arc::new(session_store));
 
@@ -334,7 +369,7 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Create prompt scan actor with injected path.
+    // --- Prompt scan actor ---
     let (scan_tx, scan_rx) =
         kanal::unbounded::<ActorEnvelope<nullslop_prompt_scan::PromptScanDirectMsg>>();
     let scan_ref = ActorRef::new(scan_tx);
@@ -351,93 +386,101 @@ fn create_core_with_actor_host(
         handle,
     );
 
-    // Emit lifecycle events.
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "echo".to_string(),
-            description: Some("Echoes messages back".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "echo".to_string(),
-            description: Some("Echoes messages back".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "llm-streaming".to_string(),
-            description: Some("LLM streaming with tool support".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "llm-streaming".to_string(),
-            description: Some("LLM streaming with tool support".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "llm-provider-listing".to_string(),
-            description: Some("Discovers available models".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "llm-provider-listing".to_string(),
-            description: Some("Discovers available models".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "tool-orchestrator".to_string(),
-            description: Some("Dispatches and manages tool execution".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "tool-orchestrator".to_string(),
-            description: Some("Dispatches and manages tool execution".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "context".to_string(),
-            description: Some("Assembles LLM prompts from chat history".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "context".to_string(),
-            description: Some("Assembles LLM prompts from chat history".to_string()),
-        },
-    });
-    // Session persistence lifecycle events.
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "session-persistence".to_string(),
-            description: Some("Persists session data to disk".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "session-persistence".to_string(),
-            description: Some("Persists session data to disk".to_string()),
-        },
-    });
+    // --- Coordinator actor (new in Phase 7) ---
+    // Build services (no actor_host needed — coordinator accesses actor_host via AppCore).
+    let strategy_registry =
+        StrategyRegistryService::new(Arc::new(nullslop_context::DefaultStrategyDiscovery));
+    let services = Services {
+        handle: handle.clone(),
+        actor_channel: ActorChannelService::new(sender.clone()),
+        core_channel: CoreChannelService::new(core_notify_tx),
+        llm_service: llm_service.clone(),
+        provider_registry: provider_registry.clone(),
+        api_keys: api_keys.clone(),
+        config_storage: config_storage.clone(),
+        session_store: session_store_service.clone(),
+        strategy_registry: strategy_registry.clone(),
+    };
 
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "prompt-scan".to_string(),
-            description: Some("Scans and reloads prompt templates".to_string()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "prompt-scan".to_string(),
-            description: Some("Scans and reloads prompt templates".to_string()),
-        },
-    });
+    let (coord_tx, coord_rx) =
+        kanal::unbounded::<ActorEnvelope<nullslop_coordinator::CoordinatorDirectMsg>>();
+    let coord_ref = ActorRef::new(coord_tx);
+    let mut coord_ctx = ActorContext::new("coordinator", sink.clone());
+    coord_ctx.set_description("Orchestrates domain workflows");
+    coord_ctx.set_data(state.clone());
+    coord_ctx.set_data(services.clone());
+    let coordinator_actor = CoordinatorActor::activate(&mut coord_ctx);
+    let coord_result = spawn_actor(
+        "coordinator",
+        coordinator_actor,
+        &coord_ref,
+        coord_rx,
+        coord_ctx,
+        handle,
+    );
+
+    // --- Projector actor (new in Phase 7) ---
+    let (proj_tx, proj_rx) =
+        kanal::unbounded::<ActorEnvelope<nullslop_projector::ProjectorDirectMsg>>();
+    let proj_ref = ActorRef::new(proj_tx);
+    let mut proj_ctx = ActorContext::new("projector", sink.clone());
+    proj_ctx.set_description("Projects events into state");
+    proj_ctx.set_data(state.clone());
+    let projector_actor = ProjectorActor::activate(&mut proj_ctx);
+    let proj_result = spawn_actor(
+        "projector",
+        projector_actor,
+        &proj_ref,
+        proj_rx,
+        proj_ctx,
+        handle,
+    );
+
+    // --- Shutdown tracker actor (new in Phase 7) ---
+    let (st_tx, st_rx) =
+        kanal::unbounded::<ActorEnvelope<nullslop_shutdown_tracker::ShutdownTrackerDirectMsg>>();
+    let st_ref = ActorRef::new(st_tx);
+    let mut st_ctx = ActorContext::new("shutdown-tracker", sink.clone());
+    st_ctx.set_description("Tracks actor lifecycle for shutdown coordination");
+    st_ctx.set_data(state.clone());
+    st_ctx.set_data(services.clone());
+    let shutdown_actor = ShutdownTrackerActor::activate(&mut st_ctx);
+    let st_result = spawn_actor(
+        "shutdown-tracker",
+        shutdown_actor,
+        &st_ref,
+        st_rx,
+        st_ctx,
+        handle,
+    );
+
+    // Emit lifecycle events for all actors.
+    let actor_names = [
+        ("echo", "Echoes messages back"),
+        ("llm-streaming", "LLM streaming with tool support"),
+        ("llm-provider-listing", "Discovers available models"),
+        ("tool-orchestrator", "Dispatches and manages tool execution"),
+        ("context", "Assembles LLM prompts from chat history"),
+        ("session-persistence", "Persists session data to disk"),
+        ("prompt-scan", "Scans and reloads prompt templates"),
+        ("coordinator", "Orchestrates domain workflows"),
+        ("projector", "Projects events into state"),
+        ("shutdown-tracker", "Tracks actor lifecycle for shutdown coordination"),
+    ];
+    for (name, desc) in &actor_names {
+        let _ = sink.send_event(Event::ActorStarting {
+            payload: ActorStarting {
+                name: name.to_string(),
+                description: Some(desc.to_string()),
+            },
+        });
+        let _ = sink.send_event(Event::ActorStarted {
+            payload: ActorStarted {
+                name: name.to_string(),
+                description: Some(desc.to_string()),
+            },
+        });
+    }
 
     let host = InMemoryActorHost::from_actors_with_handle(
         vec![
@@ -448,45 +491,34 @@ fn create_core_with_actor_host(
             prompt_result,
             sp_result,
             scan_result,
+            coord_result,
+            proj_result,
+            st_result,
         ],
         handle.clone(),
     );
     let host_arc: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(host);
 
-    // Build services with the actor host.
-    let strategy_registry =
-        StrategyRegistryService::new(Arc::new(nullslop_context::DefaultStrategyDiscovery));
-    let services = Services {
-        handle: handle.clone(),
-        actor_host: ActorHostService::new(host_arc.clone()),
-        llm_service,
-        provider_registry,
-        api_keys,
-        config_storage,
-        session_store: session_store_service.clone(),
-        strategy_registry,
-    };
+    // Spawn the async forwarding task — continuously drains AppMsg channel → actor host.
+    let actor_host_service = ActorHostService::new(host_arc);
+    spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
-    // Build AppCore with services stored separately from state.
-    let mut core = AppCore {
-        bus: Bus::new(),
-        state: State::new(AppState::default()),
-        services: services.clone(),
+    // Build AppCore with shared state and sender only.
+    let core = AppCore {
+        state,
         sender,
-        receiver,
-        actor_host: Some(ActorHostService::new(host_arc)),
     };
     let mut registry = nullslop_component::AppUiRegistry::new();
-    nullslop_component::register_all(&mut core.bus, &mut registry);
+    nullslop_component::register_all(&mut registry);
 
-    (core, services)
+    (core, services, actor_host_service, core_notify_rx)
 }
 
 /// Loads the model cache from disk into the application state.
 ///
 /// Called once after core creation. Failures are logged but not fatal —
 /// the cache is optional and will be populated on first refresh.
-fn load_model_cache(core: &AppCore, path: &Path) {
+fn load_model_cache(state: &State, path: &Path) {
     let cache = ModelCache::load(path).unwrap_or_else(|e| {
         tracing::warn!("failed to load model cache: {e:?}");
         None
@@ -494,7 +526,7 @@ fn load_model_cache(core: &AppCore, path: &Path) {
     if let Some(ref c) = cache {
         tracing::info!(providers = c.entries.len(), "loaded model cache");
     }
-    let mut state = core.state.write();
+    let mut state = state.write();
     state.last_refreshed_at = cache.as_ref().and_then(|c| c.last_updated_at);
     state.model_cache = cache;
 }
@@ -513,14 +545,14 @@ fn ensure_prompt_example() {
 ///
 /// Called once after core creation. Failures are logged but not fatal —
 /// an empty store is used when the directory is missing or unreadable.
-fn load_prompt_templates(core: &AppCore, path: &Path) {
+fn load_prompt_templates(state: &State, path: &Path) {
     let store =
         nullslop_prompt_template::PromptTemplateStore::load_from_dir(path).unwrap_or_else(|e| {
             tracing::warn!("failed to load prompt templates: {e:?}");
             nullslop_prompt_template::PromptTemplateStore::new()
         });
     tracing::info!(count = store.len(), "loaded prompt templates");
-    core.state.write().prompt_templates = store;
+    state.write().prompt_templates = store;
 }
 
 #[cfg(test)]
@@ -586,14 +618,13 @@ mod tests {
             "+++\nname = \"test\"\ndescription = \"Test template\"\n+++\nTest body.";
         std::fs::write(dir.path().join("test.md"), template_content).expect("write template");
 
-        let services = nullslop_services::Services::new();
-        let core = AppCore::new(services);
+        let state = State::new(AppState::default());
 
         // When loading prompt templates from the temp directory.
-        load_prompt_templates(&core, dir.path());
+        load_prompt_templates(&state, dir.path());
 
         // Then the template count is correct.
-        let state = core.state.read();
+        let state = state.read();
         assert_eq!(state.prompt_templates.len(), 1);
     }
 
@@ -605,14 +636,13 @@ mod tests {
             "+++\nname = \"test\"\ndescription = \"Test template\"\n+++\nTest body.";
         std::fs::write(dir.path().join("test.md"), template_content).expect("write template");
 
-        let services = nullslop_services::Services::new();
-        let core = AppCore::new(services);
+        let state = State::new(AppState::default());
 
         // When loading prompt templates from the temp directory.
-        load_prompt_templates(&core, dir.path());
+        load_prompt_templates(&state, dir.path());
 
         // Then the template is findable by name.
-        let state = core.state.read();
+        let state = state.read();
         assert!(state.prompt_templates.find_by_name("test").is_some());
     }
 
@@ -634,14 +664,13 @@ mod tests {
         };
         cache.save(&cache_path).expect("save cache");
 
-        let services = nullslop_services::Services::new();
-        let core = AppCore::new(services);
+        let state = State::new(AppState::default());
 
         // When loading the model cache from the temp file.
-        load_model_cache(&core, &cache_path);
+        load_model_cache(&state, &cache_path);
 
         // Then the cache is in state with the expected entries.
-        let state = core.state.read();
+        let state = state.read();
         assert!(state.model_cache.is_some());
         let cached = state.model_cache.as_ref().expect("cache present");
         assert_eq!(cached.entries.len(), 1);
@@ -654,14 +683,13 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let cache_path = dir.path().join("nonexistent.json");
 
-        let services = nullslop_services::Services::new();
-        let core = AppCore::new(services);
+        let state = State::new(AppState::default());
 
         // When loading the model cache from a missing file.
-        load_model_cache(&core, &cache_path);
+        load_model_cache(&state, &cache_path);
 
         // Then the cache is None in state.
-        let state = core.state.read();
+        let state = state.read();
         assert!(state.model_cache.is_none());
     }
 }

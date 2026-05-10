@@ -7,7 +7,7 @@
 use jiff::Timestamp;
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_protocol::session::SessionLoadRequested;
-use nullslop_protocol::{Event, PromptStrategyId, SessionSaveRequested};
+use nullslop_protocol::{Command, Event, PromptStrategyId, SessionSaveRequested};
 use nullslop_session::{PersistedSession, SessionStoreService};
 
 /// Direct message type (unused — the actor only responds to bus events).
@@ -28,7 +28,7 @@ impl Actor for SessionPersistenceActor {
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<SessionSaveRequested>();
-        ctx.subscribe_event::<SessionLoadRequested>();
+        ctx.subscribe_command::<SessionLoadRequested>();
         let store = ctx.take_data::<SessionStoreService>();
         Self { store }
     }
@@ -42,7 +42,8 @@ impl Actor for SessionPersistenceActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Command(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx),
+            ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
         }
     }
 
@@ -50,12 +51,18 @@ impl Actor for SessionPersistenceActor {
 }
 
 impl SessionPersistenceActor {
-    /// Processes a bus event, saving session data on `SessionSaveRequested`
-    /// and loading session data on `SessionLoadRequested`.
-    fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
+    /// Processes a bus event, saving session data on `SessionSaveRequested`.
+    fn handle_event(&mut self, event: &Event, _ctx: &ActorContext) {
         match event {
             Event::SessionSaveRequested { payload } => self.on_save_requested(payload),
-            Event::SessionLoadRequested { payload } => self.on_load_requested(payload, ctx),
+            _ => {}
+        }
+    }
+
+    /// Processes a command, loading session data on `SessionLoadRequested`.
+    fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
+        match cmd {
+            Command::SessionLoadRequested { payload } => self.on_load_requested(payload, ctx),
             _ => {}
         }
     }
@@ -155,37 +162,12 @@ mod tests {
     )]
     use nullslop_actor::Actor;
     use nullslop_actor::{ActorContext, ActorEnvelope, MessageSink};
+    use nullslop_actor::RecordingSink;
     use nullslop_protocol::{ChatEntry, Event, PromptStrategyId, SessionId, SessionSaveRequested};
     use nullslop_session::{JsonlSessionStore, SessionStoreService};
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;
-
-    /// A recording message sink for testing.
-    #[derive(Debug)]
-    struct RecordingSink {
-        events: std::sync::Mutex<Vec<Event>>,
-    }
-
-    impl RecordingSink {
-        fn new() -> Self {
-            Self {
-                events: std::sync::Mutex::new(Vec::new()),
-            }
-        }
-    }
-
-    impl MessageSink for RecordingSink {
-        fn send_command(&self, _command: nullslop_protocol::Command) -> nullslop_actor::SendResult {
-            Ok(())
-        }
-
-        #[expect(clippy::unwrap_in_result, reason = "test code")]
-        fn send_event(&self, event: Event) -> nullslop_actor::SendResult {
-            self.events.lock().unwrap().push(event);
-            Ok(())
-        }
-    }
 
     fn test_context(sink: Arc<RecordingSink>) -> ActorContext {
         ActorContext::new("session-persistence", sink as Arc<dyn MessageSink>)

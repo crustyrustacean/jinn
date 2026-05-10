@@ -1,7 +1,7 @@
 //! State for a single chat session — history, input box, streaming progress, and subsystem state.
 
-use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU16, Ordering};
 
 use nullslop_protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
 use serde_json::Value as JsonValue;
@@ -48,8 +48,8 @@ pub struct ChatSessionState {
     ///
     /// Used by scroll handlers to resolve the "at bottom" sentinel into
     /// a concrete offset so `scroll_up` / `scroll_down` work correctly.
-    /// Uses `Cell` for interior mutability since the element receives `&self`.
-    last_max_offset: Cell<u16>,
+    /// Uses `AtomicU16` for interior mutability since the element receives `&self`.
+    last_max_offset: AtomicU16,
     /// Persisted strategy state blob for the active strategy.
     /// Stored as a `serde_json::Value` — the session doesn't interpret it.
     strategy_state: Option<JsonValue>,
@@ -71,7 +71,7 @@ impl ChatSessionState {
             streaming_tool_call_indices: HashMap::new(),
             scroll_offset: None,
             selected_entry_index: None,
-            last_max_offset: Cell::new(0),
+            last_max_offset: AtomicU16::new(0),
             strategy_state: None,
         }
     }
@@ -91,7 +91,7 @@ impl ChatSessionState {
             streaming_tool_call_indices: HashMap::new(),
             scroll_offset: None,
             selected_entry_index: None,
-            last_max_offset: Cell::new(0),
+            last_max_offset: AtomicU16::new(0),
             strategy_state: None,
         }
     }
@@ -396,7 +396,7 @@ impl ChatSessionState {
     /// If currently at the bottom (auto-scroll), resolves to `last_max_offset` first
     /// so the scroll is relative to the actual bottom position.
     pub fn scroll_up(&mut self, amount: u16) {
-        let current = self.scroll_offset.unwrap_or(self.last_max_offset.get());
+        let current = self.scroll_offset.unwrap_or(self.last_max_offset.load(Ordering::Relaxed));
         self.scroll_offset = Some(current.saturating_sub(amount));
     }
 
@@ -405,9 +405,9 @@ impl ChatSessionState {
     /// If the resulting offset reaches or exceeds `last_max_offset`, resets to
     /// auto-scroll (bottom).
     pub fn scroll_down(&mut self, amount: u16) {
-        let current = self.scroll_offset.unwrap_or(self.last_max_offset.get());
+        let current = self.scroll_offset.unwrap_or(self.last_max_offset.load(Ordering::Relaxed));
         let next = current.saturating_add(amount);
-        if next >= self.last_max_offset.get() {
+        if next >= self.last_max_offset.load(Ordering::Relaxed) {
             self.scroll_offset = None;
         } else {
             self.scroll_offset = Some(next);
@@ -434,7 +434,7 @@ impl ChatSessionState {
     /// Called by the chat log element during each render so that
     /// scroll handlers can resolve the "at bottom" state into a concrete offset.
     pub fn set_last_max_offset(&self, max_offset: u16) {
-        self.last_max_offset.set(max_offset);
+        self.last_max_offset.store(max_offset, Ordering::Relaxed);
     }
 
     // --- History restoration ---
@@ -543,6 +543,100 @@ impl ChatSessionState {
 impl Default for ChatSessionState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Builder for constructing [`ChatSessionState`] in tests.
+///
+/// Replays operations sequentially on `build()`. Example:
+///
+/// ```ignore
+/// let mut session = ChatSessionState::builder()
+///     .with_user_entry("hello")
+///     .begin_streaming()
+///     .build();
+/// session.append_stream_token("world");
+/// ```
+#[cfg(test)]
+#[derive(Debug, Default)]
+pub struct ChatSessionStateBuilder {
+    ops: Vec<BuilderOp>,
+}
+
+#[cfg(test)]
+#[derive(Debug)]
+enum BuilderOp {
+    PushEntry(ChatEntry),
+    BeginStreaming,
+    BeginSending,
+    PinLast(PinPosition),
+}
+
+#[cfg(test)]
+impl ChatSessionStateBuilder {
+    /// Push a user entry onto the history.
+    pub fn with_user_entry(mut self, text: &str) -> Self {
+        self.ops.push(BuilderOp::PushEntry(ChatEntry::user(text)));
+        self
+    }
+
+    /// Push any entry onto the history.
+    pub fn with_entry(mut self, entry: ChatEntry) -> Self {
+        self.ops.push(BuilderOp::PushEntry(entry));
+        self
+    }
+
+    /// Begin streaming (creates an empty Assistant entry and sets `is_streaming`).
+    pub fn begin_streaming(mut self) -> Self {
+        self.ops.push(BuilderOp::BeginStreaming);
+        self
+    }
+
+    /// Mark the session as sending.
+    pub fn begin_sending(mut self) -> Self {
+        self.ops.push(BuilderOp::BeginSending);
+        self
+    }
+
+    /// Pin the most recently pushed entry at the given position.
+    pub fn with_pin(mut self, position: PinPosition) -> Self {
+        self.ops.push(BuilderOp::PinLast(position));
+        self
+    }
+
+    /// Build the session by replaying all stored operations.
+    pub fn build(self) -> ChatSessionState {
+        let mut session = ChatSessionState::new();
+        let mut last_id: Option<ChatEntryId> = None;
+        for op in self.ops {
+            match op {
+                BuilderOp::PushEntry(entry) => {
+                    let id = entry.id.clone();
+                    session.push_entry(entry);
+                    last_id = Some(id);
+                }
+                BuilderOp::BeginStreaming => {
+                    session.begin_streaming();
+                }
+                BuilderOp::BeginSending => {
+                    session.begin_sending();
+                }
+                BuilderOp::PinLast(position) => {
+                    if let Some(ref id) = last_id {
+                        session.pin_entry(id, position);
+                    }
+                }
+            }
+        }
+        session
+    }
+}
+
+#[cfg(test)]
+impl ChatSessionState {
+    /// Create a test builder.
+    pub fn builder() -> ChatSessionStateBuilder {
+        ChatSessionStateBuilder::default()
     }
 }
 

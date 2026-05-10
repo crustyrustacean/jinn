@@ -2,11 +2,11 @@ use super::*;
 use crate::envelope::ActorEnvelope;
 
 fn test_sink() -> Arc<dyn MessageSink> {
-    Arc::new(crate::message_sink::TestSink::new())
+    Arc::new(crate::message_sink::RecordingSink::new())
 }
 
-fn test_sink_as_concrete() -> Arc<crate::message_sink::TestSink> {
-    Arc::new(crate::message_sink::TestSink::new())
+fn test_sink_as_concrete() -> Arc<crate::message_sink::RecordingSink> {
+    Arc::new(crate::message_sink::RecordingSink::new())
 }
 
 #[rstest::rstest]
@@ -123,13 +123,13 @@ fn send_command_delegates_to_sink() {
     let ctx = ActorContext::new("test", sink.clone());
 
     // When sending a command.
-    ctx.send_command(Command::Quit)
+    ctx.send_command(Command::RefreshModels)
         .expect("send should succeed");
 
     // Then the sink recorded the command.
     let commands = sink.commands();
     assert_eq!(commands.len(), 1);
-    assert!(matches!(commands[0], Command::Quit));
+    assert!(matches!(commands[0], Command::RefreshModels));
 }
 
 #[rstest::rstest]
@@ -216,7 +216,7 @@ fn sink_returns_arc_clone() {
     let cloned = ctx.sink();
 
     // Then it can send commands that the original sink records.
-    cloned.send_command(Command::Quit).expect("send");
+    cloned.send_command(Command::RefreshModels).expect("send");
     assert_eq!(sink.commands().len(), 1);
 }
 

@@ -82,6 +82,14 @@ mod tests {
 
     use super::*;
     use crate::AppState;
+    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
+        let backend = TestBackend::new(width, height);
+        let terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, width, height);
+        (terminal, area)
+    }
+
+
 
     #[rstest::rstest]
     fn name_returns_streaming_indicator() {
@@ -102,8 +110,7 @@ mod tests {
         let mut state = AppState::default();
         state.active_session_mut().begin_sending();
 
-        let backend = TestBackend::new(40, 10);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(40, 10);
         let area = Rect::new(0, 0, 40, 1);
 
         // When rendering.
@@ -126,8 +133,7 @@ mod tests {
         let mut state = AppState::default();
         state.active_session_mut().begin_streaming();
 
-        let backend = TestBackend::new(40, 10);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(40, 10);
         let area = Rect::new(0, 0, 40, 1);
 
         // When rendering.
@@ -149,8 +155,7 @@ mod tests {
         let mut element = StreamingIndicatorElement::new();
         let state = AppState::default();
 
-        let backend = TestBackend::new(40, 10);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(40, 10);
         let area = Rect::new(0, 0, 40, 1);
 
         // When rendering.

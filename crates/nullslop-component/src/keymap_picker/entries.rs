@@ -11,7 +11,6 @@
 use std::ops::Range;
 
 use crate::PICKER_HIGHLIGHT_STYLE;
-use nullslop_protocol::Command;
 use nullslop_selection_widget::PickerItem;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -27,8 +26,8 @@ pub struct KeymapEntry {
     pub scope: String,
     /// Category name (e.g., `"General"`, `"Navigation"`, `"Input"`).
     pub category: String,
-    /// The command to execute when this entry is confirmed.
-    pub command: Command,
+    /// The action to execute when this entry is confirmed.
+    pub command: nullslop_protocol::Intent,
     /// Pre-computed searchable text combining key sequence and description.
     /// Used by fuzzy matching so users can search by either keys or description.
     pub search_text: String,
@@ -267,7 +266,7 @@ mod tests {
             description: description.to_owned(),
             scope: scope.to_owned(),
             category: category.to_owned(),
-            command: Command::Quit,
+            command: nullslop_protocol::Intent::Quit,
             search_text,
         }
     }

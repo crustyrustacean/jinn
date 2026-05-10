@@ -256,40 +256,11 @@ impl PromptAssemblyActor {
 mod tests {
     use std::sync::Arc;
 
-    use nullslop_actor::{ActorContext, MessageSink};
+    use nullslop_actor::{ActorContext, MessageSink, RecordingSink};
     use nullslop_protocol::ChatEntry;
     use nullslop_protocol::PromptStrategyId;
 
     use super::*;
-
-    #[derive(Debug)]
-    struct RecordingSink {
-        events: std::sync::Mutex<Vec<Event>>,
-    }
-
-    impl RecordingSink {
-        fn new() -> Self {
-            Self {
-                events: std::sync::Mutex::new(Vec::new()),
-            }
-        }
-
-        fn events(&self) -> Vec<Event> {
-            self.events.lock().expect("lock").clone()
-        }
-    }
-
-    impl MessageSink for RecordingSink {
-        fn send_command(&self, _command: nullslop_protocol::Command) -> nullslop_actor::SendResult {
-            Ok(())
-        }
-
-        #[expect(clippy::unwrap_in_result, reason = "test code")]
-        fn send_event(&self, event: Event) -> nullslop_actor::SendResult {
-            self.events.lock().expect("lock").push(event);
-            Ok(())
-        }
-    }
 
     fn test_context(sink: Arc<RecordingSink>) -> ActorContext {
         ActorContext::new("context", sink as Arc<dyn MessageSink>)
@@ -439,7 +410,7 @@ mod tests {
             },
         };
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
-        sink.events().clear();
+        sink.clear();
 
         // When switching to sliding_window strategy.
         let switch_cmd = nullslop_protocol::Command::SwitchPromptStrategy {
@@ -478,7 +449,7 @@ mod tests {
             },
         };
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
-        sink.events().clear();
+        sink.clear();
 
         // When switching to sliding_window strategy.
         let switch_cmd = nullslop_protocol::Command::SwitchPromptStrategy {
@@ -536,7 +507,7 @@ mod tests {
             },
         };
         actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
-        sink.events().clear();
+        sink.clear();
 
         // When assembling with more than 5 entries.
         let mut history = Vec::new();
@@ -577,7 +548,7 @@ mod tests {
             },
         };
         actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
-        sink.events().clear();
+        sink.clear();
 
         // When assembling with many large entries that exceed the 8192 token budget.
         let mut history = Vec::new();
@@ -620,7 +591,7 @@ mod tests {
             },
         };
         actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
-        sink.events().clear();
+        sink.clear();
 
         // When assembling with many entries that exceed the 8192 token budget.
         let mut history = Vec::new();
