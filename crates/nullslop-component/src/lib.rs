@@ -13,30 +13,19 @@
 //! # Type aliases
 //!
 //! - [`AppUiRegistry`] — the standard UI element registry.
-//!
-//! # Phase 5+6 status
-//!
-//! All handler code has been removed. Components contain only state structs and
-//! UI elements. Domain logic will be re-implemented as Coordinator/Projector
-//! actors in Phase 7.
 
-pub mod app_quit;
 pub mod app_state;
-pub mod chat_entry_selection;
 pub mod chat_input_box;
 pub mod chat_session;
-pub mod context_pin;
 pub mod context_strategy_picker;
 pub mod dashboard;
 pub mod keymap_picker;
-pub mod picker_highlight;
 pub mod pinned_panel;
 pub mod prompt_template;
 pub mod provider_picker;
 pub mod session_picker;
 pub mod shutdown_tracker;
 pub mod state;
-pub mod tab_nav;
 pub mod tui_signals;
 
 pub use app_state::{
@@ -55,16 +44,6 @@ use nullslop_component_ui::UiRegistry;
 
 /// Standard UI registry type for the nullslop application.
 pub type AppUiRegistry = UiRegistry<AppState>;
-
-use ratatui::style::{Color, Modifier, Style};
-
-/// Highlight style for fuzzy-matched characters in picker rows.
-///
-/// Shared across all picker entry types so the look is consistent.
-/// Dark gray background with underline; foreground is inherited from the base style.
-pub const PICKER_HIGHLIGHT_STYLE: Style = Style::new()
-    .bg(Color::DarkGray)
-    .add_modifier(Modifier::UNDERLINED);
 
 /// Register all built-in UI elements.
 ///
