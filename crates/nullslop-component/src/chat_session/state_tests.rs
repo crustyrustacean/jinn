@@ -142,7 +142,7 @@ fn scroll_up_from_known_offset_decrements() {
     // Given a session with scroll_offset = 50 and last_max_offset = 100.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
-    session.scroll_offset = Some(50);
+    session.ui.scroll_offset = Some(50);
 
     // When scrolling up by 10.
     session.scroll_up(10);
@@ -156,7 +156,7 @@ fn scroll_up_saturates_at_zero() {
     // Given a session with scroll_offset = 5 and last_max_offset = 100.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
-    session.scroll_offset = Some(5);
+    session.ui.scroll_offset = Some(5);
 
     // When scrolling up by 20.
     session.scroll_up(20);
@@ -170,7 +170,7 @@ fn scroll_down_increments_offset() {
     // Given a session with scroll_offset = 0 and last_max_offset = 100.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
-    session.scroll_offset = Some(0);
+    session.ui.scroll_offset = Some(0);
 
     // When scrolling down by 10.
     session.scroll_down(10);
@@ -184,7 +184,7 @@ fn scroll_down_past_bottom_resets_to_auto() {
     // Given a session with scroll_offset = 95 and last_max_offset = 100.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
-    session.scroll_offset = Some(95);
+    session.ui.scroll_offset = Some(95);
 
     // When scrolling down by 10.
     session.scroll_down(10);
@@ -198,7 +198,7 @@ fn scroll_to_top_sets_offset_to_zero() {
     // Given a session scrolled to the middle.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
-    session.scroll_offset = Some(50);
+    session.ui.scroll_offset = Some(50);
 
     // When scrolling to top.
     session.scroll_to_top();
@@ -212,7 +212,7 @@ fn scroll_to_bottom_resets_to_auto_scroll() {
     // Given a session scrolled to the top.
     let mut session = ChatSessionState::new();
     session.set_last_max_offset(100);
-    session.scroll_offset = Some(0);
+    session.ui.scroll_offset = Some(0);
 
     // When scrolling to bottom.
     session.scroll_to_bottom();
@@ -225,7 +225,7 @@ fn scroll_to_bottom_resets_to_auto_scroll() {
 fn reset_scroll_clears_offset() {
     // Given a session with scroll_offset = 50.
     let mut session = ChatSessionState::new();
-    session.scroll_offset = Some(50);
+    session.ui.scroll_offset = Some(50);
 
     // When resetting scroll.
     session.reset_scroll();
@@ -238,7 +238,7 @@ fn reset_scroll_clears_offset() {
 fn push_entry_resets_scroll() {
     // Given a session with scroll_offset = 50.
     let mut session = ChatSessionState::new();
-    session.scroll_offset = Some(50);
+    session.ui.scroll_offset = Some(50);
 
     // When pushing an entry.
     session.push_entry(ChatEntry::user("hello"));
@@ -260,7 +260,7 @@ fn is_at_bottom_true_when_auto_scroll() {
 fn is_at_bottom_false_when_scrolled_up() {
     // Given a session scrolled to offset 50.
     let mut session = ChatSessionState::new();
-    session.scroll_offset = Some(50);
+    session.ui.scroll_offset = Some(50);
 
     // Then is_at_bottom is false.
     assert!(!session.is_at_bottom());
@@ -441,7 +441,7 @@ fn cancel_streaming_clears_is_streaming() {
     // Given a session that was sending before streaming started.
     let mut session = ChatSessionState::new();
     session.begin_sending();
-    session.is_streaming = true;
+    session.core.is_streaming = true;
     assert!(session.is_streaming());
 
     // When cancelling streaming.
@@ -456,7 +456,7 @@ fn cancel_streaming_clears_is_sending() {
     // Given a session that was sending before streaming started.
     let mut session = ChatSessionState::new();
     session.begin_sending();
-    session.is_streaming = true;
+    session.core.is_streaming = true;
     assert!(session.is_sending());
 
     // When cancelling streaming.
@@ -472,8 +472,8 @@ fn finish_streaming_clears_sending_too() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     // Manually set is_streaming to simulate the transition.
-    session.is_streaming = true;
-    session.streaming_entry_index = Some(session.push_entry(ChatEntry::assistant("")));
+    session.core.is_streaming = true;
+    session.core.streaming_entry_index = Some(session.push_entry(ChatEntry::assistant("")));
 
     // When finishing streaming.
     session.finish_streaming();
