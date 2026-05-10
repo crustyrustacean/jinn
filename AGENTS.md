@@ -4,9 +4,9 @@ This document defines the _coding conventions_ and _patterns_ for the `nullslop`
 
 IMPORTANT NOTES:
 
-- Long-running async tasks are handled by actors. See ARCHITECTURE.md for more details.
-- Sync component handlers are mostly for UI concerns with some decision making.
-- Business logic should primarily be handled by _sending a COMMAND_. This allows both sync & async workflows to occur from any point in the application.
+- All async tasks are handled by actors. See ARCHITECTURE.md for more details.
+- The `IntentHandler` is the single decision point for all user input — it validates, mutates state, and returns commands.
+- Domain logic is handled by _sending a COMMAND_ to the actor system. This allows both sync & async workflows to occur from any point in the application.
 
 ## 1. Overview
 
@@ -52,19 +52,35 @@ pub fn load() -> Result<Config, Report<ConfigError>> {
 pub fn run(tick_rate: Duration) -> Result<(), Report<TuiRunError>>
 ```
 
+### Validator Pattern
+
+Each `Intent` variant has a dedicated validator function. Validators are plain functions — no registries or trait objects. Fallible validators return `Result<(), SpecificError>` with a custom error enum per intent.
+
+```rust
+// Validator pattern — nullslop-intent/src/validators/
+pub fn validate_submit_message(state: &AppState) -> Result<(), SubmitMessageError> {
+    if state.active_chat_input().is_empty() {
+        return Err(SubmitMessageError::EmptyBuffer);
+    }
+    Ok(())
+}
+```
+
+**Validator rules:**
+
+- All validators take `&AppState` as input
+- Each fallible intent has a custom error enum describing why it cannot proceed
+- On validation failure, the `IntentHandler` match arm does nothing (no-op)
+
 ### Trait Usage
 
 Every external dependency or service must have a trait abstraction.
 
 **Colocate traits with their related types.** Never create standalone `traits.rs` files. Traits belong in the same module as the types that implement them or the domain they define. For example, `MessageSink` lives in `message_sink.rs`, not in a separate `traits.rs`.
 
-**Trait pattern:**
+**Service trait pattern:**
 
 ```rust
-pub trait CommandHandler<C: 'static, S> {
-    fn handle(&self, cmd: &C, state: &mut S, out: &mut Out) -> CommandAction;
-}
-
 use wherror::Error;
 
 #[derive(Debug, Error)]
@@ -113,31 +129,39 @@ crates/
       lib.rs
       main.rs
       app.rs
-  nullslop-protocol/   # Command, Event, Mode, Key — wire types
-  nullslop-component-core/  # Bus, handler traits, define_handler! macro
+  nullslop-protocol/   # Command, Event, Intent, Mode, Key, AppMsg, CoreNotification
+  nullslop-intent/     # IntentHandler, validators, validator errors
   nullslop-component-ui/    # UiElement trait, UiRegistry
-  nullslop-component/       # Built-in components (chat input, chat log, quit, etc.)
-  nullslop-core/       # State wrapper, AppCore loop, actor registry
-  nullslop-services/   # Services container (runtime dependencies)
-  nullslop-tui/        # Terminal, renderer, keymap, event loop
+  nullslop-component/       # State structs, UI elements, AppState, State
+  nullslop-core/       # AppCore (state + sender), coordinated_shutdown, spawn_forwarding_task
+  nullslop-services/   # Services container, ActorChannelService, CoreChannelService
+  nullslop-tui/        # Terminal, renderer, keymap (produces Intent), event loop
   nullslop-actor-host/   # Actor host implementations
   nullslop-actor/        # Actor author SDK
   nullslop-cli/        # CLI argument parsing
 actors/
-  nullslop-echo/       # Example echo actor
+  nullslop-coordinator/       # Coordinator actor
+  nullslop-projector/         # Projector actor
+  nullslop-shutdown-tracker/  # ShutdownTracker actor
+  nullslop-llm/               # LLM provider actor
+  nullslop-session-actor/     # Session persistence actor
+  nullslop-context-actor/     # Context assembly actor
+  nullslop-tool-orchestrator/ # Tool execution actor
+  nullslop-echo/              # Example echo actor
+  nullslop-prompt-scan/       # Prompt template scanning actor
+  nullslop-llm-discover/      # LLM discovery actor
 ```
 
 **Component module pattern (under `nullslop-component/src/`):**
 
 ```
 chat_input_box/
-├── mod.rs      # register(bus, registry) wiring
-├── handler.rs  # Bus handler via define_handler! macro (if using a NEW command/event, add the enum variant in nullslop-protocol too)
+├── mod.rs      # Re-exports and public interface
 ├── element.rs  # UiElement<AppState> rendering
 └── state.rs    # Component-specific state (e.g., ChatInputBoxState)
 ```
 
-Not every component needs all four files. A display-only component (like chat log) may only have `mod.rs` and `element.rs`.
+Not every component needs all three files. A display-only component (like chat log) may only have `mod.rs` and `element.rs`.
 
 ### Dependency Injection
 
@@ -146,12 +170,19 @@ Not every component needs all four files. A display-only component (like chat lo
 ```rust
 #[derive(Debug, Clone)]
 pub struct Services {
-    handle: Handle,
-    actor_host: ActorHostService,
+    pub handle: Handle,
+    pub actor_channel: ActorChannelService,
+    pub core_channel: CoreChannelService,
+    pub llm_service: LlmServiceFactoryService,
+    pub provider_registry: ProviderRegistryService,
+    pub api_keys: ApiKeysService,
+    pub config_storage: ConfigStorageService,
+    pub session_store: SessionStoreService,
+    pub strategy_registry: StrategyRegistryService,
 }
 ```
 
-Created once at startup and shared throughout the application.
+Created once at startup and shared throughout the application. `Services` is the DI container for the actor system — the frontend and intent handler don't need it because they work with `AppState` directly.
 
 All services within the `Services` struct must either:
 
@@ -160,7 +191,7 @@ All services within the `Services` struct must either:
 
 ## 3. Data Flow
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full data flow diagram and bus dispatch details.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full data flow diagram. The flow is unidirectional: user input → IntentHandler → commands → actor system (coordinator, actors) → events → projector → AppState → renderer.
 
 ## 4. Tests
 
@@ -174,7 +205,7 @@ Important:
 
 **Every test must assert exactly one semantic concept.** A test should answer a single question about the system. When it fails, the test name alone must tell you _what_ broke.
 
-This means each test has exactly **one** `// When` and **one** `// Then` block. A `// Then` may be followed by `// And` lines, but only when those lines elaborate on the same observable behavior — never when they describe a different behavior.
+This means each test has exactly **one** `// When` and **one** `// Then` block. A `// Then` may be followed by `// And` lines, but only those lines elaborate on the same observable behavior — never when they describe a different behavior.
 
 **What counts as "one concept":**
 
@@ -185,7 +216,7 @@ This means each test has exactly **one** `// When` and **one** `// Then` block. 
 
 **What counts as separate concepts (split into separate tests):**
 
-- A handler that updates state **and** emits an event → two tests. State change and event emission are separate observable behaviors.
+- A handler that updates state **and** emits a command → two tests. State change and command emission are separate observable behaviors.
 - Processing a second input after a first → two tests. Each input triggers its own behavior.
 - Rendering multiple entry types from one widget → one test per entry type. Each entry type is a separate rendering behavior.
 - A multi-step lifecycle (start, complete, finalize, advance) → one test per step. Each step is a separate state transition.
@@ -222,37 +253,30 @@ fn subsequent_stream_token_appends_to_existing_entry() {
 ```
 
 ```rust
-// ❌ BAD — checking state change AND event emission in one test
+// ❌ BAD — checking state change AND command emission in one test
 #[test]
-fn advance_step_finalizes_and_moves_to_next_step() {
+fn submit_message_clears_input_and_enqueues() {
     // ...setup...
-    // When advancing.
-    // Then step-0 is completed and step-1 is active.
-    // And StepCompleted and StepStarted events were emitted.
+    // When submitting a message.
+    // Then the input buffer is cleared.
+    // And EnqueueUserMessage was returned.
 }
 ```
 
 ```rust
 // ✅ GOOD — split into separate tests
 #[test]
-fn advance_finalizes_current_step() {
+fn submit_message_clears_input_buffer() {
     // ...setup...
-    // When advancing.
-    // Then step-0 is Completed.
+    // When handling Intent::SubmitMessage.
+    // Then the input buffer is empty.
 }
 
 #[test]
-fn advance_activates_next_step() {
+fn submit_message_returns_enqueue_command() {
     // ...setup...
-    // When advancing.
-    // Then step-1 is Active.
-}
-
-#[test]
-fn advance_emits_step_completed_and_started_events() {
-    // ...setup...
-    // When advancing.
-    // Then StepCompleted and StepStarted events were emitted.
+    // When handling Intent::SubmitMessage.
+    // Then the result contains EnqueueUserMessage.
 }
 ```
 
@@ -305,23 +329,56 @@ fn pop_returns_none_when_stack_empty() {
 }
 ```
 
-**Example with bus and state:**
+**Example — testing the intent handler:**
 
 ```rust
 #[test]
-fn quit_command_sets_should_quit_in_state() {
-    // Given a bus with AppQuitHandler registered.
-    let mut bus: Bus<AppState> = Bus::new();
-    AppQuitHandler.register(&mut bus);
+fn quit_sets_should_quit_in_state() {
+    // Given default app state.
+    let mut state = AppState::default();
 
-    // When processing the AppQuit command.
-    bus.submit_command(Command::AppQuit);
+    // When handling Intent::Quit.
+    let result = IntentHandler::handle(&Intent::Quit, &mut state);
 
-    let mut state = AppState::new();
-    bus.process_commands(&mut state);
-
-    // Then should_quit should be set to true.
+    // Then should_quit is set to true.
     assert!(state.should_quit);
+    // And no commands are emitted.
+    assert!(result.commands.is_empty());
+}
+```
+
+**Example — testing a validator:**
+
+```rust
+#[test]
+fn submit_message_rejected_when_buffer_empty() {
+    // Given an empty input buffer.
+    let state = AppState::default();
+
+    // When validating submit message.
+    let result = validate_submit_message(&state);
+
+    // Then validation fails with EmptyBuffer.
+    assert!(matches!(result, Err(SubmitMessageError::EmptyBuffer)));
+}
+```
+
+**Example — testing a projector:**
+
+```rust
+#[test]
+fn stream_token_appends_to_assistant_entry() {
+    // Given a projector with an active session.
+    let state = State::new(AppState::default());
+    let sink = RecordingSink::new();
+    let projector = ProjectorActor::new(state.clone());
+
+    // When handling StreamToken("Hello").
+    projector.on_stream_token(&StreamToken { /* ... */ }, &sink);
+
+    // Then the session has an Assistant entry with "Hello".
+    let s = state.read();
+    assert_eq!(s.active_session().last_entry_text(), "Hello");
 }
 ```
 
@@ -371,45 +428,18 @@ pub mod fixtures;
 pub mod services;
 ```
 
-**Testing components via the bus:**
+**Shared test helpers:**
 
-```rust
-#[test]
-fn insert_char_appends_to_buffer() {
-    // Given a bus with ChatInputBoxHandler registered.
-    let mut bus: Bus<AppState> = Bus::new();
-    ChatInputBoxHandler.register(&mut bus);
-
-    // When processing the ChatBoxInsertChar('x') command.
-    bus.submit_command(Command::ChatBoxInsertChar {
-        payload: ChatBoxInsertChar { ch: 'x' },
-    });
-    let mut state = AppState::new();
-    bus.process_commands(&mut state);
-
-    // Then "x" is appended to the chat_input.input_buffer.
-    assert_eq!(state.chat_input.input_buffer, "x");
-}
-```
-
-### Fake Implementations
-
-**Simple fake (from `nullslop-component-core`):**
-
-```rust
-pub struct FakeCommandHandler<C, S> { /* ... */ }
-
-// Used in bus dispatch tests to verify handler registration
-// without real logic:
-let (fake, fake_calls) = FakeCommandHandler::<AppQuit, AppState>::continuing();
-bus.register_command_handler::<AppQuit, _>(fake);
-```
+- `RecordingSink` (in `nullslop-actor`) — records messages emitted by actors during tests. Shared across all actor crates.
+- `TuiApp` test builder — simplified construction of `TuiApp` for render and app tests.
+- `setup_term(width, height)` — creates a ratatui `TestBackend` terminal with the given dimensions.
+- `ChatSessionState` test builder — simplifies lifecycle setup for session-dependent tests.
 
 ## 5. Documentation
 
 ### Module-Level Documentation
 
-Module level documentation should explain what it's purpose and high-level behaviors. Only explain technical details as necessary to make the high-level documentation understandable.
+Module level documentation should explain its purpose and high-level behaviors. Only explain technical details as necessary to make the high-level documentation understandable.
 
 ```rust
 //! Chat input box — where the user composes and sends messages.
@@ -433,13 +463,16 @@ pub struct ChatInputBoxState {
 
 When implementing features:
 
-1. **Search for related patterns** — Find similar components in `nullslop-component/src/`
-2. **Identify impacted types** — Check if new commands, events, or state fields are needed
-3. **Add protocol types first** — Define new command/event structs in their domain module **and** add the corresponding variant to the `Command` or `Event` enum in `nullslop-protocol/src/command.rs` or `event.rs`. Forgetting the enum variant is the most common oversight — the struct alone is not enough.
-4. **Create the component directory** — Add `handler.rs`, `element.rs`, `state.rs` as needed
-5. **Register** — Wire into `register_all()` in `nullslop-component/src/lib.rs`
-6. **Write tests** — Use Given/When/Then structure, test via the bus
-7. **Add documentation** — Module docs, type docs, error docs. Describe behavior and purpose, not technical implementation.
+1. **Add Intent variant** — in `nullslop-intent/src/intent.rs` (or wherever the `Intent` enum is defined in `nullslop-protocol/src/intent.rs`)
+2. **Add validator** — in `nullslop-intent/src/validators/` as a dedicated function. Infallible intents don't need a validator (removed in Phase 10.7). Fallible ones return `Result<(), SpecificError>`.
+3. **Add handler match arm** — in `nullslop-intent/src/handler.rs`: call validator (if any), mutate `AppState`, return commands
+4. **Add keymap binding** — in `nullslop-tui/src/keymap.rs`: bind key to `Intent` variant in the right scope (`Normal`, `Input`, `Dashboard`, `Pinned`, `Picker`)
+5. **Add Command/Event if needed** — define domain-only structs in `nullslop-protocol` with corresponding `Command` or `Event` enum variants. Forgetting the enum variant is the most common oversight — the struct alone is not enough.
+6. **Add coordinator logic if needed** — subscribe to the new command in `actors/nullslop-coordinator` and implement the handler
+7. **Add projector handler if needed** — subscribe to the new event in `actors/nullslop-projector` and implement the state mutation
+8. **Add UI element if needed** — in `nullslop-component/src/`, register in `register_all()` in `lib.rs`
+9. **Write tests** — Use Given/When/Then structure: test validator in isolation, test intent handler for state changes and commands, test projector for event→state mapping
+10. **Add documentation** — Module docs, type docs, error docs. Describe behavior and purpose, not technical implementation.
 
 ## 8. Tooling
 
