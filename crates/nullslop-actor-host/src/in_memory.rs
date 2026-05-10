@@ -181,6 +181,14 @@ impl InMemoryActorHost {
             }
 
             for cmd in &entry.commands {
+                if let Some(existing) = command_routes.get(cmd) {
+                    let existing_names: Vec<_> = existing.iter().map(|e| e.name.as_str()).collect();
+                    panic!(
+                        "command '{}' is subscribed by multiple actors: {:?} and '{}'. \
+                         Commands must have exactly one subscriber.",
+                        cmd, existing_names, entry.name
+                    );
+                }
                 command_routes
                     .entry(cmd.clone())
                     .or_default()
@@ -538,6 +546,37 @@ mod tests {
 
         host.shutdown_with_timeout(Duration::from_millis(200))
             .expect("shutdown");
+    }
+
+    #[rstest::rstest]
+    #[should_panic(
+        expected = "is subscribed by multiple actors"
+    )]
+    fn duplicate_command_subscription_panics() {
+        // Given two actors subscribing to the same command.
+        let runtime = rt();
+        let _guard = runtime.enter();
+        let sink = Arc::new(RecordingSink::new());
+        let cmd_name = nullslop_protocol::chat_input::PushChatEntry::NAME;
+        let (r1, _received1) = spawn_recording_actor(
+            "actor-a",
+            sink.clone(),
+            &[],
+            &[cmd_name],
+            runtime.handle(),
+        );
+        let (r2, _received2) = spawn_recording_actor(
+            "actor-b",
+            sink.clone(),
+            &[],
+            &[cmd_name],
+            runtime.handle(),
+        );
+
+        // When building the host.
+        // Then it panics because both actors subscribe to PushChatEntry.
+        let _host =
+            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone());
     }
 
     #[rstest::rstest]

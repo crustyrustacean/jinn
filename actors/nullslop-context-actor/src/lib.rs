@@ -1,8 +1,8 @@
 //! Prompt assembly actor — assembles LLM-ready prompts from chat history.
 //!
-//! Subscribes to [`AssemblePrompt`] and [`SwitchPromptStrategy`] commands,
+//! Subscribes to [`AssemblePrompt`] commands and [`PromptStrategySwitched`] events,
 //! runs the configured strategy for each session, and emits [`PromptAssembled`]
-//! and [`PromptStrategySwitched`] events when complete.
+//! events when complete.
 //!
 //! Unknown sessions are automatically initialized with `PassthroughStrategy`.
 //! Strategy switching uses a [`StrategyFactory`] injected via [`ActorContext`] data.
@@ -15,8 +15,7 @@ use nullslop_context::{
     estimate_entry_tokens,
 };
 use nullslop_protocol::context::{
-    AssemblePrompt, PromptAssembled, PromptStrategySwitched, RestoreStrategyState,
-    SwitchPromptStrategy,
+    AssemblePrompt, PromptAssembled, PromptStrategySwitched,
 };
 use nullslop_protocol::tool::ToolsRegistered;
 use nullslop_protocol::{
@@ -41,8 +40,7 @@ impl Actor for PromptAssemblyActor {
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<AssemblePrompt>();
-        ctx.subscribe_command::<SwitchPromptStrategy>();
-        ctx.subscribe_command::<RestoreStrategyState>();
+        ctx.subscribe_event::<PromptStrategySwitched>();
         ctx.subscribe_event::<ToolsRegistered>();
         let factory = ctx
             .take_data::<Box<dyn StrategyFactory>>()
@@ -82,12 +80,7 @@ impl PromptAssemblyActor {
             nullslop_protocol::Command::AssemblePrompt { payload } => {
                 self.on_assemble_prompt(payload, ctx).await;
             }
-            nullslop_protocol::Command::SwitchPromptStrategy { payload } => {
-                self.on_switch_prompt_strategy(payload, ctx);
-            }
-            nullslop_protocol::Command::RestoreStrategyState { payload } => {
-                Self::on_restore_strategy_state(payload);
-            }
+
             _ => {}
         }
     }
@@ -97,6 +90,9 @@ impl PromptAssemblyActor {
         match evt {
             Event::ToolsRegistered { payload } => {
                 self.on_tools_registered(payload);
+            }
+            Event::PromptStrategySwitched { payload } => {
+                self.on_prompt_strategy_switched(payload);
             }
             _ => {}
         }
@@ -213,24 +209,18 @@ impl PromptAssemblyActor {
         });
     }
 
-    /// Handles [`SwitchPromptStrategy`] by creating a new strategy via the factory.
-    fn on_switch_prompt_strategy(&mut self, cmd: &SwitchPromptStrategy, ctx: &ActorContext) {
+    /// Handles [`PromptStrategySwitched`] by creating a new strategy via the factory.
+    fn on_prompt_strategy_switched(&mut self, evt: &PromptStrategySwitched) {
         let Some(factory) = self.factory.as_ref() else {
             tracing::error!("no strategy factory available");
             return;
         };
-        match factory.create(&cmd.strategy_id) {
+        match factory.create(&evt.strategy_id) {
             Ok(new_strategy) => {
-                self.strategies.insert(cmd.session_id.clone(), new_strategy);
-                let _ = ctx.send_event(Event::PromptStrategySwitched {
-                    payload: PromptStrategySwitched {
-                        session_id: cmd.session_id.clone(),
-                        strategy_id: cmd.strategy_id.clone(),
-                    },
-                });
+                self.strategies.insert(evt.session_id.clone(), new_strategy);
             }
             Err(e) => {
-                tracing::error!("failed to create strategy '{}': {e:?}", cmd.strategy_id);
+                tracing::error!("failed to create strategy '{}': {e:?}", evt.strategy_id);
             }
         }
     }
@@ -242,14 +232,7 @@ impl PromptAssemblyActor {
         }
     }
 
-    /// Handles [`RestoreStrategyState`] (currently a stub — no-op).
-    fn on_restore_strategy_state(cmd: &RestoreStrategyState) {
-        tracing::debug!(
-            session_id = ?cmd.session_id,
-            strategy_id = %cmd.strategy_id,
-            "received RestoreStrategyState (stub: no-op)"
-        );
-    }
+
 }
 
 #[cfg(test)]
@@ -275,14 +258,6 @@ mod tests {
         None
     }
 
-    fn find_strategy_switched(events: &[Event]) -> Option<PromptStrategySwitched> {
-        for evt in events {
-            if let Event::PromptStrategySwitched { payload } = evt {
-                return Some(payload.clone());
-            }
-        }
-        None
-    }
 
     #[rstest::rstest]
     #[tokio::test]
@@ -393,7 +368,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn switch_strategy_emits_switched_event() {
+    async fn prompt_strategy_switched_creates_strategy() {
         // Given an actor with an existing session.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
@@ -412,27 +387,23 @@ mod tests {
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
         sink.clear();
 
-        // When switching to sliding_window strategy.
-        let switch_cmd = nullslop_protocol::Command::SwitchPromptStrategy {
-            payload: SwitchPromptStrategy {
+        // When receiving a PromptStrategySwitched event.
+        let event = Event::PromptStrategySwitched {
+            payload: PromptStrategySwitched {
                 session_id: session_id.clone(),
                 strategy_id: PromptStrategyId::sliding_window(),
             },
         };
-        actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
-        // Then a PromptStrategySwitched event is emitted.
-        let events = sink.events();
-        let switched = find_strategy_switched(&events);
-        assert!(switched.is_some());
-        let switched = switched.expect("should have PromptStrategySwitched");
-        assert_eq!(switched.session_id, session_id);
-        assert_eq!(switched.strategy_id, PromptStrategyId::sliding_window());
+        // Then the strategy was created.
+        let strategy = actor.strategies.get(&session_id).expect("should exist");
+        assert_eq!(strategy.name(), "sliding_window");
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn switch_strategy_updates_active_strategy() {
+    async fn prompt_strategy_switched_updates_strategy_name() {
         // Given an actor with an existing session.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
@@ -451,14 +422,14 @@ mod tests {
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
         sink.clear();
 
-        // When switching to sliding_window strategy.
-        let switch_cmd = nullslop_protocol::Command::SwitchPromptStrategy {
-            payload: SwitchPromptStrategy {
+        // When receiving a PromptStrategySwitched event.
+        let event = Event::PromptStrategySwitched {
+            payload: PromptStrategySwitched {
                 session_id: session_id.clone(),
                 strategy_id: PromptStrategyId::sliding_window(),
             },
         };
-        actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // And the strategy is now sliding_window.
         let strategy = actor.strategies.get(&session_id).expect("should exist");
@@ -467,25 +438,23 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn switch_strategy_unknown_id_is_ignored() {
+    async fn prompt_strategy_switched_unknown_id_is_ignored() {
         // Given an actor.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
         let mut actor = PromptAssemblyActor::activate(&mut ctx);
 
-        // When switching to an unknown strategy.
+        // When receiving a PromptStrategySwitched event with an unknown strategy.
         let session_id = SessionId::new();
-        let switch_cmd = nullslop_protocol::Command::SwitchPromptStrategy {
-            payload: SwitchPromptStrategy {
+        let event = Event::PromptStrategySwitched {
+            payload: PromptStrategySwitched {
                 session_id: session_id.clone(),
                 strategy_id: PromptStrategyId::new("nonexistent"),
             },
         };
-        actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
-        // Then no event is emitted and no strategy is stored.
-        let events = sink.events();
-        assert!(find_strategy_switched(&events).is_none());
+        // Then no strategy is stored.
         assert!(!actor.strategies.contains_key(&session_id));
     }
 
@@ -500,13 +469,13 @@ mod tests {
         let session_id = SessionId::new();
 
         // Switch to sliding window.
-        let switch_cmd = nullslop_protocol::Command::SwitchPromptStrategy {
-            payload: SwitchPromptStrategy {
+        let event = Event::PromptStrategySwitched {
+            payload: PromptStrategySwitched {
                 session_id: session_id.clone(),
                 strategy_id: PromptStrategyId::sliding_window(),
             },
         };
-        actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
         sink.clear();
 
         // When assembling with more than 5 entries.
@@ -541,13 +510,13 @@ mod tests {
         let session_id = SessionId::new();
 
         // Switch to token_budget.
-        let switch_cmd = nullslop_protocol::Command::SwitchPromptStrategy {
-            payload: SwitchPromptStrategy {
+        let event = Event::PromptStrategySwitched {
+            payload: PromptStrategySwitched {
                 session_id: session_id.clone(),
                 strategy_id: PromptStrategyId::token_budget(),
             },
         };
-        actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
         sink.clear();
 
         // When assembling with many large entries that exceed the 8192 token budget.
@@ -584,13 +553,13 @@ mod tests {
         let session_id = SessionId::new();
 
         // Switch to compaction.
-        let switch_cmd = nullslop_protocol::Command::SwitchPromptStrategy {
-            payload: SwitchPromptStrategy {
+        let event = Event::PromptStrategySwitched {
+            payload: PromptStrategySwitched {
                 session_id: session_id.clone(),
                 strategy_id: PromptStrategyId::compaction(),
             },
         };
-        actor.handle(ActorEnvelope::Command(switch_cmd), &ctx).await;
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
         sink.clear();
 
         // When assembling with many entries that exceed the 8192 token budget.
@@ -620,50 +589,7 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn restore_strategy_state_does_not_panic() {
-        // Given an actor.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let mut actor = PromptAssemblyActor::activate(&mut ctx);
 
-        // When sending a RestoreStrategyState command.
-        let session_id = SessionId::new();
-        let cmd = nullslop_protocol::Command::RestoreStrategyState {
-            payload: RestoreStrategyState {
-                session_id: session_id.clone(),
-                strategy_id: PromptStrategyId::compaction(),
-                blob: serde_json::json!({"compaction_count": 5}),
-            },
-        };
-        // Then the command is handled without error (no panic).
-        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn restore_strategy_state_emits_no_events() {
-        // Given an actor.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let mut actor = PromptAssemblyActor::activate(&mut ctx);
-
-        // When sending a RestoreStrategyState command.
-        let session_id = SessionId::new();
-        let cmd = nullslop_protocol::Command::RestoreStrategyState {
-            payload: RestoreStrategyState {
-                session_id,
-                strategy_id: PromptStrategyId::compaction(),
-                blob: serde_json::json!({"compaction_count": 5}),
-            },
-        };
-        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
-
-        // Then no events are emitted (stub is a no-op).
-        let events = sink.events();
-        assert!(events.is_empty());
-    }
 
     #[rstest::rstest]
     #[tokio::test]
