@@ -30,14 +30,13 @@
 )]
 
 use nullslop_component::AppState;
-use nullslop_protocol::context::{PinChatEntry, SwitchPromptStrategy};
-use nullslop_protocol::provider::{CancelStream, ProviderSwitch};
-use nullslop_protocol::session::SessionLoadRequested;
-use nullslop_protocol::system::LoadPickerEntries;
-use nullslop_protocol::{Command, Mode, PickerKind, PinPosition, SessionId, TabDirection};
+use nullslop_protocol::context::PinChatEntry;
+use nullslop_protocol::provider::CancelStream;
+use nullslop_protocol::{Command, Mode, PinPosition, SessionId, TabDirection};
 
 use crate::Intent;
-use crate::validators::{app, chat_entry, picker};
+use crate::validators::{app, chat_entry};
+
 
 use nullslop_protocol::IntentResult;
 
@@ -56,8 +55,6 @@ impl IntentHandler {
     const SCROLL_STEP: u16 = 10;
     /// Number of lines to scroll per mouse wheel tick.
     const MOUSE_SCROLL_STEP: u16 = 3;
-    /// Maximum number of visible result rows for picker scroll clamping.
-    const PICKER_MAX_VISIBLE: usize = 100;
 
     /// Process an intent against the current application state.
     ///
@@ -170,145 +167,51 @@ impl IntentHandler {
             Intent::NormalEscape => handle_normal_escape(state),
 
             // --- Picker ---
-            Intent::OpenPicker { kind } => handle_open_picker(state, *kind),
+            Intent::OpenPicker { kind } => {
+                nsslice_picker::intent::handle_open_picker(state, *kind)
+            }
             Intent::PickerInsertChar { ch } => {
-                picker::validate_picker_insert_char(state, *ch);
-                match state.frontend.active_picker_kind {
-                    Some(PickerKind::Provider) => state.provider.provider_picker.insert_char(*ch),
-                    Some(PickerKind::ContextAssembly) => {
-                        state.frontend.context_strategy_picker.insert_char(*ch);
-                    }
-                    Some(PickerKind::Keymap) => state.frontend.keymap_picker.insert_char(*ch),
-                    Some(PickerKind::Session) => state.frontend.session_picker.insert_char(*ch),
-                    None => {}
-                }
-                IntentResult::empty()
+                nsslice_picker::intent::handle_insert_char(state, *ch)
             }
-            Intent::PickerBackspace => {
-                picker::validate_picker_backspace(state);
-                match state.frontend.active_picker_kind {
-                    Some(PickerKind::Provider) => state.provider.provider_picker.backspace(),
-                    Some(PickerKind::ContextAssembly) => {
-                        state.frontend.context_strategy_picker.backspace();
-                    }
-                    Some(PickerKind::Keymap) => state.frontend.keymap_picker.backspace(),
-                    Some(PickerKind::Session) => state.frontend.session_picker.backspace(),
-                    None => {}
+            Intent::PickerBackspace => nsslice_picker::intent::handle_backspace(state),
+            Intent::PickerConfirm => {
+                let (result, maybe_intent) = nsslice_picker::intent::handle_picker_confirm(state);
+                if let Some(intent) = maybe_intent {
+                    let redispatch = IntentHandler::handle(&intent, state);
+                    IntentResult::with_commands(
+                        [result.commands, redispatch.commands].concat(),
+                    )
+                } else {
+                    result
                 }
-                IntentResult::empty()
             }
-            Intent::PickerConfirm => handle_picker_confirm(state),
-            Intent::PickerMoveUp => {
-                picker::validate_picker_move_up(state);
-                match state.frontend.active_picker_kind {
-                    Some(PickerKind::Provider) => {
-                        state
-                            .provider
-                            .provider_picker
-                            .move_up(Self::PICKER_MAX_VISIBLE);
-                    }
-                    Some(PickerKind::ContextAssembly) => {
-                        state
-                            .frontend
-                            .context_strategy_picker
-                            .move_up(Self::PICKER_MAX_VISIBLE);
-                    }
-                    Some(PickerKind::Keymap) => {
-                        state
-                            .frontend
-                            .keymap_picker
-                            .move_up(Self::PICKER_MAX_VISIBLE);
-                    }
-                    Some(PickerKind::Session) => {
-                        state
-                            .frontend
-                            .session_picker
-                            .move_up(Self::PICKER_MAX_VISIBLE);
-                    }
-                    None => {}
-                }
-                IntentResult::empty()
-            }
-            Intent::PickerMoveDown => {
-                picker::validate_picker_move_down(state);
-                match state.frontend.active_picker_kind {
-                    Some(PickerKind::Provider) => {
-                        state
-                            .provider
-                            .provider_picker
-                            .move_down(Self::PICKER_MAX_VISIBLE);
-                    }
-                    Some(PickerKind::ContextAssembly) => {
-                        state
-                            .frontend
-                            .context_strategy_picker
-                            .move_down(Self::PICKER_MAX_VISIBLE);
-                    }
-                    Some(PickerKind::Keymap) => {
-                        state
-                            .frontend
-                            .keymap_picker
-                            .move_down(Self::PICKER_MAX_VISIBLE);
-                    }
-                    Some(PickerKind::Session) => {
-                        state
-                            .frontend
-                            .session_picker
-                            .move_down(Self::PICKER_MAX_VISIBLE);
-                    }
-                    None => {}
-                }
-                IntentResult::empty()
-            }
+            Intent::PickerMoveUp => nsslice_picker::intent::handle_move_up(state),
+            Intent::PickerMoveDown => nsslice_picker::intent::handle_move_down(state),
             Intent::PickerMoveCursorLeft => {
-                picker::validate_picker_move_cursor_left(state);
-                match state.frontend.active_picker_kind {
-                    Some(PickerKind::Provider) => state.provider.provider_picker.move_cursor_left(),
-                    Some(PickerKind::ContextAssembly) => {
-                        state.frontend.context_strategy_picker.move_cursor_left();
-                    }
-                    Some(PickerKind::Keymap) => state.frontend.keymap_picker.move_cursor_left(),
-                    Some(PickerKind::Session) => state.frontend.session_picker.move_cursor_left(),
-                    None => {}
-                }
-                IntentResult::empty()
+                nsslice_picker::intent::handle_move_cursor_left(state)
             }
             Intent::PickerMoveCursorRight => {
-                picker::validate_picker_move_cursor_right(state);
-                match state.frontend.active_picker_kind {
-                    Some(PickerKind::Provider) => {
-                        state.provider.provider_picker.move_cursor_right();
-                    }
-                    Some(PickerKind::ContextAssembly) => {
-                        state.frontend.context_strategy_picker.move_cursor_right();
-                    }
-                    Some(PickerKind::Keymap) => state.frontend.keymap_picker.move_cursor_right(),
-                    Some(PickerKind::Session) => state.frontend.session_picker.move_cursor_right(),
-                    None => {}
-                }
-                IntentResult::empty()
+                nsslice_picker::intent::handle_move_cursor_right(state)
             }
-            Intent::ToggleKeymapScopeFilter => handle_toggle_keymap_scope_filter(state),
+            Intent::ToggleKeymapScopeFilter => {
+                nsslice_picker::intent::handle_toggle_keymap_scope_filter(state)
+            }
             Intent::SessionNew => handle_session_new(state),
             Intent::RefreshModels => handle_refresh_models(state),
             Intent::RescanPromptTemplates => handle_rescan_prompt_templates(state),
 
             // --- Dashboard ---
             Intent::DashboardSelectDown => {
-                state.frontend.dashboard.select_next();
-                IntentResult::empty()
+                nsslice_dashboard::intent::handle_select_down(state)
             }
             Intent::DashboardSelectUp => {
-                state.frontend.dashboard.select_prev();
-                IntentResult::empty()
+                nsslice_dashboard::intent::handle_select_up(state)
             }
             Intent::DashboardSelectFirst => {
-                state.frontend.dashboard.select_first();
-                IntentResult::empty()
+                nsslice_dashboard::intent::handle_select_first(state)
             }
             Intent::DashboardSelectLast => {
-                state.frontend.dashboard.select_last();
-                IntentResult::empty()
+                nsslice_dashboard::intent::handle_select_last(state)
             }
 
             // --- Pinned Panel ---
@@ -414,146 +317,6 @@ fn handle_normal_escape(state: &mut AppState) -> IntentResult {
 
     state.frontend.tui_signals.pinned_pane_close = true;
 
-    IntentResult::empty()
-}
-
-// --- Picker handlers ---
-
-fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResult {
-    if picker::validate_open_picker(state, &kind).is_err() {
-        return IntentResult::empty();
-    }
-
-    state.frontend.active_picker_kind = Some(kind);
-
-    match kind {
-        PickerKind::Provider => {
-            state.provider.provider_picker.reset();
-        }
-        PickerKind::ContextAssembly => {
-            state.frontend.context_strategy_picker.reset();
-        }
-        PickerKind::Keymap => {
-            state.frontend.keymap_picker.reset();
-            state.frontend.keymap_picker_show_all = false;
-        }
-        PickerKind::Session => {
-            state.frontend.session_picker.reset();
-        }
-    }
-
-    state.frontend.mode = Mode::Picker;
-
-    // Keymap entries come from state, not services.
-    if matches!(kind, PickerKind::Keymap) {
-        IntentResult::empty()
-    } else {
-        IntentResult::with_commands(vec![Command::LoadPickerEntries {
-            payload: LoadPickerEntries { kind },
-        }])
-    }
-}
-
-fn handle_picker_confirm(state: &mut AppState) -> IntentResult {
-    if picker::validate_picker_confirm(state).is_err() {
-        return IntentResult::empty();
-    }
-
-    match state.frontend.active_picker_kind {
-        Some(PickerKind::Provider) => confirm_provider(state),
-        Some(PickerKind::ContextAssembly) => confirm_strategy(state),
-        Some(PickerKind::Keymap) => confirm_keymap(state),
-        Some(PickerKind::Session) => confirm_session(state),
-        None => IntentResult::empty(),
-    }
-}
-
-fn confirm_provider(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.provider.provider_picker.selected_item() else {
-        return IntentResult::empty();
-    };
-    if !entry.is_available {
-        return IntentResult::empty();
-    }
-    let provider_id = entry.provider_id.clone();
-
-    state.frontend.mode = Mode::Normal;
-    IntentResult::with_commands(vec![Command::ProviderSwitch {
-        payload: ProviderSwitch { provider_id },
-    }])
-}
-
-fn confirm_strategy(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.context_strategy_picker.selected_item() else {
-        return IntentResult::empty();
-    };
-    let strategy_id = entry.strategy_id.clone();
-    let session_id = state.session.active_session.clone();
-
-    state.set_default_strategy(strategy_id.clone());
-
-    state.frontend.mode = Mode::Normal;
-    IntentResult::with_commands(vec![Command::SwitchPromptStrategy {
-        payload: SwitchPromptStrategy {
-            session_id,
-            strategy_id,
-        },
-    }])
-}
-
-fn confirm_keymap(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.keymap_picker.selected_item() else {
-        return IntentResult::empty();
-    };
-    let intent = entry.command.clone();
-
-    // Set mode to Normal, then execute the selected keymap intent.
-    state.frontend.mode = Mode::Normal;
-    IntentHandler::handle(&intent, state)
-}
-
-fn confirm_session(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.session_picker.selected_item() else {
-        return IntentResult::empty();
-    };
-    let session_id = entry.session_id.clone();
-    let byte_offset = entry.byte_offset;
-
-    state.session.session_loading = true;
-    state.frontend.mode = Mode::Normal;
-
-    IntentResult::with_commands(vec![Command::SessionLoadRequested {
-        payload: SessionLoadRequested {
-            session_id,
-            byte_offset,
-        },
-    }])
-}
-
-fn handle_toggle_keymap_scope_filter(state: &mut AppState) -> IntentResult {
-    picker::validate_toggle_keymap_scope_filter(state);
-
-    state.frontend.keymap_picker_show_all = !state.frontend.keymap_picker_show_all;
-
-    let scope = state
-        .frontend
-        .keymap_picker_origin_scope
-        .clone()
-        .unwrap_or_default();
-
-    let filtered: Vec<_> = if state.frontend.keymap_picker_show_all {
-        state.frontend.all_keymap_entries.clone()
-    } else {
-        state
-            .frontend
-            .all_keymap_entries
-            .iter()
-            .filter(|e| e.scope == scope)
-            .cloned()
-            .collect()
-    };
-
-    state.frontend.keymap_picker.set_items(filtered);
     IntentResult::empty()
 }
 

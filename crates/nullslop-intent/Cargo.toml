@@ -8,6 +8,8 @@ nullslop-protocol = { workspace = true }
 nullslop-component = { workspace = true }
 nsslice-pinned-panel = { workspace = true }
 nsslice-chat-input-box = { workspace = true }
+nsslice-dashboard = { workspace = true }
+nsslice-picker = { workspace = true }
 wherror = { workspace = true }
 
 [dev-dependencies]

@@ -3,6 +3,7 @@
 //! Everything related to the dashboard element lives here: rendering.
 
 pub mod element;
+pub mod intent;
 
 pub use element::DashboardElement;
 
