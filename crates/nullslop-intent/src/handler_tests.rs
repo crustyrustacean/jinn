@@ -19,12 +19,10 @@ use nullslop_component::context_strategy_picker::entries::StrategyEntry;
 use nullslop_component::keymap_picker::entries::KeymapEntry;
 use nullslop_component::provider_picker::entries::PickerEntry;
 use nullslop_component::session_picker::entries::SessionEntry;
-use nullslop_component::{AppState, Frontend, Provider};
+use nullslop_component::{AppState, FrontendState, ProviderState};
 use nullslop_protocol::context::PinChatEntry;
 use nullslop_protocol::tab::TabDirection;
-use nullslop_protocol::{
-    ChatEntry, Command, Mode, PickerKind, PinPosition, SessionId,
-};
+use nullslop_protocol::{ChatEntry, Command, Mode, PickerKind, PinPosition, SessionId};
 
 use super::IntentHandler;
 use crate::Intent;
@@ -354,7 +352,10 @@ fn scroll_to_bottom_resets_scroll() {
 fn switch_tab_next_advances_tab() {
     // Given a state on Chat tab.
     let mut state = AppState::default();
-    assert_eq!(state.frontend.active_tab, nullslop_protocol::ActiveTab::Chat);
+    assert_eq!(
+        state.frontend.active_tab,
+        nullslop_protocol::ActiveTab::Chat
+    );
 
     // When handling SwitchTab(Next).
     let result = handle(
@@ -365,7 +366,10 @@ fn switch_tab_next_advances_tab() {
     );
 
     // Then the tab has advanced.
-    assert_eq!(state.frontend.active_tab, nullslop_protocol::ActiveTab::Dashboard);
+    assert_eq!(
+        state.frontend.active_tab,
+        nullslop_protocol::ActiveTab::Dashboard
+    );
     assert!(result.commands.is_empty());
 }
 
@@ -457,7 +461,12 @@ fn interrupt_drains_queued_messages_to_input_buffer() {
     // And the session is idle.
     assert!(state.active_session().is_idle());
     // And a CancelStream command is returned.
-    assert!(result.commands.iter().any(|c| matches!(c, Command::CancelStream { .. })));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::CancelStream { .. }))
+    );
 }
 
 #[rstest::rstest]
@@ -477,7 +486,13 @@ fn set_mode_changes_mode() {
 #[rstest::rstest]
 fn set_mode_clears_picker_kind_when_leaving_picker() {
     // Given a state in Picker mode with active picker kind.
-    let mut state = AppState { frontend: Frontend { mode: Mode::Picker, ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            mode: Mode::Picker,
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.frontend.active_picker_kind = Some(PickerKind::Provider);
 
     // When handling SetMode(Normal).
@@ -542,25 +557,46 @@ fn open_picker_provider_sets_kind_and_mode() {
     let mut state = AppState::default();
 
     // When handling OpenPicker(Provider).
-    let result = handle(&Intent::OpenPicker { kind: PickerKind::Provider }, &mut state);
+    let result = handle(
+        &Intent::OpenPicker {
+            kind: PickerKind::Provider,
+        },
+        &mut state,
+    );
 
     // Then active_picker_kind and mode are set.
-    assert_eq!(state.frontend.active_picker_kind, Some(PickerKind::Provider));
+    assert_eq!(
+        state.frontend.active_picker_kind,
+        Some(PickerKind::Provider)
+    );
     assert_eq!(state.frontend.mode, Mode::Picker);
     // And a LoadPickerEntries command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::LoadPickerEntries { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::LoadPickerEntries { .. }))
+    );
 }
 
 #[rstest::rstest]
 fn open_picker_keymap_resets_show_all() {
     // Given a state with show_all=true.
-    let mut state = AppState { frontend: Frontend { keymap_picker_show_all: true, ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            keymap_picker_show_all: true,
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
 
     // When handling OpenPicker(Keymap).
-    let result = handle(&Intent::OpenPicker { kind: PickerKind::Keymap }, &mut state);
+    let result = handle(
+        &Intent::OpenPicker {
+            kind: PickerKind::Keymap,
+        },
+        &mut state,
+    );
 
     // Then show_all is false.
     assert!(!state.frontend.keymap_picker_show_all);
@@ -571,10 +607,21 @@ fn open_picker_keymap_resets_show_all() {
 #[rstest::rstest]
 fn open_picker_noop_when_already_in_picker() {
     // Given a state already in picker mode.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Session), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Session),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
 
     // When handling OpenPicker(Provider).
-    let result = handle(&Intent::OpenPicker { kind: PickerKind::Provider }, &mut state);
+    let result = handle(
+        &Intent::OpenPicker {
+            kind: PickerKind::Provider,
+        },
+        &mut state,
+    );
 
     // Then nothing changed.
     assert_eq!(state.frontend.active_picker_kind, Some(PickerKind::Session));
@@ -584,7 +631,13 @@ fn open_picker_noop_when_already_in_picker() {
 #[rstest::rstest]
 fn picker_insert_char_updates_filter() {
     // Given a state with active provider picker.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Provider), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.provider.provider_picker.set_items(vec![PickerEntry {
         provider_id: "test/model".to_owned(),
         name: "test".to_owned(),
@@ -609,7 +662,13 @@ fn picker_insert_char_updates_filter() {
 #[rstest::rstest]
 fn picker_backspace_removes_from_filter() {
     // Given a state with active provider picker and "te" in filter.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Provider), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.provider.provider_picker.set_items(vec![PickerEntry {
         provider_id: "test/model".to_owned(),
         name: "test".to_owned(),
@@ -636,7 +695,13 @@ fn picker_backspace_removes_from_filter() {
 #[rstest::rstest]
 fn picker_confirm_provider_returns_provider_switch() {
     // Given a state with active provider picker and a selected entry.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Provider), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.provider.provider_picker.set_items(vec![PickerEntry {
         provider_id: "test/model".to_owned(),
         name: "test".to_owned(),
@@ -654,17 +719,25 @@ fn picker_confirm_provider_returns_provider_switch() {
     let result = handle(&Intent::PickerConfirm, &mut state);
 
     // Then a ProviderSwitch command is returned and mode is Normal.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::ProviderSwitch { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::ProviderSwitch { .. }))
+    );
     assert_eq!(state.frontend.mode, Mode::Normal);
 }
 
 #[rstest::rstest]
 fn picker_confirm_session_returns_session_load_command() {
     // Given a state with active session picker and a selected entry.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Session), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Session),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.frontend.session_picker.set_items(vec![SessionEntry {
         session_id: SessionId::new(),
         title: "Test".to_owned(),
@@ -678,10 +751,12 @@ fn picker_confirm_session_returns_session_load_command() {
     // Then session_loading is true.
     assert!(state.session.session_loading);
     // And a SessionLoadRequested command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::SessionLoadRequested { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::SessionLoadRequested { .. }))
+    );
     // And mode is Normal.
     assert_eq!(state.frontend.mode, Mode::Normal);
 }
@@ -689,7 +764,13 @@ fn picker_confirm_session_returns_session_load_command() {
 #[rstest::rstest]
 fn picker_confirm_keymap_sets_mode_and_signal() {
     // Given a state with active keymap picker.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Keymap), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Keymap),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.frontend.keymap_picker.set_items(vec![KeymapEntry {
         key_sequence: "q".to_owned(),
         description: "quit".to_owned(),
@@ -723,7 +804,13 @@ fn picker_confirm_noop_with_no_active_picker() {
 #[rstest::rstest]
 fn picker_confirm_strategy_updates_default() {
     // Given a state with active context strategy picker and manual entries.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::ContextAssembly), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::ContextAssembly),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.frontend.context_strategy_picker.set_items(vec![
         StrategyEntry {
             strategy_id: nullslop_protocol::PromptStrategyId::passthrough(),
@@ -750,10 +837,12 @@ fn picker_confirm_strategy_updates_default() {
         nullslop_protocol::PromptStrategyId::passthrough()
     );
     // And SwitchPromptStrategy command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::SwitchPromptStrategy { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::SwitchPromptStrategy { .. }))
+    );
     // And mode is Normal.
     assert_eq!(state.frontend.mode, Mode::Normal);
 }
@@ -761,7 +850,13 @@ fn picker_confirm_strategy_updates_default() {
 #[rstest::rstest]
 fn picker_move_up_decrements_selection() {
     // Given a state with active provider picker at index 1.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Provider), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.provider.provider_picker.set_items(vec![
         PickerEntry {
             provider_id: "a".to_owned(),
@@ -802,7 +897,13 @@ fn picker_move_up_decrements_selection() {
 #[rstest::rstest]
 fn picker_move_down_increments_selection() {
     // Given a state with active provider picker at index 0.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Provider), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.provider.provider_picker.set_items(vec![
         PickerEntry {
             provider_id: "a".to_owned(),
@@ -841,7 +942,13 @@ fn picker_move_down_increments_selection() {
 #[rstest::rstest]
 fn picker_move_cursor_left_moves_cursor() {
     // Given a state with active provider picker with "ab" in filter.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Provider), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.provider.provider_picker.insert_char('a');
     state.provider.provider_picker.insert_char('b');
 
@@ -856,7 +963,13 @@ fn picker_move_cursor_left_moves_cursor() {
 #[rstest::rstest]
 fn picker_move_cursor_right_moves_cursor() {
     // Given a state with cursor at start of filter.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Provider), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.provider.provider_picker.insert_char('a');
     state.provider.provider_picker.insert_char('b');
     state.provider.provider_picker.move_cursor_left();
@@ -874,7 +987,7 @@ fn picker_move_cursor_right_moves_cursor() {
 fn toggle_keymap_scope_filter_toggles_flag() {
     // Given a state with keymap entries.
     let mut state = AppState {
-        frontend: Frontend {
+        frontend: FrontendState {
             all_keymap_entries: vec![KeymapEntry {
                 key_sequence: "q".to_owned(),
                 description: "quit".to_owned(),
@@ -884,7 +997,7 @@ fn toggle_keymap_scope_filter_toggles_flag() {
                 search_text: "q quit".to_owned(),
             }],
             keymap_picker_origin_scope: Some("Input".to_owned()),
-            ..Frontend::default()
+            ..FrontendState::default()
         },
         ..Default::default()
     };
@@ -918,7 +1031,13 @@ fn session_new_creates_fresh_session() {
 #[rstest::rstest]
 fn session_new_noop_when_picker_active() {
     // Given a state with an active picker.
-    let mut state = AppState { frontend: Frontend { active_picker_kind: Some(PickerKind::Provider), ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            active_picker_kind: Some(PickerKind::Provider),
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     let old_id = state.session.active_session.clone();
 
     // When handling SessionNew.
@@ -936,19 +1055,27 @@ fn session_new_noop_when_picker_active() {
 #[rstest::rstest]
 fn refresh_models_posts_system_message_and_returns_command() {
     // Given a state with a provider.
-    let mut state = AppState { provider: Provider { active_provider: "ollama".to_owned(), ..Provider::default() }, ..Default::default() };
+    let mut state = AppState {
+        provider: ProviderState {
+            active_provider: "ollama".to_owned(),
+            ..ProviderState::default()
+        },
+        ..Default::default()
+    };
     let initial_len = state.active_session().history().len();
 
     // When handling RefreshModels.
     let result = handle(&Intent::RefreshModels, &mut state);
 
     // Then a system message was posted.
-    assert_eq!(
-        state.active_session().history().len(),
-        initial_len + 1
-    );
+    assert_eq!(state.active_session().history().len(), initial_len + 1);
     // And a RefreshModels command is returned.
-    assert!(result.commands.iter().any(|c| matches!(c, Command::RefreshModels)));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::RefreshModels))
+    );
 }
 
 #[rstest::rstest]
@@ -973,15 +1100,14 @@ fn rescan_prompt_templates_posts_system_message_and_returns_command() {
     let result = handle(&Intent::RescanPromptTemplates, &mut state);
 
     // Then a system message was posted.
-    assert_eq!(
-        state.active_session().history().len(),
-        initial_len + 1
-    );
+    assert_eq!(state.active_session().history().len(), initial_len + 1);
     // And a RescanPromptTemplates command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::RescanPromptTemplates
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::RescanPromptTemplates))
+    );
 }
 
 // ============================================================
@@ -1125,7 +1251,10 @@ fn pinned_panel_select_down_moves_selection() {
 
     // Then selection moved.
     let sorted_ids = state.sorted_pinned_ids();
-    assert_eq!(state.frontend.pinned_panel.selected_id(), Some(&sorted_ids[1]));
+    assert_eq!(
+        state.frontend.pinned_panel.selected_id(),
+        Some(&sorted_ids[1])
+    );
     assert!(result.commands.is_empty());
 }
 
@@ -1141,7 +1270,10 @@ fn pinned_panel_select_up_moves_selection() {
 
     // Then selection moved back.
     let sorted_ids = state.sorted_pinned_ids();
-    assert_eq!(state.frontend.pinned_panel.selected_id(), Some(&sorted_ids[0]));
+    assert_eq!(
+        state.frontend.pinned_panel.selected_id(),
+        Some(&sorted_ids[0])
+    );
     assert!(result.commands.is_empty());
 }
 
@@ -1154,10 +1286,12 @@ fn pinned_panel_unpin_returns_command() {
     let result = handle(&Intent::PinnedPanelUnpin, &mut state);
 
     // Then an UnpinChatEntry command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::UnpinChatEntry { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::UnpinChatEntry { .. }))
+    );
 }
 
 #[rstest::rstest]
@@ -1231,7 +1365,10 @@ fn pinned_panel_pin_cycle_rotates_top_to_bottom() {
         .active_session_mut()
         .pin_entry(&entry_id, PinPosition::Top);
     let sorted_ids = state.sorted_pinned_ids();
-    state.frontend.pinned_panel.select_by_id(sorted_ids[0].clone());
+    state
+        .frontend
+        .pinned_panel
+        .select_by_id(sorted_ids[0].clone());
 
     // When handling PinnedPanelPinCycle.
     let result = handle(&Intent::PinnedPanelPinCycle, &mut state);
@@ -1314,7 +1451,9 @@ fn chat_entry_select_prev_decrements_index() {
 fn chat_entry_pin_selected_returns_pin_command() {
     // Given a state with a selected entry.
     let mut state = AppState::default();
-    state.active_session_mut().push_entry(ChatEntry::user("hello"));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::user("hello"));
     state.active_session_mut().select_next_entry();
 
     // When handling ChatEntryPinSelected.
@@ -1338,7 +1477,9 @@ fn chat_entry_pin_selected_returns_pin_command() {
 fn chat_entry_pin_selected_noop_with_no_selection() {
     // Given a state with entries but no selection.
     let mut state = AppState::default();
-    state.active_session_mut().push_entry(ChatEntry::user("hello"));
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::user("hello"));
 
     // When handling ChatEntryPinSelected.
     let result = handle(&Intent::ChatEntryPinSelected, &mut state);
@@ -1377,17 +1518,25 @@ fn tui_signals_are_cleared_at_start_of_handle() {
 #[rstest::rstest]
 fn set_mode_input_to_normal_during_streaming_cancels_stream() {
     // Given a state in Input mode with active stream.
-    let mut state = AppState { frontend: Frontend { mode: Mode::Input, ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            mode: Mode::Input,
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.active_session_mut().begin_streaming();
 
     // When handling SetMode(Normal).
     let result = handle(&Intent::SetMode { mode: Mode::Normal }, &mut state);
 
     // Then a CancelStream command is returned.
-    assert!(result.commands.iter().any(|c| matches!(
-        c,
-        Command::CancelStream { .. }
-    )));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::CancelStream { .. }))
+    );
     // And the session is idle (streaming was cancelled).
     assert!(state.active_session().is_idle());
 }
@@ -1395,7 +1544,13 @@ fn set_mode_input_to_normal_during_streaming_cancels_stream() {
 #[rstest::rstest]
 fn set_mode_input_to_normal_during_streaming_drains_queue() {
     // Given a state in Input mode with active stream and queued messages.
-    let mut state = AppState { frontend: Frontend { mode: Mode::Input, ..Frontend::default() }, ..Default::default() };
+    let mut state = AppState {
+        frontend: FrontendState {
+            mode: Mode::Input,
+            ..FrontendState::default()
+        },
+        ..Default::default()
+    };
     state.active_session_mut().begin_streaming();
     state.active_session_mut().enqueue_message("msg1".into());
     state.active_session_mut().enqueue_message("msg2".into());
@@ -1408,5 +1563,10 @@ fn set_mode_input_to_normal_during_streaming_drains_queue() {
     // And the session is idle.
     assert!(state.active_session().is_idle());
     // And a CancelStream command is returned.
-    assert!(result.commands.iter().any(|c| matches!(c, Command::CancelStream { .. })));
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::CancelStream { .. }))
+    );
 }

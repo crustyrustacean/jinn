@@ -34,7 +34,7 @@ use crate::tui_signals::TuiSignals;
 /// Written to exclusively by `SessionPersistenceActor` and `IntentHandler`.
 /// No other actor should mutate these fields.
 #[derive(Debug)]
-pub struct Session {
+pub struct SessionState {
     /// All chat sessions, keyed by session ID.
     /// OWNER: session-actor (creates/removes sessions, restores history),
     ///        IntentHandler (creates new sessions, reads for dispatch).
@@ -51,7 +51,7 @@ pub struct Session {
     pub session_loading: bool,
 }
 
-impl Default for Session {
+impl Default for SessionState {
     fn default() -> Self {
         let active_session = SessionId::new();
         let mut sessions = HashMap::new();
@@ -69,7 +69,7 @@ impl Default for Session {
 /// Written to exclusively by `PromptAssemblyActor` and `IntentHandler`.
 /// No other actor should mutate these fields.
 #[derive(Debug)]
-pub struct Context {
+pub struct ContextAssemblyState {
     /// Persisted strategy state blobs, keyed by (session_id, strategy_id).
     /// OWNER: context-actor (reads/writes during RestoreStrategyState, SwitchPromptStrategy).
     pub strategy_state: HashMap<(SessionId, PromptStrategyId), JsonValue>,
@@ -79,7 +79,7 @@ pub struct Context {
     pub prompt_templates: PromptTemplateStore,
 }
 
-impl Default for Context {
+impl Default for ContextAssemblyState {
     fn default() -> Self {
         Self {
             strategy_state: HashMap::new(),
@@ -93,7 +93,7 @@ impl Default for Context {
 /// Written to exclusively by `ProviderActor` and `IntentHandler`.
 /// No other actor should mutate these fields.
 #[derive(Debug)]
-pub struct Provider {
+pub struct ProviderState {
     /// The currently active provider. Always set — starts as `NO_PROVIDER_ID`.
     /// OWNER: provider-actor (sets on ProviderSwitch),
     ///        src/app.rs (sets initial value at startup).
@@ -113,7 +113,7 @@ pub struct Provider {
     pub provider_picker: nullslop_selection_widget::SelectionState<PickerEntry>,
 }
 
-impl Default for Provider {
+impl Default for ProviderState {
     fn default() -> Self {
         Self {
             active_provider: NO_PROVIDER_ID.to_owned(),
@@ -129,7 +129,7 @@ impl Default for Provider {
 /// Written to exclusively by `ShutdownTrackerActor` and `IntentHandler`.
 /// No other actor should mutate these fields.
 #[derive(Debug)]
-pub struct Shutdown {
+pub struct ShutdownCoordinatorState {
     /// Bookkeeping for which actors are still running during shutdown.
     /// OWNER: shutdown-tracker (tracks start/complete lifecycle),
     ///        IntentHandler (sets should_quit),
@@ -137,7 +137,7 @@ pub struct Shutdown {
     pub shutdown_tracker: ShutdownTrackerState,
 }
 
-impl Default for Shutdown {
+impl Default for ShutdownCoordinatorState {
     fn default() -> Self {
         Self {
             shutdown_tracker: ShutdownTrackerState::new(),
@@ -150,7 +150,7 @@ impl Default for Shutdown {
 /// Written to by `IntentHandler` and various UI elements (read-only).
 /// Actors should NOT write to these fields — they are for the frontend only.
 #[derive(Debug)]
-pub struct Frontend {
+pub struct FrontendState {
     /// Whether the user is browsing or actively typing.
     /// OWNER: IntentHandler (all mode transitions).
     pub mode: Mode,
@@ -209,7 +209,7 @@ pub struct Frontend {
     pub context_strategy_picker: nullslop_selection_widget::SelectionState<StrategyEntry>,
 }
 
-impl Default for Frontend {
+impl Default for FrontendState {
     fn default() -> Self {
         Self {
             mode: Mode::Normal,
@@ -234,15 +234,15 @@ impl Default for Frontend {
 #[derive(Debug, Default)]
 pub struct AppState {
     /// Session lifecycle state — owned by session-actor.
-    pub session: Session,
+    pub session: SessionState,
     /// Context assembly state — owned by context-actor.
-    pub context: Context,
+    pub context: ContextAssemblyState,
     /// Provider selection state — owned by provider-actor.
-    pub provider: Provider,
+    pub provider: ProviderState,
     /// Shutdown coordination state — owned by shutdown-tracker.
-    pub shutdown: Shutdown,
+    pub shutdown: ShutdownCoordinatorState,
     /// Frontend / UI state — owned by IntentHandler.
-    pub frontend: Frontend,
+    pub frontend: FrontendState,
 }
 
 impl AppState {
@@ -257,7 +257,8 @@ impl AppState {
         reason = "active session invariant guaranteed by construction"
     )]
     pub fn active_session(&self) -> &ChatSessionState {
-        self.session.sessions
+        self.session
+            .sessions
             .get(&self.session.active_session)
             .expect("active session must exist")
     }
@@ -273,7 +274,8 @@ impl AppState {
         reason = "active session invariant guaranteed by construction"
     )]
     pub fn active_session_mut(&mut self) -> &mut ChatSessionState {
-        self.session.sessions
+        self.session
+            .sessions
             .get_mut(&self.session.active_session)
             .expect("active session must exist")
     }
@@ -301,7 +303,10 @@ impl AppState {
         reason = "session invariant guaranteed by construction"
     )]
     pub fn session_mut(&mut self, id: &SessionId) -> &mut ChatSessionState {
-        self.session.sessions.get_mut(id).expect("session must exist")
+        self.session
+            .sessions
+            .get_mut(id)
+            .expect("session must exist")
     }
 
     /// Returns mutable access to a session by ID, creating it if missing.
