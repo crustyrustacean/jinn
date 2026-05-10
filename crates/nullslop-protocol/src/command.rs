@@ -29,7 +29,7 @@ use crate::session::SessionLoadRequested;
 use crate::system::LoadPickerEntries;
 use crate::tool::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
 
-/// Every domain command the coordinator actor can receive.
+/// Every domain command the actor system can receive.
 ///
 /// UI operations have been migrated to the Intent/IntentHandler pipeline.
 /// This enum contains only commands that require actor coordination

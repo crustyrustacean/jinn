@@ -18,7 +18,7 @@
 //! Processes every [`Intent`] variant: call the validator, then act.
 //! On validation failure, the handler does nothing (no-op). On success,
 //! it mutates [`AppState`] directly, optionally sets TUI signals, and
-//! returns [`IntentResult`] carrying commands for the coordinator actor.
+//! returns [`IntentResult`] carrying commands for the actor system.
 
 #![expect(
     clippy::missing_docs_in_private_items,
@@ -49,7 +49,7 @@ use crate::validators::{
 /// What the [`IntentHandler`] returns after processing an intent.
 #[derive(Debug)]
 pub struct IntentResult {
-    /// Commands to send to the coordinator actor.
+    /// Commands to send to the actor system.
     pub commands: Vec<Command>,
 }
 
@@ -89,7 +89,7 @@ impl IntentHandler {
     ///
     /// Clears TUI signals from the previous call, then processes the intent.
     /// Mutates `state` directly for UI operations.
-    /// Returns commands and events for the coordinator actor.
+    /// Returns commands and events for the actor system.
     #[expect(
         clippy::too_many_lines,
         reason = "exhaustive match on all Intent variants"

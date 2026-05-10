@@ -1,6 +1,6 @@
 # Architecture
 
-nullslop is a TUI chat application built on an intent-driven architecture with an actor bridge. User input flows through a single `IntentHandler` that validates, mutates shared state, and emits domain commands. Actors run asynchronously and communicate via the actor host's pub/sub routing. A dedicated `Projector` actor writes events back into shared state. There is no bus.
+nullslop is a TUI chat application built on an intent-driven architecture with an actor bridge. User input flows through a single `IntentHandler` that validates, mutates shared state, and emits domain commands. Domain-specific actors run asynchronously, communicate via the actor host's pub/sub routing, and write their state fields directly into shared `AppState`. There is no bus.
 
 ## Data Flow
 
@@ -21,20 +21,15 @@ nullslop is a TUI chat application built on an intent-driven architecture with a
                                                     │
                                           ┌─────────┴─────────┐
                                           │                   │
-                                    Coordinator          other actors
-                                    (subscribes to        (LLM, session,
-                                     Commands)             tool-orchestrator…)
+                                   Domain actors          other actors
+                                   (session, provider,    (LLM, tool-
+                                    context)               orchestrator…)
                                           │                   │
                                           ▼                   ▼
-                                    new Commands/Events   Commands/Events
-                                          │                   │
-                                          └─────────┬─────────┘
-                                                    ▼
-                                            Projector (subscribes to Events)
-                                                    │
-                                                    ▼
-                                            writes AppState (shared RwLock)
-                                                    │
+                                    write AppState        Commands/Events
+                                    (shared RwLock)             │
+                                          │                    │
+                                          └─────────┬──────────┘
                                                     ▼
                                             TUI renderer reads AppState
 ```
@@ -45,13 +40,13 @@ nullslop is a TUI chat application built on an intent-driven architecture with a
 Frontend ──Command──▶ Actor Host ──▶ Subscribed Actors
                                         │
                                         ▼  (actor-to-actor via same pub/sub)
-                                   Projector writes AppState (RwLock)
+                                   Domain actors write AppState (RwLock)
                                         │
                                         ▼
                                    Renderer reads AppState (next tick)
 
 Unidirectional: frontend → actor system. No feedback loop.
-The shared AppState is the feedback — the projector writes it,
+The shared AppState is the feedback — domain actors write their fields,
 the renderer reads it on the next tick.
 ```
 
@@ -90,34 +85,61 @@ pub fn validate_submit_message(state: &AppState) -> Result<(), SubmitMessageErro
 }
 ```
 
-## Coordinator Actor
+## Provider Actor
 
-The Coordinator (in `actors/nullslop-coordinator`) subscribes to domain `Command`s via the actor host's pub/sub routing. It orchestrates multi-step workflows (e.g., enqueue message → assemble prompt → send to LLM) and emits new `Command`s and `Event`s through its `MessageSink`.
+The Provider actor (in `actors/nullslop-provider-actor`) manages active provider selection, LLM factory, model cache, and provider picker entries. It is the **sole writer** of `active_provider`, `model_cache`, `last_refreshed_at`, and `provider_picker` entries.
 
-The coordinator does NOT handle shutdown or lifecycle concerns. It uses the `nullslop-actor` SDK and receives injected `Services` for external dependencies.
+**Subscriptions — 2 commands + 1 event:**
 
-## Projector Actor
+| Type    | Subscribes to       | Handler                        |
+| ------- | ------------------- | ------------------------------ |
+| Command | `ProviderSwitch`    | Swap active provider + factory |
+| Command | `LoadPickerEntries` | Load provider picker items     |
+| Event   | `ModelsRefreshed`   | Update model cache + picker    |
 
-The Projector (in `actors/nullslop-projector`) subscribes to domain `Event`s and writes `AppState` via shared `State`. It is a pure event→state projection with zero command or event emissions.
+Needs `State` + `Services` injection (for provider registry, API keys, LLM service).
 
-**Subscriptions — 12 events:**
+## Session Actor
 
-| Subscribes to            | Purpose                                     |
-| ------------------------ | ------------------------------------------- |
-| `StreamToken`            | Appends streaming text to assistant entries |
-| `StreamCompleted`        | Marks stream as finished                    |
-| `ToolCallReceived`       | Records incoming tool call                  |
-| `ToolUseStarted`         | Begins a tool call for streaming deltas     |
-| `ToolCallStreaming`      | Appends tool call streaming deltas          |
-| `ToolExecutionCompleted` | Records tool execution result               |
-| `ToolsRegistered`        | Updates available tools list                |
-| `ProviderSwitched`       | Updates active provider                     |
-| `ModelsRefreshed`        | Refreshes model cache                       |
-| `PromptTemplatesLoaded`  | Updates prompt template list                |
-| `PromptStrategySwitched` | Updates active strategy                     |
-| `StrategyStateUpdated`   | Updates strategy state                      |
+The Session actor (in `actors/nullslop-session-actor`) owns the full session lifecycle: message queuing, streaming state, tool call tracking, and session persistence. It is the **sole writer** of session history, input buffers, session phase, and tool call state.
 
-Lock discipline: acquire write lock → mutate → release. Never hold the lock during async work or when emitting messages.
+**Subscriptions — 7 commands + 7 events:**
+
+| Type    | Subscribes to           | Handler                                  |
+| ------- | ----------------------- | ---------------------------------------- |
+| Command | `EnqueueUserMessage`    | Push entry, transition phase, emit `AssemblePrompt` |
+| Command | `SetChatInputText`      | Update input buffer                      |
+| Command | `PushChatEntry`         | Push entry + emit `ChatEntrySubmitted`   |
+| Command | `PushToolResult`        | Push tool result entry                   |
+| Command | `SendMessage`           | Forward as `EnqueueUserMessage`          |
+| Command | `SessionLoadCompleted`  | Restore history, set active session      |
+| Command | `SaveSession`           | Persist session to disk                  |
+| Event   | `PromptAssembled`       | Transition to streaming + emit `SendToLlmProvider` |
+| Event   | `StreamToken`           | Append token to assistant entry          |
+| Event   | `StreamCompleted`       | Finish streaming phase                   |
+| Event   | `ToolUseStarted`        | Begin tool call                          |
+| Event   | `ToolCallReceived`      | Push tool call entry                     |
+| Event   | `ToolCallStreaming`     | Append tool call delta                   |
+| Event   | `ToolExecutionCompleted`| Push tool result entry                   |
+
+Needs `State` injection (required). `SessionStoreService` is optional (for persistence).
+
+## Context Actor
+
+The Context actor (in `actors/nullslop-context-actor`) manages prompt assembly, strategy management, pinning, and template loading. It is the **sole writer** of strategy state blobs, prompt templates, and pinned entries.
+
+**Subscriptions — 5 commands + 1 event:**
+
+| Type    | Subscribes to            | Handler                              |
+| ------- | ------------------------ | ------------------------------------ |
+| Command | `AssemblePrompt`         | Build prompt from strategy + context |
+| Command | `SwitchPromptStrategy`   | Switch strategy + emit `RestoreStrategyState` |
+| Command | `RestoreStrategyState`   | Store blob + emit `StrategyStateUpdated` |
+| Command | `PinChatEntry`           | Pin entry                            |
+| Command | `UnpinChatEntry`         | Unpin entry                          |
+| Event   | `PromptTemplatesLoaded`  | Update template store                |
+
+Needs `State` + `StrategyFactory` injection.
 
 ## ShutdownTracker Actor
 
@@ -139,7 +161,7 @@ When all tracked actors complete their shutdown, the tracker emits `ProceedWithS
 Both the synchronous intent handler (on the main thread) and the async actor system share the same `State`:
 
 - **Intent handler** — acquires write lock, validates, mutates, returns commands, releases lock
-- **Projector** — acquires write lock per event, mutates, releases lock
+- **Domain actors** — acquire write lock per handler, mutate their owned fields, release lock, then emit
 - **Renderer** — acquires read lock on each 100ms tick, draws to screen
 
 `AppState` implements `Default` for easy test construction.
@@ -204,10 +226,11 @@ Two host implementations: `ProcessActorHost` (subprocess, JSON over stdio) and `
 | `nullslop-actor`            | Actor SDK (`Actor` trait, `ActorContext`, `MessageSink`, `ActorRef`, `RecordingSink`)                                                                                             |
 | `nullslop-actor-host`       | Actor host implementations (process-based, in-memory, fake)                                                                                                                       |
 | `nullslop-cli`              | CLI argument parsing                                                                                                                                                              |
-| `nullslop-coordinator`      | Coordinator actor — subscribes to Commands, orchestrates workflows                                                                                                                |
-| `nullslop-projector`        | Projector actor — subscribes to Events, writes AppState                                                                                                                           |
+| `nullslop-provider-actor`   | Provider actor — manages active provider, LLM factory, model cache, picker entries                                                                                               |
+| `nullslop-session-actor`    | Session actor — session lifecycle, streaming state, tool calls, persistence                                                                                                       |
+| `nullslop-context-actor`    | Context actor — prompt assembly, strategy management, pinning, templates                                                                                                         |
 | `nullslop-shutdown-tracker` | ShutdownTracker actor — manages actor lifecycle tracking                                                                                                                          |
-| Other actors                | Domain actors: `nullslop-llm`, `nullslop-session-actor`, `nullslop-context-actor`, `nullslop-tool-orchestrator`, `nullslop-echo`, `nullslop-prompt-scan`, `nullslop-llm-discover` |
+| Other actors                | Domain actors: `nullslop-llm`, `nullslop-tool-orchestrator`, `nullslop-echo`, `nullslop-prompt-scan`, `nullslop-llm-discover`                                                  |
 
 ## Keymap
 
