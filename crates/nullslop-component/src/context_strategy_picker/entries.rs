@@ -10,7 +10,7 @@
 use std::ops::Range;
 
 use crate::AppState;
-use crate::picker_highlight::highlight_text;
+use nullslop_selection_widget::highlight_text;
 use nullslop_protocol::PromptStrategyId;
 use nullslop_selection_widget::PickerItem;
 use nullslop_services::Services;

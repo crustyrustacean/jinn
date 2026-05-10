@@ -1,14 +1,20 @@
 //! Shared highlight utility for picker entry rows.
 //!
-//! Provides [`highlight_text`], which splits a string into styled [`Span`]s
-//! based on fuzzy match byte offsets. Used by the context strategy picker
-//! and provider picker entry types.
+//! Provides [`PICKER_HIGHLIGHT_STYLE`] and [`highlight_text`], which splits a string
+//! into styled [`Span`]s based on fuzzy match byte offsets. Used by all picker entry
+//! types so the highlight look is consistent.
 
 use std::ops::Range;
 
-use crate::PICKER_HIGHLIGHT_STYLE;
-use ratatui::style::Style;
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
+
+/// Highlight style for fuzzy-matched characters in picker rows.
+///
+/// Dark gray background with underline; foreground is inherited from the base style.
+pub const PICKER_HIGHLIGHT_STYLE: Style = Style::new()
+    .bg(Color::DarkGray)
+    .add_modifier(Modifier::UNDERLINED);
 
 /// Splits `text` into spans, applying the highlight style to characters whose
 /// byte offset falls within one of `match_indices`.

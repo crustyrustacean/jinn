@@ -7,10 +7,12 @@
 //! Commands, handlers, and keymap wiring live in consumer crates — this crate is purely
 //! the state and types layer.
 
+pub mod highlight;
 pub mod item;
 pub mod state;
 pub mod widget;
 
+pub use highlight::{highlight_text, PICKER_HIGHLIGHT_STYLE};
 pub use item::{MatchRanges, PickerItem};
 pub use state::SelectionState;
 pub use widget::{

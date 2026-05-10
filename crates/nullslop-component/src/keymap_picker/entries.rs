@@ -10,7 +10,7 @@
 
 use std::ops::Range;
 
-use crate::PICKER_HIGHLIGHT_STYLE;
+use nullslop_selection_widget::PICKER_HIGHLIGHT_STYLE;
 use nullslop_selection_widget::PickerItem;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};

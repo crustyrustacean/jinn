@@ -25,7 +25,6 @@ pub mod mode;
 pub mod picker_kind;
 pub mod prompt_template;
 pub mod provider;
-pub mod provider_picker;
 pub mod session;
 pub mod system;
 pub mod tab;
@@ -53,7 +52,6 @@ pub use picker_kind::PickerKind;
 pub use prompt_template::PromptTemplate;
 pub use provider::LlmMessage;
 pub use provider::entries_to_messages;
-// provider_picker module kept for transition; no types re-exported.
 pub use session::SessionId;
 pub use session::SessionLoadCompleted;
 pub use session::SessionLoadRequested;
