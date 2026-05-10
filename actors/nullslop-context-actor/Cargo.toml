@@ -10,7 +10,9 @@ path = "src/lib.rs"
 nullslop-actor = { workspace = true }
 nullslop-protocol = { workspace = true }
 nullslop-context = { workspace = true }
+nullslop-component = { workspace = true }
 nullslop-services = { workspace = true }
+serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 

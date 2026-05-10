@@ -2943,6 +2943,7 @@ name = "nullslop-context-actor"
 version = "0.1.0"
 dependencies = [
  "nullslop-actor",
+ "nullslop-component",
  "nullslop-context",
  "nullslop-protocol",
  "nullslop-services",
@@ -2957,13 +2958,6 @@ name = "nullslop-coordinator"
 version = "0.1.0"
 dependencies = [
  "nullslop-actor",
- "nullslop-component",
- "nullslop-protocol",
- "nullslop-services",
- "rstest",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -3066,15 +3060,7 @@ dependencies = [
 name = "nullslop-projector"
 version = "0.1.0"
 dependencies = [
- "jiff",
  "nullslop-actor",
- "nullslop-component",
- "nullslop-protocol",
- "nullslop-providers",
- "rstest",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]
