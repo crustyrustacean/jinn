@@ -356,6 +356,7 @@ fn create_core_with_actor_host(
     let sp_ref = ActorRef::new(sp_tx);
     let mut sp_ctx = ActorContext::new("session-persistence", sink.clone());
     sp_ctx.set_description("Persists session data to disk");
+    sp_ctx.set_data(state.clone());
     sp_ctx.set_data(session_store_service.clone());
     let sp_actor = SessionPersistenceActor::activate(&mut sp_ctx);
     let sp_result = spawn_actor(

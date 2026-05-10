@@ -2959,7 +2959,6 @@ dependencies = [
  "nullslop-actor",
  "nullslop-component",
  "nullslop-protocol",
- "nullslop-providers",
  "nullslop-services",
  "rstest",
  "serde_json",
@@ -3218,7 +3217,9 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "nullslop-actor",
+ "nullslop-component",
  "nullslop-protocol",
+ "nullslop-services",
  "nullslop-session",
  "rstest",
  "serde_json",
