@@ -22,7 +22,6 @@
 
 pub mod app_quit;
 pub mod app_state;
-pub mod char_counter;
 pub mod chat_entry_selection;
 pub mod chat_input_box;
 pub mod chat_log;
@@ -39,7 +38,6 @@ pub mod provider_picker;
 pub mod session_picker;
 pub mod shutdown_tracker;
 pub mod state;
-pub mod status_bar;
 pub mod tab_nav;
 pub mod tui_signals;
 
@@ -84,14 +82,11 @@ pub fn register_all(registry: &mut AppUiRegistry) {
 pub fn register_tui_elements(registry: &mut AppUiRegistry) {
     registry.register(Box::new(chat_input_box::ChatInputBoxElement));
     registry.register(Box::new(chat_log::ChatLogElement));
-    registry.register(Box::new(char_counter::CharCounterElement));
-    registry.register(Box::new(dashboard::DashboardElement));
     registry.register(Box::new(pinned_panel::PinnedPanelElement));
     registry.register(Box::new(
         provider::indicator::StreamingIndicatorElement::new(),
     ));
     registry.register(Box::new(provider::queue_element::QueueDisplayElement));
-    registry.register(Box::new(status_bar::StatusBarElement));
 }
 
 /// Test utilities shared across the crate.

@@ -6,8 +6,6 @@
 //!
 //! Phase 5: Handler removed — dashboard state updates will be re-implemented in Phase 7.
 
-pub(crate) mod element;
 pub mod state;
 
-pub use element::DashboardElement;
 pub use state::DashboardState;
