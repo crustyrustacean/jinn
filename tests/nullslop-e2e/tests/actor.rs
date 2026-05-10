@@ -35,10 +35,13 @@ pub struct ActorWorld {
     #[allow(dead_code)]
     pub services: Services,
     /// Actor host for coordinated shutdown.
+    #[allow(dead_code)]
     actor_host: ActorHostService,
     /// Tokio runtime handle for spawning async shutdown task.
+    #[allow(dead_code)]
     handle: tokio::runtime::Handle,
     /// Receiver for core lifecycle notifications (shutdown complete).
+    #[allow(dead_code)]
     core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
 }
 
@@ -86,6 +89,7 @@ impl ActorWorld {
     }
 
     /// Runs graceful coordinated shutdown of the actor system.
+    #[allow(dead_code)]
     pub fn graceful_shutdown(&mut self) {
         nullslop_core::coordinated_shutdown(
             self.actor_host.backend(),

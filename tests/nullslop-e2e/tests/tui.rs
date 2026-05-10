@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use cucumber::World;
-use nullslop_actor_host::ActorHostService;
 use nullslop_context::DefaultStrategyDiscovery;
 use nullslop_services::strategy_registry::StrategyRegistryService;
 use nullslop_tui::{Scope, TuiApp};

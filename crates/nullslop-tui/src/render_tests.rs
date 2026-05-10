@@ -1,13 +1,11 @@
 use super::*;
-use crate::scope::Scope;
-use crate::selection::{SelectableRects, SelectionState};
+use crate::selection::SelectionState;
 use nullslop_protocol::Intent;
 use nullslop_selection_widget::compute_popup_rect;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
-use ratatui_spatial_splits::SplitManager;
 
 /// Creates a minimal `TuiApp` for render testing.
 fn render_test_app() -> crate::TuiApp {
