@@ -4,9 +4,7 @@ use super::*;
 fn grapheme_count_returns_cluster_count() {
     // Given a state with "éNoël" inserted.
     let mut state = ChatInputBoxState::new();
-    for ch in "éNoël".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("éNoël");
 
     // When reading the grapheme count.
     // Then it returns 5.
@@ -31,9 +29,7 @@ fn delete_grapheme_before_cursor_handles_unicode() {
 fn move_cursor_left_right_with_unicode() {
     // Given "écafé" with cursor at end (5).
     let mut state = ChatInputBoxState::new();
-    for ch in "écafé".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("écafé");
 
     // When moving left twice then right.
     state.move_cursor_left();
@@ -49,9 +45,7 @@ fn move_cursor_left_right_with_unicode() {
 fn word_right_skips_past_unicode_word() {
     // Given "café au lait" with cursor at start (0).
     let mut state = ChatInputBoxState::new();
-    for ch in "café au lait".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("café au lait");
     state.move_cursor_to_start();
 
     // When moving word right.
@@ -65,9 +59,7 @@ fn word_right_skips_past_unicode_word() {
 fn word_right_twice_skips_two_words() {
     // Given "café au lait" with cursor at start (0).
     let mut state = ChatInputBoxState::new();
-    for ch in "café au lait".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("café au lait");
     state.move_cursor_to_start();
 
     // When moving word right twice.
@@ -82,9 +74,7 @@ fn word_right_twice_skips_two_words() {
 fn visual_line_count_single_line() {
     // Given "hello".
     let mut state = ChatInputBoxState::new();
-    for ch in "hello".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello");
 
     // When reading visual line count.
     // Then it is 1.
@@ -95,9 +85,7 @@ fn visual_line_count_single_line() {
 fn visual_line_count_two_lines() {
     // Given "hello\nworld".
     let mut state = ChatInputBoxState::new();
-    for ch in "hello\nworld".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello\nworld");
 
     // When reading visual line count.
     // Then it is 2.
@@ -118,9 +106,7 @@ fn visual_line_count_empty() {
 fn visual_line_count_trailing_newline() {
     // Given "hello\n".
     let mut state = ChatInputBoxState::new();
-    for ch in "hello\n".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello\n");
 
     // When reading visual line count.
     // Then it is 2 (trailing newline creates an empty line below).
@@ -131,9 +117,7 @@ fn visual_line_count_trailing_newline() {
 fn cursor_row_col_on_first_line() {
     // Given "hello" with cursor at end.
     let mut state = ChatInputBoxState::new();
-    for ch in "hello".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello");
 
     // When reading cursor row/col.
     // Then it is (0, 5).
@@ -144,9 +128,7 @@ fn cursor_row_col_on_first_line() {
 fn cursor_row_col_on_second_line() {
     // Given "hello\nworld" with cursor at end.
     let mut state = ChatInputBoxState::new();
-    for ch in "hello\nworld".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello\nworld");
 
     // When reading cursor row/col.
     // Then it is (1, 5).
@@ -157,9 +139,7 @@ fn cursor_row_col_on_second_line() {
 fn cursor_row_col_at_start_of_second_line() {
     // Given "hello\nworld" with cursor right after the newline.
     let mut state = ChatInputBoxState::new();
-    for ch in "hello\nworld".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello\nworld");
     state.move_cursor_to_start();
     state.move_cursor_right(); // h
     state.move_cursor_right(); // e
@@ -187,9 +167,7 @@ fn cursor_row_col_empty_buffer() {
 fn move_cursor_up_is_noop_on_first_line() {
     // Given "hello" with cursor at end (single line).
     let mut state = ChatInputBoxState::new();
-    for ch in "hello".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello");
 
     // When moving up.
     state.move_cursor_up();
@@ -202,9 +180,7 @@ fn move_cursor_up_is_noop_on_first_line() {
 fn move_cursor_down_is_noop_on_last_line() {
     // Given "hello" with cursor at start (single line).
     let mut state = ChatInputBoxState::new();
-    for ch in "hello".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello");
     state.move_cursor_to_start();
 
     // When moving down.
@@ -218,9 +194,7 @@ fn move_cursor_down_is_noop_on_last_line() {
 fn move_cursor_up_goes_to_previous_line() {
     // Given "hello\nworld" with cursor at end of line 2.
     let mut state = ChatInputBoxState::new();
-    for ch in "hello\nworld".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello\nworld");
     // cursor at 11 (end), row=1, col=5
 
     // When moving up.
@@ -235,9 +209,7 @@ fn move_cursor_up_goes_to_previous_line() {
 fn move_cursor_down_goes_to_next_line() {
     // Given "hello\nworld" with cursor at start of line 1.
     let mut state = ChatInputBoxState::new();
-    for ch in "hello\nworld".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello\nworld");
     state.move_cursor_to_start();
     // cursor at 0, row=0, col=0
 
@@ -253,9 +225,7 @@ fn move_cursor_down_goes_to_next_line() {
 fn move_cursor_up_clamps_col_to_shorter_line() {
     // Given "hello\nxy" with cursor at end of line 2 (col=2).
     let mut state = ChatInputBoxState::new();
-    for ch in "hello\nxy".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello\nxy");
     // Move cursor to col=5 on line 2 — impossible since line 2 has length 2.
     // Instead, move to col=2 on line 2, then go up.
     // Actually: cursor is at end (8), row=1, col=2. Go up → row=0, col=2.
@@ -272,9 +242,7 @@ fn move_cursor_up_clamps_col_to_shorter_line() {
 fn move_cursor_up_preserves_col_on_equal_length_lines() {
     // Given "abcd\nefgh" with cursor at col 3 on line 2.
     let mut state = ChatInputBoxState::new();
-    for ch in "abcd\nefgh".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("abcd\nefgh");
     // cursor at end (9), row=1, col=4. Move left once → col=3.
     state.move_cursor_left();
 
@@ -290,9 +258,7 @@ fn move_cursor_up_preserves_col_on_equal_length_lines() {
 fn move_cursor_down_clamps_col_to_shorter_line() {
     // Given "xy\nhello" with cursor at col 4 on line 1.
     let mut state = ChatInputBoxState::new();
-    for ch in "xy\nhello".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("xy\nhello");
     // cursor at end (8), row=1, col=5. Move to row=0, col=5 — impossible (line 0 has length 2).
     // Let's set up: cursor at start, move right 1 → row=0, col=1.
     state.move_cursor_to_start();
@@ -310,9 +276,7 @@ fn move_cursor_down_clamps_col_to_shorter_line() {
 fn move_cursor_up_on_empty_line() {
     // Given "a\n\nb" with cursor on line 2 (after 'b').
     let mut state = ChatInputBoxState::new();
-    for ch in "a\n\nb".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("a\n\nb");
     // cursor at 4 (end), row=2, col=1.
 
     // When moving up.
@@ -327,9 +291,7 @@ fn move_cursor_up_on_empty_line() {
 fn move_cursor_down_on_empty_line() {
     // Given "a\n\nb" with cursor at start of line 1 (empty middle line).
     let mut state = ChatInputBoxState::new();
-    for ch in "a\n\nb".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("a\n\nb");
     state.move_cursor_to_start();
     state.move_cursor_right(); // past 'a'
     state.move_cursor_right(); // past \n, now on empty line 1
@@ -372,9 +334,7 @@ fn move_cursor_down_empty_buffer_is_noop() {
 fn desired_col_preserved_across_shorter_intermediate_line_down() {
     // Given "abcdefghijkl\nxy\nmnopqrstuvwx" with cursor at col 10 on line 0.
     let mut state = ChatInputBoxState::new();
-    for ch in "abcdefghijkl\nxy\nmnopqrstuvwx".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("abcdefghijkl\nxy\nmnopqrstuvwx");
     // cursor at end (27), row=2, col=12. Move to start, then right 10.
     state.move_cursor_to_start();
     for _ in 0..10 {
@@ -395,9 +355,7 @@ fn desired_col_preserved_across_shorter_intermediate_line_down() {
 fn desired_col_preserved_across_shorter_intermediate_line_up() {
     // Given "abcdefghijkl\nxy\nmnopqrstuvwx" with cursor at col 10 on line 2.
     let mut state = ChatInputBoxState::new();
-    for ch in "abcdefghijkl\nxy\nmnopqrstuvwx".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("abcdefghijkl\nxy\nmnopqrstuvwx");
     // cursor at end (27), row=2, col=12. Move left 2 → col=10.
     state.move_cursor_left();
     state.move_cursor_left();
@@ -416,9 +374,7 @@ fn desired_col_preserved_across_shorter_intermediate_line_up() {
 fn desired_col_cleared_by_horizontal_move() {
     // Given "abcd\nef\nghij" with cursor at col 3 on line 1.
     let mut state = ChatInputBoxState::new();
-    for ch in "abcd\nef\nghij".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("abcd\nef\nghij");
     state.move_cursor_to_start();
     state.move_cursor_right(); // col=1
     state.move_cursor_right(); // col=2
@@ -434,9 +390,7 @@ fn desired_col_cleared_by_horizontal_move() {
 
     // Better: start over with "hello\nab\nworld"
     let mut state = ChatInputBoxState::new();
-    for ch in "hello\nab\nworld".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("hello\nab\nworld");
     state.move_cursor_to_start();
     for _ in 0..3 {
         state.move_cursor_right();
@@ -457,9 +411,7 @@ fn desired_col_cleared_by_horizontal_move() {
 fn desired_col_cleared_by_insert() {
     // Given "abc\nxy\ndef" with cursor at col 2 on line 1.
     let mut state = ChatInputBoxState::new();
-    for ch in "abc\nxy\ndef".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("abc\nxy\ndef");
     state.move_cursor_to_start();
     state.move_cursor_right();
     state.move_cursor_right();
@@ -480,9 +432,7 @@ fn desired_col_cleared_by_insert() {
 fn desired_col_cleared_by_delete() {
     // Given "abcde\nxy\nfghij" with cursor at col 4 on line 0.
     let mut state = ChatInputBoxState::new();
-    for ch in "abcde\nxy\nfghij".chars() {
-        state.insert_grapheme_at_cursor(ch);
-    }
+    state.insert_text("abcde\nxy\nfghij");
     state.move_cursor_to_start();
     for _ in 0..4 {
         state.move_cursor_right();

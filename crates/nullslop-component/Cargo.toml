@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 nullslop-prompt-template = { workspace = true }
 nullslop-protocol = { workspace = true }
-nullslop-component-core = { workspace = true }
 nullslop-component-ui = { workspace = true }
 nullslop-services = { workspace = true }
 nullslop-providers = { workspace = true }
@@ -22,6 +21,7 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 error-stack = { workspace = true }
 wherror = { workspace = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

@@ -8,14 +8,17 @@
 //! live in `nullslop-component`.
 
 pub mod action;
+pub mod app_msg;
 pub mod actor;
 pub mod actor_name;
 pub mod chat;
 pub mod chat_input;
 pub mod command;
+pub mod core_notification;
 pub mod context;
 pub mod custom;
 pub mod event;
+pub mod intent;
 pub mod key;
 pub mod mode;
 pub mod picker_kind;
@@ -29,15 +32,18 @@ pub mod tool;
 
 // Re-export primary types
 pub use action::CommandAction;
+pub use app_msg::AppMsg;
 pub use actor::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 pub use actor_name::ActorName;
 pub use chat::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
 pub use command::Command;
+pub use core_notification::CoreNotification;
 pub use context::{
     AssemblePrompt, PromptAssembled, PromptStrategyId, PromptStrategySwitched, SwitchPromptStrategy,
 };
 pub use custom::{CommandMsg, CommandName, EventMsg, EventTypeName};
 pub use event::Event;
+pub use intent::Intent;
 pub use key::{Key, KeyEvent, Modifiers};
 pub use mode::Mode;
 pub use nullslop_protocol_derive::{CommandMsg, EventMsg};
@@ -45,15 +51,13 @@ pub use picker_kind::PickerKind;
 pub use prompt_template::PromptTemplate;
 pub use provider::LlmMessage;
 pub use provider::entries_to_messages;
-pub use provider_picker::{
-    PickerBackspace, PickerConfirm, PickerInsertChar, PickerMoveDown, PickerMoveUp,
-};
+// provider_picker module kept for transition; no types re-exported.
 pub use session::SessionId;
 pub use session::SessionLoadCompleted;
 pub use session::SessionLoadRequested;
 pub use session::SessionNew;
 pub use session::SessionSaveRequested;
-pub use system::OpenPicker;
+// OpenPicker removed — now an Intent variant.
 pub use tab::ActiveTab;
 pub use tab::TabDirection;
 pub use tool::{

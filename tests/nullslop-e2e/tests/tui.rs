@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use cucumber::World;
-use nullslop_actor_host::FakeActorHost;
+use nullslop_actor_host::ActorHostService;
 use nullslop_context::DefaultStrategyDiscovery;
 use nullslop_services::strategy_registry::StrategyRegistryService;
 use nullslop_tui::{Scope, TuiApp};
@@ -31,7 +31,6 @@ impl TuiWorld {
             tokio::runtime::Runtime::new().expect("test runtime"),
         ));
         let handle = rt.handle().clone();
-        let actor_host: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(FakeActorHost::new());
         let llm = nullslop_services::providers::LlmServiceFactoryService::new(Arc::new(
             nullslop_providers::FakeLlmServiceFactory::new(vec![]),
         ));
@@ -41,9 +40,13 @@ impl TuiWorld {
             default_provider: None,
         };
         let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
+        let (actor_tx, _actor_rx) = kanal::unbounded::<nullslop_protocol::AppMsg>();
+        let (core_tx, _core_rx) = kanal::unbounded::<nullslop_services::CoreNotification>();
+
         let services = nullslop_services::Services {
             handle,
-            actor_host: nullslop_actor_host::ActorHostService::new(actor_host),
+            actor_channel: nullslop_services::ActorChannelService::new(actor_tx),
+            core_channel: nullslop_services::CoreChannelService::new(core_tx),
             llm_service: llm,
             provider_registry: nullslop_providers::ProviderRegistryService::new(
                 nullslop_providers::ProviderRegistry::from_config(config).expect("test registry"),
@@ -59,22 +62,28 @@ impl TuiWorld {
             )),
             strategy_registry,
         };
-        Self {
-            app: TuiApp::new(services),
-        }
+
+        let app = TuiApp::test_builder()
+            .services(services)
+            .build();
+
+        Self { app }
     }
 
-    /// Sends a keystroke to the app and ticks the core.
+    /// Sends a keystroke to the app.
     fn press_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
         let event = crossterm::event::Event::Key(KeyEvent::new(code, modifiers));
         self.app.handle_msg(nullslop_tui::msg::Msg::Input(event));
-        self.app.core.tick();
     }
 
-    /// Routes a command through the app's message pipeline and ticks the core.
+    /// Routes a command through the app's message pipeline.
     fn route_command(&mut self, cmd: nullslop_protocol::Command) {
         self.app.handle_msg(nullslop_tui::msg::Msg::Command(cmd));
-        self.app.core.tick();
+    }
+
+    /// Routes an intent through the app.
+    fn route_intent(&mut self, intent: nullslop_intent::Intent) {
+        self.app.route_intent(intent);
     }
 }
 
@@ -190,7 +199,7 @@ fn when_routes_push_chat_entry(world: &mut TuiWorld, source: String, text: Strin
 /// Routes a ToggleWhichKey command directly.
 #[cucumber::when(expr = "the app routes the ToggleWhichKey command")]
 fn when_routes_toggle_which_key(world: &mut TuiWorld) {
-    world.route_command(nullslop_protocol::Command::ToggleWhichKey);
+    world.route_intent(nullslop_intent::Intent::ToggleWhichkey);
 }
 
 // --- Then steps ---
@@ -356,8 +365,8 @@ fn run_headless_script(world: &mut TuiWorld, content: &str) {
             );
             drop(state_read);
             world.app.which_key.set_scope(scope);
-            if let Some(cmd) = world.app.which_key.handle_key(key) {
-                world.route_command(cmd);
+            if let Some(intent) = world.app.which_key.handle_key(key) {
+                world.route_intent(intent);
             }
         }
     }

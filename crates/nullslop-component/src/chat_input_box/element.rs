@@ -95,6 +95,13 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::{Backend as _, TestBackend};
     use ratatui::layout::{Position, Rect};
+    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
+        let backend = TestBackend::new(width, height);
+        let terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, width, height);
+        (terminal, area)
+    }
+
 
     use super::*;
 
@@ -116,15 +123,11 @@ mod tests {
         let mut element = ChatInputBoxElement;
         let state = {
             let mut s = AppState::default();
-            for ch in "hello".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("hello");
             s
         };
 
-        let backend = TestBackend::new(40, 3);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 3);
+        let (mut terminal, area) = setup_term(40, 3);
 
         // When rendering.
         terminal
@@ -145,9 +148,7 @@ mod tests {
         let mut element = ChatInputBoxElement;
         let state = AppState::default();
 
-        let backend = TestBackend::new(20, 3);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 20, 3);
+        let (mut terminal, area) = setup_term(20, 3);
 
         // When rendering.
         terminal
@@ -171,15 +172,11 @@ mod tests {
                 mode: Mode::Input,
                 ..Default::default()
             };
-            for ch in "hi".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("hi");
             s
         };
 
-        let backend = TestBackend::new(40, 3);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 3);
+        let (mut terminal, area) = setup_term(40, 3);
 
         // When rendering.
         terminal
@@ -204,9 +201,7 @@ mod tests {
             ..Default::default()
         };
 
-        let backend = TestBackend::new(40, 3);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 3);
+        let (mut terminal, area) = setup_term(40, 3);
 
         // When rendering.
         terminal
@@ -230,15 +225,11 @@ mod tests {
                 mode: Mode::Input,
                 ..Default::default()
             };
-            for ch in "abc".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("abc");
             s
         };
 
-        let backend = TestBackend::new(40, 3);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 3);
+        let (mut terminal, area) = setup_term(40, 3);
 
         // When rendering.
         terminal
@@ -259,9 +250,7 @@ mod tests {
         let mut element = ChatInputBoxElement;
         let state = AppState::default();
 
-        let backend = TestBackend::new(40, 3);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 3);
+        let (mut terminal, area) = setup_term(40, 3);
 
         // When rendering.
         terminal
@@ -284,17 +273,13 @@ mod tests {
                 mode: Mode::Input,
                 ..Default::default()
             };
-            for ch in "abc".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("abc");
             s.active_chat_input_mut().move_cursor_to_start();
             s.active_chat_input_mut().move_cursor_right(); // cursor at 1 (between 'a' and 'b')
             s
         };
 
-        let backend = TestBackend::new(40, 3);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 3);
+        let (mut terminal, area) = setup_term(40, 3);
 
         // When rendering.
         terminal
@@ -318,16 +303,12 @@ mod tests {
                 mode: Mode::Input,
                 ..Default::default()
             };
-            for ch in "hi".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("hi");
             s.active_chat_input_mut().move_cursor_to_start();
             s
         };
 
-        let backend = TestBackend::new(40, 3);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 3);
+        let (mut terminal, area) = setup_term(40, 3);
 
         // When rendering.
         terminal
@@ -351,16 +332,12 @@ mod tests {
                 mode: Mode::Input,
                 ..Default::default()
             };
-            for ch in "hi".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("hi");
             // cursor already at end (2) after inserts
             s
         };
 
-        let backend = TestBackend::new(40, 3);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 3);
+        let (mut terminal, area) = setup_term(40, 3);
 
         // When rendering.
         terminal
@@ -381,15 +358,11 @@ mod tests {
         let mut element = ChatInputBoxElement;
         let state = {
             let mut s = AppState::default();
-            for ch in "hello\nworld".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("hello\nworld");
             s
         };
 
-        let backend = TestBackend::new(40, 5);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 5);
+        let (mut terminal, area) = setup_term(40, 5);
 
         // When rendering.
         terminal
@@ -412,15 +385,11 @@ mod tests {
         let mut element = ChatInputBoxElement;
         let state = {
             let mut s = AppState::default();
-            for ch in "hello\nworld".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("hello\nworld");
             s
         };
 
-        let backend = TestBackend::new(40, 5);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 5);
+        let (mut terminal, area) = setup_term(40, 5);
 
         // When rendering.
         terminal
@@ -446,15 +415,11 @@ mod tests {
                 mode: Mode::Input,
                 ..Default::default()
             };
-            for ch in "ab\ncd".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("ab\ncd");
             s
         };
 
-        let backend = TestBackend::new(40, 5);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 5);
+        let (mut terminal, area) = setup_term(40, 5);
 
         // When rendering.
         terminal
@@ -479,9 +444,7 @@ mod tests {
                 mode: Mode::Input,
                 ..Default::default()
             };
-            for ch in "a\n\nb".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("a\n\nb");
             // Cursor is at end (pos 4). Move back 1 to be on the empty middle line.
             s.active_chat_input_mut().move_cursor_left(); // now at pos 3, which is after the second \n, before 'b'
             // Actually: "a\n\nb" → graphemes: a(0) \n(1) \n(2) b(3). cursor at 3 = before 'b'.
@@ -490,9 +453,7 @@ mod tests {
             s
         };
 
-        let backend = TestBackend::new(40, 5);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 5);
+        let (mut terminal, area) = setup_term(40, 5);
 
         // When rendering.
         terminal

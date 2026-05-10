@@ -32,6 +32,13 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
+    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
+        let backend = TestBackend::new(width, height);
+        let terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, width, height);
+        (terminal, area)
+    }
+
 
     use super::*;
     use crate::AppState;
@@ -54,9 +61,7 @@ mod tests {
         let mut element = CharCounterElement;
         let state = AppState::default();
 
-        let backend = TestBackend::new(40, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 1);
+        let (mut terminal, area) = setup_term(40, 1);
 
         // When rendering.
         terminal
@@ -79,15 +84,11 @@ mod tests {
         let mut element = CharCounterElement;
         let state = {
             let mut s = AppState::default();
-            for ch in "hello".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("hello");
             s
         };
 
-        let backend = TestBackend::new(40, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 1);
+        let (mut terminal, area) = setup_term(40, 1);
 
         // When rendering.
         terminal
@@ -109,15 +110,11 @@ mod tests {
         let mut element = CharCounterElement;
         let state = {
             let mut s = AppState::default();
-            for ch in "écafé".chars() {
-                s.active_chat_input_mut().insert_grapheme_at_cursor(ch);
-            }
+            s.active_chat_input_mut().insert_text("écafé");
             s
         };
 
-        let backend = TestBackend::new(40, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, 40, 1);
+        let (mut terminal, area) = setup_term(40, 1);
 
         // When rendering.
         terminal

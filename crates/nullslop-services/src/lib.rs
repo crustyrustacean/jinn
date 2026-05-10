@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 
-use nullslop_actor_host::ActorHostService;
 use nullslop_context::DefaultStrategyDiscovery;
 pub use nullslop_providers as providers;
 use nullslop_providers::{
@@ -14,10 +13,16 @@ use nullslop_providers::{
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 use nullslop_session::SessionStoreService;
+use nullslop_protocol::AppMsg;
 use tokio::runtime::Handle;
 
+pub mod actor_channel;
+pub mod core_channel;
 pub mod strategy_registry;
 pub mod test_services;
+
+pub use actor_channel::ActorChannelService;
+pub use core_channel::{CoreChannelService, CoreNotification};
 
 use crate::strategy_registry::StrategyRegistryService;
 
@@ -32,7 +37,8 @@ use crate::strategy_registry::StrategyRegistryService;
 /// ```ignore
 /// let services = Services {
 ///     handle: handle.clone(),
-///     actor_host: ActorHostService::new(host),
+///     actor_channel,
+///     core_channel,
 ///     llm_service,
 ///     provider_registry,
 ///     api_keys,
@@ -48,8 +54,10 @@ use crate::strategy_registry::StrategyRegistryService;
 pub struct Services {
     /// Async runtime handle for spawning background tasks.
     pub handle: Handle,
-    /// Actor host service.
-    pub actor_host: ActorHostService,
+    /// Channel for sending commands/events into the actor system.
+    pub actor_channel: ActorChannelService,
+    /// Channel for receiving lifecycle notifications from the actor system.
+    pub core_channel: CoreChannelService,
     /// LLM service factory for creating streaming chat instances.
     pub llm_service: LlmServiceFactoryService,
     /// Provider registry for looking up and validating provider configs.
@@ -90,9 +98,13 @@ impl Services {
         ));
         let handle = rt.handle().clone();
 
+        let (actor_tx, _actor_rx) = kanal::unbounded::<AppMsg>();
+        let (core_tx, _core_rx) = kanal::unbounded::<CoreNotification>();
+
         Self {
             handle,
-            actor_host: ActorHostService::new(Arc::new(nullslop_actor_host::FakeActorHost::new())),
+            actor_channel: ActorChannelService::new(actor_tx),
+            core_channel: CoreChannelService::new(core_tx),
             llm_service: LlmServiceFactoryService::new(Arc::new(
                 nullslop_providers::FakeLlmServiceFactory::new(vec![]),
             )),

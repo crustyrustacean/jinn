@@ -351,6 +351,17 @@ impl ChatInputBoxState {
         (row, col)
     }
 
+    /// Insert text at the current cursor position and advance the cursor by the
+    /// number of graphemes in the text.
+    ///
+    /// Convenience method that loops over characters and calls
+    /// [`insert_grapheme_at_cursor`](Self::insert_grapheme_at_cursor) for each.
+    pub fn insert_text(&mut self, text: &str) {
+        for ch in text.chars() {
+            self.insert_grapheme_at_cursor(ch);
+        }
+    }
+
     /// Insert a character at the current cursor position and advance the cursor by 1.
     pub fn insert_grapheme_at_cursor(&mut self, ch: char) {
         let byte_offset = self

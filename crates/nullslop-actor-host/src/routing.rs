@@ -93,7 +93,7 @@ mod tests {
         };
 
         // When calling send_command.
-        (entry.send_command)(nullslop_protocol::Command::Quit);
+        (entry.send_command)(nullslop_protocol::Command::RefreshModels);
 
         // Then it is received as a Command envelope.
         let msg = rx
@@ -102,7 +102,7 @@ mod tests {
             .expect("should have value");
         assert!(matches!(
             msg,
-            ActorEnvelope::Command(nullslop_protocol::Command::Quit)
+            ActorEnvelope::Command(nullslop_protocol::Command::RefreshModels)
         ));
     }
 

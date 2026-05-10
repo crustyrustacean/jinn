@@ -22,6 +22,7 @@ use crate::prompt_template::PromptTemplateStore;
 use crate::provider_picker::entries::PickerEntry;
 use crate::session_picker::entries::SessionEntry;
 use crate::shutdown_tracker::ShutdownTrackerState;
+use crate::tui_signals::TuiSignals;
 /// A snapshot of everything the application is doing right now.
 #[derive(Debug)]
 pub struct AppState {
@@ -98,6 +99,14 @@ pub struct AppState {
     /// When `true`, the chat log shows a centered "Loading session..." indicator
     /// instead of the conversation history.
     pub session_loading: bool,
+
+    /// Signals from the [`IntentHandler`] for the outer platform layer.
+    /// Cleared at the start of each `handle()` call.
+    pub tui_signals: TuiSignals,
+
+    /// All keymap entries, populated once at startup. Used by [`ToggleKeymapScopeFilter`](crate::Intent::ToggleKeymapScopeFilter)
+    /// to re-filter entries by scope without needing a live keymap reference.
+    pub all_keymap_entries: Vec<KeymapEntry>,
 }
 
 impl Default for AppState {
@@ -128,6 +137,8 @@ impl Default for AppState {
             keymap_picker_origin_scope: None,
             session_picker: nullslop_selection_widget::SelectionState::new(),
             session_loading: false,
+            tui_signals: TuiSignals::new(),
+            all_keymap_entries: vec![],
         }
     }
 }

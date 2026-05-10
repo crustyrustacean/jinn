@@ -26,7 +26,7 @@ pub use crate::custom::EventMsg;
 use crate::provider::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
 };
-use crate::session::{SessionLoadRequested, SessionSaveRequested};
+use crate::session::SessionSaveRequested;
 use crate::system::{KeyDown, KeyUp, ModeChanged};
 use crate::tool::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -198,13 +198,6 @@ pub enum Event {
         #[serde(flatten)]
         payload: SessionSaveRequested,
     },
-    /// Request to load a full session from disk.
-    #[serde(rename = "session_load_requested")]
-    SessionLoadRequested {
-        /// The session load request payload.
-        #[serde(flatten)]
-        payload: SessionLoadRequested,
-    },
 }
 
 impl Event {
@@ -235,7 +228,6 @@ impl Event {
             Self::StrategyStateUpdated { .. } => Some(StrategyStateUpdated::TYPE_NAME),
 
             Self::SessionSaveRequested { .. } => Some(SessionSaveRequested::TYPE_NAME),
-            Self::SessionLoadRequested { .. } => Some(SessionLoadRequested::TYPE_NAME),
         }
     }
 }
@@ -302,10 +294,6 @@ mod tests {
         history: vec![ChatEntry::user("hello")],
         active_strategy: crate::PromptStrategyId::passthrough(),
         blobs: std::collections::HashMap::new(),
-    } })]
-    #[case::session_load_requested(Event::SessionLoadRequested { payload: crate::session::SessionLoadRequested {
-        session_id: SessionId::new(),
-        byte_offset: 42,
     } })]
     fn event_roundtrip_all_variants(#[case] event: Event) {
         // Given an event variant.
@@ -402,10 +390,6 @@ mod tests {
     #[case::session_save_requested(
         SessionSaveRequested::TYPE_NAME,
         "session::SessionSaveRequested"
-    )]
-    #[case::session_load_requested(
-        crate::session::SessionLoadRequested::TYPE_NAME,
-        "session::SessionLoadRequested"
     )]
     fn type_name_constant_matches_expected_module_path(
         #[case] actual: &str,

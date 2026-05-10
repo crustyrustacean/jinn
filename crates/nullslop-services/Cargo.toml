@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+kanal = { workspace = true }
 nullslop-actor-host = { workspace = true }
 nullslop-context = { workspace = true }
 nullslop-protocol = { workspace = true }

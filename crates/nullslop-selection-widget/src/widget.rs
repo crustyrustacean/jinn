@@ -206,6 +206,13 @@ where
 mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
+        let backend = TestBackend::new(width, height);
+        let terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, width, height);
+        (terminal, area)
+    }
+
 
     use super::*;
 
@@ -253,8 +260,7 @@ mod tests {
         state.insert_char('o');
         state.insert_char('l');
 
-        let backend = TestBackend::new(80, 24);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(80, 24);
 
         // When rendering the widget.
         terminal
@@ -310,8 +316,7 @@ mod tests {
         // Given a widget with default state.
         let state = SelectionState::with_items(make_items(&["test"]));
 
-        let backend = TestBackend::new(80, 24);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(80, 24);
 
         // When rendering the widget.
         terminal
@@ -333,8 +338,7 @@ mod tests {
         // Given a selection state with items where the first is selected.
         let state = SelectionState::with_items(make_items(&["alpha", "bravo"]));
 
-        let backend = TestBackend::new(80, 24);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(80, 24);
 
         // When rendering the widget.
         terminal
@@ -361,8 +365,7 @@ mod tests {
     fn render_shows_title() {
         // Given a widget with a custom title.
         let state = SelectionState::with_items(make_items(&["test"]));
-        let backend = TestBackend::new(80, 24);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(80, 24);
 
         // When rendering with title " Model ".
         terminal
@@ -398,8 +401,7 @@ mod tests {
     fn render_shows_footer_when_provided() {
         // Given a widget with a footer.
         let state = SelectionState::with_items(make_items(&["test"]));
-        let backend = TestBackend::new(80, 24);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(80, 24);
 
         // When rendering with footer text.
         let footer_text = "CTRL+R to refresh";
@@ -440,8 +442,7 @@ mod tests {
     fn render_no_footer_shows_empty_row() {
         // Given a widget without a footer.
         let state = SelectionState::with_items(make_items(&["test"]));
-        let backend = TestBackend::new(80, 24);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(80, 24);
 
         // When rendering without footer.
         terminal
@@ -479,8 +480,7 @@ mod tests {
     fn render_pads_empty_result_rows() {
         // Given a selection state with only 1 item but many visible rows.
         let state = SelectionState::with_items(make_items(&["solo"]));
-        let backend = TestBackend::new(80, 24);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(80, 24);
 
         // When rendering the widget.
         terminal
@@ -539,8 +539,7 @@ mod tests {
         state.move_cursor_left();
         assert_eq!(state.cursor_pos(), 1);
 
-        let backend = TestBackend::new(80, 24);
-        let mut terminal = Terminal::new(backend).unwrap();
+        let (mut terminal, _) = setup_term(80, 24);
 
         // When rendering the widget.
         terminal

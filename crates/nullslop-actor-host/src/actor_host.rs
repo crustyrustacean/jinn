@@ -139,7 +139,7 @@ mod tests {
             },
             None,
         );
-        service.send_command(&Command::Quit, None);
+        service.send_command(&Command::RefreshModels, None);
         service.send_system(nullslop_actor::SystemMessage::ApplicationReady);
     }
 
