@@ -13,7 +13,6 @@
 
 pub mod handler;
 pub mod intent;
-pub mod validators;
 
 pub use handler::IntentHandler;
 pub use nullslop_protocol::IntentResult;
