@@ -62,9 +62,7 @@ impl TuiWorld {
             strategy_registry,
         };
 
-        let app = TuiApp::test_builder()
-            .services(services)
-            .build();
+        let app = TuiApp::test_builder().services(services).build();
 
         Self { app }
     }

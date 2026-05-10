@@ -213,7 +213,6 @@ mod tests {
         (terminal, area)
     }
 
-
     use super::*;
 
     /// A minimal item type for testing.

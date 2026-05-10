@@ -96,6 +96,4 @@ mod tests {
         // Then it matches the original.
         assert_eq!(back, result);
     }
-
-
 }

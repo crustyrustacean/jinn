@@ -485,10 +485,7 @@ fn create_factory_for_static_model_still_works() {
     let api_keys = ApiKeys::new();
 
     // When creating a factory for the statically configured model.
-    let factory = registry.create_factory(
-        &ProviderId::new("ollama/llama3".to_owned()),
-        &api_keys,
-    );
+    let factory = registry.create_factory(&ProviderId::new("ollama/llama3".to_owned()), &api_keys);
 
     // Then it succeeds (unchanged behavior).
     assert!(factory.is_ok());

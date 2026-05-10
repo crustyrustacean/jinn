@@ -96,5 +96,3 @@ impl MessageSink for RecordingSink {
         Ok(())
     }
 }
-
-

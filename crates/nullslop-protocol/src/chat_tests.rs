@@ -312,4 +312,3 @@ fn pin_position_enum_serialization() {
         assert_eq!(back, position, "roundtrip failed for {label}");
     }
 }
-

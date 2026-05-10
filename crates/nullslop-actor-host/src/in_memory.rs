@@ -235,9 +235,9 @@ impl InMemoryActorHost {
         // Drain tasks and join.
         let tasks: Vec<_> = self.lifecycle.lock().tasks.drain(..).collect();
         for task in tasks {
-            let result = self.handle.block_on(async {
-                tokio::time::timeout(timeout, task).await
-            });
+            let result = self
+                .handle
+                .block_on(async { tokio::time::timeout(timeout, task).await });
             if result.is_err() {
                 tracing::warn!("actor task did not exit within {:?}", timeout);
             }
@@ -296,7 +296,9 @@ impl ActorHost for InMemoryActorHost {
 mod tests {
     use std::sync::Arc;
 
-    use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, RecordingSink};
+    use nullslop_actor::{
+        Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, RecordingSink,
+    };
     use nullslop_protocol::chat_input::ChatEntrySubmitted;
     use nullslop_protocol::{Command, CommandMsg as _, Event};
 
@@ -553,29 +555,17 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[should_panic(
-        expected = "is subscribed by multiple actors"
-    )]
+    #[should_panic(expected = "is subscribed by multiple actors")]
     fn duplicate_command_subscription_panics() {
         // Given two actors subscribing to the same command.
         let runtime = rt();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
         let cmd_name = nullslop_protocol::chat_input::PushChatEntry::NAME;
-        let (r1, _received1) = spawn_recording_actor(
-            "actor-a",
-            sink.clone(),
-            &[],
-            &[cmd_name],
-            runtime.handle(),
-        );
-        let (r2, _received2) = spawn_recording_actor(
-            "actor-b",
-            sink.clone(),
-            &[],
-            &[cmd_name],
-            runtime.handle(),
-        );
+        let (r1, _received1) =
+            spawn_recording_actor("actor-a", sink.clone(), &[], &[cmd_name], runtime.handle());
+        let (r2, _received2) =
+            spawn_recording_actor("actor-b", sink.clone(), &[], &[cmd_name], runtime.handle());
 
         // When building the host.
         // Then it panics because both actors subscribe to PushChatEntry.

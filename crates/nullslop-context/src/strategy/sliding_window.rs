@@ -165,7 +165,6 @@ mod tests {
         assert_eq!(strategy.name(), "sliding_window");
     }
 
-
     #[tokio::test]
     async fn pinned_entry_survives_sliding_window_truncation() {
         // Given 5 entries where the first is pinned, and a window of 3.

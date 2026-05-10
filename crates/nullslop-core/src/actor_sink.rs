@@ -64,7 +64,9 @@ mod tests {
             .try_recv()
             .expect("recv should succeed")
             .expect("should have value");
-        assert!(matches!(msg, AppMsg::Command { command, .. } if matches!(command, Command::RefreshModels)));
+        assert!(
+            matches!(msg, AppMsg::Command { command, .. } if matches!(command, Command::RefreshModels))
+        );
     }
 
     #[rstest::rstest]

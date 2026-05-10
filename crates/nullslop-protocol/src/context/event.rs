@@ -107,5 +107,4 @@ mod tests {
         assert_eq!(back.strategy_id, PromptStrategyId::compaction());
         assert_eq!(back.blob["compaction_count"], 3);
     }
-
 }

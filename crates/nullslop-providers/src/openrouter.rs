@@ -145,5 +145,4 @@ mod tests {
         // Then it returns "OpenRouter".
         assert_eq!(factory.name(), "OpenRouter");
     }
-
 }

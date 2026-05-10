@@ -18,8 +18,8 @@
 //! then emit. Never hold the lock during emission.
 
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use nullslop_component::provider_picker::loader::load_provider_picker_items;
 use nullslop_component::State;
+use nullslop_component::provider_picker::loader::load_provider_picker_items;
 use nullslop_protocol::provider::{ModelsRefreshed, ProviderSwitch, ProviderSwitched};
 use nullslop_protocol::system::LoadPickerEntries;
 use nullslop_protocol::{Command, Event, PickerKind};
@@ -49,9 +49,17 @@ impl Actor for ProviderActor {
 
         ctx.set_description("Manages provider selection, LLM factory, and model cache");
 
+        #[expect(
+            clippy::expect_used,
+            reason = "State injection is required at activation"
+        )]
         let state = ctx
             .take_data::<State>()
             .expect("ProviderActor requires State injection");
+        #[expect(
+            clippy::expect_used,
+            reason = "Services injection is required at activation"
+        )]
         let services = ctx
             .take_data::<Services>()
             .expect("ProviderActor requires Services injection");
@@ -121,7 +129,10 @@ impl ProviderActor {
     fn handle_provider_switch(&self, payload: &ProviderSwitch, ctx: &ActorContext) {
         {
             let mut state = self.state.write();
-            state.provider.active_provider = payload.provider_id.clone();
+            state
+                .provider
+                .active_provider
+                .clone_from(&payload.provider_id);
         }
 
         if let Err(e) = ctx.send_event(Event::ProviderSwitched {
@@ -141,7 +152,9 @@ impl ProviderActor {
             .create_factory(&provider_id, &api_keys)
         {
             Ok(factory) => {
-                self.services.llm_service.swap(std::sync::Arc::from(factory));
+                self.services
+                    .llm_service
+                    .swap(std::sync::Arc::from(factory));
                 tracing::info!(
                     provider = %payload.provider_id,
                     "swapped LLM factory"
@@ -164,9 +177,7 @@ impl ProviderActor {
                 let mut state = self.state.write();
                 load_provider_picker_items(&self.services, &mut state);
             }
-            PickerKind::ContextAssembly
-            | PickerKind::Session
-            | PickerKind::Keymap => {
+            PickerKind::ContextAssembly | PickerKind::Session | PickerKind::Keymap => {
                 // Future: load from services or state as appropriate.
             }
         }
@@ -192,11 +203,10 @@ impl ProviderActor {
 mod tests {
     use std::sync::Arc;
 
-    use nullslop_actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use nullslop_actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use nullslop_component::{AppState, State};
     use nullslop_protocol::provider::{ModelsRefreshed, ProviderSwitch};
-    use nullslop_protocol::system::LoadPickerEntries;
-    use nullslop_protocol::{Command, Event, PickerKind};
+    use nullslop_protocol::{Command, Event};
     use nullslop_services::Services;
 
     use super::ProviderActor;
@@ -247,7 +257,9 @@ mod tests {
 
         // And a ProviderSwitched event was emitted.
         let events = sink.events();
-        let found = events.iter().any(|e| matches!(e, Event::ProviderSwitched { .. }));
+        let found = events
+            .iter()
+            .any(|e| matches!(e, Event::ProviderSwitched { .. }));
         assert!(found, "expected ProviderSwitched event");
     }
 
@@ -294,9 +306,7 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let services = TestServices::builder()
-            .with_providers(config)
-            .build();
+        let services = TestServices::builder().with_providers(config).build();
 
         let (mut actor, _state, _sink, ctx) = create_actor_with_services(services);
         let name_before = actor.services.llm_service.name();
@@ -348,8 +358,12 @@ mod tests {
 
         // Then the model cache and last_refreshed_at are updated.
         let guard = state.read();
-        let cache = guard.provider.model_cache.as_ref().expect("model cache should be set");
-        assert_eq!(cache.entries.get("Ollama").map(|v| v.len()), Some(2));
+        let cache = guard
+            .provider
+            .model_cache
+            .as_ref()
+            .expect("model cache should be set");
+        assert_eq!(cache.entries.get("Ollama").map(std::vec::Vec::len), Some(2));
         assert!(guard.provider.last_refreshed_at.is_some());
     }
 }

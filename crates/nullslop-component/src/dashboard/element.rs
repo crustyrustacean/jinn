@@ -127,7 +127,6 @@ mod tests {
         (terminal, area)
     }
 
-
     use super::*;
     use crate::AppState;
 
@@ -188,7 +187,8 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
             s
         };
@@ -207,7 +207,8 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
             s
         };
@@ -225,7 +226,8 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
             s.frontend.dashboard.mark_running("echo", None);
             s
@@ -263,8 +265,12 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.frontend.dashboard.mark_starting("echo", Some("Echo".to_owned()));
-            s.frontend.dashboard.mark_starting("llm", Some("LLM".to_owned()));
+            s.frontend
+                .dashboard
+                .mark_starting("echo", Some("Echo".to_owned()));
+            s.frontend
+                .dashboard
+                .mark_starting("llm", Some("LLM".to_owned()));
             s
         };
 
@@ -279,8 +285,12 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.frontend.dashboard.mark_starting("echo", Some("Echo".to_owned()));
-            s.frontend.dashboard.mark_starting("llm", Some("LLM".to_owned()));
+            s.frontend
+                .dashboard
+                .mark_starting("echo", Some("Echo".to_owned()));
+            s.frontend
+                .dashboard
+                .mark_starting("llm", Some("LLM".to_owned()));
             s
         };
 
@@ -294,9 +304,11 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("llm", Some("LLM streaming".to_owned()));
             s
         };
@@ -324,9 +336,11 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("llm", Some("LLM streaming".to_owned()));
             s
         };
@@ -351,9 +365,11 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("llm", Some("LLM streaming".to_owned()));
             s
         };
@@ -380,9 +396,11 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("llm", Some("LLM streaming".to_owned()));
             s.frontend.dashboard.select_next();
             s
@@ -407,9 +425,11 @@ mod tests {
         let mut element = DashboardElement;
         let state = {
             let mut s = AppState::default();
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("echo", Some("Echoes messages back".to_owned()));
-            s.frontend.dashboard
+            s.frontend
+                .dashboard
                 .mark_starting("llm", Some("LLM streaming".to_owned()));
             s.frontend.dashboard.select_next();
             s

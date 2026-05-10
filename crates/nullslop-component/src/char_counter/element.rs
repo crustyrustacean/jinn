@@ -39,7 +39,6 @@ mod tests {
         (terminal, area)
     }
 
-
     use super::*;
     use crate::AppState;
 

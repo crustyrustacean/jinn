@@ -8,14 +8,14 @@
 //! live in `nullslop-component`.
 
 pub mod action;
-pub mod app_msg;
 pub mod actor;
 pub mod actor_name;
+pub mod app_msg;
 pub mod chat;
 pub mod chat_input;
 pub mod command;
-pub mod core_notification;
 pub mod context;
+pub mod core_notification;
 pub mod custom;
 pub mod event;
 pub mod intent;
@@ -32,15 +32,15 @@ pub mod tool;
 
 // Re-export primary types
 pub use action::CommandAction;
-pub use app_msg::AppMsg;
 pub use actor::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 pub use actor_name::ActorName;
+pub use app_msg::AppMsg;
 pub use chat::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
 pub use command::Command;
-pub use core_notification::CoreNotification;
 pub use context::{
     AssemblePrompt, PromptAssembled, PromptStrategyId, PromptStrategySwitched, SwitchPromptStrategy,
 };
+pub use core_notification::CoreNotification;
 pub use custom::{CommandMsg, CommandName, EventMsg, EventTypeName};
 pub use event::Event;
 pub use intent::Intent;

@@ -44,4 +44,3 @@ impl StrategyRegistryService {
         self.svc.name()
     }
 }
-

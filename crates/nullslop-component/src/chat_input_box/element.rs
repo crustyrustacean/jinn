@@ -93,7 +93,7 @@ where
 #[cfg(test)]
 mod tests {
     use ratatui::Terminal;
-    use ratatui::backend::{Backend as _, TestBackend};
+    use ratatui::backend::TestBackend;
     use ratatui::layout::{Position, Rect};
     fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
         let backend = TestBackend::new(width, height);

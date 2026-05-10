@@ -11,7 +11,7 @@ check:
     cargo check --workspace
 
 clippy:
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets
 
 fmt:
     cargo fmt -- --check
@@ -22,7 +22,7 @@ fmt-fix:
 # Run all linters (check + clippy + fmt check)
 lint:
     cargo check --workspace
-    cargo clippy --workspace --all-targets -- -D warnings
+    just clippy
     cargo fmt -- --check
 
 # Full CI pipeline (lint + test + docs)

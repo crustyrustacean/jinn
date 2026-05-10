@@ -29,9 +29,11 @@ pub enum ChatEntryPinSelectedError {
 /// Validates the ChatEntryPinSelected intent.
 ///
 /// Returns an error if the history is empty or no entry is selected.
-pub fn validate_chat_entry_pin_selected(
-    state: &AppState,
-) -> Result<(), ChatEntryPinSelectedError> {
+///
+/// # Errors
+///
+/// Returns an error if the history is empty or no entry is selected.
+pub fn validate_chat_entry_pin_selected(state: &AppState) -> Result<(), ChatEntryPinSelectedError> {
     if state.active_session().history().is_empty() {
         return Err(ChatEntryPinSelectedError::EmptyHistory);
     }
@@ -52,6 +54,10 @@ pub enum RefreshModelsError {
 /// Validates the RefreshModels intent.
 ///
 /// Returns an error if no provider is configured.
+///
+/// # Errors
+///
+/// Returns an error if no provider is configured.
 pub fn validate_refresh_models(state: &AppState) -> Result<(), RefreshModelsError> {
     if state.provider.active_provider == nullslop_component::NO_PROVIDER_ID {
         return Err(RefreshModelsError::NoProvider);
@@ -70,7 +76,13 @@ pub enum RescanPromptTemplatesError {
 /// Validates the RescanPromptTemplates intent.
 ///
 /// Always succeeds for now. The error variant exists for future use.
-pub fn validate_rescan_prompt_templates(_state: &AppState) -> Result<(), RescanPromptTemplatesError> {
+///
+/// # Errors
+///
+/// Returns an error if prompt templates directory is not configured.
+pub fn validate_rescan_prompt_templates(
+    _state: &AppState,
+) -> Result<(), RescanPromptTemplatesError> {
     Ok(())
 }
 
@@ -83,6 +95,10 @@ pub enum SessionNewError {
 }
 
 /// Validates the SessionNew intent.
+///
+/// Returns an error if a picker is currently active.
+///
+/// # Errors
 ///
 /// Returns an error if a picker is currently active.
 pub fn validate_session_new(state: &AppState) -> Result<(), SessionNewError> {
@@ -104,7 +120,9 @@ mod tests {
     fn pin_selected_succeeds_with_selected_entry() {
         // Given a state with a history entry that is selected.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
         state.active_session_mut().select_next_entry();
 
         // When validating pin selected.
@@ -133,13 +151,18 @@ mod tests {
     fn pin_selected_fails_with_no_selection() {
         // Given a state with history but no entry selected.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
 
         // When validating pin selected.
         let result = validate_chat_entry_pin_selected(&state);
 
         // Then it returns NoSelection error.
-        assert!(matches!(result, Err(ChatEntryPinSelectedError::NoSelection)));
+        assert!(matches!(
+            result,
+            Err(ChatEntryPinSelectedError::NoSelection)
+        ));
     }
 
     // --- RefreshModels tests ---

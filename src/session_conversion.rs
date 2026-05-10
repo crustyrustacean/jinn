@@ -179,6 +179,4 @@ mod tests {
             .expect("strategy state should be restored");
         assert_eq!(blob["compaction_count"], 7);
     }
-
-
 }

@@ -244,7 +244,10 @@ mod tests {
             .try_recv()
             .expect("recv should succeed")
             .expect("should have value");
-        assert!(matches!(msg, ActorEnvelope::Command(Command::RefreshModels)));
+        assert!(matches!(
+            msg,
+            ActorEnvelope::Command(Command::RefreshModels)
+        ));
     }
 
     #[rstest::rstest]

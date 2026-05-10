@@ -184,12 +184,8 @@ impl TestServices {
 
         Services {
             handle,
-            actor_channel: ActorChannelService::new(
-                self.actor_channel_sender.unwrap_or(actor_tx),
-            ),
-            core_channel: CoreChannelService::new(
-                self.core_channel_sender.unwrap_or(core_tx),
-            ),
+            actor_channel: ActorChannelService::new(self.actor_channel_sender.unwrap_or(actor_tx)),
+            core_channel: CoreChannelService::new(self.core_channel_sender.unwrap_or(core_tx)),
             llm_service: self.llm_service.unwrap_or_else(|| {
                 LlmServiceFactoryService::new(Arc::new(
                     nullslop_providers::FakeLlmServiceFactory::new(vec![]),

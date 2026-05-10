@@ -101,5 +101,4 @@ mod tests {
         // Then its name is "passthrough".
         assert_eq!(strategy.name(), "passthrough");
     }
-
 }
