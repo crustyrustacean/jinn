@@ -34,7 +34,6 @@ use nullslop_protocol::provider::CancelStream;
 use nullslop_protocol::{Command, Mode, PinPosition};
 
 use crate::Intent;
-use crate::validators::app;
 
 
 use nullslop_protocol::IntentResult;
@@ -123,18 +122,10 @@ impl IntentHandler {
             Intent::EditInput => nsslice_navigation::intent::handle_edit_input(state),
 
             // --- Mode & App ---
-            Intent::Quit => {
-                app::validate_quit(state);
-                state.frontend.should_quit = true;
-                IntentResult::empty()
-            }
-            Intent::Interrupt => handle_interrupt(state),
+            Intent::Quit => nsslice_global::intent::handle_quit(state),
+            Intent::Interrupt => nsslice_global::intent::handle_interrupt(state),
             Intent::SetMode { mode } => handle_set_mode(state, *mode),
-            Intent::ToggleWhichkey => {
-                app::validate_toggle_whichkey(state);
-                state.frontend.tui_signals.toggle_whichkey = true;
-                IntentResult::empty()
-            }
+            Intent::ToggleWhichkey => nsslice_global::intent::handle_toggle_whichkey(state),
             Intent::NormalEscape => handle_normal_escape(state),
 
             // --- Picker ---
@@ -241,25 +232,6 @@ impl IntentHandler {
 
 // --- Mode & App handlers ---
 
-fn handle_interrupt(state: &mut AppState) -> IntentResult {
-    if nsslice_chat_input_box::validator::validate_interrupt(state).is_err() {
-        return IntentResult::empty();
-    }
-
-    state.active_chat_input_mut().deactivate_autocomplete();
-
-    if state.active_chat_input().is_empty() {
-        let session_id = state.session.active_session.clone();
-        cancel_stream_and_drain(state);
-        IntentResult::with_commands(vec![Command::CancelStream {
-            payload: CancelStream { session_id },
-        }])
-    } else {
-        state.active_chat_input_mut().reset();
-        IntentResult::empty()
-    }
-}
-
 fn handle_set_mode(state: &mut AppState, mode: Mode) -> IntentResult {
     let mut commands = vec![];
 
@@ -268,7 +240,7 @@ fn handle_set_mode(state: &mut AppState, mode: Mode) -> IntentResult {
         && !state.active_session().is_idle()
     {
         let session_id = state.session.active_session.clone();
-        cancel_stream_and_drain(state);
+        nsslice_global::intent::cancel_stream_and_drain(state);
         commands.push(Command::CancelStream {
             payload: CancelStream { session_id },
         });
@@ -284,7 +256,7 @@ fn handle_set_mode(state: &mut AppState, mode: Mode) -> IntentResult {
 }
 
 fn handle_normal_escape(state: &mut AppState) -> IntentResult {
-    app::validate_normal_escape(state);
+    nsslice_global::validator::validate_normal_escape(state);
 
     if state.active_session().selected_entry_index().is_some() {
         state.active_session_mut().clear_selection();
@@ -293,18 +265,6 @@ fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     state.frontend.tui_signals.pinned_pane_close = true;
 
     IntentResult::empty()
-}
-
-/// Cancels streaming on the active session and drains any queued messages
-/// back to the input buffer.
-fn cancel_stream_and_drain(state: &mut AppState) {
-    let session = state.active_session_mut();
-    session.cancel_streaming();
-    let drained: Vec<String> = session.drain_queue().into_iter().collect();
-    let drained_text = drained.join("\n");
-    if !drained_text.is_empty() {
-        session.chat_input_mut().replace_all(drained_text);
-    }
 }
 
 #[cfg(test)]
