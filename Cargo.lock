@@ -2805,6 +2805,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsslice-chat-input-box"
+version = "0.1.0"
+dependencies = [
+ "nullslop-component",
+ "nullslop-component-ui",
+ "nullslop-protocol",
+ "ratatui",
+ "rstest",
+ "unicode-segmentation",
+ "wherror",
+]
+
+[[package]]
 name = "nsslice-chat-log"
 version = "0.1.0"
 dependencies = [
@@ -2881,6 +2894,7 @@ dependencies = [
  "jiff",
  "kanal",
  "nsslice-char-counter",
+ "nsslice-chat-input-box",
  "nsslice-chat-log",
  "nsslice-dashboard",
  "nsslice-pinned-panel",
@@ -3083,11 +3097,11 @@ name = "nullslop-intent"
 version = "0.1.0"
 dependencies = [
  "jiff",
+ "nsslice-chat-input-box",
  "nsslice-pinned-panel",
  "nullslop-component",
  "nullslop-protocol",
  "rstest",
- "unicode-segmentation",
  "wherror",
 ]
 
@@ -3312,6 +3326,7 @@ dependencies = [
  "futures",
  "kanal",
  "nsslice-char-counter",
+ "nsslice-chat-input-box",
  "nsslice-chat-log",
  "nsslice-dashboard",
  "nsslice-pinned-panel",

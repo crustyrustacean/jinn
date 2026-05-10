@@ -13,7 +13,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::AppState;
+use nullslop_component::AppState;
 
 /// Display element for the user's message composition area.
 #[derive(Debug)]
@@ -103,7 +103,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::FrontendState;
+    use nullslop_component::FrontendState;
 
     #[rstest::rstest]
     fn name_returns_chat_input_box() {
