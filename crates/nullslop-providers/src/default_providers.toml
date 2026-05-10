@@ -34,7 +34,7 @@ models = ["llama3", "codellama"]
 
 [[providers]]
 name = "lmstudio"
-backend = "openai"
+backend = "lmstudio"
 base_url = "http://localhost:1234/v1"
 requires_key = false
 models = ["local-model"]

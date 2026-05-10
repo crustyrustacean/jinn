@@ -1,6 +1,7 @@
 mod cohere;
 mod groq;
 mod huggingface;
+mod lmstudio;
 mod mistral;
 mod openrouter;
 
@@ -25,6 +26,14 @@ pub(super) fn build_openrouter(
     tool_choice: Option<ToolChoice>,
 ) -> Result<Box<dyn LLMProvider>, LLMError> {
     openrouter::build_openrouter(state, tools, tool_choice)
+}
+
+pub(super) fn build_lmstudio(
+    state: &mut BuilderState,
+    tools: Option<Vec<Tool>>,
+    tool_choice: Option<ToolChoice>,
+) -> Result<Box<dyn LLMProvider>, LLMError> {
+    lmstudio::build_lmstudio(state, tools, tool_choice)
 }
 
 pub(super) fn build_huggingface(

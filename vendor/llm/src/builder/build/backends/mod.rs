@@ -37,6 +37,7 @@ pub(super) fn build_backend(
         LLMBackend::Cohere => openai_compatible::build_cohere(state, tools, tool_choice),
         LLMBackend::Mistral => openai_compatible::build_mistral(state, tools, tool_choice),
         LLMBackend::HuggingFace => openai_compatible::build_huggingface(state, tools, tool_choice),
+        LLMBackend::LmStudio => openai_compatible::build_lmstudio(state, tools, tool_choice),
         LLMBackend::AzureOpenAI => azure::build_azure_openai(state, tools, tool_choice),
         LLMBackend::ElevenLabs => elevenlabs::build_elevenlabs(state),
         LLMBackend::AwsBedrock => azure::build_bedrock(state, tools, tool_choice),

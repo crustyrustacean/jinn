@@ -42,3 +42,5 @@ pub mod huggingface;
 
 #[cfg(feature = "bedrock")]
 pub mod aws;
+
+pub mod lmstudio;
