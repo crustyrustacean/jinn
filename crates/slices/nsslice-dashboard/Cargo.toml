@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 nullslop-component-ui = { workspace = true }
 nullslop-component = { workspace = true }
+nsslice-dashboard-protocol = { workspace = true }
 nullslop-protocol = { workspace = true }
 ratatui = { workspace = true }
 

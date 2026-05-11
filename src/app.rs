@@ -8,20 +8,14 @@ use std::path::Path;
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use nullslop_actor_host::{ActorHostService, InMemoryActorHost, spawn_actor};
+use nullslop_actor::MessageSink;
+use nullslop_actor_host::{ActorHostService, InMemoryActorHost};
 use nullslop_cli::Cli;
 use nullslop_component::AppState;
-use nullslop_context::{DefaultStrategyFactory, StrategyFactory};
-use nullslop_context_actor::PromptAssemblyActor;
+use nsslice_context_protocol::DefaultStrategyFactory;
 use nullslop_core::{ActorMessageSink, AppCore, AppMsg, State, spawn_forwarding_task};
-use nullslop_echo::EchoActor;
-use nullslop_llm::LlmActor;
-use nullslop_llm_discover::DiscoverActor;
-use nullslop_prompt_scan::PromptScanActor;
 use nullslop_protocol::Event;
 use nullslop_protocol::actor::{ActorStarted, ActorStarting};
-use nullslop_provider_actor::ProviderActor;
 use nullslop_providers::ApiKeys;
 use nullslop_providers::ApiKeysService;
 use nullslop_providers::ConfigStorageService;
@@ -36,10 +30,7 @@ use nullslop_services::Services;
 use nullslop_services::actor_channel::ActorChannelService;
 use nullslop_services::core_channel::CoreChannelService;
 use nullslop_services::strategy_registry::StrategyRegistryService;
-use nullslop_session::{JsonlSessionStore, SessionStoreService};
-use nullslop_session_actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
-use nullslop_shutdown_tracker::ShutdownTrackerActor;
-use nullslop_tool_orchestrator::ToolOrchestratorActor;
+use nsslice_session_management::persistence::{JsonlSessionStore, SessionStoreService};
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -286,121 +277,50 @@ fn create_core_with_actor_host(
     let state = State::new(AppState::default());
 
     // --- Echo actor ---
-    let (echo_tx, echo_rx) = kanal::unbounded::<ActorEnvelope<nullslop_echo::EchoDirectMsg>>();
-    let echo_ref = ActorRef::new(echo_tx);
-    let mut echo_ctx = ActorContext::new("echo", sink.clone());
-    echo_ctx.set_description("Echoes messages back");
-    let echo_actor = EchoActor::activate(&mut echo_ctx);
-    let echo_result = spawn_actor("echo", echo_actor, &echo_ref, echo_rx, echo_ctx, handle);
+    let (_echo_ref, echo_result) = nsslice_echo::spawn(sink.clone(), handle);
 
-    // --- LLM actor with data injection ---
-    let (llm_tx, llm_rx) = kanal::unbounded::<ActorEnvelope<nullslop_llm::LlmDirectMsg>>();
-    let llm_ref = ActorRef::new(llm_tx);
-    let mut llm_ctx = ActorContext::new("llm-streaming", sink.clone());
-    llm_ctx.set_description("LLM streaming with tool support");
-    llm_ctx.set_data(llm_service.clone());
-    let llm_actor = LlmActor::activate(&mut llm_ctx);
-    let llm_result = spawn_actor(
-        "llm-streaming",
-        llm_actor,
-        &llm_ref,
-        llm_rx,
-        llm_ctx,
-        handle,
-    );
+    // --- LLM actor ---
+    let (_llm_ref, llm_result) = nsslice_llm::spawn(llm_service.clone(), sink.clone(), handle);
 
-    // --- Discover actor with data injection ---
-    let (discover_tx, discover_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_llm_discover::DiscoverDirectMsg>>();
-    let discover_ref = ActorRef::new(discover_tx);
-    let mut discover_ctx = ActorContext::new("llm-provider-listing", sink.clone());
-    discover_ctx.set_description("Discovers available models");
-    discover_ctx.set_data(provider_registry.clone());
-    discover_ctx.set_data(api_keys.clone());
-    let discover_actor = DiscoverActor::activate(&mut discover_ctx);
-    let discover_result = spawn_actor(
-        "llm-provider-listing",
-        discover_actor,
-        &discover_ref,
-        discover_rx,
-        discover_ctx,
+    // --- Discover actor ---
+    let (_discover_ref, discover_result) = nsslice_provider::spawn_discover_actor(
+        provider_registry.clone(),
+        api_keys.clone(),
+        sink.clone(),
         handle,
     );
 
     // --- Tool orchestrator actor ---
-    let (orch_tx, orch_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_tool_orchestrator::ToolOrchestratorDirectMsg>>();
-    let orch_ref = ActorRef::new(orch_tx);
-    let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
-    orch_ctx.set_description("Dispatches and manages tool execution");
-    let orch_actor = ToolOrchestratorActor::activate(&mut orch_ctx);
-    let orch_result = spawn_actor(
-        "tool-orchestrator",
-        orch_actor,
-        &orch_ref,
-        orch_rx,
-        orch_ctx,
-        handle,
-    );
+    let (_orch_ref, orch_result) = nsslice_tools::spawn(sink.clone(), handle);
 
     // --- Prompt assembly actor ---
-    let (ctx_tx, ctx_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_context_actor::ContextDirectMsg>>();
-    let ctx_ref = ActorRef::new(ctx_tx);
-    let mut prompt_ctx = ActorContext::new("context", sink.clone());
-    prompt_ctx.set_description("Context assembly, strategy management, pinning, and templates");
-    prompt_ctx.set_data(state.clone());
-    prompt_ctx.set_data::<Box<dyn StrategyFactory>>(Box::new(DefaultStrategyFactory));
-    let prompt_actor = PromptAssemblyActor::activate(&mut prompt_ctx);
-    let prompt_result = spawn_actor(
-        "context",
-        prompt_actor,
-        &ctx_ref,
-        ctx_rx,
-        prompt_ctx,
+    let (_ctx_ref, prompt_result) = nsslice_context::spawn_context_actor(
+        state.clone(),
+        Box::new(DefaultStrategyFactory),
+        sink.clone(),
         handle,
     );
 
     // --- Session persistence actor ---
     let session_store = JsonlSessionStore::new();
     let session_store_service = SessionStoreService::new(Arc::new(session_store));
-
-    let (sp_tx, sp_rx) = kanal::unbounded::<ActorEnvelope<SessionPersistenceDirectMsg>>();
-    let sp_ref = ActorRef::new(sp_tx);
-    let mut sp_ctx = ActorContext::new("session-persistence", sink.clone());
-    sp_ctx.set_description("Persists session data to disk");
-    sp_ctx.set_data(state.clone());
-    sp_ctx.set_data(session_store_service.clone());
-    let sp_actor = SessionPersistenceActor::activate(&mut sp_ctx);
-    let sp_result = spawn_actor(
-        "session-persistence",
-        sp_actor,
-        &sp_ref,
-        sp_rx,
-        sp_ctx,
+    let (_sp_ref, sp_result) = nsslice_session_management::spawn_session_actor(
+        state.clone(),
+        session_store_service.clone(),
+        sink.clone(),
         handle,
     );
 
     // --- Prompt scan actor ---
-    let (scan_tx, scan_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_prompt_scan::PromptScanDirectMsg>>();
-    let scan_ref = ActorRef::new(scan_tx);
-    let mut scan_ctx = ActorContext::new("prompt-scan", sink.clone());
-    scan_ctx.set_description("Scans and reloads prompt templates");
-    scan_ctx.set_data(nullslop_prompt_template::prompts_dir());
-    let scan_actor = PromptScanActor::activate(&mut scan_ctx);
-    let scan_result = spawn_actor(
-        "prompt-scan",
-        scan_actor,
-        &scan_ref,
-        scan_rx,
-        scan_ctx,
+    let (_scan_ref, scan_result) = nsslice_context::spawn_prompt_scan_actor(
+        nullslop_prompt_template::prompts_dir(),
+        sink.clone(),
         handle,
     );
 
     // Build services (needed by provider actor and shutdown tracker).
     let strategy_registry =
-        StrategyRegistryService::new(Arc::new(nullslop_context::DefaultStrategyDiscovery));
+        StrategyRegistryService::new(Arc::new(nsslice_context_protocol::DefaultStrategyDiscovery));
     let services = Services {
         handle: handle.clone(),
         actor_channel: ActorChannelService::new(sender.clone()),
@@ -414,38 +334,18 @@ fn create_core_with_actor_host(
     };
 
     // --- Provider actor ---
-    let (prov_tx, prov_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_provider_actor::ProviderDirectMsg>>();
-    let prov_ref = ActorRef::new(prov_tx);
-    let mut prov_ctx = ActorContext::new("provider", sink.clone());
-    prov_ctx.set_description("Manages provider selection, LLM factory, and model cache");
-    prov_ctx.set_data(state.clone());
-    prov_ctx.set_data(services.clone());
-    let provider_actor = ProviderActor::activate(&mut prov_ctx);
-    let prov_result = spawn_actor(
-        "provider",
-        provider_actor,
-        &prov_ref,
-        prov_rx,
-        prov_ctx,
+    let (_prov_ref, prov_result) = nsslice_provider::spawn_provider_actor(
+        state.clone(),
+        services.clone(),
+        sink.clone(),
         handle,
     );
 
-    // --- Shutdown tracker actor (new in Phase 7) ---
-    let (st_tx, st_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_shutdown_tracker::ShutdownTrackerDirectMsg>>();
-    let st_ref = ActorRef::new(st_tx);
-    let mut st_ctx = ActorContext::new("shutdown-tracker", sink.clone());
-    st_ctx.set_description("Tracks actor lifecycle for shutdown coordination");
-    st_ctx.set_data(state.clone());
-    st_ctx.set_data(services.clone());
-    let shutdown_actor = ShutdownTrackerActor::activate(&mut st_ctx);
-    let st_result = spawn_actor(
-        "shutdown-tracker",
-        shutdown_actor,
-        &st_ref,
-        st_rx,
-        st_ctx,
+    // --- Shutdown tracker actor ---
+    let (_st_ref, st_result) = nsslice_shutdown::spawn(
+        state.clone(),
+        services.clone(),
+        sink.clone(),
         handle,
     );
 

@@ -1,0 +1,13 @@
+[package]
+name = "nsslice-chat-input-box-protocol"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+unicode-segmentation = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+
+[lints]
+workspace = true

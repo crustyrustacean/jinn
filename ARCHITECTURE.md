@@ -214,11 +214,13 @@ Two host implementations: `ProcessActorHost` (subprocess, JSON over stdio) and `
 
 ## Crate Structure
 
+### Common Crates
+
 | Crate                       | Responsibility                                                                                                                                                                    |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `nullslop-protocol`         | `Command` (domain-only), `Event`, `Intent` enum, `Mode`, `Key`, `AppMsg`, `CoreNotification`, domain types                                                                        |
 | `nullslop-intent`           | `IntentHandler` (match block), validators, validator errors, `IntentResult`                                                                                                       |
-| `nullslop-component`        | State structs, UI elements, `AppState`, `State` (RwLock wrapper), picker entries                                                                                                  |
+| `nullslop-component`        | `AppState`, `FrontendState`, `State` (RwLock wrapper), `TuiSignals`, `ChatSessionState` (deferred migration)                                                                      |
 | `nullslop-component-ui`     | `UiElement` trait, `UiRegistry`                                                                                                                                                   |
 | `nullslop-core`             | `AppCore` (state + sender), `coordinated_shutdown`, `spawn_forwarding_task`, `ActorMessageSink`                                                                                   |
 | `nullslop-services`         | `Services` container, `ActorChannelService`, `CoreChannelService`                                                                                                                 |
@@ -226,11 +228,40 @@ Two host implementations: `ProcessActorHost` (subprocess, JSON over stdio) and `
 | `nullslop-actor`            | Actor SDK (`Actor` trait, `ActorContext`, `MessageSink`, `ActorRef`, `RecordingSink`)                                                                                             |
 | `nullslop-actor-host`       | Actor host implementations (process-based, in-memory, fake)                                                                                                                       |
 | `nullslop-cli`              | CLI argument parsing                                                                                                                                                              |
-| `nullslop-provider-actor`   | Provider actor — manages active provider, LLM factory, model cache, picker entries                                                                                               |
-| `nullslop-session-actor`    | Session actor — session lifecycle, streaming state, tool calls, persistence                                                                                                       |
-| `nullslop-context-actor`    | Context actor — prompt assembly, strategy management, pinning, templates                                                                                                         |
-| `nullslop-shutdown-tracker` | ShutdownTracker actor — manages actor lifecycle tracking                                                                                                                          |
-| Other actors                | Domain actors: `nullslop-llm`, `nullslop-tool-orchestrator`, `nullslop-echo`, `nullslop-prompt-scan`, `nullslop-llm-discover`                                                  |
+
+### Slice Protocol Crates
+
+| Crate                              | Responsibility                                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `nsslice-shutdown-protocol`        | `ShutdownTrackerState`                                                                             |
+| `nsslice-provider-protocol`        | `ProviderState`                                                                                    |
+| `nsslice-session-management-protocol` | `PersistedSession`, `SessionStore`, `JsonlSessionStore`, `SessionStoreService`              |
+| `nsslice-context-protocol`         | `PromptAssembly` trait, strategy types, `StrategyFactory`, `StrategyDiscovery`                     |
+| `nsslice-dashboard-protocol`       | `DashboardState`, `ActorStatus`                                                                    |
+| `nsslice-pinned-panel-protocol`    | `PinnedPanelState`                                                                                 |
+| `nsslice-chat-input-box-protocol`  | `ChatInputBoxState`, `AutocompleteMatch`, `AutocompleteState`                                      |
+
+### Slice Crates
+
+| Crate                              | Responsibility                                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `nsslice-echo`                     | Echo actor (example/demo)                                                                          |
+| `nsslice-shutdown`                 | Shutdown tracker actor                                                                             |
+| `nsslice-llm`                      | LLM streaming actor                                                                                |
+| `nsslice-tools`                    | Tool orchestrator actor                                                                            |
+| `nsslice-provider`                 | Provider actor + LLM discover actor + UI elements                                                  |
+| `nsslice-session-management`       | Session actor + persistence + intents + validators                                                 |
+| `nsslice-context`                  | Context actor + prompt scan actor                                                                  |
+| `nsslice-dashboard`                | Dashboard UI + intents                                                                             |
+| `nsslice-pinned-panel`             | Pinned panel UI + intents + validators                                                             |
+| `nsslice-chat-input-box`           | Chat input UI + intents + validators                                                               |
+| `nsslice-chat-log`                 | Chat log UI (display only)                                                                         |
+| `nsslice-status-bar`               | Status bar UI (display only)                                                                       |
+| `nsslice-char-counter`             | Char counter UI (display only)                                                                     |
+| `nsslice-picker`                   | Picker intents + validators + keymap/strategy entries                                              |
+| `nsslice-chat-entry-selection`     | Chat entry selection intents + validators                                                          |
+| `nsslice-navigation`               | Navigation intents                                                                                 |
+| `nsslice-global`                   | Global intents (quit, toggle which-key, interrupt)                                                 |
 
 ## Keymap
 

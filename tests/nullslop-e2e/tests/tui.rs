@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use cucumber::World;
-use nullslop_context::DefaultStrategyDiscovery;
+use nsslice_context_protocol::DefaultStrategyDiscovery;
 use nullslop_services::strategy_registry::StrategyRegistryService;
 use nullslop_tui::{Scope, TuiApp};
 
@@ -54,8 +54,8 @@ impl TuiWorld {
             config_storage: nullslop_providers::ConfigStorageService::new(Arc::new(
                 nullslop_providers::InMemoryConfigStorage::new(),
             )),
-            session_store: nullslop_session::SessionStoreService::new(Arc::new(
-                nullslop_session::JsonlSessionStore::new_in(
+            session_store: nsslice_session_management_protocol::SessionStoreService::new(Arc::new(
+                nsslice_session_management_protocol::JsonlSessionStore::new_in(
                     tempfile::tempdir().expect("temp dir").path().to_path_buf(),
                 ),
             )),

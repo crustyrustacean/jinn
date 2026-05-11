@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+nullslop-actor = { workspace = true }
+nullslop-actor-host = { workspace = true }
+kanal = { workspace = true }
+nsslice-session-management-protocol = { workspace = true }
 nullslop-component = { workspace = true }
 nullslop-protocol = { workspace = true }
 nullslop-selection-widget = { workspace = true }
@@ -12,9 +16,16 @@ ratatui = { workspace = true }
 jiff = { workspace = true }
 wherror = { workspace = true }
 tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+error-stack = { workspace = true }
+dirs = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
+tempfile = { workspace = true }
+nullslop-services = { workspace = true }
 
 [lints]
 workspace = true

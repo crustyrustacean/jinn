@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use nullslop_component::chat_session::ChatSessionState;
 use nullslop_protocol::SessionId;
-use nullslop_session::{BLOB_STRATEGY_STATE, PersistedSession};
+use nsslice_session_management_protocol::{BLOB_STRATEGY_STATE, PersistedSession};
 
 /// Reconstruct runtime state from a persisted snapshot.
 ///
@@ -72,7 +72,7 @@ mod tests {
 
     use nullslop_component::chat_session::ChatSessionState;
     use nullslop_protocol::{ChatEntry, PromptStrategyId, SessionId};
-    use nullslop_session::PersistedSession;
+    use nsslice_session_management_protocol::PersistedSession;
 
     use super::*;
 
