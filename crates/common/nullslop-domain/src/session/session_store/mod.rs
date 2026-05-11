@@ -15,7 +15,7 @@ pub use service::SessionStoreService;
 use error_stack::Report;
 use wherror::Error;
 
-use crate::protocol::SessionId;
+use nullslop_protocol::SessionId;
 use crate::session::{PersistedSession, SessionSummary};
 
 /// Error type for session store operations.
@@ -98,7 +98,7 @@ mod tests {
     use jiff::Timestamp;
     use tempfile::TempDir;
 
-    use crate::protocol::{ChatEntry, PromptStrategyId, SessionId};
+    use nullslop_protocol::{ChatEntry, PromptStrategyId, SessionId};
 
     use super::*;
     use crate::session::PersistedSession;
