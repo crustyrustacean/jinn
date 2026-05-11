@@ -6,7 +6,7 @@ resolver = "3"
 default-run = "nullslop"
 
 [workspace]
-members = ["crates/common/*", "tests/*"]
+members = ["crates/*", "tests/*"]
 
 [lib]
 path = "src/lib.rs"
@@ -36,12 +36,12 @@ rstest = { workspace = true }
 
 [workspace.dependencies]
 # Internal
-nullslop-domain = { path = "crates/common/nullslop-domain" }
-nullslop-tui = { path = "crates/common/nullslop-tui" }
-nullslop-cli = { path = "crates/common/nullslop-cli" }
-nullslop-protocol-derive = { path = "crates/common/nullslop-protocol-derive" }
-nullslop-selection-widget = { path = "crates/common/nullslop-selection-widget" }
-nullslop-workflow = { path = "crates/common/nullslop-workflow" }
+nullslop-domain = { path = "crates/nullslop-domain" }
+nullslop-tui = { path = "crates/nullslop-tui" }
+nullslop-cli = { path = "crates/nullslop-cli" }
+nullslop-protocol-derive = { path = "crates/nullslop-protocol-derive" }
+nullslop-selection-widget = { path = "crates/nullslop-selection-widget" }
+nullslop-workflow = { path = "crates/nullslop-workflow" }
 
 # Error handling
 wherror = "2.3.1"
