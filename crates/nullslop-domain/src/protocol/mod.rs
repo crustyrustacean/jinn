@@ -1,8 +1,10 @@
-//! Shared protocol types for communication between the nullslop host and actors.
+//! Protocol types for the nullslop actor system.
 //!
-//! This module defines the common language of commands, events, key representations,
-//! interaction modes, and chat data that the host and all actors agree on.
-//! Every type here is serializable and travels across the actor boundary.
+//! This module contains truly shared types that cross feature boundaries:
+//! the `Command` and `Event` mega-enums, `Intent`, `Key`, `Mode`, and
+//! other cross-cutting types. Domain-specific types have been moved to
+//! their feature modules under `feat/` and are re-exported here for
+//! backward compatibility.
 
 pub mod action;
 pub mod actor;
