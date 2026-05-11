@@ -12,8 +12,8 @@
 //! - **EnterNormalMode** — cancels streams, clears picker, switches to Normal mode.
 //! - **NormalEscape** — clears chat entry selection.
 
-use crate::feat::chat_input::AutocompleteMatch;
 use crate::common::app_state::AppState;
+use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::protocol::chat_input::EnqueueUserMessage;

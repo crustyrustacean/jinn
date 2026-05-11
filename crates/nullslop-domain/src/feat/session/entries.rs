@@ -5,8 +5,8 @@
 //! in `nullslop-protocol`.
 
 use crate::common::app_state::AppState;
-use crate::protocol::SessionEntry;
 use crate::common::services::Services;
+use crate::protocol::SessionEntry;
 
 /// Loads session entries from the session store, sorted by `updated_at` descending.
 ///

@@ -26,8 +26,8 @@ use nullslop_domain::Services;
 use nullslop_domain::SessionStoreService;
 use nullslop_domain::actor_channel::ActorChannelService;
 use nullslop_domain::cache_path;
-use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::core_channel::CoreChannelService;
+use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::feat::session::JsonlSessionStore as DomainJsonlSessionStore;
 use nullslop_domain::feat::session::SessionStoreService as DomainSessionStoreService;
 use nullslop_domain::strategy_registry::StrategyRegistryService;
@@ -347,8 +347,12 @@ fn create_core_with_actor_host(
     );
 
     // --- Shutdown tracker actor ---
-    let (_st_ref, st_result) =
-        nullslop_domain::feat::shutdown::spawn(state.clone(), services.clone(), sink.clone(), handle);
+    let (_st_ref, st_result) = nullslop_domain::feat::shutdown::spawn(
+        state.clone(),
+        services.clone(),
+        sink.clone(),
+        handle,
+    );
 
     // Emit lifecycle events for all actors.
     let actor_names = [

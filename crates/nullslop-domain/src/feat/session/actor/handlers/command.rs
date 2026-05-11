@@ -92,7 +92,10 @@ impl SessionPersistenceActor {
     }
 
     /// SetChatInputText: update the session's input buffer.
-    pub(in crate::feat::session::actor) fn handle_set_chat_input_text(&self, payload: &SetChatInputText) {
+    pub(in crate::feat::session::actor) fn handle_set_chat_input_text(
+        &self,
+        payload: &SetChatInputText,
+    ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&payload.session_id);
         session.chat_input_mut().replace_all(payload.text.clone());
@@ -121,7 +124,10 @@ impl SessionPersistenceActor {
     }
 
     /// PushToolResult: add tool result to session history.
-    pub(in crate::feat::session::actor) fn handle_push_tool_result(&self, payload: &PushToolResult) {
+    pub(in crate::feat::session::actor) fn handle_push_tool_result(
+        &self,
+        payload: &PushToolResult,
+    ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&payload.session_id);
         session.push_entry(ChatEntry::tool_result(

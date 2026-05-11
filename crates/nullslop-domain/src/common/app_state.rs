@@ -16,16 +16,16 @@ use crate::protocol::{
 };
 use serde_json::Value as JsonValue;
 
-use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::common::tui_signals::TuiSignals;
 pub use crate::feat::chat_input::ChatInputBoxState;
-use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::context::prompt_template::PromptTemplateStore;
 pub use crate::feat::dashboard::DashboardState;
 pub use crate::feat::pinned_panel::PinnedPanelState;
+use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::shutdown::ShutdownTrackerState;
 use crate::protocol::KeymapEntry;
 use crate::protocol::SessionEntry;
 use crate::protocol::StrategyEntry;
-use crate::feat::shutdown::ShutdownTrackerState;
 
 /// Session lifecycle state — owned by the session-actor.
 ///

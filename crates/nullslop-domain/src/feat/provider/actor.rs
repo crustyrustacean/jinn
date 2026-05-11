@@ -18,11 +18,11 @@
 //! then emit. Never hold the lock during emission.
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::services::Services;
 use crate::common::state::State;
 use crate::protocol::provider::{ModelsRefreshed, ProviderSwitch, ProviderSwitched};
 use crate::protocol::system::LoadPickerEntries;
 use crate::protocol::{Command, Event, PickerKind};
-use crate::common::services::Services;
 
 use super::loader::load_provider_picker_items;
 
@@ -204,12 +204,14 @@ impl ProviderActor {
 mod tests {
     use std::sync::Arc;
 
-    use crate::common::actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::common::actor::{
+        Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
+    };
     use crate::common::app_state::AppState;
+    use crate::common::services::Services;
     use crate::common::state::State;
     use crate::protocol::provider::{ModelsRefreshed, ProviderSwitch};
     use crate::protocol::{Command, Event};
-    use crate::common::services::Services;
 
     use super::ProviderActor;
 
@@ -293,8 +295,8 @@ mod tests {
     #[tokio::test]
     async fn provider_switch_swaps_factory_for_valid_provider() {
         // Given a provider actor with a registry containing a sample provider.
-        use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
         use crate::common::services::test_services::TestServices;
+        use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
 
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
