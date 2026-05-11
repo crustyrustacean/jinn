@@ -145,7 +145,7 @@ impl ProviderActor {
         }
 
         // Swap the LLM factory to the newly selected provider.
-        let provider_id = crate::providers::ProviderId::new(payload.provider_id.clone());
+        let provider_id = crate::feat::provider_infra::ProviderId::new(payload.provider_id.clone());
         let api_keys = self.services.api_keys.read();
         match self
             .services
@@ -190,7 +190,7 @@ impl ProviderActor {
     fn handle_models_refreshed(&self, event: &ModelsRefreshed) {
         let now = jiff::Timestamp::now();
         let mut state = self.state.write();
-        state.provider.model_cache = Some(crate::providers::ModelCache {
+        state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
             entries: event.results.clone(),
             last_updated_at: Some(now),
         });
@@ -292,7 +292,7 @@ mod tests {
     #[tokio::test]
     async fn provider_switch_swaps_factory_for_valid_provider() {
         // Given a provider actor with a registry containing a sample provider.
-        use crate::providers::{ProviderEntry, ProvidersConfig};
+        use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
         use crate::common::services::test_services::TestServices;
 
         let config = ProvidersConfig {

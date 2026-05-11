@@ -1,6 +1,6 @@
 use super::*;
-use crate::providers::api_keys::ApiKeys;
-use crate::providers::config::{AliasEntry, ProviderEntry};
+use crate::feat::provider_infra::api_keys::ApiKeys;
+use crate::feat::provider_infra::config::{AliasEntry, ProviderEntry};
 
 fn make_config(
     providers: Vec<ProviderEntry>,

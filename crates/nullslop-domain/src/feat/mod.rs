@@ -10,6 +10,7 @@ pub mod navigation;
 pub mod picker;
 pub mod pinned_panel;
 pub mod provider;
+pub mod provider_infra;
 pub mod shutdown;
 pub mod tools;
 pub mod ui;

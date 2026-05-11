@@ -66,8 +66,8 @@ impl LlmServiceFactoryService {
 mod tests {
     use std::sync::Arc;
 
-    use crate::providers::fake::FakeLlmServiceFactory;
-    use crate::providers::service_wrapper::LlmServiceFactoryService;
+    use crate::feat::provider_infra::fake::FakeLlmServiceFactory;
+    use crate::feat::provider_infra::service_wrapper::LlmServiceFactoryService;
 
     #[rstest::rstest]
     fn service_wrapper_delegates_create() {
@@ -116,7 +116,7 @@ mod tests {
         assert_eq!(service.name(), "FakeLlm");
 
         // When swapping the factory on one clone.
-        let factory_b = crate::providers::sample::SampleLlmServiceFactory;
+        let factory_b = crate::feat::provider_infra::sample::SampleLlmServiceFactory;
         clone.swap(Arc::new(factory_b));
 
         // Then both clones see the new factory.

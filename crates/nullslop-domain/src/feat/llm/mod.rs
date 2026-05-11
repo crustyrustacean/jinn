@@ -23,8 +23,8 @@ use crate::protocol::tool::{
     ToolCallStreaming, ToolDefinition, ToolResult, ToolUseStarted, ToolsRegistered,
 };
 use crate::protocol::{ChatEntry, Command, Event, SessionId};
-use crate::providers::StreamEvent;
-use crate::common::services::providers::LlmServiceFactoryService;
+use crate::feat::provider_infra::StreamEvent;
+use crate::feat::provider_infra::LlmServiceFactoryService;
 use futures::StreamExt as _;
 
 use session::{SessionData, SessionState};
@@ -45,7 +45,7 @@ pub enum LlmDirectMsg {}
 ///
 /// Returns an error if the actor fails to activate.
 pub fn spawn(
-    llm_service: crate::providers::LlmServiceFactoryService,
+    llm_service: crate::feat::provider_infra::LlmServiceFactoryService,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
 ) -> (ActorRef<LlmDirectMsg>, ActorSpawnResult) {
@@ -495,7 +495,7 @@ mod tests {
     use crate::common::actor::RecordingSink;
     use crate::protocol::EventMsg as _;
     use crate::protocol::tool::{ToolDefinition, ToolsRegistered};
-    use crate::providers::FakeLlmServiceFactory;
+    use crate::feat::provider_infra::FakeLlmServiceFactory;
 
     use super::*;
 
@@ -511,7 +511,7 @@ mod tests {
         tokens: Vec<String>,
     ) -> LlmActor {
         let factory = FakeLlmServiceFactory::new(tokens);
-        let factory_service = crate::providers::LlmServiceFactoryService::new(Arc::new(factory));
+        let factory_service = crate::feat::provider_infra::LlmServiceFactoryService::new(Arc::new(factory));
         ctx.set_data(factory_service);
         LlmActor::activate(ctx)
     }
@@ -524,7 +524,7 @@ mod tests {
         tool_calls: Vec<ToolCall>,
     ) -> LlmActor {
         let factory = FakeLlmServiceFactory::with_tool_calls(tokens, tool_calls);
-        let factory_service = crate::providers::LlmServiceFactoryService::new(Arc::new(factory));
+        let factory_service = crate::feat::provider_infra::LlmServiceFactoryService::new(Arc::new(factory));
         ctx.set_data(factory_service);
         LlmActor::activate(ctx)
     }
@@ -827,7 +827,7 @@ mod tests {
             vec!["Let me check".to_owned()],
             vec![tool_call.clone()],
         );
-        let factory_service = crate::providers::LlmServiceFactoryService::new(Arc::new(factory));
+        let factory_service = crate::feat::provider_infra::LlmServiceFactoryService::new(Arc::new(factory));
         ctx.set_data(factory_service);
         let mut actor = LlmActor::activate(&mut ctx);
         sink.clear();
@@ -877,7 +877,7 @@ mod tests {
             vec!["Let me check".to_owned()],
             vec![tool_call.clone()],
         );
-        let factory_service = crate::providers::LlmServiceFactoryService::new(Arc::new(factory));
+        let factory_service = crate::feat::provider_infra::LlmServiceFactoryService::new(Arc::new(factory));
         ctx.set_data(factory_service);
         let mut actor = LlmActor::activate(&mut ctx);
         sink.clear();

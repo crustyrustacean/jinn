@@ -202,7 +202,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::providers::config::ProviderEntry;
+    use crate::feat::provider_infra::config::ProviderEntry;
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {

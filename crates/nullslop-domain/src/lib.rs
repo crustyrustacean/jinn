@@ -23,7 +23,6 @@ pub mod context;
 pub mod intent;
 pub mod prompt_template;
 pub mod protocol;
-pub mod providers;
 pub mod session;
 
 // Re-export actor framework types
@@ -45,7 +44,7 @@ pub use component::{
 };
 pub use component::{register_all, register_tui_elements};
 pub use prompt_template::PromptTemplateStore;
-pub use providers::NO_PROVIDER_ID;
+pub use feat::provider_infra::NO_PROVIDER_ID;
 
 // Re-export services types
 pub use common::services::Services;
@@ -61,9 +60,9 @@ pub use intent::IntentHandler;
 pub use common::services::{ActorChannelService, CoreChannelService};
 
 // Re-export providers types
-pub use providers::TOOL_LOOP_TRIGGER;
-pub use providers::cache_path;
-pub use providers::{
+pub use feat::provider_infra::TOOL_LOOP_TRIGGER;
+pub use feat::provider_infra::cache_path;
+pub use feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, FilesystemConfigStorage,
     InMemoryConfigStorage, LlmServiceFactoryService, ModelCache, NoProvidersAvailableFactory,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,

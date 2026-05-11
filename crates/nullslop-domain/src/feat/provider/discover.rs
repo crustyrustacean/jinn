@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::protocol::provider::{ModelsRefreshed, RefreshModels};
 use crate::protocol::{Command, Event};
-use crate::providers::{ApiKeysService, ModelCache, ProviderRegistryService, cache_path};
+use crate::feat::provider_infra::{ApiKeysService, ModelCache, ProviderRegistryService, cache_path};
 use llm::builder::LLMBuilder;
 
 /// Error type for model discovery failures.
