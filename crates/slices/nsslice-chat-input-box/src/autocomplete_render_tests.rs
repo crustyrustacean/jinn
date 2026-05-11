@@ -1,6 +1,6 @@
 //! Autocomplete popup render tests.
 
-use nullslop_component::chat_input_box::state::AutocompleteMatch;
+use nsslice_chat_input_box_protocol::AutocompleteMatch;
 use nullslop_component::AppState;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;

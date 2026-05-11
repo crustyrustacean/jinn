@@ -2818,6 +2818,7 @@ dependencies = [
 name = "nsslice-chat-input-box"
 version = "0.1.0"
 dependencies = [
+ "nsslice-chat-input-box-protocol",
  "nullslop-component",
  "nullslop-component-ui",
  "nullslop-protocol",
@@ -2826,6 +2827,14 @@ dependencies = [
  "rstest",
  "unicode-segmentation",
  "wherror",
+]
+
+[[package]]
+name = "nsslice-chat-input-box-protocol"
+version = "0.1.0"
+dependencies = [
+ "rstest",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -2840,14 +2849,70 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsslice-context"
+version = "0.1.0"
+dependencies = [
+ "error-stack",
+ "kanal",
+ "nsslice-context-protocol",
+ "nullslop-actor",
+ "nullslop-actor-host",
+ "nullslop-component",
+ "nullslop-prompt-template",
+ "nullslop-protocol",
+ "nullslop-services",
+ "rstest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wherror",
+]
+
+[[package]]
+name = "nsslice-context-protocol"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "derive_more",
+ "error-stack",
+ "nullslop-protocol",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wherror",
+]
+
+[[package]]
 name = "nsslice-dashboard"
 version = "0.1.0"
 dependencies = [
+ "nsslice-dashboard-protocol",
  "nullslop-component",
  "nullslop-component-ui",
  "nullslop-protocol",
  "ratatui",
  "rstest",
+]
+
+[[package]]
+name = "nsslice-dashboard-protocol"
+version = "0.1.0"
+dependencies = [
+ "rstest",
+]
+
+[[package]]
+name = "nsslice-echo"
+version = "0.1.0"
+dependencies = [
+ "kanal",
+ "nullslop-actor",
+ "nullslop-actor-host",
+ "nullslop-protocol",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2858,6 +2923,23 @@ dependencies = [
  "nullslop-protocol",
  "rstest",
  "wherror",
+]
+
+[[package]]
+name = "nsslice-llm"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "kanal",
+ "nullslop-actor",
+ "nullslop-actor-host",
+ "nullslop-protocol",
+ "nullslop-providers",
+ "nullslop-services",
+ "rstest",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2897,11 +2979,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsslice-pinned-panel-protocol"
+version = "0.1.0"
+dependencies = [
+ "nullslop-protocol",
+ "rstest",
+]
+
+[[package]]
 name = "nsslice-provider"
 version = "0.1.0"
 dependencies = [
+ "error-stack",
  "humantime",
  "jiff",
+ "kanal",
+ "llm",
+ "nullslop-actor",
+ "nullslop-actor-host",
  "nullslop-component",
  "nullslop-component-ui",
  "nullslop-protocol",
@@ -2910,24 +3005,82 @@ dependencies = [
  "nullslop-services",
  "ratatui",
  "rstest",
+ "serde_json",
  "throbber-widgets-tui",
+ "tokio",
+ "tracing",
  "unicode-segmentation",
+ "wherror",
+]
+
+[[package]]
+name = "nsslice-provider-protocol"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "nullslop-protocol",
+ "nullslop-providers",
+ "nullslop-selection-widget",
 ]
 
 [[package]]
 name = "nsslice-session-management"
 version = "0.1.0"
 dependencies = [
+ "dirs",
+ "error-stack",
  "jiff",
+ "kanal",
+ "nsslice-session-management-protocol",
+ "nullslop-actor",
+ "nullslop-actor-host",
  "nullslop-component",
  "nullslop-protocol",
  "nullslop-selection-widget",
  "nullslop-services",
  "ratatui",
  "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
  "tracing",
  "wherror",
 ]
+
+[[package]]
+name = "nsslice-session-management-protocol"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "error-stack",
+ "jiff",
+ "nullslop-protocol",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "wherror",
+]
+
+[[package]]
+name = "nsslice-shutdown"
+version = "0.1.0"
+dependencies = [
+ "kanal",
+ "nullslop-actor",
+ "nullslop-actor-host",
+ "nullslop-component",
+ "nullslop-protocol",
+ "nullslop-services",
+ "rstest",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "nsslice-shutdown-protocol"
+version = "0.1.0"
 
 [[package]]
 name = "nsslice-status-bar"
@@ -2939,6 +3092,23 @@ dependencies = [
  "nullslop-providers",
  "ratatui",
  "rstest",
+]
+
+[[package]]
+name = "nsslice-tools"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "kanal",
+ "nullslop-actor",
+ "nullslop-actor-host",
+ "nullslop-protocol",
+ "parking_lot",
+ "rstest",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2964,35 +3134,32 @@ dependencies = [
  "nsslice-chat-entry-selection",
  "nsslice-chat-input-box",
  "nsslice-chat-log",
+ "nsslice-context",
+ "nsslice-context-protocol",
  "nsslice-dashboard",
+ "nsslice-echo",
  "nsslice-global",
+ "nsslice-llm",
  "nsslice-navigation",
  "nsslice-picker",
  "nsslice-pinned-panel",
  "nsslice-provider",
+ "nsslice-provider-protocol",
  "nsslice-session-management",
+ "nsslice-session-management-protocol",
+ "nsslice-shutdown",
  "nsslice-status-bar",
+ "nsslice-tools",
  "nullslop-actor",
  "nullslop-actor-host",
  "nullslop-cli",
  "nullslop-component",
- "nullslop-context",
- "nullslop-context-actor",
  "nullslop-core",
- "nullslop-echo",
  "nullslop-intent",
- "nullslop-llm",
- "nullslop-llm-discover",
- "nullslop-prompt-scan",
  "nullslop-prompt-template",
  "nullslop-protocol",
- "nullslop-provider-actor",
  "nullslop-providers",
  "nullslop-services",
- "nullslop-session",
- "nullslop-session-actor",
- "nullslop-shutdown-tracker",
- "nullslop-tool-orchestrator",
  "nullslop-tui",
  "ratatui-spatial-splits",
  "ratatui-which-key",
@@ -3051,6 +3218,12 @@ dependencies = [
  "error-stack",
  "humantime",
  "jiff",
+ "nsslice-chat-input-box-protocol",
+ "nsslice-dashboard-protocol",
+ "nsslice-pinned-panel-protocol",
+ "nsslice-provider-protocol",
+ "nsslice-session-management-protocol",
+ "nsslice-shutdown-protocol",
  "nullslop-actor-host",
  "nullslop-component-ui",
  "nullslop-prompt-template",
@@ -3058,7 +3231,6 @@ dependencies = [
  "nullslop-providers",
  "nullslop-selection-widget",
  "nullslop-services",
- "nullslop-session",
  "parking_lot",
  "ratatui",
  "rstest",
@@ -3079,36 +3251,6 @@ dependencies = [
  "nullslop-protocol",
  "ratatui",
  "rstest",
-]
-
-[[package]]
-name = "nullslop-context"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "derive_more",
- "error-stack",
- "nullslop-protocol",
- "rstest",
- "serde",
- "serde_json",
- "tokio",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-context-actor"
-version = "0.1.0"
-dependencies = [
- "nullslop-actor",
- "nullslop-component",
- "nullslop-context",
- "nullslop-protocol",
- "nullslop-services",
- "rstest",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -3133,35 +3275,24 @@ dependencies = [
  "crossterm",
  "cucumber",
  "kanal",
+ "nsslice-context-protocol",
+ "nsslice-llm",
+ "nsslice-session-management",
+ "nsslice-session-management-protocol",
+ "nsslice-tools",
  "nullslop-actor",
  "nullslop-actor-host",
  "nullslop-component",
- "nullslop-context",
  "nullslop-core",
  "nullslop-intent",
- "nullslop-llm",
  "nullslop-protocol",
  "nullslop-providers",
  "nullslop-services",
- "nullslop-session",
- "nullslop-session-actor",
- "nullslop-tool-orchestrator",
  "nullslop-tui",
  "ratatui-spatial-splits",
  "ratatui-which-key",
  "tempfile",
  "tokio",
-]
-
-[[package]]
-name = "nullslop-echo"
-version = "0.1.0"
-dependencies = [
- "nullslop-actor",
- "nullslop-protocol",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -3180,50 +3311,6 @@ dependencies = [
  "nullslop-component",
  "nullslop-protocol",
  "rstest",
-]
-
-[[package]]
-name = "nullslop-llm"
-version = "0.1.0"
-dependencies = [
- "futures",
- "nullslop-actor",
- "nullslop-protocol",
- "nullslop-providers",
- "nullslop-services",
- "rstest",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "nullslop-llm-discover"
-version = "0.1.0"
-dependencies = [
- "error-stack",
- "jiff",
- "llm",
- "nullslop-actor",
- "nullslop-protocol",
- "nullslop-providers",
- "nullslop-services",
- "tokio",
- "tracing",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-prompt-scan"
-version = "0.1.0"
-dependencies = [
- "error-stack",
- "nullslop-actor",
- "nullslop-prompt-template",
- "nullslop-protocol",
- "tokio",
- "tracing",
- "wherror",
 ]
 
 [[package]]
@@ -3269,22 +3356,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nullslop-provider-actor"
-version = "0.1.0"
-dependencies = [
- "jiff",
- "nsslice-provider",
- "nullslop-actor",
- "nullslop-component",
- "nullslop-protocol",
- "nullslop-providers",
- "nullslop-services",
- "rstest",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "nullslop-providers"
 version = "0.1.0"
 dependencies = [
@@ -3326,73 +3397,14 @@ dependencies = [
  "error-stack",
  "futures",
  "kanal",
+ "nsslice-context-protocol",
+ "nsslice-session-management-protocol",
  "nullslop-actor-host",
- "nullslop-context",
  "nullslop-protocol",
  "nullslop-providers",
- "nullslop-session",
  "rstest",
  "tokio",
  "wherror",
-]
-
-[[package]]
-name = "nullslop-session"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "error-stack",
- "jiff",
- "nullslop-protocol",
- "rstest",
- "serde",
- "serde_json",
- "tempfile",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-session-actor"
-version = "0.1.0"
-dependencies = [
- "jiff",
- "nullslop-actor",
- "nullslop-component",
- "nullslop-protocol",
- "nullslop-services",
- "nullslop-session",
- "rstest",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "nullslop-shutdown-tracker"
-version = "0.1.0"
-dependencies = [
- "nullslop-actor",
- "nullslop-component",
- "nullslop-protocol",
- "nullslop-services",
- "rstest",
- "tracing",
-]
-
-[[package]]
-name = "nullslop-tool-orchestrator"
-version = "0.1.0"
-dependencies = [
- "jiff",
- "nullslop-actor",
- "nullslop-protocol",
- "parking_lot",
- "rstest",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
 ]
 
 [[package]]
