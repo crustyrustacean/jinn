@@ -16,7 +16,6 @@ pub mod common;
 pub mod feat;
 
 // Not yet reorganized (handled in later phases)
-pub mod chat_session;
 pub mod component;
 pub mod component_ui;
 pub mod context;
