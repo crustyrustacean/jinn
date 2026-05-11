@@ -6,11 +6,10 @@
 
 mod command;
 mod event;
-mod types;
 
 pub use command::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
 pub use event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolUseStarted, ToolsRegistered,
 };
-pub use types::{ToolCall, ToolDefinition, ToolResult};
+pub use crate::feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};

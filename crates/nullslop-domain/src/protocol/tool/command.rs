@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::types::{ToolCall, ToolDefinition, ToolResult};
+use crate::feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
 

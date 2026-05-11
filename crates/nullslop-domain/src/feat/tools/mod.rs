@@ -9,6 +9,7 @@
 //! are routed via [`ExecuteTool`] commands on the bus.
 
 mod builtin;
+pub mod tool_types;
 
 #[cfg(test)]
 use builtin::{execute_echo, execute_file_read, execute_file_write, execute_get_time};

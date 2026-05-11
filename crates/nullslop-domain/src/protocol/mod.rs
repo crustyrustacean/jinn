@@ -8,7 +8,6 @@ pub mod action;
 pub mod actor;
 pub mod actor_name;
 pub mod app_msg;
-pub mod chat;
 pub mod chat_input;
 pub mod command;
 pub mod context;
@@ -32,7 +31,7 @@ pub use action::CommandAction;
 pub use actor::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 pub use actor_name::ActorName;
 pub use app_msg::AppMsg;
-pub use chat::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
+pub use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
 pub use command::Command;
 pub use context::{
     AssemblePrompt, PromptAssembled, PromptStrategyId, PromptStrategySwitched, SwitchPromptStrategy,
@@ -49,8 +48,8 @@ pub use mode::Mode;
 pub use nullslop_protocol_derive::{CommandMsg, EventMsg};
 pub use picker_kind::PickerKind;
 pub use prompt_template::PromptTemplate;
-pub use provider::LlmMessage;
-pub use provider::entries_to_messages;
+pub use crate::feat::provider::llm_message::LlmMessage;
+pub use crate::feat::provider::entries_to_messages::entries_to_messages;
 pub use crate::feat::provider::picker_entry::PickerEntry;
 pub use session::SessionId;
 pub use session::SessionLoadCompleted;
