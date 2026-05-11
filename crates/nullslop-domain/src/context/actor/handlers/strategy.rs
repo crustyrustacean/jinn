@@ -1,6 +1,6 @@
 //! Strategy handlers — strategy switching and state restoration.
 
-use crate::actor::ActorContext;
+use crate::common::actor::ActorContext;
 use crate::protocol::context::{
     PromptStrategySwitched, RestoreStrategyState, StrategyStateUpdated, SwitchPromptStrategy,
 };

@@ -386,13 +386,13 @@ mod tests {
         ));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_domain::register_all(&mut ui_registry);
-        nullslop_domain::status_bar::register(&mut ui_registry);
-        nullslop_domain::char_counter::register(&mut ui_registry);
-        nullslop_domain::dashboard::register(&mut ui_registry);
-        nullslop_domain::chat_log::register(&mut ui_registry);
-        nullslop_domain::provider::register(&mut ui_registry);
-        nullslop_domain::pinned_panel::register(&mut ui_registry);
-        nullslop_domain::chat_input_box::register(&mut ui_registry);
+        nullslop_domain::feat::ui::status_bar::register(&mut ui_registry);
+        nullslop_domain::feat::ui::char_counter::register(&mut ui_registry);
+        nullslop_domain::feat::dashboard::register(&mut ui_registry);
+        nullslop_domain::feat::ui::chat_log::register(&mut ui_registry);
+        nullslop_domain::feat::provider::register(&mut ui_registry);
+        nullslop_domain::feat::pinned_panel::register(&mut ui_registry);
+        nullslop_domain::feat::chat_input::register(&mut ui_registry);
         TuiApp {
             core,
             services,
@@ -589,13 +589,13 @@ mod tests {
         ));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_domain::register_all(&mut ui_registry);
-        nullslop_domain::status_bar::register(&mut ui_registry);
-        nullslop_domain::char_counter::register(&mut ui_registry);
-        nullslop_domain::dashboard::register(&mut ui_registry);
-        nullslop_domain::chat_log::register(&mut ui_registry);
-        nullslop_domain::provider::register(&mut ui_registry);
-        nullslop_domain::pinned_panel::register(&mut ui_registry);
-        nullslop_domain::chat_input_box::register(&mut ui_registry);
+        nullslop_domain::feat::ui::status_bar::register(&mut ui_registry);
+        nullslop_domain::feat::ui::char_counter::register(&mut ui_registry);
+        nullslop_domain::feat::dashboard::register(&mut ui_registry);
+        nullslop_domain::feat::ui::chat_log::register(&mut ui_registry);
+        nullslop_domain::feat::provider::register(&mut ui_registry);
+        nullslop_domain::feat::pinned_panel::register(&mut ui_registry);
+        nullslop_domain::feat::chat_input::register(&mut ui_registry);
         let mut app = TuiApp {
             core,
             services,

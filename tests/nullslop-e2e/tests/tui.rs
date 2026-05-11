@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use cucumber::World;
 use nullslop_domain::DefaultStrategyDiscovery;
-use nullslop_domain::strategy_registry::StrategyRegistryService;
+use nullslop_domain::common::services::strategy_registry::StrategyRegistryService;
 use nullslop_tui::{Scope, TuiApp};
 
 /// Cucumber world wrapping a full [`TuiApp`].

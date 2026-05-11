@@ -62,69 +62,69 @@ impl IntentHandler {
         match intent {
             // --- Chat Input ---
             Intent::InsertChar { ch } => {
-                crate::chat_input_box::intent::handle_insert_char(*ch, state)
+                crate::feat::chat_input::intent::handle_insert_char(*ch, state)
             }
-            Intent::DeleteGrapheme => crate::chat_input_box::intent::handle_delete_grapheme(state),
+            Intent::DeleteGrapheme => crate::feat::chat_input::intent::handle_delete_grapheme(state),
             Intent::DeleteGraphemeForward => {
-                crate::chat_input_box::intent::handle_delete_grapheme_forward(state)
+                crate::feat::chat_input::intent::handle_delete_grapheme_forward(state)
             }
-            Intent::SubmitMessage => crate::chat_input_box::intent::handle_submit_message(state),
+            Intent::SubmitMessage => crate::feat::chat_input::intent::handle_submit_message(state),
             Intent::AutocompleteConfirm => {
-                crate::chat_input_box::intent::handle_autocomplete_confirm(state)
+                crate::feat::chat_input::intent::handle_autocomplete_confirm(state)
             }
-            Intent::MoveCursorLeft => crate::chat_input_box::intent::handle_move_cursor_left(state),
+            Intent::MoveCursorLeft => crate::feat::chat_input::intent::handle_move_cursor_left(state),
             Intent::MoveCursorRight => {
-                crate::chat_input_box::intent::handle_move_cursor_right(state)
+                crate::feat::chat_input::intent::handle_move_cursor_right(state)
             }
             Intent::MoveCursorToStart => {
-                crate::chat_input_box::intent::handle_move_cursor_to_start(state)
+                crate::feat::chat_input::intent::handle_move_cursor_to_start(state)
             }
             Intent::MoveCursorToEnd => {
-                crate::chat_input_box::intent::handle_move_cursor_to_end(state)
+                crate::feat::chat_input::intent::handle_move_cursor_to_end(state)
             }
             Intent::MoveCursorWordLeft => {
-                crate::chat_input_box::intent::handle_move_cursor_word_left(state)
+                crate::feat::chat_input::intent::handle_move_cursor_word_left(state)
             }
             Intent::MoveCursorWordRight => {
-                crate::chat_input_box::intent::handle_move_cursor_word_right(state)
+                crate::feat::chat_input::intent::handle_move_cursor_word_right(state)
             }
-            Intent::MoveCursorUp => crate::chat_input_box::intent::handle_move_cursor_up(state),
-            Intent::MoveCursorDown => crate::chat_input_box::intent::handle_move_cursor_down(state),
+            Intent::MoveCursorUp => crate::feat::chat_input::intent::handle_move_cursor_up(state),
+            Intent::MoveCursorDown => crate::feat::chat_input::intent::handle_move_cursor_down(state),
 
             // --- Navigation ---
-            Intent::ScrollUp => crate::navigation::intent::handle_scroll_up(state),
-            Intent::ScrollDown => crate::navigation::intent::handle_scroll_down(state),
-            Intent::MouseScrollUp => crate::navigation::intent::handle_mouse_scroll_up(state),
-            Intent::MouseScrollDown => crate::navigation::intent::handle_mouse_scroll_down(state),
-            Intent::ScrollToTop => crate::navigation::intent::handle_scroll_to_top(state),
-            Intent::ScrollToBottom => crate::navigation::intent::handle_scroll_to_bottom(state),
+            Intent::ScrollUp => crate::feat::navigation::intent::handle_scroll_up(state),
+            Intent::ScrollDown => crate::feat::navigation::intent::handle_scroll_down(state),
+            Intent::MouseScrollUp => crate::feat::navigation::intent::handle_mouse_scroll_up(state),
+            Intent::MouseScrollDown => crate::feat::navigation::intent::handle_mouse_scroll_down(state),
+            Intent::ScrollToTop => crate::feat::navigation::intent::handle_scroll_to_top(state),
+            Intent::ScrollToBottom => crate::feat::navigation::intent::handle_scroll_to_bottom(state),
             Intent::SwitchTab { direction } => {
-                crate::navigation::intent::handle_switch_tab(state, *direction)
+                crate::feat::navigation::intent::handle_switch_tab(state, *direction)
             }
-            Intent::EditInput => crate::navigation::intent::handle_edit_input(state),
+            Intent::EditInput => crate::feat::navigation::intent::handle_edit_input(state),
 
             // --- Mode & App ---
-            Intent::Quit => crate::global::intent::handle_quit(state),
+            Intent::Quit => crate::feat::global::intent::handle_quit(state),
             Intent::Interrupt { session_id } => {
-                crate::global::intent::handle_interrupt(state, session_id.as_ref())
+                crate::feat::global::intent::handle_interrupt(state, session_id.as_ref())
             }
             Intent::EnterInsertMode => {
-                crate::chat_input_box::intent::handle_enter_insert_mode(state)
+                crate::feat::chat_input::intent::handle_enter_insert_mode(state)
             }
             Intent::EnterNormalMode => {
-                crate::chat_input_box::intent::handle_enter_normal_mode(state)
+                crate::feat::chat_input::intent::handle_enter_normal_mode(state)
             }
-            Intent::ToggleWhichkey => crate::global::intent::handle_toggle_whichkey(state),
-            Intent::NormalEscape => crate::chat_input_box::intent::handle_normal_escape(state),
+            Intent::ToggleWhichkey => crate::feat::global::intent::handle_toggle_whichkey(state),
+            Intent::NormalEscape => crate::feat::chat_input::intent::handle_normal_escape(state),
 
             // --- Picker ---
-            Intent::OpenPicker { kind } => crate::picker::intent::handle_open_picker(state, *kind),
+            Intent::OpenPicker { kind } => crate::feat::picker::intent::handle_open_picker(state, *kind),
             Intent::PickerInsertChar { ch } => {
-                crate::picker::intent::handle_insert_char(state, *ch)
+                crate::feat::picker::intent::handle_insert_char(state, *ch)
             }
-            Intent::PickerBackspace => crate::picker::intent::handle_backspace(state),
+            Intent::PickerBackspace => crate::feat::picker::intent::handle_backspace(state),
             Intent::PickerConfirm => {
-                let (result, maybe_intent) = crate::picker::intent::handle_picker_confirm(state);
+                let (result, maybe_intent) = crate::feat::picker::intent::handle_picker_confirm(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state);
                     IntentResult::with_commands([result.commands, redispatch.commands].concat())
@@ -132,12 +132,12 @@ impl IntentHandler {
                     result
                 }
             }
-            Intent::PickerMoveUp => crate::picker::intent::handle_move_up(state),
-            Intent::PickerMoveDown => crate::picker::intent::handle_move_down(state),
-            Intent::PickerMoveCursorLeft => crate::picker::intent::handle_move_cursor_left(state),
-            Intent::PickerMoveCursorRight => crate::picker::intent::handle_move_cursor_right(state),
+            Intent::PickerMoveUp => crate::feat::picker::intent::handle_move_up(state),
+            Intent::PickerMoveDown => crate::feat::picker::intent::handle_move_down(state),
+            Intent::PickerMoveCursorLeft => crate::feat::picker::intent::handle_move_cursor_left(state),
+            Intent::PickerMoveCursorRight => crate::feat::picker::intent::handle_move_cursor_right(state),
             Intent::ToggleKeymapScopeFilter => {
-                crate::picker::intent::handle_toggle_keymap_scope_filter(state)
+                crate::feat::picker::intent::handle_toggle_keymap_scope_filter(state)
             }
             Intent::SessionNew => crate::session::intent::handle_session_new(state),
             Intent::RefreshModels => crate::session::intent::handle_refresh_models(state),
@@ -146,42 +146,42 @@ impl IntentHandler {
             }
 
             // --- Dashboard ---
-            Intent::DashboardSelectDown => crate::dashboard::intent::handle_select_down(state),
-            Intent::DashboardSelectUp => crate::dashboard::intent::handle_select_up(state),
-            Intent::DashboardSelectFirst => crate::dashboard::intent::handle_select_first(state),
-            Intent::DashboardSelectLast => crate::dashboard::intent::handle_select_last(state),
+            Intent::DashboardSelectDown => crate::feat::dashboard::intent::handle_select_down(state),
+            Intent::DashboardSelectUp => crate::feat::dashboard::intent::handle_select_up(state),
+            Intent::DashboardSelectFirst => crate::feat::dashboard::intent::handle_select_first(state),
+            Intent::DashboardSelectLast => crate::feat::dashboard::intent::handle_select_last(state),
 
             // --- Pinned Panel ---
-            Intent::PinnedPanelToggle => crate::pinned_panel::intent::handle_toggle(state),
-            Intent::PinnedPanelOpen => crate::pinned_panel::intent::handle_open(state),
-            Intent::PinnedPanelClose => crate::pinned_panel::intent::handle_close(state),
-            Intent::PinnedPanelSelectDown => crate::pinned_panel::intent::handle_select_down(state),
-            Intent::PinnedPanelSelectUp => crate::pinned_panel::intent::handle_select_up(state),
+            Intent::PinnedPanelToggle => crate::feat::pinned_panel::intent::handle_toggle(state),
+            Intent::PinnedPanelOpen => crate::feat::pinned_panel::intent::handle_open(state),
+            Intent::PinnedPanelClose => crate::feat::pinned_panel::intent::handle_close(state),
+            Intent::PinnedPanelSelectDown => crate::feat::pinned_panel::intent::handle_select_down(state),
+            Intent::PinnedPanelSelectUp => crate::feat::pinned_panel::intent::handle_select_up(state),
             Intent::PinnedPanelUnpin => {
-                crate::pinned_panel::intent::handle_pinned_panel_unpin(state)
+                crate::feat::pinned_panel::intent::handle_pinned_panel_unpin(state)
             }
             Intent::PinnedPanelPinTop => {
-                crate::pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Top)
+                crate::feat::pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Top)
             }
             Intent::PinnedPanelPinBottom => {
-                crate::pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Bottom)
+                crate::feat::pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Bottom)
             }
             Intent::PinnedPanelPinRelative => {
-                crate::pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Relative)
+                crate::feat::pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Relative)
             }
             Intent::PinnedPanelPinCycle => {
-                crate::pinned_panel::intent::handle_pinned_panel_pin_cycle(state)
+                crate::feat::pinned_panel::intent::handle_pinned_panel_pin_cycle(state)
             }
 
             // --- Chat Entry Selection ---
             Intent::ChatEntrySelectNext => {
-                crate::chat_entry_selection::intent::handle_select_next(state)
+                crate::feat::chat_entry_selection::intent::handle_select_next(state)
             }
             Intent::ChatEntrySelectPrev => {
-                crate::chat_entry_selection::intent::handle_select_prev(state)
+                crate::feat::chat_entry_selection::intent::handle_select_prev(state)
             }
             Intent::ChatEntryPinSelected => {
-                crate::chat_entry_selection::intent::handle_pin_selected(state)
+                crate::feat::chat_entry_selection::intent::handle_pin_selected(state)
             }
         }
     }

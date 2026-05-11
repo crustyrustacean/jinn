@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::prompt_template::PromptTemplateStore;
 use crate::protocol::provider::{PromptTemplatesLoaded, RescanPromptTemplates};
 use crate::protocol::{Command, Event};

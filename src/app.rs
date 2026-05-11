@@ -131,13 +131,13 @@ impl App {
                 let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
                 let mut ui_registry = nullslop_domain::AppUiRegistry::new();
                 nullslop_domain::register_tui_elements(&mut ui_registry);
-                nullslop_domain::status_bar::register(&mut ui_registry);
-                nullslop_domain::char_counter::register(&mut ui_registry);
-                nullslop_domain::dashboard::register(&mut ui_registry);
-                nullslop_domain::chat_log::register(&mut ui_registry);
-                nullslop_domain::provider::register(&mut ui_registry);
-                nullslop_domain::pinned_panel::register(&mut ui_registry);
-                nullslop_domain::chat_input_box::register(&mut ui_registry);
+                nullslop_domain::feat::ui::status_bar::register(&mut ui_registry);
+                nullslop_domain::feat::ui::char_counter::register(&mut ui_registry);
+                nullslop_domain::feat::dashboard::register(&mut ui_registry);
+                nullslop_domain::feat::ui::chat_log::register(&mut ui_registry);
+                nullslop_domain::feat::provider::register(&mut ui_registry);
+                nullslop_domain::feat::pinned_panel::register(&mut ui_registry);
+                nullslop_domain::feat::chat_input::register(&mut ui_registry);
                 let which_key = nullslop_tui::app::WhichKeyInstance::new(
                     nullslop_tui::keymap::init(),
                     nullslop_tui::Scope::Normal,
@@ -279,14 +279,14 @@ fn create_core_with_actor_host(
     let state = State::new(AppState::default());
 
     // --- Echo actor ---
-    let (_echo_ref, echo_result) = nullslop_domain::echo::spawn(sink.clone(), handle);
+    let (_echo_ref, echo_result) = nullslop_domain::feat::echo::spawn(sink.clone(), handle);
 
     // --- LLM actor ---
     let (_llm_ref, llm_result) =
-        nullslop_domain::llm::spawn(llm_service.clone(), sink.clone(), handle);
+        nullslop_domain::feat::llm::spawn(llm_service.clone(), sink.clone(), handle);
 
     // --- Discover actor ---
-    let (_discover_ref, discover_result) = nullslop_domain::provider::spawn_discover_actor(
+    let (_discover_ref, discover_result) = nullslop_domain::feat::provider::spawn_discover_actor(
         provider_registry.clone(),
         api_keys.clone(),
         sink.clone(),
@@ -294,7 +294,7 @@ fn create_core_with_actor_host(
     );
 
     // --- Tool orchestrator actor ---
-    let (_orch_ref, orch_result) = nullslop_domain::tools::spawn(sink.clone(), handle);
+    let (_orch_ref, orch_result) = nullslop_domain::feat::tools::spawn(sink.clone(), handle);
 
     // --- Prompt assembly actor ---
     let (_ctx_ref, prompt_result) = nullslop_domain::context::spawn_context_actor(
@@ -339,7 +339,7 @@ fn create_core_with_actor_host(
     };
 
     // --- Provider actor ---
-    let (_prov_ref, prov_result) = nullslop_domain::provider::spawn_provider_actor(
+    let (_prov_ref, prov_result) = nullslop_domain::feat::provider::spawn_provider_actor(
         state.clone(),
         services.clone(),
         sink.clone(),
@@ -348,7 +348,7 @@ fn create_core_with_actor_host(
 
     // --- Shutdown tracker actor ---
     let (_st_ref, st_result) =
-        nullslop_domain::shutdown::spawn(state.clone(), services.clone(), sink.clone(), handle);
+        nullslop_domain::feat::shutdown::spawn(state.clone(), services.clone(), sink.clone(), handle);
 
     // Emit lifecycle events for all actors.
     let actor_names = [
@@ -410,13 +410,13 @@ fn create_core_with_actor_host(
     let core = AppCore { state, sender };
     let mut registry = nullslop_domain::AppUiRegistry::new();
     nullslop_domain::register_all(&mut registry);
-    nullslop_domain::status_bar::register(&mut registry);
-    nullslop_domain::char_counter::register(&mut registry);
-    nullslop_domain::dashboard::register(&mut registry);
-    nullslop_domain::chat_log::register(&mut registry);
-    nullslop_domain::provider::register(&mut registry);
-    nullslop_domain::pinned_panel::register(&mut registry);
-    nullslop_domain::chat_input_box::register(&mut registry);
+    nullslop_domain::feat::ui::status_bar::register(&mut registry);
+    nullslop_domain::feat::ui::char_counter::register(&mut registry);
+    nullslop_domain::feat::dashboard::register(&mut registry);
+    nullslop_domain::feat::ui::chat_log::register(&mut registry);
+    nullslop_domain::feat::provider::register(&mut registry);
+    nullslop_domain::feat::pinned_panel::register(&mut registry);
+    nullslop_domain::feat::chat_input::register(&mut registry);
 
     (core, services, actor_host_service, core_notify_rx)
 }

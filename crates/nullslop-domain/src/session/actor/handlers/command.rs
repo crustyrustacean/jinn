@@ -1,6 +1,6 @@
 //! Command handlers — process session lifecycle commands.
 
-use crate::actor::ActorContext;
+use crate::common::actor::ActorContext;
 use crate::protocol::chat_input::{
     ChatEntrySubmitted, EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };

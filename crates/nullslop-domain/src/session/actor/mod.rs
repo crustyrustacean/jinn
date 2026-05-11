@@ -20,7 +20,7 @@
 mod handlers;
 
 use super::SessionStoreService;
-use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::component::State;
 use crate::protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
 use crate::protocol::context::PromptAssembled;
@@ -160,9 +160,9 @@ mod tests {
         clippy::unused_trait_names,
         reason = "Actor trait needed for activate() method resolution"
     )]
-    use crate::actor::Actor;
-    use crate::actor::RecordingSink;
-    use crate::actor::{ActorContext, ActorEnvelope, MessageSink};
+    use crate::common::actor::Actor;
+    use crate::common::actor::RecordingSink;
+    use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink};
     use crate::component::{AppState, State};
     use crate::protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
     // no context imports needed in tests currently
@@ -178,7 +178,7 @@ mod tests {
         ChatEntry, ChatEntryKind, Command, Event, PromptStrategyId, SessionId,
         SessionSaveRequested, ToolCall, ToolResult,
     };
-    use crate::services::Services;
+    use crate::common::services::Services;
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;
