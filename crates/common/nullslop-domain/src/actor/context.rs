@@ -10,8 +10,8 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use nullslop_protocol::actor::{ActorShutdownCompleted, ActorStarted};
-use nullslop_protocol::{Command, CommandMsg, CommandName, Event, EventMsg, EventTypeName};
+use crate::protocol::actor::{ActorShutdownCompleted, ActorStarted};
+use crate::protocol::{Command, CommandMsg, CommandName, Event, EventMsg, EventTypeName};
 
 use super::ActorRef;
 use super::actor_ref::SendResult;

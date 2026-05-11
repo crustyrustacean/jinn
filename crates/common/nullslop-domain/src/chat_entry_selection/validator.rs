@@ -45,7 +45,7 @@ pub fn validate_chat_entry_pin_selected(state: &AppState) -> Result<(), ChatEntr
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::ChatEntry;
+    use crate::protocol::ChatEntry;
 
     use super::*;
 

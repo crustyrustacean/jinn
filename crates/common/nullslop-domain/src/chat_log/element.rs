@@ -10,7 +10,7 @@
 //! Text wraps within the available space.
 
 use crate::component_ui::UiElement;
-use nullslop_protocol::ChatEntryKind;
+use crate::protocol::ChatEntryKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -150,7 +150,7 @@ impl UiElement<AppState> for ChatLogElement {
 ///
 /// The first line gets the entry-type prefix; continuation lines get indentation.
 /// When `is_selected` is true, the first line gets a `▶` prefix and `REVERSED` style.
-fn entry_to_lines(entry: &nullslop_protocol::ChatEntry, is_selected: bool) -> Vec<Line<'static>> {
+fn entry_to_lines(entry: &crate::protocol::ChatEntry, is_selected: bool) -> Vec<Line<'static>> {
     let pinned = entry.pin_position.is_some();
 
     match &entry.kind {
@@ -269,7 +269,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::ChatEntry;
+    use crate::protocol::ChatEntry;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
@@ -720,7 +720,7 @@ mod tests {
         let state = {
             let mut s = AppState::default();
             s.active_session_mut()
-                .push_entry(ChatEntry::user("hello").with_pin(nullslop_protocol::PinPosition::Top));
+                .push_entry(ChatEntry::user("hello").with_pin(crate::protocol::PinPosition::Top));
             s
         };
 

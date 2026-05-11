@@ -4,7 +4,7 @@
 //! application. The actor crate defines the trait; the application provides
 //! the implementation (e.g. one that submits `AppMsg` to `AppCore`'s channel).
 
-use nullslop_protocol::{Command, Event};
+use crate::protocol::{Command, Event};
 use parking_lot::Mutex;
 
 use super::actor_ref::SendResult;

@@ -1,10 +1,10 @@
 //! Strategy handlers — strategy switching and state restoration.
 
 use crate::actor::ActorContext;
-use nullslop_protocol::context::{
+use crate::protocol::context::{
     PromptStrategySwitched, RestoreStrategyState, StrategyStateUpdated, SwitchPromptStrategy,
 };
-use nullslop_protocol::{Command, Event};
+use crate::protocol::{Command, Event};
 
 use super::super::PromptAssemblyActor;
 

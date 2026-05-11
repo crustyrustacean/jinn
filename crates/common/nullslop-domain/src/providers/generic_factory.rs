@@ -5,11 +5,11 @@
 //! is provided at construction time (resolved from env vars at startup), not
 //! read from the environment.
 
+use crate::protocol::LlmMessage;
+use crate::protocol::tool::ToolDefinition;
 use error_stack::{Report, ResultExt as _};
 use futures::StreamExt;
 use llm::builder::{LLMBackend, LLMBuilder};
-use nullslop_protocol::LlmMessage;
-use nullslop_protocol::tool::ToolDefinition;
 
 use super::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
 

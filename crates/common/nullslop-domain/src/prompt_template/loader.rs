@@ -13,8 +13,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use crate::protocol::PromptTemplate;
 use error_stack::{Report, ResultExt as _};
-use nullslop_protocol::PromptTemplate;
 use serde::Deserialize;
 
 /// Errors that can occur during template file parsing.

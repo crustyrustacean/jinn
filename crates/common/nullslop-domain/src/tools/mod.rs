@@ -20,11 +20,11 @@ use std::sync::Arc;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
 use crate::actor_host::spawn_actor;
-use nullslop_protocol::tool::{
+use crate::protocol::tool::{
     ExecuteTool, ExecuteToolBatch, RegisterTools, ToolBatchCompleted, ToolCall, ToolDefinition,
     ToolExecutionCompleted, ToolResult, ToolsRegistered,
 };
-use nullslop_protocol::{Command, Event, SessionId};
+use crate::protocol::{Command, Event, SessionId};
 
 /// A boxed future returned by built-in tool execute functions.
 type BoxedToolFuture = Pin<Box<dyn Future<Output = ToolResult> + Send>>;
@@ -393,7 +393,7 @@ impl ToolOrchestratorActor {
 #[cfg(test)]
 mod tests {
     use crate::actor::RecordingSink;
-    use nullslop_protocol::tool::{ExecuteToolBatch, RegisterTools};
+    use crate::protocol::tool::{ExecuteToolBatch, RegisterTools};
 
     use super::*;
 

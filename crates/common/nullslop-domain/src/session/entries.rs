@@ -5,8 +5,8 @@
 //! in `nullslop-protocol`.
 
 use crate::component::AppState;
+use crate::protocol::SessionEntry;
 use crate::services::Services;
-use nullslop_protocol::SessionEntry;
 
 /// Loads session entries from the session store, sorted by `updated_at` descending.
 ///
@@ -46,7 +46,7 @@ pub fn load_session_picker_items(services: &Services, state: &mut AppState) {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::SessionId;
+    use crate::protocol::SessionId;
     use nullslop_selection_widget::PickerItem;
 
     use super::*;

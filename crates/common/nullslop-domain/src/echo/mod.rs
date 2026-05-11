@@ -11,8 +11,8 @@ use std::time::Duration;
 use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
 use crate::actor_host::{ActorSpawnResult, spawn_actor};
 
-use nullslop_protocol::chat_input::{self, ChatEntrySubmitted};
-use nullslop_protocol::{ChatEntry, ChatEntryKind, Command, Event};
+use crate::protocol::chat_input::{self, ChatEntrySubmitted};
+use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
 
 /// Direct message type for the echo actor.
 /// Currently unused — the echo actor only responds to bus events.

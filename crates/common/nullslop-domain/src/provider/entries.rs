@@ -4,7 +4,7 @@
 //! provider picker overlay. The [`PickerEntry`] struct and [`PickerItem`]
 //! implementation live in `nullslop-protocol`.
 
-use nullslop_protocol::PickerEntry;
+use crate::protocol::PickerEntry;
 /// Reorders entries so that available entries appear first (sorted by model name),
 /// followed by unavailable entries (sorted by model name). When `filter` is empty,
 /// the entry matching `active_provider` is promoted to the very top and marked active.

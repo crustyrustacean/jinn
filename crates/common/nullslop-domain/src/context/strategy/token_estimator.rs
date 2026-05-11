@@ -4,7 +4,7 @@
 //! [`CharRatioEstimator`] as a simple heuristic implementation (1 token ≈ 4 characters),
 //! and [`estimate_entry_tokens`] for estimating the token cost of individual chat entries.
 
-use nullslop_protocol::{ChatEntry, ChatEntryKind};
+use crate::protocol::{ChatEntry, ChatEntryKind};
 
 /// Estimates the token count of text.
 ///
@@ -76,7 +76,7 @@ impl TokenEstimator for CharRatioEstimator {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::{ChatEntry, PinPosition};
+    use crate::protocol::{ChatEntry, PinPosition};
 
     use super::*;
 

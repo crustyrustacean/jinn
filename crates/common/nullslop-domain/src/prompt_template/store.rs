@@ -7,10 +7,10 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::protocol::PromptTemplate;
 use error_stack::{Report, ResultExt as _};
 use fuzzy_matcher::FuzzyMatcher as _;
 use fuzzy_matcher::skim::SkimMatcherV2;
-use nullslop_protocol::PromptTemplate;
 use tracing::warn;
 
 use super::loader::parse_template_file;

@@ -10,8 +10,8 @@
 
 use crate::component::AppState;
 use crate::component::app_state::pin_sort_key;
-use nullslop_protocol::context::{PinChatEntry, UnpinChatEntry};
-use nullslop_protocol::{ChatEntryId, Command, IntentResult, PinPosition, SessionId};
+use crate::protocol::context::{PinChatEntry, UnpinChatEntry};
+use crate::protocol::{ChatEntryId, Command, IntentResult, PinPosition, SessionId};
 
 use super::validator;
 
@@ -147,7 +147,7 @@ fn cycle_position(pos: PinPosition) -> PinPosition {
 #[cfg(test)]
 mod tests {
     use crate::component::AppState;
-    use nullslop_protocol::{ChatEntry, Command, PinPosition};
+    use crate::protocol::{ChatEntry, Command, PinPosition};
 
     use super::*;
 

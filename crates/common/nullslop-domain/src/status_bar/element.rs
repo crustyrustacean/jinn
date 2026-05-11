@@ -197,7 +197,7 @@ mod tests {
         };
         state
             .active_session_mut()
-            .switch_strategy(nullslop_protocol::PromptStrategyId::sliding_window());
+            .switch_strategy(crate::protocol::PromptStrategyId::sliding_window());
         let (mut terminal, area) = setup_term(50, 1);
         terminal
             .draw(|frame| {
@@ -224,11 +224,11 @@ mod tests {
         };
         let idx = state
             .active_session_mut()
-            .push_entry(nullslop_protocol::ChatEntry::user("hello"));
+            .push_entry(crate::protocol::ChatEntry::user("hello"));
         let entry_id = state.active_session().history()[idx].id.clone();
         state
             .active_session_mut()
-            .pin_entry(&entry_id, nullslop_protocol::PinPosition::Relative);
+            .pin_entry(&entry_id, crate::protocol::PinPosition::Relative);
         let (mut terminal, area) = setup_term(60, 1);
         terminal
             .draw(|frame| {

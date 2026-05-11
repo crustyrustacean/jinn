@@ -20,8 +20,8 @@ pub use store::PromptTemplateStoreError;
 
 use std::path::{Path, PathBuf};
 
+use crate::protocol::PromptTemplate;
 use error_stack::{Report, ResultExt as _};
-use nullslop_protocol::PromptTemplate;
 use wherror::Error;
 
 /// Errors that can occur when ensuring the prompts directory and example file exist.

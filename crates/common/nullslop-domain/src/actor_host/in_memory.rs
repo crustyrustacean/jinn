@@ -9,9 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, SystemMessage};
+use crate::protocol::{ActorName, Command, CommandName, Event, EventTypeName};
 use error_stack::Report;
 use kanal::Receiver;
-use nullslop_protocol::{ActorName, Command, CommandName, Event, EventTypeName};
 use parking_lot::Mutex;
 
 use super::actor_host::ActorHost;
@@ -297,8 +297,8 @@ mod tests {
     use std::sync::Arc;
 
     use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, RecordingSink};
-    use nullslop_protocol::chat_input::ChatEntrySubmitted;
-    use nullslop_protocol::{Command, CommandMsg as _, Event};
+    use crate::protocol::chat_input::ChatEntrySubmitted;
+    use crate::protocol::{Command, CommandMsg as _, Event};
 
     use super::*;
 
@@ -419,8 +419,8 @@ mod tests {
         // When sending a subscribed event.
         let event = Event::ChatEntrySubmitted {
             payload: ChatEntrySubmitted {
-                session_id: nullslop_protocol::SessionId::new(),
-                entry: nullslop_protocol::ChatEntry::user("hello"),
+                session_id: crate::protocol::SessionId::new(),
+                entry: crate::protocol::ChatEntry::user("hello"),
             },
         };
         host.send_event(&event, None);
@@ -488,7 +488,7 @@ mod tests {
             "recorder",
             sink.clone(),
             &[],
-            &[nullslop_protocol::chat_input::PushChatEntry::NAME],
+            &[crate::protocol::chat_input::PushChatEntry::NAME],
             runtime.handle(),
         );
         let host =
@@ -497,9 +497,9 @@ mod tests {
         // When sending a registered command.
         host.send_command(
             &Command::PushChatEntry {
-                payload: nullslop_protocol::chat_input::PushChatEntry {
-                    session_id: nullslop_protocol::SessionId::new(),
-                    entry: nullslop_protocol::ChatEntry::user("test"),
+                payload: crate::protocol::chat_input::PushChatEntry {
+                    session_id: crate::protocol::SessionId::new(),
+                    entry: crate::protocol::ChatEntry::user("test"),
                 },
             },
             None,
@@ -531,7 +531,7 @@ mod tests {
             "recorder",
             sink.clone(),
             &[],
-            &[nullslop_protocol::chat_input::PushChatEntry::NAME],
+            &[crate::protocol::chat_input::PushChatEntry::NAME],
             runtime.handle(),
         );
         let host =
@@ -559,7 +559,7 @@ mod tests {
         let runtime = rt();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
-        let cmd_name = nullslop_protocol::chat_input::PushChatEntry::NAME;
+        let cmd_name = crate::protocol::chat_input::PushChatEntry::NAME;
         let (r1, _received1) =
             spawn_recording_actor("actor-a", sink.clone(), &[], &[cmd_name], runtime.handle());
         let (r2, _received2) =
@@ -617,8 +617,8 @@ mod tests {
         // When sending an event with source of actor-a.
         let event = Event::ChatEntrySubmitted {
             payload: ChatEntrySubmitted {
-                session_id: nullslop_protocol::SessionId::new(),
-                entry: nullslop_protocol::ChatEntry::user("hello"),
+                session_id: crate::protocol::SessionId::new(),
+                entry: crate::protocol::ChatEntry::user("hello"),
             },
         };
         host.send_event(&event, Some(&ActorName::new("actor-a")));

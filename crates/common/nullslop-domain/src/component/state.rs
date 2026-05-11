@@ -78,7 +78,7 @@ impl std::ops::DerefMut for StateWriteGuard<'_> {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::ChatEntry;
+    use crate::protocol::ChatEntry;
 
     use super::*;
 

@@ -8,10 +8,10 @@
 use std::collections::HashMap;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::protocol::provider::{ModelsRefreshed, RefreshModels};
+use crate::protocol::{Command, Event};
 use crate::providers::{ApiKeysService, ModelCache, ProviderRegistryService, cache_path};
 use llm::builder::LLMBuilder;
-use nullslop_protocol::provider::{ModelsRefreshed, RefreshModels};
-use nullslop_protocol::{Command, Event};
 
 /// Error type for model discovery failures.
 #[derive(Debug, wherror::Error)]

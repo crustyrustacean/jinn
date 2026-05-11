@@ -1,8 +1,8 @@
 //! Navigation intent handlers — scroll, tab, and editor.
 
 use crate::component::AppState;
-use nullslop_protocol::IntentResult;
-use nullslop_protocol::tab::TabDirection;
+use crate::protocol::IntentResult;
+use crate::protocol::tab::TabDirection;
 
 /// Number of lines to scroll per keyboard step.
 const SCROLL_STEP: u16 = 10;
@@ -63,8 +63,8 @@ pub fn handle_edit_input(state: &mut AppState) -> IntentResult {
 #[cfg(test)]
 mod tests {
     use crate::component::AppState;
-    use nullslop_protocol::ChatEntry;
-    use nullslop_protocol::tab::TabDirection;
+    use crate::protocol::ChatEntry;
+    use crate::protocol::tab::TabDirection;
 
     use super::*;
 
@@ -180,10 +180,7 @@ mod tests {
     fn switch_tab_next_advances_tab() {
         // Given a state on Chat tab.
         let mut state = AppState::default();
-        assert_eq!(
-            state.frontend.active_tab,
-            nullslop_protocol::ActiveTab::Chat
-        );
+        assert_eq!(state.frontend.active_tab, crate::protocol::ActiveTab::Chat);
 
         // When handling SwitchTab(Next).
         let result = handle_switch_tab(&mut state, TabDirection::Next);
@@ -191,7 +188,7 @@ mod tests {
         // Then the tab has advanced.
         assert_eq!(
             state.frontend.active_tab,
-            nullslop_protocol::ActiveTab::Dashboard
+            crate::protocol::ActiveTab::Dashboard
         );
         assert!(result.commands.is_empty());
     }

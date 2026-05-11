@@ -10,9 +10,9 @@ use std::sync::Arc;
 use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
 use crate::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::component::State;
+use crate::protocol::actor::{ActorShutdownCompleted, ActorStarting, ProceedWithShutdown};
+use crate::protocol::{Command, Event};
 use crate::services::Services;
-use nullslop_protocol::actor::{ActorShutdownCompleted, ActorStarting, ProceedWithShutdown};
-use nullslop_protocol::{Command, Event};
 
 /// Tracks which actors are still active during a shutdown.
 #[derive(Debug, Clone, Default)]
@@ -110,7 +110,7 @@ impl Actor for ShutdownTrackerActor {
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<ActorStarting>();
-        ctx.subscribe_event::<nullslop_protocol::actor::ActorStarted>();
+        ctx.subscribe_event::<crate::protocol::actor::ActorStarted>();
         ctx.subscribe_event::<ActorShutdownCompleted>();
         ctx.subscribe_command::<ProceedWithShutdown>();
 
@@ -318,10 +318,10 @@ mod tests {
         use crate::actor::SendResult;
         struct NoopSink;
         impl crate::actor::MessageSink for NoopSink {
-            fn send_command(&self, _command: nullslop_protocol::Command) -> SendResult {
+            fn send_command(&self, _command: crate::protocol::Command) -> SendResult {
                 Ok(())
             }
-            fn send_event(&self, _event: nullslop_protocol::Event) -> SendResult {
+            fn send_event(&self, _event: crate::protocol::Event) -> SendResult {
                 Ok(())
             }
         }

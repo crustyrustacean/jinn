@@ -7,13 +7,13 @@
 use std::sync::Arc;
 
 use crate::context::DefaultStrategyDiscovery;
+use crate::protocol::AppMsg;
 pub use crate::providers;
 use crate::providers::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 use crate::session::SessionStoreService;
-use nullslop_protocol::AppMsg;
 use tokio::runtime::Handle;
 
 pub mod actor_channel;

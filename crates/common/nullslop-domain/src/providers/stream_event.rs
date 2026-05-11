@@ -4,7 +4,7 @@
 //! from the `llm` crate's `StreamChunk`. All conversion happens inside
 //! provider implementations.
 
-use nullslop_protocol::tool::ToolCall;
+use crate::protocol::tool::ToolCall;
 
 /// A streaming event from an LLM chat response.
 ///

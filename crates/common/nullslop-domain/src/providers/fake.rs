@@ -9,10 +9,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::protocol::LlmMessage;
+use crate::protocol::tool::ToolCall;
 use error_stack::Report;
 use futures::stream;
-use nullslop_protocol::LlmMessage;
-use nullslop_protocol::tool::ToolCall;
 
 use super::StreamEvent;
 use super::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
@@ -218,7 +218,7 @@ impl LlmService for FakeLlmService {
     async fn chat_stream_with_tools(
         &self,
         messages: Vec<LlmMessage>,
-        _tools: Vec<nullslop_protocol::tool::ToolDefinition>,
+        _tools: Vec<crate::protocol::tool::ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
         // Check for multi-turn tool loop trigger.
         if let Some(ref counter) = self.tool_loop_call_count

@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 
-use nullslop_protocol::{
+use crate::protocol::{
     ActiveTab, ChatEntryId, Mode, PickerKind, PinPosition, PromptStrategyId, SessionId,
 };
 use serde_json::Value as JsonValue;
@@ -22,10 +22,10 @@ pub use crate::chat_input_box::ChatInputBoxState;
 use crate::chat_session::ChatSessionState;
 pub use crate::dashboard::DashboardState;
 pub use crate::pinned_panel::PinnedPanelState;
+use crate::protocol::KeymapEntry;
+use crate::protocol::SessionEntry;
+use crate::protocol::StrategyEntry;
 use crate::shutdown::ShutdownTrackerState;
-use nullslop_protocol::KeymapEntry;
-use nullslop_protocol::SessionEntry;
-use nullslop_protocol::StrategyEntry;
 
 /// Session lifecycle state — owned by the session-actor.
 ///
@@ -342,7 +342,7 @@ pub fn pin_sort_key(position: Option<PinPosition>) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::ChatEntry;
+    use crate::protocol::ChatEntry;
 
     use super::*;
 

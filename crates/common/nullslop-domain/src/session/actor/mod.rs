@@ -22,14 +22,14 @@ mod handlers;
 use super::SessionStoreService;
 use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::component::State;
-use nullslop_protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
-use nullslop_protocol::context::PromptAssembled;
-use nullslop_protocol::provider::{SendMessage, StreamCompleted, StreamToken};
-use nullslop_protocol::session::SessionLoadCompleted;
-use nullslop_protocol::tool::{
+use crate::protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+use crate::protocol::context::PromptAssembled;
+use crate::protocol::provider::{SendMessage, StreamCompleted, StreamToken};
+use crate::protocol::session::SessionLoadCompleted;
+use crate::protocol::tool::{
     PushToolResult, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
-use nullslop_protocol::{Command, Event, SessionLoadRequested, SessionSaveRequested};
+use crate::protocol::{Command, Event, SessionLoadRequested, SessionSaveRequested};
 
 /// Direct message type (unused — the actor only responds to bus commands/events).
 pub enum SessionPersistenceDirectMsg {}
@@ -164,21 +164,21 @@ mod tests {
     use crate::actor::RecordingSink;
     use crate::actor::{ActorContext, ActorEnvelope, MessageSink};
     use crate::component::{AppState, State};
-    use nullslop_protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+    use crate::protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
     // no context imports needed in tests currently
     use super::super::session_store::{JsonlSessionStore, SessionStoreService};
-    use crate::services::Services;
-    use nullslop_protocol::provider::{
+    use crate::protocol::provider::{
         SendMessage, StreamCompleted, StreamCompletedReason, StreamToken,
     };
-    use nullslop_protocol::session::SessionLoadCompleted;
-    use nullslop_protocol::tool::{
+    use crate::protocol::session::SessionLoadCompleted;
+    use crate::protocol::tool::{
         PushToolResult, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     };
-    use nullslop_protocol::{
+    use crate::protocol::{
         ChatEntry, ChatEntryKind, Command, Event, PromptStrategyId, SessionId,
         SessionSaveRequested, ToolCall, ToolResult,
     };
+    use crate::services::Services;
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;
@@ -330,7 +330,7 @@ mod tests {
 
         // When a non-SessionSaveRequested event is sent.
         let event = Event::ActorStarted {
-            payload: nullslop_protocol::ActorStarted {
+            payload: crate::protocol::ActorStarted {
                 name: "test".to_owned(),
                 description: None,
             },
@@ -914,10 +914,10 @@ mod tests {
         actor
             .handle(
                 ActorEnvelope::Event(Event::PromptAssembled {
-                    payload: nullslop_protocol::context::PromptAssembled {
+                    payload: crate::protocol::context::PromptAssembled {
                         session_id: session_id.clone(),
                         system_prompt: None,
-                        messages: vec![nullslop_protocol::LlmMessage::User {
+                        messages: vec![crate::protocol::LlmMessage::User {
                             content: "hello".into(),
                         }],
                     },

@@ -3,7 +3,7 @@
 use jiff::Timestamp;
 
 use super::super::super::PersistedSession;
-use nullslop_protocol::{Command, PromptStrategyId, SessionLoadRequested, SessionSaveRequested};
+use crate::protocol::{Command, PromptStrategyId, SessionLoadRequested, SessionSaveRequested};
 
 use super::super::SessionPersistenceActor;
 
@@ -42,7 +42,7 @@ impl SessionPersistenceActor {
         evt: &SessionLoadRequested,
         ctx: &crate::actor::ActorContext,
     ) {
-        use nullslop_protocol::session::SessionLoadCompleted as CompletedPayload;
+        use crate::protocol::session::SessionLoadCompleted as CompletedPayload;
 
         let Some(store) = &self.store else {
             tracing::warn!("session-actor has no store — dropping load request");

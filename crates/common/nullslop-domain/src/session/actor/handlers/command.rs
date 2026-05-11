@@ -1,14 +1,14 @@
 //! Command handlers — process session lifecycle commands.
 
 use crate::actor::ActorContext;
-use nullslop_protocol::chat_input::{
+use crate::protocol::chat_input::{
     ChatEntrySubmitted, EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
-use nullslop_protocol::context::{AssemblePrompt, RestoreStrategyState, SwitchPromptStrategy};
-use nullslop_protocol::provider::SendMessage;
-use nullslop_protocol::session::SessionLoadCompleted;
-use nullslop_protocol::tool::PushToolResult;
-use nullslop_protocol::{ChatEntry, Command, Event};
+use crate::protocol::context::{AssemblePrompt, RestoreStrategyState, SwitchPromptStrategy};
+use crate::protocol::provider::SendMessage;
+use crate::protocol::session::SessionLoadCompleted;
+use crate::protocol::tool::PushToolResult;
+use crate::protocol::{ChatEntry, Command, Event};
 
 use super::super::SessionPersistenceActor;
 

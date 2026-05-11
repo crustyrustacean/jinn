@@ -6,7 +6,7 @@
 //! (normal mode), the prompt is shown without highlighting and no cursor is displayed.
 
 use crate::component_ui::UiElement;
-use nullslop_protocol::Mode;
+use crate::protocol::Mode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};

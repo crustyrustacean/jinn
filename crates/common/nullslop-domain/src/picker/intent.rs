@@ -7,11 +7,11 @@
 //! dependency.
 
 use crate::component::AppState;
-use nullslop_protocol::context::SwitchPromptStrategy;
-use nullslop_protocol::provider::ProviderSwitch;
-use nullslop_protocol::session::SessionLoadRequested;
-use nullslop_protocol::system::LoadPickerEntries;
-use nullslop_protocol::{Command, Intent, IntentResult, Mode, PickerKind};
+use crate::protocol::context::SwitchPromptStrategy;
+use crate::protocol::provider::ProviderSwitch;
+use crate::protocol::session::SessionLoadRequested;
+use crate::protocol::system::LoadPickerEntries;
+use crate::protocol::{Command, Intent, IntentResult, Mode, PickerKind};
 
 use super::validator;
 
@@ -284,8 +284,8 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 #[cfg(test)]
 mod tests {
     use crate::component::{AppState, FrontendState};
-    use nullslop_protocol::{Command, Intent, Mode, PickerKind, SessionId};
-    use nullslop_protocol::{KeymapEntry, PickerEntry, SessionEntry, StrategyEntry};
+    use crate::protocol::{Command, Intent, Mode, PickerKind, SessionId};
+    use crate::protocol::{KeymapEntry, PickerEntry, SessionEntry, StrategyEntry};
 
     use super::*;
 
@@ -545,13 +545,13 @@ mod tests {
         };
         state.frontend.context_strategy_picker.set_items(vec![
             StrategyEntry {
-                strategy_id: nullslop_protocol::PromptStrategyId::passthrough(),
+                strategy_id: crate::protocol::PromptStrategyId::passthrough(),
                 name: "Passthrough".to_owned(),
                 description: "No processing".to_owned(),
                 is_active: false,
             },
             StrategyEntry {
-                strategy_id: nullslop_protocol::PromptStrategyId::sliding_window(),
+                strategy_id: crate::protocol::PromptStrategyId::sliding_window(),
                 name: "Sliding Window".to_owned(),
                 description: "Sliding window".to_owned(),
                 is_active: false,
@@ -566,7 +566,7 @@ mod tests {
         // Then default_strategy was updated.
         assert_ne!(
             state.frontend.default_strategy,
-            nullslop_protocol::PromptStrategyId::passthrough()
+            crate::protocol::PromptStrategyId::passthrough()
         );
         // And SwitchPromptStrategy command is returned.
         assert!(

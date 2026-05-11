@@ -5,7 +5,7 @@
 
 use error_stack::Report;
 
-use nullslop_protocol::PromptStrategyId;
+use crate::protocol::PromptStrategyId;
 
 use super::compaction::CompactionStrategy;
 use super::passthrough::PassthroughStrategy;
