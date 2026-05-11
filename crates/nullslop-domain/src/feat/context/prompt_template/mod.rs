@@ -138,7 +138,7 @@ mod tests {
         let example = prompts.join(EXAMPLE_FILENAME);
         let content = std::fs::read_to_string(&example).expect("read");
         let template =
-            crate::prompt_template::loader::parse_template_content(&content).expect("parse");
+            crate::feat::context::prompt_template::loader::parse_template_content(&content).expect("parse");
         assert_eq!(template.name, "example");
     }
 
@@ -172,7 +172,7 @@ mod tests {
         let example = prompts.join(EXAMPLE_FILENAME);
         let content = std::fs::read_to_string(&example).expect("read");
         let template =
-            crate::prompt_template::loader::parse_template_content(&content).expect("parse");
+            crate::feat::context::prompt_template::loader::parse_template_content(&content).expect("parse");
         assert_eq!(template.name, "example");
     }
 }

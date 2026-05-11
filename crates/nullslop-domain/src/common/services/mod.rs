@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use crate::context::DefaultStrategyDiscovery;
+use crate::feat::context::DefaultStrategyDiscovery;
 use crate::protocol::AppMsg;
 pub use crate::feat::provider_infra;
 use crate::feat::provider_infra::{

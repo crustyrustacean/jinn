@@ -2,9 +2,11 @@
 
 pub mod chat_entry_selection;
 pub mod chat_input;
+pub mod context;
 pub mod dashboard;
 pub mod echo;
 pub mod global;
+pub mod intent;
 pub mod llm;
 pub mod navigation;
 pub mod picker;

@@ -11,6 +11,7 @@
 
 pub mod actor;
 pub mod prompt_scan;
+pub mod prompt_template;
 pub mod strategy;
 
 use std::path::PathBuf;
