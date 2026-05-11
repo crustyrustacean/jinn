@@ -1,0 +1,1 @@
+//! Shared protocol types for communication between the nullslop host and actors.

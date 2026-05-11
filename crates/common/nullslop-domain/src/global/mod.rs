@@ -1,0 +1,1 @@
+//! Global intents — quit, toggle-which-key, and interrupt.

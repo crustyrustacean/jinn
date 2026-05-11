@@ -1,0 +1,1 @@
+//! Session management slice — session lifecycle, persistence, and loading.

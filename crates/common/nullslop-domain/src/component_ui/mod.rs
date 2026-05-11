@@ -1,0 +1,1 @@
+//! Rendering layer for the component system.

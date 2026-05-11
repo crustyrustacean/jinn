@@ -1,0 +1,1 @@
+//! Shutdown tracker — coordinates graceful shutdown of all actors.

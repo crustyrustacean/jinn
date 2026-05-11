@@ -1,0 +1,1 @@
+//! Context slice — prompt assembly, strategy management, and pinning.

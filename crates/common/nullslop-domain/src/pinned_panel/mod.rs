@@ -1,0 +1,1 @@
+//! Pinned panel — displays pinned chat entries.

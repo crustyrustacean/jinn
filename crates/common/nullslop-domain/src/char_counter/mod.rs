@@ -1,0 +1,1 @@
+//! Character counter — displays token/character count estimate.

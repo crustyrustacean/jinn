@@ -1,0 +1,1 @@
+//! Chat entry selection — navigating and selecting entries in the chat log.

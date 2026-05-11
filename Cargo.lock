@@ -3282,6 +3282,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "nullslop-domain"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "derive_more",
+ "dirs",
+ "error-stack",
+ "fuzzy-matcher",
+ "humantime",
+ "jiff",
+ "kanal",
+ "nullslop-actor",
+ "nullslop-actor-host",
+ "nullslop-component",
+ "nullslop-prompt-template",
+ "nullslop-protocol-derive",
+ "nullslop-providers",
+ "nullslop-selection-widget",
+ "nullslop-services",
+ "parking_lot",
+ "ratatui",
+ "ratatui-which-key",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "throbber-widgets-tui",
+ "tokio",
+ "tracing",
+ "unicode-segmentation",
+ "uuid",
+ "wherror",
+]
+
+[[package]]
 name = "nullslop-e2e"
 version = "0.1.0"
 dependencies = [

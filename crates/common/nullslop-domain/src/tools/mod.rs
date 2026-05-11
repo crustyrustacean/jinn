@@ -1,0 +1,1 @@
+//! Tool orchestrator — registers and executes tool calls.

@@ -1,0 +1,1 @@
+//! Dashboard — shows actor status and system overview.
