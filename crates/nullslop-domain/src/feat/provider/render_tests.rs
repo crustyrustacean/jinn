@@ -1,6 +1,6 @@
 //! Provider picker render tests.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use crate::protocol::{Mode, PickerKind};
 use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
 use crate::common::services::Services;

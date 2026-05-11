@@ -14,7 +14,7 @@ mod handlers;
 use std::collections::HashMap;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use crate::component::State;
+use crate::common::state::State;
 use crate::protocol::context::{
     AssemblePrompt, PinChatEntry, PromptStrategySwitched, RestoreStrategyState,
     SwitchPromptStrategy, UnpinChatEntry,
@@ -139,7 +139,8 @@ mod tests {
     use std::sync::Arc;
 
     use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink, RecordingSink};
-    use crate::component::{AppState, State};
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
     use crate::protocol::ChatEntry;
     use crate::protocol::PinPosition;
     use crate::protocol::PromptStrategyId;

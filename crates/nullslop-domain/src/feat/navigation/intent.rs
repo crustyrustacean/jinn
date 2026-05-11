@@ -1,6 +1,6 @@
 //! Navigation intent handlers — scroll, tab, and editor.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use crate::protocol::IntentResult;
 use crate::protocol::tab::TabDirection;
 
@@ -62,7 +62,7 @@ pub fn handle_edit_input(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    use crate::component::AppState;
+    use crate::common::app_state::AppState;
     use crate::protocol::ChatEntry;
     use crate::protocol::tab::TabDirection;
 

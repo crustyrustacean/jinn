@@ -3,7 +3,7 @@
 //! Validators for picker navigation, confirmation, and opening intents.
 //! Most are infallible; picker confirm and open picker are fallible.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use crate::protocol::PickerKind;
 use wherror::Error;
 

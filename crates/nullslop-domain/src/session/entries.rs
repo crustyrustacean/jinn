@@ -4,7 +4,7 @@
 //! The [`SessionEntry`] struct and [`PickerItem`] implementation live
 //! in `nullslop-protocol`.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use crate::protocol::SessionEntry;
 use crate::common::services::Services;
 

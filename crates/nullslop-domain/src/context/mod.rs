@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
-use crate::component::State;
+use crate::common::state::State;
 
 pub use crate::protocol::PromptStrategyId;
 pub use strategy::compaction::CompactionStrategy;

@@ -5,8 +5,8 @@
 //! The view scrolls when actors overflow the viewport, keeping the selected
 //! entry visible.
 
-use crate::component::AppState;
-use crate::component_ui::UiElement;
+use crate::common::app_state::AppState;
+use crate::common::ui_element::UiElement;
 use crate::feat::dashboard::ActorStatus;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -127,7 +127,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::component::AppState;
+    use crate::common::app_state::AppState;
 
     fn render_rows(
         element: &mut DashboardElement,

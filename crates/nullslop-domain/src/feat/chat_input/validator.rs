@@ -2,7 +2,7 @@
 //!
 //! Validators for message submission and autocomplete confirmation.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use wherror::Error;
 
 /// Errors from validating a SubmitMessage intent.

@@ -1,6 +1,6 @@
 //! Autocomplete popup rendering — renders the prompt template autocomplete overlay.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};

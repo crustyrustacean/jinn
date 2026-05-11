@@ -4,7 +4,7 @@
 //! strategy picker overlay. The [`StrategyEntry`] struct and [`PickerItem`]
 //! implementation live in `nullslop-protocol`.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use crate::protocol::{PromptStrategyId, StrategyEntry};
 use crate::common::services::Services;
 
