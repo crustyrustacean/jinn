@@ -6,9 +6,9 @@ mod selection;
 mod streaming;
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::AtomicU16;
 
-use nullslop_protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
+use nullslop_protocol::{ChatEntry, ChatEntryId, PinPosition};
 use serde_json::Value as JsonValue;
 
 use nsslice_chat_input_box_protocol::ChatInputBoxState;
