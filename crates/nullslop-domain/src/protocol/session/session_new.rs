@@ -3,7 +3,7 @@
 //! Bound to CTRL+N in the Picker scope. The handler creates a new
 //! [`SessionId`], inserts a fresh `ChatSessionState`, and closes the picker.
 //!
-//! [`SessionId`]: crate::session::SessionId
+//! [`SessionId`]: crate::feat::session::SessionId
 
 use serde::{Deserialize, Serialize};
 

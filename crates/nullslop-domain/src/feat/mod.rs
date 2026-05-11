@@ -13,6 +13,7 @@ pub mod picker;
 pub mod pinned_panel;
 pub mod provider;
 pub mod provider_infra;
+pub mod session;
 pub mod shutdown;
 pub mod tools;
 pub mod ui;
