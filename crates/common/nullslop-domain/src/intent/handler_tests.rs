@@ -15,12 +15,12 @@
 
 //! Tests for the [`IntentHandler`] — one test per Intent variant.
 
-use super::KeymapEntry;
-use super::{AppState, FrontendState};
-use super::{Mode, PickerKind};
+use crate::KeymapEntry;
+use crate::{AppState, FrontendState};
+use crate::{Mode, PickerKind};
 
-use super::IntentHandler;
-use super::Intent;
+use crate::Intent;
+use crate::IntentHandler;
 
 fn handle(intent: &Intent, state: &mut AppState) -> super::IntentResult {
     IntentHandler::handle(intent, state)

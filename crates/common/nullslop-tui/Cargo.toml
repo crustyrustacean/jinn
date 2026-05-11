@@ -4,10 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-nullslop-core = { workspace = true }
-nullslop-intent = { workspace = true }
-nullslop-domain = { workspace = true }
-nullslop-protocol = { workspace = true, features = ["which-key"] }
+nullslop-domain = { workspace = true, features = ["which-key"] }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 ratatui = { workspace = true }

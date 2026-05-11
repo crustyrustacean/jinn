@@ -7,11 +7,11 @@
 
 use std::time::Duration;
 
+use crate::State;
+use crate::SystemMessage;
 use kanal::Sender;
-use super::State;
-use super::SystemMessage;
 
-use super::AppMsg;
+use crate::AppMsg;
 
 /// Default timeout for coordinated shutdown.
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);

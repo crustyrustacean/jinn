@@ -1,7 +1,7 @@
 //! Builder for constructing a [`TuiApp`] with sensible defaults for tests.
 
-use nullslop_core::AppCore;
 use nullslop_domain::ActorHostService;
+use nullslop_domain::AppCore;
 use nullslop_domain::AppUiRegistry;
 use ratatui_spatial_splits::SplitManager;
 

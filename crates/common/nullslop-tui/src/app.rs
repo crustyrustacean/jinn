@@ -7,11 +7,11 @@ use std::mem;
 
 use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
-use nullslop_core::{AppCore, AppMsg};
 use nullslop_domain::ActorHostService;
 use nullslop_domain::AppUiRegistry;
+use nullslop_domain::IntentHandler;
 use nullslop_domain::{ActiveTab, Intent, Mode, PickerKind};
-use nullslop_intent::IntentHandler;
+use nullslop_domain::{AppCore, AppMsg};
 use ratatui::Frame;
 use ratatui_spatial_splits::{AreaId, SplitManager};
 use ratatui_tabs::TabManager;
@@ -376,7 +376,7 @@ mod tests {
     fn test_app() -> TuiApp {
         let services = nullslop_domain::Services::new();
         let (sender, _receiver) = kanal::unbounded();
-        let core = nullslop_core::AppCore {
+        let core = nullslop_domain::AppCore {
             state: nullslop_domain::State::new(nullslop_domain::AppState::default()),
             sender,
         };
@@ -579,7 +579,7 @@ mod tests {
         // Given an app with mouse selection disabled and a registered selectable rect.
         let services = nullslop_domain::Services::new();
         let (sender, _receiver) = kanal::unbounded();
-        let core = nullslop_core::AppCore {
+        let core = nullslop_domain::AppCore {
             state: nullslop_domain::State::new(nullslop_domain::AppState::default()),
             sender,
         };
