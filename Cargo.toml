@@ -102,6 +102,7 @@ nsslice-navigation = { path = "crates/slices/nsslice-navigation" }
 nsslice-session-management = { path = "crates/slices/nsslice-session-management" }
 nsslice-session-management-protocol = { path = "crates/slices/nsslice-session-management-protocol" }
 nsslice-global = { path = "crates/slices/nsslice-global" }
+nsslice-chat-session-protocol = { path = "crates/slices/nsslice-chat-session-protocol" }
 
 # Error handling
 wherror = "2.3.1"

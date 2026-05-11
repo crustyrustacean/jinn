@@ -2849,6 +2849,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsslice-chat-session-protocol"
+version = "0.1.0"
+dependencies = [
+ "nsslice-chat-input-box-protocol",
+ "nullslop-protocol",
+ "rstest",
+ "serde_json",
+]
+
+[[package]]
 name = "nsslice-context"
 version = "0.1.0"
 dependencies = [
