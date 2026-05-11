@@ -1,9 +1,5 @@
-//! Tab domain: tab management types, active tab state, and tab navigation commands.
+//! Direction for tab cycling.
 
-mod active_tab;
-mod command;
-
-pub use active_tab::ActiveTab;
 use serde::{Deserialize, Serialize};
 
 /// Direction for tab cycling.
