@@ -2,7 +2,7 @@
 //!
 //! Validators for model refresh, prompt template rescan, and session creation.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 use wherror::Error;
 
 /// Errors from validating a RefreshModels intent.
@@ -21,7 +21,7 @@ pub enum RefreshModelsError {
 ///
 /// Returns an error if no provider is configured.
 pub fn validate_refresh_models(state: &AppState) -> Result<(), RefreshModelsError> {
-    if state.provider.active_provider == nullslop_component::NO_PROVIDER_ID {
+    if state.provider.active_provider == crate::component::NO_PROVIDER_ID {
         return Err(RefreshModelsError::NoProvider);
     }
     Ok(())

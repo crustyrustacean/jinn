@@ -6,7 +6,7 @@
 //! (`nullslop-intent`) to re-dispatch keymap intents without creating a circular
 //! dependency.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 use nullslop_protocol::context::SwitchPromptStrategy;
 use nullslop_protocol::provider::ProviderSwitch;
 use nullslop_protocol::session::SessionLoadRequested;
@@ -283,7 +283,7 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_component::{AppState, FrontendState};
+    use crate::component::{AppState, FrontendState};
     use nullslop_protocol::{Command, Intent, Mode, PickerKind, SessionId};
     use nullslop_protocol::{KeymapEntry, PickerEntry, SessionEntry, StrategyEntry};
 

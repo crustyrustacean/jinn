@@ -2,7 +2,7 @@
 //!
 //! Validators for message submission and autocomplete confirmation.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 use wherror::Error;
 
 /// Errors from validating a SubmitMessage intent.

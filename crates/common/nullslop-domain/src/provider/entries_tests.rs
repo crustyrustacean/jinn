@@ -1,4 +1,4 @@
-use nullslop_providers::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
+use crate::providers::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
 use nullslop_selection_widget::PickerItem;
 use ratatui::style::Color;
 use std::ops::Range;
@@ -29,7 +29,7 @@ fn openrouter_entry() -> ProviderEntry {
 
 fn make_config(
     providers: Vec<ProviderEntry>,
-    aliases: Vec<nullslop_providers::AliasEntry>,
+    aliases: Vec<crate::providers::AliasEntry>,
     default_provider: Option<&str>,
 ) -> ProvidersConfig {
     ProvidersConfig {
@@ -128,7 +128,7 @@ fn load_provider_entries_marks_keyless_always_available() {
 fn load_entries_with_alias() -> (Vec<PickerEntry>, PickerEntry) {
     let config = make_config(
         vec![ollama_entry()],
-        vec![nullslop_providers::AliasEntry {
+        vec![crate::providers::AliasEntry {
             name: "fast".to_owned(),
             target: "ollama/llama3".to_owned(),
         }],
@@ -185,11 +185,11 @@ fn load_provider_entries_alias_inherits_availability() {
     let config = make_config(
         vec![ollama_entry(), openrouter_entry()],
         vec![
-            nullslop_providers::AliasEntry {
+            crate::providers::AliasEntry {
                 name: "fast".to_owned(),
                 target: "ollama/llama3".to_owned(),
             },
-            nullslop_providers::AliasEntry {
+            crate::providers::AliasEntry {
                 name: "cloud".to_owned(),
                 target: "openrouter/gpt-4".to_owned(),
             },
@@ -219,7 +219,7 @@ fn static_entries_present_after_cache_merge() {
     let api_keys = ApiKeys::new();
 
     // And a cache with an additional model for the same provider.
-    let mut cache = nullslop_providers::ModelCache::new();
+    let mut cache = crate::providers::ModelCache::new();
     cache
         .entries
         .insert("ollama".to_owned(), vec!["mistral".to_owned()]);
@@ -244,7 +244,7 @@ fn remote_entries_present_after_cache_merge() {
     let api_keys = ApiKeys::new();
 
     // And a cache with an additional model for the same provider.
-    let mut cache = nullslop_providers::ModelCache::new();
+    let mut cache = crate::providers::ModelCache::new();
     cache
         .entries
         .insert("ollama".to_owned(), vec!["mistral".to_owned()]);
@@ -270,7 +270,7 @@ fn static_entry_not_duplicated_on_collision() {
     let api_keys = ApiKeys::new();
 
     // And a cache that also contains ollama/llama3 (collision).
-    let mut cache = nullslop_providers::ModelCache::new();
+    let mut cache = crate::providers::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
         vec!["llama3".to_owned(), "mistral".to_owned()],
@@ -293,7 +293,7 @@ fn new_remote_entry_added_on_collision() {
     let api_keys = ApiKeys::new();
 
     // And a cache that also contains ollama/llama3 (collision).
-    let mut cache = nullslop_providers::ModelCache::new();
+    let mut cache = crate::providers::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
         vec!["llama3".to_owned(), "mistral".to_owned()],
@@ -316,7 +316,7 @@ fn remote_entry_present_when_key_missing() {
     let api_keys = ApiKeys::new(); // No keys set.
 
     // And a cache with additional models.
-    let mut cache = nullslop_providers::ModelCache::new();
+    let mut cache = crate::providers::ModelCache::new();
     cache
         .entries
         .insert("openrouter".to_owned(), vec!["claude-3".to_owned()]);
@@ -340,7 +340,7 @@ fn remote_entry_marked_unavailable_when_key_missing() {
     let api_keys = ApiKeys::new(); // No keys set.
 
     // And a cache with additional models.
-    let mut cache = nullslop_providers::ModelCache::new();
+    let mut cache = crate::providers::ModelCache::new();
     cache
         .entries
         .insert("openrouter".to_owned(), vec!["claude-3".to_owned()]);
@@ -363,7 +363,7 @@ fn load_provider_entries_includes_all_remote_models() {
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
-    let mut cache = nullslop_providers::ModelCache::new();
+    let mut cache = crate::providers::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
         vec!["mistral".to_owned(), "codellama".to_owned()],

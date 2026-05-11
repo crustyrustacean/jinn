@@ -3,7 +3,7 @@
 //! Validators for picker navigation, confirmation, and opening intents.
 //! Most are infallible; picker confirm and open picker are fallible.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 use nullslop_protocol::PickerKind;
 use wherror::Error;
 

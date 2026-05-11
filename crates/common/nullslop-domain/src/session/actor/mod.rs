@@ -21,7 +21,7 @@ mod handlers;
 
 use super::SessionStoreService;
 use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use nullslop_component::State;
+use crate::component::State;
 use nullslop_protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
 use nullslop_protocol::context::PromptAssembled;
 use nullslop_protocol::provider::{SendMessage, StreamCompleted, StreamToken};
@@ -163,10 +163,11 @@ mod tests {
     use crate::actor::Actor;
     use crate::actor::RecordingSink;
     use crate::actor::{ActorContext, ActorEnvelope, MessageSink};
-    use nullslop_component::{AppState, State};
+    use crate::component::{AppState, State};
     use nullslop_protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
     // no context imports needed in tests currently
     use super::super::session_store::{JsonlSessionStore, SessionStoreService};
+    use crate::services::Services;
     use nullslop_protocol::provider::{
         SendMessage, StreamCompleted, StreamCompletedReason, StreamToken,
     };
@@ -178,7 +179,6 @@ mod tests {
         ChatEntry, ChatEntryKind, Command, Event, PromptStrategyId, SessionId,
         SessionSaveRequested, ToolCall, ToolResult,
     };
-    use nullslop_services::Services;
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;

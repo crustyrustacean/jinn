@@ -4,9 +4,9 @@
 //! `PromptStrategyId`'s `Display` impl (e.g., "Passthrough", "Sliding Window").
 //! The model shows `({provider})/{model}` when set, or "no model selected" otherwise.
 
-use nullslop_component::AppState;
-use nullslop_component_ui::UiElement;
-use nullslop_providers::NO_PROVIDER_ID;
+use crate::component::AppState;
+use crate::component_ui::UiElement;
+use crate::providers::NO_PROVIDER_ID;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
@@ -64,7 +64,7 @@ mod tests {
     }
 
     use super::*;
-    use nullslop_component::{AppState, ProviderState};
+    use crate::component::{AppState, ProviderState};
 
     #[rstest::rstest]
     fn name_returns_status_bar() {

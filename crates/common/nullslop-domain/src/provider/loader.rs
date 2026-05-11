@@ -1,7 +1,7 @@
 //! Provider picker loader — loads provider entries into picker state.
 
-use nullslop_component::AppState;
-use nullslop_services::Services;
+use crate::component::AppState;
+use crate::services::Services;
 
 use super::entries::{load_provider_entries, sorted_entries};
 

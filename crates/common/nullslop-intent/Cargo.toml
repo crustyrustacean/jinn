@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 nullslop-domain = { workspace = true }
-nullslop-component = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

@@ -20,7 +20,7 @@ use nullslop_domain::session::{BLOB_STRATEGY_STATE, PersistedSession};
 ///
 /// Returns a fully reconstructed [`ChatSessionState`] with strategy
 /// state already set — the caller just inserts it into
-/// [`AppState`](nullslop_component::app_state::AppState).
+/// [`AppState`](nullslop_domain::app_state::AppState).
 #[must_use]
 pub fn persisted_into_session(persisted: PersistedSession) -> ChatSessionState {
     let mut session = ChatSessionState::new();

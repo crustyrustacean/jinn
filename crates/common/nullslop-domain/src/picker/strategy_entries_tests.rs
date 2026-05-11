@@ -51,14 +51,14 @@ fn render_row_selected_has_background() {
 
 #[rstest::rstest]
 fn load_strategy_entries_returns_all_strategies() {
-    let services = nullslop_services::Services::new();
+    let services = crate::services::Services::new();
     let entries = load_strategy_entries(&services, &PromptStrategyId::passthrough());
     assert_eq!(entries.len(), 4);
 }
 
 #[rstest::rstest]
 fn load_strategy_entries_marks_active() {
-    let services = nullslop_services::Services::new();
+    let services = crate::services::Services::new();
     let entries = load_strategy_entries(&services, &PromptStrategyId::passthrough());
     let active_count = entries.iter().filter(|e| e.is_active).count();
     assert_eq!(active_count, 1);
@@ -68,7 +68,7 @@ fn load_strategy_entries_marks_active() {
 
 #[rstest::rstest]
 fn load_strategy_entries_marks_active_with_non_default() {
-    let services = nullslop_services::Services::new();
+    let services = crate::services::Services::new();
     let entries = load_strategy_entries(&services, &PromptStrategyId::sliding_window());
     let active = entries.iter().find(|e| e.is_active).expect("active entry");
     assert_eq!(active.strategy_id, PromptStrategyId::sliding_window());

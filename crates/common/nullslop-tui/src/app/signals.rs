@@ -1,6 +1,6 @@
 //! Snapshot of TUI signal flags, extracted from AppState before releasing the write lock.
 
-/// Snapshot of [`nullslop_component::tui_signals::TuiSignals`] fields, copied
+/// Snapshot of [`nullslop_domain::tui_signals::TuiSignals`] fields, copied
 /// out of AppState before releasing the write lock.
 #[derive(Debug)]
 pub(super) struct TuiSignalsSnapshot {
@@ -18,7 +18,7 @@ pub(super) struct TuiSignalsSnapshot {
 
 impl TuiSignalsSnapshot {
     /// Extracts TUI signal flags from the given app state.
-    pub(super) fn from_state(state: &nullslop_component::AppState) -> Self {
+    pub(super) fn from_state(state: &nullslop_domain::AppState) -> Self {
         Self {
             toggle_whichkey: state.frontend.tui_signals.toggle_whichkey,
             edit_requested: state.frontend.tui_signals.edit_requested,

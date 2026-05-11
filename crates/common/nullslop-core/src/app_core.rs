@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use kanal::Sender;
-use nullslop_component::State;
+use nullslop_domain::State;
 use nullslop_domain::SystemMessage;
 
 use crate::AppMsg;

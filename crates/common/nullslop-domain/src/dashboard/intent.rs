@@ -4,7 +4,7 @@
 //! to the first entry, and to the last entry. All are infallible and return
 //! no commands.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 use nullslop_protocol::IntentResult;
 
 /// Move the dashboard selection to the next entry.

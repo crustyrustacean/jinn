@@ -23,8 +23,8 @@ pub use app_state::AppStatus;
 pub use keymap::KeyCategory;
 pub use msg::handler::MsgHandler;
 pub use nullslop_core::{AppCore, AppMsg};
+pub use nullslop_domain::Services;
 pub use nullslop_domain::{ActorHost, ActorHostService};
-pub use nullslop_services::Services;
 pub use run::{TuiRunError, run};
 pub use scope::Scope;
 

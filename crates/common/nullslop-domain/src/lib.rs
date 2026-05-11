@@ -19,6 +19,7 @@ pub mod chat_entry_selection;
 pub mod chat_input_box;
 pub mod chat_log;
 pub mod chat_session;
+pub mod component;
 pub mod component_ui;
 pub mod context;
 pub mod dashboard;
@@ -28,8 +29,11 @@ pub mod llm;
 pub mod navigation;
 pub mod picker;
 pub mod pinned_panel;
+pub mod prompt_template;
 pub mod protocol;
 pub mod provider;
+pub mod providers;
+pub mod services;
 pub mod session;
 pub mod shutdown;
 pub mod status_bar;
@@ -44,6 +48,47 @@ pub use actor_host::{
     ActorHost, ActorHostService, ActorSpawnResult, FakeActorHost, InMemoryActorHost, RoutingEntry,
     spawn_actor,
 };
+
+// Re-export component types (state, UI)
+pub use component::app_state::pin_sort_key;
+pub use component::{
+    AppState, AppUiRegistry, ChatInputBoxState, ChatSessionState, DashboardState, FrontendState,
+    PinnedPanelState, ProviderState, ShutdownCoordinatorState, ShutdownTrackerState, State,
+    StateReadGuard, StateWriteGuard, TuiSignals,
+};
+pub use component::{register_all, register_tui_elements};
+pub use prompt_template::PromptTemplateStore;
+pub use providers::NO_PROVIDER_ID;
+
+// Re-export services types
+pub use services::Services;
+pub use services::test_services::TestServices;
+pub use services::{ActorChannelService, CoreChannelService};
+
+// Re-export providers types
+pub use providers::TOOL_LOOP_TRIGGER;
+pub use providers::cache_path;
+pub use providers::{
+    ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, FilesystemConfigStorage,
+    InMemoryConfigStorage, LlmServiceFactoryService, ModelCache, NoProvidersAvailableFactory,
+    ProviderRegistry, ProviderRegistryService, ProvidersConfig,
+};
+
+// Re-export context types
+pub use context::DefaultStrategyDiscovery;
+pub use context::DefaultStrategyFactory;
+
+// Re-export session types
+pub use session::JsonlSessionStore;
+pub use session::SessionStoreService;
+
+// Re-export prompt template utilities
+pub use prompt_template::{ensure_prompts_dir_with_example, prompts_dir};
+
+// Re-export services submodules
+pub use services::actor_channel;
+pub use services::core_channel;
+pub use services::strategy_registry;
 
 // Re-export protocol types at crate root — these are the same types as nullslop_protocol
 pub use nullslop_protocol::entries_to_messages;

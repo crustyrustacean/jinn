@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use cucumber::World;
-use nsslice_context_protocol::DefaultStrategyDiscovery;
-use nullslop_services::strategy_registry::StrategyRegistryService;
+use nullslop_domain::DefaultStrategyDiscovery;
+use nullslop_domain::strategy_registry::StrategyRegistryService;
 use nullslop_tui::{Scope, TuiApp};
 
 /// Cucumber world wrapping a full [`TuiApp`].
@@ -30,32 +30,32 @@ impl TuiWorld {
             tokio::runtime::Runtime::new().expect("test runtime"),
         ));
         let handle = rt.handle().clone();
-        let llm = nullslop_services::providers::LlmServiceFactoryService::new(Arc::new(
-            nullslop_providers::FakeLlmServiceFactory::new(vec![]),
+        let llm = nullslop_domain::providers::LlmServiceFactoryService::new(Arc::new(
+            nullslop_domain::FakeLlmServiceFactory::new(vec![]),
         ));
-        let config = nullslop_providers::ProvidersConfig {
+        let config = nullslop_domain::ProvidersConfig {
             providers: vec![],
             aliases: vec![],
             default_provider: None,
         };
         let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
         let (actor_tx, _actor_rx) = kanal::unbounded::<nullslop_domain::AppMsg>();
-        let (core_tx, _core_rx) = kanal::unbounded::<nullslop_services::CoreNotification>();
+        let (core_tx, _core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
 
-        let services = nullslop_services::Services {
+        let services = nullslop_domain::Services {
             handle,
-            actor_channel: nullslop_services::ActorChannelService::new(actor_tx),
-            core_channel: nullslop_services::CoreChannelService::new(core_tx),
+            actor_channel: nullslop_domain::ActorChannelService::new(actor_tx),
+            core_channel: nullslop_domain::CoreChannelService::new(core_tx),
             llm_service: llm,
-            provider_registry: nullslop_providers::ProviderRegistryService::new(
-                nullslop_providers::ProviderRegistry::from_config(config).expect("test registry"),
+            provider_registry: nullslop_domain::ProviderRegistryService::new(
+                nullslop_domain::ProviderRegistry::from_config(config).expect("test registry"),
             ),
-            api_keys: nullslop_providers::ApiKeysService::new(nullslop_providers::ApiKeys::new()),
-            config_storage: nullslop_providers::ConfigStorageService::new(Arc::new(
-                nullslop_providers::InMemoryConfigStorage::new(),
+            api_keys: nullslop_domain::ApiKeysService::new(nullslop_domain::ApiKeys::new()),
+            config_storage: nullslop_domain::ConfigStorageService::new(Arc::new(
+                nullslop_domain::InMemoryConfigStorage::new(),
             )),
-            session_store: nsslice_session_management_protocol::SessionStoreService::new(Arc::new(
-                nsslice_session_management_protocol::JsonlSessionStore::new_in(
+            session_store: nullslop_domain::SessionStoreService::new(Arc::new(
+                nullslop_domain::JsonlSessionStore::new_in(
                     tempfile::tempdir().expect("temp dir").path().to_path_buf(),
                 ),
             )),

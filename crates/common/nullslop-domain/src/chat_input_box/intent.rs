@@ -12,10 +12,10 @@
 //! - **EnterNormalMode** — cancels streams, clears picker, switches to Normal mode.
 //! - **NormalEscape** — clears chat entry selection.
 
-use nsslice_chat_input_box_protocol::AutocompleteMatch;
-use nullslop_component::AppState;
-use nullslop_component::ChatInputBoxState;
-use nullslop_component::prompt_template::PromptTemplateStore;
+use crate::chat_input_box::AutocompleteMatch;
+use crate::component::AppState;
+use crate::component::ChatInputBoxState;
+use crate::component::prompt_template::PromptTemplateStore;
 use nullslop_protocol::chat_input::EnqueueUserMessage;
 use nullslop_protocol::{Command, IntentResult, Mode};
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -347,7 +347,7 @@ fn compute_matches(store: &PromptTemplateStore, filter: &str) -> Vec<Autocomplet
 
 #[cfg(test)]
 mod tests {
-    use nullslop_component::AppState;
+    use crate::component::AppState;
 
     use super::*;
 
@@ -570,7 +570,7 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_sets_mode_to_normal() {
         // Given a state in Input mode.
-        use nullslop_component::FrontendState;
+        use crate::component::FrontendState;
 
         let mut state = AppState {
             frontend: FrontendState {
@@ -591,7 +591,7 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
         // Given a state in Picker mode with active picker kind.
-        use nullslop_component::FrontendState;
+        use crate::component::FrontendState;
         use nullslop_protocol::PickerKind;
 
         let mut state = AppState {
@@ -614,7 +614,7 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_cancels_stream_when_in_input_mode() {
         // Given a state in Input mode with active stream.
-        use nullslop_component::FrontendState;
+        use crate::component::FrontendState;
         use nullslop_protocol::Command;
 
         let mut state = AppState {
@@ -643,7 +643,7 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_drains_queue_when_cancelling_stream() {
         // Given a state in Input mode with active stream and queued messages.
-        use nullslop_component::FrontendState;
+        use crate::component::FrontendState;
         use nullslop_protocol::Command;
 
         let mut state = AppState {

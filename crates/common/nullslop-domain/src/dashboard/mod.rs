@@ -13,7 +13,7 @@ pub use element::DashboardElement;
 
 use std::collections::HashMap;
 
-use nullslop_component::AppUiRegistry;
+use crate::component::AppUiRegistry;
 
 /// The startup status of an actor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

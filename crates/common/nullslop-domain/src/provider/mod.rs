@@ -19,8 +19,8 @@ use std::sync::Arc;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use crate::actor_host::{ActorSpawnResult, spawn_actor};
-use nullslop_component::AppUiRegistry;
-use nullslop_providers::NO_PROVIDER_ID;
+use crate::component::AppUiRegistry;
+use crate::providers::NO_PROVIDER_ID;
 
 use crate::PickerEntry;
 
@@ -37,7 +37,7 @@ pub struct ProviderState {
 
     /// Last known model cache from discovery.
     /// OWNER: provider-actor (updates from ModelsRefreshed event).
-    pub model_cache: Option<nullslop_providers::ModelCache>,
+    pub model_cache: Option<crate::providers::ModelCache>,
 
     /// When the model list was last refreshed (UTC).
     /// OWNER: provider-actor (updates from ModelsRefreshed event).
@@ -69,12 +69,12 @@ pub fn register(registry: &mut AppUiRegistry) {
 /// Spawns the provider actor on the given tokio runtime.
 ///
 /// Creates the actor's channel, context, and run loop. Injects shared
-/// [`State`](nullslop_component::State) and [`Services`](nullslop_services::Services).
+/// [`State`](crate::component::State) and [`Services`](crate::services::Services).
 /// Returns the `ActorRef` for sending direct messages and the `ActorSpawnResult`
 /// containing the routing entry and join handle.
 pub fn spawn_provider_actor(
-    state: nullslop_component::State,
-    services: nullslop_services::Services,
+    state: crate::component::State,
+    services: crate::services::Services,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
 ) -> (ActorRef<actor::ProviderDirectMsg>, ActorSpawnResult) {
@@ -95,8 +95,8 @@ pub fn spawn_provider_actor(
 /// registry and API keys service. Returns the `ActorRef` for sending direct
 /// messages and the `ActorSpawnResult` containing the routing entry and join handle.
 pub fn spawn_discover_actor(
-    registry: nullslop_providers::ProviderRegistryService,
-    api_keys: nullslop_providers::ApiKeysService,
+    registry: crate::providers::ProviderRegistryService,
+    api_keys: crate::providers::ApiKeysService,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
 ) -> (ActorRef<discover::DiscoverDirectMsg>, ActorSpawnResult) {

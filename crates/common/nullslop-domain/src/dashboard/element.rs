@@ -5,9 +5,9 @@
 //! The view scrolls when actors overflow the viewport, keeping the selected
 //! entry visible.
 
-use nsslice_dashboard_protocol::ActorStatus;
-use nullslop_component::AppState;
-use nullslop_component_ui::UiElement;
+use crate::component::AppState;
+use crate::component_ui::UiElement;
+use crate::dashboard::ActorStatus;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -127,7 +127,7 @@ mod tests {
     }
 
     use super::*;
-    use nullslop_component::AppState;
+    use crate::component::AppState;
 
     fn render_rows(
         element: &mut DashboardElement,

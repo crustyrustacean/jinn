@@ -4,14 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-nullslop-component = { workspace = true }
 nullslop-domain = { workspace = true }
 kanal = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-nullslop-component = { workspace = true }
 
 rstest = { workspace = true }
 

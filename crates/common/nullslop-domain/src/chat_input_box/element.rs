@@ -5,7 +5,7 @@
 //! the cursor appears at the current cursor position within the text. When browsing
 //! (normal mode), the prompt is shown without highlighting and no cursor is displayed.
 
-use nullslop_component_ui::UiElement;
+use crate::component_ui::UiElement;
 use nullslop_protocol::Mode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -13,7 +13,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 
 /// Display element for the user's message composition area.
 #[derive(Debug)]
@@ -103,7 +103,7 @@ mod tests {
     }
 
     use super::*;
-    use nullslop_component::FrontendState;
+    use crate::component::FrontendState;
 
     #[rstest::rstest]
     fn name_returns_chat_input_box() {

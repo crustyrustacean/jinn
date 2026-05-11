@@ -1,6 +1,6 @@
 //! Global intent handlers — quit, toggle which-key, and interrupt.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 use nullslop_protocol::provider::CancelStream;
 use nullslop_protocol::session::SessionId;
 use nullslop_protocol::{Command, IntentResult};

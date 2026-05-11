@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use crate::actor_host::{ActorSpawnResult, spawn_actor};
-use nullslop_component::State;
+use crate::component::State;
 
 pub use nullslop_protocol::PromptStrategyId;
 pub use strategy::compaction::CompactionStrategy;

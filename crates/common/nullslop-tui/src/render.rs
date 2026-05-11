@@ -302,7 +302,7 @@ fn render_which_key(frame: &mut Frame<'_>, state: &mut crate::app::WhichKeyInsta
 }
 
 /// Renders the active picker overlay, dispatching on [`PickerKind`].
-fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
+fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
     match state.frontend.active_picker_kind {
         Some(PickerKind::Provider) => render_provider_picker(frame, area, state),
         Some(PickerKind::ContextAssembly) => {
@@ -315,7 +315,7 @@ fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::
 }
 
 /// Renders the provider picker overlay (delegates to slice).
-fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
+fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
     nullslop_domain::provider::render::render_provider_picker(frame, area, state);
 }
 
@@ -323,18 +323,18 @@ fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_co
 fn render_context_strategy_picker(
     frame: &mut Frame<'_>,
     area: Rect,
-    state: &nullslop_component::AppState,
+    state: &nullslop_domain::AppState,
 ) {
     nullslop_domain::picker::render::render_context_strategy_picker(frame, area, state);
 }
 
 /// Renders the keymap picker overlay (delegates to slice).
-fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
+fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
     nullslop_domain::picker::render::render_keymap_picker(frame, area, state);
 }
 
 /// Renders the session picker overlay (delegates to slice).
-fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
+fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
     nullslop_domain::session::render::render_session_picker(frame, area, state);
 }
 

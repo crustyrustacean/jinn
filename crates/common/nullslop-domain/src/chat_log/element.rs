@@ -9,7 +9,7 @@
 //!
 //! Text wraps within the available space.
 
-use nullslop_component_ui::UiElement;
+use crate::component_ui::UiElement;
 use nullslop_protocol::ChatEntryKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -17,7 +17,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 
 /// Display element for the full conversation history.
 #[derive(Debug)]
@@ -281,7 +281,7 @@ mod tests {
     }
 
     use super::*;
-    use nullslop_component::AppState;
+    use crate::component::AppState;
 
     #[rstest::rstest]
     fn name_returns_chat_log() {

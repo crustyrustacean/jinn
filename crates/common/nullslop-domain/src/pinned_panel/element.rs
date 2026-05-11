@@ -5,9 +5,9 @@
 //! The selected entry is highlighted with a yellow marker and reversed style.
 //! When no entries are pinned, shows a dimmed "No pinned entries." message.
 
-use nullslop_component::AppState;
-use nullslop_component::app_state::pin_sort_key;
-use nullslop_component_ui::UiElement;
+use crate::component::AppState;
+use crate::component::app_state::pin_sort_key;
+use crate::component_ui::UiElement;
 use nullslop_protocol::{ChatEntryKind, PinPosition};
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -176,7 +176,7 @@ fn build_entry_list(
 
 #[cfg(test)]
 mod tests {
-    use nullslop_component::AppState;
+    use crate::component::AppState;
     use nullslop_protocol::{ChatEntry, PinPosition};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;

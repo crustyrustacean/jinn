@@ -20,13 +20,19 @@ pub mod validator;
 pub use state::AutocompleteState;
 pub use state::ChatInputBoxState;
 
-// Re-export protocol's AutocompleteMatch (used by intent handler and autocomplete render).
-pub use nsslice_chat_input_box_protocol::AutocompleteMatch;
+/// A single match for the prompt template autocomplete popup.
+#[derive(Debug, Clone)]
+pub struct AutocompleteMatch {
+    /// The template name (e.g. `"code-review"`).
+    pub name: String,
+    /// Short human-readable description for the popup.
+    pub description: String,
+}
 
 // Re-export element for registration.
 pub use element::ChatInputBoxElement;
 
-use nullslop_component::AppUiRegistry;
+use crate::component::AppUiRegistry;
 
 /// Register chat input box UI element.
 pub fn register(registry: &mut AppUiRegistry) {
