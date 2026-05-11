@@ -140,7 +140,9 @@ mod tests {
     use nullslop_actor::{ActorContext, MessageSink, RecordingSink};
     use nullslop_component::{AppState, State};
     use nullslop_protocol::ChatEntry;
+    use nullslop_protocol::PinPosition;
     use nullslop_protocol::PromptStrategyId;
+    use nullslop_protocol::context::PromptAssembled;
 
     use super::*;
 
