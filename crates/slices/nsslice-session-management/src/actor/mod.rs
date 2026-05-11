@@ -17,37 +17,22 @@
 //! All handlers follow the same pattern: acquire state lock → mutate → release →
 //! then emit. Never hold the lock during emission.
 
-use crate::persistence::{PersistedSession, SessionStoreService};
-use jiff::Timestamp;
+mod handlers;
+
+use crate::persistence::SessionStoreService;
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_component::State;
-use nullslop_protocol::chat_input::{
-    ChatEntrySubmitted, EnqueueUserMessage, PushChatEntry, SetChatInputText,
-};
-use nullslop_protocol::context::{
-    AssemblePrompt, PromptAssembled, RestoreStrategyState, SwitchPromptStrategy,
-};
-use nullslop_protocol::provider::{SendMessage, SendToLlmProvider, StreamCompleted, StreamToken};
+use nullslop_protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+use nullslop_protocol::context::PromptAssembled;
+use nullslop_protocol::provider::{SendMessage, StreamCompleted, StreamToken};
 use nullslop_protocol::session::SessionLoadCompleted;
 use nullslop_protocol::tool::{
     PushToolResult, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
-use nullslop_protocol::{
-    ChatEntry, Command, Event, PromptStrategyId, SessionLoadRequested, SessionSaveRequested,
-};
+use nullslop_protocol::{Command, Event, SessionLoadRequested, SessionSaveRequested};
 
 /// Direct message type (unused — the actor only responds to bus commands/events).
 pub enum SessionPersistenceDirectMsg {}
-
-/// Decision returned after inspecting session state in `EnqueueUserMessage`.
-enum EnqueueAction {
-    /// Session is idle — dispatch prompt assembly.
-    AssemblePrompt,
-    /// Session is streaming — message was queued.
-    Queued,
-    /// Session is busy (sending or assembling) — put text back in the input box.
-    SetInputText(String),
-}
 
 /// Session lifecycle and persistence actor.
 ///
@@ -56,9 +41,9 @@ enum EnqueueAction {
 /// Also persists session snapshots to disk on `SessionSaveRequested` events.
 pub struct SessionPersistenceActor {
     /// Shared application state.
-    state: State,
+    pub(super) state: State,
     /// The session store service for writing session snapshots.
-    store: Option<SessionStoreService>,
+    pub(super) store: Option<SessionStoreService>,
 }
 
 impl Actor for SessionPersistenceActor {
@@ -163,318 +148,6 @@ impl SessionPersistenceActor {
             | Command::SwitchPromptStrategy { .. }
             | Command::RestoreStrategyState { .. } => {}
         }
-    }
-
-    // --- Persistence handlers ---
-
-    /// Constructs a [`PersistedSession`] from the event payload and saves it.
-    ///
-    /// Errors are logged as warnings — persistence failure must not break
-    /// the user experience.
-    fn on_save_requested(&mut self, evt: &SessionSaveRequested) {
-        let Some(store) = &self.store else {
-            tracing::warn!("session-actor has no store — dropping save request");
-            return;
-        };
-
-        let persisted = PersistedSession {
-            session_id: evt.session_id.clone(),
-            title: evt.title.clone(),
-            updated_at: Timestamp::now(),
-            history: evt.history.clone(),
-            active_strategy: evt.active_strategy.clone(),
-            blobs: evt.blobs.clone(),
-        };
-
-        if let Err(e) = store.save(&persisted) {
-            tracing::warn!(
-                session_id = ?evt.session_id,
-                err = ?e,
-                "failed to persist session"
-            );
-        }
-    }
-
-    /// Loads a full session from disk and sends back a `SessionLoadCompleted` command.
-    fn on_load_requested(&mut self, evt: &SessionLoadRequested, ctx: &ActorContext) {
-        use nullslop_protocol::session::SessionLoadCompleted as CompletedPayload;
-
-        let Some(store) = &self.store else {
-            tracing::warn!("session-actor has no store — dropping load request");
-            return;
-        };
-
-        match store.load_full(evt.byte_offset) {
-            Ok(Some(persisted)) => {
-                let _ = ctx.send_command(Command::SessionLoadCompleted {
-                    payload: CompletedPayload {
-                        session_id: persisted.session_id,
-                        title: persisted.title,
-                        history: persisted.history,
-                        active_strategy: persisted.active_strategy,
-                        blobs: persisted.blobs,
-                    },
-                });
-            }
-            Ok(None) => {
-                tracing::warn!(
-                    byte_offset = evt.byte_offset,
-                    "session load returned None at offset"
-                );
-                let _ = ctx.send_command(Command::SessionLoadCompleted {
-                    payload: CompletedPayload {
-                        session_id: evt.session_id.clone(),
-                        title: String::new(),
-                        history: vec![],
-                        active_strategy: PromptStrategyId::passthrough(),
-                        blobs: std::collections::HashMap::new(),
-                    },
-                });
-            }
-            Err(e) => {
-                tracing::warn!(err = ?e, "failed to load session");
-                let _ = ctx.send_command(Command::SessionLoadCompleted {
-                    payload: CompletedPayload {
-                        session_id: evt.session_id.clone(),
-                        title: String::new(),
-                        history: vec![],
-                        active_strategy: PromptStrategyId::passthrough(),
-                        blobs: std::collections::HashMap::new(),
-                    },
-                });
-            }
-        }
-    }
-
-    // --- Command handlers ---
-
-    /// EnqueueUserMessage: if idle → assemble prompt; if streaming → queue;
-    /// otherwise → set input text.
-    fn handle_enqueue_user_message(&self, payload: &EnqueueUserMessage, ctx: &ActorContext) {
-        let action = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            if session.is_idle() {
-                session.push_entry(ChatEntry::user(&payload.text));
-                session.begin_sending();
-                EnqueueAction::AssemblePrompt
-            } else if session.is_streaming() {
-                session.enqueue_message(payload.text.clone());
-                EnqueueAction::Queued
-            } else {
-                EnqueueAction::SetInputText(payload.text.clone())
-            }
-        };
-
-        let (history, model_name) = match action {
-            EnqueueAction::AssemblePrompt => {
-                let state = self.state.read();
-                let history = state.session(&payload.session_id).history().to_vec();
-                let model_name = state.provider.active_provider.clone();
-                (history, model_name)
-            }
-            EnqueueAction::Queued | EnqueueAction::SetInputText(_) => (vec![], String::new()),
-        };
-
-        match action {
-            EnqueueAction::AssemblePrompt => {
-                if let Err(e) = ctx.send_command(Command::AssemblePrompt {
-                    payload: AssemblePrompt {
-                        session_id: payload.session_id.clone(),
-                        history,
-                        tools: vec![],
-                        model_name,
-                    },
-                }) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit AssemblePrompt");
-                }
-
-                if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted {
-                    payload: ChatEntrySubmitted {
-                        session_id: payload.session_id.clone(),
-                        entry: ChatEntry::user(&payload.text),
-                    },
-                }) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
-                }
-            }
-            EnqueueAction::Queued => {}
-            EnqueueAction::SetInputText(text) => {
-                if let Err(e) = ctx.send_command(Command::SetChatInputText {
-                    payload: SetChatInputText {
-                        session_id: payload.session_id.clone(),
-                        text,
-                    },
-                }) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SetChatInputText");
-                }
-            }
-        }
-    }
-
-    /// SetChatInputText: update the session's input buffer.
-    fn handle_set_chat_input_text(&self, payload: &SetChatInputText) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&payload.session_id);
-        session.chat_input_mut().replace_all(payload.text.clone());
-    }
-
-    /// PushChatEntry: push entry to session history, emit ChatEntrySubmitted event.
-    fn handle_push_chat_entry(&self, payload: &PushChatEntry, ctx: &ActorContext) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.push_entry(payload.entry.clone());
-        }
-
-        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted {
-            payload: ChatEntrySubmitted {
-                session_id: payload.session_id.clone(),
-                entry: payload.entry.clone(),
-            },
-        }) {
-            tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
-        }
-    }
-
-    /// PushToolResult: add tool result to session history.
-    fn handle_push_tool_result(&self, payload: &PushToolResult) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&payload.session_id);
-        session.push_entry(ChatEntry::tool_result(
-            &payload.result.tool_call_id,
-            &payload.result.name,
-            &payload.result.content,
-            payload.result.success,
-        ));
-    }
-
-    /// SendMessage: backward compat — emit EnqueueUserMessage.
-    fn handle_send_message(payload: &SendMessage, ctx: &ActorContext) {
-        if let Err(e) = ctx.send_command(Command::EnqueueUserMessage {
-            payload: EnqueueUserMessage {
-                session_id: payload.session_id.clone(),
-                text: payload.text.clone(),
-            },
-        }) {
-            tracing::warn!(err = ?e, "session-actor failed to emit EnqueueUserMessage");
-        }
-    }
-
-    /// SessionLoadCompleted: restore session state and emit follow-up commands.
-    fn handle_session_load_completed(&self, payload: &SessionLoadCompleted, ctx: &ActorContext) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.restore_history(payload.history.clone());
-            state.session.active_session = payload.session_id.clone();
-            state.session.session_loading = false;
-        }
-
-        if let Err(e) = ctx.send_command(Command::RestoreStrategyState {
-            payload: RestoreStrategyState {
-                session_id: payload.session_id.clone(),
-                strategy_id: payload.active_strategy.clone(),
-                blob: payload
-                    .blobs
-                    .get(&payload.active_strategy.to_string())
-                    .cloned()
-                    .unwrap_or(serde_json::json!({})),
-            },
-        }) {
-            tracing::warn!(err = ?e, "session-actor failed to emit RestoreStrategyState");
-        }
-
-        if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy {
-            payload: SwitchPromptStrategy {
-                session_id: payload.session_id.clone(),
-                strategy_id: payload.active_strategy.clone(),
-            },
-        }) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SwitchPromptStrategy");
-        }
-    }
-
-    // --- Event handlers ---
-
-    /// PromptAssembled (event): transition session from assembling to streaming,
-    /// emit SendToLlmProvider.
-    fn handle_prompt_assembled(&self, payload: &PromptAssembled, ctx: &ActorContext) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            if session.is_assembling() {
-                session.finish_assembling();
-            }
-            if session.is_sending() {
-                session.finish_sending();
-            }
-            session.begin_streaming();
-        }
-
-        if let Err(e) = ctx.send_command(Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: payload.session_id.clone(),
-                messages: payload.messages.clone(),
-                provider_id: None,
-            },
-        }) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SendToLlmProvider");
-        }
-    }
-
-    /// Appends a streaming token to the session's assistant entry.
-    fn on_stream_token(&self, event: &StreamToken) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        if !session.is_streaming() {
-            session.begin_streaming();
-        }
-        session.append_stream_token(&event.token);
-    }
-
-    /// Marks the session's stream as finished.
-    fn on_stream_completed(&self, event: &StreamCompleted) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.finish_streaming();
-    }
-
-    /// Begins tracking a streaming tool call.
-    fn on_tool_use_started(&self, event: &ToolUseStarted) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.begin_tool_call(event.index, &event.id, &event.name);
-    }
-
-    /// Pushes a tool call entry into the session history.
-    fn on_tool_call_received(&self, event: &ToolCallReceived) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.push_entry(ChatEntry::tool_call(
-            &event.tool_call.id,
-            &event.tool_call.name,
-            &event.tool_call.arguments,
-        ));
-    }
-
-    /// Appends a partial JSON delta to a streaming tool call.
-    fn on_tool_call_streaming(&self, event: &ToolCallStreaming) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.append_tool_call_delta(event.index, &event.partial_json);
-    }
-
-    /// Pushes a tool result entry into the session history.
-    fn on_tool_execution_completed(&self, event: &ToolExecutionCompleted) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.push_entry(ChatEntry::tool_result(
-            &event.result.tool_call_id,
-            &event.result.name,
-            &event.result.content,
-            event.result.success,
-        ));
     }
 }
 
@@ -628,7 +301,7 @@ mod tests {
                 history: vec![ChatEntry::user("test")],
                 active_strategy: PromptStrategyId::sliding_window(),
                 blobs: HashMap::from([(
-                    "strategy_state".to_owned(),
+                    "strategy-state".to_owned(),
                     serde_json::json!({"compaction_count": 5}),
                 )]),
             },
@@ -642,7 +315,7 @@ mod tests {
             .expect("load_full")
             .expect("should have session");
         assert_eq!(full.active_strategy, PromptStrategyId::sliding_window());
-        assert_eq!(full.blobs["strategy_state"]["compaction_count"], 5);
+        assert_eq!(full.blobs["strategy-state"]["compaction_count"], 5);
     }
 
     #[rstest::rstest]
