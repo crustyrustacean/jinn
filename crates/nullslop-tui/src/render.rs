@@ -335,7 +335,7 @@ fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_doma
 
 /// Renders the session picker overlay (delegates to slice).
 fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
-    nullslop_domain::session::render::render_session_picker(frame, area, state);
+    nullslop_domain::feat::session::render::render_session_picker(frame, area, state);
 }
 
 /// Renders a "terminal too small" message.

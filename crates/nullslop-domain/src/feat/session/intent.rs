@@ -17,7 +17,7 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
     state
         .session
         .sessions
-        .insert(new_id.clone(), crate::session::chat_session::ChatSessionState::new());
+        .insert(new_id.clone(), crate::feat::session::chat_session::ChatSessionState::new());
     state.session.active_session = new_id;
     state.frontend.mode = Mode::Normal;
 

@@ -17,7 +17,6 @@ pub mod feat;
 
 // Not yet reorganized (handled in later phases)
 pub mod protocol;
-pub mod session;
 
 // Re-export actor framework types
 pub use common::actor::{
@@ -68,8 +67,8 @@ pub use feat::context::DefaultStrategyDiscovery;
 pub use feat::context::DefaultStrategyFactory;
 
 // Re-export session types
-pub use session::JsonlSessionStore;
-pub use session::SessionStoreService;
+pub use feat::session::JsonlSessionStore;
+pub use feat::session::SessionStoreService;
 
 // Re-export prompt template utilities
 pub use feat::context::prompt_template::{ensure_prompts_dir_with_example, prompts_dir};

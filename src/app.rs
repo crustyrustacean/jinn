@@ -28,8 +28,8 @@ use nullslop_domain::actor_channel::ActorChannelService;
 use nullslop_domain::cache_path;
 use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::core_channel::CoreChannelService;
-use nullslop_domain::session::JsonlSessionStore as DomainJsonlSessionStore;
-use nullslop_domain::session::SessionStoreService as DomainSessionStoreService;
+use nullslop_domain::feat::session::JsonlSessionStore as DomainJsonlSessionStore;
+use nullslop_domain::feat::session::SessionStoreService as DomainSessionStoreService;
 use nullslop_domain::strategy_registry::StrategyRegistryService;
 use nullslop_domain::{ActorHostService, InMemoryActorHost};
 use nullslop_domain::{ActorMessageSink, AppCore, AppMsg, State, spawn_forwarding_task};
@@ -308,7 +308,7 @@ fn create_core_with_actor_host(
     let domain_session_store = DomainJsonlSessionStore::new();
     let domain_session_store_service =
         DomainSessionStoreService::new(Arc::new(domain_session_store));
-    let (_sp_ref, sp_result) = nullslop_domain::session::spawn_session_actor(
+    let (_sp_ref, sp_result) = nullslop_domain::feat::session::spawn_session_actor(
         state.clone(),
         domain_session_store_service.clone(),
         sink.clone(),

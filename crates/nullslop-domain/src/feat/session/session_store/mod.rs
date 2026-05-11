@@ -16,7 +16,7 @@ use error_stack::Report;
 use wherror::Error;
 
 use crate::protocol::SessionId;
-use crate::session::{PersistedSession, SessionSummary};
+use crate::feat::session::{PersistedSession, SessionSummary};
 
 /// Error type for session store operations.
 #[derive(Debug, Error)]
@@ -101,7 +101,7 @@ mod tests {
     use crate::protocol::{ChatEntry, PromptStrategyId, SessionId};
 
     use super::*;
-    use crate::session::PersistedSession;
+    use crate::feat::session::PersistedSession;
 
     /// Creates a minimal `PersistedSession` for testing.
     fn make_session(id: &SessionId, title: &str) -> PersistedSession {

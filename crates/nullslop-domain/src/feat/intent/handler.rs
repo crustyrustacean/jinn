@@ -139,10 +139,10 @@ impl IntentHandler {
             Intent::ToggleKeymapScopeFilter => {
                 crate::feat::picker::intent::handle_toggle_keymap_scope_filter(state)
             }
-            Intent::SessionNew => crate::session::intent::handle_session_new(state),
-            Intent::RefreshModels => crate::session::intent::handle_refresh_models(state),
+            Intent::SessionNew => crate::feat::session::intent::handle_session_new(state),
+            Intent::RefreshModels => crate::feat::session::intent::handle_refresh_models(state),
             Intent::RescanPromptTemplates => {
-                crate::session::intent::handle_rescan_prompt_templates(state)
+                crate::feat::session::intent::handle_rescan_prompt_templates(state)
             }
 
             // --- Dashboard ---

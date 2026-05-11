@@ -13,7 +13,7 @@ use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use crate::session::SessionStoreService;
+use crate::feat::session::SessionStoreService;
 use tokio::runtime::Handle;
 
 pub mod actor_channel;

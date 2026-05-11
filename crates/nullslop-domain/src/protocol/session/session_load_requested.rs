@@ -4,7 +4,7 @@
 //! The persistence actor receives this event, seeks to the byte offset,
 //! and sends back a [`SessionLoadCompleted`] command with the full session data.
 //!
-//! [`SessionLoadCompleted`]: crate::session::SessionLoadCompleted
+//! [`SessionLoadCompleted`]: crate::feat::session::SessionLoadCompleted
 
 use serde::{Deserialize, Serialize};
 
