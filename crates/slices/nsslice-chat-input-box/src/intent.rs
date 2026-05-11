@@ -316,6 +316,7 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
 
 // --- Helpers ---
 
+/// Checks whether the `$` at the cursor is in a valid position to trigger autocomplete.
 fn is_valid_trigger_position(input: &ChatInputBoxState) -> bool {
     let dollar_pos = input.cursor_pos() - 1;
     if dollar_pos == 0 {
@@ -324,6 +325,7 @@ fn is_valid_trigger_position(input: &ChatInputBoxState) -> bool {
     input.grapheme_at(dollar_pos - 1) == Some(" ")
 }
 
+/// Returns true if the cursor has moved before the autocomplete token start, requiring deactivation.
 fn should_deactivate_on_cursor_move(state: &AppState) -> bool {
     let Some(ac) = state.active_chat_input().autocomplete() else {
         return false;
@@ -331,6 +333,7 @@ fn should_deactivate_on_cursor_move(state: &AppState) -> bool {
     state.active_chat_input().cursor_pos() <= ac.token_start()
 }
 
+/// Performs a fuzzy search against the prompt template store and returns matching entries.
 fn compute_matches(store: &PromptTemplateStore, filter: &str) -> Vec<AutocompleteMatch> {
     store
         .fuzzy_search(filter)

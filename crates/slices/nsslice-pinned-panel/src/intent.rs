@@ -122,6 +122,7 @@ pub fn handle_pinned_panel_pin_cycle(state: &mut AppState) -> IntentResult {
 
 // --- Helpers ---
 
+/// Resolves the currently selected pinned entry to its session and entry IDs.
 fn resolve_selected_entry_id(state: &AppState) -> Option<(SessionId, ChatEntryId)> {
     let sorted_ids = state.sorted_pinned_ids();
     let index = state.frontend.pinned_panel.selection_index(&sorted_ids);
@@ -134,6 +135,7 @@ fn resolve_selected_entry_id(state: &AppState) -> Option<(SessionId, ChatEntryId
     Some((session_id, entry.id.clone()))
 }
 
+/// Cycles a pin position to the next value in the rotation: Top → Bottom → Relative → Top.
 fn cycle_position(pos: PinPosition) -> PinPosition {
     match pos {
         PinPosition::Top => PinPosition::Bottom,
@@ -145,7 +147,6 @@ fn cycle_position(pos: PinPosition) -> PinPosition {
 #[cfg(test)]
 mod tests {
     use nullslop_component::AppState;
-    use nullslop_protocol::context::PinChatEntry;
     use nullslop_protocol::{ChatEntry, Command, PinPosition};
 
     use super::*;

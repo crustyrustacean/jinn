@@ -215,6 +215,7 @@ pub fn handle_toggle_keymap_scope_filter(state: &mut AppState) -> IntentResult {
 
 // --- Private confirm handlers ---
 
+/// Confirms the selected provider and dispatches a switch command.
 fn confirm_provider(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.provider.provider_picker.selected_item() else {
         return IntentResult::empty();
@@ -230,6 +231,7 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     }])
 }
 
+/// Confirms the selected strategy and dispatches a switch command.
 fn confirm_strategy(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.context_strategy_picker.selected_item() else {
         return IntentResult::empty();
@@ -260,6 +262,7 @@ fn confirm_keymap(state: &mut AppState) -> (IntentResult, Option<Intent>) {
     (IntentResult::empty(), Some(intent))
 }
 
+/// Confirms the selected session and dispatches a switch command.
 fn confirm_session(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.session_picker.selected_item() else {
         return IntentResult::empty();
