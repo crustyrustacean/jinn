@@ -1,0 +1,33 @@
+[package]
+name = "nsslice-provider"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nullslop-actor = { workspace = true }
+nullslop-actor-host = { workspace = true }
+kanal = { workspace = true }
+nullslop-component-ui = { workspace = true }
+nullslop-component = { workspace = true }
+nullslop-protocol = { workspace = true }
+nullslop-selection-widget = { workspace = true }
+nullslop-services = { workspace = true }
+nullslop-providers = { workspace = true }
+ratatui = { workspace = true }
+throbber-widgets-tui = { workspace = true }
+unicode-segmentation = { workspace = true }
+jiff = { workspace = true }
+humantime = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+serde_json = { workspace = true }
+llm = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

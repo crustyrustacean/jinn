@@ -1,3 +1,5 @@
+ALWAYS LOAD `VSA-INSTRUCTIONS.md` if you are unsure how to proceed!
+
 # Style Guide
 
 This document defines the _coding conventions_ and _patterns_ for the `nullslop` codebase. Always load the [ARCHITECTURE.md](./ARCHITECTURE.md) document for more detailed information that will help guide change requests and code reviews.
@@ -189,6 +191,51 @@ All services within the `Services` struct must either:
 
 - Be cheap to clone
 - Use the "service wrapper" pattern detailed above.
+
+### Block Scoping
+
+When a value requires multiple setup steps or intermediate bindings, wrap the sequence in a block expression so the final binding is immutable and temporaries don't leak into the surrounding scope. This reduces the number of variables floating around a function and makes the code easier to extract into a function later.
+
+**Create-then-configure:**
+
+```rust
+// ❌ BAD — mutable binding lives past setup
+let mut ui_registry = AppUiRegistry::new();
+register_tui_elements(&mut ui_registry);
+nsslice_status_bar::register(&mut ui_registry);
+nsslice_char_counter::register(&mut ui_registry);
+nsslice_dashboard::register(&mut ui_registry);
+```
+
+```rust
+// ✅ GOOD — setup is scoped, final binding is immutable
+let ui_registry = {
+    let mut ui_registry = AppUiRegistry::new();
+    register_tui_elements(&mut ui_registry);
+    nsslice_status_bar::register(&mut ui_registry);
+    nsslice_char_counter::register(&mut ui_registry);
+    nsslice_dashboard::register(&mut ui_registry);
+    ui_registry
+};
+```
+
+**Intermediate values:**
+
+```rust
+// ❌ BAD — a and b remain in scope after c is computed
+let a = 1;
+let b = 2;
+let c = a + b;
+```
+
+```rust
+// ✅ GOOD — a and b are scoped to the block
+let c = {
+    let a = 1;
+    let b = 2;
+    a + b
+};
+```
 
 ## 3. Data Flow
 

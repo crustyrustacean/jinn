@@ -1,0 +1,23 @@
+[package]
+name = "nsslice-shutdown"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+kanal = { workspace = true }
+nullslop-actor = { workspace = true }
+nullslop-actor-host = { workspace = true }
+nullslop-protocol = { workspace = true }
+nullslop-component = { workspace = true }
+nullslop-services = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+
+[lints]
+workspace = true
