@@ -16,13 +16,7 @@ nullslop-cli = { workspace = true }
 nullslop-core = { workspace = true }
 nullslop-intent = { workspace = true }
 nullslop-tui = { workspace = true }
-nullslop-services = { workspace = true }
-nullslop-providers = { workspace = true }
-nullslop-component = { workspace = true }
 nullslop-domain = { workspace = true, features = ["which-key"] }
-nullslop-prompt-template = { workspace = true }
-nsslice-context-protocol = { workspace = true }
-nsslice-session-management-protocol = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
 wherror = { workspace = true }
@@ -48,18 +42,13 @@ nullslop-actor-host = { path = "crates/common/nullslop-actor-host" }
 # Internal
 nullslop-domain = { path = "crates/common/nullslop-domain" }
 nsslice-context = { path = "crates/slices/nsslice-context" }
-nsslice-context-protocol = { path = "crates/slices/nsslice-context-protocol" }
-nullslop-prompt-template = { path = "crates/common/nullslop-prompt-template" }
 nullslop-protocol = { path = "crates/common/nullslop-protocol" }
 nullslop-core = { path = "crates/common/nullslop-core" }
 nullslop-tui = { path = "crates/common/nullslop-tui" }
 nullslop-component-ui = { path = "crates/common/nullslop-component-ui" }
-nullslop-component = { path = "crates/common/nullslop-component" }
 nullslop-cli = { path = "crates/common/nullslop-cli" }
-nullslop-services = { path = "crates/common/nullslop-services" }
 nsslice-shutdown = { path = "crates/slices/nsslice-shutdown" }
 nsslice-shutdown-protocol = { path = "crates/slices/nsslice-shutdown-protocol" }
-nullslop-providers = { path = "crates/common/nullslop-providers" }
 nullslop-protocol-derive = { path = "crates/common/nullslop-protocol-derive" }
 nullslop-selection-widget = { path = "crates/common/nullslop-selection-widget" }
 nullslop-workflow = { path = "crates/common/nullslop-workflow" }
@@ -73,8 +62,13 @@ nsslice-provider-protocol = { path = "crates/slices/nsslice-provider-protocol" }
 nsslice-pinned-panel = { path = "crates/slices/nsslice-pinned-panel" }
 nsslice-chat-input-box = { path = "crates/slices/nsslice-chat-input-box" }
 nsslice-session-management = { path = "crates/slices/nsslice-session-management" }
-nsslice-session-management-protocol = { path = "crates/slices/nsslice-session-management-protocol" }
 nsslice-chat-session-protocol = { path = "crates/slices/nsslice-chat-session-protocol" }
+nsslice-context-protocol = { path = "crates/slices/nsslice-context-protocol" }
+nsslice-session-management-protocol = { path = "crates/slices/nsslice-session-management-protocol" }
+nullslop-component = { path = "crates/common/nullslop-component" }
+nullslop-prompt-template = { path = "crates/common/nullslop-prompt-template" }
+nullslop-providers = { path = "crates/common/nullslop-providers" }
+nullslop-services = { path = "crates/common/nullslop-services" }
 
 # Error handling
 wherror = "2.3.1"

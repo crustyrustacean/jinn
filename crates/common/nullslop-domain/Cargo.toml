@@ -10,15 +10,9 @@ which-key = ["ratatui-which-key"]
 [dependencies]
 # Internal deps
 nullslop-component-ui = { workspace = true }
-nsslice-dashboard-protocol = { workspace = true }
 llm = { workspace = true }
 nullslop-protocol = { workspace = true }
-nullslop-component = { workspace = true }
-nsslice-chat-input-box-protocol = { workspace = true }
-nullslop-services = { workspace = true }
-nullslop-providers = { workspace = true }
 nullslop-selection-widget = { workspace = true }
-nullslop-prompt-template = { workspace = true }
 nullslop-protocol-derive = { workspace = true }
 
 # External deps
@@ -42,6 +36,8 @@ fuzzy-matcher = { workspace = true }
 parking_lot = { workspace = true }
 kanal = { workspace = true }
 futures = { workspace = true }
+rand = { workspace = true }
+toml = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

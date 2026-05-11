@@ -4,9 +4,9 @@
 //! strategy picker overlay. The [`StrategyEntry`] struct and [`PickerItem`]
 //! implementation live in `nullslop-protocol`.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
+use crate::services::Services;
 use nullslop_protocol::{PromptStrategyId, StrategyEntry};
-use nullslop_services::Services;
 
 /// Loads strategy entries from the strategy registry, marking the active one.
 pub fn load_strategy_entries(

@@ -8,32 +8,32 @@ use std::path::Path;
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
-use nsslice_context_protocol::DefaultStrategyDiscovery;
-use nsslice_session_management_protocol::SessionStoreService;
 use nullslop_cli::Cli;
-use nullslop_component::AppState;
 use nullslop_core::{ActorMessageSink, AppCore, AppMsg, State, spawn_forwarding_task};
+use nullslop_domain::ApiKeys;
+use nullslop_domain::ApiKeysService;
+use nullslop_domain::AppState;
+use nullslop_domain::ConfigStorageService;
+use nullslop_domain::DefaultStrategyDiscovery;
 use nullslop_domain::Event;
+use nullslop_domain::FilesystemConfigStorage;
+use nullslop_domain::LlmServiceFactoryService;
 use nullslop_domain::MessageSink;
+use nullslop_domain::ModelCache;
+use nullslop_domain::NoProvidersAvailableFactory;
+use nullslop_domain::ProviderRegistry;
+use nullslop_domain::ProviderRegistryService;
+use nullslop_domain::Services;
+use nullslop_domain::SessionStoreService;
+use nullslop_domain::actor_channel::ActorChannelService;
+use nullslop_domain::cache_path;
 use nullslop_domain::context::DefaultStrategyFactory;
+use nullslop_domain::core_channel::CoreChannelService;
 use nullslop_domain::session::JsonlSessionStore as DomainJsonlSessionStore;
 use nullslop_domain::session::SessionStoreService as DomainSessionStoreService;
+use nullslop_domain::strategy_registry::StrategyRegistryService;
 use nullslop_domain::{ActorHostService, InMemoryActorHost};
 use nullslop_domain::{ActorStarted, ActorStarting};
-use nullslop_providers::ApiKeys;
-use nullslop_providers::ApiKeysService;
-use nullslop_providers::ConfigStorageService;
-use nullslop_providers::FilesystemConfigStorage;
-use nullslop_providers::LlmServiceFactoryService;
-use nullslop_providers::ModelCache;
-use nullslop_providers::NoProvidersAvailableFactory;
-use nullslop_providers::ProviderRegistry;
-use nullslop_providers::ProviderRegistryService;
-use nullslop_providers::cache_path;
-use nullslop_services::Services;
-use nullslop_services::actor_channel::ActorChannelService;
-use nullslop_services::core_channel::CoreChannelService;
-use nullslop_services::strategy_registry::StrategyRegistryService;
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -123,14 +123,14 @@ impl App {
                 core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
-                load_prompt_templates(&core.state, &nullslop_prompt_template::prompts_dir());
+                load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
 
                 // Resolve mouse selection config from environment.
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
 
                 let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
-                let mut ui_registry = nullslop_component::AppUiRegistry::new();
-                nullslop_component::register_tui_elements(&mut ui_registry);
+                let mut ui_registry = nullslop_domain::AppUiRegistry::new();
+                nullslop_domain::register_tui_elements(&mut ui_registry);
                 nullslop_domain::status_bar::register(&mut ui_registry);
                 nullslop_domain::char_counter::register(&mut ui_registry);
                 nullslop_domain::dashboard::register(&mut ui_registry);
@@ -177,7 +177,7 @@ impl App {
                 core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
-                load_prompt_templates(&core.state, &nullslop_prompt_template::prompts_dir());
+                load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
                 let mut headless = HeadlessApp::new(core, actor_host, core_receiver, self.handle());
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
@@ -241,7 +241,7 @@ fn resolve_initial_factory(
     tracing::warn!("no provider configured or available; use the picker to select one");
     (
         LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory)),
-        nullslop_providers::NO_PROVIDER_ID.to_owned(),
+        nullslop_domain::NO_PROVIDER_ID.to_owned(),
     )
 }
 
@@ -317,7 +317,7 @@ fn create_core_with_actor_host(
 
     // --- Prompt scan actor ---
     let (_scan_ref, scan_result) = nullslop_domain::context::spawn_prompt_scan_actor(
-        nullslop_prompt_template::prompts_dir(),
+        nullslop_domain::prompts_dir(),
         sink.clone(),
         handle,
     );
@@ -332,9 +332,9 @@ fn create_core_with_actor_host(
         provider_registry: provider_registry.clone(),
         api_keys: api_keys.clone(),
         config_storage: config_storage.clone(),
-        session_store: SessionStoreService::new(Arc::new(
-            nsslice_session_management_protocol::JsonlSessionStore::new(),
-        )),
+        session_store: SessionStoreService::new(
+            Arc::new(nullslop_domain::JsonlSessionStore::new()),
+        ),
         strategy_registry: strategy_registry.clone(),
     };
 
@@ -408,8 +408,8 @@ fn create_core_with_actor_host(
 
     // Build AppCore with shared state and sender only.
     let core = AppCore { state, sender };
-    let mut registry = nullslop_component::AppUiRegistry::new();
-    nullslop_component::register_all(&mut registry);
+    let mut registry = nullslop_domain::AppUiRegistry::new();
+    nullslop_domain::register_all(&mut registry);
     nullslop_domain::status_bar::register(&mut registry);
     nullslop_domain::char_counter::register(&mut registry);
     nullslop_domain::dashboard::register(&mut registry);
@@ -443,7 +443,7 @@ fn load_model_cache(state: &State, path: &Path) {
 /// Called once after core creation. Failures are logged but not fatal —
 /// the example is a convenience, not a requirement.
 fn ensure_prompt_example() {
-    if let Err(e) = nullslop_prompt_template::ensure_prompts_dir_with_example() {
+    if let Err(e) = nullslop_domain::ensure_prompts_dir_with_example() {
         tracing::warn!("failed to ensure prompt example: {e:?}");
     }
 }
@@ -453,11 +453,10 @@ fn ensure_prompt_example() {
 /// Called once after core creation. Failures are logged but not fatal —
 /// an empty store is used when the directory is missing or unreadable.
 fn load_prompt_templates(state: &State, path: &Path) {
-    let store =
-        nullslop_prompt_template::PromptTemplateStore::load_from_dir(path).unwrap_or_else(|e| {
-            tracing::warn!("failed to load prompt templates: {e:?}");
-            nullslop_prompt_template::PromptTemplateStore::new()
-        });
+    let store = nullslop_domain::PromptTemplateStore::load_from_dir(path).unwrap_or_else(|e| {
+        tracing::warn!("failed to load prompt templates: {e:?}");
+        nullslop_domain::PromptTemplateStore::new()
+    });
     tracing::info!(count = store.len(), "loaded prompt templates");
     state.write().context.prompt_templates = store;
 }
@@ -564,7 +563,7 @@ mod tests {
         // Given a temp directory with a model cache file.
         let dir = tempfile::tempdir().expect("temp dir");
         let cache_path = dir.path().join("model_cache.json");
-        let cache = nullslop_providers::ModelCache {
+        let cache = nullslop_domain::ModelCache {
             entries: {
                 let mut map = std::collections::HashMap::new();
                 map.insert(
@@ -609,8 +608,8 @@ mod tests {
     #[rstest::rstest]
     fn resolve_initial_factory_finds_keyless_provider_without_default() {
         // Given a registry with a keyless lmstudio provider (no default set).
-        let config = nullslop_providers::ProvidersConfig {
-            providers: vec![nullslop_providers::ProviderEntry {
+        let config = nullslop_domain::ProvidersConfig {
+            providers: vec![nullslop_domain::providers::ProviderEntry {
                 name: "lmstudio".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["my-model".to_owned()],
@@ -621,16 +620,16 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let registry = nullslop_providers::ProviderRegistry::from_config(config).expect("registry");
-        let registry_service = nullslop_providers::ProviderRegistryService::new(registry);
+        let registry = nullslop_domain::ProviderRegistry::from_config(config).expect("registry");
+        let registry_service = nullslop_domain::ProviderRegistryService::new(registry);
         let api_keys_service =
-            nullslop_providers::ApiKeysService::new(nullslop_providers::ApiKeys::new());
+            nullslop_domain::ApiKeysService::new(nullslop_domain::ApiKeys::new());
 
         // When resolving the initial factory.
         let (factory, name) = resolve_initial_factory(&registry_service, &api_keys_service);
 
         // Then a real factory is returned (not the no-provider sentinel).
-        assert_ne!(name, nullslop_providers::NO_PROVIDER_ID);
+        assert_ne!(name, nullslop_domain::NO_PROVIDER_ID);
         assert_eq!(name, "lmstudio/my-model");
         assert_ne!(factory.name(), "NoProvidersAvailable");
     }

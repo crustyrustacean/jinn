@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use nullslop_prompt_template::PromptTemplateStore;
+use crate::prompt_template::PromptTemplateStore;
 use nullslop_protocol::provider::{PromptTemplatesLoaded, RescanPromptTemplates};
 use nullslop_protocol::{Command, Event};
 

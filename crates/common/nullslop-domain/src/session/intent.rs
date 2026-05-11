@@ -1,6 +1,6 @@
 //! Session management intent handlers — session creation, model refresh, and prompt template rescan.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 use nullslop_protocol::{ChatEntry, Command, IntentResult, Mode, SessionId};
 
 use super::validator;
@@ -17,7 +17,7 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
     state
         .session
         .sessions
-        .insert(new_id.clone(), nullslop_component::ChatSessionState::new());
+        .insert(new_id.clone(), crate::component::ChatSessionState::new());
     state.session.active_session = new_id;
     state.frontend.mode = Mode::Normal;
 
@@ -50,7 +50,7 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_component::{AppState, FrontendState, ProviderState};
+    use crate::component::{AppState, FrontendState, ProviderState};
     use nullslop_protocol::{ChatEntry, Command, Mode, PickerKind};
 
     use super::*;

@@ -1,6 +1,6 @@
 //! Navigation intent handlers — scroll, tab, and editor.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 use nullslop_protocol::IntentResult;
 use nullslop_protocol::tab::TabDirection;
 
@@ -62,7 +62,7 @@ pub fn handle_edit_input(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_component::AppState;
+    use crate::component::AppState;
     use nullslop_protocol::ChatEntry;
     use nullslop_protocol::tab::TabDirection;
 

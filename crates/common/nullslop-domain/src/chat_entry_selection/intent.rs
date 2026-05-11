@@ -1,6 +1,6 @@
 //! Chat entry selection intent handlers — navigate and pin entries.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
 use nullslop_protocol::context::PinChatEntry;
 use nullslop_protocol::{Command, IntentResult, PinPosition};
 
@@ -44,7 +44,7 @@ pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_component::AppState;
+    use crate::component::AppState;
     use nullslop_protocol::context::PinChatEntry;
     use nullslop_protocol::{ChatEntry, Command, PinPosition};
 

@@ -7,9 +7,9 @@ use std::mem;
 
 use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
-use nullslop_component::AppUiRegistry;
 use nullslop_core::{AppCore, AppMsg};
 use nullslop_domain::ActorHostService;
+use nullslop_domain::AppUiRegistry;
 use nullslop_domain::{ActiveTab, Intent, Mode, PickerKind};
 use nullslop_intent::IntentHandler;
 use ratatui::Frame;
@@ -50,7 +50,7 @@ pub struct TuiApp {
     /// Application core (state, message channel).
     pub core: AppCore,
     /// Runtime services.
-    pub services: nullslop_services::Services,
+    pub services: nullslop_domain::Services,
     /// Actor host for coordinated shutdown.
     pub actor_host: ActorHostService,
     /// Receiver for core lifecycle notifications (shutdown complete).
@@ -374,10 +374,10 @@ mod tests {
 
     /// Creates a minimal `TuiApp` for testing.
     fn test_app() -> TuiApp {
-        let services = nullslop_services::Services::new();
+        let services = nullslop_domain::Services::new();
         let (sender, _receiver) = kanal::unbounded();
         let core = nullslop_core::AppCore {
-            state: nullslop_component::State::new(nullslop_component::AppState::default()),
+            state: nullslop_domain::State::new(nullslop_domain::AppState::default()),
             sender,
         };
         let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
@@ -385,7 +385,7 @@ mod tests {
             nullslop_domain::FakeActorHost::new(),
         ));
         let mut ui_registry = AppUiRegistry::new();
-        nullslop_component::register_all(&mut ui_registry);
+        nullslop_domain::register_all(&mut ui_registry);
         nullslop_domain::status_bar::register(&mut ui_registry);
         nullslop_domain::char_counter::register(&mut ui_registry);
         nullslop_domain::dashboard::register(&mut ui_registry);
@@ -577,10 +577,10 @@ mod tests {
     #[rstest::rstest]
     fn mouse_events_not_handled_when_mouse_selection_disabled() {
         // Given an app with mouse selection disabled and a registered selectable rect.
-        let services = nullslop_services::Services::new();
+        let services = nullslop_domain::Services::new();
         let (sender, _receiver) = kanal::unbounded();
         let core = nullslop_core::AppCore {
-            state: nullslop_component::State::new(nullslop_component::AppState::default()),
+            state: nullslop_domain::State::new(nullslop_domain::AppState::default()),
             sender,
         };
         let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
@@ -588,7 +588,7 @@ mod tests {
             nullslop_domain::FakeActorHost::new(),
         ));
         let mut ui_registry = AppUiRegistry::new();
-        nullslop_component::register_all(&mut ui_registry);
+        nullslop_domain::register_all(&mut ui_registry);
         nullslop_domain::status_bar::register(&mut ui_registry);
         nullslop_domain::char_counter::register(&mut ui_registry);
         nullslop_domain::dashboard::register(&mut ui_registry);

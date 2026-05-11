@@ -29,7 +29,7 @@
     reason = "auto-idents like IntentHandler, AppState, PickerKind are meaningful names"
 )]
 
-use nullslop_component::AppState;
+use nullslop_domain::AppState;
 use nullslop_domain::PinPosition;
 
 use crate::Intent;

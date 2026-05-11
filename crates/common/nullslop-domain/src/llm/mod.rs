@@ -13,6 +13,8 @@ use std::sync::Arc;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
 use crate::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::providers::StreamEvent;
+use crate::services::providers::LlmServiceFactoryService;
 use futures::StreamExt as _;
 use nullslop_protocol::chat_input::PushChatEntry;
 use nullslop_protocol::provider::LlmMessage;
@@ -24,8 +26,6 @@ use nullslop_protocol::tool::{
     ToolCallStreaming, ToolDefinition, ToolResult, ToolUseStarted, ToolsRegistered,
 };
 use nullslop_protocol::{ChatEntry, Command, Event, SessionId};
-use nullslop_providers::StreamEvent;
-use nullslop_services::providers::LlmServiceFactoryService;
 
 use session::{SessionData, SessionState};
 
@@ -45,7 +45,7 @@ pub enum LlmDirectMsg {}
 ///
 /// Returns an error if the actor fails to activate.
 pub fn spawn(
-    llm_service: nullslop_providers::LlmServiceFactoryService,
+    llm_service: crate::providers::LlmServiceFactoryService,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
 ) -> (ActorRef<LlmDirectMsg>, ActorSpawnResult) {
@@ -493,9 +493,9 @@ mod tests {
     use std::sync::Arc;
 
     use crate::actor::RecordingSink;
+    use crate::providers::FakeLlmServiceFactory;
     use nullslop_protocol::EventMsg as _;
     use nullslop_protocol::tool::{ToolDefinition, ToolsRegistered};
-    use nullslop_providers::FakeLlmServiceFactory;
 
     use super::*;
 
@@ -511,7 +511,7 @@ mod tests {
         tokens: Vec<String>,
     ) -> LlmActor {
         let factory = FakeLlmServiceFactory::new(tokens);
-        let factory_service = nullslop_providers::LlmServiceFactoryService::new(Arc::new(factory));
+        let factory_service = crate::providers::LlmServiceFactoryService::new(Arc::new(factory));
         ctx.set_data(factory_service);
         LlmActor::activate(ctx)
     }
@@ -524,7 +524,7 @@ mod tests {
         tool_calls: Vec<ToolCall>,
     ) -> LlmActor {
         let factory = FakeLlmServiceFactory::with_tool_calls(tokens, tool_calls);
-        let factory_service = nullslop_providers::LlmServiceFactoryService::new(Arc::new(factory));
+        let factory_service = crate::providers::LlmServiceFactoryService::new(Arc::new(factory));
         ctx.set_data(factory_service);
         LlmActor::activate(ctx)
     }
@@ -827,7 +827,7 @@ mod tests {
             vec!["Let me check".to_owned()],
             vec![tool_call.clone()],
         );
-        let factory_service = nullslop_providers::LlmServiceFactoryService::new(Arc::new(factory));
+        let factory_service = crate::providers::LlmServiceFactoryService::new(Arc::new(factory));
         ctx.set_data(factory_service);
         let mut actor = LlmActor::activate(&mut ctx);
         sink.clear();
@@ -877,7 +877,7 @@ mod tests {
             vec!["Let me check".to_owned()],
             vec![tool_call.clone()],
         );
-        let factory_service = nullslop_providers::LlmServiceFactoryService::new(Arc::new(factory));
+        let factory_service = crate::providers::LlmServiceFactoryService::new(Arc::new(factory));
         ctx.set_data(factory_service);
         let mut actor = LlmActor::activate(&mut ctx);
         sink.clear();

@@ -7,7 +7,7 @@ pub mod element;
 
 pub use element::CharCounterElement;
 
-use nullslop_component::AppUiRegistry;
+use crate::component::AppUiRegistry;
 
 /// Register char counter UI element.
 pub fn register(registry: &mut AppUiRegistry) {

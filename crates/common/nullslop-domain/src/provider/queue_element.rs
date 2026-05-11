@@ -3,8 +3,8 @@
 //! Renders stacked dimmed "QUEUED: ⟨first line⟩" entries above the input box
 //! when messages are waiting in the queue.
 
-use nullslop_component::AppState;
-use nullslop_component_ui::UiElement;
+use crate::component::AppState;
+use crate::component_ui::UiElement;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};

@@ -1,6 +1,6 @@
 //! Caching handlers — tool definition caching and template loading.
 
-use nullslop_component::prompt_template::PromptTemplateStore;
+use crate::component::prompt_template::PromptTemplateStore;
 use nullslop_protocol::provider::PromptTemplatesLoaded;
 use nullslop_protocol::tool::ToolsRegistered;
 

@@ -1,9 +1,9 @@
 //! Keymap and context strategy picker render tests.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
+use crate::services::Services;
 use nullslop_protocol::{Intent, KeymapEntry, Mode, PickerKind};
 use nullslop_selection_widget::compute_popup_rect;
-use nullslop_services::Services;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;

@@ -10,8 +10,9 @@
 use std::sync::Arc;
 
 use cucumber::World;
-use nullslop_component::AppState;
 use nullslop_core::{ActorMessageSink, AppCore, AppMsg};
+use nullslop_domain::AppState;
+use nullslop_domain::Services;
 use nullslop_domain::llm::LlmActor;
 use nullslop_domain::protocol::provider::SendToLlmProvider;
 use nullslop_domain::protocol::tool::ToolCall;
@@ -19,8 +20,7 @@ use nullslop_domain::session::actor::{SessionPersistenceActor, SessionPersistenc
 use nullslop_domain::tools::ToolOrchestratorActor;
 use nullslop_domain::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use nullslop_domain::{ActorHostService, InMemoryActorHost, spawn_actor};
-use nullslop_providers::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
-use nullslop_services::Services;
+use nullslop_domain::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
 
 /// Cucumber world wrapping real actors for integration testing.
 ///
@@ -175,7 +175,7 @@ fn create_actor_core(
     );
     let host_arc: Arc<dyn nullslop_domain::ActorHost> = Arc::new(host);
 
-    let services = nullslop_services::test_services::TestServices::builder()
+    let services = nullslop_domain::services::test_services::TestServices::builder()
         .handle(handle.clone())
         .llm_service(llm_service)
         .build();

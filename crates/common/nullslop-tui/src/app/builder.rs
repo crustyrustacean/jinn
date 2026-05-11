@@ -1,8 +1,8 @@
 //! Builder for constructing a [`TuiApp`] with sensible defaults for tests.
 
-use nullslop_component::AppUiRegistry;
 use nullslop_core::AppCore;
 use nullslop_domain::ActorHostService;
+use nullslop_domain::AppUiRegistry;
 use ratatui_spatial_splits::SplitManager;
 
 use super::{PaneFocus, TuiApp, WhichKeyInstance};
@@ -24,22 +24,22 @@ use crate::{AppStatus, MsgHandler};
 #[derive(Default)]
 pub struct TuiAppBuilder {
     /// Optional services override (defaults to fake services).
-    services: Option<nullslop_services::Services>,
+    services: Option<nullslop_domain::Services>,
     /// Optional app state override (defaults to default state).
-    state: Option<nullslop_component::AppState>,
+    state: Option<nullslop_domain::AppState>,
 }
 
 impl TuiAppBuilder {
     /// Override the default services.
     #[must_use]
-    pub fn services(mut self, services: nullslop_services::Services) -> Self {
+    pub fn services(mut self, services: nullslop_domain::Services) -> Self {
         self.services = Some(services);
         self
     }
 
     /// Override the default app state.
     #[must_use]
-    pub fn state(mut self, state: nullslop_component::AppState) -> Self {
+    pub fn state(mut self, state: nullslop_domain::AppState) -> Self {
         self.state = Some(state);
         self
     }
@@ -51,14 +51,14 @@ impl TuiAppBuilder {
 
         let (sender, _receiver) = kanal::unbounded();
         let core = AppCore {
-            state: nullslop_component::State::new(state),
+            state: nullslop_domain::State::new(state),
             sender,
         };
         let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
         let fake_host =
             ActorHostService::new(std::sync::Arc::new(nullslop_domain::FakeActorHost::new()));
         let mut ui_registry = AppUiRegistry::new();
-        nullslop_component::register_all(&mut ui_registry);
+        nullslop_domain::register_all(&mut ui_registry);
         nullslop_domain::status_bar::register(&mut ui_registry);
         nullslop_domain::char_counter::register(&mut ui_registry);
         nullslop_domain::dashboard::register(&mut ui_registry);

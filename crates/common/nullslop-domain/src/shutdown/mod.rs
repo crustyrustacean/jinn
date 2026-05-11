@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
 use crate::actor_host::{ActorSpawnResult, spawn_actor};
-use nullslop_component::State;
+use crate::component::State;
+use crate::services::Services;
 use nullslop_protocol::actor::{ActorShutdownCompleted, ActorStarting, ProceedWithShutdown};
 use nullslop_protocol::{Command, Event};
-use nullslop_services::Services;
 
 /// Tracks which actors are still active during a shutdown.
 #[derive(Debug, Clone, Default)]
@@ -207,14 +207,14 @@ impl ShutdownTrackerActor {
         if let Some(ref services) = self.services {
             services
                 .core_channel
-                .send(nullslop_services::CoreNotification::ShutdownComplete);
+                .send(crate::services::CoreNotification::ShutdownComplete);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use nullslop_component::AppState;
+    use crate::component::AppState;
 
     use super::*;
 

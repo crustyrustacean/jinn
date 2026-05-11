@@ -4,9 +4,9 @@
 //! The [`SessionEntry`] struct and [`PickerItem`] implementation live
 //! in `nullslop-protocol`.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
+use crate::services::Services;
 use nullslop_protocol::SessionEntry;
-use nullslop_services::Services;
 
 /// Loads session entries from the session store, sorted by `updated_at` descending.
 ///
@@ -86,7 +86,7 @@ mod tests {
     #[rstest::rstest]
     fn load_session_entries_returns_empty_on_error() {
         // Given a test Services (with fake session store that returns empty).
-        let services = nullslop_services::Services::new();
+        let services = crate::services::Services::new();
 
         // When loading session entries.
         let entries = load_session_entries(&services);

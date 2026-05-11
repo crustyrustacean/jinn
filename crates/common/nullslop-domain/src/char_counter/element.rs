@@ -3,8 +3,8 @@
 //! Displays the total number of grapheme clusters in the user's in-progress message,
 //! formatted as `chars: N`. The count updates in real time as the user types.
 
-use nullslop_component::AppState;
-use nullslop_component_ui::UiElement;
+use crate::component::AppState;
+use crate::component_ui::UiElement;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::widgets::Paragraph;
@@ -39,7 +39,7 @@ mod tests {
     }
 
     use super::*;
-    use nullslop_component::AppState;
+    use crate::component::AppState;
 
     #[rstest::rstest]
     fn name_returns_char_counter() {

@@ -1,10 +1,10 @@
 //! Provider picker render tests.
 
-use nullslop_component::AppState;
+use crate::component::AppState;
+use crate::providers::{ProviderEntry, ProvidersConfig};
+use crate::services::Services;
 use nullslop_protocol::{Mode, PickerKind};
-use nullslop_providers::{ProviderEntry, ProvidersConfig};
 use nullslop_selection_widget::compute_popup_rect;
-use nullslop_services::Services;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
@@ -34,7 +34,7 @@ fn picker_state_with_ollama() -> (AppState, Services) {
         aliases: vec![],
         default_provider: None,
     };
-    let services = nullslop_services::test_services::TestServices::builder()
+    let services = crate::services::test_services::TestServices::builder()
         .with_providers(config)
         .build();
     (AppState::default(), services)

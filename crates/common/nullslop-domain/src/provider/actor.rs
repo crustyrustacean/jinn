@@ -1,7 +1,7 @@
 //! Provider actor — manages active provider, LLM factory, model cache, and picker entries.
 //!
 //! Subscribes to provider-related commands and events, mutates the corresponding
-//! [`AppState`](nullslop_component::AppState) fields, and emits events for
+//! [`AppState`](crate::component::AppState) fields, and emits events for
 //! other actors to react to.
 //!
 //! # State ownership
@@ -18,11 +18,11 @@
 //! then emit. Never hold the lock during emission.
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use nullslop_component::State;
+use crate::component::State;
+use crate::services::Services;
 use nullslop_protocol::provider::{ModelsRefreshed, ProviderSwitch, ProviderSwitched};
 use nullslop_protocol::system::LoadPickerEntries;
 use nullslop_protocol::{Command, Event, PickerKind};
-use nullslop_services::Services;
 
 use super::loader::load_provider_picker_items;
 
@@ -145,7 +145,7 @@ impl ProviderActor {
         }
 
         // Swap the LLM factory to the newly selected provider.
-        let provider_id = nullslop_providers::ProviderId::new(payload.provider_id.clone());
+        let provider_id = crate::providers::ProviderId::new(payload.provider_id.clone());
         let api_keys = self.services.api_keys.read();
         match self
             .services
@@ -190,7 +190,7 @@ impl ProviderActor {
     fn handle_models_refreshed(&self, event: &ModelsRefreshed) {
         let now = jiff::Timestamp::now();
         let mut state = self.state.write();
-        state.provider.model_cache = Some(nullslop_providers::ModelCache {
+        state.provider.model_cache = Some(crate::providers::ModelCache {
             entries: event.results.clone(),
             last_updated_at: Some(now),
         });
@@ -205,10 +205,10 @@ mod tests {
     use std::sync::Arc;
 
     use crate::actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
-    use nullslop_component::{AppState, State};
+    use crate::component::{AppState, State};
+    use crate::services::Services;
     use nullslop_protocol::provider::{ModelsRefreshed, ProviderSwitch};
     use nullslop_protocol::{Command, Event};
-    use nullslop_services::Services;
 
     use super::ProviderActor;
 
@@ -292,8 +292,8 @@ mod tests {
     #[tokio::test]
     async fn provider_switch_swaps_factory_for_valid_provider() {
         // Given a provider actor with a registry containing a sample provider.
-        use nullslop_providers::{ProviderEntry, ProvidersConfig};
-        use nullslop_services::test_services::TestServices;
+        use crate::providers::{ProviderEntry, ProvidersConfig};
+        use crate::services::test_services::TestServices;
 
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {

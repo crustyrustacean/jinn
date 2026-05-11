@@ -17,4 +17,4 @@ pub use actor_sink::ActorMessageSink;
 pub use app_core::{AppCore, SHUTDOWN_TIMEOUT, coordinated_shutdown, spawn_forwarding_task};
 pub use app_msg::AppMsg;
 // Re-export State from nullslop-component
-pub use nullslop_component::{State, StateReadGuard, StateWriteGuard};
+pub use nullslop_domain::{State, StateReadGuard, StateWriteGuard};

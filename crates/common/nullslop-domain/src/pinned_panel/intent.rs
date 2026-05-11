@@ -8,8 +8,8 @@
 //! - **Pin Top/Bottom/Relative** — set the selected entry's pin position.
 //! - **PinCycle** — rotate the selected entry's position (Top → Bottom → Relative → Top).
 
-use nullslop_component::AppState;
-use nullslop_component::app_state::pin_sort_key;
+use crate::component::AppState;
+use crate::component::app_state::pin_sort_key;
 use nullslop_protocol::context::{PinChatEntry, UnpinChatEntry};
 use nullslop_protocol::{ChatEntryId, Command, IntentResult, PinPosition, SessionId};
 
@@ -146,7 +146,7 @@ fn cycle_position(pos: PinPosition) -> PinPosition {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_component::AppState;
+    use crate::component::AppState;
     use nullslop_protocol::{ChatEntry, Command, PinPosition};
 
     use super::*;

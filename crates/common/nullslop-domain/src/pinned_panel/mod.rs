@@ -14,7 +14,7 @@ pub mod validator;
 
 pub use element::PinnedPanelElement;
 
-use nullslop_component::AppUiRegistry;
+use crate::component::AppUiRegistry;
 
 use crate::ChatEntryId;
 

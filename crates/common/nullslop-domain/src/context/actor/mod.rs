@@ -14,7 +14,7 @@ mod handlers;
 use std::collections::HashMap;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use nullslop_component::State;
+use crate::component::State;
 use nullslop_protocol::context::{
     AssemblePrompt, PinChatEntry, PromptStrategySwitched, RestoreStrategyState,
     SwitchPromptStrategy, UnpinChatEntry,
@@ -139,7 +139,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::actor::{ActorContext, ActorEnvelope, MessageSink, RecordingSink};
-    use nullslop_component::{AppState, State};
+    use crate::component::{AppState, State};
     use nullslop_protocol::ChatEntry;
     use nullslop_protocol::PinPosition;
     use nullslop_protocol::PromptStrategyId;
