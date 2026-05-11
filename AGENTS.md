@@ -1,5 +1,3 @@
-ALWAYS LOAD `VSA-INSTRUCTIONS.md` if you are unsure how to proceed!
-
 # Style Guide
 
 This document defines the _coding conventions_ and _patterns_ for the `nullslop` codebase. Always load the [ARCHITECTURE.md](./ARCHITECTURE.md) document for more detailed information that will help guide change requests and code reviews.
@@ -523,7 +521,36 @@ When implementing features:
 
 ## 8. Tooling
 
-Read the `justfile` to determine what additional tooling is related to this project. Prioritize running commands from the `justfile` instead of manual invocation. If there is a `just test` command, then use that instead of `cargo test`, etc.
+Read the `justfile` to determine what additional tooling is related to this project. Prioritize running commands from the `justfile` instead of manual invocation.
+
+### Version Control
+
+This project uses **Fossil** for version control.
+
+- `fossil commit -m "<message>"` — commit changes
+- `fossil status` — check working tree status
+- `fossil diff` — view unstaged changes
+- `fossil timeline` — view commit history
+
+### Build & Test Commands
+
+These are the commands used by the `phased-task-loop` skill. Always prefer these over raw `cargo` invocations.
+
+| Purpose | Command | Notes |
+|---------|---------|-------|
+| Compile check | `just check` | `cargo check --workspace` — fast compilation without codegen |
+| Full test suite | `just test` | `cargo nextest run` + e2e tests — **all tests must pass before committing** |
+| Lint | `just lint` | `cargo check` + `cargo clippy` + `cargo fmt --check` |
+| Format check | `just fmt` | `cargo fmt --check` |
+| Format fix | `just fmt-fix` | `cargo fmt` |
+| Full CI | `just ci` | lint + test + docs |
+
+### Plan Directory
+
+Task plans live in `.plans/<task>/` where `<task>` is a slugified task name. Each task directory contains:
+
+- `high-level.md` — the phased plan with checkboxes
+- `phase-N.md` — execution plans and phase reviews for each phase
 
 ## 9. Misc
 
