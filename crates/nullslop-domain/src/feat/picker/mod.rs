@@ -5,6 +5,8 @@
 
 pub mod intent;
 pub mod keymap_entries;
+pub mod keymap_entry;
 pub mod render;
 pub mod strategy_entries;
+pub mod strategy_entry;
 pub mod validator;
