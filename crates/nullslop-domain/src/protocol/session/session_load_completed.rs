@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::protocol::CommandMsg;
-use crate::protocol::chat::ChatEntry;
+use crate::feat::session::chat_entry::ChatEntry;
 use crate::protocol::context::PromptStrategyId;
 use crate::protocol::session::SessionId;
 

@@ -244,5 +244,5 @@ impl ChatEntry {
 }
 
 #[cfg(test)]
-#[path = "chat_tests.rs"]
+#[path = "chat_entry_tests.rs"]
 mod chat_tests;

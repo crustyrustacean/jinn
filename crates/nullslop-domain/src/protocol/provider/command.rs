@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::message::LlmMessage;
+use crate::feat::provider::llm_message::LlmMessage;
 use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
 

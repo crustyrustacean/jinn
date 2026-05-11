@@ -9,6 +9,7 @@ mod persisted_session;
 pub mod session_store;
 
 pub mod actor;
+pub mod chat_entry;
 pub mod chat_session;
 pub mod entries;
 pub mod intent;

@@ -7,8 +7,10 @@
 pub mod actor;
 pub mod discover;
 pub mod entries;
+pub mod entries_to_messages;
 pub mod indicator;
 pub mod loader;
+pub mod llm_message;
 pub mod picker_entry;
 pub mod queue_element;
 pub mod render;
