@@ -1,14 +1,11 @@
 //! Provider domain: commands, events, and LLM message types.
 
-mod command;
-mod event;
-
-pub use command::{
+pub use crate::feat::provider::llm_message::LlmMessage;
+pub use crate::feat::provider::protocol::command::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
     SendToLlmProvider,
 };
-pub use event::{
+pub use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
     StreamCompletedReason, StreamToken,
 };
-pub use crate::feat::provider::llm_message::LlmMessage;

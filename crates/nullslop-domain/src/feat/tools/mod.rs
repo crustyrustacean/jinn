@@ -9,6 +9,7 @@
 //! are routed via [`ExecuteTool`] commands on the bus.
 
 mod builtin;
+pub mod protocol;
 pub mod tool_types;
 
 #[cfg(test)]

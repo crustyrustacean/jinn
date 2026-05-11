@@ -13,6 +13,7 @@
 pub mod autocomplete_render;
 pub mod element;
 pub mod intent;
+pub mod protocol;
 pub mod state;
 pub mod validator;
 
