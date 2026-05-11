@@ -19,13 +19,13 @@ use serde_json::Value as JsonValue;
 
 use crate::chat_input_box::ChatInputBoxState;
 use crate::chat_session::ChatSessionState;
-use crate::context_strategy_picker::entries::StrategyEntry;
+use nullslop_protocol::StrategyEntry;
 use crate::dashboard::DashboardState;
-use crate::keymap_picker::entries::KeymapEntry;
+use nullslop_protocol::KeymapEntry;
 use crate::pinned_panel::PinnedPanelState;
 use crate::prompt_template::PromptTemplateStore;
-use crate::provider_picker::entries::PickerEntry;
-use crate::session_picker::entries::SessionEntry;
+use nullslop_protocol::PickerEntry;
+use nullslop_protocol::SessionEntry;
 use crate::shutdown_tracker::ShutdownTrackerState;
 use crate::tui_signals::TuiSignals;
 

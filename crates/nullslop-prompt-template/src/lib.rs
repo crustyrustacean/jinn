@@ -8,9 +8,11 @@
 //! can travel across the actor boundary. This crate owns the loading, parsing,
 //! and storage logic.
 
+mod expand;
 mod loader;
 mod store;
 
+pub use expand::expand_tokens;
 pub use loader::PromptTemplateParseError;
 pub use loader::render_template_file;
 pub use store::PromptTemplateStore;

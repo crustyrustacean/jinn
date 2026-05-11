@@ -1,175 +1,10 @@
-//! Provider entries for the picker.
+//! Provider entries — loading, sorting, and formatting.
 //!
-//! Builds the list of providers and aliases available for selection,
-//! and implements [`PickerItem`] so [`SelectionState`] can fuzzy-filter
-//! and render them. Also provides footer formatting utilities for the
-//! provider picker overlay.
-//!
-//! [`PickerItem`]: nullslop_selection_widget::PickerItem
-//! [`SelectionState`]: nullslop_selection_widget::SelectionState
+//! Contains loader functions, sorting, and formatting utilities for the
+//! provider picker overlay. The [`PickerEntry`] struct and [`PickerItem`]
+//! implementation live in `nullslop-protocol`.
 
-use std::ops::Range;
-
-use nullslop_selection_widget::highlight_text;
-use nullslop_selection_widget::PickerItem;
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-
-/// A provider entry ready for display in the picker.
-#[derive(Debug, Clone)]
-pub struct PickerEntry {
-    /// Full provider ID in `{name}/{model}` format (e.g., `"ollama/llama3"`).
-    /// For aliases, this is the resolved target's full ID.
-    /// For remote entries, this is `{provider_name}/{model}`.
-    pub provider_id: String,
-    /// Display name for the entry (provider block name or alias name).
-    pub name: String,
-    /// Provider block name (e.g., `"ollama"`). Used for display.
-    pub provider_name: String,
-    /// Backend type string.
-    pub backend: String,
-    /// Model identifier (primary display text).
-    pub model: String,
-    /// Whether this entry is an alias.
-    pub is_alias: bool,
-    /// Alias display target (e.g., `"ollama/llama3"`). Only set for aliases.
-    pub alias_target: Option<String>,
-    /// Whether this provider is available (API key present or keyless).
-    pub is_available: bool,
-    /// Whether this entry was discovered from a remote provider (not in static config).
-    pub is_remote: bool,
-    /// Whether this entry is the currently active provider.
-    pub is_active: bool,
-}
-
-impl PickerItem for PickerEntry {
-    fn display_label(&self) -> &str {
-        // Use model as the primary label. Fuzzy matching via SelectionState
-        // searches this plus name/backend through the matcher.
-        &self.model
-    }
-
-    fn render_row(&self, is_selected: bool) -> Line<'static> {
-        render_provider_row(self, is_selected, &[])
-    }
-
-    fn render_row_with_highlight(
-        &self,
-        is_selected: bool,
-        match_indices: &[Range<usize>],
-    ) -> Line<'static> {
-        render_provider_row(self, is_selected, match_indices)
-    }
-}
-
-/// Renders a provider picker row, optionally highlighting matched characters.
-///
-/// Match indices are byte offsets into `entry.model` (the `display_label`).
-/// The label is built as `"{status}{model} ({provider_name})"` — we highlight
-/// only the model portion.
-fn render_provider_row(
-    entry: &PickerEntry,
-    is_selected: bool,
-    match_indices: &[Range<usize>],
-) -> Line<'static> {
-    let active_marker = Span::styled(
-        if entry.is_active { "> " } else { "  " },
-        if entry.is_active {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-        },
-    );
-
-    let status_prefix = if !entry.is_available {
-        "\u{2717} " // ✗
-    } else if entry.is_alias {
-        "\u{2192} " // →
-    } else if entry.is_remote {
-        "* "
-    } else {
-        "  "
-    };
-
-    let label_style = if is_selected {
-        Style::default().fg(Color::White).bg(Color::DarkGray)
-    } else if !entry.is_available {
-        Style::default().fg(Color::DarkGray)
-    } else {
-        Style::default()
-    };
-
-    // Build the model + provider portions.
-    // The suffix after the model differs for aliases vs non-aliases.
-    if entry.is_alias {
-        // Format: "{status}{name} → {model} ({provider_name})"
-        // Only model bytes are matchable.
-        let model_suffix = format!(" ({})", entry.provider_name);
-        let model_spans = highlight_model_in_label(
-            &format!("{}{} → ", status_prefix, entry.name),
-            &entry.model,
-            &model_suffix,
-            label_style,
-            match_indices,
-        );
-        Line::from(
-            std::iter::once(active_marker)
-                .chain(model_spans)
-                .collect::<Vec<_>>(),
-        )
-    } else {
-        // Format: "{status}{model} ({provider_name})"
-        let model_suffix = format!(" ({})", entry.provider_name);
-        let model_spans = highlight_model_in_label(
-            status_prefix,
-            &entry.model,
-            &model_suffix,
-            label_style,
-            match_indices,
-        );
-        Line::from(
-            std::iter::once(active_marker)
-                .chain(model_spans)
-                .collect::<Vec<_>>(),
-        )
-    }
-}
-
-/// Splits a label into spans, applying highlight to matched bytes within the model portion.
-///
-/// The rendered text is: `prefix + model + suffix`.
-/// Only bytes within `model` are matchable (offsets into `model` bytes).
-fn highlight_model_in_label<'a>(
-    prefix: &str,
-    model: &str,
-    suffix: &str,
-    base_style: Style,
-    match_indices: &[Range<usize>],
-) -> Vec<Span<'a>> {
-    if match_indices.is_empty() {
-        return vec![Span::styled(format!("{prefix}{model}{suffix}"), base_style)];
-    }
-
-    let mut spans = Vec::new();
-
-    // Prefix (not searchable).
-    if !prefix.is_empty() {
-        spans.push(Span::styled(prefix.to_owned(), base_style));
-    }
-
-    // Model portion — split at match boundaries.
-    spans.extend(highlight_text(model, base_style, match_indices));
-
-    // Suffix (not searchable).
-    if !suffix.is_empty() {
-        spans.push(Span::styled(suffix.to_owned(), base_style));
-    }
-
-    spans
-}
-
+use nullslop_protocol::PickerEntry;
 /// Reorders entries so that available entries appear first (sorted by model name),
 /// followed by unavailable entries (sorted by model name). When `filter` is empty,
 /// the entry matching `active_provider` is promoted to the very top and marked active.
@@ -212,8 +47,6 @@ pub fn sorted_entries(
     for entry in &mut available {
         entry.is_active = entry.provider_id == active_provider;
     }
-    // Unavailable entries are never active.
-    // (is_active defaults to false from load_provider_entries)
 
     // Merge: available first, then unavailable.
     available.extend(unavailable);
@@ -241,7 +74,6 @@ pub fn format_footer(
         let human = humantime::format_duration(duration);
         let age_color = age_color(secs);
 
-        // Format timestamp without fractional seconds.
         let formatted_ts = format!("{ts:.0}");
 
         let left = "CTRL+R to refresh ";
@@ -306,7 +138,6 @@ pub fn truncate_line(
         return line;
     }
 
-    // Rebuild spans, trimming graphemes that overflow.
     let mut remaining = width;
     let mut spans = Vec::new();
     for span in line.spans {
@@ -345,7 +176,6 @@ pub fn load_provider_entries(
 ) -> Vec<PickerEntry> {
     let mut entries = Vec::new();
 
-    // Collect static provider IDs for collision detection.
     let mut static_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for provider in registry.providers() {
@@ -386,11 +216,9 @@ pub fn load_provider_entries(
         entries.push(entry);
     }
 
-    // Merge remote models from cache.
     if let Some(cache) = model_cache {
         let config = registry.config();
         for (provider_name, models) in &cache.entries {
-            // Find the provider entry for backend/availability info.
             let provider_entry = config.providers.iter().find(|p| &p.name == provider_name);
 
             let (backend, is_available) = match provider_entry {
@@ -404,16 +232,12 @@ pub fn load_provider_entries(
                     };
                     (pe.backend.clone(), avail)
                 }
-                None => {
-                    // Unknown provider in cache — still show it but mark unavailable.
-                    ("unknown".to_owned(), false)
-                }
+                None => ("unknown".to_owned(), false),
             };
 
             for model in models {
                 let provider_id = format!("{provider_name}/{model}");
 
-                // Static wins on collision.
                 if static_ids.contains(&provider_id) {
                     continue;
                 }

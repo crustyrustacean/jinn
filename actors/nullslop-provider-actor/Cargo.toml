@@ -12,6 +12,7 @@ nullslop-protocol = { workspace = true }
 nullslop-component = { workspace = true }
 nullslop-services = { workspace = true }
 nullslop-providers = { workspace = true }
+nsslice-provider = { workspace = true }
 jiff = { workspace = true }
 tracing = { workspace = true }
 

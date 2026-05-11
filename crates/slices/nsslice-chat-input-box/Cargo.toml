@@ -7,6 +7,7 @@ edition = "2024"
 nullslop-component-ui = { workspace = true }
 nullslop-component = { workspace = true }
 nullslop-protocol = { workspace = true }
+nullslop-selection-widget = { workspace = true }
 ratatui = { workspace = true }
 wherror = { workspace = true }
 unicode-segmentation = { workspace = true }

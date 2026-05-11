@@ -1,3 +1,5 @@
+ALWAYS LOAD `VSA-INSTRUCTIONS.md` if you are unsure how to proceed!
+
 # Style Guide
 
 This document defines the _coding conventions_ and _patterns_ for the `nullslop` codebase. Always load the [ARCHITECTURE.md](./ARCHITECTURE.md) document for more detailed information that will help guide change requests and code reviews.

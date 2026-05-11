@@ -33,8 +33,10 @@ nsslice-char-counter = { workspace = true }
 nsslice-dashboard = { workspace = true }
 nsslice-chat-log = { workspace = true }
 nsslice-provider = { workspace = true }
+nsslice-picker = { workspace = true }
 nsslice-pinned-panel = { workspace = true }
 nsslice-chat-input-box = { workspace = true }
+nsslice-session-management = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

@@ -17,13 +17,9 @@
 pub mod app_state;
 pub mod chat_input_box;
 pub mod chat_session;
-pub mod context_strategy_picker;
 pub mod dashboard;
-pub mod keymap_picker;
 pub mod pinned_panel;
 pub mod prompt_template;
-pub mod provider_picker;
-pub mod session_picker;
 pub mod shutdown_tracker;
 pub mod state;
 pub mod tui_signals;
