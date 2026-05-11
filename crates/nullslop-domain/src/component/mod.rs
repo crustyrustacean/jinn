@@ -20,7 +20,7 @@ pub mod state;
 pub mod tui_signals;
 
 pub use crate::feat::chat_input::ChatInputBoxState;
-pub use crate::chat_session::ChatSessionState;
+pub use crate::session::chat_session::ChatSessionState;
 pub use crate::feat::dashboard::DashboardState;
 pub use crate::feat::pinned_panel::PinnedPanelState;
 pub use crate::feat::provider_infra::NO_PROVIDER_ID;

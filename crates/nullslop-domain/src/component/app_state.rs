@@ -19,7 +19,7 @@ use serde_json::Value as JsonValue;
 use super::prompt_template::PromptTemplateStore;
 use super::tui_signals::TuiSignals;
 pub use crate::feat::chat_input::ChatInputBoxState;
-use crate::chat_session::ChatSessionState;
+use crate::session::chat_session::ChatSessionState;
 pub use crate::feat::dashboard::DashboardState;
 pub use crate::feat::pinned_panel::PinnedPanelState;
 use crate::protocol::KeymapEntry;

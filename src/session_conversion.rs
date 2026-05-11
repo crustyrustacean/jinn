@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use nullslop_domain::SessionId;
-use nullslop_domain::chat_session::ChatSessionState;
+use nullslop_domain::session::chat_session::ChatSessionState;
 use nullslop_domain::session::{BLOB_STRATEGY_STATE, PersistedSession};
 
 /// Reconstruct runtime state from a persisted snapshot.
@@ -70,7 +70,7 @@ pub fn session_to_persisted(
 mod tests {
     use std::collections::HashMap;
 
-    use nullslop_domain::chat_session::ChatSessionState;
+    use nullslop_domain::session::chat_session::ChatSessionState;
     use nullslop_domain::session::PersistedSession;
     use nullslop_domain::{ChatEntry, PromptStrategyId, SessionId};
 

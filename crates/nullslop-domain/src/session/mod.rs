@@ -9,10 +9,13 @@ mod persisted_session;
 pub mod session_store;
 
 pub mod actor;
+pub mod chat_session;
 pub mod entries;
 pub mod intent;
 pub mod render;
 pub mod validator;
+
+pub use chat_session::{ChatSessionState, SessionCore, SessionUi};
 
 pub use persisted_session::{BLOB_STRATEGY_STATE, PersistedSession, SessionSummary};
 pub use session_store::{JsonlSessionStore, SessionStore, SessionStoreError, SessionStoreService};
