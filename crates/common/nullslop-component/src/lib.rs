@@ -51,16 +51,3 @@ pub fn register_all(registry: &mut AppUiRegistry) {
 /// Populates the UI element registry with all built-in elements.
 /// After Phase 6, this is empty — all elements are registered by slice crates.
 pub fn register_tui_elements(_registry: &mut AppUiRegistry) {}
-
-/// Test utilities shared across the crate.
-///
-/// Only available in `#[cfg(test)]` builds.
-#[cfg(test)]
-pub(crate) mod test_utils {
-    use nullslop_services::Services;
-
-    /// Create a [`nullslop_services::Services`] with fake implementations for tests.
-    pub fn test_services() -> Services {
-        Services::new()
-    }
-}
