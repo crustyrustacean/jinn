@@ -9,24 +9,20 @@
 //! Unknown sessions are automatically initialized with `PassthroughStrategy`.
 //! Strategy switching uses a [`StrategyFactory`] injected via [`ActorContext`] data.
 
+mod handlers;
+
 use std::collections::HashMap;
 
-use nsslice_context_protocol::{
-    AssemblyContext, CharRatioEstimator, DefaultStrategyFactory, PromptAssembly, StrategyFactory,
-    estimate_entry_tokens,
-};
+use nsslice_context_protocol::{DefaultStrategyFactory, StrategyFactory};
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_component::State;
-use nullslop_component::prompt_template::PromptTemplateStore;
 use nullslop_protocol::context::{
-    AssemblePrompt, PinChatEntry, PromptAssembled, PromptStrategySwitched, RestoreStrategyState,
-    StrategyStateUpdated, SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, PinChatEntry, PromptStrategySwitched, RestoreStrategyState,
+    SwitchPromptStrategy, UnpinChatEntry,
 };
 use nullslop_protocol::provider::PromptTemplatesLoaded;
 use nullslop_protocol::tool::ToolsRegistered;
-use nullslop_protocol::{
-    ChatEntry, Command, Event, PinPosition, SessionId, ToolDefinition, entries_to_messages,
-};
+use nullslop_protocol::{Command, Event, SessionId, ToolDefinition};
 
 /// Direct message type for the prompt assembly actor (unused for now).
 pub enum ContextDirectMsg {}
@@ -34,13 +30,13 @@ pub enum ContextDirectMsg {}
 /// The context actor — handles prompt assembly, strategy management, pinning, and templates.
 pub struct PromptAssemblyActor {
     /// Shared application state.
-    state: State,
+    pub(super) state: State,
     /// Per-session prompt assembly strategies.
-    strategies: HashMap<SessionId, Box<dyn PromptAssembly>>,
+    pub(super) strategies: HashMap<SessionId, Box<dyn nsslice_context_protocol::PromptAssembly>>,
     /// Cached tool definitions from [`ToolsRegistered`] events.
-    tool_definitions: HashMap<String, ToolDefinition>,
+    pub(super) tool_definitions: HashMap<String, ToolDefinition>,
     /// Factory for creating new strategies on switch.
-    factory: Option<Box<dyn StrategyFactory>>,
+    pub(super) factory: Option<Box<dyn StrategyFactory>>,
 }
 
 impl Actor for PromptAssemblyActor {
@@ -134,226 +130,6 @@ impl PromptAssemblyActor {
             }
             _ => {}
         }
-    }
-
-    /// Lazily initializes a passthrough strategy for unknown sessions.
-    fn ensure_strategy(&mut self, session_id: &SessionId) {
-        if !self.strategies.contains_key(session_id) {
-            self.strategies.insert(
-                session_id.clone(),
-                Box::new(nsslice_context_protocol::PassthroughStrategy),
-            );
-        }
-    }
-
-    /// Handles [`AssemblePrompt`] by running the session's strategy.
-    async fn on_assemble_prompt(&mut self, cmd: &AssemblePrompt, ctx: &ActorContext) {
-        let session_id = cmd.session_id.clone();
-        self.ensure_strategy(&session_id);
-        let tools: Vec<ToolDefinition> = cmd
-            .tools
-            .iter()
-            .cloned()
-            .chain(
-                self.tool_definitions
-                    .values()
-                    .filter(|td| !cmd.tools.iter().any(|t| t.name == td.name))
-                    .cloned(),
-            )
-            .collect();
-
-        // Pre-processing: split history into TOP/BOTTOM pins and working history.
-        let top_pins: Vec<ChatEntry> = cmd
-            .history
-            .iter()
-            .filter(|e| e.pin_position() == Some(PinPosition::Top))
-            .cloned()
-            .collect();
-
-        let bottom_pins: Vec<ChatEntry> = cmd
-            .history
-            .iter()
-            .filter(|e| e.pin_position() == Some(PinPosition::Bottom))
-            .cloned()
-            .collect();
-
-        let working_history: Vec<ChatEntry> = cmd
-            .history
-            .iter()
-            .filter(|e| {
-                e.pin_position().is_none() || e.pin_position() == Some(PinPosition::Relative)
-            })
-            .cloned()
-            .collect();
-
-        // Estimate reserved tokens for TOP/BOTTOM pins.
-        let estimator = CharRatioEstimator;
-        let reserved_tokens: usize = top_pins
-            .iter()
-            .chain(bottom_pins.iter())
-            .map(|e| estimate_entry_tokens(&estimator, e))
-            .sum();
-
-        #[expect(
-            clippy::expect_used,
-            reason = "strategy was just ensured by ensure_strategy above"
-        )]
-        let strategy = self
-            .strategies
-            .get(&session_id)
-            .expect("strategy was just ensured");
-        let context = AssemblyContext {
-            history: &working_history,
-            tools: &tools,
-            model_name: &cmd.model_name,
-            session_id: &session_id,
-            budget_offset: reserved_tokens,
-        };
-        let result = match strategy.assemble(&context).await {
-            Ok(assembled) => assembled,
-            Err(e) => {
-                tracing::error!("prompt assembly failed: {e:?}");
-                return;
-            }
-        };
-
-        // Post-processing: re-inject TOP and BOTTOM pins.
-        let mut messages = result.messages;
-
-        // Convert pin entries to messages.
-        let top_messages = entries_to_messages(&top_pins);
-        let bottom_messages = entries_to_messages(&bottom_pins);
-
-        // Insert BOTTOM pins just before the last message.
-        if messages.last().is_some() {
-            #[expect(clippy::expect_used, reason = "just checked non-empty")]
-            let last = messages.pop().expect("just checked non-empty");
-            messages.extend(bottom_messages);
-            messages.push(last);
-        } else {
-            messages.extend(bottom_messages);
-        }
-
-        // Prepend TOP pins.
-        let mut final_messages = top_messages;
-        final_messages.append(&mut messages);
-
-        let _ = ctx.send_event(Event::PromptAssembled {
-            payload: PromptAssembled {
-                session_id,
-                system_prompt: result.system_prompt,
-                messages: final_messages,
-            },
-        });
-    }
-
-    /// Handles [`PromptStrategySwitched`] by creating a new strategy via the factory.
-    fn on_prompt_strategy_switched(&mut self, evt: &PromptStrategySwitched) {
-        let Some(factory) = self.factory.as_ref() else {
-            tracing::error!("no strategy factory available");
-            return;
-        };
-        match factory.create(&evt.strategy_id) {
-            Ok(new_strategy) => {
-                self.strategies.insert(evt.session_id.clone(), new_strategy);
-            }
-            Err(e) => {
-                tracing::error!("failed to create strategy '{}': {e:?}", evt.strategy_id);
-            }
-        }
-    }
-
-    /// Caches tool definitions from a [`ToolsRegistered`] event.
-    fn on_tools_registered(&mut self, evt: &ToolsRegistered) {
-        for def in &evt.definitions {
-            self.tool_definitions.insert(def.name.clone(), def.clone());
-        }
-    }
-
-    // --- Pinning handlers (migrated from coordinator) ---
-
-    /// PinChatEntry: pin entry in session.
-    fn handle_pin_chat_entry(&self, payload: &PinChatEntry) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&payload.session_id);
-        session.pin_entry(&payload.entry_id, payload.position);
-    }
-
-    /// UnpinChatEntry: unpin entry in session.
-    fn handle_unpin_chat_entry(&self, payload: &UnpinChatEntry) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&payload.session_id);
-        session.unpin_entry(&payload.entry_id);
-    }
-
-    // --- Strategy handlers (migrated from coordinator) ---
-
-    /// SwitchPromptStrategy: switch strategy, emit RestoreStrategyState + PromptStrategySwitched.
-    fn handle_switch_prompt_strategy(&self, payload: &SwitchPromptStrategy, ctx: &ActorContext) {
-        let blob = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.switch_strategy(payload.strategy_id.clone());
-            state
-                .context
-                .strategy_state
-                .get(&(payload.session_id.clone(), payload.strategy_id.clone()))
-                .cloned()
-                .unwrap_or(serde_json::json!({}))
-        };
-
-        if let Err(e) = ctx.send_command(Command::RestoreStrategyState {
-            payload: RestoreStrategyState {
-                session_id: payload.session_id.clone(),
-                strategy_id: payload.strategy_id.clone(),
-                blob,
-            },
-        }) {
-            tracing::warn!(err = ?e, "context-actor failed to emit RestoreStrategyState");
-        }
-
-        if let Err(e) = ctx.send_event(Event::PromptStrategySwitched {
-            payload: PromptStrategySwitched {
-                session_id: payload.session_id.clone(),
-                strategy_id: payload.strategy_id.clone(),
-            },
-        }) {
-            tracing::warn!(
-                err = ?e,
-                "context-actor failed to emit PromptStrategySwitched"
-            );
-        }
-    }
-
-    /// RestoreStrategyState: set strategy blob on session, emit StrategyStateUpdated.
-    fn handle_restore_strategy_state(&self, payload: &RestoreStrategyState, ctx: &ActorContext) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.set_strategy_state(payload.blob.clone());
-            state.context.strategy_state.insert(
-                (payload.session_id.clone(), payload.strategy_id.clone()),
-                payload.blob.clone(),
-            );
-        }
-
-        if let Err(e) = ctx.send_event(Event::StrategyStateUpdated {
-            payload: StrategyStateUpdated {
-                session_id: payload.session_id.clone(),
-                strategy_id: payload.strategy_id.clone(),
-                blob: payload.blob.clone(),
-            },
-        }) {
-            tracing::warn!(err = ?e, "context-actor failed to emit StrategyStateUpdated");
-        }
-    }
-
-    // --- Template handler (migrated from projector) ---
-
-    /// Replaces the prompt template store with the loaded templates.
-    fn on_prompt_templates_loaded(&self, event: &PromptTemplatesLoaded) {
-        let mut state = self.state.write();
-        state.context.prompt_templates = PromptTemplateStore::from_vec(event.templates.clone());
     }
 }
 

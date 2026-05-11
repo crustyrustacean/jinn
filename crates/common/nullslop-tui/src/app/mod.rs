@@ -1,5 +1,9 @@
 //! Main application state and per-frame rendering.
 
+mod builder;
+mod pinned_pane;
+mod signals;
+
 use std::mem;
 
 use crossterm::event::{MouseButton, MouseEventKind};
@@ -23,17 +27,9 @@ use crate::selection::{SelectableRects, SelectionState};
 use crate::suspend::{Suspend, SuspendAction};
 use crate::{AppStatus, MsgHandler};
 
-/// Well-known area ID for the chat pane in the split layout.
-pub(crate) const CHAT_PANE: AreaId = AreaId(1);
-
-/// Which pane currently has keyboard focus in the Chat tab.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaneFocus {
-    /// The chat log pane (left side).
-    Chat,
-    /// The pinned context sidebar pane (right side).
-    Pinned,
-}
+pub use builder::TuiAppBuilder;
+pub(crate) use pinned_pane::CHAT_PANE;
+pub use pinned_pane::PaneFocus;
 
 /// Type alias for the which-key state parameterized for nullslop.
 pub type WhichKeyInstance =
@@ -233,7 +229,7 @@ impl TuiApp {
             }
 
             // Collect signals and mode before releasing lock.
-            let signals = TuiSignalsSnapshot::from_state(&state);
+            let signals = signals::TuiSignalsSnapshot::from_state(&state);
             let mode = state.frontend.mode;
             let commands = result.commands;
 
@@ -278,89 +274,6 @@ impl TuiApp {
     /// Renders the application for a single frame.
     pub fn render(&mut self, frame: &mut Frame<'_>) {
         render::render(self, frame);
-    }
-
-    /// Opens the pinned context sidebar pane by splitting the chat area vertically.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `CHAT_PANE` is not a valid leaf in the split manager.
-    #[expect(
-        clippy::expect_used,
-        reason = "CHAT_PANE invariant maintained by split manager"
-    )]
-    pub fn open_pinned_pane(&mut self) {
-        if self.pinned_pane_visible {
-            // Already visible — just ensure focus is set.
-            self.pane_focus = PaneFocus::Pinned;
-            return;
-        }
-        // Defensive: if we have a stale tracked ID in the tree, reuse it.
-        if let Some(id) = self.pinned_pane_id
-            && self.split_manager.contains(id)
-        {
-            self.pinned_pane_visible = true;
-            self.pane_focus = PaneFocus::Pinned;
-            return;
-        }
-        let result = self
-            .split_manager
-            .split_vertical_with_ratio(CHAT_PANE, 0.7)
-            .expect("CHAT_PANE should always be a valid leaf");
-        self.pinned_pane_id = Some(result.new);
-        self.pinned_pane_visible = true;
-        self.pane_focus = PaneFocus::Pinned;
-    }
-
-    /// Closes the pinned context sidebar pane.
-    pub fn close_pinned_pane(&mut self) {
-        if !self.pinned_pane_visible {
-            return;
-        }
-        if let Some(id) = self.pinned_pane_id {
-            self.split_manager.close(id);
-            self.pinned_pane_id = None;
-        }
-        self.pinned_pane_visible = false;
-        self.pane_focus = PaneFocus::Chat;
-    }
-
-    /// Toggles the pinned context sidebar pane.
-    pub fn toggle_pinned_pane(&mut self) {
-        if self.pinned_pane_visible {
-            self.close_pinned_pane();
-        } else {
-            self.open_pinned_pane();
-        }
-    }
-}
-
-/// Snapshot of [`nullslop_component::tui_signals::TuiSignals`] fields, copied
-/// out of AppState before releasing the write lock.
-#[derive(Debug)]
-struct TuiSignalsSnapshot {
-    /// Whether to toggle the which-key overlay.
-    toggle_whichkey: bool,
-    /// Whether an external editor was requested.
-    edit_requested: bool,
-    /// Whether to toggle the pinned pane visibility.
-    pinned_pane_toggle: bool,
-    /// Whether to open the pinned pane.
-    pinned_pane_open: bool,
-    /// Whether to close the pinned pane.
-    pinned_pane_close: bool,
-}
-
-impl TuiSignalsSnapshot {
-    /// Extracts TUI signal flags from the given app state.
-    fn from_state(state: &nullslop_component::AppState) -> Self {
-        Self {
-            toggle_whichkey: state.frontend.tui_signals.toggle_whichkey,
-            edit_requested: state.frontend.tui_signals.edit_requested,
-            pinned_pane_toggle: state.frontend.tui_signals.pinned_pane_toggle,
-            pinned_pane_open: state.frontend.tui_signals.pinned_pane_open,
-            pinned_pane_close: state.frontend.tui_signals.pinned_pane_close,
-        }
     }
 }
 
@@ -880,92 +793,5 @@ mod tests {
 
         // Then there is still exactly 1 leaf (the chat pane).
         assert_eq!(app.split_manager.leaves().len(), 1);
-    }
-}
-
-/// Builder for constructing a [`TuiApp`] with sensible defaults for tests.
-///
-/// All fields default to fake/noop implementations. Override only what the test needs.
-///
-/// ```ignore
-/// let app = TuiApp::test_builder()
-///     .services(custom_services)
-///     .build();
-/// ```
-#[derive(Default)]
-pub struct TuiAppBuilder {
-    /// Optional services override (defaults to fake services).
-    services: Option<nullslop_services::Services>,
-    /// Optional app state override (defaults to default state).
-    state: Option<nullslop_component::AppState>,
-}
-
-impl TuiAppBuilder {
-    /// Override the default services.
-    #[must_use]
-    pub fn services(mut self, services: nullslop_services::Services) -> Self {
-        self.services = Some(services);
-        self
-    }
-
-    /// Override the default app state.
-    #[must_use]
-    pub fn state(mut self, state: nullslop_component::AppState) -> Self {
-        self.state = Some(state);
-        self
-    }
-
-    /// Build the `TuiApp` with the configured overrides.
-    pub fn build(self) -> TuiApp {
-        let services = self.services.unwrap_or_default();
-        let state = self.state.unwrap_or_default();
-
-        let (sender, _receiver) = kanal::unbounded();
-        let core = AppCore {
-            state: nullslop_component::State::new(state),
-            sender,
-        };
-        let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
-        let fake_host = ActorHostService::new(std::sync::Arc::new(
-            nullslop_actor_host::FakeActorHost::new(),
-        ));
-        let mut ui_registry = AppUiRegistry::new();
-        nullslop_component::register_all(&mut ui_registry);
-        nsslice_status_bar::register(&mut ui_registry);
-        nsslice_char_counter::register(&mut ui_registry);
-        nsslice_dashboard::register(&mut ui_registry);
-        nsslice_chat_log::register(&mut ui_registry);
-        nsslice_provider::register(&mut ui_registry);
-        nsslice_pinned_panel::register(&mut ui_registry);
-        nsslice_chat_input_box::register(&mut ui_registry);
-
-        TuiApp {
-            core,
-            services,
-            actor_host: fake_host,
-            core_receiver: core_rx,
-            ui_registry,
-            events: MsgHandler::new(),
-            which_key: WhichKeyInstance::new(crate::keymap::init(), Scope::Normal),
-            suspend: Suspend::new(),
-            event_task: None,
-            status: AppStatus::Starting,
-            tab_manager: crate::render::init_tab_manager(),
-            selection: SelectionState::Idle,
-            selectable_rects: SelectableRects::default(),
-            pending_clipboard: false,
-            config: TuiConfig::default(),
-            split_manager: SplitManager::new(),
-            pane_focus: PaneFocus::Chat,
-            pinned_pane_visible: false,
-            pinned_pane_id: None,
-        }
-    }
-}
-
-impl TuiApp {
-    /// Create a test builder with sensible defaults.
-    pub fn test_builder() -> TuiAppBuilder {
-        TuiAppBuilder::default()
     }
 }
