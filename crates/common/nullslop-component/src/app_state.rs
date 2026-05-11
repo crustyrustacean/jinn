@@ -16,7 +16,7 @@ use nullslop_protocol::{
 };
 use serde_json::Value as JsonValue;
 
-use crate::chat_session::ChatSessionState;
+use nsslice_chat_session_protocol::ChatSessionState;
 use crate::prompt_template::PromptTemplateStore;
 use crate::tui_signals::TuiSignals;
 pub use nsslice_chat_input_box_protocol::ChatInputBoxState;

@@ -16,7 +16,7 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
     let new_id = SessionId::new();
     state.session.sessions.insert(
         new_id.clone(),
-        nullslop_component::chat_session::ChatSessionState::new(),
+        nsslice_chat_session_protocol::ChatSessionState::new(),
     );
     state.session.active_session = new_id;
     state.frontend.mode = Mode::Normal;

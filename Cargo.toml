@@ -28,6 +28,7 @@ nsslice-context = { workspace = true }
 nsslice-context-protocol = { workspace = true }
 nullslop-prompt-template = { workspace = true }
 nsslice-tools = { workspace = true }
+nsslice-chat-session-protocol = { workspace = true }
 nsslice-provider-protocol = { workspace = true }
 nsslice-status-bar = { workspace = true }
 nsslice-char-counter = { workspace = true }
@@ -102,6 +103,7 @@ nsslice-navigation = { path = "crates/slices/nsslice-navigation" }
 nsslice-session-management = { path = "crates/slices/nsslice-session-management" }
 nsslice-session-management-protocol = { path = "crates/slices/nsslice-session-management-protocol" }
 nsslice-global = { path = "crates/slices/nsslice-global" }
+nsslice-chat-session-protocol = { path = "crates/slices/nsslice-chat-session-protocol" }
 
 # Error handling
 wherror = "2.3.1"
