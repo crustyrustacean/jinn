@@ -16,6 +16,7 @@ pub mod actor_ref;
 pub mod context;
 pub mod envelope;
 pub mod message_sink;
+pub mod protocol;
 
 pub use actor::Actor;
 pub use actor_ref::ActorRef;

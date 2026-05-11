@@ -14,6 +14,7 @@ pub mod chat_session;
 pub mod entries;
 pub mod intent;
 pub mod picker_entry;
+pub mod protocol;
 pub mod render;
 pub mod validator;
 

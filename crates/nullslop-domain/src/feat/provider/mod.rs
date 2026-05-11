@@ -12,6 +12,7 @@ pub mod indicator;
 pub mod loader;
 pub mod llm_message;
 pub mod picker_entry;
+pub mod protocol;
 pub mod queue_element;
 pub mod render;
 
