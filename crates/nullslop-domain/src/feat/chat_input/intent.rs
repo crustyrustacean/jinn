@@ -16,7 +16,7 @@ use crate::common::app_state::AppState;
 use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
-use crate::protocol::chat_input::EnqueueUserMessage;
+use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::protocol::{Command, IntentResult, Mode};
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -301,7 +301,7 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         let session_id = state.session.active_session.clone();
         state.active_session_mut().cancel_stream_and_drain();
         commands.push(Command::CancelStream {
-            payload: crate::protocol::provider::CancelStream { session_id },
+            payload: crate::feat::provider::protocol::command::CancelStream { session_id },
         });
     }
 

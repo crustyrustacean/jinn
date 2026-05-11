@@ -16,19 +16,17 @@
 use serde::{Deserialize, Serialize};
 
 // Internal imports for enum definition, type_name(), and tests.
-use crate::protocol::actor::{ActorShutdownCompleted, ActorStarted, ActorStarting};
-use crate::protocol::chat_input::ChatEntrySubmitted;
-use crate::protocol::context::PromptAssembled;
-use crate::protocol::context::PromptStrategySwitched;
-use crate::protocol::context::StrategyStateUpdated;
+use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
+use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
+use crate::feat::context::protocol::event::{PromptAssembled, PromptStrategySwitched, StrategyStateUpdated};
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::protocol::custom::EventMsg;
-use crate::protocol::provider::{
+use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
 };
-use crate::protocol::session::SessionSaveRequested;
+use crate::feat::session::protocol::session_save_requested::SessionSaveRequested;
 use crate::protocol::system::{KeyDown, KeyUp, ModeChanged};
-use crate::protocol::tool::{
+use crate::feat::tools::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolUseStarted, ToolsRegistered,
 };
@@ -235,8 +233,8 @@ impl Event {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::provider::StreamCompletedReason;
-    use crate::protocol::session::SessionSaveRequested;
+    use crate::feat::provider::protocol::event::StreamCompletedReason;
+    use crate::feat::session::protocol::session_save_requested::SessionSaveRequested;
     use crate::protocol::{ChatEntry, Key, KeyEvent, Mode, Modifiers, SessionId};
 
     #[rstest::rstest]

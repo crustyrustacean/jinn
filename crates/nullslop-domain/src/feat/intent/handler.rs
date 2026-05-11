@@ -30,7 +30,7 @@
 )]
 
 use crate::AppState;
-use crate::PinPosition;
+use crate::protocol::PinPosition;
 
 use crate::Intent;
 

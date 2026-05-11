@@ -8,7 +8,7 @@ use error_stack::{Report, ResultExt};
 use nullslop_domain::ActorHostService;
 use nullslop_domain::Command;
 use nullslop_domain::IntentHandler;
-use nullslop_domain::protocol::chat_input::EnqueueUserMessage;
+use nullslop_domain::EnqueueUserMessage;
 use nullslop_domain::{AppCore, AppMsg};
 use wherror::Error;
 

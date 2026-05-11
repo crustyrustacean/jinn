@@ -3,7 +3,7 @@
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::protocol::ChatEntry;
 use crate::protocol::ChatEntryKind;
-use crate::protocol::tool::ToolCall;
+use crate::feat::tools::tool_types::ToolCall;
 
 /// Convert chat history entries to LLM messages.
 ///

@@ -1,8 +1,9 @@
 //! Event handlers — process streaming and tool call events.
 
-use crate::protocol::context::PromptAssembled;
-use crate::protocol::provider::{SendToLlmProvider, StreamCompleted, StreamToken};
-use crate::protocol::tool::{
+use crate::feat::context::protocol::event::PromptAssembled;
+use crate::feat::provider::protocol::command::SendToLlmProvider;
+use crate::feat::provider::protocol::event::{StreamCompleted, StreamToken};
+use crate::feat::tools::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
 use crate::protocol::{ChatEntry, Command};

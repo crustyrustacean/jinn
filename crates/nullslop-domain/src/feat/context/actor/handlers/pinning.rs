@@ -1,6 +1,6 @@
 //! Pinning handlers — pin and unpin chat entries.
 
-use crate::protocol::context::{PinChatEntry, UnpinChatEntry};
+use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 
 use super::super::PromptAssemblyActor;
 

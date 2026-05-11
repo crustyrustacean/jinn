@@ -17,15 +17,17 @@ use crate::common::actor::{
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::feat::provider_infra::LlmServiceFactoryService;
 use crate::feat::provider_infra::StreamEvent;
-use crate::protocol::chat_input::PushChatEntry;
-use crate::protocol::provider::LlmMessage;
-use crate::protocol::provider::{
-    CancelStream, SendToLlmProvider, StreamCompleted, StreamCompletedReason, StreamToken,
+use crate::feat::chat_input::protocol::command::PushChatEntry;
+use crate::feat::provider::llm_message::LlmMessage;
+use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
+use crate::feat::provider::protocol::event::{
+    StreamCompleted, StreamCompletedReason, StreamToken,
 };
-use crate::protocol::tool::{
-    ExecuteToolBatch, PushToolResult, ToolBatchCompleted, ToolCall, ToolCallReceived,
-    ToolCallStreaming, ToolDefinition, ToolResult, ToolUseStarted, ToolsRegistered,
+use crate::feat::tools::protocol::command::{ExecuteToolBatch, PushToolResult};
+use crate::feat::tools::protocol::event::{
+    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolUseStarted, ToolsRegistered,
 };
+use crate::feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::protocol::{ChatEntry, Command, Event, SessionId};
 use futures::StreamExt as _;
 
@@ -497,7 +499,8 @@ mod tests {
     use crate::common::actor::RecordingSink;
     use crate::feat::provider_infra::FakeLlmServiceFactory;
     use crate::protocol::EventMsg as _;
-    use crate::protocol::tool::{ToolDefinition, ToolsRegistered};
+    use crate::feat::tools::protocol::event::ToolsRegistered;
+    use crate::feat::tools::tool_types::ToolDefinition;
 
     use super::*;
 

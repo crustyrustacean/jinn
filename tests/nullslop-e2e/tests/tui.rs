@@ -186,7 +186,7 @@ fn when_user_presses_key_with_mod(world: &mut TuiWorld, key: String, modifier: S
 )]
 fn when_routes_push_chat_entry(world: &mut TuiWorld, source: String, text: String) {
     world.route_command(nullslop_domain::Command::PushChatEntry {
-        payload: nullslop_domain::protocol::chat_input::PushChatEntry {
+        payload: nullslop_domain::PushChatEntry {
             session_id: nullslop_domain::SessionId::new(),
             entry: nullslop_domain::ChatEntry::actor(source, text),
         },

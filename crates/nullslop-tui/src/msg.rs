@@ -27,7 +27,7 @@ pub enum Msg {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_domain::protocol::chat_input::PushChatEntry;
+    use nullslop_domain::PushChatEntry;
 
     use super::*;
 

@@ -22,14 +22,17 @@ mod handlers;
 use super::SessionStoreService;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::common::state::State;
-use crate::protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
-use crate::protocol::context::PromptAssembled;
-use crate::protocol::provider::{SendMessage, StreamCompleted, StreamToken};
-use crate::protocol::session::SessionLoadCompleted;
-use crate::protocol::tool::{
-    PushToolResult, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
+use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+use crate::feat::context::protocol::event::PromptAssembled;
+use crate::feat::provider::protocol::command::SendMessage;
+use crate::feat::provider::protocol::event::{StreamCompleted, StreamToken};
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::feat::tools::protocol::command::PushToolResult;
+use crate::feat::tools::protocol::event::{
+    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
-use crate::protocol::{Command, Event, SessionLoadRequested, SessionSaveRequested};
+use crate::protocol::{Command, Event};
+use crate::{SessionLoadRequested, SessionSaveRequested};
 
 /// Direct message type (unused — the actor only responds to bus commands/events).
 pub enum SessionPersistenceDirectMsg {}
@@ -165,21 +168,22 @@ mod tests {
     use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink};
     use crate::common::app_state::AppState;
     use crate::common::state::State;
-    use crate::protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+    use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
     // no context imports needed in tests currently
     use super::super::session_store::{JsonlSessionStore, SessionStoreService};
     use crate::common::services::Services;
-    use crate::protocol::provider::{
-        SendMessage, StreamCompleted, StreamCompletedReason, StreamToken,
-    };
-    use crate::protocol::session::SessionLoadCompleted;
-    use crate::protocol::tool::{
-        PushToolResult, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
+    use crate::feat::provider::protocol::command::SendMessage;
+    use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
+    use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+    use crate::feat::tools::protocol::command::PushToolResult;
+    use crate::feat::tools::protocol::event::{
+        ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     };
     use crate::protocol::{
         ChatEntry, ChatEntryKind, Command, Event, PromptStrategyId, SessionId,
-        SessionSaveRequested, ToolCall, ToolResult,
+        ToolCall, ToolResult,
     };
+    use crate::SessionSaveRequested;
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;
@@ -331,7 +335,7 @@ mod tests {
 
         // When a non-SessionSaveRequested event is sent.
         let event = Event::ActorStarted {
-            payload: crate::protocol::ActorStarted {
+            payload: crate::common::actor::protocol::event::ActorStarted {
                 name: "test".to_owned(),
                 description: None,
             },
@@ -915,7 +919,7 @@ mod tests {
         actor
             .handle(
                 ActorEnvelope::Event(Event::PromptAssembled {
-                    payload: crate::protocol::context::PromptAssembled {
+                    payload: crate::feat::context::protocol::event::PromptAssembled {
                         session_id: session_id.clone(),
                         system_prompt: None,
                         messages: vec![crate::protocol::LlmMessage::User {

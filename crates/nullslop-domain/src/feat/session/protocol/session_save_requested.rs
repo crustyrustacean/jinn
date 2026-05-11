@@ -11,8 +11,8 @@ use serde_json::Value as JsonValue;
 
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::protocol::EventMsg;
-use crate::protocol::context::PromptStrategyId;
-use crate::protocol::session::SessionId;
+use crate::protocol::PromptStrategyId;
+use crate::protocol::SessionId;
 
 /// Request to persist the current session state to disk.
 ///

@@ -20,7 +20,8 @@
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::common::services::Services;
 use crate::common::state::State;
-use crate::protocol::provider::{ModelsRefreshed, ProviderSwitch, ProviderSwitched};
+use crate::feat::provider::protocol::command::ProviderSwitch;
+use crate::feat::provider::protocol::event::{ModelsRefreshed, ProviderSwitched};
 use crate::protocol::system::LoadPickerEntries;
 use crate::protocol::{Command, Event, PickerKind};
 
@@ -210,7 +211,8 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::services::Services;
     use crate::common::state::State;
-    use crate::protocol::provider::{ModelsRefreshed, ProviderSwitch};
+    use crate::feat::provider::protocol::command::ProviderSwitch;
+    use crate::feat::provider::protocol::event::ModelsRefreshed;
     use crate::protocol::{Command, Event};
 
     use super::ProviderActor;

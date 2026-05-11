@@ -13,7 +13,8 @@ use crate::common::actor::{
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::common::services::Services;
 use crate::common::state::State;
-use crate::protocol::actor::{ActorShutdownCompleted, ActorStarting, ProceedWithShutdown};
+use crate::common::actor::protocol::command::ProceedWithShutdown;
+use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarting};
 use crate::protocol::{Command, Event};
 
 /// Tracks which actors are still active during a shutdown.
@@ -112,7 +113,7 @@ impl Actor for ShutdownTrackerActor {
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<ActorStarting>();
-        ctx.subscribe_event::<crate::protocol::actor::ActorStarted>();
+        ctx.subscribe_event::<crate::common::actor::protocol::event::ActorStarted>();
         ctx.subscribe_event::<ActorShutdownCompleted>();
         ctx.subscribe_command::<ProceedWithShutdown>();
 

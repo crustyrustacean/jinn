@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::protocol::LlmMessage;
-use crate::protocol::tool::ToolCall;
+use crate::feat::tools::tool_types::ToolCall;
 use error_stack::Report;
 use futures::stream;
 
@@ -218,7 +218,7 @@ impl LlmService for FakeLlmService {
     async fn chat_stream_with_tools(
         &self,
         messages: Vec<LlmMessage>,
-        _tools: Vec<crate::protocol::tool::ToolDefinition>,
+        _tools: Vec<crate::feat::tools::tool_types::ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
         // Check for multi-turn tool loop trigger.
         if let Some(ref counter) = self.tool_loop_call_count
