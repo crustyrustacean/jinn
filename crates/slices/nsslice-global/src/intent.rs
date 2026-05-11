@@ -188,9 +188,11 @@ mod tests {
         let result = super::handle_interrupt(&mut state, Some(&second_id));
 
         // Then the targeted session's stream is cancelled.
-        assert!(state.session.sessions.get(&second_id).unwrap().is_idle());
+        assert!(state.session.sessions[&second_id].is_idle());
         // And a CancelStream command is returned for that session.
         assert_eq!(result.commands.len(), 1);
-        assert!(matches!(&result.commands[0], Command::CancelStream { payload } if payload.session_id == second_id));
+        assert!(
+            matches!(&result.commands[0], Command::CancelStream { payload } if payload.session_id == second_id)
+        );
     }
 }
