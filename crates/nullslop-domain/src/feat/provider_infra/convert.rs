@@ -5,7 +5,7 @@
 //! public [`LlmService`](crate::LlmService) trait.
 
 use crate::protocol::LlmMessage;
-use crate::protocol::tool::{ToolCall, ToolDefinition};
+use crate::feat::tools::tool_types::{ToolCall, ToolDefinition};
 use llm::chat::{ChatMessage, ChatRole, FunctionTool, MessageType, StreamChunk, Tool};
 use llm::{FunctionCall, ToolCall as LlmToolCall};
 

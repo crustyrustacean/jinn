@@ -24,10 +24,9 @@ use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
 use crate::common::actor_host::spawn_actor;
-use crate::protocol::tool::{
-    ExecuteTool, ExecuteToolBatch, RegisterTools, ToolBatchCompleted, ToolCall, ToolDefinition,
-    ToolExecutionCompleted, ToolResult, ToolsRegistered,
-};
+use crate::feat::tools::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
+use crate::feat::tools::protocol::event::{ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered};
+use crate::feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
 
 /// A boxed future returned by built-in tool execute functions.
@@ -397,7 +396,7 @@ impl ToolOrchestratorActor {
 #[cfg(test)]
 mod tests {
     use crate::common::actor::RecordingSink;
-    use crate::protocol::tool::{ExecuteToolBatch, RegisterTools};
+    use crate::feat::tools::protocol::command::{ExecuteToolBatch, RegisterTools};
 
     use super::*;
 

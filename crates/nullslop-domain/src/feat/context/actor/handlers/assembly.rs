@@ -1,7 +1,8 @@
 //! Assembly handlers — prompt assembly and strategy initialization.
 
 use crate::common::actor::ActorContext;
-use crate::protocol::context::{AssemblePrompt, PromptAssembled};
+use crate::feat::context::protocol::command::AssemblePrompt;
+use crate::feat::context::protocol::event::PromptAssembled;
 use crate::protocol::{
     ChatEntry, Event, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
 };

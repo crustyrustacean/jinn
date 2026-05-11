@@ -7,8 +7,8 @@ use crate::protocol::ChatEntryId;
 use crate::protocol::CommandMsg;
 use crate::protocol::PinPosition;
 use crate::protocol::SessionId;
-use crate::protocol::context::PromptStrategyId;
-use crate::protocol::tool::ToolDefinition;
+use crate::feat::context::protocol::strategy_id::PromptStrategyId;
+use crate::feat::tools::tool_types::ToolDefinition;
 
 /// Request to assemble a prompt from the given history.
 ///

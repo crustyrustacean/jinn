@@ -299,7 +299,7 @@ mod tests {
     use crate::common::actor::{
         Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, RecordingSink,
     };
-    use crate::protocol::chat_input::ChatEntrySubmitted;
+    use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
     use crate::protocol::{Command, CommandMsg as _, Event};
 
     use super::*;
@@ -490,7 +490,7 @@ mod tests {
             "recorder",
             sink.clone(),
             &[],
-            &[crate::protocol::chat_input::PushChatEntry::NAME],
+            &[crate::feat::chat_input::protocol::command::PushChatEntry::NAME],
             runtime.handle(),
         );
         let host =
@@ -499,7 +499,7 @@ mod tests {
         // When sending a registered command.
         host.send_command(
             &Command::PushChatEntry {
-                payload: crate::protocol::chat_input::PushChatEntry {
+                payload: crate::feat::chat_input::protocol::command::PushChatEntry {
                     session_id: crate::protocol::SessionId::new(),
                     entry: crate::protocol::ChatEntry::user("test"),
                 },
@@ -533,7 +533,7 @@ mod tests {
             "recorder",
             sink.clone(),
             &[],
-            &[crate::protocol::chat_input::PushChatEntry::NAME],
+            &[crate::feat::chat_input::protocol::command::PushChatEntry::NAME],
             runtime.handle(),
         );
         let host =
@@ -561,7 +561,7 @@ mod tests {
         let runtime = rt();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
-        let cmd_name = crate::protocol::chat_input::PushChatEntry::NAME;
+        let cmd_name = crate::feat::chat_input::protocol::command::PushChatEntry::NAME;
         let (r1, _received1) =
             spawn_recording_actor("actor-a", sink.clone(), &[], &[cmd_name], runtime.handle());
         let (r2, _received2) =

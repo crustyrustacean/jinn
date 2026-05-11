@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::tool::ToolCall;
+use crate::feat::tools::tool_types::ToolCall;
 
 /// A single message in an LLM conversation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

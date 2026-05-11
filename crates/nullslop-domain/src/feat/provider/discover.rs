@@ -11,7 +11,8 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::feat::provider_infra::{
     ApiKeysService, ModelCache, ProviderRegistryService, cache_path,
 };
-use crate::protocol::provider::{ModelsRefreshed, RefreshModels};
+use crate::feat::provider::protocol::command::RefreshModels;
+use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::protocol::{Command, Event};
 use llm::builder::LLMBuilder;
 

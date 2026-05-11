@@ -10,7 +10,7 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::protocol::actor::{ActorShutdownCompleted, ActorStarted};
+use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted};
 use crate::protocol::{Command, CommandMsg, CommandName, Event, EventMsg, EventTypeName};
 
 use super::ActorRef;

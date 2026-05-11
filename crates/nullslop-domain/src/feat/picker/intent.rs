@@ -7,9 +7,9 @@
 //! dependency.
 
 use crate::common::app_state::AppState;
-use crate::protocol::context::SwitchPromptStrategy;
-use crate::protocol::provider::ProviderSwitch;
-use crate::protocol::session::SessionLoadRequested;
+use crate::feat::context::protocol::command::SwitchPromptStrategy;
+use crate::feat::provider::protocol::command::ProviderSwitch;
+use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::protocol::system::LoadPickerEntries;
 use crate::protocol::{Command, Intent, IntentResult, Mode, PickerKind};
 

@@ -4,7 +4,7 @@
 //! from the `llm` crate's `StreamChunk`. All conversion happens inside
 //! provider implementations.
 
-use crate::protocol::tool::ToolCall;
+use crate::feat::tools::tool_types::ToolCall;
 
 /// A streaming event from an LLM chat response.
 ///

@@ -10,7 +10,7 @@
 
 use crate::common::app_state::AppState;
 use crate::common::app_state::pin_sort_key;
-use crate::protocol::context::{PinChatEntry, UnpinChatEntry};
+use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::protocol::{ChatEntryId, Command, IntentResult, PinPosition, SessionId};
 
 use super::validator;

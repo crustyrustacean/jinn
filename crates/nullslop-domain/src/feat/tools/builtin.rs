@@ -4,7 +4,7 @@
 //! that are registered at actor activation. Each tool has a definition function
 //! (returning a [`ToolDefinition`]) and an execute function (returning a future).
 
-use crate::protocol::tool::{ToolCall, ToolDefinition, ToolResult};
+use crate::feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 use super::BoxedToolFuture;
 

@@ -13,7 +13,8 @@ use crate::common::actor::{
 };
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 
-use crate::protocol::chat_input::{self, ChatEntrySubmitted};
+use crate::feat::chat_input::protocol::command::PushChatEntry;
+use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
 
 /// Direct message type for the echo actor.
@@ -81,7 +82,7 @@ impl EchoActor {
             } => {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 if let Err(e) = ctx.send_command(Command::PushChatEntry {
-                    payload: chat_input::PushChatEntry {
+                    payload: PushChatEntry {
                         session_id: session_id.clone(),
                         entry: ChatEntry::actor("echo", text.to_uppercase()),
                     },

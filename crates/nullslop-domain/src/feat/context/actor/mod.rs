@@ -15,12 +15,12 @@ use std::collections::HashMap;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::common::state::State;
-use crate::protocol::context::{
-    AssemblePrompt, PinChatEntry, PromptStrategySwitched, RestoreStrategyState,
-    SwitchPromptStrategy, UnpinChatEntry,
+use crate::feat::context::protocol::command::{
+    AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
-use crate::protocol::provider::PromptTemplatesLoaded;
-use crate::protocol::tool::ToolsRegistered;
+use crate::feat::context::protocol::event::PromptStrategySwitched;
+use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
+use crate::feat::tools::protocol::event::ToolsRegistered;
 use crate::protocol::{Command, Event, SessionId, ToolDefinition};
 
 use crate::feat::context::{DefaultStrategyFactory, PromptAssembly, StrategyFactory};
@@ -144,7 +144,7 @@ mod tests {
     use crate::protocol::ChatEntry;
     use crate::protocol::PinPosition;
     use crate::protocol::PromptStrategyId;
-    use crate::protocol::context::PromptAssembled;
+    use crate::feat::context::protocol::event::PromptAssembled;
 
     use super::*;
 

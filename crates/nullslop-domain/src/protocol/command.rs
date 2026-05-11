@@ -12,22 +12,20 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::actor::ProceedWithShutdown;
-use crate::protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
-use crate::protocol::context::AssemblePrompt;
-use crate::protocol::context::PinChatEntry;
-use crate::protocol::context::RestoreStrategyState;
-use crate::protocol::context::SwitchPromptStrategy;
-use crate::protocol::context::UnpinChatEntry;
+use crate::common::actor::protocol::command::ProceedWithShutdown;
+use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+use crate::feat::context::protocol::command::{
+    AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
+};
 pub use crate::protocol::custom::CommandMsg;
-use crate::protocol::provider::{
+use crate::feat::provider::protocol::command::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
     SendToLlmProvider,
 };
-use crate::protocol::session::SessionLoadCompleted;
-use crate::protocol::session::SessionLoadRequested;
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::protocol::system::LoadPickerEntries;
-use crate::protocol::tool::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
+use crate::feat::tools::protocol::command::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
 
 /// Every domain command the actor system can receive.
 ///
@@ -315,7 +313,7 @@ mod tests {
         active_strategy: crate::PromptStrategyId::passthrough(),
         blobs: std::collections::HashMap::new(),
     } })]
-    #[case::pin_chat_entry(Command::PinChatEntry { payload: PinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new(), position: crate::PinPosition::Top } })]
+    #[case::pin_chat_entry(Command::PinChatEntry { payload: PinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new(), position: crate::protocol::PinPosition::Top } })]
     #[case::unpin_chat_entry(Command::UnpinChatEntry { payload: UnpinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new() } })]
     #[case::load_picker_entries(Command::LoadPickerEntries { payload: LoadPickerEntries { kind: crate::PickerKind::Provider } })]
     #[case::session_load_requested(Command::SessionLoadRequested { payload: SessionLoadRequested {

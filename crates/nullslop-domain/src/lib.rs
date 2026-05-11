@@ -78,22 +78,42 @@ pub use common::services::actor_channel;
 pub use common::services::core_channel;
 pub use common::services::strategy_registry;
 
-// Re-export protocol types at crate root — these are the same types as nullslop_protocol
+// Re-export protocol types at crate root
 pub use protocol::entries_to_messages;
 pub use protocol::{ActiveTab, TabDirection};
 pub use protocol::{
-    ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, CommandAction,
-    CoreNotification, Event, Intent, IntentResult, Key, KeyEvent, LlmMessage, Mode, Modifiers,
-    PickerKind, PinPosition, PromptTemplate, SessionId, StrategyEntry, SwitchPromptStrategy,
+    ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, CoreNotification, Event,
+    Intent, IntentResult, Key, KeyEvent, Mode, Modifiers, PickerKind, PromptTemplate,
 };
-pub use protocol::{
-    ActorShutdownCompleted, ActorStarted, ActorStarting, AssemblePrompt, CommandMsg, CommandName,
-    EventMsg, EventTypeName, KeymapEntry, PickerEntry, PromptAssembled, PromptStrategyId,
-    PromptStrategySwitched, SessionEntry, SessionLoadCompleted, SessionLoadRequested, SessionNew,
-    SessionSaveRequested,
+pub use protocol::{CommandMsg, CommandName, EventMsg, EventTypeName, KeymapEntry, PickerEntry, StrategyEntry};
+
+// Re-export domain types from their canonical locations
+pub use common::actor::protocol::command::ProceedWithShutdown;
+pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
+pub use feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
+pub use feat::context::protocol::command::{
+    AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
-pub use protocol::{
-    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools, ToolBatchCompleted, ToolCall,
-    ToolCallReceived, ToolCallStreaming, ToolDefinition, ToolExecutionCompleted, ToolResult,
+pub use feat::context::protocol::event::{PromptAssembled, PromptStrategySwitched, StrategyStateUpdated};
+pub use feat::context::protocol::strategy_id::PromptStrategyId;
+pub use feat::provider::llm_message::LlmMessage;
+pub use feat::provider::protocol::command::{
+    CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
+    SendToLlmProvider,
+};
+pub use feat::provider::protocol::event::{
+    ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
+    StreamCompletedReason, StreamToken,
+};
+pub use feat::session::protocol::session_id::SessionId;
+pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;
+pub use feat::session::protocol::session_load_requested::SessionLoadRequested;
+pub use feat::session::protocol::session_new::SessionNew;
+pub use feat::session::protocol::session_save_requested::SessionSaveRequested;
+pub use feat::tools::protocol::command::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
+pub use feat::tools::protocol::event::{
+    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolUseStarted, ToolsRegistered,
 };
+pub use feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};

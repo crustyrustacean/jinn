@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::CommandMsg;
-use crate::protocol::session::SessionId;
+use crate::protocol::SessionId;
 
 /// Request to load a full session from disk by byte offset.
 ///

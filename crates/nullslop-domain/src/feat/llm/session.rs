@@ -3,8 +3,8 @@
 //! Each active LLM conversation is tracked by a [`SessionData`] instance
 //! that records the current state, accumulated messages, and stream data.
 
-use crate::protocol::provider::LlmMessage;
-use crate::protocol::tool::ToolCall;
+use crate::feat::provider::llm_message::LlmMessage;
+use crate::feat::tools::tool_types::ToolCall;
 
 /// Per-session state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
