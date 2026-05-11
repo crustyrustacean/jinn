@@ -54,8 +54,8 @@ impl StrategySessionData for CompactionSessionData {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::types::StrategySessionData;
+    use super::*;
 
     #[rstest::rstest]
     fn compaction_session_data_serialize_roundtrip() {

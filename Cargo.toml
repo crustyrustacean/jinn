@@ -21,28 +21,10 @@ nullslop-providers = { workspace = true }
 nullslop-component = { workspace = true }
 nullslop-actor-host = { workspace = true }
 nullslop-actor = { workspace = true }
-nsslice-echo = { workspace = true }
-nsslice-shutdown = { workspace = true }
-nsslice-llm = { workspace = true }
-nsslice-context = { workspace = true }
-nsslice-context-protocol = { workspace = true }
+nullslop-domain = { workspace = true, features = ["which-key"] }
 nullslop-prompt-template = { workspace = true }
-nsslice-tools = { workspace = true }
-nsslice-chat-session-protocol = { workspace = true }
-nsslice-provider-protocol = { workspace = true }
-nsslice-status-bar = { workspace = true }
-nsslice-char-counter = { workspace = true }
-nsslice-dashboard = { workspace = true }
-nsslice-chat-log = { workspace = true }
-nsslice-provider = { workspace = true }
-nsslice-pinned-panel = { workspace = true }
-nsslice-chat-input-box = { workspace = true }
-nsslice-picker = { workspace = true }
-nsslice-chat-entry-selection = { workspace = true }
-nsslice-navigation = { workspace = true }
-nsslice-session-management = { workspace = true }
+nsslice-context-protocol = { workspace = true }
 nsslice-session-management-protocol = { workspace = true }
-nsslice-global = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
 wherror = { workspace = true }
@@ -55,7 +37,7 @@ clap = { workspace = true }
 clap-verbosity-flag = { workspace = true }
 ratatui-which-key = { workspace = true }
 ratatui-spatial-splits = { workspace = true }
-nullslop-protocol = { workspace = true, features = ["which-key"] }
+
 tempfile = { workspace = true }
 dotenvy = { workspace = true }
 

@@ -1,5 +1,5 @@
-use nullslop_protocol::Intent;
-use nullslop_protocol::{Key, KeyEvent, Modifiers, PickerKind, TabDirection};
+use nullslop_domain::Intent;
+use nullslop_domain::{Key, KeyEvent, Modifiers, PickerKind, TabDirection};
 use ratatui_which_key::Key as _;
 
 use crate::keymap::{collect_all_bindings, collect_bindings_for_scope, init};

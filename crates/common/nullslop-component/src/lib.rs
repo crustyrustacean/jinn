@@ -23,8 +23,8 @@ pub use app_state::{
     AppState, ContextAssemblyState, FrontendState, ProviderState, SessionState,
     ShutdownCoordinatorState,
 };
-pub use nsslice_chat_session_protocol::ChatSessionState;
 pub use nsslice_chat_input_box_protocol::ChatInputBoxState;
+pub use nsslice_chat_session_protocol::ChatSessionState;
 pub use nsslice_dashboard_protocol::DashboardState;
 pub use nsslice_pinned_panel_protocol::PinnedPanelState;
 pub use nsslice_shutdown_protocol::ShutdownTrackerState;

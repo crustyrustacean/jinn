@@ -1,6 +1,6 @@
 //! Layout computation and rendering for the application.
 
-use nullslop_protocol::{Mode, PickerKind};
+use nullslop_domain::{Mode, PickerKind};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
@@ -109,7 +109,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     let mut borders: Option<Vec<crate::split_borders::BorderLine>> = None;
 
     match state.frontend.active_tab {
-        nullslop_protocol::ActiveTab::Chat => {
+        nullslop_domain::ActiveTab::Chat => {
             let content_area = if app.pinned_pane_visible {
                 app.split_manager.set_viewport(layout.content);
                 let areas = app.split_manager.areas();
@@ -163,14 +163,14 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
             // Autocomplete popup overlay (transient, not a UiElement).
             if state.active_chat_input().autocomplete().is_some() {
-                nsslice_chat_input_box::autocomplete_render::render_autocomplete_popup(
+                nullslop_domain::chat_input_box::autocomplete_render::render_autocomplete_popup(
                     frame,
                     layout.input,
                     &state,
                 );
             }
         }
-        nullslop_protocol::ActiveTab::Dashboard => {
+        nullslop_domain::ActiveTab::Dashboard => {
             // Dashboard fills the entire content area
             if let Some(element) = app.ui_registry.get_mut("dashboard") {
                 element.render(frame, layout.content, &state);
@@ -316,7 +316,7 @@ fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::
 
 /// Renders the provider picker overlay (delegates to slice).
 fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
-    nsslice_provider::render::render_provider_picker(frame, area, state);
+    nullslop_domain::provider::render::render_provider_picker(frame, area, state);
 }
 
 /// Renders the context strategy picker overlay (delegates to slice).
@@ -325,17 +325,17 @@ fn render_context_strategy_picker(
     area: Rect,
     state: &nullslop_component::AppState,
 ) {
-    nsslice_picker::render::render_context_strategy_picker(frame, area, state);
+    nullslop_domain::picker::render::render_context_strategy_picker(frame, area, state);
 }
 
 /// Renders the keymap picker overlay (delegates to slice).
 fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
-    nsslice_picker::render::render_keymap_picker(frame, area, state);
+    nullslop_domain::picker::render::render_keymap_picker(frame, area, state);
 }
 
 /// Renders the session picker overlay (delegates to slice).
 fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_component::AppState) {
-    nsslice_session_management::render::render_session_picker(frame, area, state);
+    nullslop_domain::session::render::render_session_picker(frame, area, state);
 }
 
 /// Renders a "terminal too small" message.

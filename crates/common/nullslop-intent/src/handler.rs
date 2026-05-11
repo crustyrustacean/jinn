@@ -64,11 +64,15 @@ impl IntentHandler {
             Intent::InsertChar { ch } => {
                 nullslop_domain::chat_input_box::intent::handle_insert_char(*ch, state)
             }
-            Intent::DeleteGrapheme => nullslop_domain::chat_input_box::intent::handle_delete_grapheme(state),
+            Intent::DeleteGrapheme => {
+                nullslop_domain::chat_input_box::intent::handle_delete_grapheme(state)
+            }
             Intent::DeleteGraphemeForward => {
                 nullslop_domain::chat_input_box::intent::handle_delete_grapheme_forward(state)
             }
-            Intent::SubmitMessage => nullslop_domain::chat_input_box::intent::handle_submit_message(state),
+            Intent::SubmitMessage => {
+                nullslop_domain::chat_input_box::intent::handle_submit_message(state)
+            }
             Intent::AutocompleteConfirm => {
                 nullslop_domain::chat_input_box::intent::handle_autocomplete_confirm(state)
             }
@@ -90,7 +94,9 @@ impl IntentHandler {
             Intent::MoveCursorWordRight => {
                 nullslop_domain::chat_input_box::intent::handle_move_cursor_word_right(state)
             }
-            Intent::MoveCursorUp => nullslop_domain::chat_input_box::intent::handle_move_cursor_up(state),
+            Intent::MoveCursorUp => {
+                nullslop_domain::chat_input_box::intent::handle_move_cursor_up(state)
+            }
             Intent::MoveCursorDown => {
                 nullslop_domain::chat_input_box::intent::handle_move_cursor_down(state)
             }
@@ -98,10 +104,16 @@ impl IntentHandler {
             // --- Navigation ---
             Intent::ScrollUp => nullslop_domain::navigation::intent::handle_scroll_up(state),
             Intent::ScrollDown => nullslop_domain::navigation::intent::handle_scroll_down(state),
-            Intent::MouseScrollUp => nullslop_domain::navigation::intent::handle_mouse_scroll_up(state),
-            Intent::MouseScrollDown => nullslop_domain::navigation::intent::handle_mouse_scroll_down(state),
+            Intent::MouseScrollUp => {
+                nullslop_domain::navigation::intent::handle_mouse_scroll_up(state)
+            }
+            Intent::MouseScrollDown => {
+                nullslop_domain::navigation::intent::handle_mouse_scroll_down(state)
+            }
             Intent::ScrollToTop => nullslop_domain::navigation::intent::handle_scroll_to_top(state),
-            Intent::ScrollToBottom => nullslop_domain::navigation::intent::handle_scroll_to_bottom(state),
+            Intent::ScrollToBottom => {
+                nullslop_domain::navigation::intent::handle_scroll_to_bottom(state)
+            }
             Intent::SwitchTab { direction } => {
                 nullslop_domain::navigation::intent::handle_switch_tab(state, *direction)
             }
@@ -118,17 +130,24 @@ impl IntentHandler {
             Intent::EnterNormalMode => {
                 nullslop_domain::chat_input_box::intent::handle_enter_normal_mode(state)
             }
-            Intent::ToggleWhichkey => nullslop_domain::global::intent::handle_toggle_whichkey(state),
-            Intent::NormalEscape => nullslop_domain::chat_input_box::intent::handle_normal_escape(state),
+            Intent::ToggleWhichkey => {
+                nullslop_domain::global::intent::handle_toggle_whichkey(state)
+            }
+            Intent::NormalEscape => {
+                nullslop_domain::chat_input_box::intent::handle_normal_escape(state)
+            }
 
             // --- Picker ---
-            Intent::OpenPicker { kind } => nullslop_domain::picker::intent::handle_open_picker(state, *kind),
+            Intent::OpenPicker { kind } => {
+                nullslop_domain::picker::intent::handle_open_picker(state, *kind)
+            }
             Intent::PickerInsertChar { ch } => {
                 nullslop_domain::picker::intent::handle_insert_char(state, *ch)
             }
             Intent::PickerBackspace => nullslop_domain::picker::intent::handle_backspace(state),
             Intent::PickerConfirm => {
-                let (result, maybe_intent) = nullslop_domain::picker::intent::handle_picker_confirm(state);
+                let (result, maybe_intent) =
+                    nullslop_domain::picker::intent::handle_picker_confirm(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state);
                     IntentResult::with_commands([result.commands, redispatch.commands].concat())
@@ -138,7 +157,9 @@ impl IntentHandler {
             }
             Intent::PickerMoveUp => nullslop_domain::picker::intent::handle_move_up(state),
             Intent::PickerMoveDown => nullslop_domain::picker::intent::handle_move_down(state),
-            Intent::PickerMoveCursorLeft => nullslop_domain::picker::intent::handle_move_cursor_left(state),
+            Intent::PickerMoveCursorLeft => {
+                nullslop_domain::picker::intent::handle_move_cursor_left(state)
+            }
             Intent::PickerMoveCursorRight => {
                 nullslop_domain::picker::intent::handle_move_cursor_right(state)
             }
@@ -146,38 +167,57 @@ impl IntentHandler {
                 nullslop_domain::picker::intent::handle_toggle_keymap_scope_filter(state)
             }
             Intent::SessionNew => nullslop_domain::session::intent::handle_session_new(state),
-            Intent::RefreshModels => {
-                nullslop_domain::session::intent::handle_refresh_models(state)
-            }
+            Intent::RefreshModels => nullslop_domain::session::intent::handle_refresh_models(state),
             Intent::RescanPromptTemplates => {
                 nullslop_domain::session::intent::handle_rescan_prompt_templates(state)
             }
 
             // --- Dashboard ---
-            Intent::DashboardSelectDown => nullslop_domain::dashboard::intent::handle_select_down(state),
-            Intent::DashboardSelectUp => nullslop_domain::dashboard::intent::handle_select_up(state),
-            Intent::DashboardSelectFirst => nullslop_domain::dashboard::intent::handle_select_first(state),
-            Intent::DashboardSelectLast => nullslop_domain::dashboard::intent::handle_select_last(state),
+            Intent::DashboardSelectDown => {
+                nullslop_domain::dashboard::intent::handle_select_down(state)
+            }
+            Intent::DashboardSelectUp => {
+                nullslop_domain::dashboard::intent::handle_select_up(state)
+            }
+            Intent::DashboardSelectFirst => {
+                nullslop_domain::dashboard::intent::handle_select_first(state)
+            }
+            Intent::DashboardSelectLast => {
+                nullslop_domain::dashboard::intent::handle_select_last(state)
+            }
 
             // --- Pinned Panel ---
-            Intent::PinnedPanelToggle => nullslop_domain::pinned_panel::intent::handle_toggle(state),
+            Intent::PinnedPanelToggle => {
+                nullslop_domain::pinned_panel::intent::handle_toggle(state)
+            }
             Intent::PinnedPanelOpen => nullslop_domain::pinned_panel::intent::handle_open(state),
             Intent::PinnedPanelClose => nullslop_domain::pinned_panel::intent::handle_close(state),
             Intent::PinnedPanelSelectDown => {
                 nullslop_domain::pinned_panel::intent::handle_select_down(state)
             }
-            Intent::PinnedPanelSelectUp => nullslop_domain::pinned_panel::intent::handle_select_up(state),
+            Intent::PinnedPanelSelectUp => {
+                nullslop_domain::pinned_panel::intent::handle_select_up(state)
+            }
             Intent::PinnedPanelUnpin => {
                 nullslop_domain::pinned_panel::intent::handle_pinned_panel_unpin(state)
             }
             Intent::PinnedPanelPinTop => {
-                nullslop_domain::pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Top)
+                nullslop_domain::pinned_panel::intent::handle_pinned_panel_pin(
+                    state,
+                    PinPosition::Top,
+                )
             }
             Intent::PinnedPanelPinBottom => {
-                nullslop_domain::pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Bottom)
+                nullslop_domain::pinned_panel::intent::handle_pinned_panel_pin(
+                    state,
+                    PinPosition::Bottom,
+                )
             }
             Intent::PinnedPanelPinRelative => {
-                nullslop_domain::pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Relative)
+                nullslop_domain::pinned_panel::intent::handle_pinned_panel_pin(
+                    state,
+                    PinPosition::Relative,
+                )
             }
             Intent::PinnedPanelPinCycle => {
                 nullslop_domain::pinned_panel::intent::handle_pinned_panel_pin_cycle(state)

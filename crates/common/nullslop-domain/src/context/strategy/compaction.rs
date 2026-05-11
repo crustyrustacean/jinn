@@ -130,8 +130,8 @@ impl PromptAssembly for CompactionStrategy {
 mod tests {
     use nullslop_protocol::{ChatEntry, LlmMessage, PinPosition, SessionId};
 
-    use super::*;
     use super::super::token_estimator::CharRatioEstimator;
+    use super::*;
 
     fn test_context<'a>(
         history: &'a [ChatEntry],

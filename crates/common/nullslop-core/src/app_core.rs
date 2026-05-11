@@ -48,7 +48,7 @@ impl AppCore {
     ///
     /// Convenience method equivalent to
     /// `self.sender().send(AppMsg::Command { command: cmd, source: None })`.
-    pub fn submit_command(&self, cmd: nullslop_protocol::Command) {
+    pub fn submit_command(&self, cmd: nullslop_domain::Command) {
         let _ = self.sender.send(AppMsg::Command {
             command: cmd,
             source: None,
@@ -103,7 +103,7 @@ pub fn spawn_forwarding_task(
 pub fn coordinated_shutdown(
     actor_host: &dyn nullslop_actor_host::ActorHost,
     state: &State,
-    core_receiver: &kanal::Receiver<nullslop_protocol::CoreNotification>,
+    core_receiver: &kanal::Receiver<nullslop_domain::CoreNotification>,
     handle: &tokio::runtime::Handle,
     timeout: Duration,
 ) {

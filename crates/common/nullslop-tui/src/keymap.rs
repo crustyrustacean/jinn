@@ -6,9 +6,9 @@
 
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
-use nullslop_protocol::Intent;
-use nullslop_protocol::picker_kind::PickerKind;
-use nullslop_protocol::{Key, KeyEvent, TabDirection};
+use nullslop_domain::Intent;
+use nullslop_domain::PickerKind;
+use nullslop_domain::{Key, KeyEvent, TabDirection};
 use ratatui_which_key::CrosstermKeymapExt as _;
 use ratatui_which_key::Key as WhichKeyKey;
 use ratatui_which_key::Keymap;
@@ -199,7 +199,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 pub fn collect_bindings_for_scope(
     keymap: &Keymap<KeyEvent, Scope, Intent, KeyCategory>,
     scope: &Scope,
-) -> Vec<nullslop_protocol::KeymapEntry> {
+) -> Vec<nullslop_domain::KeymapEntry> {
     let mut entries = Vec::new();
     collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries);
     entries
@@ -210,7 +210,7 @@ pub fn collect_bindings_for_scope(
 /// Iterates over all known scopes and collects entries from each one.
 pub fn collect_all_bindings(
     keymap: &Keymap<KeyEvent, Scope, Intent, KeyCategory>,
-) -> Vec<nullslop_protocol::KeymapEntry> {
+) -> Vec<nullslop_domain::KeymapEntry> {
     let mut entries = Vec::new();
     for scope in &[
         Scope::Normal,
@@ -234,7 +234,7 @@ fn collect_leaf_bindings(
     children: &[ratatui_which_key::KeyChild<KeyEvent, Scope, Intent, KeyCategory>],
     scope: Scope,
     prefix: &str,
-    out: &mut Vec<nullslop_protocol::KeymapEntry>,
+    out: &mut Vec<nullslop_domain::KeymapEntry>,
 ) {
     for child in children {
         let key_display = WhichKeyKey::display(&child.key);
@@ -248,7 +248,7 @@ fn collect_leaf_bindings(
             ratatui_which_key::KeyNode::Leaf(entries) => {
                 for entry in entries {
                     if entry.scope == scope {
-                        out.push(nullslop_protocol::KeymapEntry {
+                        out.push(nullslop_domain::KeymapEntry {
                             key_sequence: full_sequence.clone(),
                             description: entry.description.clone(),
                             scope: entry.scope.to_string(),
@@ -271,7 +271,7 @@ fn collect_leaf_bindings(
                 for entry in leaf_entries {
                     if entry.scope == scope {
                         let cat = (*branch_category).unwrap_or(entry.category);
-                        out.push(nullslop_protocol::KeymapEntry {
+                        out.push(nullslop_domain::KeymapEntry {
                             key_sequence: full_sequence.clone(),
                             description: entry.description.clone(),
                             scope: entry.scope.to_string(),

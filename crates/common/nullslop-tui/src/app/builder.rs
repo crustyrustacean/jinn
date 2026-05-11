@@ -54,19 +54,19 @@ impl TuiAppBuilder {
             state: nullslop_component::State::new(state),
             sender,
         };
-        let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+        let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
         let fake_host = ActorHostService::new(std::sync::Arc::new(
             nullslop_actor_host::FakeActorHost::new(),
         ));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_component::register_all(&mut ui_registry);
-        nsslice_status_bar::register(&mut ui_registry);
-        nsslice_char_counter::register(&mut ui_registry);
-        nsslice_dashboard::register(&mut ui_registry);
-        nsslice_chat_log::register(&mut ui_registry);
-        nsslice_provider::register(&mut ui_registry);
-        nsslice_pinned_panel::register(&mut ui_registry);
-        nsslice_chat_input_box::register(&mut ui_registry);
+        nullslop_domain::status_bar::register(&mut ui_registry);
+        nullslop_domain::char_counter::register(&mut ui_registry);
+        nullslop_domain::dashboard::register(&mut ui_registry);
+        nullslop_domain::chat_log::register(&mut ui_registry);
+        nullslop_domain::provider::register(&mut ui_registry);
+        nullslop_domain::pinned_panel::register(&mut ui_registry);
+        nullslop_domain::chat_input_box::register(&mut ui_registry);
 
         TuiApp {
             core,

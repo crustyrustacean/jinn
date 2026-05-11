@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 nullslop-core = { workspace = true }
 nullslop-intent = { workspace = true }
+nullslop-domain = { workspace = true }
 nullslop-protocol = { workspace = true, features = ["which-key"] }
 nullslop-actor-host = { workspace = true }
 nullslop-component = { workspace = true }
@@ -28,15 +29,6 @@ dialoguer = { workspace = true }
 arboard = { workspace = true }
 tracing = { workspace = true }
 nullslop-selection-widget = { workspace = true }
-nsslice-status-bar = { workspace = true }
-nsslice-char-counter = { workspace = true }
-nsslice-dashboard = { workspace = true }
-nsslice-chat-log = { workspace = true }
-nsslice-provider = { workspace = true }
-nsslice-picker = { workspace = true }
-nsslice-pinned-panel = { workspace = true }
-nsslice-chat-input-box = { workspace = true }
-nsslice-session-management = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

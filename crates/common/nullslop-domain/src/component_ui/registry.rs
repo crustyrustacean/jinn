@@ -64,8 +64,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::UiRegistry;
     use super::super::fake::FakeUiElement;
+    use super::UiRegistry;
 
     #[rstest::rstest]
     fn register_and_retrieve_by_name() {

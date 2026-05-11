@@ -10,8 +10,8 @@ use derive_more::Debug;
 use nullslop_actor_host::ActorHostService;
 use nullslop_component::AppUiRegistry;
 use nullslop_core::{AppCore, AppMsg};
+use nullslop_domain::{ActiveTab, Intent, Mode, PickerKind};
 use nullslop_intent::IntentHandler;
-use nullslop_protocol::{ActiveTab, Intent, Mode, PickerKind};
 use ratatui::Frame;
 use ratatui_spatial_splits::{AreaId, SplitManager};
 use ratatui_tabs::TabManager;
@@ -42,7 +42,7 @@ pub enum PaneFocus {
 
 /// Type alias for the which-key state parameterized for nullslop.
 pub type WhichKeyInstance =
-    WhichKeyState<nullslop_protocol::KeyEvent, Scope, Intent, crate::keymap::KeyCategory>;
+    WhichKeyState<nullslop_domain::KeyEvent, Scope, Intent, crate::keymap::KeyCategory>;
 
 /// Top-level application state and event loop.
 #[derive(Debug)]
@@ -54,7 +54,7 @@ pub struct TuiApp {
     /// Actor host for coordinated shutdown.
     pub actor_host: ActorHostService,
     /// Receiver for core lifecycle notifications (shutdown complete).
-    pub core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
+    pub core_receiver: kanal::Receiver<nullslop_domain::CoreNotification>,
     /// UI element registry.
     pub ui_registry: AppUiRegistry,
     /// Message channel for the event loop.
@@ -380,19 +380,19 @@ mod tests {
             state: nullslop_component::State::new(nullslop_component::AppState::default()),
             sender,
         };
-        let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+        let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
         let fake_host = nullslop_actor_host::ActorHostService::new(std::sync::Arc::new(
             nullslop_actor_host::FakeActorHost::new(),
         ));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_component::register_all(&mut ui_registry);
-        nsslice_status_bar::register(&mut ui_registry);
-        nsslice_char_counter::register(&mut ui_registry);
-        nsslice_dashboard::register(&mut ui_registry);
-        nsslice_chat_log::register(&mut ui_registry);
-        nsslice_provider::register(&mut ui_registry);
-        nsslice_pinned_panel::register(&mut ui_registry);
-        nsslice_chat_input_box::register(&mut ui_registry);
+        nullslop_domain::status_bar::register(&mut ui_registry);
+        nullslop_domain::char_counter::register(&mut ui_registry);
+        nullslop_domain::dashboard::register(&mut ui_registry);
+        nullslop_domain::chat_log::register(&mut ui_registry);
+        nullslop_domain::provider::register(&mut ui_registry);
+        nullslop_domain::pinned_panel::register(&mut ui_registry);
+        nullslop_domain::chat_input_box::register(&mut ui_registry);
         TuiApp {
             core,
             services,
@@ -583,19 +583,19 @@ mod tests {
             state: nullslop_component::State::new(nullslop_component::AppState::default()),
             sender,
         };
-        let (_, core_rx) = kanal::unbounded::<nullslop_protocol::CoreNotification>();
+        let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
         let fake_host = nullslop_actor_host::ActorHostService::new(std::sync::Arc::new(
             nullslop_actor_host::FakeActorHost::new(),
         ));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_component::register_all(&mut ui_registry);
-        nsslice_status_bar::register(&mut ui_registry);
-        nsslice_char_counter::register(&mut ui_registry);
-        nsslice_dashboard::register(&mut ui_registry);
-        nsslice_chat_log::register(&mut ui_registry);
-        nsslice_provider::register(&mut ui_registry);
-        nsslice_pinned_panel::register(&mut ui_registry);
-        nsslice_chat_input_box::register(&mut ui_registry);
+        nullslop_domain::status_bar::register(&mut ui_registry);
+        nullslop_domain::char_counter::register(&mut ui_registry);
+        nullslop_domain::dashboard::register(&mut ui_registry);
+        nullslop_domain::chat_log::register(&mut ui_registry);
+        nullslop_domain::provider::register(&mut ui_registry);
+        nullslop_domain::pinned_panel::register(&mut ui_registry);
+        nullslop_domain::chat_input_box::register(&mut ui_registry);
         let mut app = TuiApp {
             core,
             services,
