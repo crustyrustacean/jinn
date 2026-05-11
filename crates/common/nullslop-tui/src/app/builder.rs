@@ -91,10 +91,3 @@ impl TuiAppBuilder {
         }
     }
 }
-
-impl TuiApp {
-    /// Create a test builder with sensible defaults.
-    pub fn test_builder() -> TuiAppBuilder {
-        TuiAppBuilder::default()
-    }
-}
