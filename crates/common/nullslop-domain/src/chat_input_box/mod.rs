@@ -1,0 +1,1 @@
+//! Chat input box — text input, autocomplete, and message composition.

@@ -1,0 +1,1 @@
+//! Provider slice — LLM provider selection, model discovery, and streaming UI.

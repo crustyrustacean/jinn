@@ -1,0 +1,1 @@
+//! Chat log — displays conversation history.

@@ -1,0 +1,1 @@
+//! Chat session protocol — shared types for chat session state.

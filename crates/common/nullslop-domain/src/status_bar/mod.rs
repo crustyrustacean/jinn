@@ -1,0 +1,1 @@
+//! Status bar — shows current provider, model, and connection status.

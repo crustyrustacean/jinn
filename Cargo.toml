@@ -64,6 +64,7 @@ rstest = { workspace = true }
 
 [workspace.dependencies]
 # Internal
+nullslop-domain = { path = "crates/common/nullslop-domain" }
 nsslice-context = { path = "crates/slices/nsslice-context" }
 nsslice-context-protocol = { path = "crates/slices/nsslice-context-protocol" }
 nullslop-prompt-template = { path = "crates/common/nullslop-prompt-template" }

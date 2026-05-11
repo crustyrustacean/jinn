@@ -1,0 +1,1 @@
+//! Navigation — scrolling, tab switching, and external editor.
