@@ -17,7 +17,7 @@
 //! All handlers follow the same pattern: acquire state lock → mutate → release →
 //! then emit. Never hold the lock during emission.
 
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_component::State;
 use nullslop_protocol::provider::{ModelsRefreshed, ProviderSwitch, ProviderSwitched};
 use nullslop_protocol::system::LoadPickerEntries;
@@ -204,7 +204,7 @@ impl ProviderActor {
 mod tests {
     use std::sync::Arc;
 
-    use nullslop_actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use nullslop_component::{AppState, State};
     use nullslop_protocol::provider::{ModelsRefreshed, ProviderSwitch};
     use nullslop_protocol::{Command, Event};

@@ -20,7 +20,7 @@
 mod handlers;
 
 use super::SessionStoreService;
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_component::State;
 use nullslop_protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
 use nullslop_protocol::context::PromptAssembled;
@@ -160,9 +160,9 @@ mod tests {
         clippy::unused_trait_names,
         reason = "Actor trait needed for activate() method resolution"
     )]
-    use nullslop_actor::Actor;
-    use nullslop_actor::RecordingSink;
-    use nullslop_actor::{ActorContext, ActorEnvelope, MessageSink};
+    use crate::actor::Actor;
+    use crate::actor::RecordingSink;
+    use crate::actor::{ActorContext, ActorEnvelope, MessageSink};
     use nullslop_component::{AppState, State};
     use nullslop_protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
     // no context imports needed in tests currently

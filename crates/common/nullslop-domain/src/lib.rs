@@ -12,6 +12,8 @@
 //! Protocol types are re-exported at the crate root for convenience.
 //! `nullslop_domain::Command` is the same type as `nullslop_protocol::Command`.
 
+pub mod actor;
+pub mod actor_host;
 pub mod char_counter;
 pub mod chat_entry_selection;
 pub mod chat_input_box;
@@ -32,6 +34,16 @@ pub mod session;
 pub mod shutdown;
 pub mod status_bar;
 pub mod tools;
+
+// Re-export actor framework types
+pub use actor::{
+    Actor, ActorContext, ActorEnvelope, ActorRef, ActorSendError, MessageSink, RecordingSink,
+    SendResult, SystemMessage,
+};
+pub use actor_host::{
+    ActorHost, ActorHostService, ActorSpawnResult, FakeActorHost, InMemoryActorHost, RoutingEntry,
+    spawn_actor,
+};
 
 // Re-export protocol types at crate root — these are the same types as nullslop_protocol
 pub use nullslop_protocol::entries_to_messages;

@@ -17,8 +17,8 @@ pub use queue_element::QueueDisplayElement;
 
 use std::sync::Arc;
 
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use nullslop_actor_host::{ActorSpawnResult, spawn_actor};
+use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
+use crate::actor_host::{ActorSpawnResult, spawn_actor};
 use nullslop_component::AppUiRegistry;
 use nullslop_providers::NO_PROVIDER_ID;
 

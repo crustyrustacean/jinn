@@ -1,6 +1,6 @@
 //! Assembly handlers — prompt assembly and strategy initialization.
 
-use nullslop_actor::ActorContext;
+use crate::actor::ActorContext;
 use nullslop_protocol::context::{AssemblePrompt, PromptAssembled};
 use nullslop_protocol::{
     ChatEntry, Event, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,

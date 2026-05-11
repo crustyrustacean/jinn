@@ -1,7 +1,7 @@
 //! Bridge from actor output to the `AppCore` message channel.
 
 use kanal::Sender;
-use nullslop_actor::{ActorSendError, MessageSink, SendResult};
+use nullslop_domain::{ActorSendError, MessageSink, SendResult};
 use nullslop_domain::{Command, Event};
 
 use crate::AppMsg;

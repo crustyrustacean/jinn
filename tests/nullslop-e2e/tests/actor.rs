@@ -10,8 +10,6 @@
 use std::sync::Arc;
 
 use cucumber::World;
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use nullslop_actor_host::{ActorHostService, InMemoryActorHost, spawn_actor};
 use nullslop_component::AppState;
 use nullslop_core::{ActorMessageSink, AppCore, AppMsg};
 use nullslop_domain::llm::LlmActor;
@@ -19,6 +17,8 @@ use nullslop_domain::protocol::provider::SendToLlmProvider;
 use nullslop_domain::protocol::tool::ToolCall;
 use nullslop_domain::session::actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
 use nullslop_domain::tools::ToolOrchestratorActor;
+use nullslop_domain::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
+use nullslop_domain::{ActorHostService, InMemoryActorHost, spawn_actor};
 use nullslop_providers::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
 use nullslop_services::Services;
 
@@ -173,7 +173,7 @@ fn create_actor_core(
         vec![orch_result, llm_result, sp_result],
         handle.clone(),
     );
-    let host_arc: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(host);
+    let host_arc: Arc<dyn nullslop_domain::ActorHost> = Arc::new(host);
 
     let services = nullslop_services::test_services::TestServices::builder()
         .handle(handle.clone())
@@ -181,7 +181,7 @@ fn create_actor_core(
         .build();
 
     // Spawn the async forwarding task.
-    let actor_host_service = nullslop_actor_host::ActorHostService::new(host_arc);
+    let actor_host_service = nullslop_domain::ActorHostService::new(host_arc);
     nullslop_core::spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
     let core = AppCore {

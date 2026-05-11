@@ -18,8 +18,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
-use nullslop_actor_host::spawn_actor;
+use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
+use crate::actor_host::spawn_actor;
 use nullslop_protocol::tool::{
     ExecuteTool, ExecuteToolBatch, RegisterTools, ToolBatchCompleted, ToolCall, ToolDefinition,
     ToolExecutionCompleted, ToolResult, ToolsRegistered,
@@ -82,7 +82,7 @@ pub fn spawn(
     handle: &tokio::runtime::Handle,
 ) -> (
     ActorRef<ToolOrchestratorDirectMsg>,
-    nullslop_actor_host::ActorSpawnResult,
+    crate::actor_host::ActorSpawnResult,
 ) {
     let (tx, rx) = kanal::unbounded::<ActorEnvelope<ToolOrchestratorDirectMsg>>();
     let actor_ref = ActorRef::new(tx);
@@ -392,7 +392,7 @@ impl ToolOrchestratorActor {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_actor::RecordingSink;
+    use crate::actor::RecordingSink;
     use nullslop_protocol::tool::{ExecuteToolBatch, RegisterTools};
 
     use super::*;

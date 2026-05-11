@@ -13,7 +13,7 @@ mod handlers;
 
 use std::collections::HashMap;
 
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_component::State;
 use nullslop_protocol::context::{
     AssemblePrompt, PinChatEntry, PromptStrategySwitched, RestoreStrategyState,
@@ -138,7 +138,7 @@ impl PromptAssemblyActor {
 mod tests {
     use std::sync::Arc;
 
-    use nullslop_actor::{ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::actor::{ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use nullslop_component::{AppState, State};
     use nullslop_protocol::ChatEntry;
     use nullslop_protocol::PinPosition;

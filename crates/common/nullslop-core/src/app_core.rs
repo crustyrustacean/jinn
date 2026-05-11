@@ -8,8 +8,8 @@
 use std::time::Duration;
 
 use kanal::Sender;
-use nullslop_actor::SystemMessage;
 use nullslop_component::State;
+use nullslop_domain::SystemMessage;
 
 use crate::AppMsg;
 
@@ -64,7 +64,7 @@ impl AppCore {
 /// `AppCore` is dropped).
 pub fn spawn_forwarding_task(
     receiver: kanal::Receiver<AppMsg>,
-    actor_host: nullslop_actor_host::ActorHostService,
+    actor_host: nullslop_domain::ActorHostService,
     handle: &tokio::runtime::Handle,
 ) -> tokio::task::JoinHandle<()> {
     handle.spawn(async move {
@@ -101,7 +101,7 @@ pub fn spawn_forwarding_task(
 /// empty before sending `ApplicationShuttingDown`. Low priority — the race window
 /// is tiny and the current code has the same race (masked by `tick()` being dead).
 pub fn coordinated_shutdown(
-    actor_host: &dyn nullslop_actor_host::ActorHost,
+    actor_host: &dyn nullslop_domain::ActorHost,
     state: &State,
     core_receiver: &kanal::Receiver<nullslop_domain::CoreNotification>,
     handle: &tokio::runtime::Handle,

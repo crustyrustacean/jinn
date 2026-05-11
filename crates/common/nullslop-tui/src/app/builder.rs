@@ -1,8 +1,8 @@
 //! Builder for constructing a [`TuiApp`] with sensible defaults for tests.
 
-use nullslop_actor_host::ActorHostService;
 use nullslop_component::AppUiRegistry;
 use nullslop_core::AppCore;
+use nullslop_domain::ActorHostService;
 use ratatui_spatial_splits::SplitManager;
 
 use super::{PaneFocus, TuiApp, WhichKeyInstance};
@@ -55,9 +55,8 @@ impl TuiAppBuilder {
             sender,
         };
         let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
-        let fake_host = ActorHostService::new(std::sync::Arc::new(
-            nullslop_actor_host::FakeActorHost::new(),
-        ));
+        let fake_host =
+            ActorHostService::new(std::sync::Arc::new(nullslop_domain::FakeActorHost::new()));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_component::register_all(&mut ui_registry);
         nullslop_domain::status_bar::register(&mut ui_registry);

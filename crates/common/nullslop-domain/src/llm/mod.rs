@@ -11,9 +11,9 @@ mod session;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
+use crate::actor_host::{ActorSpawnResult, spawn_actor};
 use futures::StreamExt as _;
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
-use nullslop_actor_host::{ActorSpawnResult, spawn_actor};
 use nullslop_protocol::chat_input::PushChatEntry;
 use nullslop_protocol::provider::LlmMessage;
 use nullslop_protocol::provider::{
@@ -492,7 +492,7 @@ impl LlmActor {
 mod tests {
     use std::sync::Arc;
 
-    use nullslop_actor::RecordingSink;
+    use crate::actor::RecordingSink;
     use nullslop_protocol::EventMsg as _;
     use nullslop_protocol::tool::{ToolDefinition, ToolsRegistered};
     use nullslop_providers::FakeLlmServiceFactory;

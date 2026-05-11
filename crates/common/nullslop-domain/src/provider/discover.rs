@@ -7,8 +7,8 @@
 
 use std::collections::HashMap;
 
+use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use llm::builder::LLMBuilder;
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_protocol::provider::{ModelsRefreshed, RefreshModels};
 use nullslop_protocol::{Command, Event};
 use nullslop_providers::{ApiKeysService, ModelCache, ProviderRegistryService, cache_path};

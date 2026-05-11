@@ -5,8 +5,8 @@
 //! host gracefully.
 
 use error_stack::{Report, ResultExt};
-use nullslop_actor_host::ActorHostService;
 use nullslop_core::{AppCore, AppMsg};
+use nullslop_domain::ActorHostService;
 use nullslop_domain::Command;
 use nullslop_domain::protocol::chat_input::EnqueueUserMessage;
 use nullslop_intent::IntentHandler;

@@ -1,6 +1,6 @@
 //! Command handlers — process session lifecycle commands.
 
-use nullslop_actor::ActorContext;
+use crate::actor::ActorContext;
 use nullslop_protocol::chat_input::{
     ChatEntrySubmitted, EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
