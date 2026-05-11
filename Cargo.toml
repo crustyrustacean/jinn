@@ -28,6 +28,7 @@ nsslice-context = { workspace = true }
 nsslice-context-protocol = { workspace = true }
 nullslop-prompt-template = { workspace = true }
 nsslice-tools = { workspace = true }
+nsslice-chat-session-protocol = { workspace = true }
 nsslice-provider-protocol = { workspace = true }
 nsslice-status-bar = { workspace = true }
 nsslice-char-counter = { workspace = true }

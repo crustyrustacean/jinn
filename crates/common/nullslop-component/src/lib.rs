@@ -15,7 +15,6 @@
 //! - [`AppUiRegistry`] — the standard UI element registry.
 
 pub mod app_state;
-pub mod chat_session;
 pub mod prompt_template;
 pub mod state;
 pub mod tui_signals;
@@ -24,7 +23,7 @@ pub use app_state::{
     AppState, ContextAssemblyState, FrontendState, ProviderState, SessionState,
     ShutdownCoordinatorState,
 };
-pub use chat_session::ChatSessionState;
+pub use nsslice_chat_session_protocol::ChatSessionState;
 pub use nsslice_chat_input_box_protocol::ChatInputBoxState;
 pub use nsslice_dashboard_protocol::DashboardState;
 pub use nsslice_pinned_panel_protocol::PinnedPanelState;
