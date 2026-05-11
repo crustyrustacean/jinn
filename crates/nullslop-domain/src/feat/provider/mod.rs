@@ -9,6 +9,7 @@ pub mod discover;
 pub mod entries;
 pub mod indicator;
 pub mod loader;
+pub mod picker_entry;
 pub mod queue_element;
 pub mod render;
 

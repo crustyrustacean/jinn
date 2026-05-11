@@ -12,6 +12,7 @@ pub mod actor;
 pub mod chat_session;
 pub mod entries;
 pub mod intent;
+pub mod picker_entry;
 pub mod render;
 pub mod validator;
 
