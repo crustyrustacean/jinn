@@ -83,7 +83,10 @@ impl SessionPersistenceActor {
     }
 
     /// Pushes a tool result entry into the session history.
-    pub(in crate::session::actor) fn on_tool_execution_completed(&self, event: &ToolExecutionCompleted) {
+    pub(in crate::session::actor) fn on_tool_execution_completed(
+        &self,
+        event: &ToolExecutionCompleted,
+    ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         session.push_entry(ChatEntry::tool_result(

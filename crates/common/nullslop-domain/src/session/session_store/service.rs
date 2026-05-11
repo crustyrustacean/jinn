@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use error_stack::Report;
 
-use nullslop_protocol::SessionId;
 use crate::session::{PersistedSession, SessionSummary};
+use nullslop_protocol::SessionId;
 
 use super::{SessionStore, SessionStoreError};
 

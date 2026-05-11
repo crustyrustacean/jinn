@@ -2,7 +2,7 @@
 
 use kanal::Sender;
 use nullslop_actor::{ActorSendError, MessageSink, SendResult};
-use nullslop_protocol::{Command, Event};
+use nullslop_domain::{Command, Event};
 
 use crate::AppMsg;
 
@@ -77,10 +77,10 @@ mod tests {
 
         // When sending a KeyDown event.
         sink.send_event(Event::KeyDown {
-            payload: nullslop_protocol::system::KeyDown {
-                key: nullslop_protocol::KeyEvent {
-                    key: nullslop_protocol::Key::Enter,
-                    modifiers: nullslop_protocol::Modifiers::none(),
+            payload: nullslop_domain::protocol::system::KeyDown {
+                key: nullslop_domain::KeyEvent {
+                    key: nullslop_domain::Key::Enter,
+                    modifiers: nullslop_domain::Modifiers::none(),
                 },
             },
         })

@@ -479,9 +479,9 @@ fn picker_popup_rect_is_selectable() {
 
     let mut app = render_test_app();
     // Switch to Picker mode with an active provider picker.
-    app.core.state.write().frontend.mode = nullslop_protocol::Mode::Picker;
+    app.core.state.write().frontend.mode = nullslop_domain::Mode::Picker;
     app.core.state.write().frontend.active_picker_kind =
-        Some(nullslop_protocol::PickerKind::Provider);
+        Some(nullslop_domain::PickerKind::Provider);
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -507,9 +507,9 @@ fn content_area_rect_is_selectable() {
 
     let mut app = render_test_app();
     // Switch to Picker mode with an active provider picker.
-    app.core.state.write().frontend.mode = nullslop_protocol::Mode::Picker;
+    app.core.state.write().frontend.mode = nullslop_domain::Mode::Picker;
     app.core.state.write().frontend.active_picker_kind =
-        Some(nullslop_protocol::PickerKind::Provider);
+        Some(nullslop_domain::PickerKind::Provider);
 
     let (mut terminal, _area) = setup_term(80, 24);
 

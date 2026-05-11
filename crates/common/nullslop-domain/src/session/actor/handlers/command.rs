@@ -133,7 +133,10 @@ impl SessionPersistenceActor {
     }
 
     /// SendMessage: backward compat — emit EnqueueUserMessage.
-    pub(in crate::session::actor) fn handle_send_message(payload: &SendMessage, ctx: &ActorContext) {
+    pub(in crate::session::actor) fn handle_send_message(
+        payload: &SendMessage,
+        ctx: &ActorContext,
+    ) {
         if let Err(e) = ctx.send_command(Command::EnqueueUserMessage {
             payload: EnqueueUserMessage {
                 session_id: payload.session_id.clone(),

@@ -10,7 +10,10 @@ use super::super::PromptAssemblyActor;
 
 impl PromptAssemblyActor {
     /// Handles [`PromptStrategySwitched`] by creating a new strategy via the factory.
-    pub(in crate::context::actor) fn on_prompt_strategy_switched(&mut self, evt: &PromptStrategySwitched) {
+    pub(in crate::context::actor) fn on_prompt_strategy_switched(
+        &mut self,
+        evt: &PromptStrategySwitched,
+    ) {
         let Some(factory) = self.factory.as_ref() else {
             tracing::error!("no strategy factory available");
             return;

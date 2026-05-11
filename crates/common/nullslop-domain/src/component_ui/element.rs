@@ -51,8 +51,8 @@ pub trait UiElement<S>: 'static + std::fmt::Debug {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::fake::FakeUiElement;
+    use super::*;
 
     #[rstest::rstest]
     fn default_is_selectable_returns_false() {

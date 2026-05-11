@@ -7,14 +7,14 @@ edition = "2024"
 nullslop-actor = { workspace = true }
 nullslop-actor-host = { workspace = true }
 nullslop-component = { workspace = true }
-nullslop-protocol = { workspace = true }
+nullslop-domain = { workspace = true }
 kanal = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 nullslop-component = { workspace = true }
-nullslop-component-ui = { workspace = true }
+
 rstest = { workspace = true }
 
 [lints]

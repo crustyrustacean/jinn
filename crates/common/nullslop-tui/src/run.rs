@@ -16,7 +16,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use error_stack::{Report, ResultExt as _};
-use nullslop_protocol::ActiveTab;
+use nullslop_domain::ActiveTab;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use wherror::Error;
 

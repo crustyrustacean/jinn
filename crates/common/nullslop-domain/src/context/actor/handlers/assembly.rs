@@ -6,7 +6,9 @@ use nullslop_protocol::{
     ChatEntry, Event, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
 };
 
-use crate::context::{AssemblyContext, CharRatioEstimator, PassthroughStrategy, estimate_entry_tokens};
+use crate::context::{
+    AssemblyContext, CharRatioEstimator, PassthroughStrategy, estimate_entry_tokens,
+};
 
 use super::super::PromptAssemblyActor;
 
@@ -14,10 +16,8 @@ impl PromptAssemblyActor {
     /// Lazily initializes a passthrough strategy for unknown sessions.
     pub(in crate::context::actor) fn ensure_strategy(&mut self, session_id: &SessionId) {
         if !self.strategies.contains_key(session_id) {
-            self.strategies.insert(
-                session_id.clone(),
-                Box::new(PassthroughStrategy),
-            );
+            self.strategies
+                .insert(session_id.clone(), Box::new(PassthroughStrategy));
         }
     }
 

@@ -12,10 +12,10 @@
 //! - **EnterNormalMode** — cancels streams, clears picker, switches to Normal mode.
 //! - **NormalEscape** — clears chat entry selection.
 
+use nsslice_chat_input_box_protocol::AutocompleteMatch;
 use nullslop_component::AppState;
 use nullslop_component::ChatInputBoxState;
 use nullslop_component::prompt_template::PromptTemplateStore;
-use nsslice_chat_input_box_protocol::AutocompleteMatch;
 use nullslop_protocol::chat_input::EnqueueUserMessage;
 use nullslop_protocol::{Command, IntentResult, Mode};
 use unicode_segmentation::UnicodeSegmentation as _;

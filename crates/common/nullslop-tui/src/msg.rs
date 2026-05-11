@@ -3,7 +3,7 @@
 //! Provides a unified message type that merges crossterm terminal events,
 //! periodic tick messages, and commands into a single stream.
 
-use nullslop_protocol as npr;
+use nullslop_domain as npr;
 
 pub mod handler;
 pub mod sender;
@@ -27,7 +27,7 @@ pub enum Msg {
 
 #[cfg(test)]
 mod tests {
-    use npr::chat_input::PushChatEntry;
+    use nullslop_domain::protocol::chat_input::PushChatEntry;
 
     use super::*;
 

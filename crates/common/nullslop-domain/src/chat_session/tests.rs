@@ -645,10 +645,7 @@ fn default_strategy_is_passthrough() {
     let session = ChatSessionState::new();
 
     // Then the default strategy is passthrough.
-    assert_eq!(
-        session.active_strategy(),
-        &PromptStrategyId::passthrough()
-    );
+    assert_eq!(session.active_strategy(), &PromptStrategyId::passthrough());
 }
 
 #[rstest::rstest]

@@ -174,8 +174,7 @@ mod tests {
     fn estimate_entry_tokens_for_pinned_system_is_nonzero() {
         // Given a char ratio estimator and a pinned system entry.
         let estimator = CharRatioEstimator;
-        let entry = ChatEntry::system("important instruction")
-            .with_pin(PinPosition::Top);
+        let entry = ChatEntry::system("important instruction").with_pin(PinPosition::Top);
 
         // When estimating entry tokens.
         let tokens = estimate_entry_tokens(&estimator, &entry);
@@ -202,8 +201,7 @@ mod tests {
     fn estimate_entry_tokens_for_pinned_actor_is_nonzero() {
         // Given a char ratio estimator and a pinned actor entry.
         let estimator = CharRatioEstimator;
-        let entry = ChatEntry::actor("echo", "HELLO")
-            .with_pin(PinPosition::Relative);
+        let entry = ChatEntry::actor("echo", "HELLO").with_pin(PinPosition::Relative);
 
         // When estimating entry tokens.
         let tokens = estimate_entry_tokens(&estimator, &entry);

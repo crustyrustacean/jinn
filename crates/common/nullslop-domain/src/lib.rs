@@ -34,6 +34,8 @@ pub mod status_bar;
 pub mod tools;
 
 // Re-export protocol types at crate root — these are the same types as nullslop_protocol
+pub use nullslop_protocol::entries_to_messages;
+pub use nullslop_protocol::{ActiveTab, TabDirection};
 pub use nullslop_protocol::{
     ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, CommandAction,
     CoreNotification, Event, Intent, IntentResult, Key, KeyEvent, LlmMessage, Mode, Modifiers,
@@ -46,11 +48,7 @@ pub use nullslop_protocol::{
     SessionSaveRequested,
 };
 pub use nullslop_protocol::{
-    ActiveTab, TabDirection,
-};
-pub use nullslop_protocol::{
     ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools, ToolBatchCompleted, ToolCall,
     ToolCallReceived, ToolCallStreaming, ToolDefinition, ToolExecutionCompleted, ToolResult,
     ToolUseStarted, ToolsRegistered,
 };
-pub use nullslop_protocol::{entries_to_messages};

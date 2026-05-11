@@ -1,3 +1,3 @@
-//! Re-export of [`AppMsg`] from `nullslop-protocol`.
+//! Re-export of [`AppMsg`] from `nullslop-domain`.
 
-pub use nullslop_protocol::AppMsg;
+pub use nullslop_domain::AppMsg;

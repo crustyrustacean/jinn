@@ -15,7 +15,10 @@ impl PromptAssemblyActor {
     }
 
     /// Replaces the prompt template store with the loaded templates.
-    pub(in crate::context::actor) fn on_prompt_templates_loaded(&self, event: &PromptTemplatesLoaded) {
+    pub(in crate::context::actor) fn on_prompt_templates_loaded(
+        &self,
+        event: &PromptTemplatesLoaded,
+    ) {
         let mut state = self.state.write();
         state.context.prompt_templates = PromptTemplateStore::from_vec(event.templates.clone());
     }
