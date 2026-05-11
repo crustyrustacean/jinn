@@ -46,14 +46,14 @@ Dev-dependencies:
   - [x] Create `crates/slices/nsslice-chat-session-protocol/src/tests.rs` — move all tests from `nullslop-component/src/chat_session/state_tests.rs`, updating imports
   - [x] Move the `#[cfg(test)]` builder (`ChatSessionStateBuilder`, `BuilderOp`) into the new crate's `lib.rs`
 
-- [ ] Phase 2: Wire up the new crate and update consumers
-  - [ ] Add `nsslice-chat-session-protocol` to workspace `Cargo.toml` `[workspace.dependencies]` and `[workspace.members]`
-  - [ ] Add `nsslice-chat-session-protocol` as a dependency of `nullslop-component` in its `Cargo.toml`
-  - [ ] Update `nullslop-component/src/lib.rs`: remove `pub mod chat_session`, add `pub use nsslice_chat_session_protocol::ChatSessionState`
-  - [ ] Update `nullslop-component/src/app_state.rs`: change `use crate::chat_session::ChatSessionState` to `use nsslice_chat_session_protocol::ChatSessionState`
-  - [ ] Add `nsslice-chat-session-protocol` dep to `nsslice-session-management/Cargo.toml`; update `nsslice-session-management/src/intent.rs` to import `ChatSessionState` directly
-  - [ ] Add `nsslice-chat-session-protocol` dep to root `Cargo.toml`; update `src/session_conversion.rs` to import from new crate
-  - [ ] Run `just check`
+- [x] Phase 2: Wire up the new crate and update consumers
+  - [x] Add `nsslice-chat-session-protocol` to workspace `Cargo.toml` `[workspace.dependencies]` and `[workspace.members]`
+  - [x] Add `nsslice-chat-session-protocol` as a dependency of `nullslop-component` in its `Cargo.toml`
+  - [x] Update `nullslop-component/src/lib.rs`: remove `pub mod chat_session`, add `pub use nsslice_chat_session_protocol::ChatSessionState`
+  - [x] Update `nullslop-component/src/app_state.rs`: change `use crate::chat_session::ChatSessionState` to `use nsslice_chat_session_protocol::ChatSessionState`
+  - [x] Add `nsslice-chat-session-protocol` dep to `nsslice-session-management/Cargo.toml`; update `nsslice-session-management/src/intent.rs` to import `ChatSessionState` directly
+  - [x] Add `nsslice-chat-session-protocol` dep to root `Cargo.toml`; update `src/session_conversion.rs` to import from new crate
+  - [x] Run `just check`
 
 - [ ] Phase 3: Remove old module and verify
   - [ ] Delete `crates/common/nullslop-component/src/chat_session/` directory
