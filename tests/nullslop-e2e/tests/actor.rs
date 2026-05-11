@@ -14,13 +14,13 @@ use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use nullslop_actor_host::{ActorHostService, InMemoryActorHost, spawn_actor};
 use nullslop_component::AppState;
 use nullslop_core::{ActorMessageSink, AppCore, AppMsg};
-use nullslop_llm::LlmActor;
+use nsslice_llm::LlmActor;
 use nullslop_protocol::provider::SendToLlmProvider;
 use nullslop_protocol::tool::ToolCall;
 use nullslop_providers::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
 use nullslop_services::Services;
-use nullslop_session_actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
-use nullslop_tool_orchestrator::ToolOrchestratorActor;
+use nsslice_session_management::actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
+use nsslice_tools::ToolOrchestratorActor;
 
 /// Cucumber world wrapping real actors for integration testing.
 ///
@@ -124,7 +124,7 @@ fn create_actor_core(
 
     // Create tool orchestrator actor.
     let (orch_tx, orch_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_tool_orchestrator::ToolOrchestratorDirectMsg>>();
+        kanal::unbounded::<ActorEnvelope<nsslice_tools::ToolOrchestratorDirectMsg>>();
     let orch_ref = ActorRef::new(orch_tx);
     let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
     let orch_actor = ToolOrchestratorActor::activate(&mut orch_ctx);
@@ -138,7 +138,7 @@ fn create_actor_core(
     );
 
     // Create LLM actor with fake factory.
-    let (llm_tx, llm_rx) = kanal::unbounded::<ActorEnvelope<nullslop_llm::LlmDirectMsg>>();
+    let (llm_tx, llm_rx) = kanal::unbounded::<ActorEnvelope<nsslice_llm::LlmDirectMsg>>();
     let llm_ref = ActorRef::new(llm_tx);
     let mut llm_ctx = ActorContext::new("llm-streaming", sink.clone());
     llm_ctx.set_data(llm_service.clone());
