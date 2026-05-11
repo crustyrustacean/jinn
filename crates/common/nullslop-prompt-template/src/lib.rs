@@ -4,7 +4,7 @@
 //! This crate provides types for loading, storing, and searching templates
 //! independently of the application bus or state.
 //!
-//! The [`PromptTemplate`] data struct itself lives in `nullslop-protocol` so it
+//! The [`PromptTemplate`] data struct itself lives in `nullslop-domain` so it
 //! can travel across the actor boundary. This crate owns the loading, parsing,
 //! and storage logic.
 

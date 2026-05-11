@@ -3354,16 +3354,8 @@ name = "nullslop-intent"
 version = "0.1.0"
 dependencies = [
  "jiff",
- "nsslice-chat-entry-selection",
- "nsslice-chat-input-box",
- "nsslice-dashboard",
- "nsslice-global",
- "nsslice-navigation",
- "nsslice-picker",
- "nsslice-pinned-panel",
- "nsslice-session-management",
  "nullslop-component",
- "nullslop-protocol",
+ "nullslop-domain",
  "rstest",
 ]
 
