@@ -5,11 +5,11 @@
 //! host gracefully.
 
 use error_stack::{Report, ResultExt};
-use nullslop_core::{AppCore, AppMsg};
 use nullslop_domain::ActorHostService;
 use nullslop_domain::Command;
+use nullslop_domain::IntentHandler;
 use nullslop_domain::protocol::chat_input::EnqueueUserMessage;
-use nullslop_intent::IntentHandler;
+use nullslop_domain::{AppCore, AppMsg};
 use wherror::Error;
 
 /// Error type for headless operations.
@@ -149,12 +149,12 @@ impl HeadlessApp {
 
     /// Shuts down the actor host gracefully.
     pub fn shutdown(&mut self) {
-        nullslop_core::coordinated_shutdown(
+        nullslop_domain::coordinated_shutdown(
             self.actor_host.backend(),
             &self.core.state,
             &self.core_receiver,
             &self.handle,
-            nullslop_core::SHUTDOWN_TIMEOUT,
+            nullslop_domain::SHUTDOWN_TIMEOUT,
         );
     }
 }

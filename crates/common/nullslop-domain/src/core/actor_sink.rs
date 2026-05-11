@@ -1,10 +1,10 @@
 //! Bridge from actor output to the `AppCore` message channel.
 
+use crate::{ActorSendError, MessageSink, SendResult};
+use crate::{Command, Event};
 use kanal::Sender;
-use super::{ActorSendError, MessageSink, SendResult};
-use super::{Command, Event};
 
-use super::AppMsg;
+use crate::AppMsg;
 
 /// Bridges actor output into `AppCore`'s kanal channel.
 ///
@@ -47,7 +47,7 @@ impl MessageSink for ActorMessageSink {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[rstest::rstest]
     fn actor_sink_send_command_delivers_message() {

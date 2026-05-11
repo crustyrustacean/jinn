@@ -15,8 +15,6 @@ nullslop-domain = { workspace = true, features = ["which-key"] }
 crossterm = { workspace = true }
 ratatui-which-key = { workspace = true }
 ratatui-spatial-splits = { workspace = true }
-nullslop-core = { workspace = true }
-nullslop-intent = { workspace = true }
 tempfile = { workspace = true }
 kanal = { workspace = true }
 # These are needed because nullslop-services exposes types/traits from these crates

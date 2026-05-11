@@ -82,12 +82,12 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
     }
 
     // Shut down actor host — coordinated shutdown.
-    nullslop_core::coordinated_shutdown(
+    nullslop_domain::coordinated_shutdown(
         app.actor_host.backend(),
         &app.core.state,
         &app.core_receiver,
         &app.services.handle,
-        nullslop_core::SHUTDOWN_TIMEOUT,
+        nullslop_domain::SHUTDOWN_TIMEOUT,
     );
 
     // Restore terminal.

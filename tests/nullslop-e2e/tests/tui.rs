@@ -79,7 +79,7 @@ impl TuiWorld {
     }
 
     /// Routes an intent through the app.
-    fn route_intent(&mut self, intent: nullslop_intent::Intent) {
+    fn route_intent(&mut self, intent: nullslop_domain::Intent) {
         self.app.route_intent(intent);
     }
 }
@@ -196,7 +196,7 @@ fn when_routes_push_chat_entry(world: &mut TuiWorld, source: String, text: Strin
 /// Routes a ToggleWhichKey command directly.
 #[cucumber::when(expr = "the app routes the ToggleWhichKey command")]
 fn when_routes_toggle_which_key(world: &mut TuiWorld) {
-    world.route_intent(nullslop_intent::Intent::ToggleWhichkey);
+    world.route_intent(nullslop_domain::Intent::ToggleWhichkey);
 }
 
 // --- Then steps ---

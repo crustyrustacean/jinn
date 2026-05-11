@@ -22,9 +22,11 @@ pub mod chat_session;
 pub mod component;
 pub mod component_ui;
 pub mod context;
+pub mod core;
 pub mod dashboard;
 pub mod echo;
 pub mod global;
+pub mod intent;
 pub mod llm;
 pub mod navigation;
 pub mod picker;
@@ -63,6 +65,14 @@ pub use providers::NO_PROVIDER_ID;
 // Re-export services types
 pub use services::Services;
 pub use services::test_services::TestServices;
+
+// Re-export core types
+pub use core::{
+    ActorMessageSink, AppCore, SHUTDOWN_TIMEOUT, coordinated_shutdown, spawn_forwarding_task,
+};
+
+// Re-export intent types
+pub use intent::IntentHandler;
 pub use services::{ActorChannelService, CoreChannelService};
 
 // Re-export providers types

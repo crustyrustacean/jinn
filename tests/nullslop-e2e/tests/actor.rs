@@ -10,7 +10,6 @@
 use std::sync::Arc;
 
 use cucumber::World;
-use nullslop_core::{ActorMessageSink, AppCore, AppMsg};
 use nullslop_domain::AppState;
 use nullslop_domain::Services;
 use nullslop_domain::llm::LlmActor;
@@ -20,6 +19,7 @@ use nullslop_domain::session::actor::{SessionPersistenceActor, SessionPersistenc
 use nullslop_domain::tools::ToolOrchestratorActor;
 use nullslop_domain::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use nullslop_domain::{ActorHostService, InMemoryActorHost, spawn_actor};
+use nullslop_domain::{ActorMessageSink, AppCore, AppMsg};
 use nullslop_domain::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
 
 /// Cucumber world wrapping real actors for integration testing.
@@ -91,17 +91,17 @@ impl ActorWorld {
     /// Runs graceful coordinated shutdown of the actor system.
     #[allow(dead_code)]
     pub fn graceful_shutdown(&mut self) {
-        nullslop_core::coordinated_shutdown(
+        nullslop_domain::coordinated_shutdown(
             self.actor_host.backend(),
             &self.core.state,
             &self.core_receiver,
             &self.handle,
-            nullslop_core::SHUTDOWN_TIMEOUT,
+            nullslop_domain::SHUTDOWN_TIMEOUT,
         );
     }
 
     /// Returns a read guard to the application state.
-    pub fn state(&self) -> nullslop_core::StateReadGuard<'_> {
+    pub fn state(&self) -> nullslop_domain::StateReadGuard<'_> {
         self.core.state.read()
     }
 }
@@ -153,7 +153,7 @@ fn create_actor_core(
 
     // Create session actor to write events into state.
     // State is shared between AppCore and the session actor via Arc clone.
-    let state = nullslop_core::State::new(AppState::default());
+    let state = nullslop_domain::State::new(AppState::default());
     let (sp_tx, sp_rx) = kanal::unbounded::<ActorEnvelope<SessionPersistenceDirectMsg>>();
     let sp_ref = ActorRef::new(sp_tx);
     let mut sp_ctx = ActorContext::new("session-persistence", sink.clone());
@@ -182,7 +182,7 @@ fn create_actor_core(
 
     // Spawn the async forwarding task.
     let actor_host_service = nullslop_domain::ActorHostService::new(host_arc);
-    nullslop_core::spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
+    nullslop_domain::spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
     let core = AppCore {
         state: state.clone(),
