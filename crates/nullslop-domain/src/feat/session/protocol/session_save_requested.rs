@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-use crate::protocol::EventMsg;
 use crate::feat::session::chat_entry::ChatEntry;
+use crate::protocol::EventMsg;
 use crate::protocol::context::PromptStrategyId;
 use crate::protocol::session::SessionId;
 
