@@ -19,10 +19,10 @@
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::component::State;
+use crate::protocol::provider::{ModelsRefreshed, ProviderSwitch, ProviderSwitched};
+use crate::protocol::system::LoadPickerEntries;
+use crate::protocol::{Command, Event, PickerKind};
 use crate::services::Services;
-use nullslop_protocol::provider::{ModelsRefreshed, ProviderSwitch, ProviderSwitched};
-use nullslop_protocol::system::LoadPickerEntries;
-use nullslop_protocol::{Command, Event, PickerKind};
 
 use super::loader::load_provider_picker_items;
 
@@ -206,9 +206,9 @@ mod tests {
 
     use crate::actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use crate::component::{AppState, State};
+    use crate::protocol::provider::{ModelsRefreshed, ProviderSwitch};
+    use crate::protocol::{Command, Event};
     use crate::services::Services;
-    use nullslop_protocol::provider::{ModelsRefreshed, ProviderSwitch};
-    use nullslop_protocol::{Command, Event};
 
     use super::ProviderActor;
 

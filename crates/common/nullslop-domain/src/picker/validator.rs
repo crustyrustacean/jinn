@@ -4,7 +4,7 @@
 //! Most are infallible; picker confirm and open picker are fallible.
 
 use crate::component::AppState;
-use nullslop_protocol::PickerKind;
+use crate::protocol::PickerKind;
 use wherror::Error;
 
 // --- Infallible validators ---
@@ -129,7 +129,7 @@ mod tests {
     #[rstest::rstest]
     fn picker_confirm_succeeds_with_provider_selection() {
         // Given a state with an active provider picker and items.
-        use nullslop_protocol::PickerEntry;
+        use crate::protocol::PickerEntry;
         let mut state = AppState::default();
         state.frontend.active_picker_kind = Some(PickerKind::Provider);
         state.provider.provider_picker.set_items(vec![PickerEntry {
@@ -155,7 +155,7 @@ mod tests {
     #[rstest::rstest]
     fn picker_confirm_succeeds_with_keymap_selection() {
         // Given a state with an active keymap picker and items.
-        use nullslop_protocol::KeymapEntry;
+        use crate::protocol::KeymapEntry;
         let mut state = AppState::default();
         state.frontend.active_picker_kind = Some(PickerKind::Keymap);
         state.frontend.keymap_picker.set_items(vec![KeymapEntry {
@@ -163,7 +163,7 @@ mod tests {
             description: "quit".to_owned(),
             scope: "normal".to_owned(),
             category: "general".to_owned(),
-            command: nullslop_protocol::Intent::Quit,
+            command: crate::protocol::Intent::Quit,
             search_text: "q quit".to_owned(),
         }]);
 
@@ -177,11 +177,11 @@ mod tests {
     #[rstest::rstest]
     fn picker_confirm_succeeds_with_session_selection() {
         // Given a state with an active session picker and items.
-        use nullslop_protocol::SessionEntry;
+        use crate::protocol::SessionEntry;
         let mut state = AppState::default();
         state.frontend.active_picker_kind = Some(PickerKind::Session);
         state.frontend.session_picker.set_items(vec![SessionEntry {
-            session_id: nullslop_protocol::SessionId::new(),
+            session_id: crate::protocol::SessionId::new(),
             title: "Test Session".to_owned(),
             updated_at: jiff::Timestamp::now(),
             byte_offset: 0,
@@ -197,14 +197,14 @@ mod tests {
     #[rstest::rstest]
     fn picker_confirm_succeeds_with_context_assembly_selection() {
         // Given a state with an active context strategy picker and items.
-        use nullslop_protocol::StrategyEntry;
+        use crate::protocol::StrategyEntry;
         let mut state = AppState::default();
         state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
         state
             .frontend
             .context_strategy_picker
             .set_items(vec![StrategyEntry {
-                strategy_id: nullslop_protocol::PromptStrategyId::passthrough(),
+                strategy_id: crate::protocol::PromptStrategyId::passthrough(),
                 name: "passthrough".to_owned(),
                 description: "No processing".to_owned(),
                 is_active: false,

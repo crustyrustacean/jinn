@@ -1,9 +1,9 @@
 //! Global intent handlers — quit, toggle which-key, and interrupt.
 
 use crate::component::AppState;
-use nullslop_protocol::provider::CancelStream;
-use nullslop_protocol::session::SessionId;
-use nullslop_protocol::{Command, IntentResult};
+use crate::protocol::provider::CancelStream;
+use crate::protocol::session::SessionId;
+use crate::protocol::{Command, IntentResult};
 
 use super::validator;
 
@@ -174,7 +174,7 @@ mod tests {
     #[rstest::rstest]
     fn interrupt_with_specific_session_cancels_stream() {
         // Given two sessions, the second one streaming.
-        use nullslop_protocol::SessionId;
+        use crate::protocol::SessionId;
 
         let mut state = AppState::default();
         let second_id = SessionId::new();

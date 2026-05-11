@@ -1,4 +1,4 @@
-use nullslop_protocol::{PromptStrategyId, StrategyEntry};
+use crate::protocol::{PromptStrategyId, StrategyEntry};
 use nullslop_selection_widget::PickerItem as _;
 use std::ops::Range;
 

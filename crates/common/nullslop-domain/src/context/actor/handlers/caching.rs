@@ -1,8 +1,8 @@
 //! Caching handlers — tool definition caching and template loading.
 
 use crate::component::prompt_template::PromptTemplateStore;
-use nullslop_protocol::provider::PromptTemplatesLoaded;
-use nullslop_protocol::tool::ToolsRegistered;
+use crate::protocol::provider::PromptTemplatesLoaded;
+use crate::protocol::tool::ToolsRegistered;
 
 use super::super::PromptAssemblyActor;
 

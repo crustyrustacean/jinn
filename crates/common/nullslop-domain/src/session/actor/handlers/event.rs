@@ -1,11 +1,11 @@
 //! Event handlers — process streaming and tool call events.
 
-use nullslop_protocol::context::PromptAssembled;
-use nullslop_protocol::provider::{SendToLlmProvider, StreamCompleted, StreamToken};
-use nullslop_protocol::tool::{
+use crate::protocol::context::PromptAssembled;
+use crate::protocol::provider::{SendToLlmProvider, StreamCompleted, StreamToken};
+use crate::protocol::tool::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
-use nullslop_protocol::{ChatEntry, Command};
+use crate::protocol::{ChatEntry, Command};
 
 use super::super::SessionPersistenceActor;
 

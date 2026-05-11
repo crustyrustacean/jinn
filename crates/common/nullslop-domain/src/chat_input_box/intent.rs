@@ -16,8 +16,8 @@ use crate::chat_input_box::AutocompleteMatch;
 use crate::component::AppState;
 use crate::component::ChatInputBoxState;
 use crate::component::prompt_template::PromptTemplateStore;
-use nullslop_protocol::chat_input::EnqueueUserMessage;
-use nullslop_protocol::{Command, IntentResult, Mode};
+use crate::protocol::chat_input::EnqueueUserMessage;
+use crate::protocol::{Command, IntentResult, Mode};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::validator;
@@ -301,7 +301,7 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         let session_id = state.session.active_session.clone();
         state.active_session_mut().cancel_stream_and_drain();
         commands.push(Command::CancelStream {
-            payload: nullslop_protocol::provider::CancelStream { session_id },
+            payload: crate::protocol::provider::CancelStream { session_id },
         });
     }
 
@@ -592,7 +592,7 @@ mod tests {
     fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
         // Given a state in Picker mode with active picker kind.
         use crate::component::FrontendState;
-        use nullslop_protocol::PickerKind;
+        use crate::protocol::PickerKind;
 
         let mut state = AppState {
             frontend: FrontendState {
@@ -615,7 +615,7 @@ mod tests {
     fn enter_normal_mode_cancels_stream_when_in_input_mode() {
         // Given a state in Input mode with active stream.
         use crate::component::FrontendState;
-        use nullslop_protocol::Command;
+        use crate::protocol::Command;
 
         let mut state = AppState {
             frontend: FrontendState {
@@ -644,7 +644,7 @@ mod tests {
     fn enter_normal_mode_drains_queue_when_cancelling_stream() {
         // Given a state in Input mode with active stream and queued messages.
         use crate::component::FrontendState;
-        use nullslop_protocol::Command;
+        use crate::protocol::Command;
 
         let mut state = AppState {
             frontend: FrontendState {
@@ -678,7 +678,7 @@ mod tests {
     #[rstest::rstest]
     fn normal_escape_clears_selection() {
         // Given a state with a selected entry.
-        use nullslop_protocol::ChatEntry;
+        use crate::protocol::ChatEntry;
 
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("hi"));

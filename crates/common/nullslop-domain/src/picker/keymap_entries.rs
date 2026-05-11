@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::KeymapEntry;
+    use crate::protocol::KeymapEntry;
     use nullslop_selection_widget::PickerItem;
     use ratatui::style::Color;
     use ratatui::style::Modifier;
@@ -22,7 +22,7 @@ mod tests {
             description: description.to_owned(),
             scope: scope.to_owned(),
             category: category.to_owned(),
-            command: nullslop_protocol::Intent::Quit,
+            command: crate::protocol::Intent::Quit,
             search_text,
         }
     }

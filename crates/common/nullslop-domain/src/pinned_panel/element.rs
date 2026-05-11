@@ -8,7 +8,7 @@
 use crate::component::AppState;
 use crate::component::app_state::pin_sort_key;
 use crate::component_ui::UiElement;
-use nullslop_protocol::{ChatEntryKind, PinPosition};
+use crate::protocol::{ChatEntryKind, PinPosition};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -125,7 +125,7 @@ fn truncate_str(s: &str, max_len: usize) -> String {
 
 /// Builds the list of lines for the pinned entries panel.
 fn build_entry_list(
-    pinned: &[&nullslop_protocol::ChatEntry],
+    pinned: &[&crate::protocol::ChatEntry],
     selected_index: usize,
     _area_width: u16,
 ) -> Vec<Line<'static>> {
@@ -177,7 +177,7 @@ fn build_entry_list(
 #[cfg(test)]
 mod tests {
     use crate::component::AppState;
-    use nullslop_protocol::{ChatEntry, PinPosition};
+    use crate::protocol::{ChatEntry, PinPosition};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;

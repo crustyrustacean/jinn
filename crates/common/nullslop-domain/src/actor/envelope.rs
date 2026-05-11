@@ -25,9 +25,9 @@ pub enum SystemMessage {
 /// kanal channel, giving it one unified match block for all incoming messages.
 pub enum ActorEnvelope<M> {
     /// A bus event this actor subscribed to during activation.
-    Event(nullslop_protocol::Event),
+    Event(crate::protocol::Event),
     /// A bus command this actor registered for during activation.
-    Command(nullslop_protocol::Command),
+    Command(crate::protocol::Command),
     /// A direct typed message from another actor.
     Direct(M),
     /// A system lifecycle message (delivered to all actors, no subscription needed).

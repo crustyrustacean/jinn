@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use error_stack::Report;
 use wherror::Error;
 
-use nullslop_protocol::{ChatEntry, LlmMessage, PromptStrategyId, SessionId, ToolDefinition};
+use crate::protocol::{ChatEntry, LlmMessage, PromptStrategyId, SessionId, ToolDefinition};
 
 /// Error type for prompt assembly operations.
 #[derive(Debug, Error)]

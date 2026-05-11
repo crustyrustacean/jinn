@@ -61,7 +61,7 @@ pub fn expand_tokens(text: &str, store: &PromptTemplateStore) -> String {
 #[cfg(test)]
 mod expand_tokens_tests {
     use super::*;
-    use nullslop_protocol::PromptTemplate;
+    use crate::protocol::PromptTemplate;
 
     fn make_store(templates: Vec<(&str, &str, &str)>) -> PromptTemplateStore {
         PromptTemplateStore::from_vec(

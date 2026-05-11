@@ -8,7 +8,7 @@
 use async_trait::async_trait;
 use error_stack::Report;
 
-use nullslop_protocol::{ChatEntry, entries_to_messages};
+use crate::protocol::{ChatEntry, entries_to_messages};
 
 use super::types::{AssembledPrompt, AssemblyContext, PromptAssembly, PromptAssemblyError};
 
@@ -58,7 +58,7 @@ impl PromptAssembly for SlidingWindowStrategy {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::{ChatEntry, LlmMessage, PinPosition, SessionId};
+    use crate::protocol::{ChatEntry, LlmMessage, PinPosition, SessionId};
 
     use super::*;
 

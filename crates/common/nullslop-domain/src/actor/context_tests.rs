@@ -140,10 +140,10 @@ fn send_event_delegates_to_sink() {
 
     // When sending a KeyDown event.
     ctx.send_event(Event::KeyDown {
-        payload: nullslop_protocol::system::KeyDown {
-            key: nullslop_protocol::KeyEvent {
-                key: nullslop_protocol::Key::Enter,
-                modifiers: nullslop_protocol::Modifiers::none(),
+        payload: crate::protocol::system::KeyDown {
+            key: crate::protocol::KeyEvent {
+                key: crate::protocol::Key::Enter,
+                modifiers: crate::protocol::Modifiers::none(),
             },
         },
     })

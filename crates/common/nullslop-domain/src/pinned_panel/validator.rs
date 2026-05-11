@@ -80,7 +80,7 @@ fn validate_pin_action(state: &AppState) -> Result<(), PinnedPanelActionError> {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::{ChatEntry, PinPosition};
+    use crate::protocol::{ChatEntry, PinPosition};
 
     use super::*;
 

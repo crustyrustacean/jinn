@@ -72,7 +72,7 @@ pub fn validate_session_new(state: &AppState) -> Result<(), SessionNewError> {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::PickerKind;
+    use crate::protocol::PickerKind;
 
     use super::*;
 

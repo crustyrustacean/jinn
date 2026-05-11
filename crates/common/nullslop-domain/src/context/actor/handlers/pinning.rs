@@ -1,6 +1,6 @@
 //! Pinning handlers — pin and unpin chat entries.
 
-use nullslop_protocol::context::{PinChatEntry, UnpinChatEntry};
+use crate::protocol::context::{PinChatEntry, UnpinChatEntry};
 
 use super::super::PromptAssemblyActor;
 

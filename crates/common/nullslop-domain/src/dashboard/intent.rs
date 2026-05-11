@@ -5,7 +5,7 @@
 //! no commands.
 
 use crate::component::AppState;
-use nullslop_protocol::IntentResult;
+use crate::protocol::IntentResult;
 
 /// Move the dashboard selection to the next entry.
 pub fn handle_select_down(state: &mut AppState) -> IntentResult {

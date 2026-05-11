@@ -20,7 +20,7 @@ use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use crate::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::component::State;
 
-pub use nullslop_protocol::PromptStrategyId;
+pub use crate::protocol::PromptStrategyId;
 pub use strategy::compaction::CompactionStrategy;
 pub use strategy::compaction_data::CompactionSessionData;
 pub use strategy::discovery::DefaultStrategyDiscovery;

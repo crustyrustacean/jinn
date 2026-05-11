@@ -12,9 +12,9 @@
 
 use std::time::Duration;
 
+use crate::protocol::LlmMessage;
 use error_stack::Report;
 use futures::stream;
-use nullslop_protocol::LlmMessage;
 use rand::Rng;
 
 use super::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory};

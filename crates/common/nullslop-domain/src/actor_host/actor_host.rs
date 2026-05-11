@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use crate::actor::SystemMessage;
+use crate::protocol::{ActorName, Command, Event};
 use error_stack::Report;
-use nullslop_protocol::{ActorName, Command, Event};
 use wherror::Error;
 
 /// Error type for actor host operations.
@@ -119,10 +119,10 @@ mod tests {
         // Then none of them panic.
         service.send_event(
             &Event::KeyDown {
-                payload: nullslop_protocol::system::KeyDown {
-                    key: nullslop_protocol::KeyEvent {
-                        key: nullslop_protocol::Key::Enter,
-                        modifiers: nullslop_protocol::Modifiers::none(),
+                payload: crate::protocol::system::KeyDown {
+                    key: crate::protocol::KeyEvent {
+                        key: crate::protocol::Key::Enter,
+                        modifiers: crate::protocol::Modifiers::none(),
                     },
                 },
             },

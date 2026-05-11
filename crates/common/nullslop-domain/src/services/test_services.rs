@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use crate::context::{DefaultStrategyDiscovery, StrategyDiscovery};
+use crate::protocol::{AppMsg, SessionId};
 use crate::providers::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
@@ -16,7 +17,6 @@ use crate::session::{
 };
 use error_stack::Report;
 use kanal::Sender;
-use nullslop_protocol::{AppMsg, SessionId};
 use tokio::runtime::Handle;
 
 use super::Services;

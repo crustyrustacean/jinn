@@ -2,12 +2,12 @@
 
 use std::pin::Pin;
 
+use crate::protocol::LlmMessage;
+use crate::protocol::tool::ToolDefinition;
 use error_stack::Report;
 use futures::StreamExt as _;
 use futures::stream;
 use futures::stream::Stream;
-use nullslop_protocol::LlmMessage;
-use nullslop_protocol::tool::ToolDefinition;
 use wherror::Error;
 
 use super::StreamEvent;

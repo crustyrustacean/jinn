@@ -3,8 +3,8 @@
 //! Wraps a [`kanal::Sender<AppMsg>`] so any holder of [`Services`] can submit
 //! messages to the actor system without needing direct access to [`AppCore`].
 
+use crate::protocol::{AppMsg, Command, Event};
 use derive_more::Debug;
-use nullslop_protocol::{AppMsg, Command, Event};
 
 /// Service for sending messages into the actor system.
 ///

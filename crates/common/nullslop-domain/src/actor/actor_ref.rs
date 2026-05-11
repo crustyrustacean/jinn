@@ -95,7 +95,7 @@ where
     /// # Errors
     ///
     /// Returns an error if the channel is closed.
-    pub fn send_event(&self, event: nullslop_protocol::Event) -> SendResult {
+    pub fn send_event(&self, event: crate::protocol::Event) -> SendResult {
         from_kanal_send(
             self.cell.sender.read().send(ActorEnvelope::Event(event)),
             "failed to send event to actor",
@@ -109,7 +109,7 @@ where
     /// # Errors
     ///
     /// Returns an error if the channel is closed.
-    pub fn send_command(&self, command: nullslop_protocol::Command) -> SendResult {
+    pub fn send_command(&self, command: crate::protocol::Command) -> SendResult {
         from_kanal_send(
             self.cell
                 .sender
@@ -179,7 +179,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::{Command, Event};
+    use crate::protocol::{Command, Event};
 
     use super::*;
 
@@ -211,10 +211,10 @@ mod tests {
         // When sending an event.
         actor_ref
             .send_event(Event::KeyDown {
-                payload: nullslop_protocol::system::KeyDown {
-                    key: nullslop_protocol::KeyEvent {
-                        key: nullslop_protocol::Key::Enter,
-                        modifiers: nullslop_protocol::Modifiers::none(),
+                payload: crate::protocol::system::KeyDown {
+                    key: crate::protocol::KeyEvent {
+                        key: crate::protocol::Key::Enter,
+                        modifiers: crate::protocol::Modifiers::none(),
                     },
                 },
             })

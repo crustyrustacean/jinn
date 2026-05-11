@@ -13,19 +13,19 @@ use std::sync::Arc;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
 use crate::actor_host::{ActorSpawnResult, spawn_actor};
-use crate::providers::StreamEvent;
-use crate::services::providers::LlmServiceFactoryService;
-use futures::StreamExt as _;
-use nullslop_protocol::chat_input::PushChatEntry;
-use nullslop_protocol::provider::LlmMessage;
-use nullslop_protocol::provider::{
+use crate::protocol::chat_input::PushChatEntry;
+use crate::protocol::provider::LlmMessage;
+use crate::protocol::provider::{
     CancelStream, SendToLlmProvider, StreamCompleted, StreamCompletedReason, StreamToken,
 };
-use nullslop_protocol::tool::{
+use crate::protocol::tool::{
     ExecuteToolBatch, PushToolResult, ToolBatchCompleted, ToolCall, ToolCallReceived,
     ToolCallStreaming, ToolDefinition, ToolResult, ToolUseStarted, ToolsRegistered,
 };
-use nullslop_protocol::{ChatEntry, Command, Event, SessionId};
+use crate::protocol::{ChatEntry, Command, Event, SessionId};
+use crate::providers::StreamEvent;
+use crate::services::providers::LlmServiceFactoryService;
+use futures::StreamExt as _;
 
 use session::{SessionData, SessionState};
 
@@ -493,9 +493,9 @@ mod tests {
     use std::sync::Arc;
 
     use crate::actor::RecordingSink;
+    use crate::protocol::EventMsg as _;
+    use crate::protocol::tool::{ToolDefinition, ToolsRegistered};
     use crate::providers::FakeLlmServiceFactory;
-    use nullslop_protocol::EventMsg as _;
-    use nullslop_protocol::tool::{ToolDefinition, ToolsRegistered};
 
     use super::*;
 

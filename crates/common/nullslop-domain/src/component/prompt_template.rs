@@ -9,4 +9,4 @@ pub use crate::prompt_template::{
     prompts_dir,
 };
 // Re-export PromptTemplate from protocol (also available through the standalone crate).
-pub use nullslop_protocol::PromptTemplate;
+pub use crate::protocol::PromptTemplate;

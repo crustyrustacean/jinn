@@ -4,7 +4,7 @@
 //! to route events and commands to actors with different message types without
 //! generics on the host itself.
 
-use nullslop_protocol::{Command, CommandName, Event, EventTypeName};
+use crate::protocol::{Command, CommandName, Event, EventTypeName};
 
 /// A routing entry that wraps a typed actor sender in closures.
 ///
@@ -57,10 +57,10 @@ mod tests {
         };
 
         // When calling send_event with a ModeChanged event.
-        (entry.send_event)(nullslop_protocol::Event::ModeChanged {
-            payload: nullslop_protocol::system::ModeChanged {
-                from: nullslop_protocol::Mode::Normal,
-                to: nullslop_protocol::Mode::Input,
+        (entry.send_event)(crate::protocol::Event::ModeChanged {
+            payload: crate::protocol::system::ModeChanged {
+                from: crate::protocol::Mode::Normal,
+                to: crate::protocol::Mode::Input,
             },
         });
 
@@ -71,7 +71,7 @@ mod tests {
             .expect("should have value");
         assert!(matches!(
             msg,
-            ActorEnvelope::Event(nullslop_protocol::Event::ModeChanged { .. })
+            ActorEnvelope::Event(crate::protocol::Event::ModeChanged { .. })
         ));
     }
 
@@ -93,7 +93,7 @@ mod tests {
         };
 
         // When calling send_command.
-        (entry.send_command)(nullslop_protocol::Command::RefreshModels);
+        (entry.send_command)(crate::protocol::Command::RefreshModels);
 
         // Then it is received as a Command envelope.
         let msg = rx
@@ -102,7 +102,7 @@ mod tests {
             .expect("should have value");
         assert!(matches!(
             msg,
-            ActorEnvelope::Command(nullslop_protocol::Command::RefreshModels)
+            ActorEnvelope::Command(crate::protocol::Command::RefreshModels)
         ));
     }
 

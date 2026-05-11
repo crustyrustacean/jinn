@@ -2,7 +2,7 @@
 //!
 //! Returns the four built-in strategies with their display metadata.
 
-use nullslop_protocol::PromptStrategyId;
+use crate::protocol::PromptStrategyId;
 
 use super::types::{StrategyDiscovery, StrategyInfo};
 

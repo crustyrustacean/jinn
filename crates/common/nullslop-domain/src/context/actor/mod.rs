@@ -15,13 +15,13 @@ use std::collections::HashMap;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::component::State;
-use nullslop_protocol::context::{
+use crate::protocol::context::{
     AssemblePrompt, PinChatEntry, PromptStrategySwitched, RestoreStrategyState,
     SwitchPromptStrategy, UnpinChatEntry,
 };
-use nullslop_protocol::provider::PromptTemplatesLoaded;
-use nullslop_protocol::tool::ToolsRegistered;
-use nullslop_protocol::{Command, Event, SessionId, ToolDefinition};
+use crate::protocol::provider::PromptTemplatesLoaded;
+use crate::protocol::tool::ToolsRegistered;
+use crate::protocol::{Command, Event, SessionId, ToolDefinition};
 
 use crate::context::{DefaultStrategyFactory, PromptAssembly, StrategyFactory};
 
@@ -140,10 +140,10 @@ mod tests {
 
     use crate::actor::{ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use crate::component::{AppState, State};
-    use nullslop_protocol::ChatEntry;
-    use nullslop_protocol::PinPosition;
-    use nullslop_protocol::PromptStrategyId;
-    use nullslop_protocol::context::PromptAssembled;
+    use crate::protocol::ChatEntry;
+    use crate::protocol::PinPosition;
+    use crate::protocol::PromptStrategyId;
+    use crate::protocol::context::PromptAssembled;
 
     use super::*;
 
@@ -184,7 +184,7 @@ mod tests {
         // When sending an AssemblePrompt with history.
         let session_id = SessionId::new();
         let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id: session_id.clone(),
                 history,
@@ -214,7 +214,7 @@ mod tests {
         // When sending an AssemblePrompt with history.
         let session_id = SessionId::new();
         let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id: session_id.clone(),
                 history,
@@ -240,7 +240,7 @@ mod tests {
 
         // When sending an AssemblePrompt for a new session.
         let session_id = SessionId::new();
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id: session_id.clone(),
                 history: vec![ChatEntry::user("test")],
@@ -290,7 +290,7 @@ mod tests {
 
         let session_id = SessionId::new();
         // Initialize the session with an assemble.
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id: session_id.clone(),
                 history: vec![ChatEntry::user("hello")],
@@ -362,7 +362,7 @@ mod tests {
         for i in 0..10 {
             history.push(ChatEntry::user(format!("msg {i}")));
         }
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id: session_id.clone(),
                 history,
@@ -404,7 +404,7 @@ mod tests {
             // Each entry: 400 chars / 4 + 1 = 101 tokens. 100 entries = 10,100 tokens.
             history.push(ChatEntry::user("a".repeat(400)));
         }
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id: session_id.clone(),
                 history,
@@ -446,7 +446,7 @@ mod tests {
         for _ in 0..100 {
             history.push(ChatEntry::user("a".repeat(400)));
         }
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id: session_id.clone(),
                 history,
@@ -482,7 +482,7 @@ mod tests {
             ChatEntry::user("hello"),
             ChatEntry::assistant("hi"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -500,7 +500,7 @@ mod tests {
         assert!(!assembled.messages.is_empty());
         assert_eq!(
             assembled.messages[0],
-            nullslop_protocol::LlmMessage::System {
+            crate::protocol::LlmMessage::System {
                 content: "important instruction".to_owned(),
             }
         );
@@ -520,7 +520,7 @@ mod tests {
             ChatEntry::system("remember this").with_pin(PinPosition::Bottom),
             ChatEntry::user("what is 2+2?"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -552,7 +552,7 @@ mod tests {
             ChatEntry::system("remember this").with_pin(PinPosition::Bottom),
             ChatEntry::user("what is 2+2?"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -569,19 +569,19 @@ mod tests {
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
             assembled.messages[0],
-            nullslop_protocol::LlmMessage::User {
+            crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
         assert_eq!(
             assembled.messages[1],
-            nullslop_protocol::LlmMessage::System {
+            crate::protocol::LlmMessage::System {
                 content: "remember this".to_owned(),
             }
         );
         assert_eq!(
             assembled.messages[2],
-            nullslop_protocol::LlmMessage::User {
+            crate::protocol::LlmMessage::User {
                 content: "what is 2+2?".to_owned(),
             }
         );
@@ -601,7 +601,7 @@ mod tests {
             ChatEntry::system("keep me").with_pin(PinPosition::Relative),
             ChatEntry::user("goodbye"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -633,7 +633,7 @@ mod tests {
             ChatEntry::system("keep me").with_pin(PinPosition::Relative),
             ChatEntry::user("goodbye"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -650,19 +650,19 @@ mod tests {
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
             assembled.messages[0],
-            nullslop_protocol::LlmMessage::User {
+            crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
         assert_eq!(
             assembled.messages[1],
-            nullslop_protocol::LlmMessage::System {
+            crate::protocol::LlmMessage::System {
                 content: "keep me".to_owned(),
             }
         );
         assert_eq!(
             assembled.messages[2],
-            nullslop_protocol::LlmMessage::User {
+            crate::protocol::LlmMessage::User {
                 content: "goodbye".to_owned(),
             }
         );
@@ -681,7 +681,7 @@ mod tests {
             ChatEntry::system("top instruction").with_pin(PinPosition::Top),
             ChatEntry::system("bottom reminder").with_pin(PinPosition::Bottom),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -699,13 +699,13 @@ mod tests {
         assert_eq!(assembled.messages.len(), 2);
         assert_eq!(
             assembled.messages[0],
-            nullslop_protocol::LlmMessage::System {
+            crate::protocol::LlmMessage::System {
                 content: "top instruction".to_owned(),
             }
         );
         assert_eq!(
             assembled.messages[1],
-            nullslop_protocol::LlmMessage::System {
+            crate::protocol::LlmMessage::System {
                 content: "bottom reminder".to_owned(),
             }
         );
@@ -724,7 +724,7 @@ mod tests {
             ChatEntry::system("reminder").with_pin(PinPosition::Bottom),
             ChatEntry::user("hello"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -742,13 +742,13 @@ mod tests {
         assert_eq!(assembled.messages.len(), 2);
         assert_eq!(
             assembled.messages[0],
-            nullslop_protocol::LlmMessage::System {
+            crate::protocol::LlmMessage::System {
                 content: "reminder".to_owned(),
             }
         );
         assert_eq!(
             assembled.messages[1],
-            nullslop_protocol::LlmMessage::User {
+            crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
@@ -771,7 +771,7 @@ mod tests {
             ChatEntry::system("bottom reminder").with_pin(PinPosition::Bottom),
             ChatEntry::user("latest question"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -789,7 +789,7 @@ mod tests {
         assert_eq!(assembled.messages.len(), 6);
         assert_eq!(
             assembled.messages[0],
-            nullslop_protocol::LlmMessage::System {
+            crate::protocol::LlmMessage::System {
                 content: "top rule".to_owned(),
             }
         );
@@ -812,7 +812,7 @@ mod tests {
             ChatEntry::system("bottom reminder").with_pin(PinPosition::Bottom),
             ChatEntry::user("latest question"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -829,7 +829,7 @@ mod tests {
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
             assembled.messages[2],
-            nullslop_protocol::LlmMessage::System {
+            crate::protocol::LlmMessage::System {
                 content: "relative note".to_owned(),
             }
         );
@@ -852,7 +852,7 @@ mod tests {
             ChatEntry::system("bottom reminder").with_pin(PinPosition::Bottom),
             ChatEntry::user("latest question"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -869,13 +869,13 @@ mod tests {
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
             assembled.messages[4],
-            nullslop_protocol::LlmMessage::System {
+            crate::protocol::LlmMessage::System {
                 content: "bottom reminder".to_owned(),
             }
         );
         assert_eq!(
             assembled.messages[5],
-            nullslop_protocol::LlmMessage::User {
+            crate::protocol::LlmMessage::User {
                 content: "latest question".to_owned(),
             }
         );
@@ -895,7 +895,7 @@ mod tests {
             ChatEntry::assistant("hi"),
             ChatEntry::user("how are you?"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -928,7 +928,7 @@ mod tests {
             ChatEntry::assistant("hi"),
             ChatEntry::user("how are you?"),
         ];
-        let cmd = nullslop_protocol::Command::AssemblePrompt {
+        let cmd = crate::protocol::Command::AssemblePrompt {
             payload: AssemblePrompt {
                 session_id,
                 history,
@@ -945,20 +945,20 @@ mod tests {
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
             assembled.messages[0],
-            nullslop_protocol::LlmMessage::User {
+            crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
         assert_eq!(
             assembled.messages[1],
-            nullslop_protocol::LlmMessage::Assistant {
+            crate::protocol::LlmMessage::Assistant {
                 content: "hi".to_owned(),
                 tool_calls: None,
             }
         );
         assert_eq!(
             assembled.messages[2],
-            nullslop_protocol::LlmMessage::User {
+            crate::protocol::LlmMessage::User {
                 content: "how are you?".to_owned(),
             }
         );
@@ -1129,7 +1129,7 @@ mod tests {
         // Given a context actor.
         let (mut actor, state, _sink, ctx) = create_actor();
 
-        let templates = vec![nullslop_protocol::PromptTemplate {
+        let templates = vec![crate::protocol::PromptTemplate {
             name: "greeting".to_owned(),
             description: "A greeting".to_owned(),
             body: "Hello!".to_owned(),

@@ -8,7 +8,7 @@
 use derive_more::Debug;
 
 // Re-export CoreNotification from nullslop-protocol for backward compatibility.
-pub use nullslop_protocol::CoreNotification;
+pub use crate::protocol::CoreNotification;
 
 /// Service for sending lifecycle notifications to the core.
 ///

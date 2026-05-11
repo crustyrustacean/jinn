@@ -8,8 +8,8 @@ use std::path::PathBuf;
 
 use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::prompt_template::PromptTemplateStore;
-use nullslop_protocol::provider::{PromptTemplatesLoaded, RescanPromptTemplates};
-use nullslop_protocol::{Command, Event};
+use crate::protocol::provider::{PromptTemplatesLoaded, RescanPromptTemplates};
+use crate::protocol::{Command, Event};
 
 /// Direct message type for the prompt scan actor (unused).
 pub enum PromptScanDirectMsg {}

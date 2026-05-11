@@ -10,7 +10,7 @@
 //!   domain (provider, session, context, tools, etc.)
 //!
 //! Protocol types are re-exported at the crate root for convenience.
-//! `nullslop_domain::Command` is the same type as `nullslop_protocol::Command`.
+//! `nullslop_domain::Command` is the same type as `crate::protocol::Command`.
 
 pub mod actor;
 pub mod actor_host;
@@ -91,20 +91,20 @@ pub use services::core_channel;
 pub use services::strategy_registry;
 
 // Re-export protocol types at crate root — these are the same types as nullslop_protocol
-pub use nullslop_protocol::entries_to_messages;
-pub use nullslop_protocol::{ActiveTab, TabDirection};
-pub use nullslop_protocol::{
+pub use protocol::entries_to_messages;
+pub use protocol::{ActiveTab, TabDirection};
+pub use protocol::{
     ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, CommandAction,
     CoreNotification, Event, Intent, IntentResult, Key, KeyEvent, LlmMessage, Mode, Modifiers,
     PickerKind, PinPosition, PromptTemplate, SessionId, StrategyEntry, SwitchPromptStrategy,
 };
-pub use nullslop_protocol::{
+pub use protocol::{
     ActorShutdownCompleted, ActorStarted, ActorStarting, AssemblePrompt, CommandMsg, CommandName,
     EventMsg, EventTypeName, KeymapEntry, PickerEntry, PromptAssembled, PromptStrategyId,
     PromptStrategySwitched, SessionEntry, SessionLoadCompleted, SessionLoadRequested, SessionNew,
     SessionSaveRequested,
 };
-pub use nullslop_protocol::{
+pub use protocol::{
     ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools, ToolBatchCompleted, ToolCall,
     ToolCallReceived, ToolCallStreaming, ToolDefinition, ToolExecutionCompleted, ToolResult,
     ToolUseStarted, ToolsRegistered,
