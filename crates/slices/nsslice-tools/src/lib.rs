@@ -10,6 +10,7 @@
 
 mod builtin;
 
+#[cfg(test)]
 use builtin::{execute_echo, execute_file_read, execute_file_write, execute_get_time};
 
 use std::collections::HashMap;

@@ -6,6 +6,8 @@
 //! call events back as bus commands. When the LLM requests tool use, emits
 //! [`ExecuteToolBatch`] and awaits results before continuing the conversation.
 
+mod session;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -25,40 +27,7 @@ use nullslop_protocol::{ChatEntry, Command, Event, SessionId};
 use nullslop_providers::StreamEvent;
 use nullslop_services::providers::LlmServiceFactoryService;
 
-/// Per-session state machine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SessionState {
-    /// No active streaming.
-    Idle,
-    /// Streaming tokens from the LLM.
-    Streaming,
-    /// Tool calls were sent; awaiting results from the orchestrator.
-    AwaitingToolResults,
-}
-
-/// Per-session data tracked by the actor.
-struct SessionData {
-    /// Current state in the streaming lifecycle.
-    state: SessionState,
-    /// Accumulated messages for the conversation (survives across tool loops).
-    messages: Vec<LlmMessage>,
-    /// Accumulated text content from the current stream.
-    accumulated_text: String,
-    /// Accumulated tool calls from the current stream.
-    accumulated_tool_calls: Vec<ToolCall>,
-}
-
-impl SessionData {
-    /// Creates a new [`SessionData`] with the given initial messages.
-    fn new(messages: Vec<LlmMessage>) -> Self {
-        Self {
-            state: SessionState::Idle,
-            messages,
-            accumulated_text: String::new(),
-            accumulated_tool_calls: Vec::new(),
-        }
-    }
-}
+use session::{SessionData, SessionState};
 
 /// Direct message type for the LLM actor.
 ///
