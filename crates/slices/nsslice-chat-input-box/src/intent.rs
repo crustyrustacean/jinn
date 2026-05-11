@@ -14,8 +14,8 @@
 
 use nsslice_chat_input_box_protocol::AutocompleteMatch;
 use nsslice_chat_input_box_protocol::ChatInputBoxState;
-use nullslop_component::prompt_template::PromptTemplateStore;
 use nullslop_component::AppState;
+use nullslop_component::prompt_template::PromptTemplateStore;
 use nullslop_protocol::chat_input::EnqueueUserMessage;
 use nullslop_protocol::{Command, IntentResult, Mode};
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -36,8 +36,7 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
                 state.active_chat_input_mut().deactivate_autocomplete();
             }
             '$' => {
-                let Some(token_start) = state.active_chat_input().autocomplete_token_start()
-                else {
+                let Some(token_start) = state.active_chat_input().autocomplete_token_start() else {
                     return IntentResult::empty();
                 };
                 let cursor_before_insert = state.active_chat_input().cursor_pos() - 1;

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
-use nullslop_actor_host::{spawn_actor, ActorSpawnResult};
+use nullslop_actor_host::{ActorSpawnResult, spawn_actor};
 use nullslop_protocol::chat_input::{self, ChatEntrySubmitted};
 use nullslop_protocol::{ChatEntry, ChatEntryKind, Command, Event};
 

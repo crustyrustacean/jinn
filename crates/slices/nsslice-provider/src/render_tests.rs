@@ -1,8 +1,8 @@
 //! Provider picker render tests.
 
 use nullslop_component::AppState;
-use nullslop_providers::{ProviderEntry, ProvidersConfig};
 use nullslop_protocol::{Mode, PickerKind};
+use nullslop_providers::{ProviderEntry, ProvidersConfig};
 use nullslop_selection_widget::compute_popup_rect;
 use nullslop_services::Services;
 use ratatui::Terminal;

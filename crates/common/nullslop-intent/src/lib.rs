@@ -15,5 +15,5 @@ pub mod handler;
 pub mod intent;
 
 pub use handler::IntentHandler;
-pub use nullslop_protocol::IntentResult;
 pub use intent::Intent;
+pub use nullslop_protocol::IntentResult;

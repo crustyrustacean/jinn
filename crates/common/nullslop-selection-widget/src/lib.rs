@@ -12,7 +12,7 @@ pub mod item;
 pub mod state;
 pub mod widget;
 
-pub use highlight::{highlight_text, PICKER_HIGHLIGHT_STYLE};
+pub use highlight::{PICKER_HIGHLIGHT_STYLE, highlight_text};
 pub use item::{MatchRanges, PickerItem};
 pub use state::SelectionState;
 pub use widget::{

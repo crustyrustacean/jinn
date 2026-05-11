@@ -25,11 +25,11 @@ pub use app_state::{
     ShutdownCoordinatorState,
 };
 pub use chat_session::ChatSessionState;
+pub use nsslice_chat_input_box_protocol::ChatInputBoxState;
 pub use nsslice_dashboard_protocol::DashboardState;
 pub use nsslice_pinned_panel_protocol::PinnedPanelState;
-pub use nsslice_chat_input_box_protocol::ChatInputBoxState;
-pub use nullslop_providers::NO_PROVIDER_ID;
 pub use nsslice_shutdown_protocol::ShutdownTrackerState;
+pub use nullslop_providers::NO_PROVIDER_ID;
 pub use state::{State, StateReadGuard, StateWriteGuard};
 pub use tui_signals::TuiSignals;
 
@@ -50,8 +50,7 @@ pub fn register_all(registry: &mut AppUiRegistry) {
 ///
 /// Populates the UI element registry with all built-in elements.
 /// After Phase 6, this is empty — all elements are registered by slice crates.
-pub fn register_tui_elements(_registry: &mut AppUiRegistry) {
-}
+pub fn register_tui_elements(_registry: &mut AppUiRegistry) {}
 
 /// Test utilities shared across the crate.
 ///

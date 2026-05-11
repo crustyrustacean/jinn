@@ -1,8 +1,8 @@
 //! Navigation intent handlers — scroll, tab, and editor.
 
 use nullslop_component::AppState;
-use nullslop_protocol::tab::TabDirection;
 use nullslop_protocol::IntentResult;
+use nullslop_protocol::tab::TabDirection;
 
 /// Number of lines to scroll per keyboard step.
 const SCROLL_STEP: u16 = 10;
@@ -63,8 +63,8 @@ pub fn handle_edit_input(state: &mut AppState) -> IntentResult {
 #[cfg(test)]
 mod tests {
     use nullslop_component::AppState;
-    use nullslop_protocol::tab::TabDirection;
     use nullslop_protocol::ChatEntry;
+    use nullslop_protocol::tab::TabDirection;
 
     use super::*;
 

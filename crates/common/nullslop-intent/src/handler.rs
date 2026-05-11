@@ -34,7 +34,6 @@ use nullslop_protocol::PinPosition;
 
 use crate::Intent;
 
-
 use nullslop_protocol::IntentResult;
 
 /// Processes user intents — the single decision point for all user input.
@@ -65,15 +64,11 @@ impl IntentHandler {
             Intent::InsertChar { ch } => {
                 nsslice_chat_input_box::intent::handle_insert_char(*ch, state)
             }
-            Intent::DeleteGrapheme => {
-                nsslice_chat_input_box::intent::handle_delete_grapheme(state)
-            }
+            Intent::DeleteGrapheme => nsslice_chat_input_box::intent::handle_delete_grapheme(state),
             Intent::DeleteGraphemeForward => {
                 nsslice_chat_input_box::intent::handle_delete_grapheme_forward(state)
             }
-            Intent::SubmitMessage => {
-                nsslice_chat_input_box::intent::handle_submit_message(state)
-            }
+            Intent::SubmitMessage => nsslice_chat_input_box::intent::handle_submit_message(state),
             Intent::AutocompleteConfirm => {
                 nsslice_chat_input_box::intent::handle_autocomplete_confirm(state)
             }
@@ -95,9 +90,7 @@ impl IntentHandler {
             Intent::MoveCursorWordRight => {
                 nsslice_chat_input_box::intent::handle_move_cursor_word_right(state)
             }
-            Intent::MoveCursorUp => {
-                nsslice_chat_input_box::intent::handle_move_cursor_up(state)
-            }
+            Intent::MoveCursorUp => nsslice_chat_input_box::intent::handle_move_cursor_up(state),
             Intent::MoveCursorDown => {
                 nsslice_chat_input_box::intent::handle_move_cursor_down(state)
             }
@@ -105,16 +98,10 @@ impl IntentHandler {
             // --- Navigation ---
             Intent::ScrollUp => nsslice_navigation::intent::handle_scroll_up(state),
             Intent::ScrollDown => nsslice_navigation::intent::handle_scroll_down(state),
-            Intent::MouseScrollUp => {
-                nsslice_navigation::intent::handle_mouse_scroll_up(state)
-            }
-            Intent::MouseScrollDown => {
-                nsslice_navigation::intent::handle_mouse_scroll_down(state)
-            }
+            Intent::MouseScrollUp => nsslice_navigation::intent::handle_mouse_scroll_up(state),
+            Intent::MouseScrollDown => nsslice_navigation::intent::handle_mouse_scroll_down(state),
             Intent::ScrollToTop => nsslice_navigation::intent::handle_scroll_to_top(state),
-            Intent::ScrollToBottom => {
-                nsslice_navigation::intent::handle_scroll_to_bottom(state)
-            }
+            Intent::ScrollToBottom => nsslice_navigation::intent::handle_scroll_to_bottom(state),
             Intent::SwitchTab { direction } => {
                 nsslice_navigation::intent::handle_switch_tab(state, *direction)
             }
@@ -132,14 +119,10 @@ impl IntentHandler {
                 nsslice_chat_input_box::intent::handle_enter_normal_mode(state)
             }
             Intent::ToggleWhichkey => nsslice_global::intent::handle_toggle_whichkey(state),
-            Intent::NormalEscape => {
-                nsslice_chat_input_box::intent::handle_normal_escape(state)
-            },
+            Intent::NormalEscape => nsslice_chat_input_box::intent::handle_normal_escape(state),
 
             // --- Picker ---
-            Intent::OpenPicker { kind } => {
-                nsslice_picker::intent::handle_open_picker(state, *kind)
-            }
+            Intent::OpenPicker { kind } => nsslice_picker::intent::handle_open_picker(state, *kind),
             Intent::PickerInsertChar { ch } => {
                 nsslice_picker::intent::handle_insert_char(state, *ch)
             }
@@ -148,27 +131,21 @@ impl IntentHandler {
                 let (result, maybe_intent) = nsslice_picker::intent::handle_picker_confirm(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state);
-                    IntentResult::with_commands(
-                        [result.commands, redispatch.commands].concat(),
-                    )
+                    IntentResult::with_commands([result.commands, redispatch.commands].concat())
                 } else {
                     result
                 }
             }
             Intent::PickerMoveUp => nsslice_picker::intent::handle_move_up(state),
             Intent::PickerMoveDown => nsslice_picker::intent::handle_move_down(state),
-            Intent::PickerMoveCursorLeft => {
-                nsslice_picker::intent::handle_move_cursor_left(state)
-            }
+            Intent::PickerMoveCursorLeft => nsslice_picker::intent::handle_move_cursor_left(state),
             Intent::PickerMoveCursorRight => {
                 nsslice_picker::intent::handle_move_cursor_right(state)
             }
             Intent::ToggleKeymapScopeFilter => {
                 nsslice_picker::intent::handle_toggle_keymap_scope_filter(state)
             }
-            Intent::SessionNew => {
-                nsslice_session_management::intent::handle_session_new(state)
-            }
+            Intent::SessionNew => nsslice_session_management::intent::handle_session_new(state),
             Intent::RefreshModels => {
                 nsslice_session_management::intent::handle_refresh_models(state)
             }
@@ -177,35 +154,19 @@ impl IntentHandler {
             }
 
             // --- Dashboard ---
-            Intent::DashboardSelectDown => {
-                nsslice_dashboard::intent::handle_select_down(state)
-            }
-            Intent::DashboardSelectUp => {
-                nsslice_dashboard::intent::handle_select_up(state)
-            }
-            Intent::DashboardSelectFirst => {
-                nsslice_dashboard::intent::handle_select_first(state)
-            }
-            Intent::DashboardSelectLast => {
-                nsslice_dashboard::intent::handle_select_last(state)
-            }
+            Intent::DashboardSelectDown => nsslice_dashboard::intent::handle_select_down(state),
+            Intent::DashboardSelectUp => nsslice_dashboard::intent::handle_select_up(state),
+            Intent::DashboardSelectFirst => nsslice_dashboard::intent::handle_select_first(state),
+            Intent::DashboardSelectLast => nsslice_dashboard::intent::handle_select_last(state),
 
             // --- Pinned Panel ---
-            Intent::PinnedPanelToggle => {
-                nsslice_pinned_panel::intent::handle_toggle(state)
-            }
-            Intent::PinnedPanelOpen => {
-                nsslice_pinned_panel::intent::handle_open(state)
-            }
-            Intent::PinnedPanelClose => {
-                nsslice_pinned_panel::intent::handle_close(state)
-            }
+            Intent::PinnedPanelToggle => nsslice_pinned_panel::intent::handle_toggle(state),
+            Intent::PinnedPanelOpen => nsslice_pinned_panel::intent::handle_open(state),
+            Intent::PinnedPanelClose => nsslice_pinned_panel::intent::handle_close(state),
             Intent::PinnedPanelSelectDown => {
                 nsslice_pinned_panel::intent::handle_select_down(state)
             }
-            Intent::PinnedPanelSelectUp => {
-                nsslice_pinned_panel::intent::handle_select_up(state)
-            }
+            Intent::PinnedPanelSelectUp => nsslice_pinned_panel::intent::handle_select_up(state),
             Intent::PinnedPanelUnpin => {
                 nsslice_pinned_panel::intent::handle_pinned_panel_unpin(state)
             }

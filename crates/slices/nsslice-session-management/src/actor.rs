@@ -17,6 +17,7 @@
 //! All handlers follow the same pattern: acquire state lock → mutate → release →
 //! then emit. Never hold the lock during emission.
 
+use crate::persistence::{PersistedSession, SessionStoreService};
 use jiff::Timestamp;
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_component::State;
@@ -34,7 +35,6 @@ use nullslop_protocol::tool::{
 use nullslop_protocol::{
     ChatEntry, Command, Event, PromptStrategyId, SessionLoadRequested, SessionSaveRequested,
 };
-use crate::persistence::{PersistedSession, SessionStoreService};
 
 /// Direct message type (unused — the actor only responds to bus commands/events).
 pub enum SessionPersistenceDirectMsg {}
@@ -493,6 +493,7 @@ mod tests {
     use nullslop_component::{AppState, State};
     use nullslop_protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
     // no context imports needed in tests currently
+    use crate::persistence::{JsonlSessionStore, SessionStoreService};
     use nullslop_protocol::provider::{
         SendMessage, StreamCompleted, StreamCompletedReason, StreamToken,
     };
@@ -505,7 +506,6 @@ mod tests {
         SessionSaveRequested, ToolCall, ToolResult,
     };
     use nullslop_services::Services;
-    use crate::persistence::{JsonlSessionStore, SessionStoreService};
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;

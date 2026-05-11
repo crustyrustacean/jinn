@@ -8,11 +8,12 @@ use std::path::Path;
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
+use nsslice_context_protocol::DefaultStrategyFactory;
+use nsslice_session_management::persistence::{JsonlSessionStore, SessionStoreService};
 use nullslop_actor::MessageSink;
 use nullslop_actor_host::{ActorHostService, InMemoryActorHost};
 use nullslop_cli::Cli;
 use nullslop_component::AppState;
-use nsslice_context_protocol::DefaultStrategyFactory;
 use nullslop_core::{ActorMessageSink, AppCore, AppMsg, State, spawn_forwarding_task};
 use nullslop_protocol::Event;
 use nullslop_protocol::actor::{ActorStarted, ActorStarting};
@@ -30,7 +31,6 @@ use nullslop_services::Services;
 use nullslop_services::actor_channel::ActorChannelService;
 use nullslop_services::core_channel::CoreChannelService;
 use nullslop_services::strategy_registry::StrategyRegistryService;
-use nsslice_session_management::persistence::{JsonlSessionStore, SessionStoreService};
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -342,12 +342,8 @@ fn create_core_with_actor_host(
     );
 
     // --- Shutdown tracker actor ---
-    let (_st_ref, st_result) = nsslice_shutdown::spawn(
-        state.clone(),
-        services.clone(),
-        sink.clone(),
-        handle,
-    );
+    let (_st_ref, st_result) =
+        nsslice_shutdown::spawn(state.clone(), services.clone(), sink.clone(), handle);
 
     // Emit lifecycle events for all actors.
     let actor_names = [

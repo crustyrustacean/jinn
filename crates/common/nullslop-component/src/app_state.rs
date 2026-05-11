@@ -16,16 +16,16 @@ use nullslop_protocol::{
 };
 use serde_json::Value as JsonValue;
 
-pub use nsslice_chat_input_box_protocol::ChatInputBoxState;
 use crate::chat_session::ChatSessionState;
-use nullslop_protocol::StrategyEntry;
-use nullslop_protocol::KeymapEntry;
-pub use nsslice_pinned_panel_protocol::PinnedPanelState;
 use crate::prompt_template::PromptTemplateStore;
-use nullslop_protocol::SessionEntry;
-use nsslice_shutdown_protocol::ShutdownTrackerState;
-pub use nsslice_dashboard_protocol::DashboardState;
 use crate::tui_signals::TuiSignals;
+pub use nsslice_chat_input_box_protocol::ChatInputBoxState;
+pub use nsslice_dashboard_protocol::DashboardState;
+pub use nsslice_pinned_panel_protocol::PinnedPanelState;
+use nsslice_shutdown_protocol::ShutdownTrackerState;
+use nullslop_protocol::KeymapEntry;
+use nullslop_protocol::SessionEntry;
+use nullslop_protocol::StrategyEntry;
 
 /// Session lifecycle state — owned by the session-actor.
 ///

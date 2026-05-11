@@ -137,5 +137,4 @@ mod tests {
         // Then it returns NotActive error.
         assert!(matches!(result, Err(AutocompleteConfirmError::NotActive)));
     }
-
 }

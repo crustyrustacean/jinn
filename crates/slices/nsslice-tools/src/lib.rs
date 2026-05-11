@@ -75,7 +75,10 @@ struct PendingBatch {
 pub fn spawn(
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
-) -> (ActorRef<ToolOrchestratorDirectMsg>, nullslop_actor_host::ActorSpawnResult) {
+) -> (
+    ActorRef<ToolOrchestratorDirectMsg>,
+    nullslop_actor_host::ActorSpawnResult,
+) {
     let (tx, rx) = kanal::unbounded::<ActorEnvelope<ToolOrchestratorDirectMsg>>();
     let actor_ref = ActorRef::new(tx);
     let mut ctx = ActorContext::new("tool-orchestrator", sink);

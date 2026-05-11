@@ -43,9 +43,7 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
 
     state
         .active_session_mut()
-        .push_entry(ChatEntry::system(
-            "Rescanning prompt templates...",
-        ));
+        .push_entry(ChatEntry::system("Rescanning prompt templates..."));
 
     IntentResult::with_commands(vec![Command::RescanPromptTemplates])
 }
