@@ -2,8 +2,6 @@
 //!
 //! Covers LLM token streaming and tool-call streaming.
 
-use std::collections::HashMap;
-
 use nullslop_protocol::{ChatEntry, ChatEntryKind};
 
 use super::ChatSessionState;
