@@ -76,7 +76,10 @@ impl SessionPersistenceActor {
     }
 
     /// Appends a partial JSON delta to a streaming tool call.
-    pub(in crate::feat::session::actor) fn on_tool_call_streaming(&self, event: &ToolCallStreaming) {
+    pub(in crate::feat::session::actor) fn on_tool_call_streaming(
+        &self,
+        event: &ToolCallStreaming,
+    ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         session.append_tool_call_delta(event.index, &event.partial_json);

@@ -7,12 +7,14 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
+use crate::common::actor::{
+    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
+};
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::services::Services;
 use crate::common::state::State;
 use crate::protocol::actor::{ActorShutdownCompleted, ActorStarting, ProceedWithShutdown};
 use crate::protocol::{Command, Event};
-use crate::common::services::Services;
 
 /// Tracks which actors are still active during a shutdown.
 #[derive(Debug, Clone, Default)]

@@ -15,8 +15,8 @@ pub use service::SessionStoreService;
 use error_stack::Report;
 use wherror::Error;
 
-use crate::protocol::SessionId;
 use crate::feat::session::{PersistedSession, SessionSummary};
+use crate::protocol::SessionId;
 
 /// Error type for session store operations.
 #[derive(Debug, Error)]

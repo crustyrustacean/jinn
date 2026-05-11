@@ -12,7 +12,10 @@ impl SessionPersistenceActor {
     ///
     /// Errors are logged as warnings — persistence failure must not break
     /// the user experience.
-    pub(in crate::feat::session::actor) fn on_save_requested(&mut self, evt: &SessionSaveRequested) {
+    pub(in crate::feat::session::actor) fn on_save_requested(
+        &mut self,
+        evt: &SessionSaveRequested,
+    ) {
         let Some(store) = &self.store else {
             tracing::warn!("session-actor has no store — dropping save request");
             return;

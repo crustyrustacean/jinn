@@ -70,8 +70,8 @@ pub fn session_to_persisted(
 mod tests {
     use std::collections::HashMap;
 
-    use nullslop_domain::feat::session::chat_session::ChatSessionState;
     use nullslop_domain::feat::session::PersistedSession;
+    use nullslop_domain::feat::session::chat_session::ChatSessionState;
     use nullslop_domain::{ChatEntry, PromptStrategyId, SessionId};
 
     use super::*;

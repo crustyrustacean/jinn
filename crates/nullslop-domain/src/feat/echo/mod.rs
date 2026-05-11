@@ -8,7 +8,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
+use crate::common::actor::{
+    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
+};
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 
 use crate::protocol::chat_input::{self, ChatEntrySubmitted};

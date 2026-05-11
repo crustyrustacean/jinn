@@ -17,9 +17,9 @@ pub use queue_element::QueueDisplayElement;
 
 use std::sync::Arc;
 
+use crate::common::AppUiRegistry;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
-use crate::common::AppUiRegistry;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 
 use crate::PickerEntry;

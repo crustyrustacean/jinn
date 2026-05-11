@@ -164,8 +164,8 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let registry =
-            crate::feat::provider_infra::registry::ProviderRegistry::from_config(config).expect("registry");
+        let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
+            .expect("registry");
         let service = ProviderRegistryService::new(registry);
         let clone = service.clone();
 
@@ -207,8 +207,8 @@ mod tests {
             }],
             default_provider: None,
         };
-        let registry =
-            crate::feat::provider_infra::registry::ProviderRegistry::from_config(config).expect("registry");
+        let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
+            .expect("registry");
         ProviderRegistryService::new(registry)
     }
 
@@ -292,7 +292,8 @@ mod tests {
         let api_keys = crate::feat::provider_infra::api_keys::ApiKeys::new();
 
         // When checking availability of the keyless provider.
-        let id = crate::feat::provider_infra::provider_id::ProviderId::new("ollama/llama3".to_owned());
+        let id =
+            crate::feat::provider_infra::provider_id::ProviderId::new("ollama/llama3".to_owned());
 
         // Then it is available.
         assert!(service.is_available(&id, &api_keys));
@@ -328,8 +329,8 @@ mod tests {
             aliases: vec![],
             default_provider: Some("ollama/llama3".to_owned()),
         };
-        let registry =
-            crate::feat::provider_infra::registry::ProviderRegistry::from_config(config).expect("registry");
+        let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
+            .expect("registry");
         let service = ProviderRegistryService::new(registry);
 
         // When asking for the default provider.
@@ -359,13 +360,14 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let registry =
-            crate::feat::provider_infra::registry::ProviderRegistry::from_config(config).expect("registry");
+        let registry = crate::feat::provider_infra::registry::ProviderRegistry::from_config(config)
+            .expect("registry");
         let service = ProviderRegistryService::new(registry);
         let api_keys = crate::feat::provider_infra::api_keys::ApiKeys::new();
 
         // When creating a factory via the service.
-        let id = crate::feat::provider_infra::provider_id::ProviderId::new("sample/sample".to_owned());
+        let id =
+            crate::feat::provider_infra::provider_id::ProviderId::new("sample/sample".to_owned());
         let factory = service.create_factory(&id, &api_keys);
 
         // Then it succeeds and returns a factory named "Sample".

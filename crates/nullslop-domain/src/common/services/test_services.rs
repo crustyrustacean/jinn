@@ -7,7 +7,6 @@
 use std::sync::Arc;
 
 use crate::feat::context::{DefaultStrategyDiscovery, StrategyDiscovery};
-use crate::protocol::{AppMsg, SessionId};
 use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
@@ -15,6 +14,7 @@ use crate::feat::provider_infra::{
 use crate::feat::session::{
     PersistedSession, SessionStore, SessionStoreError, SessionStoreService, SessionSummary,
 };
+use crate::protocol::{AppMsg, SessionId};
 use error_stack::Report;
 use kanal::Sender;
 use tokio::runtime::Handle;

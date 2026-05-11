@@ -296,7 +296,9 @@ impl ActorHost for InMemoryActorHost {
 mod tests {
     use std::sync::Arc;
 
-    use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, RecordingSink};
+    use crate::common::actor::{
+        Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, RecordingSink,
+    };
     use crate::protocol::chat_input::ChatEntrySubmitted;
     use crate::protocol::{Command, CommandMsg as _, Event};
 

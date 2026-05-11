@@ -36,7 +36,7 @@ pub use common::app_state::{
 };
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::tui_signals::TuiSignals;
-pub use common::{register_all, register_tui_elements, AppUiRegistry};
+pub use common::{AppUiRegistry, register_all, register_tui_elements};
 pub use feat::context::prompt_template::PromptTemplateStore;
 pub use feat::provider_infra::NO_PROVIDER_ID;
 
@@ -50,8 +50,8 @@ pub use common::core::{
 };
 
 // Re-export intent types
-pub use feat::intent::IntentHandler;
 pub use common::services::{ActorChannelService, CoreChannelService};
+pub use feat::intent::IntentHandler;
 
 // Re-export providers types
 pub use feat::provider_infra::TOOL_LOOP_TRIGGER;

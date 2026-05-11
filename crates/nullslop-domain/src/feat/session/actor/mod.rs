@@ -168,6 +168,7 @@ mod tests {
     use crate::protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
     // no context imports needed in tests currently
     use super::super::session_store::{JsonlSessionStore, SessionStoreService};
+    use crate::common::services::Services;
     use crate::protocol::provider::{
         SendMessage, StreamCompleted, StreamCompletedReason, StreamToken,
     };
@@ -179,7 +180,6 @@ mod tests {
         ChatEntry, ChatEntryKind, Command, Event, PromptStrategyId, SessionId,
         SessionSaveRequested, ToolCall, ToolResult,
     };
-    use crate::common::services::Services;
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;

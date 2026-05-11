@@ -5,8 +5,8 @@
 //! implementation live in `nullslop-protocol`.
 
 use crate::common::app_state::AppState;
-use crate::protocol::{PromptStrategyId, StrategyEntry};
 use crate::common::services::Services;
+use crate::protocol::{PromptStrategyId, StrategyEntry};
 
 /// Loads strategy entries from the strategy registry, marking the active one.
 pub fn load_strategy_entries(

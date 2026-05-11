@@ -1,9 +1,9 @@
 //! Provider picker render tests.
 
 use crate::common::app_state::AppState;
-use crate::protocol::{Mode, PickerKind};
-use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
 use crate::common::services::Services;
+use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
+use crate::protocol::{Mode, PickerKind};
 use nullslop_selection_widget::compute_popup_rect;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;

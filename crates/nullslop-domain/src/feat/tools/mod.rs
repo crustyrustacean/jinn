@@ -18,7 +18,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
+use crate::common::actor::{
+    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
+};
 use crate::common::actor_host::spawn_actor;
 use crate::protocol::tool::{
     ExecuteTool, ExecuteToolBatch, RegisterTools, ToolBatchCompleted, ToolCall, ToolDefinition,

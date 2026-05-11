@@ -1,7 +1,7 @@
 //! Autocomplete popup render tests.
 
-use crate::feat::chat_input::AutocompleteMatch;
 use crate::common::app_state::AppState;
+use crate::feat::chat_input::AutocompleteMatch;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
