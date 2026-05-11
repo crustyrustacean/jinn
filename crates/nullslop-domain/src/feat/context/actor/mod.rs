@@ -23,7 +23,7 @@ use crate::protocol::provider::PromptTemplatesLoaded;
 use crate::protocol::tool::ToolsRegistered;
 use crate::protocol::{Command, Event, SessionId, ToolDefinition};
 
-use crate::context::{DefaultStrategyFactory, PromptAssembly, StrategyFactory};
+use crate::feat::context::{DefaultStrategyFactory, PromptAssembly, StrategyFactory};
 
 /// Direct message type for the prompt assembly actor (unused for now).
 pub enum ContextDirectMsg {}

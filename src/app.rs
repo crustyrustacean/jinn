@@ -26,7 +26,7 @@ use nullslop_domain::Services;
 use nullslop_domain::SessionStoreService;
 use nullslop_domain::actor_channel::ActorChannelService;
 use nullslop_domain::cache_path;
-use nullslop_domain::context::DefaultStrategyFactory;
+use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::core_channel::CoreChannelService;
 use nullslop_domain::session::JsonlSessionStore as DomainJsonlSessionStore;
 use nullslop_domain::session::SessionStoreService as DomainSessionStoreService;
@@ -297,7 +297,7 @@ fn create_core_with_actor_host(
     let (_orch_ref, orch_result) = nullslop_domain::feat::tools::spawn(sink.clone(), handle);
 
     // --- Prompt assembly actor ---
-    let (_ctx_ref, prompt_result) = nullslop_domain::context::spawn_context_actor(
+    let (_ctx_ref, prompt_result) = nullslop_domain::feat::context::spawn_context_actor(
         state.clone(),
         Box::new(DefaultStrategyFactory),
         sink.clone(),
@@ -316,7 +316,7 @@ fn create_core_with_actor_host(
     );
 
     // --- Prompt scan actor ---
-    let (_scan_ref, scan_result) = nullslop_domain::context::spawn_prompt_scan_actor(
+    let (_scan_ref, scan_result) = nullslop_domain::feat::context::spawn_prompt_scan_actor(
         nullslop_domain::prompts_dir(),
         sink.clone(),
         handle,

@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use crate::context::{DefaultStrategyDiscovery, StrategyDiscovery};
+use crate::feat::context::{DefaultStrategyDiscovery, StrategyDiscovery};
 use crate::protocol::{AppMsg, SessionId};
 use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,

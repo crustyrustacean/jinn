@@ -16,9 +16,6 @@ pub mod common;
 pub mod feat;
 
 // Not yet reorganized (handled in later phases)
-pub mod context;
-pub mod intent;
-pub mod prompt_template;
 pub mod protocol;
 pub mod session;
 
@@ -41,7 +38,7 @@ pub use common::app_state::{
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::tui_signals::TuiSignals;
 pub use common::{register_all, register_tui_elements, AppUiRegistry};
-pub use prompt_template::PromptTemplateStore;
+pub use feat::context::prompt_template::PromptTemplateStore;
 pub use feat::provider_infra::NO_PROVIDER_ID;
 
 // Re-export services types
@@ -54,7 +51,7 @@ pub use common::core::{
 };
 
 // Re-export intent types
-pub use intent::IntentHandler;
+pub use feat::intent::IntentHandler;
 pub use common::services::{ActorChannelService, CoreChannelService};
 
 // Re-export providers types
@@ -67,15 +64,15 @@ pub use feat::provider_infra::{
 };
 
 // Re-export context types
-pub use context::DefaultStrategyDiscovery;
-pub use context::DefaultStrategyFactory;
+pub use feat::context::DefaultStrategyDiscovery;
+pub use feat::context::DefaultStrategyFactory;
 
 // Re-export session types
 pub use session::JsonlSessionStore;
 pub use session::SessionStoreService;
 
 // Re-export prompt template utilities
-pub use prompt_template::{ensure_prompts_dir_with_example, prompts_dir};
+pub use feat::context::prompt_template::{ensure_prompts_dir_with_example, prompts_dir};
 
 // Re-export services submodules
 pub use common::services::actor_channel;

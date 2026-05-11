@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::context::{StrategyDiscovery, StrategyInfo};
+use crate::feat::context::{StrategyDiscovery, StrategyInfo};
 
 /// Service wrapper around a [`StrategyDiscovery`] implementation.
 ///
