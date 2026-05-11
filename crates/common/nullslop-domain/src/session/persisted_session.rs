@@ -13,7 +13,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-use crate::protocol::{ChatEntry, PromptStrategyId, SessionId};
+use nullslop_protocol::{ChatEntry, PromptStrategyId, SessionId};
 
 /// Blob key for prompt strategy state.
 pub const BLOB_STRATEGY_STATE: &str = "strategy_state";
@@ -63,7 +63,7 @@ pub struct SessionSummary {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::protocol::{ChatEntry, PromptStrategyId, SessionId};
+    use nullslop_protocol::{ChatEntry, PromptStrategyId, SessionId};
 
     use super::*;
 

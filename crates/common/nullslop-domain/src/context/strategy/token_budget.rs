@@ -10,7 +10,7 @@
 use async_trait::async_trait;
 use error_stack::Report;
 
-use crate::protocol::{ChatEntry, entries_to_messages};
+use nullslop_protocol::{ChatEntry, entries_to_messages};
 
 use super::token_estimator::{TokenEstimator, estimate_entry_tokens};
 use super::types::{AssembledPrompt, AssemblyContext, PromptAssembly, PromptAssemblyError};
@@ -109,7 +109,7 @@ impl PromptAssembly for TokenBudgetStrategy {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::{ChatEntry, LlmMessage, PinPosition, SessionId};
+    use nullslop_protocol::{ChatEntry, LlmMessage, PinPosition, SessionId};
 
     use super::*;
     use super::super::token_estimator::CharRatioEstimator;

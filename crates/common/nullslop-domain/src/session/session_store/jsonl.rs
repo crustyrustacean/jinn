@@ -15,7 +15,7 @@ use std::path::PathBuf;
 
 use error_stack::{Report, ResultExt as _};
 
-use crate::protocol::SessionId;
+use nullslop_protocol::SessionId;
 use crate::session::{PersistedSession, SessionSummary};
 
 use super::{SessionStore, SessionStoreError};

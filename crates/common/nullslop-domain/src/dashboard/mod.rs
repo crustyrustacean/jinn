@@ -1,11 +1,19 @@
-//! Dashboard state — tracks actor names, descriptions, their startup status, and selection.
+//! Dashboard — displays registered actors and their startup status.
 //!
-//! Each actor goes through a lifecycle: `Starting` → `Running`.
-//! The dashboard state records the current status and description for display.
-//! The user can scroll through entries with `j`/`k`, which moves the selection
-//! indicator and scrolls the view to keep the selected entry visible.
+//! Everything related to the dashboard lives here: state, rendering, and intents.
+//!
+//! The dashboard shows a list of actors with their startup status. The user can
+//! scroll through entries with `j`/`k`, which moves the selection indicator and
+//! scrolls the view to keep the selected entry visible.
+
+pub mod element;
+pub mod intent;
+
+pub use element::DashboardElement;
 
 use std::collections::HashMap;
+
+use nullslop_component::AppUiRegistry;
 
 /// The startup status of an actor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,6 +177,11 @@ impl DashboardState {
             .filter_map(|name| self.actors.get(name))
             .collect()
     }
+}
+
+/// Register dashboard UI element.
+pub fn register(registry: &mut AppUiRegistry) {
+    registry.register(Box::new(DashboardElement));
 }
 
 #[cfg(test)]

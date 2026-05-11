@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use error_stack::Report;
 
-use crate::protocol::entries_to_messages;
+use nullslop_protocol::entries_to_messages;
 
 use super::types::{AssembledPrompt, AssemblyContext, PromptAssembly, PromptAssemblyError};
 
@@ -36,7 +36,7 @@ impl PromptAssembly for PassthroughStrategy {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::{ChatEntry, SessionId};
+    use nullslop_protocol::{ChatEntry, SessionId};
 
     use super::*;
 
