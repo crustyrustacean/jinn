@@ -29,36 +29,36 @@ pub mod tab;
 pub mod tool;
 
 // Re-export primary types
+pub use crate::feat::picker::keymap_entry::KeymapEntry;
+pub use crate::feat::picker::strategy_entry::StrategyEntry;
+pub use crate::feat::provider::entries_to_messages::entries_to_messages;
+pub use crate::feat::provider::llm_message::LlmMessage;
+pub use crate::feat::provider::picker_entry::PickerEntry;
+pub use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
+pub use crate::feat::session::picker_entry::SessionEntry;
 pub use action::CommandAction;
 pub use actor::{ActorShutdownCompleted, ActorStarted, ActorStarting};
 pub use actor_name::ActorName;
 pub use app_msg::AppMsg;
-pub use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
 pub use command::Command;
 pub use context::{
     AssemblePrompt, PromptAssembled, PromptStrategyId, PromptStrategySwitched, SwitchPromptStrategy,
 };
-pub use crate::feat::picker::strategy_entry::StrategyEntry;
 pub use core_notification::CoreNotification;
 pub use custom::{CommandMsg, CommandName, EventMsg, EventTypeName};
 pub use event::Event;
 pub use intent::Intent;
 pub use intent_result::IntentResult;
 pub use key::{Key, KeyEvent, Modifiers};
-pub use crate::feat::picker::keymap_entry::KeymapEntry;
 pub use mode::Mode;
 pub use nullslop_protocol_derive::{CommandMsg, EventMsg};
 pub use picker_kind::PickerKind;
 pub use prompt_template::PromptTemplate;
-pub use crate::feat::provider::llm_message::LlmMessage;
-pub use crate::feat::provider::entries_to_messages::entries_to_messages;
-pub use crate::feat::provider::picker_entry::PickerEntry;
 pub use session::SessionId;
 pub use session::SessionLoadCompleted;
 pub use session::SessionLoadRequested;
 pub use session::SessionNew;
 pub use session::SessionSaveRequested;
-pub use crate::feat::session::picker_entry::SessionEntry;
 pub use tab::ActiveTab;
 pub use tab::TabDirection;
 pub use tool::{
