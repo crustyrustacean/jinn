@@ -2,13 +2,15 @@
 //!
 //! This crate consolidates all domain types and logic into a single crate:
 //!
-//! - **Protocol types** (`protocol/`) — Command/Event mega-enums, foundational
-//!   value types (ChatEntry, SessionId, Key, Mode, etc.)
+//! - **Protocol types** (`protocol/`) — re-exports from `nullslop-protocol`:
+//!   Command/Event mega-enums, foundational value types (ChatEntry, SessionId,
+//!   Key, Mode, etc.)
 //! - **Component UI** (`component_ui/`) — UiElement trait and registry
 //! - **Domain slices** — actors, intents, UI elements, and state for each
 //!   domain (provider, session, context, tools, etc.)
 //!
 //! Protocol types are re-exported at the crate root for convenience.
+//! `nullslop_domain::Command` is the same type as `nullslop_protocol::Command`.
 
 pub mod char_counter;
 pub mod chat_entry_selection;
@@ -31,36 +33,24 @@ pub mod shutdown;
 pub mod status_bar;
 pub mod tools;
 
-// Re-export protocol types at crate root
-pub use protocol::action::CommandAction;
-pub use protocol::actor::{ActorShutdownCompleted, ActorStarted, ActorStarting};
-pub use protocol::actor_name::ActorName;
-pub use protocol::app_msg::AppMsg;
-pub use protocol::chat::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
-pub use protocol::command::Command;
-pub use protocol::context::{
-    AssemblePrompt, PromptAssembled, PromptStrategyId, PromptStrategySwitched, SwitchPromptStrategy,
+// Re-export protocol types at crate root — these are the same types as nullslop_protocol
+pub use nullslop_protocol::{
+    ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, CommandAction,
+    CoreNotification, Event, Intent, IntentResult, Key, KeyEvent, LlmMessage, Mode, Modifiers,
+    PickerKind, PinPosition, PromptTemplate, SessionId, StrategyEntry, SwitchPromptStrategy,
 };
-pub use protocol::context_strategy_picker::entries::StrategyEntry;
-pub use protocol::core_notification::CoreNotification;
-pub use protocol::custom::{CommandMsg, CommandName, EventMsg, EventTypeName};
-pub use protocol::event::Event;
-pub use protocol::intent::Intent;
-pub use protocol::intent_result::IntentResult;
-pub use protocol::key::{Key, KeyEvent, Modifiers};
-pub use protocol::keymap_picker::entries::KeymapEntry;
-pub use protocol::mode::Mode;
-pub use nullslop_protocol_derive::{CommandMsg, EventMsg};
-pub use protocol::picker_kind::PickerKind;
-pub use protocol::prompt_template::PromptTemplate;
-pub use protocol::provider::LlmMessage;
-pub use protocol::provider::entries_to_messages;
-pub use protocol::provider_picker::entries::PickerEntry;
-pub use protocol::session::{SessionId, SessionLoadCompleted, SessionLoadRequested, SessionNew, SessionSaveRequested};
-pub use protocol::session_picker::entries::SessionEntry;
-pub use protocol::tab::{ActiveTab, TabDirection};
-pub use protocol::tool::{
+pub use nullslop_protocol::{
+    ActorShutdownCompleted, ActorStarted, ActorStarting, AssemblePrompt, CommandMsg, CommandName,
+    EventMsg, EventTypeName, KeymapEntry, PickerEntry, PromptAssembled, PromptStrategyId,
+    PromptStrategySwitched, SessionEntry, SessionLoadCompleted, SessionLoadRequested, SessionNew,
+    SessionSaveRequested,
+};
+pub use nullslop_protocol::{
+    ActiveTab, TabDirection,
+};
+pub use nullslop_protocol::{
     ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools, ToolBatchCompleted, ToolCall,
     ToolCallReceived, ToolCallStreaming, ToolDefinition, ToolExecutionCompleted, ToolResult,
     ToolUseStarted, ToolsRegistered,
 };
+pub use nullslop_protocol::{entries_to_messages};
