@@ -609,7 +609,7 @@ mod tests {
     fn resolve_initial_factory_finds_keyless_provider_without_default() {
         // Given a registry with a keyless lmstudio provider (no default set).
         let config = nullslop_domain::ProvidersConfig {
-            providers: vec![nullslop_domain::providers::ProviderEntry {
+            providers: vec![nullslop_domain::feat::provider_infra::ProviderEntry {
                 name: "lmstudio".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["my-model".to_owned()],

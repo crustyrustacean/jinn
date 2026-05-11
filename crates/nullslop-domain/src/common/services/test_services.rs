@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::context::{DefaultStrategyDiscovery, StrategyDiscovery};
 use crate::protocol::{AppMsg, SessionId};
-use crate::providers::{
+use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
@@ -188,7 +188,7 @@ impl TestServices {
             core_channel: CoreChannelService::new(self.core_channel_sender.unwrap_or(core_tx)),
             llm_service: self.llm_service.unwrap_or_else(|| {
                 LlmServiceFactoryService::new(Arc::new(
-                    crate::providers::FakeLlmServiceFactory::new(vec![]),
+                    crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
                 ))
             }),
             provider_registry: ProviderRegistryService::new(

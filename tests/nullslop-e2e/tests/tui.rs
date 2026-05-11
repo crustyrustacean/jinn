@@ -30,7 +30,7 @@ impl TuiWorld {
             tokio::runtime::Runtime::new().expect("test runtime"),
         ));
         let handle = rt.handle().clone();
-        let llm = nullslop_domain::providers::LlmServiceFactoryService::new(Arc::new(
+        let llm = nullslop_domain::feat::provider_infra::LlmServiceFactoryService::new(Arc::new(
             nullslop_domain::FakeLlmServiceFactory::new(vec![]),
         ));
         let config = nullslop_domain::ProvidersConfig {

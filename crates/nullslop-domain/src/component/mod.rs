@@ -23,7 +23,7 @@ pub use crate::feat::chat_input::ChatInputBoxState;
 pub use crate::chat_session::ChatSessionState;
 pub use crate::feat::dashboard::DashboardState;
 pub use crate::feat::pinned_panel::PinnedPanelState;
-pub use crate::providers::NO_PROVIDER_ID;
+pub use crate::feat::provider_infra::NO_PROVIDER_ID;
 pub use crate::feat::shutdown::ShutdownTrackerState;
 pub use app_state::{
     AppState, ContextAssemblyState, FrontendState, ProviderState, SessionState,

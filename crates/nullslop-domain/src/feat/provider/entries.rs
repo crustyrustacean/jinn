@@ -30,7 +30,7 @@ pub fn sorted_entries(
 
     // Promote active provider to top when filter is empty.
     if filter.is_empty()
-        && active_provider != crate::providers::NO_PROVIDER_ID
+        && active_provider != crate::feat::provider_infra::NO_PROVIDER_ID
         && let Some(pos) = available
             .iter()
             .position(|e| e.provider_id == active_provider)
@@ -170,9 +170,9 @@ pub fn truncate_line(
 /// [`SelectionState`]: nullslop_selection_widget::SelectionState
 /// [`PickerItem`]: nullslop_selection_widget::PickerItem
 pub fn load_provider_entries(
-    registry: &crate::providers::ProviderRegistry,
-    api_keys: &crate::providers::ApiKeys,
-    model_cache: Option<&crate::providers::ModelCache>,
+    registry: &crate::feat::provider_infra::ProviderRegistry,
+    api_keys: &crate::feat::provider_infra::ApiKeys,
+    model_cache: Option<&crate::feat::provider_infra::ModelCache>,
 ) -> Vec<PickerEntry> {
     let mut entries = Vec::new();
 

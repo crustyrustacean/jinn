@@ -20,7 +20,7 @@ use std::sync::Arc;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::component::AppUiRegistry;
-use crate::providers::NO_PROVIDER_ID;
+use crate::feat::provider_infra::NO_PROVIDER_ID;
 
 use crate::PickerEntry;
 
@@ -37,7 +37,7 @@ pub struct ProviderState {
 
     /// Last known model cache from discovery.
     /// OWNER: provider-actor (updates from ModelsRefreshed event).
-    pub model_cache: Option<crate::providers::ModelCache>,
+    pub model_cache: Option<crate::feat::provider_infra::ModelCache>,
 
     /// When the model list was last refreshed (UTC).
     /// OWNER: provider-actor (updates from ModelsRefreshed event).
@@ -95,8 +95,8 @@ pub fn spawn_provider_actor(
 /// registry and API keys service. Returns the `ActorRef` for sending direct
 /// messages and the `ActorSpawnResult` containing the routing entry and join handle.
 pub fn spawn_discover_actor(
-    registry: crate::providers::ProviderRegistryService,
-    api_keys: crate::providers::ApiKeysService,
+    registry: crate::feat::provider_infra::ProviderRegistryService,
+    api_keys: crate::feat::provider_infra::ApiKeysService,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
 ) -> (ActorRef<discover::DiscoverDirectMsg>, ActorSpawnResult) {

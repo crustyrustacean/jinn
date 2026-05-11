@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use crate::context::DefaultStrategyDiscovery;
 use crate::protocol::AppMsg;
-pub use crate::providers;
-use crate::providers::{
+pub use crate::feat::provider_infra;
+use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
@@ -106,7 +106,7 @@ impl Services {
             actor_channel: ActorChannelService::new(actor_tx),
             core_channel: CoreChannelService::new(core_tx),
             llm_service: LlmServiceFactoryService::new(Arc::new(
-                crate::providers::FakeLlmServiceFactory::new(vec![]),
+                crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
             )),
             provider_registry: ProviderRegistryService::new(
                 ProviderRegistry::from_config(ProvidersConfig {

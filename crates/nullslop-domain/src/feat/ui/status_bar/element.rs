@@ -6,7 +6,7 @@
 
 use crate::component::AppState;
 use crate::component_ui::UiElement;
-use crate::providers::NO_PROVIDER_ID;
+use crate::feat::provider_infra::NO_PROVIDER_ID;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};

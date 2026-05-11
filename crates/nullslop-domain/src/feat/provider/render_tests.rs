@@ -2,7 +2,7 @@
 
 use crate::component::AppState;
 use crate::protocol::{Mode, PickerKind};
-use crate::providers::{ProviderEntry, ProvidersConfig};
+use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
 use crate::common::services::Services;
 use nullslop_selection_widget::compute_popup_rect;
 use ratatui::Terminal;
