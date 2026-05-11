@@ -7,8 +7,8 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
-use nullslop_actor_host::{ActorSpawnResult, spawn_actor};
+use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
+use crate::actor_host::{ActorSpawnResult, spawn_actor};
 use nullslop_component::State;
 use nullslop_protocol::actor::{ActorShutdownCompleted, ActorStarting, ProceedWithShutdown};
 use nullslop_protocol::{Command, Event};
@@ -315,9 +315,9 @@ mod tests {
     /// Create a no-op ActorContext for testing (no message sink).
     /// Tests that check emission behavior need a real sink.
     fn create_noop_ctx() -> ActorContext {
-        use nullslop_actor::SendResult;
+        use crate::actor::SendResult;
         struct NoopSink;
-        impl nullslop_actor::MessageSink for NoopSink {
+        impl crate::actor::MessageSink for NoopSink {
             fn send_command(&self, _command: nullslop_protocol::Command) -> SendResult {
                 Ok(())
             }

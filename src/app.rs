@@ -10,15 +10,15 @@ use std::sync::Arc;
 use error_stack::{Report, ResultExt};
 use nsslice_context_protocol::DefaultStrategyDiscovery;
 use nsslice_session_management_protocol::SessionStoreService;
-use nullslop_actor::MessageSink;
-use nullslop_actor_host::{ActorHostService, InMemoryActorHost};
 use nullslop_cli::Cli;
 use nullslop_component::AppState;
 use nullslop_core::{ActorMessageSink, AppCore, AppMsg, State, spawn_forwarding_task};
 use nullslop_domain::Event;
+use nullslop_domain::MessageSink;
 use nullslop_domain::context::DefaultStrategyFactory;
 use nullslop_domain::session::JsonlSessionStore as DomainJsonlSessionStore;
 use nullslop_domain::session::SessionStoreService as DomainSessionStoreService;
+use nullslop_domain::{ActorHostService, InMemoryActorHost};
 use nullslop_domain::{ActorStarted, ActorStarting};
 use nullslop_providers::ApiKeys;
 use nullslop_providers::ApiKeysService;
@@ -400,7 +400,7 @@ fn create_core_with_actor_host(
         ],
         handle.clone(),
     );
-    let host_arc: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(host);
+    let host_arc: Arc<dyn nullslop_domain::ActorHost> = Arc::new(host);
 
     // Spawn the async forwarding task — continuously drains AppMsg channel → actor host.
     let actor_host_service = ActorHostService::new(host_arc);

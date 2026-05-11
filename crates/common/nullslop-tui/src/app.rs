@@ -7,9 +7,9 @@ use std::mem;
 
 use crossterm::event::{MouseButton, MouseEventKind};
 use derive_more::Debug;
-use nullslop_actor_host::ActorHostService;
 use nullslop_component::AppUiRegistry;
 use nullslop_core::{AppCore, AppMsg};
+use nullslop_domain::ActorHostService;
 use nullslop_domain::{ActiveTab, Intent, Mode, PickerKind};
 use nullslop_intent::IntentHandler;
 use ratatui::Frame;
@@ -381,8 +381,8 @@ mod tests {
             sender,
         };
         let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
-        let fake_host = nullslop_actor_host::ActorHostService::new(std::sync::Arc::new(
-            nullslop_actor_host::FakeActorHost::new(),
+        let fake_host = nullslop_domain::ActorHostService::new(std::sync::Arc::new(
+            nullslop_domain::FakeActorHost::new(),
         ));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_component::register_all(&mut ui_registry);
@@ -584,8 +584,8 @@ mod tests {
             sender,
         };
         let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
-        let fake_host = nullslop_actor_host::ActorHostService::new(std::sync::Arc::new(
-            nullslop_actor_host::FakeActorHost::new(),
+        let fake_host = nullslop_domain::ActorHostService::new(std::sync::Arc::new(
+            nullslop_domain::FakeActorHost::new(),
         ));
         let mut ui_registry = AppUiRegistry::new();
         nullslop_component::register_all(&mut ui_registry);

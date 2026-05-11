@@ -19,8 +19,6 @@ nullslop-tui = { workspace = true }
 nullslop-services = { workspace = true }
 nullslop-providers = { workspace = true }
 nullslop-component = { workspace = true }
-nullslop-actor-host = { workspace = true }
-nullslop-actor = { workspace = true }
 nullslop-domain = { workspace = true, features = ["which-key"] }
 nullslop-prompt-template = { workspace = true }
 nsslice-context-protocol = { workspace = true }
@@ -45,6 +43,8 @@ dotenvy = { workspace = true }
 rstest = { workspace = true }
 
 [workspace.dependencies]
+nullslop-actor = { path = "crates/common/nullslop-actor" }
+nullslop-actor-host = { path = "crates/common/nullslop-actor-host" }
 # Internal
 nullslop-domain = { path = "crates/common/nullslop-domain" }
 nsslice-context = { path = "crates/slices/nsslice-context" }
@@ -59,8 +59,6 @@ nullslop-cli = { path = "crates/common/nullslop-cli" }
 nullslop-services = { path = "crates/common/nullslop-services" }
 nsslice-shutdown = { path = "crates/slices/nsslice-shutdown" }
 nsslice-shutdown-protocol = { path = "crates/slices/nsslice-shutdown-protocol" }
-nullslop-actor = { path = "crates/common/nullslop-actor" }
-nullslop-actor-host = { path = "crates/common/nullslop-actor-host" }
 nullslop-providers = { path = "crates/common/nullslop-providers" }
 nullslop-protocol-derive = { path = "crates/common/nullslop-protocol-derive" }
 nullslop-selection-widget = { path = "crates/common/nullslop-selection-widget" }

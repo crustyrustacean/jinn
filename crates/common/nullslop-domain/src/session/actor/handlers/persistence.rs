@@ -40,7 +40,7 @@ impl SessionPersistenceActor {
     pub(in crate::session::actor) fn on_load_requested(
         &mut self,
         evt: &SessionLoadRequested,
-        ctx: &nullslop_actor::ActorContext,
+        ctx: &crate::actor::ActorContext,
     ) {
         use nullslop_protocol::session::SessionLoadCompleted as CompletedPayload;
 

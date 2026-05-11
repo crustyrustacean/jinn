@@ -14,13 +14,11 @@ nullslop-tui = { workspace = true }
 nullslop-domain = { workspace = true, features = ["which-key"] }
 nullslop-services = { workspace = true }
 nullslop-providers = { workspace = true }
-nullslop-actor-host = { workspace = true }
 nullslop-component = { workspace = true }
 crossterm = { workspace = true }
 ratatui-which-key = { workspace = true }
 ratatui-spatial-splits = { workspace = true }
 nullslop-core = { workspace = true }
-nullslop-actor = { workspace = true }
 nullslop-intent = { workspace = true }
 tempfile = { workspace = true }
 kanal = { workspace = true }
