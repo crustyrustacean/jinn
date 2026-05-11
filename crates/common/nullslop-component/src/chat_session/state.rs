@@ -400,5 +400,5 @@ impl ChatSessionState {
 }
 
 #[cfg(test)]
-#[path = "../state_tests.rs"]
+#[path = "state_tests.rs"]
 mod state_tests;
