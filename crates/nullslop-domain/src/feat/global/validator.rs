@@ -1,6 +1,6 @@
 //! Global intent validators — quit, toggle which-key, and interrupt.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use wherror::Error;
 
 /// Validates the Quit intent.

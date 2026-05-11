@@ -16,8 +16,6 @@ pub mod common;
 pub mod feat;
 
 // Not yet reorganized (handled in later phases)
-pub mod component;
-pub mod component_ui;
 pub mod context;
 pub mod intent;
 pub mod prompt_template;
@@ -35,13 +33,14 @@ pub use common::actor_host::{
 };
 
 // Re-export component types (state, UI)
-pub use component::app_state::pin_sort_key;
-pub use component::{
-    AppState, AppUiRegistry, ChatInputBoxState, ChatSessionState, DashboardState, FrontendState,
-    PinnedPanelState, ProviderState, ShutdownCoordinatorState, ShutdownTrackerState, State,
-    StateReadGuard, StateWriteGuard, TuiSignals,
+pub use common::app_state::pin_sort_key;
+pub use common::app_state::{
+    AppState, ContextAssemblyState, FrontendState, ProviderState, SessionState,
+    ShutdownCoordinatorState,
 };
-pub use component::{register_all, register_tui_elements};
+pub use common::state::{State, StateReadGuard, StateWriteGuard};
+pub use common::tui_signals::TuiSignals;
+pub use common::{register_all, register_tui_elements, AppUiRegistry};
 pub use prompt_template::PromptTemplateStore;
 pub use feat::provider_infra::NO_PROVIDER_ID;
 

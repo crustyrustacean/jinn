@@ -5,8 +5,8 @@
 //! when tokens are arriving, and renders nothing when the session is idle.
 //! Queue count is shown when messages are waiting.
 
-use crate::component::AppState;
-use crate::component_ui::UiElement;
+use crate::common::app_state::AppState;
+use crate::common::ui_element::UiElement;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};

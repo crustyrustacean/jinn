@@ -1,6 +1,6 @@
 //! Session management intent handlers — session creation, model refresh, and prompt template rescan.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use crate::protocol::{ChatEntry, Command, IntentResult, Mode, SessionId};
 
 use super::validator;
@@ -17,7 +17,7 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
     state
         .session
         .sessions
-        .insert(new_id.clone(), crate::component::ChatSessionState::new());
+        .insert(new_id.clone(), crate::session::chat_session::ChatSessionState::new());
     state.session.active_session = new_id;
     state.frontend.mode = Mode::Normal;
 
@@ -50,7 +50,8 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    use crate::component::{AppState, FrontendState, ProviderState};
+    use crate::common::app_state::{AppState, FrontendState};
+    use crate::feat::provider::ProviderState;
     use crate::protocol::{ChatEntry, Command, Mode, PickerKind};
 
     use super::*;

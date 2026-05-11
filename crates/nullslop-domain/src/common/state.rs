@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use super::AppState;
+use super::app_state::AppState;
 
 /// Shared application state accessible from any thread.
 ///

@@ -21,7 +21,7 @@ mod handlers;
 
 use super::SessionStoreService;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use crate::component::State;
+use crate::common::state::State;
 use crate::protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
 use crate::protocol::context::PromptAssembled;
 use crate::protocol::provider::{SendMessage, StreamCompleted, StreamToken};
@@ -163,7 +163,8 @@ mod tests {
     use crate::common::actor::Actor;
     use crate::common::actor::RecordingSink;
     use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink};
-    use crate::component::{AppState, State};
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
     use crate::protocol::chat_input::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
     // no context imports needed in tests currently
     use super::super::session_store::{JsonlSessionStore, SessionStoreService};

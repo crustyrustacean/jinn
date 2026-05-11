@@ -32,7 +32,7 @@ pub struct AutocompleteMatch {
 // Re-export element for registration.
 pub use element::ChatInputBoxElement;
 
-use crate::component::AppUiRegistry;
+use crate::common::AppUiRegistry;
 
 /// Register chat input box UI element.
 pub fn register(registry: &mut AppUiRegistry) {

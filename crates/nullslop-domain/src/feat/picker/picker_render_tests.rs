@@ -1,6 +1,6 @@
 //! Keymap and context strategy picker render tests.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use crate::protocol::{Intent, KeymapEntry, Mode, PickerKind};
 use crate::common::services::Services;
 use nullslop_selection_widget::compute_popup_rect;

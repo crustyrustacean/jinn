@@ -16,8 +16,8 @@ use crate::protocol::{
 };
 use serde_json::Value as JsonValue;
 
-use super::prompt_template::PromptTemplateStore;
-use super::tui_signals::TuiSignals;
+use crate::prompt_template::PromptTemplateStore;
+use crate::common::tui_signals::TuiSignals;
 pub use crate::feat::chat_input::ChatInputBoxState;
 use crate::session::chat_session::ChatSessionState;
 pub use crate::feat::dashboard::DashboardState;

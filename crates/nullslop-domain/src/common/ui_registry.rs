@@ -4,7 +4,7 @@
 //! by name and ordered iteration for rendering. Elements are added during
 //! startup and drawn each frame by the TUI layer.
 
-use super::element::UiElement;
+use super::ui_element::UiElement;
 
 /// Registry of UI elements available for rendering.
 ///
@@ -64,7 +64,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::fake::FakeUiElement;
+    use super::super::ui_element_fake::FakeUiElement;
     use super::UiRegistry;
 
     #[rstest::rstest]

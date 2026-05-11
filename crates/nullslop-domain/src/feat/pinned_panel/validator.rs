@@ -3,7 +3,7 @@
 //! Validators for pinned panel navigation, toggling, and pin/unpin actions.
 //! Navigation and toggle intents are infallible; pin/unpin actions are fallible.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use wherror::Error;
 
 // --- Fallible validators ---

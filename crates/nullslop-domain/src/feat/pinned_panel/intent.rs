@@ -8,8 +8,8 @@
 //! - **Pin Top/Bottom/Relative** — set the selected entry's pin position.
 //! - **PinCycle** — rotate the selected entry's position (Top → Bottom → Relative → Top).
 
-use crate::component::AppState;
-use crate::component::app_state::pin_sort_key;
+use crate::common::app_state::AppState;
+use crate::common::app_state::pin_sort_key;
 use crate::protocol::context::{PinChatEntry, UnpinChatEntry};
 use crate::protocol::{ChatEntryId, Command, IntentResult, PinPosition, SessionId};
 
@@ -146,7 +146,7 @@ fn cycle_position(pos: PinPosition) -> PinPosition {
 
 #[cfg(test)]
 mod tests {
-    use crate::component::AppState;
+    use crate::common::app_state::AppState;
     use crate::protocol::{ChatEntry, Command, PinPosition};
 
     use super::*;

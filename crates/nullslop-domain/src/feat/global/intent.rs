@@ -1,6 +1,6 @@
 //! Global intent handlers — quit, toggle which-key, and interrupt.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use crate::protocol::provider::CancelStream;
 use crate::protocol::session::SessionId;
 use crate::protocol::{Command, IntentResult};

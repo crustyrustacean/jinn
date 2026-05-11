@@ -9,7 +9,7 @@
 //!
 //! Text wraps within the available space.
 
-use crate::component_ui::UiElement;
+use crate::common::ui_element::UiElement;
 use crate::protocol::ChatEntryKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -17,7 +17,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 
 /// Display element for the full conversation history.
 #[derive(Debug)]
@@ -281,7 +281,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::component::AppState;
+    use crate::common::app_state::AppState;
 
     #[rstest::rstest]
     fn name_returns_chat_log() {

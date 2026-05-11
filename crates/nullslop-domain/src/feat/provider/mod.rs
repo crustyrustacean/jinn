@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
-use crate::component::AppUiRegistry;
+use crate::common::AppUiRegistry;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 
 use crate::PickerEntry;
@@ -69,11 +69,11 @@ pub fn register(registry: &mut AppUiRegistry) {
 /// Spawns the provider actor on the given tokio runtime.
 ///
 /// Creates the actor's channel, context, and run loop. Injects shared
-/// [`State`](crate::component::State) and [`Services`](crate::common::services::Services).
+/// [`State`](crate::common::state::State) and [`Services`](crate::common::services::Services).
 /// Returns the `ActorRef` for sending direct messages and the `ActorSpawnResult`
 /// containing the routing entry and join handle.
 pub fn spawn_provider_actor(
-    state: crate::component::State,
+    state: crate::common::state::State,
     services: crate::common::services::Services,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,

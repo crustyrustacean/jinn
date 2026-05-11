@@ -1,6 +1,6 @@
 //! Provider picker loader — loads provider entries into picker state.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use crate::common::services::Services;
 
 use super::entries::{load_provider_entries, sorted_entries};

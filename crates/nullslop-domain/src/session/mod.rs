@@ -35,7 +35,7 @@ use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 ///
 /// Panics if the actor fails to activate (should never happen with valid injection).
 pub fn spawn_session_actor(
-    state: crate::component::State,
+    state: crate::common::state::State,
     session_store: SessionStoreService,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,

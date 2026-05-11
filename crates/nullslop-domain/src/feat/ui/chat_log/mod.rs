@@ -9,7 +9,7 @@ pub mod element;
 
 pub use element::ChatLogElement;
 
-use crate::component::AppUiRegistry;
+use crate::common::AppUiRegistry;
 
 /// Register chat log UI element.
 pub fn register(registry: &mut AppUiRegistry) {

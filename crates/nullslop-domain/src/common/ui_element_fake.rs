@@ -20,7 +20,7 @@ use std::rc::Rc;
 
 use ratatui::{Frame, layout::Rect};
 
-use super::element::UiElement;
+use super::ui_element::UiElement;
 
 /// Recorded render call data: the allocated area and a snapshot of the input buffer.
 pub type RenderCall = (Rect, String);

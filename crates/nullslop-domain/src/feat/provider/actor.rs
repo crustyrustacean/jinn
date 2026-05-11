@@ -1,7 +1,7 @@
 //! Provider actor — manages active provider, LLM factory, model cache, and picker entries.
 //!
 //! Subscribes to provider-related commands and events, mutates the corresponding
-//! [`AppState`](crate::component::AppState) fields, and emits events for
+//! [`AppState`](crate::common::app_state::AppState) fields, and emits events for
 //! other actors to react to.
 //!
 //! # State ownership
@@ -18,7 +18,7 @@
 //! then emit. Never hold the lock during emission.
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
-use crate::component::State;
+use crate::common::state::State;
 use crate::protocol::provider::{ModelsRefreshed, ProviderSwitch, ProviderSwitched};
 use crate::protocol::system::LoadPickerEntries;
 use crate::protocol::{Command, Event, PickerKind};
@@ -205,7 +205,8 @@ mod tests {
     use std::sync::Arc;
 
     use crate::common::actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
-    use crate::component::{AppState, State};
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
     use crate::protocol::provider::{ModelsRefreshed, ProviderSwitch};
     use crate::protocol::{Command, Event};
     use crate::common::services::Services;

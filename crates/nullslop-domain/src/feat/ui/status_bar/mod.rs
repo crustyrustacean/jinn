@@ -7,7 +7,7 @@ pub mod element;
 
 pub use element::StatusBarElement;
 
-use crate::component::AppUiRegistry;
+use crate::common::AppUiRegistry;
 
 /// Register the status bar UI element.
 pub fn register(registry: &mut AppUiRegistry) {

@@ -1,6 +1,6 @@
 //! Provider picker rendering — renders the provider picker overlay.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use nullslop_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;

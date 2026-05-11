@@ -13,9 +13,9 @@
 //! - **NormalEscape** — clears chat entry selection.
 
 use crate::feat::chat_input::AutocompleteMatch;
-use crate::component::AppState;
-use crate::component::ChatInputBoxState;
-use crate::component::prompt_template::PromptTemplateStore;
+use crate::common::app_state::AppState;
+use crate::feat::chat_input::ChatInputBoxState;
+use crate::prompt_template::PromptTemplateStore;
 use crate::protocol::chat_input::EnqueueUserMessage;
 use crate::protocol::{Command, IntentResult, Mode};
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -347,7 +347,7 @@ fn compute_matches(store: &PromptTemplateStore, filter: &str) -> Vec<Autocomplet
 
 #[cfg(test)]
 mod tests {
-    use crate::component::AppState;
+    use crate::common::app_state::AppState;
 
     use super::*;
 
@@ -570,7 +570,7 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_sets_mode_to_normal() {
         // Given a state in Input mode.
-        use crate::component::FrontendState;
+        use crate::common::app_state::FrontendState;
 
         let mut state = AppState {
             frontend: FrontendState {
@@ -591,7 +591,7 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
         // Given a state in Picker mode with active picker kind.
-        use crate::component::FrontendState;
+        use crate::common::app_state::FrontendState;
         use crate::protocol::PickerKind;
 
         let mut state = AppState {
@@ -614,7 +614,7 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_cancels_stream_when_in_input_mode() {
         // Given a state in Input mode with active stream.
-        use crate::component::FrontendState;
+        use crate::common::app_state::FrontendState;
         use crate::protocol::Command;
 
         let mut state = AppState {
@@ -643,7 +643,7 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_drains_queue_when_cancelling_stream() {
         // Given a state in Input mode with active stream and queued messages.
-        use crate::component::FrontendState;
+        use crate::common::app_state::FrontendState;
         use crate::protocol::Command;
 
         let mut state = AppState {

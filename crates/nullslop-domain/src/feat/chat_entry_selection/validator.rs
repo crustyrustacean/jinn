@@ -3,7 +3,7 @@
 //! Validators for chat entry navigation and pinning intents.
 //! Most are infallible; pin selected is fallible.
 
-use crate::component::AppState;
+use crate::common::app_state::AppState;
 use wherror::Error;
 
 // --- Infallible validators ---

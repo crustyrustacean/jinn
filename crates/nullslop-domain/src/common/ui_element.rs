@@ -51,7 +51,7 @@ pub trait UiElement<S>: 'static + std::fmt::Debug {
 
 #[cfg(test)]
 mod tests {
-    use super::super::fake::FakeUiElement;
+    use super::super::ui_element_fake::FakeUiElement;
     use super::*;
 
     #[rstest::rstest]

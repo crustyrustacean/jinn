@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
-use crate::component::State;
+use crate::common::state::State;
 use crate::protocol::actor::{ActorShutdownCompleted, ActorStarting, ProceedWithShutdown};
 use crate::protocol::{Command, Event};
 use crate::common::services::Services;
@@ -214,7 +214,7 @@ impl ShutdownTrackerActor {
 
 #[cfg(test)]
 mod tests {
-    use crate::component::AppState;
+    use crate::common::app_state::AppState;
 
     use super::*;
 

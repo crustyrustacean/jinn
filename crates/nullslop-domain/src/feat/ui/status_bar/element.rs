@@ -4,8 +4,8 @@
 //! `PromptStrategyId`'s `Display` impl (e.g., "Passthrough", "Sliding Window").
 //! The model shows `({provider})/{model}` when set, or "no model selected" otherwise.
 
-use crate::component::AppState;
-use crate::component_ui::UiElement;
+use crate::common::app_state::AppState;
+use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
@@ -64,7 +64,8 @@ mod tests {
     }
 
     use super::*;
-    use crate::component::{AppState, ProviderState};
+    use crate::common::app_state::AppState;
+    use crate::feat::provider::ProviderState;
 
     #[rstest::rstest]
     fn name_returns_status_bar() {
