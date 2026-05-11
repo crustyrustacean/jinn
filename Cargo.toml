@@ -57,35 +57,25 @@ nullslop-component-ui = { path = "crates/common/nullslop-component-ui" }
 nullslop-component = { path = "crates/common/nullslop-component" }
 nullslop-cli = { path = "crates/common/nullslop-cli" }
 nullslop-services = { path = "crates/common/nullslop-services" }
-nsslice-echo = { path = "crates/slices/nsslice-echo" }
 nsslice-shutdown = { path = "crates/slices/nsslice-shutdown" }
 nsslice-shutdown-protocol = { path = "crates/slices/nsslice-shutdown-protocol" }
-nsslice-llm = { path = "crates/slices/nsslice-llm" }
 nullslop-actor = { path = "crates/common/nullslop-actor" }
 nullslop-actor-host = { path = "crates/common/nullslop-actor-host" }
 nullslop-providers = { path = "crates/common/nullslop-providers" }
 nullslop-protocol-derive = { path = "crates/common/nullslop-protocol-derive" }
 nullslop-selection-widget = { path = "crates/common/nullslop-selection-widget" }
 nullslop-workflow = { path = "crates/common/nullslop-workflow" }
-nsslice-tools = { path = "crates/slices/nsslice-tools" }
 nullslop-intent = { path = "crates/common/nullslop-intent" }
-nsslice-status-bar = { path = "crates/slices/nsslice-status-bar" }
-nsslice-char-counter = { path = "crates/slices/nsslice-char-counter" }
 nsslice-dashboard = { path = "crates/slices/nsslice-dashboard" }
 nsslice-dashboard-protocol = { path = "crates/slices/nsslice-dashboard-protocol" }
 nsslice-pinned-panel-protocol = { path = "crates/slices/nsslice-pinned-panel-protocol" }
 nsslice-chat-input-box-protocol = { path = "crates/slices/nsslice-chat-input-box-protocol" }
-nsslice-chat-log = { path = "crates/slices/nsslice-chat-log" }
 nsslice-provider = { path = "crates/slices/nsslice-provider" }
 nsslice-provider-protocol = { path = "crates/slices/nsslice-provider-protocol" }
 nsslice-pinned-panel = { path = "crates/slices/nsslice-pinned-panel" }
 nsslice-chat-input-box = { path = "crates/slices/nsslice-chat-input-box" }
-nsslice-picker = { path = "crates/slices/nsslice-picker" }
-nsslice-chat-entry-selection = { path = "crates/slices/nsslice-chat-entry-selection" }
-nsslice-navigation = { path = "crates/slices/nsslice-navigation" }
 nsslice-session-management = { path = "crates/slices/nsslice-session-management" }
 nsslice-session-management-protocol = { path = "crates/slices/nsslice-session-management-protocol" }
-nsslice-global = { path = "crates/slices/nsslice-global" }
 nsslice-chat-session-protocol = { path = "crates/slices/nsslice-chat-session-protocol" }
 
 # Error handling

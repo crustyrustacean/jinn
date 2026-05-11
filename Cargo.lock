@@ -2795,26 +2795,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nsslice-char-counter"
-version = "0.1.0"
-dependencies = [
- "nullslop-component",
- "nullslop-component-ui",
- "ratatui",
- "rstest",
-]
-
-[[package]]
-name = "nsslice-chat-entry-selection"
-version = "0.1.0"
-dependencies = [
- "nullslop-component",
- "nullslop-protocol",
- "rstest",
- "wherror",
-]
-
-[[package]]
 name = "nsslice-chat-input-box"
 version = "0.1.0"
 dependencies = [
@@ -2835,17 +2815,6 @@ version = "0.1.0"
 dependencies = [
  "rstest",
  "unicode-segmentation",
-]
-
-[[package]]
-name = "nsslice-chat-log"
-version = "0.1.0"
-dependencies = [
- "nullslop-component",
- "nullslop-component-ui",
- "nullslop-protocol",
- "ratatui",
- "rstest",
 ]
 
 [[package]]
@@ -2910,70 +2879,6 @@ name = "nsslice-dashboard-protocol"
 version = "0.1.0"
 dependencies = [
  "rstest",
-]
-
-[[package]]
-name = "nsslice-echo"
-version = "0.1.0"
-dependencies = [
- "kanal",
- "nullslop-actor",
- "nullslop-actor-host",
- "nullslop-protocol",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "nsslice-global"
-version = "0.1.0"
-dependencies = [
- "nullslop-component",
- "nullslop-protocol",
- "rstest",
- "wherror",
-]
-
-[[package]]
-name = "nsslice-llm"
-version = "0.1.0"
-dependencies = [
- "futures",
- "kanal",
- "nullslop-actor",
- "nullslop-actor-host",
- "nullslop-protocol",
- "nullslop-providers",
- "nullslop-services",
- "rstest",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "nsslice-navigation"
-version = "0.1.0"
-dependencies = [
- "nullslop-component",
- "nullslop-protocol",
- "rstest",
-]
-
-[[package]]
-name = "nsslice-picker"
-version = "0.1.0"
-dependencies = [
- "jiff",
- "nullslop-component",
- "nullslop-protocol",
- "nullslop-selection-widget",
- "nullslop-services",
- "ratatui",
- "rstest",
- "tracing",
- "wherror",
 ]
 
 [[package]]
@@ -3092,35 +2997,6 @@ dependencies = [
 [[package]]
 name = "nsslice-shutdown-protocol"
 version = "0.1.0"
-
-[[package]]
-name = "nsslice-status-bar"
-version = "0.1.0"
-dependencies = [
- "nullslop-component",
- "nullslop-component-ui",
- "nullslop-protocol",
- "nullslop-providers",
- "ratatui",
- "rstest",
-]
-
-[[package]]
-name = "nsslice-tools"
-version = "0.1.0"
-dependencies = [
- "jiff",
- "kanal",
- "nullslop-actor",
- "nullslop-actor-host",
- "nullslop-protocol",
- "parking_lot",
- "rstest",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
-]
 
 [[package]]
 name = "nu-ansi-term"
