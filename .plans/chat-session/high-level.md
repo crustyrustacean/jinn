@@ -55,9 +55,9 @@ Dev-dependencies:
   - [x] Add `nsslice-chat-session-protocol` dep to root `Cargo.toml`; update `src/session_conversion.rs` to import from new crate
   - [x] Run `just check`
 
-- [ ] Phase 3: Remove old module and verify
-  - [ ] Delete `crates/common/nullslop-component/src/chat_session/` directory
-  - [ ] Run `just check` then `just test` — all must pass
+- [x] Phase 3: Remove old module and verify
+  - [x] Delete `crates/common/nullslop-component/src/chat_session/` directory
+  - [x] Run `just check` then `just test` — all must pass
 
 ## Acceptance Criteria
 
