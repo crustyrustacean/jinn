@@ -1,6 +1,11 @@
 //! State for a single chat session — history, input box, streaming progress, and subsystem state.
 
-use std::collections::{HashMap, VecDeque};
+mod queue;
+mod scroll;
+mod selection;
+mod streaming;
+
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU16, Ordering};
 
 use nullslop_protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
@@ -16,31 +21,31 @@ use nsslice_chat_input_box_protocol::ChatInputBoxState;
 pub struct SessionCore {
     /// All messages in this conversation.
     /// OWNER: session-actor (creates/removes entries, restores history)
-    history: Vec<ChatEntry>,
+    pub(super) history: Vec<ChatEntry>,
     /// Index into `history` for the entry currently receiving stream tokens.
     /// OWNER: session-actor
-    streaming_entry_index: Option<usize>,
+    pub(super) streaming_entry_index: Option<usize>,
     /// Whether an LLM stream is actively producing tokens.
     /// OWNER: session-actor
-    is_streaming: bool,
+    pub(super) is_streaming: bool,
     /// Messages waiting to be sent to the LLM, one at a time.
     /// OWNER: session-actor
-    message_queue: VecDeque<String>,
+    pub(super) message_queue: VecDeque<String>,
     /// Whether a message has been dispatched to the LLM but no tokens have arrived yet.
     /// OWNER: session-actor
-    is_sending: bool,
+    pub(super) is_sending: bool,
     /// Whether a prompt assembly request is in progress.
     /// OWNER: session-actor
-    is_assembling: bool,
+    pub(super) is_assembling: bool,
     /// The active prompt strategy for this session.
     /// OWNER: context-actor (via SwitchPromptStrategy command)
-    active_strategy: nullslop_protocol::PromptStrategyId,
+    pub(super) active_strategy: nullslop_protocol::PromptStrategyId,
     /// Maps stream tool call index to history index for in-progress tool calls.
     /// OWNER: session-actor
-    streaming_tool_call_indices: HashMap<usize, usize>,
+    pub(super) streaming_tool_call_indices: std::collections::HashMap<usize, usize>,
     /// Persisted strategy state blob for the active strategy.
     /// OWNER: context-actor (via RestoreStrategyState command)
-    strategy_state: Option<JsonValue>,
+    pub(super) strategy_state: Option<JsonValue>,
 }
 
 impl Default for SessionCore {
@@ -53,7 +58,7 @@ impl Default for SessionCore {
             is_sending: false,
             is_assembling: false,
             active_strategy: nullslop_protocol::PromptStrategyId::passthrough(),
-            streaming_tool_call_indices: HashMap::new(),
+            streaming_tool_call_indices: std::collections::HashMap::new(),
             strategy_state: None,
         }
     }
@@ -65,23 +70,23 @@ impl Default for SessionCore {
 #[derive(Debug)]
 pub struct SessionUi {
     /// The user's in-progress message for this session.
-    chat_input: ChatInputBoxState,
+    pub(super) chat_input: ChatInputBoxState,
     /// Number of lines to skip from the top when rendering (ratatui scroll offset).
     ///
     /// `None` means "show the bottom of the conversation" (auto-scroll).
     /// `Some(n)` means the user has manually scrolled to offset `n`.
-    scroll_offset: Option<u16>,
+    pub(super) scroll_offset: Option<u16>,
     /// The index of the currently selected chat entry, if any.
     ///
     /// Used by j/k navigation in Normal mode for targeting entries
     /// for actions like pinning. `None` means no entry is selected.
-    selected_entry_index: Option<usize>,
+    pub(super) selected_entry_index: Option<usize>,
     /// The maximum scroll offset computed during the last render.
     ///
     /// Used by scroll handlers to resolve the "at bottom" sentinel into
     /// a concrete offset so `scroll_up` / `scroll_down` work correctly.
     /// Uses `AtomicU16` for interior mutability since the element receives `&self`.
-    last_max_offset: AtomicU16,
+    pub(super) last_max_offset: AtomicU16,
 }
 
 impl Default for SessionUi {
@@ -108,9 +113,9 @@ impl Default for SessionUi {
 #[derive(Debug)]
 pub struct ChatSessionState {
     /// Core domain state managed by session-actor and context-actor.
-    core: SessionCore,
+    pub(super) core: SessionCore,
     /// UI state managed by IntentHandler.
-    ui: SessionUi,
+    pub(super) ui: SessionUi,
 }
 
 impl ChatSessionState {
@@ -159,199 +164,6 @@ impl ChatSessionState {
         self.reset_scroll();
         self.clear_selection();
         index
-    }
-
-    /// Begin a new streaming response.
-    ///
-    /// Creates an empty `Assistant` entry, marks the session as streaming,
-    /// and returns the index of the new entry.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the session is already streaming. This is a programming error —
-    /// the caller must ensure the previous stream has finished or been cancelled
-    /// before starting a new one.
-    pub fn begin_streaming(&mut self) -> usize {
-        assert!(
-            !self.core.is_streaming,
-            "begin_streaming called while already streaming"
-        );
-        let entry = ChatEntry::assistant("");
-        let index = self.push_entry(entry);
-        self.core.streaming_entry_index = Some(index);
-        self.core.is_streaming = true;
-        index
-    }
-
-    /// Append a token to the streaming assistant entry.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the session is not streaming. This is a programming error.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from push_entry which always returns a valid index"
-    )]
-    #[expect(
-        clippy::expect_used,
-        reason = "streaming_entry_index invariant guaranteed by begin_streaming"
-    )]
-    #[expect(
-        clippy::panic,
-        reason = "streaming invariant violated: entry must be Assistant during active stream"
-    )]
-    pub fn append_stream_token<S>(&mut self, token: S)
-    where
-        S: AsRef<str>,
-    {
-        assert!(
-            self.core.is_streaming,
-            "append_stream_token called while not streaming"
-        );
-        let index = self
-            .core
-            .streaming_entry_index
-            .expect("streaming_entry_index must be set when is_streaming");
-        if let ChatEntry {
-            kind: nullslop_protocol::ChatEntryKind::Assistant(ref mut text),
-            ..
-        } = self.core.history[index]
-        {
-            text.push_str(token.as_ref());
-        } else {
-            panic!("streaming entry is not an Assistant entry");
-        }
-    }
-
-    /// Mark streaming as finished (normal completion).
-    pub fn finish_streaming(&mut self) {
-        self.core.is_streaming = false;
-        self.core.is_sending = false; // defensive: clear both on finish
-        self.core.streaming_entry_index = None;
-        self.core.streaming_tool_call_indices.clear();
-    }
-
-    /// Cancel streaming but keep partial text in history.
-    pub fn cancel_streaming(&mut self) {
-        self.core.is_streaming = false;
-        self.core.is_sending = false; // defensive: clear both on cancel
-        self.core.streaming_entry_index = None;
-        self.core.streaming_tool_call_indices.clear();
-    }
-
-    /// Cancel streaming and drain queued messages back to the input buffer.
-    ///
-    /// Used when the user interrupts or switches to Normal mode during an
-    /// active stream. The drained queue text is joined with newlines and
-    /// replaces whatever was in the input box.
-    pub fn cancel_stream_and_drain(&mut self) {
-        self.cancel_streaming();
-        let drained: Vec<String> = self.drain_queue().into_iter().collect();
-        let drained_text = drained.join("\n");
-        if !drained_text.is_empty() {
-            self.chat_input_mut().replace_all(drained_text);
-        }
-    }
-
-    /// Whether an LLM stream is actively producing tokens.
-    pub fn is_streaming(&self) -> bool {
-        self.core.is_streaming
-    }
-
-    // --- Tool call streaming ---
-
-    /// Create a placeholder `ToolCall` entry and record its history index.
-    ///
-    /// Called when `ToolUseStarted` arrives — the tool name is known but arguments
-    /// are still streaming in.
-    pub fn begin_tool_call(&mut self, index: usize, id: &str, name: &str) {
-        let entry = ChatEntry::tool_call(id, name, "");
-        let history_index = self.push_entry(entry);
-        self.core
-            .streaming_tool_call_indices
-            .insert(index, history_index);
-    }
-
-    /// Append an incremental delta to a streaming tool call's arguments.
-    ///
-    /// `partial_json` is appended to the existing arguments string — it is *not*
-    /// the accumulated total.
-    ///
-    /// # Panics
-    ///
-    /// Panics if no tool call entry is tracked for the given stream index.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "index comes from push_entry which always returns a valid index"
-    )]
-    #[expect(
-        clippy::expect_used,
-        reason = "stream index is always tracked before delta arrives"
-    )]
-    pub fn append_tool_call_delta(&mut self, index: usize, partial_json: &str) {
-        let history_index = self
-            .core
-            .streaming_tool_call_indices
-            .get(&index)
-            .copied()
-            .expect("append_tool_call_delta: no entry tracked for this stream index");
-        if let ChatEntryKind::ToolCall {
-            ref mut arguments, ..
-        } = self.core.history[history_index].kind
-        {
-            arguments.push_str(partial_json);
-        }
-    }
-
-    /// Overwrite a tool call entry with the final complete arguments.
-    ///
-    /// Searches recent history for a `ToolCall` entry matching the given ID.
-    /// If not found (shouldn't happen in normal flow), pushes a new entry.
-    #[cfg(test)]
-    pub(crate) fn finalize_tool_call(&mut self, id: &str, name: &str, arguments: &str) {
-        for entry in self.core.history.iter_mut().rev() {
-            if let ChatEntryKind::ToolCall {
-                id: ref entry_id, ..
-            } = entry.kind
-                && entry_id == id
-            {
-                entry.kind = ChatEntryKind::ToolCall {
-                    id: id.to_owned(),
-                    name: name.to_owned(),
-                    arguments: arguments.to_owned(),
-                };
-                return;
-            }
-        }
-        // If not found (shouldn't happen), push a new entry.
-        self.push_entry(ChatEntry::tool_call(id, name, arguments));
-    }
-
-    // --- Queue ---
-
-    /// Read-only access to the message queue.
-    pub fn queue(&self) -> &VecDeque<String> {
-        &self.core.message_queue
-    }
-
-    /// Number of messages waiting in the queue.
-    pub fn queue_len(&self) -> usize {
-        self.core.message_queue.len()
-    }
-
-    /// Push a message onto the back of the queue.
-    pub fn enqueue_message(&mut self, text: String) {
-        self.core.message_queue.push_back(text);
-    }
-
-    /// Pop the front message from the queue, if any.
-    pub fn dequeue_message(&mut self) -> Option<String> {
-        self.core.message_queue.pop_front()
-    }
-
-    /// Drain all queued messages, returning them in order.
-    pub fn drain_queue(&mut self) -> VecDeque<String> {
-        std::mem::take(&mut self.core.message_queue)
     }
 
     // --- Assembling ---
@@ -438,71 +250,6 @@ impl ChatSessionState {
         !self.core.is_sending && !self.core.is_streaming && !self.core.is_assembling
     }
 
-    /// The current scroll offset (lines to skip from top).
-    ///
-    /// Returns `None` when auto-scrolled to the bottom, or `Some(n)` when
-    /// the user has manually scrolled to a specific offset.
-    pub fn scroll_offset(&self) -> Option<u16> {
-        self.ui.scroll_offset
-    }
-
-    /// Whether the conversation is scrolled to the bottom (auto-scroll position).
-    pub fn is_at_bottom(&self) -> bool {
-        self.ui.scroll_offset.is_none()
-    }
-
-    /// Scroll up (toward older messages) by the given number of lines.
-    ///
-    /// If currently at the bottom (auto-scroll), resolves to `last_max_offset` first
-    /// so the scroll is relative to the actual bottom position.
-    pub fn scroll_up(&mut self, amount: u16) {
-        let current = self
-            .ui
-            .scroll_offset
-            .unwrap_or(self.ui.last_max_offset.load(Ordering::Relaxed));
-        self.ui.scroll_offset = Some(current.saturating_sub(amount));
-    }
-
-    /// Scroll down (toward newer messages) by the given number of lines.
-    ///
-    /// If the resulting offset reaches or exceeds `last_max_offset`, resets to
-    /// auto-scroll (bottom).
-    pub fn scroll_down(&mut self, amount: u16) {
-        let current = self
-            .ui
-            .scroll_offset
-            .unwrap_or(self.ui.last_max_offset.load(Ordering::Relaxed));
-        let next = current.saturating_add(amount);
-        if next >= self.ui.last_max_offset.load(Ordering::Relaxed) {
-            self.ui.scroll_offset = None;
-        } else {
-            self.ui.scroll_offset = Some(next);
-        }
-    }
-
-    /// Reset scroll to show the bottom of the conversation.
-    pub fn reset_scroll(&mut self) {
-        self.ui.scroll_offset = None;
-    }
-
-    /// Scroll to the very top of the conversation.
-    pub fn scroll_to_top(&mut self) {
-        self.ui.scroll_offset = Some(0);
-    }
-
-    /// Scroll to the very bottom of the conversation (auto-scroll).
-    pub fn scroll_to_bottom(&mut self) {
-        self.ui.scroll_offset = None;
-    }
-
-    /// Update the cached maximum scroll offset from the renderer.
-    ///
-    /// Called by the chat log element during each render so that
-    /// scroll handlers can resolve the "at bottom" state into a concrete offset.
-    pub fn set_last_max_offset(&self, max_offset: u16) {
-        self.ui.last_max_offset.store(max_offset, Ordering::Relaxed);
-    }
-
     // --- History restoration ---
 
     /// Restore conversation history from a persisted snapshot.
@@ -537,62 +284,6 @@ impl ChatSessionState {
     /// Returns all pinned entries in history order.
     pub fn pinned_entries(&self) -> Vec<&ChatEntry> {
         self.core.history.iter().filter(|e| e.is_pinned()).collect()
-    }
-
-    // --- Selection ---
-
-    /// Select the next entry (moving toward newer messages).
-    ///
-    /// If nothing is selected, selects the first entry.
-    /// Clamps to the last entry index.
-    /// No-op if history is empty.
-    pub fn select_next_entry(&mut self) {
-        if self.core.history.is_empty() {
-            return;
-        }
-        let max = self.core.history.len() - 1;
-        self.ui.selected_entry_index = Some(
-            self.ui
-                .selected_entry_index
-                .map_or(0, |i| i.saturating_add(1).min(max)),
-        );
-    }
-
-    /// Select the previous entry (moving toward older messages).
-    ///
-    /// If nothing is selected, selects the last entry.
-    /// Clamps to 0.
-    /// No-op if history is empty.
-    pub fn select_prev_entry(&mut self) {
-        if self.core.history.is_empty() {
-            return;
-        }
-        self.ui.selected_entry_index = Some(
-            self.ui
-                .selected_entry_index
-                .map_or(self.core.history.len() - 1, |i| i.saturating_sub(1)),
-        );
-    }
-
-    /// Clear the entry selection.
-    pub fn clear_selection(&mut self) {
-        self.ui.selected_entry_index = None;
-    }
-
-    /// The index of the currently selected entry, if any.
-    pub fn selected_entry_index(&self) -> Option<usize> {
-        self.ui.selected_entry_index
-    }
-
-    /// The currently selected entry, if any.
-    pub fn selected_entry(&self) -> Option<&ChatEntry> {
-        let i = self.ui.selected_entry_index?;
-        self.core.history.get(i)
-    }
-
-    /// The ID of the currently selected entry, if any.
-    pub fn selected_entry_id(&self) -> Option<&ChatEntryId> {
-        self.selected_entry().map(|e| &e.id)
     }
 
     // --- Strategy state ---
@@ -709,5 +400,5 @@ impl ChatSessionState {
 }
 
 #[cfg(test)]
-#[path = "state_tests.rs"]
+#[path = "../state_tests.rs"]
 mod state_tests;
