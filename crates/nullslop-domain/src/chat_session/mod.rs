@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 
 use serde_json::Value as JsonValue;
 
-use crate::chat_input_box::ChatInputBoxState;
+use crate::feat::chat_input::ChatInputBoxState;
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId};
 
 /// Core session state — owned by session-actor and context-actor.

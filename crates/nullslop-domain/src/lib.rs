@@ -12,41 +12,26 @@
 //! Protocol types are re-exported at the crate root for convenience.
 //! `nullslop_domain::Command` is the same type as `crate::protocol::Command`.
 
-pub mod actor;
-pub mod actor_host;
-pub mod char_counter;
-pub mod chat_entry_selection;
-pub mod chat_input_box;
-pub mod chat_log;
+pub mod common;
+pub mod feat;
+
+// Not yet reorganized (handled in later phases)
 pub mod chat_session;
 pub mod component;
 pub mod component_ui;
 pub mod context;
-pub mod core;
-pub mod dashboard;
-pub mod echo;
-pub mod global;
 pub mod intent;
-pub mod llm;
-pub mod navigation;
-pub mod picker;
-pub mod pinned_panel;
 pub mod prompt_template;
 pub mod protocol;
-pub mod provider;
 pub mod providers;
-pub mod services;
 pub mod session;
-pub mod shutdown;
-pub mod status_bar;
-pub mod tools;
 
 // Re-export actor framework types
-pub use actor::{
+pub use common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, ActorSendError, MessageSink, RecordingSink,
     SendResult, SystemMessage,
 };
-pub use actor_host::{
+pub use common::actor_host::{
     ActorHost, ActorHostService, ActorSpawnResult, FakeActorHost, InMemoryActorHost, RoutingEntry,
     spawn_actor,
 };
@@ -63,17 +48,17 @@ pub use prompt_template::PromptTemplateStore;
 pub use providers::NO_PROVIDER_ID;
 
 // Re-export services types
-pub use services::Services;
-pub use services::test_services::TestServices;
+pub use common::services::Services;
+pub use common::services::test_services::TestServices;
 
 // Re-export core types
-pub use core::{
+pub use common::core::{
     ActorMessageSink, AppCore, SHUTDOWN_TIMEOUT, coordinated_shutdown, spawn_forwarding_task,
 };
 
 // Re-export intent types
 pub use intent::IntentHandler;
-pub use services::{ActorChannelService, CoreChannelService};
+pub use common::services::{ActorChannelService, CoreChannelService};
 
 // Re-export providers types
 pub use providers::TOOL_LOOP_TRIGGER;
@@ -96,9 +81,9 @@ pub use session::SessionStoreService;
 pub use prompt_template::{ensure_prompts_dir_with_example, prompts_dir};
 
 // Re-export services submodules
-pub use services::actor_channel;
-pub use services::core_channel;
-pub use services::strategy_registry;
+pub use common::services::actor_channel;
+pub use common::services::core_channel;
+pub use common::services::strategy_registry;
 
 // Re-export protocol types at crate root — these are the same types as nullslop_protocol
 pub use protocol::entries_to_messages;

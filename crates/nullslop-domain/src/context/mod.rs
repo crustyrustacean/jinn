@@ -16,8 +16,8 @@ pub mod strategy;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use crate::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::component::State;
 
 pub use crate::protocol::PromptStrategyId;

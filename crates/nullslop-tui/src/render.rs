@@ -163,7 +163,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
             // Autocomplete popup overlay (transient, not a UiElement).
             if state.active_chat_input().autocomplete().is_some() {
-                nullslop_domain::chat_input_box::autocomplete_render::render_autocomplete_popup(
+                nullslop_domain::feat::chat_input::autocomplete_render::render_autocomplete_popup(
                     frame,
                     layout.input,
                     &state,
@@ -316,7 +316,7 @@ fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::App
 
 /// Renders the provider picker overlay (delegates to slice).
 fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
-    nullslop_domain::provider::render::render_provider_picker(frame, area, state);
+    nullslop_domain::feat::provider::render::render_provider_picker(frame, area, state);
 }
 
 /// Renders the context strategy picker overlay (delegates to slice).
@@ -325,12 +325,12 @@ fn render_context_strategy_picker(
     area: Rect,
     state: &nullslop_domain::AppState,
 ) {
-    nullslop_domain::picker::render::render_context_strategy_picker(frame, area, state);
+    nullslop_domain::feat::picker::render::render_context_strategy_picker(frame, area, state);
 }
 
 /// Renders the keymap picker overlay (delegates to slice).
 fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
-    nullslop_domain::picker::render::render_keymap_picker(frame, area, state);
+    nullslop_domain::feat::picker::render::render_keymap_picker(frame, area, state);
 }
 
 /// Renders the session picker overlay (delegates to slice).

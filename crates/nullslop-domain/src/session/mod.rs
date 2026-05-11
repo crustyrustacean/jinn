@@ -19,8 +19,8 @@ pub use session_store::{JsonlSessionStore, SessionStore, SessionStoreError, Sess
 
 use std::sync::Arc;
 
-use crate::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use crate::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 
 /// Spawns the session persistence actor on the given tokio runtime handle.
 ///

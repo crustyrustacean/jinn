@@ -19,12 +19,12 @@ pub mod prompt_template;
 pub mod state;
 pub mod tui_signals;
 
-pub use crate::chat_input_box::ChatInputBoxState;
+pub use crate::feat::chat_input::ChatInputBoxState;
 pub use crate::chat_session::ChatSessionState;
-pub use crate::dashboard::DashboardState;
-pub use crate::pinned_panel::PinnedPanelState;
+pub use crate::feat::dashboard::DashboardState;
+pub use crate::feat::pinned_panel::PinnedPanelState;
 pub use crate::providers::NO_PROVIDER_ID;
-pub use crate::shutdown::ShutdownTrackerState;
+pub use crate::feat::shutdown::ShutdownTrackerState;
 pub use app_state::{
     AppState, ContextAssemblyState, FrontendState, ProviderState, SessionState,
     ShutdownCoordinatorState,

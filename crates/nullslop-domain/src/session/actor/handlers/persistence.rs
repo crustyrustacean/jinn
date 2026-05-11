@@ -40,7 +40,7 @@ impl SessionPersistenceActor {
     pub(in crate::session::actor) fn on_load_requested(
         &mut self,
         evt: &SessionLoadRequested,
-        ctx: &crate::actor::ActorContext,
+        ctx: &crate::common::actor::ActorContext,
     ) {
         use crate::protocol::session::SessionLoadCompleted as CompletedPayload;
 

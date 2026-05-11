@@ -12,11 +12,11 @@ use std::sync::Arc;
 use cucumber::World;
 use nullslop_domain::AppState;
 use nullslop_domain::Services;
-use nullslop_domain::llm::LlmActor;
+use nullslop_domain::feat::llm::LlmActor;
 use nullslop_domain::protocol::provider::SendToLlmProvider;
 use nullslop_domain::protocol::tool::ToolCall;
 use nullslop_domain::session::actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
-use nullslop_domain::tools::ToolOrchestratorActor;
+use nullslop_domain::feat::tools::ToolOrchestratorActor;
 use nullslop_domain::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use nullslop_domain::{ActorHostService, InMemoryActorHost, spawn_actor};
 use nullslop_domain::{ActorMessageSink, AppCore, AppMsg};
@@ -123,7 +123,7 @@ fn create_actor_core(
 
     // Create tool orchestrator actor.
     let (orch_tx, orch_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_domain::tools::ToolOrchestratorDirectMsg>>();
+        kanal::unbounded::<ActorEnvelope<nullslop_domain::feat::tools::ToolOrchestratorDirectMsg>>();
     let orch_ref = ActorRef::new(orch_tx);
     let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
     let orch_actor = ToolOrchestratorActor::activate(&mut orch_ctx);
@@ -137,7 +137,7 @@ fn create_actor_core(
     );
 
     // Create LLM actor with fake factory.
-    let (llm_tx, llm_rx) = kanal::unbounded::<ActorEnvelope<nullslop_domain::llm::LlmDirectMsg>>();
+    let (llm_tx, llm_rx) = kanal::unbounded::<ActorEnvelope<nullslop_domain::feat::llm::LlmDirectMsg>>();
     let llm_ref = ActorRef::new(llm_tx);
     let mut llm_ctx = ActorContext::new("llm-streaming", sink.clone());
     llm_ctx.set_data(llm_service.clone());
@@ -175,7 +175,7 @@ fn create_actor_core(
     );
     let host_arc: Arc<dyn nullslop_domain::ActorHost> = Arc::new(host);
 
-    let services = nullslop_domain::services::test_services::TestServices::builder()
+    let services = nullslop_domain::common::services::test_services::TestServices::builder()
         .handle(handle.clone())
         .llm_service(llm_service)
         .build();

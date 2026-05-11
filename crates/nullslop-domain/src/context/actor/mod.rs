@@ -13,7 +13,7 @@ mod handlers;
 
 use std::collections::HashMap;
 
-use crate::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::component::State;
 use crate::protocol::context::{
     AssemblePrompt, PinChatEntry, PromptStrategySwitched, RestoreStrategyState,
@@ -138,7 +138,7 @@ impl PromptAssemblyActor {
 mod tests {
     use std::sync::Arc;
 
-    use crate::actor::{ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use crate::component::{AppState, State};
     use crate::protocol::ChatEntry;
     use crate::protocol::PinPosition;

@@ -18,14 +18,14 @@ use serde_json::Value as JsonValue;
 
 use super::prompt_template::PromptTemplateStore;
 use super::tui_signals::TuiSignals;
-pub use crate::chat_input_box::ChatInputBoxState;
+pub use crate::feat::chat_input::ChatInputBoxState;
 use crate::chat_session::ChatSessionState;
-pub use crate::dashboard::DashboardState;
-pub use crate::pinned_panel::PinnedPanelState;
+pub use crate::feat::dashboard::DashboardState;
+pub use crate::feat::pinned_panel::PinnedPanelState;
 use crate::protocol::KeymapEntry;
 use crate::protocol::SessionEntry;
 use crate::protocol::StrategyEntry;
-use crate::shutdown::ShutdownTrackerState;
+use crate::feat::shutdown::ShutdownTrackerState;
 
 /// Session lifecycle state — owned by the session-actor.
 ///
@@ -87,7 +87,7 @@ impl Default for ContextAssemblyState {
 }
 
 /// Provider selection state — imported from `nsslice-provider-protocol`.
-pub use crate::provider::ProviderState;
+pub use crate::feat::provider::ProviderState;
 
 /// Shutdown coordination state — owned by the shutdown-tracker actor.
 ///

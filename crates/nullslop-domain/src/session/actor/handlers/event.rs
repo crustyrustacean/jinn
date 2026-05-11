@@ -15,7 +15,7 @@ impl SessionPersistenceActor {
     pub(in crate::session::actor) fn handle_prompt_assembled(
         &self,
         payload: &PromptAssembled,
-        ctx: &crate::actor::ActorContext,
+        ctx: &crate::common::actor::ActorContext,
     ) {
         {
             let mut state = self.state.write();
