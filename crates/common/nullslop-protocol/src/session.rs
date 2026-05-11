@@ -9,11 +9,11 @@
 //! the session browser. [`SessionLoadCompleted`] carries the loaded data back.
 //! [`SessionNew`] closes the session picker and starts a fresh session.
 
+mod session_id;
 pub mod session_load_completed;
 pub mod session_load_requested;
 pub mod session_new;
 pub mod session_save_requested;
-mod session_id;
 
 pub use session_id::SessionId;
 pub use session_load_completed::SessionLoadCompleted;

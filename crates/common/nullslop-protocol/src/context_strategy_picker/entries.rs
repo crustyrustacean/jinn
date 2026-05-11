@@ -3,8 +3,8 @@
 use std::ops::Range;
 
 use crate::PromptStrategyId;
-use nullslop_selection_widget::highlight_text;
 use nullslop_selection_widget::PickerItem;
+use nullslop_selection_widget::highlight_text;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 

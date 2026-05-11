@@ -3,8 +3,8 @@
 use std::ops::Range;
 
 use crate::SessionId;
-use nullslop_selection_widget::highlight_text;
 use nullslop_selection_widget::PickerItem;
+use nullslop_selection_widget::highlight_text;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
