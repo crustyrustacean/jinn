@@ -40,11 +40,11 @@ Dev-dependencies:
 
 ## Phases
 
-- [ ] Phase 1: Create `nsslice-chat-session-protocol` crate
-  - [ ] Create `crates/slices/nsslice-chat-session-protocol/Cargo.toml` with dependencies: `nullslop-protocol`, `nsslice-chat-input-box-protocol`, `serde_json`; dev-dep: `rstest`
-  - [ ] Create `crates/slices/nsslice-chat-session-protocol/src/lib.rs` — move `ChatSessionState`, `SessionCore`, `SessionUi` from `nullslop-component/src/chat_session/state.rs`
-  - [ ] Create `crates/slices/nsslice-chat-session-protocol/src/tests.rs` — move all tests from `nullslop-component/src/chat_session/state_tests.rs`, updating imports
-  - [ ] Move the `#[cfg(test)]` builder (`ChatSessionStateBuilder`, `BuilderOp`) into the new crate's `lib.rs`
+- [x] Phase 1: Create `nsslice-chat-session-protocol` crate
+  - [x] Create `crates/slices/nsslice-chat-session-protocol/Cargo.toml` with dependencies: `nullslop-protocol`, `nsslice-chat-input-box-protocol`, `serde_json`; dev-dep: `rstest`
+  - [x] Create `crates/slices/nsslice-chat-session-protocol/src/lib.rs` — move `ChatSessionState`, `SessionCore`, `SessionUi` from `nullslop-component/src/chat_session/state.rs`
+  - [x] Create `crates/slices/nsslice-chat-session-protocol/src/tests.rs` — move all tests from `nullslop-component/src/chat_session/state_tests.rs`, updating imports
+  - [x] Move the `#[cfg(test)]` builder (`ChatSessionStateBuilder`, `BuilderOp`) into the new crate's `lib.rs`
 
 - [ ] Phase 2: Wire up the new crate and update consumers
   - [ ] Add `nsslice-chat-session-protocol` to workspace `Cargo.toml` `[workspace.dependencies]` and `[workspace.members]`

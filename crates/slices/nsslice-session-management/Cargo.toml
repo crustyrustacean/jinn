@@ -9,6 +9,7 @@ nullslop-actor-host = { workspace = true }
 kanal = { workspace = true }
 nsslice-session-management-protocol = { workspace = true }
 nullslop-component = { workspace = true }
+nsslice-chat-session-protocol = { workspace = true }
 nullslop-protocol = { workspace = true }
 nullslop-selection-widget = { workspace = true }
 nullslop-services = { workspace = true }

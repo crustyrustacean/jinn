@@ -126,3 +126,29 @@ The `members = ["crates/common/*", "crates/slices/*"]` glob already covers the n
 - [x] `cargo check -p nsslice-chat-session-protocol` succeeds
 - [x] `cargo test -p nsslice-chat-session-protocol` passes (70/70 tests pass)
 - [x] Original `nullslop-component` still compiles (`cargo check -p nullslop-component` succeeds — nothing deleted yet)
+
+---
+
+## Review: Phase 1 — Create nsslice-chat-session-protocol crate
+
+### Changes
+
+Created the `nsslice-chat-session-protocol` crate as a standalone protocol crate containing `ChatSessionState`, `SessionCore`, `SessionUi`, the test builder, and all 70 tests. This is a 1:1 copy of the code from `nullslop-component/src/chat_session/state.rs` and `state_tests.rs` with updated module-level documentation.
+
+### Divergence Summary
+
+None. All changes implemented exactly as planned.
+
+### Verification
+
+- `cargo check -p nsslice-chat-session-protocol` — succeeds
+- `cargo test -p nsslice-chat-session-protocol` — 70/70 tests pass
+- `cargo check -p nullslop-component` — succeeds (original crate untouched)
+
+### Risks
+
+None. The new crate is not yet wired into any consumers — Phase 2 will handle that.
+
+### Next Steps
+
+Phase 2: Wire up the new crate and update consumers.

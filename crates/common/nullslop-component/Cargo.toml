@@ -10,6 +10,7 @@ nsslice-session-management-protocol = { workspace = true }
 nsslice-dashboard-protocol = { workspace = true }
 nsslice-pinned-panel-protocol = { workspace = true }
 nsslice-chat-input-box-protocol = { workspace = true }
+nsslice-chat-session-protocol = { workspace = true }
 nullslop-prompt-template = { workspace = true }
 nullslop-protocol = { workspace = true }
 nullslop-component-ui = { workspace = true }
