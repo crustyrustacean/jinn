@@ -5,8 +5,8 @@
 //! The view scrolls when actors overflow the viewport, keeping the selected
 //! entry visible.
 
-use nullslop_component::AppState;
 use nsslice_dashboard_protocol::ActorStatus;
+use nullslop_component::AppState;
 use nullslop_component_ui::UiElement;
 use ratatui::Frame;
 use ratatui::layout::Rect;

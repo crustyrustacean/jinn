@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use nullslop_actor_host::{spawn_actor, ActorSpawnResult};
+use nullslop_actor_host::{ActorSpawnResult, spawn_actor};
 
 pub mod actor;
 pub mod entries;
@@ -30,7 +30,10 @@ pub fn spawn_session_actor(
     session_store: persistence::SessionStoreService,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
-) -> (ActorRef<actor::SessionPersistenceDirectMsg>, ActorSpawnResult) {
+) -> (
+    ActorRef<actor::SessionPersistenceDirectMsg>,
+    ActorSpawnResult,
+) {
     let (tx, rx) = kanal::unbounded::<ActorEnvelope<actor::SessionPersistenceDirectMsg>>();
     let actor_ref = ActorRef::new(tx);
     let mut ctx = ActorContext::new("session-persistence", sink);
@@ -38,13 +41,6 @@ pub fn spawn_session_actor(
     ctx.set_data(state);
     ctx.set_data(session_store);
     let actor = actor::SessionPersistenceActor::activate(&mut ctx);
-    let result = spawn_actor(
-        "session-persistence",
-        actor,
-        &actor_ref,
-        rx,
-        ctx,
-        handle,
-    );
+    let result = spawn_actor("session-persistence", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }

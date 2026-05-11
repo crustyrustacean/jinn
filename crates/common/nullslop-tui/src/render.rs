@@ -163,7 +163,11 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
             // Autocomplete popup overlay (transient, not a UiElement).
             if state.active_chat_input().autocomplete().is_some() {
-                nsslice_chat_input_box::autocomplete_render::render_autocomplete_popup(frame, layout.input, &state);
+                nsslice_chat_input_box::autocomplete_render::render_autocomplete_popup(
+                    frame,
+                    layout.input,
+                    &state,
+                );
             }
         }
         nullslop_protocol::ActiveTab::Dashboard => {
@@ -342,8 +346,6 @@ fn render_too_small(frame: &mut Frame<'_>, area: Rect, app: &mut TuiApp) {
     // Clear selectable rects when terminal is too small.
     app.selectable_rects.rebuild(vec![]);
 }
-
-
 
 #[cfg(test)]
 #[path = "render_tests.rs"]

@@ -9,10 +9,10 @@ pub mod prompt_scan;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use nullslop_actor_host::{spawn_actor, ActorSpawnResult};
-use nullslop_component::State;
 use nsslice_context_protocol::StrategyFactory;
+use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
+use nullslop_actor_host::{ActorSpawnResult, spawn_actor};
+use nullslop_component::State;
 
 /// Spawns the context actor on the given tokio runtime.
 ///
@@ -29,14 +29,7 @@ pub fn spawn_context_actor(
     ctx.set_data(state);
     ctx.set_data(strategy_factory);
     let actor = actor::PromptAssemblyActor::activate(&mut ctx);
-    let result = spawn_actor(
-        "context",
-        actor,
-        &actor_ref,
-        rx,
-        ctx,
-        handle,
-    );
+    let result = spawn_actor("context", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 
@@ -53,13 +46,6 @@ pub fn spawn_prompt_scan_actor(
     let mut ctx = ActorContext::new("prompt-scan", sink);
     ctx.set_data(prompts_dir);
     let actor = prompt_scan::PromptScanActor::activate(&mut ctx);
-    let result = spawn_actor(
-        "prompt-scan",
-        actor,
-        &actor_ref,
-        rx,
-        ctx,
-        handle,
-    );
+    let result = spawn_actor("prompt-scan", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }

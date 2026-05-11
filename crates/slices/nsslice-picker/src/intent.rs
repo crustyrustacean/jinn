@@ -109,10 +109,7 @@ pub fn handle_move_up(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_up(state);
     match state.frontend.active_picker_kind {
         Some(PickerKind::Provider) => {
-            state
-                .provider
-                .provider_picker
-                .move_up(PICKER_MAX_VISIBLE);
+            state.provider.provider_picker.move_up(PICKER_MAX_VISIBLE);
         }
         Some(PickerKind::ContextAssembly) => {
             state
@@ -121,16 +118,10 @@ pub fn handle_move_up(state: &mut AppState) -> IntentResult {
                 .move_up(PICKER_MAX_VISIBLE);
         }
         Some(PickerKind::Keymap) => {
-            state
-                .frontend
-                .keymap_picker
-                .move_up(PICKER_MAX_VISIBLE);
+            state.frontend.keymap_picker.move_up(PICKER_MAX_VISIBLE);
         }
         Some(PickerKind::Session) => {
-            state
-                .frontend
-                .session_picker
-                .move_up(PICKER_MAX_VISIBLE);
+            state.frontend.session_picker.move_up(PICKER_MAX_VISIBLE);
         }
         None => {}
     }
@@ -142,10 +133,7 @@ pub fn handle_move_down(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_down(state);
     match state.frontend.active_picker_kind {
         Some(PickerKind::Provider) => {
-            state
-                .provider
-                .provider_picker
-                .move_down(PICKER_MAX_VISIBLE);
+            state.provider.provider_picker.move_down(PICKER_MAX_VISIBLE);
         }
         Some(PickerKind::ContextAssembly) => {
             state
@@ -154,16 +142,10 @@ pub fn handle_move_down(state: &mut AppState) -> IntentResult {
                 .move_down(PICKER_MAX_VISIBLE);
         }
         Some(PickerKind::Keymap) => {
-            state
-                .frontend
-                .keymap_picker
-                .move_down(PICKER_MAX_VISIBLE);
+            state.frontend.keymap_picker.move_down(PICKER_MAX_VISIBLE);
         }
         Some(PickerKind::Session) => {
-            state
-                .frontend
-                .session_picker
-                .move_down(PICKER_MAX_VISIBLE);
+            state.frontend.session_picker.move_down(PICKER_MAX_VISIBLE);
         }
         None => {}
     }
@@ -298,9 +280,9 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::{KeymapEntry, PickerEntry, SessionEntry, StrategyEntry};
     use nullslop_component::{AppState, FrontendState};
     use nullslop_protocol::{Command, Intent, Mode, PickerKind, SessionId};
+    use nullslop_protocol::{KeymapEntry, PickerEntry, SessionEntry, StrategyEntry};
 
     use super::*;
 

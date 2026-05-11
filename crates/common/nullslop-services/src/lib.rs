@@ -7,13 +7,13 @@
 use std::sync::Arc;
 
 use nsslice_context_protocol::DefaultStrategyDiscovery;
+use nsslice_session_management_protocol::SessionStoreService;
 use nullslop_protocol::AppMsg;
 pub use nullslop_providers as providers;
 use nullslop_providers::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use nsslice_session_management_protocol::SessionStoreService;
 use tokio::runtime::Handle;
 
 pub mod actor_channel;

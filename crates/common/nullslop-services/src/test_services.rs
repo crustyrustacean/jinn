@@ -9,13 +9,13 @@ use std::sync::Arc;
 use error_stack::Report;
 use kanal::Sender;
 use nsslice_context_protocol::{DefaultStrategyDiscovery, StrategyDiscovery};
+use nsslice_session_management_protocol::{
+    PersistedSession, SessionStore, SessionStoreError, SessionStoreService, SessionSummary,
+};
 use nullslop_protocol::{AppMsg, SessionId};
 use nullslop_providers::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
-};
-use nsslice_session_management_protocol::{
-    PersistedSession, SessionStore, SessionStoreError, SessionStoreService, SessionSummary,
 };
 use tokio::runtime::Handle;
 

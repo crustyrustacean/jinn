@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
-use nullslop_actor_host::{spawn_actor, ActorSpawnResult};
+use nullslop_actor_host::{ActorSpawnResult, spawn_actor};
 use nullslop_component::State;
 use nullslop_protocol::actor::{ActorShutdownCompleted, ActorStarting, ProceedWithShutdown};
 use nullslop_protocol::{Command, Event};

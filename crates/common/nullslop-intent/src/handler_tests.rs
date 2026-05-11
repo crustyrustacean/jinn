@@ -15,8 +15,8 @@
 
 //! Tests for the [`IntentHandler`] — one test per Intent variant.
 
-use nullslop_protocol::KeymapEntry;
 use nullslop_component::{AppState, FrontendState};
+use nullslop_protocol::KeymapEntry;
 use nullslop_protocol::{Mode, PickerKind};
 
 use super::IntentHandler;
