@@ -5,4 +5,7 @@
 //! No element — rendering stays in `nullslop-tui`.
 
 pub mod intent;
+pub mod keymap_entries;
+pub mod render;
+pub mod strategy_entries;
 pub mod validator;

@@ -19,7 +19,7 @@
 
 use nullslop_actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use nullslop_component::State;
-use nullslop_component::provider_picker::loader::load_provider_picker_items;
+use nsslice_provider::loader::load_provider_picker_items;
 use nullslop_protocol::provider::{ModelsRefreshed, ProviderSwitch, ProviderSwitched};
 use nullslop_protocol::system::LoadPickerEntries;
 use nullslop_protocol::{Command, Event, PickerKind};

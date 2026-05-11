@@ -298,10 +298,7 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    use nullslop_component::context_strategy_picker::entries::StrategyEntry;
-    use nullslop_component::keymap_picker::entries::KeymapEntry;
-    use nullslop_component::provider_picker::entries::PickerEntry;
-    use nullslop_component::session_picker::entries::SessionEntry;
+    use nullslop_protocol::{KeymapEntry, PickerEntry, SessionEntry, StrategyEntry};
     use nullslop_component::{AppState, FrontendState};
     use nullslop_protocol::{Command, Intent, Mode, PickerKind, SessionId};
 

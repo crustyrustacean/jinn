@@ -10,6 +10,7 @@
 //!
 //! State (`ChatInputBoxState`) stays in `nullslop-component` to avoid circular dependencies.
 
+pub mod autocomplete_render;
 pub mod element;
 pub mod intent;
 pub mod validator;

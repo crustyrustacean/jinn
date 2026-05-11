@@ -129,7 +129,7 @@ mod tests {
     #[rstest::rstest]
     fn picker_confirm_succeeds_with_provider_selection() {
         // Given a state with an active provider picker and items.
-        use nullslop_component::provider_picker::entries::PickerEntry;
+        use nullslop_protocol::PickerEntry;
         let mut state = AppState::default();
         state.frontend.active_picker_kind = Some(PickerKind::Provider);
         state.provider.provider_picker.set_items(vec![PickerEntry {
@@ -155,7 +155,7 @@ mod tests {
     #[rstest::rstest]
     fn picker_confirm_succeeds_with_keymap_selection() {
         // Given a state with an active keymap picker and items.
-        use nullslop_component::keymap_picker::entries::KeymapEntry;
+        use nullslop_protocol::KeymapEntry;
         let mut state = AppState::default();
         state.frontend.active_picker_kind = Some(PickerKind::Keymap);
         state.frontend.keymap_picker.set_items(vec![KeymapEntry {
@@ -177,7 +177,7 @@ mod tests {
     #[rstest::rstest]
     fn picker_confirm_succeeds_with_session_selection() {
         // Given a state with an active session picker and items.
-        use nullslop_component::session_picker::entries::SessionEntry;
+        use nullslop_protocol::SessionEntry;
         let mut state = AppState::default();
         state.frontend.active_picker_kind = Some(PickerKind::Session);
         state.frontend.session_picker.set_items(vec![SessionEntry {
@@ -197,7 +197,7 @@ mod tests {
     #[rstest::rstest]
     fn picker_confirm_succeeds_with_context_assembly_selection() {
         // Given a state with an active context strategy picker and items.
-        use nullslop_component::context_strategy_picker::entries::StrategyEntry;
+        use nullslop_protocol::StrategyEntry;
         let mut state = AppState::default();
         state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
         state

@@ -6,7 +6,11 @@ edition = "2024"
 [dependencies]
 nullslop-component = { workspace = true }
 nullslop-protocol = { workspace = true }
+nullslop-selection-widget = { workspace = true }
+nullslop-services = { workspace = true }
+ratatui = { workspace = true }
 wherror = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

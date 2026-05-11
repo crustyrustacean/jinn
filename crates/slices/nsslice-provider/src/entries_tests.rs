@@ -1,4 +1,6 @@
 use nullslop_providers::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
+use nullslop_selection_widget::PickerItem;
+use ratatui::style::Color;
 use std::ops::Range;
 
 use super::*;

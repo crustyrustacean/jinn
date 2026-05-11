@@ -4,5 +4,7 @@
 //! active provider, and rescanning prompt templates. No element —
 //! rendering stays in `nullslop-tui`.
 
+pub mod entries;
 pub mod intent;
+pub mod render;
 pub mod validator;

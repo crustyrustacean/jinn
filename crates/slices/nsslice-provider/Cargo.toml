@@ -6,9 +6,15 @@ edition = "2024"
 [dependencies]
 nullslop-component-ui = { workspace = true }
 nullslop-component = { workspace = true }
+nullslop-protocol = { workspace = true }
+nullslop-selection-widget = { workspace = true }
+nullslop-services = { workspace = true }
+nullslop-providers = { workspace = true }
 ratatui = { workspace = true }
 throbber-widgets-tui = { workspace = true }
 unicode-segmentation = { workspace = true }
+jiff = { workspace = true }
+humantime = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
