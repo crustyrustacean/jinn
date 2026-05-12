@@ -1,4 +1,7 @@
-//! Tool calling types — definitions, calls, and results.
+//! Tool calling types — definitions, calls, results, and execution context.
+
+use std::path::PathBuf;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +29,19 @@ pub struct ToolCall {
     pub name: String,
     /// The arguments as a JSON string.
     pub arguments: String,
+}
+
+/// Context provided to every built-in tool at execution time.
+///
+/// Constructed by the tool orchestrator at dispatch time from session state.
+/// Contains the session's CWD (for resolving relative paths) and an optional
+/// execution timeout.
+#[derive(Debug, Clone)]
+pub struct ToolContext {
+    /// Working directory for resolving relative paths.
+    pub cwd: PathBuf,
+    /// Optional execution timeout.
+    pub timeout: Option<Duration>,
 }
 
 /// The result of executing a tool call.

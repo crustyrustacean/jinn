@@ -4,19 +4,27 @@
 //! dispatches [`ExecuteToolBatch`] requests, and emits [`ToolBatchCompleted`] when
 //! all calls in a batch finish.
 //!
-//! Built-in tools (`echo`, `get_time`, `file_read`, `file_write`) are registered at
+//! Built-in tools (`echo`, `get_time`, `read`, `write`) are registered at
 //! activation and executed via spawned tokio tasks. Actor-provided tools
 //! are routed via [`ExecuteTool`] commands on the bus.
+//!
+//! Each tool execution receives a [`ToolContext`] containing the session's CWD
+//! (for resolving relative paths) and an optional timeout. The orchestrator
+//! reads CWD from shared [`State`] at dispatch time.
 
 mod builtin;
+pub(crate) mod builtin_bash;
+pub(crate) mod builtin_echo;
+pub(crate) mod builtin_get_time;
+pub(crate) mod builtin_read;
+pub(crate) mod builtin_write;
+pub(crate) mod edit;
 pub mod protocol;
 pub mod tool_types;
 
-#[cfg(test)]
-use builtin::{execute_echo, execute_file_read, execute_file_write, execute_get_time};
-
 use std::collections::HashMap;
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -24,11 +32,12 @@ use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
 use crate::common::actor_host::spawn_actor;
+use crate::common::state::State;
 use crate::feat::tools::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
 use crate::feat::tools::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
 };
-use crate::feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use crate::feat::tools::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
 
 /// A boxed future returned by built-in tool execute functions.
@@ -41,7 +50,7 @@ enum ToolRegistration {
         /// The tool's JSON-schema definition.
         definition: ToolDefinition,
         /// The function that executes the tool call.
-        execute: fn(ToolCall) -> BoxedToolFuture,
+        execute: fn(ToolCall, ToolContext) -> BoxedToolFuture,
     },
     /// An actor-provided tool routed via [`ExecuteTool`] command.
     Actor {
@@ -83,6 +92,7 @@ struct PendingBatch {
 ///
 /// Returns the actor reference and spawn result for routing registration.
 pub fn spawn(
+    state: State,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
 ) -> (
@@ -93,6 +103,7 @@ pub fn spawn(
     let actor_ref = ActorRef::new(tx);
     let mut ctx = ActorContext::new("tool-orchestrator", sink);
     ctx.set_description("Dispatches and manages tool execution");
+    ctx.set_data(state);
     let actor = ToolOrchestratorActor::activate(&mut ctx);
     let result = spawn_actor("tool-orchestrator", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
@@ -113,6 +124,8 @@ pub struct ToolOrchestratorActor {
     tools: HashMap<String, ToolRegistration>,
     /// Session ID → pending batch tracker.
     pending: HashMap<SessionId, PendingBatch>,
+    /// Shared application state for reading session CWD.
+    state: State,
 }
 
 impl Actor for ToolOrchestratorActor {
@@ -123,9 +136,14 @@ impl Actor for ToolOrchestratorActor {
         ctx.subscribe_command::<ExecuteToolBatch>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
 
+        let state: State = ctx
+            .take_data()
+            .expect("ToolOrchestratorActor requires State injection");
+
         let mut actor = Self {
             tools: HashMap::new(),
             pending: HashMap::new(),
+            state,
         };
 
         let builtins = builtin::builtin_tools();
@@ -271,6 +289,20 @@ impl ToolOrchestratorActor {
         }
     }
 
+    /// Builds a [`ToolContext`] for the given session by reading its CWD from shared state.
+    fn build_tool_context(&self, session_id: &SessionId) -> ToolContext {
+        let cwd = {
+            let guard = self.state.read();
+            guard
+                .session
+                .sessions
+                .get(session_id)
+                .map(|s| s.cwd().to_owned())
+                .unwrap_or_else(|| PathBuf::from("/"))
+        };
+        ToolContext { cwd, timeout: None }
+    }
+
     /// Dispatches a single tool call to the appropriate handler.
     fn dispatch_tool_call(&self, session_id: SessionId, tool_call: ToolCall, ctx: &ActorContext) {
         tracing::trace!(
@@ -288,9 +320,26 @@ impl ToolOrchestratorActor {
             Some(ToolRegistration::Builtin { execute, .. }) => {
                 let sink = ctx.sink();
                 let execute_fn = *execute;
+                let tool_ctx = self.build_tool_context(&session_id);
+                let timeout = tool_ctx.timeout;
 
                 tokio::spawn(async move {
-                    let result = execute_fn(tool_call).await;
+                    let call_id = tool_call.id.clone();
+                    let call_name = tool_call.name.clone();
+                    let result = match timeout {
+                        Some(dur) => {
+                            match tokio::time::timeout(dur, execute_fn(tool_call, tool_ctx)).await {
+                                Ok(r) => r,
+                                Err(_) => ToolResult {
+                                    tool_call_id: call_id,
+                                    name: call_name,
+                                    content: format!("tool execution timed out after {:?}", dur),
+                                    success: false,
+                                },
+                            }
+                        }
+                        None => execute_fn(tool_call, tool_ctx).await,
+                    };
                     if let Err(e) = sink.send_event(Event::ToolExecutionCompleted {
                         payload: ToolExecutionCompleted { session_id, result },
                     }) {
@@ -398,13 +447,29 @@ impl ToolOrchestratorActor {
 #[cfg(test)]
 mod tests {
     use crate::common::actor::RecordingSink;
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
     use crate::feat::tools::protocol::command::{ExecuteToolBatch, RegisterTools};
 
     use super::*;
 
     /// Creates a test context backed by a recording sink.
-    fn test_context(sink: &std::sync::Arc<RecordingSink>) -> ActorContext {
+    fn _test_context(sink: &std::sync::Arc<RecordingSink>) -> ActorContext {
         ActorContext::new("test-tool-orchestrator", sink.clone())
+    }
+
+    /// Creates a test context with State injection.
+    fn test_context_with_state(sink: &std::sync::Arc<RecordingSink>, state: State) -> ActorContext {
+        let mut ctx = ActorContext::new("test-tool-orchestrator", sink.clone());
+        ctx.set_data(state);
+        ctx
+    }
+
+    fn default_test_ctx() -> (std::sync::Arc<RecordingSink>, ActorContext) {
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let state = State::new(AppState::default());
+        let ctx = test_context_with_state(&sink, state);
+        (sink, ctx)
     }
 
     /// Extracts `ToolBatchCompleted` events from a list of events.
@@ -434,9 +499,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn activate_registers_echo_tool() {
-        // Given a fresh actor context.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        // Given a fresh actor context with state.
+        let (_sink, mut ctx) = default_test_ctx();
 
         // When activating the actor.
         let actor = ToolOrchestratorActor::activate(&mut ctx);
@@ -448,9 +512,8 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn activate_registers_get_time_tool() {
-        // Given a fresh actor context.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        // Given a fresh actor context with state.
+        let (_sink, mut ctx) = default_test_ctx();
 
         // When activating the actor.
         let actor = ToolOrchestratorActor::activate(&mut ctx);
@@ -461,38 +524,35 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn activate_registers_file_read_tool() {
-        // Given a fresh actor context.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+    async fn activate_registers_read_tool() {
+        // Given a fresh actor context with state.
+        let (_sink, mut ctx) = default_test_ctx();
 
         // When activating the actor.
         let actor = ToolOrchestratorActor::activate(&mut ctx);
 
-        // Then the file_read tool is registered.
-        assert!(actor.tools.contains_key("file_read"));
+        // Then the read tool is registered.
+        assert!(actor.tools.contains_key("read"));
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn activate_registers_file_write_tool() {
-        // Given a fresh actor context.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+    async fn activate_registers_write_tool() {
+        // Given a fresh actor context with state.
+        let (_sink, mut ctx) = default_test_ctx();
 
         // When activating the actor.
         let actor = ToolOrchestratorActor::activate(&mut ctx);
 
-        // Then the file_write tool is registered.
-        assert!(actor.tools.contains_key("file_write"));
+        // Then the write tool is registered.
+        assert!(actor.tools.contains_key("write"));
     }
 
     #[rstest::rstest]
     #[tokio::test]
     async fn activate_emits_tools_registered_for_builtins() {
-        // Given a fresh actor context with a recording sink.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        // Given a fresh actor context with state and a recording sink.
+        let (sink, mut ctx) = default_test_ctx();
 
         // When activating the actor.
         let _actor = ToolOrchestratorActor::activate(&mut ctx);
@@ -511,7 +571,7 @@ mod tests {
             .iter()
             .find(|p| p.provider == "builtin")
             .expect("expected builtin ToolsRegistered");
-        assert_eq!(builtin_evt.definitions.len(), 4);
+        assert_eq!(builtin_evt.definitions.len(), 6);
     }
 
     // --- RegisterTools command tests ---
@@ -520,8 +580,7 @@ mod tests {
     #[tokio::test]
     async fn register_tools_stores_actor_tools() {
         // Given an activated actor.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -558,8 +617,7 @@ mod tests {
     #[tokio::test]
     async fn register_tools_emits_event() {
         // Given an activated actor.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -593,8 +651,7 @@ mod tests {
     #[tokio::test]
     async fn register_tools_records_tool_count() {
         // Given an activated actor.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -636,11 +693,13 @@ mod tests {
             name: "echo".to_owned(),
             arguments: r#"{"input":"hello world"}"#.to_owned(),
         };
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+        };
 
         // When executing the echo tool.
-        let result = execute_echo(call).await;
-
-        // Then the result contains the echoed input.
+        let result = builtin_echo::execute(call, ctx).await;
         assert_eq!(result.tool_call_id, "call_1");
         assert_eq!(result.name, "echo");
         assert_eq!(result.content, "hello world");
@@ -656,14 +715,16 @@ mod tests {
             name: "echo".to_owned(),
             arguments: "not json".to_owned(),
         };
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+        };
 
         // When executing the echo tool.
-        let result = execute_echo(call).await;
+        let result = builtin_echo::execute(call, ctx).await;
 
         // Then the result indicates failure.
         assert_eq!(result.tool_call_id, "call_2");
-        assert!(!result.success);
-        assert!(result.content.contains("failed to parse arguments"));
     }
 
     #[rstest::rstest]
@@ -675,9 +736,13 @@ mod tests {
             name: "get_time".to_owned(),
             arguments: "{}".to_owned(),
         };
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+        };
 
         // When executing the get_time tool.
-        let result = execute_get_time(call).await;
+        let result = builtin_get_time::execute(call, ctx).await;
 
         // Then the result has non-empty content.
         assert_eq!(result.tool_call_id, "call_3");
@@ -687,7 +752,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn execute_builtin_file_read_tool() {
+    async fn execute_builtin_read_tool() {
         // Given a temp file with known content.
         let dir = tempfile::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test.txt");
@@ -695,17 +760,19 @@ mod tests {
 
         let call = ToolCall {
             id: "call_4".to_owned(),
-            name: "file_read".to_owned(),
+            name: "read".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy()
             })
             .to_string(),
         };
+        let tool_ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+        };
 
-        // When executing the file_read tool.
-        let result = execute_file_read(call).await;
-
-        // Then the result contains the file contents.
+        // When executing the read tool.
+        let result = builtin_read::execute(call, tool_ctx).await;
         assert_eq!(result.tool_call_id, "call_4");
         assert!(result.success);
         assert_eq!(result.content, "file contents here");
@@ -713,22 +780,25 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn execute_builtin_file_read_tool_returns_error_on_missing_file() {
-        // Given a file_read call for a nonexistent file.
+    async fn execute_builtin_read_tool_returns_error_on_missing_file() {
+        // Given a read call for a nonexistent file.
         let call = ToolCall {
             id: "call_5".to_owned(),
-            name: "file_read".to_owned(),
+            name: "read".to_owned(),
             arguments: serde_json::json!({
                 "path": "/nonexistent/path/to/file.txt"
             })
             .to_string(),
         };
+        let tool_ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+        };
 
-        // When executing the file_read tool.
-        let result = execute_file_read(call).await;
+        // When executing the read tool.
+        let result = builtin_read::execute(call, tool_ctx).await;
 
         // Then the result indicates failure.
-        assert_eq!(result.tool_call_id, "call_5");
         assert!(!result.success);
         assert!(result.content.contains("failed to read file"));
     }
@@ -739,8 +809,7 @@ mod tests {
     #[tokio::test]
     async fn execute_batch_with_echo_tool_emits_completion() {
         // Given an activated actor.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -772,8 +841,7 @@ mod tests {
     #[tokio::test]
     async fn completion_event_triggers_batch_completed() {
         // Given an activated actor with a single echo batch executed.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -816,8 +884,7 @@ mod tests {
     #[tokio::test]
     async fn execute_batch_with_two_tools_emits_two_completions() {
         // Given an activated actor.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -854,8 +921,7 @@ mod tests {
     #[tokio::test]
     async fn first_completion_does_not_complete_batch() {
         // Given an activated actor with a batch of two echo calls executed.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -904,8 +970,7 @@ mod tests {
     #[tokio::test]
     async fn second_completion_emits_batch_completed() {
         // Given an activated actor with a batch of two echo calls where first completion was fed back.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -967,8 +1032,7 @@ mod tests {
     #[tokio::test]
     async fn execute_batch_with_unknown_tool_emits_error_completion() {
         // Given an activated actor.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -999,8 +1063,7 @@ mod tests {
     #[tokio::test]
     async fn error_completion_triggers_batch_completed() {
         // Given an activated actor with an unknown tool batch executed.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -1044,8 +1107,7 @@ mod tests {
     #[tokio::test]
     async fn execute_batch_with_no_tool_calls_emits_empty_batch_completed() {
         // Given an activated actor.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -1069,171 +1131,145 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn file_write_returns_success() {
+    async fn write_tool_returns_success() {
         // Given a temp directory.
         let dir = tempfile::tempdir().expect("create temp dir");
         let file_path = dir.path().join("output.txt");
 
         let call = ToolCall {
-            id: "call_fw1".to_owned(),
-            name: "file_write".to_owned(),
+            id: "call_w1".to_owned(),
+            name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
-                "content": "hello from file_write"
+                "content": "hello from write"
             })
             .to_string(),
         };
+        let tool_ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+        };
 
-        // When executing the file_write tool.
-        let result = execute_file_write(call).await;
+        // When executing the write tool.
+        let result = builtin_write::execute(call, tool_ctx).await;
 
         // Then the result indicates success.
-        assert_eq!(result.tool_call_id, "call_fw1");
+        assert_eq!(result.tool_call_id, "call_w1");
         assert!(result.success, "expected success, got: {}", result.content);
-        assert!(result.content.contains("wrote 21 bytes"));
+        assert!(result.content.contains("wrote 16 bytes"));
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn file_write_creates_file_with_content() {
+    async fn write_tool_creates_file_with_content() {
         // Given a temp directory.
         let dir = tempfile::tempdir().expect("create temp dir");
         let file_path = dir.path().join("output.txt");
 
         let call = ToolCall {
-            id: "call_fw1".to_owned(),
-            name: "file_write".to_owned(),
+            id: "call_w1".to_owned(),
+            name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
-                "content": "hello from file_write"
+                "content": "hello from write"
             })
             .to_string(),
         };
+        let tool_ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+        };
 
-        // When executing the file_write tool.
-        let _result = execute_file_write(call).await;
+        // When executing the write tool.
+        let _result = builtin_write::execute(call, tool_ctx).await;
 
         // Then the file contains the written content.
         let content = std::fs::read_to_string(&file_path).expect("read written file");
-        assert_eq!(content, "hello from file_write");
+        assert_eq!(content, "hello from write");
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn file_write_creates_parent_dirs_returns_success() {
-        // Given a temp directory.
+    async fn write_tool_creates_parent_dirs_and_file() {
+        // Given a temp directory with a nested path.
         let dir = tempfile::tempdir().expect("create temp dir");
         let file_path = dir.path().join("nested").join("deep").join("file.txt");
 
         let call = ToolCall {
-            id: "call_fw2".to_owned(),
-            name: "file_write".to_owned(),
+            id: "call_w2".to_owned(),
+            name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": "nested content"
             })
             .to_string(),
         };
+        let tool_ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+        };
 
-        // When executing the file_write tool.
-        let result = execute_file_write(call).await;
+        // When executing the write tool.
+        let result = builtin_write::execute(call, tool_ctx).await;
 
         // Then the result indicates success.
-        assert_eq!(result.tool_call_id, "call_fw2");
         assert!(result.success, "expected success, got: {}", result.content);
-    }
 
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn file_write_creates_parent_dirs_and_file() {
-        // Given a temp directory.
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("nested").join("deep").join("file.txt");
-
-        let call = ToolCall {
-            id: "call_fw2".to_owned(),
-            name: "file_write".to_owned(),
-            arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
-                "content": "nested content"
-            })
-            .to_string(),
-        };
-
-        // When executing the file_write tool.
-        let _result = execute_file_write(call).await;
-
-        // Then the file was created with parent directories.
+        // And the file was created with parent directories.
         let content = std::fs::read_to_string(&file_path).expect("read written file");
         assert_eq!(content, "nested content");
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn file_write_overwrite_returns_success() {
+    async fn write_tool_overwrites_existing_file() {
         // Given a temp file with existing content.
         let dir = tempfile::tempdir().expect("create temp dir");
         let file_path = dir.path().join("existing.txt");
         std::fs::write(&file_path, "old content").expect("write existing file");
 
         let call = ToolCall {
-            id: "call_fw3".to_owned(),
-            name: "file_write".to_owned(),
+            id: "call_w3".to_owned(),
+            name: "write".to_owned(),
             arguments: serde_json::json!({
                 "path": file_path.to_string_lossy(),
                 "content": "new content"
             })
             .to_string(),
         };
+        let tool_ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+        };
 
-        // When executing the file_write tool.
-        let result = execute_file_write(call).await;
+        // When executing the write tool.
+        let result = builtin_write::execute(call, tool_ctx).await;
 
         // Then the result indicates success.
         assert!(result.success);
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn file_write_overwrites_content() {
-        // Given a temp file with existing content.
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let file_path = dir.path().join("existing.txt");
-        std::fs::write(&file_path, "old content").expect("write existing file");
-
-        let call = ToolCall {
-            id: "call_fw3".to_owned(),
-            name: "file_write".to_owned(),
-            arguments: serde_json::json!({
-                "path": file_path.to_string_lossy(),
-                "content": "new content"
-            })
-            .to_string(),
-        };
-
-        // When executing the file_write tool.
-        let _result = execute_file_write(call).await;
-
-        // Then the file was overwritten.
         let content = std::fs::read_to_string(&file_path).expect("read overwritten file");
         assert_eq!(content, "new content");
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn execute_builtin_file_write_tool_returns_error_on_bad_json() {
-        // Given a file_write call with invalid JSON.
+    async fn write_tool_returns_error_on_bad_json() {
+        // Given a write call with invalid JSON.
         let call = ToolCall {
-            id: "call_fw4".to_owned(),
-            name: "file_write".to_owned(),
+            id: "call_w4".to_owned(),
+            name: "write".to_owned(),
             arguments: "not json".to_owned(),
         };
+        let tool_ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+        };
 
-        // When executing the file_write tool.
-        let result = execute_file_write(call).await;
+        // When executing the write tool.
+        let result = builtin_write::execute(call, tool_ctx).await;
 
         // Then the result indicates failure.
-        assert_eq!(result.tool_call_id, "call_fw4");
+        assert_eq!(result.tool_call_id, "call_w4");
         assert!(!result.success);
         assert!(result.content.contains("failed to parse arguments"));
     }
@@ -1242,8 +1278,7 @@ mod tests {
     #[tokio::test]
     async fn tool_execution_completed_for_unknown_session_is_ignored() {
         // Given an activated actor with no pending batches.
-        let sink = std::sync::Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let (sink, mut ctx) = default_test_ctx();
         let mut actor = ToolOrchestratorActor::activate(&mut ctx);
         sink.clear();
 
@@ -1267,5 +1302,41 @@ mod tests {
         let events = sink.events();
         let batch_completed = find_batch_completed(&events);
         assert!(batch_completed.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn build_tool_context_reads_session_cwd() {
+        // Given an activated actor with a session that has a specific CWD.
+        let (_sink, mut ctx) = default_test_ctx();
+        let actor = ToolOrchestratorActor::activate(&mut ctx);
+
+        let session_id = {
+            let mut guard = actor.state.write();
+            let session = guard.active_session_mut();
+            session.set_cwd(PathBuf::from("/custom/cwd"));
+            guard.session.active_session.clone()
+        };
+
+        // When building tool context for that session.
+        let tool_ctx = actor.build_tool_context(&session_id);
+
+        // Then the CWD matches the session's CWD.
+        assert_eq!(tool_ctx.cwd, PathBuf::from("/custom/cwd"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn build_tool_context_returns_root_for_unknown_session() {
+        // Given an activated actor.
+        let (_sink, mut ctx) = default_test_ctx();
+        let actor = ToolOrchestratorActor::activate(&mut ctx);
+
+        // When building tool context for an unknown session.
+        let unknown_session = SessionId::new();
+        let tool_ctx = actor.build_tool_context(&unknown_session);
+
+        // Then the CWD falls back to "/".
+        assert_eq!(tool_ctx.cwd, PathBuf::from("/"));
     }
 }

@@ -49,6 +49,9 @@ pub struct SessionCore {
     /// Persisted strategy state blob for the active strategy.
     /// OWNER: context-actor (via RestoreStrategyState command)
     strategy_state: Option<JsonValue>,
+    /// Working directory for tool execution in this session.
+    /// OWNER: IntentHandler (set on session creation and cd commands)
+    cwd: std::path::PathBuf,
 }
 
 impl Default for SessionCore {
@@ -63,6 +66,7 @@ impl Default for SessionCore {
             active_strategy: PromptStrategyId::passthrough(),
             streaming_tool_call_indices: HashMap::new(),
             strategy_state: None,
+            cwd: std::path::PathBuf::new(),
         }
     }
 }
@@ -613,6 +617,16 @@ impl ChatSessionState {
     /// Update the strategy state blob.
     pub fn set_strategy_state(&mut self, blob: JsonValue) {
         self.core.strategy_state = Some(blob);
+    }
+
+    /// Returns this session's working directory for tool execution.
+    pub fn cwd(&self) -> &std::path::Path {
+        &self.core.cwd
+    }
+
+    /// Sets this session's working directory.
+    pub fn set_cwd(&mut self, cwd: std::path::PathBuf) {
+        self.core.cwd = cwd;
     }
 }
 
