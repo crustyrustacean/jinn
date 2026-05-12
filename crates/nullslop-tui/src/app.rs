@@ -99,7 +99,24 @@ impl TuiApp {
     /// Processes a single message.
     pub fn handle_msg(&mut self, msg: Msg) {
         match msg {
-            Msg::Tick => {}
+            Msg::Tick => {
+                let load_started = {
+                    let state = self.core.state.read();
+                    state.session.session_load_started_at
+                };
+                if let Some(started) = load_started
+                    && started.elapsed() >= std::time::Duration::from_secs(10)
+                {
+                    let mut state = self.core.state.write();
+                    state.session.session_loading = false;
+                    state.session.session_load_started_at = None;
+                    state
+                        .active_session_mut()
+                        .push_entry(nullslop_domain::ChatEntry::system(
+                            "Failed to load session: timed out",
+                        ));
+                }
+            }
             Msg::Input(event) => {
                 match event {
                     crossterm::event::Event::Key(key) => {

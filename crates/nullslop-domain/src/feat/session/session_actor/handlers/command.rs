@@ -150,8 +150,13 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.restore_history(payload.history.clone());
+            session.push_entry(ChatEntry::system(format!(
+                "Session restored: {}",
+                payload.title
+            )));
             state.session.active_session = payload.session_id.clone();
             state.session.session_loading = false;
+            state.session.session_load_started_at = None;
         }
 
         if let Err(e) = ctx.send_command(Command::RestoreStrategyState {
