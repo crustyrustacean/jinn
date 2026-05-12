@@ -33,12 +33,15 @@ use crate::feat::chat_input::protocol::command::{
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamToken};
+use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
 use crate::protocol::{Command, Event};
 use crate::{SessionLoadRequested, SessionSaveRequested};
+
+use super::entries::load_session_picker_items_from_store;
 
 /// Direct message type (unused — the actor only responds to bus commands/events).
 pub enum SessionPersistenceDirectMsg {}
@@ -62,6 +65,7 @@ impl Actor for SessionPersistenceActor {
         // Persistence subscriptions.
         ctx.subscribe_event::<SessionSaveRequested>();
         ctx.subscribe_command::<SessionLoadRequested>();
+        ctx.subscribe_command::<LoadSessionPickerEntries>();
 
         // Session lifecycle subscriptions.
         ctx.subscribe_command::<EnqueueUserMessage>();
@@ -129,6 +133,9 @@ impl SessionPersistenceActor {
     fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
         match cmd {
             Command::SessionLoadRequested { payload } => self.on_load_requested(payload, ctx),
+            Command::LoadSessionPickerEntries { payload } => {
+                self.handle_load_session_picker_entries(payload);
+            }
             Command::EnqueueUserMessage { payload } => {
                 self.handle_enqueue_user_message(payload, ctx);
             }
@@ -150,13 +157,20 @@ impl SessionPersistenceActor {
             | Command::RegisterTools { .. }
             | Command::ProviderSwitch { .. }
             | Command::LoadProviderPickerEntries { .. }
-            | Command::LoadSessionPickerEntries { .. }
             | Command::LoadContextStrategyPickerEntries { .. }
             | Command::PinChatEntry { .. }
             | Command::UnpinChatEntry { .. }
             | Command::SwitchPromptStrategy { .. }
             | Command::RestoreStrategyState { .. }
             | Command::ScanSkills => {}
+        }
+    }
+
+    /// Loads session picker entries from the session store into `AppState`.
+    fn handle_load_session_picker_entries(&self, _payload: &LoadSessionPickerEntries) {
+        if let Some(ref store) = self.store {
+            let mut state = self.state.write();
+            load_session_picker_items_from_store(store, &mut state);
         }
     }
 }

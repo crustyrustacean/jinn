@@ -8,6 +8,8 @@ use crate::common::app_state::AppState;
 use crate::common::services::Services;
 use crate::protocol::SessionEntry;
 
+use super::SessionStoreService;
+
 /// Loads session entries from the session store, sorted by `updated_at` descending.
 ///
 /// Reads summaries from the store, maps them to [`SessionEntry`], and sorts
@@ -41,6 +43,38 @@ pub fn load_session_entries(services: &Services) -> Vec<SessionEntry> {
 /// `SelectionState::set_items`.
 pub fn load_session_picker_items(services: &Services, state: &mut AppState) {
     let entries = load_session_entries(services);
+    state.frontend.session_picker.set_items(entries);
+}
+
+/// Loads session entries from a session store service directly, sorted by `updated_at` descending.
+///
+/// Same as [`load_session_entries`] but accepts the store service directly
+/// instead of the full `Services` container.
+pub fn load_session_entries_from_store(store: &SessionStoreService) -> Vec<SessionEntry> {
+    match store.load_summaries() {
+        Ok(summaries) => {
+            let mut entries: Vec<SessionEntry> = summaries
+                .into_iter()
+                .map(|(session_id, summary, byte_offset)| SessionEntry {
+                    session_id,
+                    title: summary.title,
+                    updated_at: summary.updated_at,
+                    byte_offset,
+                })
+                .collect();
+            entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+            entries
+        }
+        Err(e) => {
+            tracing::warn!(err = ?e, "failed to load session summaries");
+            vec![]
+        }
+    }
+}
+
+/// Loads session entries into the picker state from a session store service.
+pub fn load_session_picker_items_from_store(store: &SessionStoreService, state: &mut AppState) {
+    let entries = load_session_entries_from_store(store);
     state.frontend.session_picker.set_items(entries);
 }
 
