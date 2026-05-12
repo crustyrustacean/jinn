@@ -163,20 +163,6 @@ mod tests {
 
     use super::*;
 
-    /// Creates a test actor with a temp skills directory.
-    fn create_actor() -> (SkillsScanActor, State, Arc<RecordingSink>, ActorContext) {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
-        let state = State::new(AppState::default());
-        ctx.set_data(dir.path().to_owned());
-        ctx.set_data(state.clone());
-        // Keep temp dir alive for the test.
-        std::mem::forget(dir);
-        let actor = SkillsScanActor::activate(&mut ctx);
-        (actor, state, sink, ctx)
-    }
-
     fn find_skills_loaded(events: &[Event]) -> Option<&SkillsLoaded> {
         for evt in events {
             if let Event::SkillsLoaded { payload } = evt {
