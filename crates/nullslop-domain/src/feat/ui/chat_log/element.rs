@@ -175,6 +175,16 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, is_selected: bool) -> Vec<
                 is_selected,
             )
         }
+        ChatEntryKind::Error(text) => {
+            let prefix = if pinned { "📌   " } else { "  " };
+            multiline_styled(
+                text,
+                prefix,
+                "  ",
+                Style::default().fg(Color::Red),
+                is_selected,
+            )
+        }
         ChatEntryKind::Actor { source, text } => {
             let base = format!("[actor] {source}: ");
             let prefix = if pinned { format!("📌 {base}") } else { base };
@@ -1066,5 +1076,32 @@ mod tests {
             })
         });
         assert!(has_separator, "table should have a separator line");
+    }
+
+    #[rstest::rstest]
+    fn render_error_entry() {
+        // Given a ChatLogElement with an error entry "Cancelled".
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::error("Cancelled"));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the text is red on the bottom row.
+        let buffer = terminal.backend().buffer().clone();
+        let cell = buffer.cell((0, 9)).expect("cell should exist");
+        assert_eq!(cell.symbol(), "C");
+        assert_eq!(cell.style().fg, Some(Color::Red));
     }
 }

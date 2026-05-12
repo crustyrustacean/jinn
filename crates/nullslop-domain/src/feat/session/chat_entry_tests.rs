@@ -312,3 +312,16 @@ fn pin_position_enum_serialization() {
         assert_eq!(back, position, "roundtrip failed for {label}");
     }
 }
+
+#[rstest::rstest]
+fn error_entry_serialization_roundtrip() {
+    // Given an error entry.
+    let entry = ChatEntry::error("Something went wrong");
+
+    // When serialized and deserialized.
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the kind is preserved.
+    assert!(matches!(back.kind, ChatEntryKind::Error(ref t) if t == "Something went wrong"));
+}
