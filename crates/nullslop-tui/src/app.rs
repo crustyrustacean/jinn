@@ -259,6 +259,14 @@ impl TuiApp {
                 }
             }
 
+            // Close tool content popup when leaving ToolContent mode.
+            if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape)
+                && !matches!(state.frontend.mode, Mode::ToolContent)
+            {
+                state.frontend.tool_content_popup =
+                    nullslop_domain::common::app_state::ToolContentPopupState::default();
+            }
+
             // Collect signals and mode before releasing lock.
             let signals = signals::TuiSignalsSnapshot::from_state(&state);
             let mode = state.frontend.mode;
@@ -379,6 +387,7 @@ pub fn scope_for_mode(mode: Mode, active_tab: ActiveTab, pane_focus: PaneFocus) 
         },
         Mode::Input => Scope::Input,
         Mode::Picker => Scope::Picker,
+        Mode::ToolContent => Scope::ToolContent,
     }
 }
 
@@ -439,6 +448,7 @@ mod tests {
     #[case::pinned(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, Scope::Pinned)]
     #[case::input(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, Scope::Input)]
     #[case::picker(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, Scope::Picker)]
+    #[case::tool_content(Mode::ToolContent, ActiveTab::Chat, PaneFocus::Chat, Scope::ToolContent)]
     fn scope_for_mode_maps_correctly(
         #[case] mode: Mode,
         #[case] tab: ActiveTab,
