@@ -10,7 +10,7 @@ use ratatui_which_key::{PopupPosition, WhichKey};
 
 use crate::TuiApp;
 use crate::app::{CHAT_PANE, PaneFocus};
-use crate::selection::find_last_nonws_in_row;
+use crate::selection::{SelectionState, find_last_nonws_in_row};
 
 /// Minimum terminal width.
 pub const MIN_WIDTH: u16 = 40;
@@ -323,8 +323,22 @@ fn flush_pending_clipboard(app: &mut TuiApp, buf: &ratatui::buffer::Buffer) {
 
     let text = match app.selection.extract_text(buf) {
         Some(text) if !text.is_empty() => text,
-        _ => return,
+        _ => {
+            // Empty selection — clear highlight silently.
+            app.selection = SelectionState::Idle;
+            return;
+        }
     };
+
+    // Clear selection highlight immediately.
+    app.selection = SelectionState::Idle;
+
+    // Set status notification.
+    app.core
+        .state
+        .write()
+        .frontend
+        .set_status_notification("Copied to clipboard");
 
     // Spawn a thread to hold the clipboard open for clipboard managers.
     std::thread::spawn(move || {
