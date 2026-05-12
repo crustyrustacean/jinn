@@ -31,6 +31,7 @@ use crate::protocol::system::LoadPickerEntries;
 use crate::protocol::{Command, Event, PickerKind};
 
 use super::loader::load_provider_picker_items;
+use crate::feat::picker::strategy_entries::load_strategy_picker_items;
 
 /// Direct message type (unused — the provider actor only responds to bus commands).
 pub enum ProviderDirectMsg {}
@@ -184,7 +185,11 @@ impl ProviderActor {
                 let mut state = self.state.write();
                 load_provider_picker_items(&self.services, &mut state);
             }
-            PickerKind::ContextAssembly | PickerKind::Session | PickerKind::Keymap => {
+            PickerKind::ContextAssembly => {
+                let mut state = self.state.write();
+                load_strategy_picker_items(&self.services, &mut state);
+            }
+            PickerKind::Session | PickerKind::Keymap => {
                 // Future: load from services or state as appropriate.
             }
         }
@@ -241,7 +246,8 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::provider::protocol::command::ProviderSwitch;
     use crate::feat::provider::protocol::event::ModelsRefreshed;
-    use crate::protocol::{Command, Event};
+    use crate::protocol::system::LoadPickerEntries;
+    use crate::protocol::{Command, Event, PickerKind};
 
     use super::ProviderActor;
 
@@ -361,6 +367,32 @@ mod tests {
         let name_after = actor.services.llm_service.name();
         assert_ne!(name_before, name_after);
         assert_eq!(name_after, "Sample");
+    }
+
+    // --- LoadPickerEntries ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_picker_entries_context_assembly_populates_strategy_picker() {
+        // Given a provider actor.
+        let (mut actor, state, _sink, ctx) = create_actor();
+
+        // When processing LoadPickerEntries for ContextAssembly.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::LoadPickerEntries {
+                    payload: LoadPickerEntries {
+                        kind: PickerKind::ContextAssembly,
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the context strategy picker has entries.
+        let guard = state.read();
+        let items = guard.frontend.context_strategy_picker.items();
+        assert!(!items.is_empty(), "strategy picker should have entries");
     }
 
     // --- ModelsRefreshed (event) ---
