@@ -387,6 +387,16 @@ fn clipboard_copy_skips_empty_selection() {
 
     // Then the pending flag is cleared.
     assert!(!app.pending_clipboard);
+    // And the selection is cleared to Idle (no highlight persists).
+    assert_eq!(app.selection, SelectionState::Idle);
+    // And no notification is set.
+    assert!(app
+        .core
+        .state
+        .read()
+        .frontend
+        .active_status_notification()
+        .is_none());
 }
 
 #[rstest::rstest]
@@ -414,6 +424,17 @@ fn clipboard_clears_pending_flag_immediately() {
 
     // Then the pending flag is cleared immediately.
     assert!(!app.pending_clipboard);
+    // And the selection is cleared to Idle.
+    assert_eq!(app.selection, SelectionState::Idle);
+    // And a notification is set.
+    assert_eq!(
+        app.core
+            .state
+            .read()
+            .frontend
+            .active_status_notification(),
+        Some("Copied to clipboard")
+    );
 }
 
 #[rstest::rstest]
