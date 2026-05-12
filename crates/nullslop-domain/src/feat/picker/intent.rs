@@ -277,6 +277,7 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
     let byte_offset = entry.byte_offset;
 
     state.session.session_loading = true;
+    state.session.session_load_started_at = Some(std::time::Instant::now());
     state.frontend.mode = Mode::Normal;
 
     IntentResult::with_commands(vec![Command::SessionLoadRequested {
@@ -486,6 +487,8 @@ mod tests {
 
         // Then session_loading is true.
         assert!(state.session.session_loading);
+        // And session_load_started_at is set.
+        assert!(state.session.session_load_started_at.is_some());
         // And a SessionLoadRequested command is returned.
         assert!(
             result

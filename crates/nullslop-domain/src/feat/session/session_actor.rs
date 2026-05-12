@@ -921,6 +921,7 @@ mod tests {
         {
             let guard = state.read();
             assert!(!guard.session.session_loading);
+            assert!(guard.session.session_load_started_at.is_none());
         }
 
         // And RestoreStrategyState and SwitchPromptStrategy were emitted.
