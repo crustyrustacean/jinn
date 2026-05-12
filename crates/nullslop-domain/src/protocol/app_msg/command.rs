@@ -18,17 +18,18 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::context::protocol::command::{
-    AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, LoadContextStrategyPickerEntries, PinChatEntry, RestoreStrategyState,
+    SwitchPromptStrategy, UnpinChatEntry,
 };
 use crate::feat::provider::protocol::command::{
-    CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
-    SendToLlmProvider,
+    CancelStream, LoadProviderPickerEntries, ProviderSwitch, RefreshModels, RescanPromptTemplates,
+    SendMessage, SendToLlmProvider,
 };
+use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
-use crate::protocol::system::LoadPickerEntries;
 
 /// Every domain command the actor system can receive.
 ///
@@ -163,12 +164,23 @@ pub enum Command {
         #[serde(flatten)]
         payload: SessionLoadCompleted,
     },
-    /// Load entries for the active picker from the actor system.
-    #[serde(rename = "load_picker_entries")]
-    LoadPickerEntries {
-        /// Which picker kind to load entries for.
+    /// Load entries for the provider/model picker.
+    #[serde(rename = "load_provider_picker_entries")]
+    LoadProviderPickerEntries {
         #[serde(flatten)]
-        payload: LoadPickerEntries,
+        payload: LoadProviderPickerEntries,
+    },
+    /// Load entries for the session picker.
+    #[serde(rename = "load_session_picker_entries")]
+    LoadSessionPickerEntries {
+        #[serde(flatten)]
+        payload: LoadSessionPickerEntries,
+    },
+    /// Load entries for the context strategy picker.
+    #[serde(rename = "load_context_strategy_picker_entries")]
+    LoadContextStrategyPickerEntries {
+        #[serde(flatten)]
+        payload: LoadContextStrategyPickerEntries,
     },
     /// Request to load a full session from disk by byte offset.
     #[serde(rename = "session_load_requested")]
@@ -206,7 +218,11 @@ impl Command {
             Self::ExecuteTool { .. } => Some(ExecuteTool::NAME),
             Self::ProceedWithShutdown { .. } => Some(ProceedWithShutdown::NAME),
             Self::SessionLoadCompleted { .. } => Some(SessionLoadCompleted::NAME),
-            Self::LoadPickerEntries { .. } => Some(LoadPickerEntries::NAME),
+            Self::LoadProviderPickerEntries { .. } => Some(LoadProviderPickerEntries::NAME),
+            Self::LoadSessionPickerEntries { .. } => Some(LoadSessionPickerEntries::NAME),
+            Self::LoadContextStrategyPickerEntries { .. } => {
+                Some(LoadContextStrategyPickerEntries::NAME)
+            }
             Self::SessionLoadRequested { .. } => Some("SessionLoadRequested"),
             Self::ScanSkills => Some(ScanSkills::NAME),
         }
@@ -267,8 +283,10 @@ impl std::fmt::Display for Command {
                 )
             }
             Command::SessionLoadCompleted { .. } => write!(f, "session load completed"),
-            Command::LoadPickerEntries { payload } => {
-                write!(f, "load {} picker entries", payload.kind)
+            Command::LoadProviderPickerEntries { .. } => write!(f, "load provider picker entries"),
+            Command::LoadSessionPickerEntries { .. } => write!(f, "load session picker entries"),
+            Command::LoadContextStrategyPickerEntries { .. } => {
+                write!(f, "load context strategy picker entries")
             }
             Command::SessionLoadRequested { .. } => write!(f, "session load requested"),
             Command::ScanSkills => write!(f, "scan skills"),
@@ -307,7 +325,9 @@ mod tests {
     } })]
     #[case::pin_chat_entry(Command::PinChatEntry { payload: PinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new(), position: crate::protocol::PinPosition::Top } })]
     #[case::unpin_chat_entry(Command::UnpinChatEntry { payload: UnpinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new() } })]
-    #[case::load_picker_entries(Command::LoadPickerEntries { payload: LoadPickerEntries { kind: crate::PickerKind::Provider } })]
+    #[case::load_provider_picker_entries(Command::LoadProviderPickerEntries { payload: LoadProviderPickerEntries })]
+    #[case::load_session_picker_entries(Command::LoadSessionPickerEntries { payload: LoadSessionPickerEntries })]
+    #[case::load_context_strategy_picker_entries(Command::LoadContextStrategyPickerEntries { payload: LoadContextStrategyPickerEntries })]
     #[case::session_load_requested(Command::SessionLoadRequested { payload: SessionLoadRequested {
         session_id: SessionId::new(), byte_offset: 42u64,
     } })]

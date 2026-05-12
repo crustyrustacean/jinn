@@ -7,10 +7,10 @@
 //! dependency.
 
 use crate::common::app_state::AppState;
-use crate::feat::context::protocol::command::SwitchPromptStrategy;
-use crate::feat::provider::protocol::command::ProviderSwitch;
+use crate::feat::context::protocol::command::{LoadContextStrategyPickerEntries, SwitchPromptStrategy};
+use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
+use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::protocol::system::LoadPickerEntries;
 use crate::protocol::{Command, Intent, IntentResult, Mode, PickerKind};
 
 use super::validator;
@@ -45,13 +45,19 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
 
     state.frontend.mode = Mode::Picker;
 
-    // Keymap entries come from state, not services.
-    if matches!(kind, PickerKind::Keymap) {
-        IntentResult::empty()
-    } else {
-        IntentResult::with_commands(vec![Command::LoadPickerEntries {
-            payload: LoadPickerEntries { kind },
-        }])
+    match kind {
+        PickerKind::Provider => IntentResult::with_commands(vec![Command::LoadProviderPickerEntries {
+            payload: LoadProviderPickerEntries,
+        }]),
+        PickerKind::Session => IntentResult::with_commands(vec![Command::LoadSessionPickerEntries {
+            payload: LoadSessionPickerEntries,
+        }]),
+        PickerKind::ContextAssembly => IntentResult::with_commands(vec![
+            Command::LoadContextStrategyPickerEntries {
+                payload: LoadContextStrategyPickerEntries,
+            },
+        ]),
+        PickerKind::Keymap => IntentResult::empty(),
     }
 }
 
@@ -305,12 +311,12 @@ mod tests {
             Some(PickerKind::Provider)
         );
         assert_eq!(state.frontend.mode, Mode::Picker);
-        // And a LoadPickerEntries command is returned.
+        // And a LoadProviderPickerEntries command is returned.
         assert!(
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::LoadPickerEntries { .. }))
+                .any(|c| matches!(c, Command::LoadProviderPickerEntries { .. }))
         );
     }
 

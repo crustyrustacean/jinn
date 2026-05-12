@@ -84,6 +84,14 @@ pub struct UnpinChatEntry {
     pub entry_id: ChatEntryId,
 }
 
+/// Load entries for the context strategy picker.
+///
+/// The prompt assembly actor receives this, loads strategies from the strategy
+/// registry, and writes them into `AppState`.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("context")]
+pub struct LoadContextStrategyPickerEntries;
+
 #[cfg(test)]
 mod tests {
     use super::*;
