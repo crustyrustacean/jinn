@@ -331,6 +331,7 @@ mod tests {
                 base_url: None,
                 api_key_env: None,
                 requires_key: false,
+                extra_body: None,
             }],
             aliases: vec![],
             default_provider: None,
