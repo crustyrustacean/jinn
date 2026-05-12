@@ -36,7 +36,7 @@ pub use common::app_state::{
 };
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::tui_signals::TuiSignals;
-pub use common::{AppUiRegistry, register_all, register_tui_elements};
+pub use common::{AppUiRegistry, register_all_ui_elements};
 pub use feat::context::prompt_template::PromptTemplateStore;
 pub use feat::provider_infra::NO_PROVIDER_ID;
 
