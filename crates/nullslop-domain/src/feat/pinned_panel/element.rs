@@ -110,6 +110,8 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
                 ),
             )
         }
+        // Table entries are not shown in the pinned panel summary.
+        ChatEntryKind::Table(_) => ("", String::new()),
     }
 }
 

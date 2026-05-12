@@ -85,6 +85,8 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     });
                 }
             }
+            // Table entries are ephemeral display data — not sent to the LLM.
+            ChatEntryKind::Table(_) => {}
         }
     }
 
