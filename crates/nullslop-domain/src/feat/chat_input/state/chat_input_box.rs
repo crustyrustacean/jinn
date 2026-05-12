@@ -25,6 +25,11 @@ pub struct ChatInputBoxState {
     desired_col: Option<usize>,
     /// Active prompt-template autocomplete session, if any.
     autocomplete: Option<AutocompleteState>,
+    /// Width available for text rendering (grapheme columns). Set during render.
+    /// Defaults to `usize::MAX` (no wrapping) until first render.
+    wrap_width: usize,
+    /// Scroll offset: the first visual line index that is visible.
+    scroll_offset: usize,
 }
 
 impl ChatInputBoxState {
@@ -36,6 +41,8 @@ impl ChatInputBoxState {
             cursor_pos: 0,
             desired_col: None,
             autocomplete: None,
+            wrap_width: usize::MAX,
+            scroll_offset: 0,
         }
     }
 
@@ -94,41 +101,21 @@ impl ChatInputBoxState {
         self.input_buffer.graphemes(true).nth(index)
     }
 
-    /// Returns the number of visual lines (splits on `\n` graphemes + 1).
+    /// Returns the number of visual lines (word-wrapped at `wrap_width`).
     #[must_use]
     pub fn visual_line_count(&self) -> usize {
-        if self.input_buffer.is_empty() {
-            return 1;
-        }
-        let newline_count = self
-            .input_buffer
-            .graphemes(true)
-            .filter(|g| *g == "\n")
-            .count();
-        newline_count + 1
+        let lines = self.wrapped_lines();
+        lines.len().max(1)
     }
 
-    /// Returns the cursor's `(row, col)` position within the multi-line buffer.
+    /// Returns the cursor's `(row, col)` position within the wrapped visual lines.
     ///
-    /// Row is 0-indexed (line number), col is the grapheme offset within that line.
+    /// Row is 0-indexed (visual line number after wrapping), col is the grapheme
+    /// offset within that wrapped line.
     #[must_use]
     pub fn cursor_row_col(&self) -> (usize, usize) {
-        let mut row = 0;
-        let mut col = 0;
-
-        for (i, g) in self.input_buffer.graphemes(true).enumerate() {
-            if i == self.cursor_pos {
-                break;
-            }
-            if g == "\n" {
-                row += 1;
-                col = 0;
-            } else {
-                col += 1;
-            }
-        }
-
-        (row, col)
+        let lines = self.wrapped_lines();
+        self.cursor_row_col_wrapped(&lines)
     }
 
     /// Insert text at the current cursor position and advance the cursor by the
@@ -179,6 +166,7 @@ impl ChatInputBoxState {
         self.input_buffer.clear();
         self.cursor_pos = 0;
         self.desired_col = None;
+        self.scroll_offset = 0;
     }
 
     /// Replace the entire buffer content and position cursor at the end.
@@ -300,60 +288,114 @@ impl ChatInputBoxState {
         self.desired_col = None;
     }
 
-    /// Move the cursor up one visual line.
+    /// Move the cursor up one visual line (after wrapping).
     ///
     /// Remembers the column across consecutive vertical moves, even when
     /// clamped by shorter lines. No-op when the cursor is on the first line.
     pub fn move_cursor_up(&mut self) {
-        let (row, col) = self.cursor_row_col();
+        let lines = self.wrapped_lines();
+        let (row, col) = self.cursor_row_col_wrapped(&lines);
         if row == 0 {
             return;
         }
         let target_col = *self.desired_col.get_or_insert(col);
-        self.cursor_pos = self.grapheme_index_for_row_col(row - 1, target_col);
+        self.cursor_pos = self.grapheme_index_for_wrapped_row_col(&lines, row - 1, target_col);
     }
 
-    /// Move the cursor down one visual line.
+    /// Move the cursor down one visual line (after wrapping).
     ///
     /// Remembers the column across consecutive vertical moves, even when
     /// clamped by shorter lines. No-op when the cursor is on the last line.
     pub fn move_cursor_down(&mut self) {
-        let (row, col) = self.cursor_row_col();
-        let last_row = self.visual_line_count() - 1;
+        let lines = self.wrapped_lines();
+        let (row, col) = self.cursor_row_col_wrapped(&lines);
+        let last_row = lines.len().saturating_sub(1);
         if row >= last_row {
             return;
         }
         let target_col = *self.desired_col.get_or_insert(col);
-        self.cursor_pos = self.grapheme_index_for_row_col(row + 1, target_col);
+        self.cursor_pos = self.grapheme_index_for_wrapped_row_col(&lines, row + 1, target_col);
     }
 
-    /// Compute the grapheme index for a given `(row, col)` position.
+    /// Compute the grapheme index for a given `(visual_row, col)` position
+    /// in the wrapped line array.
     ///
-    /// Clamps `col` to the length of the target row's line.
-    fn grapheme_index_for_row_col(&self, target_row: usize, target_col: usize) -> usize {
-        let mut row = 0;
-        let mut col = 0;
-        let mut idx = 0;
+    /// Clamps `col` to the length of the target wrapped line.
+    fn grapheme_index_for_wrapped_row_col(
+        &self,
+        lines: &[super::wrap::WrappedLine],
+        target_row: usize,
+        target_col: usize,
+    ) -> usize {
+        let Some(line) = lines.get(target_row) else {
+            return self.cursor_pos; // out of bounds, no-op
+        };
+        let line_len = line.grapheme_end.saturating_sub(line.grapheme_start);
+        let clamped_col = target_col.min(line_len);
+        line.grapheme_start + clamped_col
+    }
 
-        for g in self.input_buffer.graphemes(true) {
-            if row == target_row && col == target_col {
-                return idx;
+    // -----------------------------------------------------------------------
+    // Wrap-aware methods
+    // -----------------------------------------------------------------------
+
+    /// Sets the wrap width (called during render).
+    pub fn set_wrap_width(&mut self, width: usize) {
+        self.wrap_width = width;
+    }
+
+    /// Returns the current scroll offset.
+    #[must_use]
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    /// Sets the scroll offset directly.
+    ///
+    /// Used for testing. Normally, use [`scroll_to_cursor`](Self::scroll_to_cursor)
+    /// to adjust the offset.
+    pub fn set_scroll_offset(&mut self, offset: usize) {
+        self.scroll_offset = offset;
+    }
+
+    /// Adjusts scroll offset to ensure the cursor's visual row is visible
+    /// within `max_visible_lines` rows.
+    pub fn scroll_to_cursor(&mut self, max_visible_lines: usize) {
+        let lines = self.wrapped_lines();
+        let (cursor_row, _) = self.cursor_row_col_wrapped(&lines);
+
+        if cursor_row < self.scroll_offset {
+            self.scroll_offset = cursor_row;
+        } else if max_visible_lines > 0 && cursor_row >= self.scroll_offset + max_visible_lines {
+            self.scroll_offset = cursor_row - max_visible_lines + 1;
+        }
+    }
+
+    /// Computes wrapped lines for the current buffer and wrap_width.
+    fn wrapped_lines(&self) -> Vec<super::wrap::WrappedLine> {
+        super::wrap::wrap_text(&self.input_buffer, self.wrap_width)
+    }
+
+    /// Returns cursor (visual_row, col_within_wrapped_line) using pre-computed lines.
+    fn cursor_row_col_wrapped(&self, lines: &[super::wrap::WrappedLine]) -> (usize, usize) {
+        for (row, line) in lines.iter().enumerate() {
+            if self.cursor_pos >= line.grapheme_start && self.cursor_pos < line.grapheme_end {
+                let col = self.cursor_pos - line.grapheme_start;
+                return (row, col);
             }
-            if g == "\n" {
-                if row == target_row {
-                    // We've reached end of target line; col was too far, clamp.
-                    return idx;
-                }
-                row += 1;
-                col = 0;
-            } else {
-                col += 1;
-            }
-            idx += 1;
         }
 
-        // If we ran out of graphemes on the target row, return end-of-buffer.
-        idx
+        // Cursor is at the boundary between lines (on a '\n' or at end of last line).
+        // Find the line whose grapheme_end is <= cursor_pos and closest to it.
+        let mut best_row = 0;
+        let mut best_start = 0;
+        for (row, line) in lines.iter().enumerate() {
+            if line.grapheme_end <= self.cursor_pos {
+                best_row = row;
+                best_start = line.grapheme_start;
+            }
+        }
+        (best_row, self.cursor_pos.saturating_sub(best_start))
     }
 
     // -----------------------------------------------------------------------

@@ -146,7 +146,8 @@ fn wrap_logical_line(
                 line_start = break_pos;
                 first_line = false;
                 // Recompute col from the remaining graphemes.
-                col = i - break_pos + 1;
+                // i+1 graphemes have been processed; break_pos started the new line.
+                col = (i + 1).saturating_sub(break_pos);
                 last_word_break = None;
             } else {
                 // No word break found — break at the current position
