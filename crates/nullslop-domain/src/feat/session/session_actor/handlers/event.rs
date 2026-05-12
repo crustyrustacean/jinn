@@ -110,41 +110,62 @@ impl SessionPersistenceActor {
         ));
     }
 
-    /// Pushes a completion summary system entry after model refresh.
+    /// Pushes a table entry after model refresh.
     pub(in crate::feat::session::session_actor) fn on_models_refreshed(
         &self,
         event: &ModelsRefreshed,
     ) {
-        let total_models: usize = event.results.values().map(Vec::len).sum();
-        let provider_count = event.results.len();
+        // No providers at all — push a simple system entry.
+        if event.results.is_empty() && event.errors.is_empty() {
+            let mut state = self.state.write();
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::system("Models refreshed: no providers found"));
+            return;
+        }
 
-        let summary = if !event.results.is_empty() && event.errors.is_empty() {
-            format!("Models refreshed: {total_models} models from {provider_count} providers")
-        } else if !event.results.is_empty() && !event.errors.is_empty() {
-            let error_details = format_errors(&event.errors);
-            format!(
-                "Models refreshed: {total_models} models from {provider_count} providers. Errors: {error_details}"
-            )
-        } else if event.results.is_empty() && !event.errors.is_empty() {
-            let error_details = format_errors(&event.errors);
-            format!("Failed to refresh models: {error_details}")
-        } else {
-            "Models refreshed: no providers found".to_owned()
-        };
+        use ratatui::style::{Color, Style};
+        use ratatui::text::Span;
 
+        use crate::protocol::TableData;
+
+        let headers = vec![
+            Span::raw("Provider"),
+            Span::raw("Model Count"),
+            Span::raw("Status"),
+        ];
+
+        // Collect all provider names and sort alphabetically.
+        let mut all_providers: Vec<&str> = event
+            .results
+            .keys()
+            .chain(event.errors.keys())
+            .map(|s| s.as_str())
+            .collect();
+        all_providers.sort();
+        all_providers.dedup();
+
+        let mut rows = Vec::new();
+        for provider in all_providers {
+            if let Some(models) = event.results.get(provider) {
+                rows.push(vec![
+                    Span::raw(provider.to_owned()),
+                    Span::raw(models.len().to_string()),
+                    Span::styled("\u{2705}".to_owned(), Style::default().fg(Color::Green)),
+                ]);
+            } else if let Some(err) = event.errors.get(provider) {
+                rows.push(vec![
+                    Span::raw(provider.to_owned()),
+                    Span::raw("0".to_owned()),
+                    Span::styled(format!("\u{274c} {}", err), Style::default().fg(Color::Red)),
+                ]);
+            }
+        }
+
+        let data = TableData { headers, rows };
         let mut state = self.state.write();
         state
             .active_session_mut()
-            .push_entry(ChatEntry::system(summary));
+            .push_entry(ChatEntry::table(data));
     }
-}
-
-/// Formats provider errors as a comma-separated string.
-fn format_errors(errors: &std::collections::HashMap<String, String>) -> String {
-    let mut pairs: Vec<String> = errors
-        .iter()
-        .map(|(provider, msg)| format!("{provider}: {msg}"))
-        .collect();
-    pairs.sort();
-    pairs.join(", ")
 }
