@@ -10,7 +10,6 @@ use crate::feat::context::protocol::command::{
 };
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::feat::tools_actor::protocol::command::PushToolResult;
 use crate::protocol::{ChatEntry, Command, Event};
 
 use super::super::SessionPersistenceActor;
@@ -124,21 +123,6 @@ impl SessionPersistenceActor {
         }) {
             tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
         }
-    }
-
-    /// PushToolResult: add tool result to session history.
-    pub(in crate::feat::session::session_actor) fn handle_push_tool_result(
-        &self,
-        payload: &PushToolResult,
-    ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&payload.session_id);
-        session.push_entry(ChatEntry::tool_result(
-            &payload.result.tool_call_id,
-            &payload.result.name,
-            &payload.result.content,
-            payload.result.success,
-        ));
     }
 
     /// SendMessage: backward compat — emit EnqueueUserMessage.
