@@ -21,7 +21,7 @@ use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::provider_infra::LlmServiceFactoryService;
 use crate::feat::provider_infra::StreamEvent;
-use crate::feat::tools_actor::protocol::command::ExecuteToolBatch;
+use crate::feat::tools_actor::protocol::command::{CancelToolBatch, ExecuteToolBatch};
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolUseStarted, ToolsRegistered,
 };
@@ -458,6 +458,25 @@ impl LlmActor {
 
     /// Cancels the active stream for a session and emits a completion event.
     fn cancel_stream(&mut self, session_id: &SessionId, ctx: &ActorContext) {
+        // If the session is awaiting tool results, tell the orchestrator to cancel them.
+        let awaiting_tools = self
+            .sessions
+            .get(session_id)
+            .is_some_and(|s| s.state == SessionState::AwaitingToolResults);
+
+        if awaiting_tools {
+            if let Err(e) = ctx.send_command(Command::CancelToolBatch {
+                payload: CancelToolBatch {
+                    session_id: session_id.clone(),
+                },
+            }) {
+                tracing::warn!(
+                    err = ?e,
+                    "failed to emit CancelToolBatch during stream cancellation"
+                );
+            }
+        }
+
         if let Some(handle) = self.tasks.remove(session_id) {
             handle.abort();
         }
@@ -993,6 +1012,120 @@ mod tests {
 
         // Then the task was removed.
         assert!(!actor.tasks.contains_key(&session_id));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cancel_stream_emits_cancel_tool_batch_when_awaiting_tool_results() {
+        // Given an actor in AwaitingToolResults state after a tool_use stream.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let factory = FakeLlmServiceFactory::with_tool_calls(
+            vec!["Let me check".to_owned()],
+            vec![tool_call.clone()],
+        );
+        let factory_service =
+            crate::feat::provider_infra::LlmServiceFactoryService::new(Arc::new(factory));
+        ctx.set_data(factory_service);
+        let mut actor = LlmActor::activate(&mut ctx);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        // Send and route stream events back to transition to AwaitingToolResults.
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let events_from_stream = sink.take_events();
+        for event in events_from_stream {
+            actor.handle_event(&event, &ctx);
+        }
+
+        // Verify we're in the right state.
+        let session = actor
+            .sessions
+            .get(&session_id)
+            .expect("session should exist");
+        assert_eq!(session.state, SessionState::AwaitingToolResults);
+
+        sink.clear();
+
+        // When cancelling the stream.
+        let cancel_cmd = Command::CancelStream {
+            payload: CancelStream {
+                session_id: session_id.clone(),
+            },
+        };
+        actor.handle_command(&cancel_cmd, &ctx);
+
+        // Then a CancelToolBatch command was emitted.
+        let commands = sink.commands();
+        let has_cancel_batch = commands.iter().any(|c| {
+            matches!(
+                c,
+                Command::CancelToolBatch { payload }
+                if payload.session_id == session_id
+            )
+        });
+        assert!(
+            has_cancel_batch,
+            "expected CancelToolBatch command when awaiting tool results"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cancel_stream_does_not_emit_cancel_tool_batch_when_streaming() {
+        // Given an actor with an active stream (not tool use).
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+        let mut actor = actor_with_tokens(&sink, &mut ctx, vec!["Hello".to_owned()]);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::SendToLlmProvider {
+            payload: SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: vec![],
+                provider_id: None,
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        sink.clear();
+
+        // When cancelling the stream.
+        let cancel_cmd = Command::CancelStream {
+            payload: CancelStream {
+                session_id: session_id.clone(),
+            },
+        };
+        actor.handle_command(&cancel_cmd, &ctx);
+
+        // Then no CancelToolBatch command was emitted.
+        let commands = sink.commands();
+        let has_cancel_batch = commands
+            .iter()
+            .any(|c| matches!(c, Command::CancelToolBatch { .. }));
+        assert!(
+            !has_cancel_batch,
+            "CancelToolBatch should not be emitted when stream is active (not awaiting tools)"
+        );
     }
 
     // --- ToolsRegistered event tests ---

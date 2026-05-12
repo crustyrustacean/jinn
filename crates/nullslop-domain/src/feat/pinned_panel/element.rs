@@ -86,6 +86,7 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
         ChatEntryKind::User(text) => ("> ", truncate_str(text, 40)),
         ChatEntryKind::Assistant(text) => ("\u{2666} ", truncate_str(text, 40)),
         ChatEntryKind::System(text) => ("\u{2699} ", truncate_str(text, 40)),
+        ChatEntryKind::Error(text) => ("\u{26a0} ", truncate_str(text, 40)),
         ChatEntryKind::Actor { source, text } => {
             let content = format!("[{}] {}", source, truncate_str(text, 30));
             ("", content)

@@ -166,6 +166,7 @@ impl SessionPersistenceActor {
             | Command::UnpinChatEntry { .. }
             | Command::SwitchPromptStrategy { .. }
             | Command::RestoreStrategyState { .. }
+            | Command::CancelToolBatch { .. }
             | Command::ScanSkills => {}
         }
     }
@@ -1122,6 +1123,45 @@ mod tests {
         // Then the session is no longer streaming.
         let guard = state.read();
         let session = guard.session(&session_id);
+        assert!(!session.is_streaming());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_cancelled_pushes_error_entry() {
+        // Given a session actor with a streaming session.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        let token = Event::StreamToken {
+            payload: StreamToken {
+                session_id: session_id.clone(),
+                index: 0,
+                token: "Hello".to_owned(),
+            },
+        };
+        actor.handle(ActorEnvelope::Event(token), &ctx).await;
+
+        // When processing StreamCompleted with Canceled reason.
+        let completed = Event::StreamCompleted {
+            payload: StreamCompleted {
+                session_id: session_id.clone(),
+                reason: StreamCompletedReason::Canceled,
+                assistant_content: None,
+                tool_calls: None,
+            },
+        };
+        actor.handle(ActorEnvelope::Event(completed), &ctx).await;
+
+        // Then the session has an error entry with "Cancelled".
+        let guard = state.read();
+        let session = guard.session(&session_id);
+        let has_cancelled = session
+            .history()
+            .iter()
+            .any(|e| matches!(&e.kind, ChatEntryKind::Error(t) if t == "Cancelled"));
+        assert!(has_cancelled, "expected an Error entry with 'Cancelled'");
+        // And the session is no longer streaming.
         assert!(!session.is_streaming());
     }
 
