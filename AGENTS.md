@@ -57,7 +57,7 @@ pub fn run(tick_rate: Duration) -> Result<(), Report<TuiRunError>>
 Each `Intent` variant has a dedicated validator function. Validators are plain functions — no registries or trait objects. Fallible validators return `Result<(), SpecificError>` with a custom error enum per intent.
 
 ```rust
-// Validator pattern — nullslop-intent/src/validators/
+// Validator pattern — co-located per feature, e.g. nullslop-domain/src/feat/chat_input/validator.rs
 pub fn validate_submit_message(state: &AppState) -> Result<(), SubmitMessageError> {
     if state.active_chat_input().is_empty() {
         return Err(SubmitMessageError::EmptyBuffer);
@@ -117,53 +117,6 @@ impl ActorHostService {
 - Include a `name(&self) -> &'static str` method for debugging on service traits
 - Service structs wrap `Arc<dyn Trait>` for shared ownership
 
-### Module Structure
-
-**Workspace organization:**
-
-```
-Cargo.toml          # Workspace with members = ["crates/*", "actors/*"]
-crates/
-  nullslop/            # Main binary crate
-    src/
-      lib.rs
-      main.rs
-      app.rs
-  nullslop-protocol/   # Command, Event, Intent, Mode, Key, AppMsg, CoreNotification
-  nullslop-intent/     # IntentHandler, validators, validator errors
-  nullslop-component-ui/    # UiElement trait, UiRegistry
-  nullslop-component/       # State structs, UI elements, AppState, State
-  nullslop-core/       # AppCore (state + sender), coordinated_shutdown, spawn_forwarding_task
-  nullslop-services/   # Services container, ActorChannelService, CoreChannelService
-  nullslop-tui/        # Terminal, renderer, keymap (produces Intent), event loop
-  nullslop-actor-host/   # Actor host implementations
-  nullslop-actor/        # Actor author SDK
-  nullslop-cli/        # CLI argument parsing
-actors/
-  nullslop-provider-actor/     # Provider selection, LLM factory, model cache
-  nullslop-session-actor/      # Session lifecycle, streaming, tool calls, persistence
-  nullslop-context-actor/      # Context assembly, strategy management, pinning, templates
-  nullslop-shutdown-tracker/  # ShutdownTracker actor
-  nullslop-llm/               # LLM provider actor
-  nullslop-session-actor/     # Session persistence actor
-  nullslop-context-actor/     # Context assembly actor
-  nullslop-tool-orchestrator/ # Tool execution actor
-  nullslop-echo/              # Example echo actor
-  nullslop-prompt-scan/       # Prompt template scanning actor
-  nullslop-llm-discover/      # LLM discovery actor
-```
-
-**Component module pattern (under `nullslop-component/src/`):**
-
-```
-chat_input_box/
-├── mod.rs      # Re-exports and public interface
-├── element.rs  # UiElement<AppState> rendering
-└── state.rs    # Component-specific state (e.g., ChatInputBoxState)
-```
-
-Not every component needs all three files. A display-only component (like chat log) may only have `mod.rs` and `element.rs`.
-
 ### Module System
 
 Use the new Rust module system throughout:
@@ -183,20 +136,14 @@ Actors are domain logic that spans the entire application, so they have specific
 
 ### Dependency Injection
 
-**Services container (in `nullslop-services`):**
+**Services container (in `nullslop-domain/src/common/services.rs`):**
 
 ```rust
 #[derive(Debug, Clone)]
 pub struct Services {
-    pub handle: Handle,
-    pub actor_channel: ActorChannelService,
-    pub core_channel: CoreChannelService,
-    pub llm_service: LlmServiceFactoryService,
-    pub provider_registry: ProviderRegistryService,
-    pub api_keys: ApiKeysService,
-    pub config_storage: ConfigStorageService,
-    pub session_store: SessionStoreService,
-    pub strategy_registry: StrategyRegistryService,
+    // See nullslop-domain/src/common/services.rs for the current fields.
+    // Services are added as the domain grows — the exact set of fields
+    // changes over time. The pattern is what matters, not the specific list.
 }
 ```
 
@@ -215,22 +162,20 @@ When a value requires multiple setup steps or intermediate bindings, wrap the se
 
 ```rust
 // ❌ BAD — mutable binding lives past setup
-let mut ui_registry = AppUiRegistry::new();
-register_tui_elements(&mut ui_registry);
-nsslice_status_bar::register(&mut ui_registry);
-nsslice_char_counter::register(&mut ui_registry);
-nsslice_dashboard::register(&mut ui_registry);
+let mut services = ServiceBuilder::new();
+services.register(auth_backend);
+services.register(cache_backend);
+services.register(storage_backend);
 ```
 
 ```rust
 // ✅ GOOD — setup is scoped, final binding is immutable
-let ui_registry = {
-    let mut ui_registry = AppUiRegistry::new();
-    register_tui_elements(&mut ui_registry);
-    nsslice_status_bar::register(&mut ui_registry);
-    nsslice_char_counter::register(&mut ui_registry);
-    nsslice_dashboard::register(&mut ui_registry);
-    ui_registry
+let services = {
+    let mut builder = ServiceBuilder::new();
+    builder.register(auth_backend);
+    builder.register(cache_backend);
+    builder.register(storage_backend);
+    builder.build()
 };
 ```
 
@@ -481,22 +426,11 @@ async fn actor_host_loads_manifest() {
 
 ### Test Utilities
 
-**`test_utils` module structure:**
-
-```rust
-// test_utils/mod.rs
-pub mod context;
-pub mod fakes;
-pub mod fixtures;
-pub mod services;
-```
-
 **Shared test helpers:**
 
-- `RecordingSink` (in `nullslop-actor`) — records messages emitted by actors during tests. Shared across all actor crates.
-- `TuiApp` test builder — simplified construction of `TuiApp` for render and app tests.
-- `setup_term(width, height)` — creates a ratatui `TestBackend` terminal with the given dimensions.
-- `ChatSessionState` test builder — simplifies lifecycle setup for session-dependent tests.
+- `RecordingSink` (in `nullslop-domain/src/common/actor.rs`) — records messages emitted by actors during tests.
+- Create domain-specific test builders as needed within each feature's test module.
+- Use ratatui's `TestBackend` directly for render tests.
 
 ## 5. Documentation
 
@@ -524,16 +458,16 @@ pub struct ChatInputBoxState {
 
 ## 6. Modification Guide
 
-When implementing features:
+When implementing features, locate each concern by convention rather than hardcoded paths — the exact crate layout may shift as the domain grows. Use `grep`/`rg` to find the current location if unsure.
 
-1. **Add Intent variant** — in `nullslop-intent/src/intent.rs` (or wherever the `Intent` enum is defined in `nullslop-protocol/src/intent.rs`)
-2. **Add validator** — in `nullslop-intent/src/validators/` as a dedicated function. Infallible intents don't need a validator (removed in Phase 10.7). Fallible ones return `Result<(), SpecificError>`.
-3. **Add handler match arm** — in `nullslop-intent/src/handler.rs`: call validator (if any), mutate `AppState`, return commands
-4. **Add keymap binding** — in `nullslop-tui/src/keymap.rs`: bind key to `Intent` variant in the right scope (`Normal`, `Input`, `Dashboard`, `Pinned`, `Picker`)
-5. **Add Command/Event if needed** — define domain-only structs in `nullslop-protocol` with corresponding `Command` or `Event` enum variants. Forgetting the enum variant is the most common oversight — the struct alone is not enough.
-6. **Add domain actor logic if needed** — subscribe to the new command/event in the appropriate domain actor (`nullslop-session-actor`, `nullslop-provider-actor`, `nullslop-context-actor`) and implement the handler
-7. **Add UI element if needed** — in `nullslop-component/src/`, register in `register_all()` in `lib.rs`
-8. **Write tests** — Use Given/When/Then structure: test validator in isolation, test intent handler for state changes and commands, test domain actor for event→state mapping
+1. **Add Intent variant** — find the `Intent` enum (currently `nullslop-domain/src/protocol/intent.rs`) and add a variant.
+2. **Add validator** — co-locate a `validator.rs` in the relevant feature directory under `nullslop-domain/src/feat/<feature>/`. Infallible intents don't need a validator. Fallible ones return `Result<(), SpecificError>`.
+3. **Add handler match arm** — find the `IntentHandler` (currently `nullslop-domain/src/feat/intent/handler.rs`): call validator (if any), mutate `AppState`, return commands.
+4. **Add keymap binding** — in `nullslop-tui/src/keymap.rs`: bind key to `Intent` variant in the appropriate `Scope`. See `nullslop-tui/src/scope.rs` for available scopes.
+5. **Add Command/Event if needed** — define domain structs alongside the relevant `Command` or `Event` enum (currently in `nullslop-domain/src/protocol/`). Forgetting the enum variant is the most common oversight — the struct alone is not enough.
+6. **Add domain actor logic if needed** — find the appropriate actor within `nullslop-domain/src/feat/` (e.g., `session/session_actor/`, `provider/provider_actor.rs`, `context/context_actor/`) and subscribe to the new command/event.
+7. **Add UI element if needed** — add a new module under `nullslop-domain/src/feat/ui/` and register it in the parent `ui.rs` module.
+8. **Write tests** — Use Given/When/Then structure: test validator in isolation, test intent handler for state changes and commands, test domain actor for event→state mapping.
 9. **Add documentation** — Module docs, type docs, error docs. Describe behavior and purpose, not technical implementation.
 
 ## 8. Tooling
@@ -553,14 +487,14 @@ This project uses **Fossil** for version control.
 
 These are the commands used by the `phased-task-loop` skill. Always prefer these over raw `cargo` invocations.
 
-| Purpose | Command | Notes |
-|---------|---------|-------|
-| Compile check | `just check` | `cargo check --workspace` — fast compilation without codegen |
-| Full test suite | `just test` | `cargo nextest run` + e2e tests — **all tests must pass before committing** |
-| Lint | `just lint` | `cargo check` + `cargo clippy` + `cargo fmt --check` |
-| Format check | `just fmt` | `cargo fmt --check` |
-| Format fix | `just fmt-fix` | `cargo fmt` |
-| Full CI | `just ci` | lint + test + docs |
+| Purpose         | Command        | Notes                                                                       |
+| --------------- | -------------- | --------------------------------------------------------------------------- |
+| Compile check   | `just check`   | `cargo check --workspace` — fast compilation without codegen                |
+| Full test suite | `just test`    | `cargo nextest run` + e2e tests — **all tests must pass before committing** |
+| Lint            | `just lint`    | `cargo check --workspace` + `cargo clippy` + `cargo fmt --check` + inline test length check |
+| Format check    | `just fmt`     | `cargo fmt --check`                                                         |
+| Format fix      | `just fmt-fix` | `cargo fmt`                                                                 |
+| Full CI         | `just ci`      | lint + test + docs                                                          |
 
 ### Plan Directory
 
