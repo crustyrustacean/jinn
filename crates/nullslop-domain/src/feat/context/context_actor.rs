@@ -1281,4 +1281,28 @@ mod tests {
             }
         }
     }
+
+    // --- LoadContextStrategyPickerEntries ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_context_strategy_picker_entries_populates_picker() {
+        // Given a context actor with services.
+        let (mut actor, state, _sink, ctx) = create_actor();
+
+        // When processing LoadContextStrategyPickerEntries.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::LoadContextStrategyPickerEntries {
+                    payload: LoadContextStrategyPickerEntries,
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the context strategy picker has entries.
+        let guard = state.read();
+        let items = guard.frontend.context_strategy_picker.items();
+        assert!(!items.is_empty(), "strategy picker should have entries");
+    }
 }
