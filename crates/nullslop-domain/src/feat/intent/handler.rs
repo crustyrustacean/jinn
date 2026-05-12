@@ -216,20 +216,6 @@ impl IntentHandler {
             Intent::ChatEntryPinSelected => {
                 crate::feat::chat_entry_selection::intent::handle_pin_selected(state)
             }
-
-            // --- Tool Content Popup ---
-            Intent::OpenToolContent => {
-                crate::feat::ui::tool_content_popup::intent::handle_open(state)
-            }
-            Intent::CloseToolContent => {
-                crate::feat::ui::tool_content_popup::intent::handle_close(state)
-            }
-            Intent::ToolContentScrollDown => {
-                crate::feat::ui::tool_content_popup::intent::handle_scroll_down(state)
-            }
-            Intent::ToolContentScrollUp => {
-                crate::feat::ui::tool_content_popup::intent::handle_scroll_up(state)
-            }
         }
     }
 }

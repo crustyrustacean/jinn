@@ -8,7 +8,6 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use unicode_segmentation::UnicodeSegmentation as _;
-use wherror::Error;
 
 /// Screen regions that support text selection, rebuilt each frame.
 ///
@@ -48,10 +47,23 @@ impl SelectableRects {
     }
 }
 
-/// Error type for selection-related failures (e.g., clipboard operations).
-#[derive(Debug, Error)]
-#[error(debug)]
-pub struct SelectionError;
+/// Finds the x-position of the last non-whitespace cell in a row.
+///
+/// Scans from `x_max` backward to `x_min` (inclusive). Returns `None`
+/// if no non-whitespace content is found in the range.
+#[must_use]
+pub(crate) fn find_last_nonws_in_row(
+    buffer: &Buffer,
+    y: u16,
+    x_min: u16,
+    x_max: u16,
+) -> Option<u16> {
+    (x_min..=x_max).rev().find(|&x| {
+        buffer
+            .cell((x, y))
+            .is_some_and(|c| !c.symbol().chars().all(char::is_whitespace))
+    })
+}
 
 /// The state of an in-progress or finalized mouse text selection.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -140,14 +152,45 @@ impl SelectionState {
         !matches!(self, Self::Idle)
     }
 
-    /// Returns the bounding rect of the selection, normalized and clamped.
-    ///
-    /// The returned rect spans from the top-left corner of the anchor/focus
-    /// pair to the bottom-right corner, intersected with the constraining
-    /// `bounds`. Returns `None` for `Idle`.
-    pub fn selection_rect(&self) -> Option<Rect> {
+    /// Returns the anchor position, or `None` for `Idle`.
+    #[must_use]
+    pub fn anchor(&self) -> Option<(u16, u16)> {
         match self {
             Self::Idle => None,
+            Self::Dragging { anchor, .. } | Self::Active { anchor, .. } => Some(*anchor),
+        }
+    }
+
+    /// Returns the focus position, or `None` for `Idle`.
+    #[must_use]
+    pub fn focus(&self) -> Option<(u16, u16)> {
+        match self {
+            Self::Idle => None,
+            Self::Dragging { focus, .. } | Self::Active { focus, .. } => Some(*focus),
+        }
+    }
+
+    /// Returns the constraining bounds rect, or `None` for `Idle`.
+    #[must_use]
+    pub fn bounds(&self) -> Option<Rect> {
+        match self {
+            Self::Idle => None,
+            Self::Dragging { bounds, .. } | Self::Active { bounds, .. } => Some(*bounds),
+        }
+    }
+
+    /// Extracts the selected text from a ratatui buffer using line selection.
+    ///
+    /// Row classification:
+    /// - **Single line** (anchor_y == focus_y): column-based from min(ax,fx) to max(ax,fx).
+    /// - **First line** (anchor row): from anchor_x to last non-whitespace char.
+    /// - **Middle lines**: from bounds.x to last non-whitespace char.
+    /// - **Last line** (focus row): from bounds.x to focus_x.
+    ///
+    /// Trailing whitespace is trimmed per row. Rows are joined with `\n`.
+    /// Empty trailing rows are omitted. Returns `None` for `Idle`.
+    pub fn extract_text(&self, buffer: &Buffer) -> Option<String> {
+        let (anchor, focus, bounds) = match self {
             Self::Dragging {
                 anchor,
                 focus,
@@ -157,39 +200,44 @@ impl SelectionState {
                 anchor,
                 focus,
                 bounds,
-            } => {
-                let x1 = anchor.0.min(focus.0);
-                let y1 = anchor.1.min(focus.1);
-                let x2 = anchor.0.max(focus.0);
-                let y2 = anchor.1.max(focus.1);
+            } => (*anchor, *focus, *bounds),
+            Self::Idle => return None,
+        };
 
-                // Clamp to bounds.
-                let left = x1.max(bounds.x);
-                let top = y1.max(bounds.y);
-                let right = x2.min(bounds.right().saturating_sub(1));
-                let bottom = y2.min(bounds.bottom().saturating_sub(1));
+        let bounds_right = bounds.right().saturating_sub(1);
+        let anchor_x = anchor.0.clamp(bounds.x, bounds_right);
+        let focus_x = focus.0.clamp(bounds.x, bounds_right);
+        let top_y = anchor.1.min(focus.1).max(bounds.y);
+        let bot_y = anchor.1.max(focus.1).min(bounds_right);
+        let bot_y = bot_y.min(bounds.bottom().saturating_sub(1));
 
-                if left > right || top > bottom {
-                    return None;
-                }
-
-                Some(Rect::new(left, top, right - left + 1, bottom - top + 1))
-            }
+        if top_y > bot_y {
+            return Some(String::new());
         }
-    }
 
-    /// Extracts the selected text from a ratatui buffer.
-    ///
-    /// Reads characters from the buffer within `selection_rect()`, row by row.
-    /// Trailing whitespace is trimmed per row. Rows are joined with `\n`.
-    /// Empty trailing rows are omitted. Returns `None` for `Idle`.
-    pub fn extract_text(&self, buffer: &Buffer) -> Option<String> {
-        let rect = self.selection_rect()?;
         let mut rows: Vec<String> = Vec::new();
 
-        for y in rect.top()..rect.bottom() {
+        for y in top_y..=bot_y {
+            let (start_x, end_x) = if top_y == bot_y {
+                // Single line — column selection.
+                (anchor_x.min(focus_x), anchor_x.max(focus_x))
+            } else if y == anchor.1 {
+                // First line — from anchor_x to last non-whitespace.
+                let end =
+                    find_last_nonws_in_row(buffer, y, anchor_x, bounds_right).unwrap_or(anchor_x);
+                (anchor_x, end)
+            } else if y == focus.1 {
+                // Last line — from bounds.x to focus_x.
+                (bounds.x, focus_x)
+            } else {
+                // Middle line — from bounds.x to last non-whitespace.
+                let end =
+                    find_last_nonws_in_row(buffer, y, bounds.x, bounds_right).unwrap_or(bounds.x);
+                (bounds.x, end)
+            };
+
             let mut row_symbols: Vec<String> = Vec::new();
-            for x in rect.left()..rect.right() {
+            for x in start_x..=end_x {
                 if let Some(cell) = buffer.cell((x, y)) {
                     row_symbols.push(cell.symbol().to_owned());
                 }
@@ -256,12 +304,8 @@ mod tests {
         // When updating focus to (15, 15) which exceeds bounds.
         let state = state.update_focus(15, 15);
 
-        // Then the selection rect is clamped to fit within bounds.
-        let rect = state
-            .selection_rect()
-            .expect("should have a selection rect");
-        // Focus clamped to (9, 9), so rect spans (5,5) to (9,9).
-        assert_eq!(rect, Rect::new(5, 5, 5, 5));
+        // Then the focus is clamped to (9, 9).
+        assert_eq!(state.focus(), Some((9, 9)));
     }
 
     #[rstest::rstest]
@@ -296,13 +340,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn idle_returns_none_for_selection_rect() {
+    fn idle_returns_none_for_accessors() {
         // Given an Idle state.
         let state = SelectionState::Idle;
 
-        // When asking for selection_rect.
-        // Then it returns None.
-        assert!(state.selection_rect().is_none());
+        // Then all accessors return None.
+        assert!(state.anchor().is_none());
+        assert!(state.focus().is_none());
+        assert!(state.bounds().is_none());
     }
 
     #[rstest::rstest]
@@ -419,7 +464,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn selection_rect_anchor_can_be_after_focus() {
+    fn accessors_return_positions_for_active_state() {
         // Given an Active state where anchor (5, 5) is after focus (2, 2).
         let state = SelectionState::Active {
             anchor: (5, 5),
@@ -427,13 +472,163 @@ mod tests {
             bounds: bounds(),
         };
 
-        // When asking for selection_rect.
-        let rect = state
-            .selection_rect()
-            .expect("should have a selection rect");
+        // Then the accessors return the raw positions.
+        assert_eq!(state.anchor(), Some((5, 5)));
+        assert_eq!(state.focus(), Some((2, 2)));
+        assert_eq!(state.bounds(), Some(bounds()));
+    }
 
-        // Then the rect is normalized to top-left origin (2, 2).
-        assert_eq!(rect, Rect::new(2, 2, 4, 4)); // (2,2) to (5,5) = width 4, height 4
+    // --- Line selection tests ---
+
+    #[rstest::rstest]
+    fn first_line_starts_at_anchor_x() {
+        // Given a buffer with "ABCDE" on row 1 starting at col 0.
+        let area = Rect::new(0, 0, 10, 5);
+        let mut buffer = Buffer::empty(area);
+        for (i, ch) in "ABCDE".chars().enumerate() {
+            buffer
+                .cell_mut((i as u16, 1))
+                .unwrap()
+                .set_symbol(&ch.to_string());
+        }
+
+        // And a 3-row selection starting at anchor (3, 1) going to focus (4, 3).
+        let state = SelectionState::Active {
+            anchor: (3, 1),
+            focus: (4, 3),
+            bounds: area,
+        };
+
+        // When extracting text.
+        let text = state.extract_text(&buffer).expect("should return text");
+
+        // Then the first line starts at anchor_x=3, so "DE".
+        let lines: Vec<&str> = text.split('\n').collect();
+        assert_eq!(lines[0], "DE");
+    }
+
+    #[rstest::rstest]
+    fn middle_line_selects_to_last_nonws() {
+        // Given a buffer with "hello   world!" on row 2 (with spaces between).
+        let area = Rect::new(0, 0, 15, 5);
+        let mut buffer = Buffer::empty(area);
+        for (i, ch) in "hello   world!".chars().enumerate() {
+            buffer
+                .cell_mut((i as u16, 2))
+                .unwrap()
+                .set_symbol(&ch.to_string());
+        }
+
+        // And a 3-row selection (rows 1-3), row 2 is a middle row.
+        let state = SelectionState::Active {
+            anchor: (0, 1),
+            focus: (5, 3),
+            bounds: area,
+        };
+
+        // When extracting text.
+        let text = state.extract_text(&buffer).expect("should return text");
+
+        // Then the middle row includes spaces between words.
+        let lines: Vec<&str> = text.split('\n').collect();
+        assert_eq!(lines[1], "hello   world!");
+    }
+
+    #[rstest::rstest]
+    fn last_line_stops_at_focus_x() {
+        // Given a buffer with "ABCDEFGHIJ" on row 3.
+        let area = Rect::new(0, 0, 15, 5);
+        let mut buffer = Buffer::empty(area);
+        for (i, ch) in "ABCDEFGHIJ".chars().enumerate() {
+            buffer
+                .cell_mut((i as u16, 3))
+                .unwrap()
+                .set_symbol(&ch.to_string());
+        }
+
+        // And a 3-row selection (rows 1-3), focus_x = 5.
+        let state = SelectionState::Active {
+            anchor: (0, 1),
+            focus: (5, 3),
+            bounds: area,
+        };
+
+        // When extracting text.
+        let text = state.extract_text(&buffer).expect("should return text");
+
+        // Then the last line stops at focus_x=5 (inclusive), so "ABCDEF".
+        let lines: Vec<&str> = text.split('\n').collect();
+        assert_eq!(lines[2], "ABCDEF");
+    }
+
+    #[rstest::rstest]
+    fn backward_selection_first_line_uses_anchor() {
+        // Given a buffer with text on rows 1-3.
+        let area = Rect::new(0, 0, 10, 5);
+        let mut buffer = Buffer::empty(area);
+        for (i, ch) in "ABCDE".chars().enumerate() {
+            buffer
+                .cell_mut((i as u16, 1))
+                .unwrap()
+                .set_symbol(&ch.to_string());
+        }
+        for (i, ch) in "FGHIJ".chars().enumerate() {
+            buffer
+                .cell_mut((i as u16, 2))
+                .unwrap()
+                .set_symbol(&ch.to_string());
+        }
+        for (i, ch) in "KLMNO".chars().enumerate() {
+            buffer
+                .cell_mut((i as u16, 3))
+                .unwrap()
+                .set_symbol(&ch.to_string());
+        }
+
+        // And a backward selection (anchor at row 3, focus at row 1).
+        let state = SelectionState::Active {
+            anchor: (3, 3),
+            focus: (1, 1),
+            bounds: area,
+        };
+
+        // When extracting text.
+        let text = state.extract_text(&buffer).expect("should return text");
+
+        // Then rows are iterated top to bottom:
+        // y=1: focus.1 == 1, so last line: bounds.x=0 to focus_x=1 → "AB"
+        // y=2: middle: bounds.x=0 to last_nonws → "FGHIJ"
+        // y=3: anchor.1 == 3, so first line: anchor_x=3 to last_nonws → "NO"
+        let lines: Vec<&str> = text.split('\n').collect();
+        assert_eq!(lines[0], "AB");
+        assert_eq!(lines[1], "FGHIJ");
+        assert_eq!(lines[2], "NO");
+    }
+
+    #[rstest::rstest]
+    fn single_line_selection_is_column_based() {
+        // Given a buffer with "ABCDE" on row 2.
+        let area = Rect::new(0, 0, 10, 5);
+        let mut buffer = Buffer::empty(area);
+        for (i, ch) in "ABCDE".chars().enumerate() {
+            buffer
+                .cell_mut((i as u16, 2))
+                .unwrap()
+                .set_symbol(&ch.to_string());
+        }
+
+        // And a single-row selection from col 1 to col 3.
+        let state = SelectionState::Active {
+            anchor: (1, 2),
+            focus: (3, 2),
+            bounds: area,
+        };
+
+        // When extracting text.
+        let text = state.extract_text(&buffer).expect("should return text");
+
+        // Then only the columns between anchor_x and focus_x are selected.
+        assert_eq!(text, "BCD");
     }
 
     // --- SelectableRects tests ---

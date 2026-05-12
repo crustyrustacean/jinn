@@ -593,8 +593,7 @@ fn multi_term_filter_matches_items_containing_all_terms() {
 #[rstest::rstest]
 fn multi_term_filter_returns_empty_when_one_term_does_not_match() {
     // Given items.
-    let mut state =
-        SelectionState::with_items(make_items(&["claude-3.5-sonnet", "gpt-4o"]));
+    let mut state = SelectionState::with_items(make_items(&["claude-3.5-sonnet", "gpt-4o"]));
 
     // When filtering with "claude gpt".
     for ch in "claude gpt".chars() {
@@ -625,10 +624,7 @@ fn multi_term_filter_unions_highlight_indices() {
 #[rstest::rstest]
 fn score_sorting_puts_better_matches_first() {
     // Given items where "claude-sonnet" is a better match for "sonnet" than "jsonnet-tools".
-    let mut state = SelectionState::with_items(make_items(&[
-        "jsonnet-tools",
-        "claude-sonnet",
-    ]));
+    let mut state = SelectionState::with_items(make_items(&["jsonnet-tools", "claude-sonnet"]));
 
     // When filtering with "sonnet".
     for ch in "sonnet".chars() {
@@ -646,8 +642,7 @@ fn score_sorting_puts_better_matches_first() {
 #[rstest::rstest]
 fn multi_term_filter_with_multiple_spaces_splits_on_whitespace() {
     // Given items.
-    let mut state =
-        SelectionState::with_items(make_items(&["alpha bravo charlie"]));
+    let mut state = SelectionState::with_items(make_items(&["alpha bravo charlie"]));
 
     // When filtering with "alpha  charlie" (double space).
     for ch in "alpha  charlie".chars() {

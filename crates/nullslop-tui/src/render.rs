@@ -10,6 +10,7 @@ use ratatui_which_key::{PopupPosition, WhichKey};
 
 use crate::TuiApp;
 use crate::app::{CHAT_PANE, PaneFocus};
+use crate::selection::find_last_nonws_in_row;
 
 /// Minimum terminal width.
 pub const MIN_WIDTH: u16 = 40;
@@ -195,13 +196,6 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         rects.push(nullslop_selection_widget::compute_popup_rect(area));
     }
 
-    // Tool content popup overlay.
-    if state.frontend.tool_content_popup.is_open {
-        nullslop_domain::feat::ui::tool_content_popup::render::render_tool_content_popup(
-            frame, area, &state,
-        );
-    }
-
     // Release the state read lock before clipboard flush needs &mut app.
     drop(state);
 
@@ -219,28 +213,67 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     flush_pending_clipboard(app, frame.buffer_mut());
 }
 
-/// Inverts foreground and background for cells within the active selection rect.
+/// Applies line-based selection highlight to the buffer.
 ///
-/// This is a post-rendering pass applied after all UI elements have drawn.
-/// The selection rect comes from [`SelectionState::selection_rect()`], which is
-/// already normalized and clamped to the constraining bounds.
+/// Row classification:
+/// - **Single line** (anchor_y == focus_y): column-based highlight from min(ax,fx) to max(ax,fx).
+/// - **First line** (anchor row): from anchor_x to last non-whitespace char.
+/// - **Middle lines**: from bounds.x to last non-whitespace char.
+/// - **Last line** (focus row): from bounds.x to focus_x.
+///
+/// For first and middle rows, the highlight extends from start_x to the last
+/// non-whitespace character — internal spaces between words are included.
 fn apply_selection_highlight(app: &TuiApp, buf: &mut ratatui::buffer::Buffer) {
-    if let Some(sel_rect) = app.selection.selection_rect() {
-        for y in sel_rect.top()..sel_rect.bottom() {
-            for x in sel_rect.left()..sel_rect.right() {
-                if let Some(cell) = buf.cell_mut((x, y)) {
-                    let fg = cell.fg;
-                    let bg = cell.bg;
-                    if fg == bg {
-                        // Swapping identical colors is invisible
-                        // (e.g. both Reset — the default for user messages
-                        // and empty cells). Use explicit highlight colors.
-                        cell.set_fg(Color::Black);
-                        cell.set_bg(Color::White);
-                    } else {
-                        cell.set_fg(bg);
-                        cell.set_bg(fg);
-                    }
+    let (anchor, focus, bounds) = match app.selection {
+        crate::selection::SelectionState::Dragging {
+            anchor,
+            focus,
+            bounds,
+        }
+        | crate::selection::SelectionState::Active {
+            anchor,
+            focus,
+            bounds,
+        } => (anchor, focus, bounds),
+        crate::selection::SelectionState::Idle => return,
+    };
+
+    let bounds_right = bounds.right().saturating_sub(1);
+    let anchor_x = anchor.0.clamp(bounds.x, bounds_right);
+    let focus_x = focus.0.clamp(bounds.x, bounds_right);
+    let top_y = anchor.1.min(focus.1).max(bounds.y);
+    let bot_y = anchor.1.max(focus.1).min(bounds.bottom().saturating_sub(1));
+
+    for y in top_y..=bot_y {
+        let (start_x, end_x) = if top_y == bot_y {
+            // Single line — column selection.
+            (anchor_x.min(focus_x), anchor_x.max(focus_x))
+        } else if y == anchor.1 {
+            // First line — from anchor_x to last non-whitespace.
+            let end = find_last_nonws_in_row(buf, y, anchor_x, bounds_right).unwrap_or(anchor_x);
+            (anchor_x, end)
+        } else if y == focus.1 {
+            // Last line — from bounds.x to focus_x.
+            (bounds.x, focus_x)
+        } else {
+            // Middle line — from bounds.x to last non-whitespace.
+            let end = find_last_nonws_in_row(buf, y, bounds.x, bounds_right).unwrap_or(bounds.x);
+            (bounds.x, end)
+        };
+
+        for x in start_x..=end_x {
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                let fg = cell.fg;
+                let bg = cell.bg;
+                if fg == bg {
+                    // Swapping identical colors is invisible
+                    // (e.g. both Reset — the default for user messages
+                    // and empty cells). Use explicit highlight colors.
+                    cell.set_fg(Color::Black);
+                    cell.set_bg(Color::White);
+                } else {
+                    cell.set_fg(bg);
+                    cell.set_bg(fg);
                 }
             }
         }

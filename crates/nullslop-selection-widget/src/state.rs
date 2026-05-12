@@ -336,8 +336,7 @@ where
             scored.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
 
             self.filtered_indices = scored.iter().map(|(_, i, _)| *i).collect();
-            self.filtered_match_indices =
-                scored.into_iter().map(|(_, _, idx)| idx).collect();
+            self.filtered_match_indices = scored.into_iter().map(|(_, _, idx)| idx).collect();
         }
     }
 }

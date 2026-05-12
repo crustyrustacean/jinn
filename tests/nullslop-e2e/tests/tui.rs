@@ -124,7 +124,6 @@ fn parse_mode(name: &str) -> nullslop_domain::Mode {
         "normal" => nullslop_domain::Mode::Normal,
         "input" => nullslop_domain::Mode::Input,
         "picker" => nullslop_domain::Mode::Picker,
-        "tool-content" => nullslop_domain::Mode::ToolContent,
         _ => panic!("unknown mode: {name}"),
     }
 }
@@ -142,7 +141,6 @@ fn given_app_in_mode(world: &mut TuiWorld, mode: String) {
         nullslop_domain::Mode::Normal => Scope::Normal,
         nullslop_domain::Mode::Input => Scope::Input,
         nullslop_domain::Mode::Picker => Scope::Picker,
-        nullslop_domain::Mode::ToolContent => Scope::ToolContent,
     };
     world.app.which_key.set_scope(scope);
 }
