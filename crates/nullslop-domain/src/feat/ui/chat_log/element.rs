@@ -11,7 +11,7 @@
 //! Text wraps within the available space.
 
 use crate::common::ui_element::UiElement;
-use crate::protocol::ChatEntryKind;
+use crate::protocol::{ChatEntryKind, TableData};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -228,11 +228,138 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, is_selected: bool) -> Vec<
                 is_selected,
             )
         }
+        ChatEntryKind::Table(data) => {
+            let prefix = if pinned { "📌 " } else { "  " };
+            table_to_lines(data, prefix, is_selected)
+        }
     }
 }
 
 /// Split text on `\n` and produce styled lines with the given prefix/indent.
 ///
+/// Render a [`TableData`] as aligned, styled lines.
+///
+/// Builds column widths from headers and rows, then produces:
+/// - A bold header line
+/// - A separator line
+/// - Styled data rows with per-cell coloring
+fn table_to_lines(data: &TableData, prefix: &str, is_selected: bool) -> Vec<Line<'static>> {
+    let prefix = prefix.to_owned();
+    let num_cols = data.headers.len();
+    if num_cols == 0 {
+        return vec![Line::from(Span::styled(
+            format!("{prefix}(empty table)"),
+            Style::default().fg(Color::DarkGray),
+        ))];
+    }
+
+    // Compute column widths: max of header and all row cells.
+    let mut col_widths = vec![0usize; num_cols];
+    for (i, h) in data.headers.iter().enumerate() {
+        col_widths[i] = col_widths[i].max(unicode_segementation_display_width(&h.content));
+    }
+    for row in &data.rows {
+        for (i, cell) in row.iter().enumerate() {
+            if i < num_cols {
+                col_widths[i] =
+                    col_widths[i].max(unicode_segementation_display_width(&cell.content));
+            }
+        }
+    }
+
+    let sep = " │ ";
+    let mut lines = Vec::new();
+
+    // Header line.
+    let header_spans = build_row_spans(
+        &data.headers,
+        &col_widths,
+        sep,
+        Style::default().add_modifier(Modifier::BOLD),
+    );
+    let header_line = if is_selected {
+        let mut spans = vec![Span::styled(
+            format!("▶ {prefix}"),
+            Style::default().add_modifier(Modifier::REVERSED),
+        )];
+        spans.extend(header_spans);
+        Line::from(spans)
+    } else {
+        let mut spans = vec![Span::raw(prefix.clone())];
+        spans.extend(header_spans);
+        Line::from(spans)
+    };
+    lines.push(header_line);
+
+    // Separator line.
+    let sep_parts: Vec<String> = col_widths.iter().map(|&w| "─".repeat(w)).collect();
+    let sep_text = format!("{prefix}{}", sep_parts.join("─┼─"));
+    lines.push(Line::from(Span::styled(
+        sep_text,
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    // Data rows.
+    for row in &data.rows {
+        let row_spans = build_row_spans(row, &col_widths, sep, Style::default());
+        let mut spans = vec![Span::raw(prefix.clone())];
+        spans.extend(row_spans);
+        lines.push(Line::from(spans));
+    }
+
+    lines
+}
+
+/// Build styled spans for a single table row, padding cells to column width.
+fn build_row_spans(
+    cells: &[Span<'static>],
+    col_widths: &[usize],
+    separator: &str,
+    default_style: Style,
+) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    for (i, cell) in cells.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw(separator.to_owned()));
+        }
+        let width = unicode_segementation_display_width(&cell.content);
+        let padding = col_widths
+            .get(i)
+            .copied()
+            .unwrap_or(0)
+            .saturating_sub(width);
+        // Merge the cell's style with the default style.
+        let style = if cell.style == Style::default() {
+            default_style
+        } else {
+            cell.style.patch(default_style)
+        };
+        spans.push(Span::styled(
+            format!("{}{}", cell.content, " ".repeat(padding)),
+            style,
+        ));
+    }
+    spans
+}
+
+/// Compute the display width of a string using Unicode grapheme clusters.
+fn unicode_segementation_display_width(s: &str) -> usize {
+    use unicode_segmentation::UnicodeSegmentation;
+    s.graphemes(true)
+        .map(|g| {
+            // Emoji and wide characters take 2 columns; everything else takes 1.
+            // This is a simplified heuristic — full-width detection would need
+            // unicode-width, but for our use case (provider names, counts, status)
+            // this is sufficient.
+            if g.chars().any(|c| c as u32 > 0x2000) {
+                2
+            } else {
+                1
+            }
+        })
+        .sum()
+}
+
 /// When `is_selected` is true, the first line gets a `▶ ` prefix and
 /// `Modifier::REVERSED` added to its style.
 fn multiline_styled<T, P, I>(
@@ -821,5 +948,123 @@ mod tests {
             has_indicator,
             "selected entry should be visible in viewport when scroll-to-selected is active"
         );
+    }
+
+    #[rstest::rstest]
+    fn render_table_entry_has_bold_headers() {
+        // Given a ChatLogElement with a table entry.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            let data = TableData {
+                headers: vec![
+                    Span::raw("Provider"),
+                    Span::raw("Count"),
+                    Span::raw("Status"),
+                ],
+                rows: vec![vec![
+                    Span::raw("ollama"),
+                    Span::raw("5"),
+                    Span::styled("\u{2705}", Style::default().fg(Color::Green)),
+                ]],
+            };
+            s.active_session_mut().push_entry(ChatEntry::table(data));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(60, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the header row contains "Provider" with bold styling.
+        let buffer = terminal.backend().buffer().clone();
+        // Find a cell that contains "P" (from "Provider") with bold modifier.
+        let has_bold_header = (0..10).any(|row| {
+            (0..60).any(|col| {
+                buffer.cell((col, row)).is_some_and(|c| {
+                    c.symbol() == "P" && c.style().add_modifier.contains(Modifier::BOLD)
+                })
+            })
+        });
+        assert!(has_bold_header, "table header should be bold");
+    }
+
+    #[rstest::rstest]
+    fn render_table_entry_has_data_rows() {
+        // Given a ChatLogElement with a table entry containing data rows.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            let data = TableData {
+                headers: vec![
+                    Span::raw("Provider"),
+                    Span::raw("Count"),
+                    Span::raw("Status"),
+                ],
+                rows: vec![vec![
+                    Span::raw("ollama"),
+                    Span::raw("5"),
+                    Span::styled("\u{2705}", Style::default().fg(Color::Green)),
+                ]],
+            };
+            s.active_session_mut().push_entry(ChatEntry::table(data));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(60, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the buffer contains "ollama" somewhere (a data row cell).
+        let buffer = terminal.backend().buffer().clone();
+        let has_ollama = (0..10).any(|row| {
+            (0..60).any(|col| buffer.cell((col, row)).is_some_and(|c| c.symbol() == "o"))
+        });
+        assert!(has_ollama, "table data row should contain 'ollama'");
+    }
+
+    #[rstest::rstest]
+    fn render_table_entry_has_separator_line() {
+        // Given a ChatLogElement with a table entry.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            let data = TableData {
+                headers: vec![Span::raw("Provider"), Span::raw("Count")],
+                rows: vec![vec![Span::raw("test"), Span::raw("1")]],
+            };
+            s.active_session_mut().push_entry(ChatEntry::table(data));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(60, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the buffer contains a separator line with \u{2500} (─).
+        let buffer = terminal.backend().buffer().clone();
+        let has_separator = (0..10).any(|row| {
+            (0..60).any(|col| {
+                buffer
+                    .cell((col, row))
+                    .is_some_and(|c| c.symbol() == "\u{2500}")
+            })
+        });
+        assert!(has_separator, "table should have a separator line");
     }
 }
