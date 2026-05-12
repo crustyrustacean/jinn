@@ -1,6 +1,6 @@
 //! The [`Intent`] enum — one variant per user-initiated action.
 
-use crate::protocol::{PickerKind, SessionId, TabDirection};
+use crate::protocol::{Command, PickerKind, SessionId, TabDirection};
 
 /// A user-initiated action.
 ///
@@ -213,5 +213,28 @@ impl std::fmt::Display for Intent {
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),
         }
+    }
+}
+
+/// What an intent handler returns after processing an intent.
+///
+/// Carries commands to be dispatched to the actor system.
+#[derive(Debug)]
+pub struct IntentResult {
+    /// Commands to send to the actor system.
+    pub commands: Vec<Command>,
+}
+
+impl IntentResult {
+    /// An empty result with no commands.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self { commands: vec![] }
+    }
+
+    /// A result with commands.
+    #[must_use]
+    pub fn with_commands(commands: Vec<Command>) -> Self {
+        Self { commands }
     }
 }
