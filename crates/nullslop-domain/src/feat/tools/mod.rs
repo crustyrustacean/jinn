@@ -13,6 +13,7 @@
 //! reads CWD from shared [`State`] at dispatch time.
 
 mod builtin;
+pub(crate) mod builtin_bash;
 pub(crate) mod builtin_echo;
 pub(crate) mod builtin_get_time;
 pub(crate) mod builtin_read;
@@ -569,7 +570,7 @@ mod tests {
             .iter()
             .find(|p| p.provider == "builtin")
             .expect("expected builtin ToolsRegistered");
-        assert_eq!(builtin_evt.definitions.len(), 4);
+        assert_eq!(builtin_evt.definitions.len(), 5);
     }
 
     // --- RegisterTools command tests ---
