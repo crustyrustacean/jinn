@@ -2,7 +2,7 @@
 
 use std::pin::Pin;
 
-use crate::feat::tools::tool_types::ToolDefinition;
+use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::LlmMessage;
 use error_stack::Report;
 use futures::StreamExt as _;

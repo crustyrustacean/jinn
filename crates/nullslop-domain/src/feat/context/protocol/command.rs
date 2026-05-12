@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::context::protocol::strategy_id::PromptStrategyId;
-use crate::feat::tools::tool_types::ToolDefinition;
+use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::ChatEntry;
 use crate::protocol::ChatEntryId;
 use crate::protocol::CommandMsg;

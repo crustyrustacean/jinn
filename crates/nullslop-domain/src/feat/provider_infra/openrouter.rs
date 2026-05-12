@@ -1,6 +1,6 @@
 //! `OpenRouter` implementation of LLM service.
 
-use crate::feat::tools::tool_types::ToolDefinition;
+use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::LlmMessage;
 use error_stack::{Report, ResultExt};
 use futures::StreamExt;

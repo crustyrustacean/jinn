@@ -4,8 +4,7 @@
 //! and provider picker state. Also contains the provider actor, discover actor,
 //! and UI elements (streaming indicator, queue display).
 
-pub mod actor;
-pub mod discover;
+pub mod discover_actor;
 pub mod entries;
 pub mod entries_to_messages;
 pub mod indicator;
@@ -13,17 +12,14 @@ pub mod llm_message;
 pub mod loader;
 pub mod picker_entry;
 pub mod protocol;
+pub mod provider_actor;
 pub mod queue_element;
 pub mod render;
 
 pub use indicator::StreamingIndicatorElement;
 pub use queue_element::QueueDisplayElement;
 
-use std::sync::Arc;
-
 use crate::common::AppUiRegistry;
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 
 use crate::PickerEntry;
@@ -68,49 +64,4 @@ impl Default for ProviderState {
 pub fn register(registry: &mut AppUiRegistry) {
     registry.register(Box::new(StreamingIndicatorElement::new()));
     registry.register(Box::new(QueueDisplayElement));
-}
-
-/// Spawns the provider actor on the given tokio runtime.
-///
-/// Creates the actor's channel, context, and run loop. Injects shared
-/// [`State`](crate::common::state::State) and [`Services`](crate::common::services::Services).
-/// Returns the `ActorRef` for sending direct messages and the `ActorSpawnResult`
-/// containing the routing entry and join handle.
-pub fn spawn_provider_actor(
-    state: crate::common::state::State,
-    services: crate::common::services::Services,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<actor::ProviderDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<actor::ProviderDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("provider", sink);
-    ctx.set_description("Manages provider selection, LLM factory, and model cache");
-    ctx.set_data(state);
-    ctx.set_data(services);
-    let actor = actor::ProviderActor::activate(&mut ctx);
-    let result = spawn_actor("provider", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
-}
-
-/// Spawns the model discovery actor on the given tokio runtime.
-///
-/// Creates the actor's channel, context, and run loop. Injects the provider
-/// registry and API keys service. Returns the `ActorRef` for sending direct
-/// messages and the `ActorSpawnResult` containing the routing entry and join handle.
-pub fn spawn_discover_actor(
-    registry: crate::feat::provider_infra::ProviderRegistryService,
-    api_keys: crate::feat::provider_infra::ApiKeysService,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<discover::DiscoverDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<discover::DiscoverDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("llm-provider-listing", sink);
-    ctx.set_description("Discovers available models");
-    ctx.set_data(registry);
-    ctx.set_data(api_keys);
-    let actor = discover::DiscoverActor::activate(&mut ctx);
-    let result = spawn_actor("llm-provider-listing", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
 }
