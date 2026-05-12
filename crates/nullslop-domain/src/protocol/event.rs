@@ -20,7 +20,7 @@ use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::protocol::event::{PromptAssembled, PromptStrategySwitched, StrategyStateUpdated};
 // Re-export infrastructure types only. Domain structs are imported from their modules.
-pub use crate::protocol::custom::EventMsg;
+pub use crate::common::actor::event_msg::EventMsg;
 use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
 };

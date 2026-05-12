@@ -17,7 +17,7 @@ use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEnt
 use crate::feat::context::protocol::command::{
     AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
-pub use crate::protocol::custom::CommandMsg;
+pub use crate::common::actor::command_msg::CommandMsg;
 use crate::feat::provider::protocol::command::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
     SendToLlmProvider,
