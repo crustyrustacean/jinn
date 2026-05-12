@@ -223,7 +223,7 @@ impl Command {
             Self::LoadContextStrategyPickerEntries { .. } => {
                 Some(LoadContextStrategyPickerEntries::NAME)
             }
-            Self::SessionLoadRequested { .. } => Some("SessionLoadRequested"),
+            Self::SessionLoadRequested { .. } => Some(SessionLoadRequested::NAME),
             Self::ScanSkills => Some(ScanSkills::NAME),
         }
     }
@@ -367,6 +367,25 @@ mod tests {
             }
             .command_name(),
             Some(CancelStream::NAME)
+        );
+    }
+
+    #[rstest::rstest]
+    fn command_name_uses_derived_constant_for_session_load_requested() {
+        // Given a SessionLoadRequested command.
+        let cmd = Command::SessionLoadRequested {
+            payload: SessionLoadRequested {
+                session_id: SessionId::new(),
+                byte_offset: 0,
+            },
+        };
+
+        // When calling command_name().
+        // Then it returns the derived NAME constant (not a hardcoded string).
+        assert_eq!(
+            cmd.command_name(),
+            Some(SessionLoadRequested::NAME),
+            "command_name must match the derived CommandMsg::NAME for routing to work"
         );
     }
 
