@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use cucumber::World;
-use nsslice_context_protocol::DefaultStrategyDiscovery;
-use nullslop_services::strategy_registry::StrategyRegistryService;
+use nullslop_domain::DefaultStrategyDiscovery;
+use nullslop_domain::common::services::strategy_registry::StrategyRegistryService;
 use nullslop_tui::{Scope, TuiApp};
 
 /// Cucumber world wrapping a full [`TuiApp`].
@@ -30,32 +30,32 @@ impl TuiWorld {
             tokio::runtime::Runtime::new().expect("test runtime"),
         ));
         let handle = rt.handle().clone();
-        let llm = nullslop_services::providers::LlmServiceFactoryService::new(Arc::new(
-            nullslop_providers::FakeLlmServiceFactory::new(vec![]),
+        let llm = nullslop_domain::feat::provider_infra::LlmServiceFactoryService::new(Arc::new(
+            nullslop_domain::FakeLlmServiceFactory::new(vec![]),
         ));
-        let config = nullslop_providers::ProvidersConfig {
+        let config = nullslop_domain::ProvidersConfig {
             providers: vec![],
             aliases: vec![],
             default_provider: None,
         };
         let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
-        let (actor_tx, _actor_rx) = kanal::unbounded::<nullslop_protocol::AppMsg>();
-        let (core_tx, _core_rx) = kanal::unbounded::<nullslop_services::CoreNotification>();
+        let (actor_tx, _actor_rx) = kanal::unbounded::<nullslop_domain::AppMsg>();
+        let (core_tx, _core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
 
-        let services = nullslop_services::Services {
+        let services = nullslop_domain::Services {
             handle,
-            actor_channel: nullslop_services::ActorChannelService::new(actor_tx),
-            core_channel: nullslop_services::CoreChannelService::new(core_tx),
+            actor_channel: nullslop_domain::ActorChannelService::new(actor_tx),
+            core_channel: nullslop_domain::CoreChannelService::new(core_tx),
             llm_service: llm,
-            provider_registry: nullslop_providers::ProviderRegistryService::new(
-                nullslop_providers::ProviderRegistry::from_config(config).expect("test registry"),
+            provider_registry: nullslop_domain::ProviderRegistryService::new(
+                nullslop_domain::ProviderRegistry::from_config(config).expect("test registry"),
             ),
-            api_keys: nullslop_providers::ApiKeysService::new(nullslop_providers::ApiKeys::new()),
-            config_storage: nullslop_providers::ConfigStorageService::new(Arc::new(
-                nullslop_providers::InMemoryConfigStorage::new(),
+            api_keys: nullslop_domain::ApiKeysService::new(nullslop_domain::ApiKeys::new()),
+            config_storage: nullslop_domain::ConfigStorageService::new(Arc::new(
+                nullslop_domain::InMemoryConfigStorage::new(),
             )),
-            session_store: nsslice_session_management_protocol::SessionStoreService::new(Arc::new(
-                nsslice_session_management_protocol::JsonlSessionStore::new_in(
+            session_store: nullslop_domain::SessionStoreService::new(Arc::new(
+                nullslop_domain::JsonlSessionStore::new_in(
                     tempfile::tempdir().expect("temp dir").path().to_path_buf(),
                 ),
             )),
@@ -74,12 +74,12 @@ impl TuiWorld {
     }
 
     /// Routes a command through the app's message pipeline.
-    fn route_command(&mut self, cmd: nullslop_protocol::Command) {
+    fn route_command(&mut self, cmd: nullslop_domain::Command) {
         self.app.handle_msg(nullslop_tui::msg::Msg::Command(cmd));
     }
 
     /// Routes an intent through the app.
-    fn route_intent(&mut self, intent: nullslop_intent::Intent) {
+    fn route_intent(&mut self, intent: nullslop_domain::Intent) {
         self.app.route_intent(intent);
     }
 }
@@ -118,12 +118,12 @@ fn parse_modifier(name: &str) -> KeyModifiers {
     }
 }
 
-/// Parses a human-readable mode name into [`nullslop_protocol::Mode`].
-fn parse_mode(name: &str) -> nullslop_protocol::Mode {
+/// Parses a human-readable mode name into [`nullslop_domain::Mode`].
+fn parse_mode(name: &str) -> nullslop_domain::Mode {
     match name.to_lowercase().as_str() {
-        "normal" => nullslop_protocol::Mode::Normal,
-        "input" => nullslop_protocol::Mode::Input,
-        "picker" => nullslop_protocol::Mode::Picker,
+        "normal" => nullslop_domain::Mode::Normal,
+        "input" => nullslop_domain::Mode::Input,
+        "picker" => nullslop_domain::Mode::Picker,
         _ => panic!("unknown mode: {name}"),
     }
 }
@@ -138,9 +138,9 @@ fn given_a_new_app(_world: &mut TuiWorld) {}
 #[cucumber::given(expr = "the app is in {word} mode")]
 fn given_app_in_mode(world: &mut TuiWorld, mode: String) {
     let scope = match parse_mode(&mode) {
-        nullslop_protocol::Mode::Normal => Scope::Normal,
-        nullslop_protocol::Mode::Input => Scope::Input,
-        nullslop_protocol::Mode::Picker => Scope::Picker,
+        nullslop_domain::Mode::Normal => Scope::Normal,
+        nullslop_domain::Mode::Input => Scope::Input,
+        nullslop_domain::Mode::Picker => Scope::Picker,
     };
     world.app.which_key.set_scope(scope);
 }
@@ -185,10 +185,10 @@ fn when_user_presses_key_with_mod(world: &mut TuiWorld, key: String, modifier: S
     expr = "the app routes the PushChatEntry command with an actor message from {string} with text {string}"
 )]
 fn when_routes_push_chat_entry(world: &mut TuiWorld, source: String, text: String) {
-    world.route_command(nullslop_protocol::Command::PushChatEntry {
-        payload: nullslop_protocol::chat_input::PushChatEntry {
-            session_id: nullslop_protocol::SessionId::new(),
-            entry: nullslop_protocol::ChatEntry::actor(source, text),
+    world.route_command(nullslop_domain::Command::PushChatEntry {
+        payload: nullslop_domain::PushChatEntry {
+            session_id: nullslop_domain::SessionId::new(),
+            entry: nullslop_domain::ChatEntry::actor(source, text),
         },
     });
 }
@@ -196,7 +196,7 @@ fn when_routes_push_chat_entry(world: &mut TuiWorld, source: String, text: Strin
 /// Routes a ToggleWhichKey command directly.
 #[cucumber::when(expr = "the app routes the ToggleWhichKey command")]
 fn when_routes_toggle_which_key(world: &mut TuiWorld) {
-    world.route_intent(nullslop_intent::Intent::ToggleWhichkey);
+    world.route_intent(nullslop_domain::Intent::ToggleWhichkey);
 }
 
 // --- Then steps ---
@@ -272,7 +272,7 @@ fn then_history_entry_is_user(world: &mut TuiWorld, index: u64, text: String) {
     let entry = &guard.active_session().history()[(index - 1) as usize];
     assert_eq!(
         entry.kind,
-        nullslop_protocol::ChatEntryKind::User(text),
+        nullslop_domain::ChatEntryKind::User(text),
         "entry {index} is not a User message with the expected text"
     );
 }
@@ -286,7 +286,7 @@ fn then_history_entry_is_actor(world: &mut TuiWorld, index: u64, source: String,
     let entry = &guard.active_session().history()[(index - 1) as usize];
     assert_eq!(
         entry.kind,
-        nullslop_protocol::ChatEntryKind::Actor { source, text },
+        nullslop_domain::ChatEntryKind::Actor { source, text },
         "entry {index} is not an Actor message with expected source/text"
     );
 }
@@ -341,11 +341,11 @@ fn when_run_empty_headless_script(world: &mut TuiWorld) {
 
 /// Shared implementation for running a headless script.
 fn run_headless_script(world: &mut TuiWorld, content: &str) {
-    let leader = nullslop_protocol::KeyEvent {
-        key: nullslop_protocol::Key::Char('\\'),
-        modifiers: nullslop_protocol::Modifiers::none(),
+    let leader = nullslop_domain::KeyEvent {
+        key: nullslop_domain::Key::Char('\\'),
+        modifiers: nullslop_domain::Modifiers::none(),
     };
-    let lines: Vec<Vec<nullslop_protocol::KeyEvent>> = content
+    let lines: Vec<Vec<nullslop_domain::KeyEvent>> = content
         .lines()
         .map(|line| line.trim())
         .filter(|line| !line.is_empty() && !line.starts_with('#'))

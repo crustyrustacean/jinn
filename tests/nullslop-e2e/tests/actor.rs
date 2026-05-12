@@ -10,17 +10,17 @@
 use std::sync::Arc;
 
 use cucumber::World;
-use nsslice_llm::LlmActor;
-use nsslice_session_management::actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
-use nsslice_tools::ToolOrchestratorActor;
-use nullslop_actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use nullslop_actor_host::{ActorHostService, InMemoryActorHost, spawn_actor};
-use nullslop_component::AppState;
-use nullslop_core::{ActorMessageSink, AppCore, AppMsg};
-use nullslop_protocol::provider::SendToLlmProvider;
-use nullslop_protocol::tool::ToolCall;
-use nullslop_providers::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
-use nullslop_services::Services;
+use nullslop_domain::AppState;
+use nullslop_domain::SendToLlmProvider;
+use nullslop_domain::Services;
+use nullslop_domain::ToolCall;
+use nullslop_domain::feat::llm::LlmActor;
+use nullslop_domain::feat::session::actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
+use nullslop_domain::feat::tools::ToolOrchestratorActor;
+use nullslop_domain::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
+use nullslop_domain::{ActorHostService, InMemoryActorHost, spawn_actor};
+use nullslop_domain::{ActorMessageSink, AppCore, AppMsg};
+use nullslop_domain::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
 
 /// Cucumber world wrapping real actors for integration testing.
 ///
@@ -42,7 +42,7 @@ pub struct ActorWorld {
     handle: tokio::runtime::Handle,
     /// Receiver for core lifecycle notifications (shutdown complete).
     #[allow(dead_code)]
-    core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
+    core_receiver: kanal::Receiver<nullslop_domain::CoreNotification>,
 }
 
 impl std::fmt::Debug for ActorWorld {
@@ -84,24 +84,24 @@ impl ActorWorld {
     }
 
     /// Submits a command to the core's message channel.
-    pub fn submit_command(&self, cmd: nullslop_protocol::Command) {
+    pub fn submit_command(&self, cmd: nullslop_domain::Command) {
         self.core.submit_command(cmd);
     }
 
     /// Runs graceful coordinated shutdown of the actor system.
     #[allow(dead_code)]
     pub fn graceful_shutdown(&mut self) {
-        nullslop_core::coordinated_shutdown(
+        nullslop_domain::coordinated_shutdown(
             self.actor_host.backend(),
             &self.core.state,
             &self.core_receiver,
             &self.handle,
-            nullslop_core::SHUTDOWN_TIMEOUT,
+            nullslop_domain::SHUTDOWN_TIMEOUT,
         );
     }
 
     /// Returns a read guard to the application state.
-    pub fn state(&self) -> nullslop_core::StateReadGuard<'_> {
+    pub fn state(&self) -> nullslop_domain::StateReadGuard<'_> {
         self.core.state.read()
     }
 }
@@ -115,16 +115,16 @@ fn create_actor_core(
     AppCore,
     Services,
     ActorHostService,
-    kanal::Receiver<nullslop_protocol::CoreNotification>,
+    kanal::Receiver<nullslop_domain::CoreNotification>,
 ) {
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
-    let (core_notify_tx, core_notify_rx) =
-        kanal::unbounded::<nullslop_protocol::CoreNotification>();
+    let (core_notify_tx, core_notify_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
 
     // Create tool orchestrator actor.
-    let (orch_tx, orch_rx) =
-        kanal::unbounded::<ActorEnvelope<nsslice_tools::ToolOrchestratorDirectMsg>>();
+    let (orch_tx, orch_rx) = kanal::unbounded::<
+        ActorEnvelope<nullslop_domain::feat::tools::ToolOrchestratorDirectMsg>,
+    >();
     let orch_ref = ActorRef::new(orch_tx);
     let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
     let orch_actor = ToolOrchestratorActor::activate(&mut orch_ctx);
@@ -138,7 +138,8 @@ fn create_actor_core(
     );
 
     // Create LLM actor with fake factory.
-    let (llm_tx, llm_rx) = kanal::unbounded::<ActorEnvelope<nsslice_llm::LlmDirectMsg>>();
+    let (llm_tx, llm_rx) =
+        kanal::unbounded::<ActorEnvelope<nullslop_domain::feat::llm::LlmDirectMsg>>();
     let llm_ref = ActorRef::new(llm_tx);
     let mut llm_ctx = ActorContext::new("llm-streaming", sink.clone());
     llm_ctx.set_data(llm_service.clone());
@@ -154,7 +155,7 @@ fn create_actor_core(
 
     // Create session actor to write events into state.
     // State is shared between AppCore and the session actor via Arc clone.
-    let state = nullslop_core::State::new(AppState::default());
+    let state = nullslop_domain::State::new(AppState::default());
     let (sp_tx, sp_rx) = kanal::unbounded::<ActorEnvelope<SessionPersistenceDirectMsg>>();
     let sp_ref = ActorRef::new(sp_tx);
     let mut sp_ctx = ActorContext::new("session-persistence", sink.clone());
@@ -174,16 +175,16 @@ fn create_actor_core(
         vec![orch_result, llm_result, sp_result],
         handle.clone(),
     );
-    let host_arc: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(host);
+    let host_arc: Arc<dyn nullslop_domain::ActorHost> = Arc::new(host);
 
-    let services = nullslop_services::test_services::TestServices::builder()
+    let services = nullslop_domain::common::services::test_services::TestServices::builder()
         .handle(handle.clone())
         .llm_service(llm_service)
         .build();
 
     // Spawn the async forwarding task.
-    let actor_host_service = nullslop_actor_host::ActorHostService::new(host_arc);
-    nullslop_core::spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
+    let actor_host_service = nullslop_domain::ActorHostService::new(host_arc);
+    nullslop_domain::spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
     let core = AppCore {
         state: state.clone(),
@@ -191,14 +192,14 @@ fn create_actor_core(
     };
 
     // Emit lifecycle events for the session actor.
-    let _ = sink.send_event(nullslop_protocol::Event::ActorStarting {
-        payload: nullslop_protocol::ActorStarting {
+    let _ = sink.send_event(nullslop_domain::Event::ActorStarting {
+        payload: nullslop_domain::ActorStarting {
             name: "session-persistence".to_string(),
             description: Some("Session lifecycle and persistence".to_string()),
         },
     });
-    let _ = sink.send_event(nullslop_protocol::Event::ActorStarted {
-        payload: nullslop_protocol::ActorStarted {
+    let _ = sink.send_event(nullslop_domain::Event::ActorStarted {
+        payload: nullslop_domain::ActorStarted {
             name: "session-persistence".to_string(),
             description: Some("Session lifecycle and persistence".to_string()),
         },
@@ -219,10 +220,10 @@ fn given_fresh_actor_world(_world: &mut ActorWorld) {}
 #[cucumber::when(expr = "I submit SendToLlmProvider with the tool loop trigger")]
 async fn when_submit_tool_loop_trigger(world: &mut ActorWorld) {
     let session_id = world.state().session.active_session.clone();
-    world.submit_command(nullslop_protocol::Command::SendToLlmProvider {
+    world.submit_command(nullslop_domain::Command::SendToLlmProvider {
         payload: SendToLlmProvider {
             session_id,
-            messages: vec![nullslop_protocol::LlmMessage::User {
+            messages: vec![nullslop_domain::LlmMessage::User {
                 content: TOOL_LOOP_TRIGGER.to_string(),
             }],
             provider_id: None,
