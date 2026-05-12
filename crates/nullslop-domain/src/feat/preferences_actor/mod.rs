@@ -13,3 +13,4 @@ pub use user_preferences_storage::{
     FilesystemUserPreferencesStorage, InMemoryUserPreferencesStorage,
     UserPreferencesStorageService,
 };
+pub use preferences_actor::spawn_preferences_actor;

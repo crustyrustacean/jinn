@@ -15,9 +15,11 @@ use nullslop_domain::LlmServiceFactoryService;
 use nullslop_domain::ProviderRegistryService;
 use nullslop_domain::Services;
 use nullslop_domain::SessionStoreService;
+use nullslop_domain::UserPreferencesStorageService;
 use nullslop_domain::actor_channel::ActorChannelService;
 use nullslop_domain::core_channel::CoreChannelService;
 use nullslop_domain::feat::context::DefaultStrategyFactory;
+use nullslop_domain::feat::preferences_actor::spawn_preferences_actor;
 use nullslop_domain::feat::session::JsonlSessionStore as DomainJsonlSessionStore;
 use nullslop_domain::feat::session::SessionStoreService as DomainSessionStoreService;
 use nullslop_domain::strategy_registry::StrategyRegistryService;
@@ -34,6 +36,7 @@ pub fn create_core_with_actor_host(
     provider_registry: ProviderRegistryService,
     api_keys: ApiKeysService,
     config_storage: ConfigStorageService,
+    user_preferences_storage: UserPreferencesStorageService,
 ) -> (
     AppCore,
     Services,
@@ -99,6 +102,7 @@ pub fn create_core_with_actor_host(
             Arc::new(nullslop_domain::JsonlSessionStore::new()),
         ),
         strategy_registry: strategy_registry.clone(),
+        user_preferences_storage: user_preferences_storage.clone(),
     };
 
     // --- Prompt assembly actor ---
@@ -163,6 +167,13 @@ pub fn create_core_with_actor_host(
         handle,
     );
 
+    // --- Preferences actor ---
+    let (_prefs_ref, prefs_result) = spawn_preferences_actor(
+        user_preferences_storage.clone(),
+        sink.clone(),
+        handle,
+    );
+
     // Emit lifecycle events for all actors.
     let actor_names = [
         ("echo", "Echoes messages back"),
@@ -190,6 +201,10 @@ pub fn create_core_with_actor_host(
         (
             "shutdown-tracker",
             "Tracks actor lifecycle for shutdown coordination",
+        ),
+        (
+            "preferences",
+            "Persists user preferences to nullslop.toml",
         ),
     ];
     for (name, desc) in &actor_names {
@@ -220,6 +235,7 @@ pub fn create_core_with_actor_host(
             persona_scan_result,
             prov_result,
             st_result,
+            prefs_result,
         ],
         handle.clone(),
     );

@@ -21,6 +21,7 @@ use nullslop_domain::ProviderRegistry;
 use nullslop_domain::ProviderRegistryService;
 use nullslop_domain::State;
 use nullslop_domain::UserPreferences;
+use nullslop_domain::UserPreferencesStorageService;
 use nullslop_domain::FilesystemUserPreferencesStorage;
 use nullslop_domain::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage;
 use nullslop_domain::cache_path;
@@ -114,6 +115,9 @@ impl App {
                         provider_registry.clone(),
                         resolved_api_keys.clone(),
                         config_storage.clone(),
+                        UserPreferencesStorageService::new(Arc::new(
+                            FilesystemUserPreferencesStorage::default_path(),
+                        )),
                     );
                 core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
@@ -163,6 +167,9 @@ impl App {
                         provider_registry,
                         resolved_api_keys,
                         config_storage,
+                        UserPreferencesStorageService::new(Arc::new(
+                            FilesystemUserPreferencesStorage::default_path(),
+                        )),
                     );
                 core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
