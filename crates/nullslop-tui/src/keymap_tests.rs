@@ -543,25 +543,25 @@ fn dashboard_uppercase_g_produces_dashboard_select_last() {
 }
 
 #[rstest::rstest]
-fn gcs_produces_open_picker_context_assembly() {
+fn leader_sc_produces_open_picker_context_assembly() {
     // Given the keymap.
     let keymap = init();
 
-    // When looking up 'g' then 'c' then 's'.
-    let g_key = KeyEvent {
-        key: Key::Char('g'),
-        modifiers: Modifiers::none(),
-    };
-    let c_key = KeyEvent {
-        key: Key::Char('c'),
+    // When looking up '<leader>' then 's' then 'c'.
+    let space_key = KeyEvent {
+        key: Key::Char(' '),
         modifiers: Modifiers::none(),
     };
     let s_key = KeyEvent {
         key: Key::Char('s'),
         modifiers: Modifiers::none(),
     };
+    let c_key = KeyEvent {
+        key: Key::Char('c'),
+        modifiers: Modifiers::none(),
+    };
 
-    let node = keymap.get_node_at_path(&[g_key, c_key, s_key]);
+    let node = keymap.get_node_at_path(&[space_key, s_key, c_key]);
 
     // Then it's a leaf with the OpenPicker ContextAssembly intent.
     assert!(node.is_some());
@@ -574,7 +574,7 @@ fn gcs_produces_open_picker_context_assembly() {
             "expected OpenPicker ContextAssembly, got {cmd:?}"
         );
     } else {
-        panic!("Expected leaf node for 'gcs'");
+        panic!("Expected leaf node for '<leader>sc'");
     }
 }
 
