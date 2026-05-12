@@ -30,8 +30,8 @@ use crate::feat::provider::protocol::event::{ModelsRefreshed, ProviderSwitched};
 use crate::protocol::system::LoadPickerEntries;
 use crate::protocol::{Command, Event, PickerKind};
 
-use crate::feat::picker::strategy_entries::load_strategy_picker_items;
 use super::loader::load_provider_picker_items;
+use crate::feat::picker::strategy_entries::load_strategy_picker_items;
 
 /// Direct message type (unused — the provider actor only responds to bus commands).
 pub enum ProviderDirectMsg {}
