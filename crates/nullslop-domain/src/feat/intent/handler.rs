@@ -175,35 +175,44 @@ impl IntentHandler {
             }
 
             // --- Pinned Panel ---
-            Intent::PinnedPanelToggle => crate::feat::pinned_panel::intent::handle_toggle(state),
-            Intent::PinnedPanelOpen => crate::feat::pinned_panel::intent::handle_open(state),
-            Intent::PinnedPanelClose => crate::feat::pinned_panel::intent::handle_close(state),
+            Intent::PinnedPanelToggle => {
+                crate::feat::ui::sidebar::pins::pins_section::handle_toggle(state)
+            }
+            Intent::PinnedPanelOpen => {
+                crate::feat::ui::sidebar::pins::pins_section::handle_open(state)
+            }
+            Intent::PinnedPanelClose => {
+                crate::feat::ui::sidebar::pins::pins_section::handle_close(state)
+            }
             Intent::PinnedPanelSelectDown => {
-                crate::feat::pinned_panel::intent::handle_select_down(state)
+                crate::feat::ui::sidebar::pins::pins_section::handle_select_down(state)
             }
             Intent::PinnedPanelSelectUp => {
-                crate::feat::pinned_panel::intent::handle_select_up(state)
+                crate::feat::ui::sidebar::pins::pins_section::handle_select_up(state)
             }
             Intent::PinnedPanelUnpin => {
-                crate::feat::pinned_panel::intent::handle_pinned_panel_unpin(state)
+                crate::feat::ui::sidebar::pins::pins_section::handle_unpin(state)
             }
             Intent::PinnedPanelPinTop => {
-                crate::feat::pinned_panel::intent::handle_pinned_panel_pin(state, PinPosition::Top)
+                crate::feat::ui::sidebar::pins::pins_section::handle_pin(
+                    state,
+                    PinPosition::Top,
+                )
             }
             Intent::PinnedPanelPinBottom => {
-                crate::feat::pinned_panel::intent::handle_pinned_panel_pin(
+                crate::feat::ui::sidebar::pins::pins_section::handle_pin(
                     state,
                     PinPosition::Bottom,
                 )
             }
             Intent::PinnedPanelPinRelative => {
-                crate::feat::pinned_panel::intent::handle_pinned_panel_pin(
+                crate::feat::ui::sidebar::pins::pins_section::handle_pin(
                     state,
                     PinPosition::Relative,
                 )
             }
             Intent::PinnedPanelPinCycle => {
-                crate::feat::pinned_panel::intent::handle_pinned_panel_pin_cycle(state)
+                crate::feat::ui::sidebar::pins::pins_section::handle_pin_cycle(state)
             }
 
             // --- Chat Entry Selection ---
