@@ -102,7 +102,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-l>", Intent::PinnedPanelOpen, KeyCategory::Navigation);
         })
         // Pinned scope: pinned entry navigation and management
-        .scope(Scope::Pinned, |b| {
+        .scope(Scope::Sidebar, |b| {
             b
             // General — app control
             .bind("q", Intent::Quit, KeyCategory::General)
@@ -216,7 +216,7 @@ pub fn collect_all_bindings(
     for scope in &[
         Scope::Normal,
         Scope::Dashboard,
-        Scope::Pinned,
+        Scope::Sidebar,
         Scope::Picker,
         Scope::Input,
     ] {
