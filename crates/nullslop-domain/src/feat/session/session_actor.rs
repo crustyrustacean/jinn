@@ -32,7 +32,7 @@ use crate::feat::chat_input::protocol::command::{
 };
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::provider::protocol::command::SendMessage;
-use crate::feat::provider::protocol::event::{StreamCompleted, StreamToken};
+use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::tools_actor::protocol::event::{
@@ -82,6 +82,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<ToolCallReceived>();
         ctx.subscribe_event::<ToolCallStreaming>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
+        ctx.subscribe_event::<ModelsRefreshed>();
 
         ctx.set_description("Session lifecycle and persistence");
 
@@ -124,6 +125,9 @@ impl SessionPersistenceActor {
             Event::ToolCallStreaming { payload } => self.on_tool_call_streaming(payload),
             Event::ToolExecutionCompleted { payload } => {
                 self.on_tool_execution_completed(payload);
+            }
+            Event::ModelsRefreshed { payload } => {
+                self.on_models_refreshed(payload);
             }
             _ => {}
         }
@@ -214,7 +218,7 @@ mod tests {
     use crate::common::services::Services;
     use crate::feat::provider::protocol::command::SendMessage;
     use crate::feat::provider::protocol::event::{
-        StreamCompleted, StreamCompletedReason, StreamToken,
+        ModelsRefreshed, StreamCompleted, StreamCompletedReason, StreamToken,
     };
     use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
     use crate::feat::tools_actor::protocol::event::{
@@ -1238,6 +1242,129 @@ mod tests {
                 assert!(success);
             }
             other => panic!("expected ToolResult, got {other:?}"),
+        }
+    }
+
+    // --- ModelsRefreshed ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_pushes_success_system_entry() {
+        // Given a session actor.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+
+        let mut results = HashMap::new();
+        results.insert(
+            "lmstudio".to_owned(),
+            vec!["model-a".to_owned(), "model-b".to_owned()],
+        );
+
+        // When processing ModelsRefreshed with results and no errors.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::ModelsRefreshed {
+                    payload: ModelsRefreshed {
+                        results,
+                        errors: HashMap::new(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the active session has a system entry with the success message.
+        let guard = state.read();
+        let last = guard
+            .active_session()
+            .history()
+            .last()
+            .expect("should have entry");
+        match &last.kind {
+            ChatEntryKind::System(text) => {
+                assert_eq!(text, "Models refreshed: 2 models from 1 providers");
+            }
+            other => panic!("expected System, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_pushes_error_system_entry() {
+        // Given a session actor.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+
+        let mut errors = HashMap::new();
+        errors.insert(
+            "ollama".to_owned(),
+            "HTTP error: connection refused".to_owned(),
+        );
+        errors.insert("lmstudio".to_owned(), "timeout".to_owned());
+
+        // When processing ModelsRefreshed with only errors.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::ModelsRefreshed {
+                    payload: ModelsRefreshed {
+                        results: HashMap::new(),
+                        errors,
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the active session has a system entry with the failure message.
+        let guard = state.read();
+        let last = guard
+            .active_session()
+            .history()
+            .last()
+            .expect("should have entry");
+        match &last.kind {
+            ChatEntryKind::System(text) => {
+                assert!(text.starts_with("Failed to refresh models:"));
+                assert!(text.contains("lmstudio: timeout"));
+                assert!(text.contains("ollama: HTTP error: connection refused"));
+            }
+            other => panic!("expected System, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_pushes_partial_failure_system_entry() {
+        // Given a session actor.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+
+        let mut results = HashMap::new();
+        results.insert("lmstudio".to_owned(), vec!["model-a".to_owned()]);
+        let mut errors = HashMap::new();
+        errors.insert("ollama".to_owned(), "connection refused".to_owned());
+
+        // When processing ModelsRefreshed with both results and errors.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::ModelsRefreshed {
+                    payload: ModelsRefreshed { results, errors },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the active session has a system entry mentioning both.
+        let guard = state.read();
+        let last = guard
+            .active_session()
+            .history()
+            .last()
+            .expect("should have entry");
+        match &last.kind {
+            ChatEntryKind::System(text) => {
+                assert!(text.starts_with("Models refreshed: 1 models from 1 providers"));
+                assert!(text.contains("Errors:"));
+                assert!(text.contains("ollama: connection refused"));
+            }
+            other => panic!("expected System, got {other:?}"),
         }
     }
 }
