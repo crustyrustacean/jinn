@@ -100,6 +100,7 @@ impl App {
 
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Tui => {
+                ensure_persona_seed();
                 let (core, services, actor_host, core_receiver) =
                     actor_wiring::create_core_with_actor_host(
                         &self.handle(),
@@ -111,7 +112,6 @@ impl App {
                 core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
-                ensure_persona_seed();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
 
                 // Resolve mouse selection config from environment.
@@ -149,6 +149,7 @@ impl App {
                 runner.run().change_context(AppError)?;
             }
             Commands::Headless { command, .. } => {
+                ensure_persona_seed();
                 let (core, _services, actor_host, core_receiver) =
                     actor_wiring::create_core_with_actor_host(
                         &self.handle(),
@@ -160,7 +161,6 @@ impl App {
                 core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
-                ensure_persona_seed();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
                 let mut headless = HeadlessApp::new(core, actor_host, core_receiver, self.handle());
                 match command {
