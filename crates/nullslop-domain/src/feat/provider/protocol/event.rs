@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::EventMsg;
 use crate::protocol::SessionId;
-use crate::protocol::prompt_template::PromptTemplate;
+use crate::feat::context::protocol::prompt_template::PromptTemplate;
 use crate::feat::tools::tool_types::ToolCall;
 
 /// Why the stream completed.

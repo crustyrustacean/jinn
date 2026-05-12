@@ -11,10 +11,12 @@
 pub mod actor_sink;
 pub mod app_core;
 pub mod app_msg;
+pub mod core_notification;
 
 // Re-export primary types owned by this crate
 pub use actor_sink::ActorMessageSink;
 pub use app_core::{AppCore, SHUTDOWN_TIMEOUT, coordinated_shutdown, spawn_forwarding_task};
 pub use app_msg::AppMsg;
+pub use core_notification::CoreNotification;
 // Re-export State from nullslop-component
 pub use crate::{State, StateReadGuard, StateWriteGuard};

@@ -12,6 +12,7 @@
 //! - [`MessageSink`] — trait for sending bus messages from actors to the application
 
 pub mod actor;
+pub mod actor_name;
 pub mod actor_ref;
 pub mod command_msg;
 pub mod context;
@@ -21,6 +22,7 @@ pub mod message_sink;
 pub mod protocol;
 
 pub use actor::Actor;
+pub use actor_name::ActorName;
 pub use actor_ref::ActorRef;
 pub use actor_ref::{ActorSendError, SendResult};
 pub use command_msg::{CommandMsg, CommandName};
