@@ -21,7 +21,7 @@ use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::provider_infra::LlmServiceFactoryService;
 use crate::feat::provider_infra::StreamEvent;
-use crate::feat::tools_actor::protocol::command::{ExecuteToolBatch, PushToolResult};
+use crate::feat::tools_actor::protocol::command::ExecuteToolBatch;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolUseStarted, ToolsRegistered,
 };
@@ -427,16 +427,6 @@ impl LlmActor {
             result_count = results.len(),
             "handle_tool_batch_completed"
         );
-
-        // Emit PushToolResult for each result.
-        for result in results {
-            let _ = ctx.send_command(Command::PushToolResult {
-                payload: PushToolResult {
-                    session_id: session_id.clone(),
-                    result: result.clone(),
-                },
-            });
-        }
 
         // Build the assistant message with tool calls and text from the previous stream.
         let assistant_message = LlmMessage::Assistant {
@@ -934,13 +924,6 @@ mod tests {
             !tokens.is_empty(),
             "expected StreamToken events from new stream"
         );
-
-        // And a PushToolResult command was emitted.
-        let commands = sink.commands();
-        let has_push_tool_result = commands
-            .iter()
-            .any(|c| matches!(c, Command::PushToolResult { .. }));
-        assert!(has_push_tool_result, "expected PushToolResult command");
     }
 
     // --- Cancel tests ---

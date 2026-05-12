@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition};
 use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
 
@@ -43,19 +43,6 @@ pub struct ExecuteTool {
     pub session_id: SessionId,
     /// The tool call to execute.
     pub tool_call: ToolCall,
-}
-
-/// Push a tool result into the chat log.
-///
-/// Emitted by the LLM actor after tool execution completes, before
-/// re-sending to the LLM.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("tool")]
-pub struct PushToolResult {
-    /// The session this result belongs to.
-    pub session_id: SessionId,
-    /// The tool execution result.
-    pub result: ToolResult,
 }
 
 #[cfg(test)]
@@ -121,27 +108,5 @@ mod tests {
 
         // Then it matches.
         assert_eq!(back.tool_call.name, "echo");
-    }
-
-    #[rstest::rstest]
-    fn push_tool_result_roundtrip() {
-        // Given a PushToolResult command.
-        let cmd = PushToolResult {
-            session_id: SessionId::new(),
-            result: ToolResult {
-                tool_call_id: "call_1".into(),
-                name: "echo".into(),
-                content: "hi".into(),
-                success: true,
-            },
-        };
-
-        // When serialized and deserialized.
-        let json = serde_json::to_string(&cmd).expect("serialize");
-        let back: PushToolResult = serde_json::from_str(&json).expect("deserialize");
-
-        // Then it matches.
-        assert_eq!(back.result.content, "hi");
-        assert!(back.result.success);
     }
 }

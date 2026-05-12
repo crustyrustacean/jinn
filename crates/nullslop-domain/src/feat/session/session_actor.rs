@@ -34,7 +34,6 @@ use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamToken};
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::feat::tools_actor::protocol::command::PushToolResult;
 use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
@@ -68,7 +67,6 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<EnqueueUserMessage>();
         ctx.subscribe_command::<SetChatInputText>();
         ctx.subscribe_command::<PushChatEntry>();
-        ctx.subscribe_command::<PushToolResult>();
         ctx.subscribe_command::<SendMessage>();
         ctx.subscribe_command::<SessionLoadCompleted>();
 
@@ -136,7 +134,6 @@ impl SessionPersistenceActor {
             }
             Command::SetChatInputText { payload } => self.handle_set_chat_input_text(payload),
             Command::PushChatEntry { payload } => self.handle_push_chat_entry(payload, ctx),
-            Command::PushToolResult { payload } => self.handle_push_tool_result(payload),
             Command::SendMessage { payload } => Self::handle_send_message(payload, ctx),
             Command::SessionLoadCompleted { payload } => {
                 self.handle_session_load_completed(payload, ctx);
@@ -203,7 +200,6 @@ mod tests {
         StreamCompleted, StreamCompletedReason, StreamToken,
     };
     use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-    use crate::feat::tools_actor::protocol::command::PushToolResult;
     use crate::feat::tools_actor::protocol::event::{
         ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     };
@@ -798,45 +794,6 @@ mod tests {
             .iter()
             .any(|e| matches!(e, Event::ChatEntrySubmitted { .. }));
         assert!(found, "expected ChatEntrySubmitted event");
-    }
-
-    // --- PushToolResult ---
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn push_tool_result_adds_tool_result_entry() {
-        // Given a session actor with a session.
-        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
-        let session_id = SessionId::new();
-
-        // When processing PushToolResult.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::PushToolResult {
-                    payload: PushToolResult {
-                        session_id: session_id.clone(),
-                        result: ToolResult {
-                            tool_call_id: "call_1".into(),
-                            name: "echo".into(),
-                            content: "hello".into(),
-                            success: true,
-                        },
-                    },
-                }),
-                &ctx,
-            )
-            .await;
-
-        // Then a tool result entry was added to the session history.
-        {
-            let guard = state.read();
-            let session = guard.session(&session_id);
-            assert_eq!(session.history().len(), 1);
-            assert!(matches!(
-                session.history()[0].kind,
-                ChatEntryKind::ToolResult { .. }
-            ));
-        }
     }
 
     // --- SendMessage ---

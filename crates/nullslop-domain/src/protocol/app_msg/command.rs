@@ -26,9 +26,7 @@ use crate::feat::provider::protocol::command::{
 };
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::feat::tools_actor::protocol::command::{
-    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools,
-};
+use crate::feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
 use crate::protocol::system::LoadPickerEntries;
 
 /// Every domain command the actor system can receive.
@@ -150,13 +148,6 @@ pub enum Command {
         #[serde(flatten)]
         payload: ExecuteTool,
     },
-    /// Push a tool result into the chat log.
-    #[serde(rename = "push_tool_result")]
-    PushToolResult {
-        /// The tool result payload.
-        #[serde(flatten)]
-        payload: PushToolResult,
-    },
     /// Proceed with shutdown after actor coordination.
     #[serde(rename = "proceed_with_shutdown")]
     ProceedWithShutdown {
@@ -209,7 +200,6 @@ impl Command {
             Self::RegisterTools { .. } => Some(RegisterTools::NAME),
             Self::ExecuteToolBatch { .. } => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool { .. } => Some(ExecuteTool::NAME),
-            Self::PushToolResult { .. } => Some(PushToolResult::NAME),
             Self::ProceedWithShutdown { .. } => Some(ProceedWithShutdown::NAME),
             Self::SessionLoadCompleted { .. } => Some(SessionLoadCompleted::NAME),
             Self::LoadPickerEntries { .. } => Some(LoadPickerEntries::NAME),
@@ -263,13 +253,6 @@ impl std::fmt::Display for Command {
                     payload.tool_call.name, payload.tool_call.id
                 )
             }
-            Command::PushToolResult { payload } => {
-                write!(
-                    f,
-                    "push tool result '{}' ({})",
-                    payload.result.name, payload.result.tool_call_id
-                )
-            }
             Command::ProceedWithShutdown { payload } => {
                 write!(
                     f,
@@ -308,7 +291,6 @@ mod tests {
     #[case::register_tools(Command::RegisterTools { payload: RegisterTools { provider: "echo-actor".into(), definitions: vec![crate::ToolDefinition { name: "echo".into(), description: "echo".into(), parameters: serde_json::json!({}) }] } })]
     #[case::execute_tool_batch(Command::ExecuteToolBatch { payload: ExecuteToolBatch { session_id: SessionId::new(), tool_calls: vec![crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() }] } })]
     #[case::execute_tool(Command::ExecuteTool { payload: ExecuteTool { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
-    #[case::push_tool_result(Command::PushToolResult { payload: PushToolResult { session_id: SessionId::new(), result: crate::ToolResult { tool_call_id: "call_1".into(), name: "echo".into(), content: "hi".into(), success: true } } })]
     #[case::proceed_with_shutdown(Command::ProceedWithShutdown { payload: ProceedWithShutdown { completed: vec!["ext-a".into()], timed_out: vec!["ext-b".into()] } })]
     #[case::session_load_completed(Command::SessionLoadCompleted { payload: SessionLoadCompleted {
         session_id: SessionId::new(),
