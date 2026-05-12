@@ -14,7 +14,7 @@
 /// cache-drift bugs.
 #[derive(Debug, Clone)]
 pub struct AutocompleteState {
-    /// Grapheme index where the `$` trigger character sits in the input buffer.
+    /// Grapheme index where the `#` trigger character sits in the input buffer.
     pub(super) token_start: usize,
     /// Index of the currently highlighted match (0 = first in the list).
     /// The list is ordered least-relevant (index 0) to most-relevant (last index).
@@ -25,7 +25,7 @@ pub struct AutocompleteState {
 }
 
 impl AutocompleteState {
-    /// Returns the grapheme index of the `$` trigger.
+    /// Returns the grapheme index of the `#` trigger.
     #[must_use]
     pub fn token_start(&self) -> usize {
         self.token_start
