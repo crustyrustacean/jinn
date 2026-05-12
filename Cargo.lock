@@ -2859,6 +2859,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "textwrap",
  "throbber-widgets-tui",
  "tokio",
  "toml",
