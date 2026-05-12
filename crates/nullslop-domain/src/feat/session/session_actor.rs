@@ -908,7 +908,7 @@ mod tests {
         {
             let guard = state.read();
             let session = guard.session(&session_id);
-            assert_eq!(session.history().len(), 2);
+            assert_eq!(session.history().len(), 3);
         }
 
         // And the active session is set.
@@ -921,6 +921,7 @@ mod tests {
         {
             let guard = state.read();
             assert!(!guard.session.session_loading);
+            assert!(guard.session.session_load_started_at.is_none());
         }
 
         // And RestoreStrategyState and SwitchPromptStrategy were emitted.
@@ -933,6 +934,41 @@ mod tests {
             cmds.iter()
                 .any(|c| matches!(c, Command::SwitchPromptStrategy { .. }))
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_load_completed_pushes_restored_system_message() {
+        // Given a session actor.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        // When processing SessionLoadCompleted with a title.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::SessionLoadCompleted {
+                    payload: SessionLoadCompleted {
+                        session_id: session_id.clone(),
+                        title: "My Chat".into(),
+                        history: vec![ChatEntry::user("hello")],
+                        active_strategy: PromptStrategyId::passthrough(),
+                        blobs: HashMap::new(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the last entry is a system message with the title.
+        let guard = state.read();
+        let session = guard.session(&session_id);
+        let last = session.history().last().expect("should have entries");
+        match &last.kind {
+            ChatEntryKind::System(text) => {
+                assert_eq!(text, "Session restored: My Chat");
+            }
+            other => panic!("expected System entry, got {other:?}"),
+        }
     }
 
     // --- PromptAssembled (event) ---

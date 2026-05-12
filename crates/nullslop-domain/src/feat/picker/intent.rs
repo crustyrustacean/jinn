@@ -7,7 +7,9 @@
 //! dependency.
 
 use crate::common::app_state::AppState;
-use crate::feat::context::protocol::command::{LoadContextStrategyPickerEntries, SwitchPromptStrategy};
+use crate::feat::context::protocol::command::{
+    LoadContextStrategyPickerEntries, SwitchPromptStrategy,
+};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
@@ -46,17 +48,21 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
     state.frontend.mode = Mode::Picker;
 
     match kind {
-        PickerKind::Provider => IntentResult::with_commands(vec![Command::LoadProviderPickerEntries {
-            payload: LoadProviderPickerEntries,
-        }]),
-        PickerKind::Session => IntentResult::with_commands(vec![Command::LoadSessionPickerEntries {
-            payload: LoadSessionPickerEntries,
-        }]),
-        PickerKind::ContextAssembly => IntentResult::with_commands(vec![
-            Command::LoadContextStrategyPickerEntries {
+        PickerKind::Provider => {
+            IntentResult::with_commands(vec![Command::LoadProviderPickerEntries {
+                payload: LoadProviderPickerEntries,
+            }])
+        }
+        PickerKind::Session => {
+            IntentResult::with_commands(vec![Command::LoadSessionPickerEntries {
+                payload: LoadSessionPickerEntries,
+            }])
+        }
+        PickerKind::ContextAssembly => {
+            IntentResult::with_commands(vec![Command::LoadContextStrategyPickerEntries {
                 payload: LoadContextStrategyPickerEntries,
-            },
-        ]),
+            }])
+        }
         PickerKind::Keymap => IntentResult::empty(),
     }
 }
@@ -277,6 +283,7 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
     let byte_offset = entry.byte_offset;
 
     state.session.session_loading = true;
+    state.session.session_load_started_at = Some(std::time::Instant::now());
     state.frontend.mode = Mode::Normal;
 
     IntentResult::with_commands(vec![Command::SessionLoadRequested {
@@ -486,6 +493,8 @@ mod tests {
 
         // Then session_loading is true.
         assert!(state.session.session_loading);
+        // And session_load_started_at is set.
+        assert!(state.session.session_load_started_at.is_some());
         // And a SessionLoadRequested command is returned.
         assert!(
             result
