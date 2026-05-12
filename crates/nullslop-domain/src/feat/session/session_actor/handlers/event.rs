@@ -2,7 +2,7 @@
 
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
-use crate::feat::provider::protocol::event::{StreamCompleted, StreamToken};
+use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
 use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
@@ -109,4 +109,42 @@ impl SessionPersistenceActor {
             event.result.success,
         ));
     }
+
+    /// Pushes a completion summary system entry after model refresh.
+    pub(in crate::feat::session::session_actor) fn on_models_refreshed(
+        &self,
+        event: &ModelsRefreshed,
+    ) {
+        let total_models: usize = event.results.values().map(Vec::len).sum();
+        let provider_count = event.results.len();
+
+        let summary = if !event.results.is_empty() && event.errors.is_empty() {
+            format!("Models refreshed: {total_models} models from {provider_count} providers")
+        } else if !event.results.is_empty() && !event.errors.is_empty() {
+            let error_details = format_errors(&event.errors);
+            format!(
+                "Models refreshed: {total_models} models from {provider_count} providers. Errors: {error_details}"
+            )
+        } else if event.results.is_empty() && !event.errors.is_empty() {
+            let error_details = format_errors(&event.errors);
+            format!("Failed to refresh models: {error_details}")
+        } else {
+            "Models refreshed: no providers found".to_owned()
+        };
+
+        let mut state = self.state.write();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::system(summary));
+    }
+}
+
+/// Formats provider errors as a comma-separated string.
+fn format_errors(errors: &std::collections::HashMap<String, String>) -> String {
+    let mut pairs: Vec<String> = errors
+        .iter()
+        .map(|(provider, msg)| format!("{provider}: {msg}"))
+        .collect();
+    pairs.sort();
+    pairs.join(", ")
 }
