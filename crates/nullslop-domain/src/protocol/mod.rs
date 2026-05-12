@@ -6,19 +6,17 @@
 //! modules under `feat/` and are re-exported from `lib.rs` for convenience.
 
 pub mod app_msg;
-pub mod command;
-pub mod event;
 pub mod intent;
 pub mod key;
 pub mod mode;
 pub mod system;
 pub mod tab;
 
-// Re-export primary types defined in this module
+// Re-export primary types
 pub use app_msg::AppMsg;
-pub use command::Command;
+pub use app_msg::Command;
+pub use app_msg::Event;
 pub use crate::common::actor::{CommandMsg, CommandName, EventMsg, EventTypeName};
-pub use event::Event;
 pub use intent::Intent;
 pub use intent::IntentResult;
 pub use key::{Key, KeyEvent, Modifiers};
