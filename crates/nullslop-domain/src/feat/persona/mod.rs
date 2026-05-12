@@ -32,17 +32,5 @@ const SEED_FILENAME: &str = "coding-assistant.md";
 
 /// Returns the seed persona content — modeled on pi-mono's default system prompt.
 fn seed_content() -> String {
-    let mut content = String::new();
-    content.push_str("+++\n");
-    content.push_str("name = \"coding-assistant\"\n");
-    content.push_str("description = \"Expert coding assistant\"\n");
-    content.push_str("+++\n\n");
-    content.push_str(
-        "You are an expert coding assistant. You help users by reading files, executing commands, editing code, and writing new files.\n\n",
-    );
-    content.push_str("Guidelines:\n");
-    content.push_str("- Use bash for file operations like ls, rg, find\n");
-    content.push_str("- Be concise in your responses\n");
-    content.push_str("- Show file paths clearly when working with files\n");
-    content
+    include_str!("coding-assistant.md").to_owned()
 }
