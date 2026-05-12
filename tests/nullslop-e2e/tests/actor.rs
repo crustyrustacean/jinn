@@ -15,7 +15,7 @@ use nullslop_domain::SendToLlmProvider;
 use nullslop_domain::Services;
 use nullslop_domain::ToolCall;
 use nullslop_domain::feat::llm_actor::LlmActor;
-use nullslop_domain::feat::session::actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
+use nullslop_domain::feat::session::session_actor::{SessionPersistenceActor, SessionPersistenceDirectMsg};
 use nullslop_domain::feat::tools_actor::ToolOrchestratorActor;
 use nullslop_domain::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use nullslop_domain::{ActorHostService, InMemoryActorHost, spawn_actor};

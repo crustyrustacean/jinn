@@ -13,7 +13,7 @@ use super::super::SessionPersistenceActor;
 impl SessionPersistenceActor {
     /// PromptAssembled (event): transition session from assembling to streaming,
     /// emit SendToLlmProvider.
-    pub(in crate::feat::session::actor) fn handle_prompt_assembled(
+    pub(in crate::feat::session::session_actor) fn handle_prompt_assembled(
         &self,
         payload: &PromptAssembled,
         ctx: &crate::common::actor::ActorContext,
@@ -42,7 +42,7 @@ impl SessionPersistenceActor {
     }
 
     /// Appends a streaming token to the session's assistant entry.
-    pub(in crate::feat::session::actor) fn on_stream_token(&self, event: &StreamToken) {
+    pub(in crate::feat::session::session_actor) fn on_stream_token(&self, event: &StreamToken) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         if !session.is_streaming() {
@@ -52,21 +52,21 @@ impl SessionPersistenceActor {
     }
 
     /// Marks the session's stream as finished.
-    pub(in crate::feat::session::actor) fn on_stream_completed(&self, event: &StreamCompleted) {
+    pub(in crate::feat::session::session_actor) fn on_stream_completed(&self, event: &StreamCompleted) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         session.finish_streaming();
     }
 
     /// Begins tracking a streaming tool call.
-    pub(in crate::feat::session::actor) fn on_tool_use_started(&self, event: &ToolUseStarted) {
+    pub(in crate::feat::session::session_actor) fn on_tool_use_started(&self, event: &ToolUseStarted) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         session.begin_tool_call(event.index, &event.id, &event.name);
     }
 
     /// Pushes a tool call entry into the session history.
-    pub(in crate::feat::session::actor) fn on_tool_call_received(&self, event: &ToolCallReceived) {
+    pub(in crate::feat::session::session_actor) fn on_tool_call_received(&self, event: &ToolCallReceived) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         session.push_entry(ChatEntry::tool_call(
@@ -77,7 +77,7 @@ impl SessionPersistenceActor {
     }
 
     /// Appends a partial JSON delta to a streaming tool call.
-    pub(in crate::feat::session::actor) fn on_tool_call_streaming(
+    pub(in crate::feat::session::session_actor) fn on_tool_call_streaming(
         &self,
         event: &ToolCallStreaming,
     ) {
@@ -87,7 +87,7 @@ impl SessionPersistenceActor {
     }
 
     /// Pushes a tool result entry into the session history.
-    pub(in crate::feat::session::actor) fn on_tool_execution_completed(
+    pub(in crate::feat::session::session_actor) fn on_tool_execution_completed(
         &self,
         event: &ToolExecutionCompleted,
     ) {
