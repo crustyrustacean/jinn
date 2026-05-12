@@ -1,7 +1,7 @@
 //! [`SidebarSection`] trait and supporting types for pluggable sidebar sections.
 
-use crate::common::app_state::AppState;
 use crate::Intent;
+use crate::common::app_state::AppState;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 

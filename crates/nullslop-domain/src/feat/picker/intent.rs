@@ -7,6 +7,7 @@
 //! dependency.
 
 use crate::common::app_state::AppState;
+use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::context::protocol::command::{
     LoadContextStrategyPickerEntries, SwitchPromptStrategy,
 };
@@ -14,7 +15,6 @@ use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, Provid
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::protocol::{Command, Intent, IntentResult, Mode, PickerKind};
-use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 
 use super::validator;
 

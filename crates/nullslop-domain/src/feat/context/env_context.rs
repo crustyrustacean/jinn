@@ -38,7 +38,11 @@ pub fn build_env_context(
         let mut section = String::from("\n\n# Project Context\n\n");
         section.push_str("Project-specific instructions and guidelines:\n\n");
         for file in context_files {
-            section.push_str(&format!("## {}\n\n{}\n\n", file.path.display(), file.content));
+            section.push_str(&format!(
+                "## {}\n\n{}\n\n",
+                file.path.display(),
+                file.content
+            ));
         }
         parts.push(section);
     }

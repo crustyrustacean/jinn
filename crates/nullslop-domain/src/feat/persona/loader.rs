@@ -52,7 +52,10 @@ pub fn parse_persona_file(path: &Path) -> Result<Persona, Report<PersonaParseErr
 }
 
 /// Parses persona content string (testable without filesystem).
-pub(crate) fn parse_persona_content(content: &str, path: &Path) -> Result<Persona, Report<PersonaParseError>> {
+pub(crate) fn parse_persona_content(
+    content: &str,
+    path: &Path,
+) -> Result<Persona, Report<PersonaParseError>> {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("+++") {
         return Err(Report::new(PersonaParseError::Frontmatter)
@@ -134,10 +137,7 @@ mod tests {
         // Then fields are correctly extracted.
         assert_eq!(persona.name, "coding-assistant");
         assert_eq!(persona.description, "Expert coder");
-        assert_eq!(
-            persona.body,
-            "You are an expert coding assistant."
-        );
+        assert_eq!(persona.body, "You are an expert coding assistant.");
     }
 
     #[rstest::rstest]
@@ -208,8 +208,7 @@ mod tests {
         let content = "+++\nname = \"multi\"\n+++\n\nLine one.\nLine two.\nLine three.";
 
         // When parsing.
-        let persona =
-            parse_persona_content(content, &test_path("multi")).expect("parse");
+        let persona = parse_persona_content(content, &test_path("multi")).expect("parse");
 
         // Then all body lines are preserved.
         assert!(persona.body.contains("Line one."));

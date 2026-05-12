@@ -34,6 +34,15 @@ pub fn validate_pin_top(state: &AppState) -> Result<(), PinsActionError> {
     validate_pin_action(state)
 }
 
+/// Validates a pin position action (top, bottom, or relative).
+///
+/// # Errors
+///
+/// Returns an error if there are no pinned entries or no entry is selected.
+pub fn validate_pin(state: &AppState) -> Result<(), PinsActionError> {
+    validate_pin_action(state)
+}
+
 /// Validates the pin-bottom action.
 ///
 /// # Errors

@@ -244,9 +244,9 @@ impl Event {
 
             Self::SessionSaveRequested { .. } => Some(SessionSaveRequested::TYPE_NAME),
             Self::SkillsLoaded { .. } => Some(SkillsLoaded::TYPE_NAME),
-            Self::PersonasLoaded { .. } => Some(
-                crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME,
-            ),
+            Self::PersonasLoaded { .. } => {
+                Some(crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME)
+            }
         }
     }
 }
