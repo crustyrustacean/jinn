@@ -3,6 +3,7 @@
 //! Scans `~/.agents/skills/*/SKILL.md` for skill definitions, parses their
 //! YAML frontmatter, and provides the data model for skill metadata.
 
+pub mod format;
 pub mod frontmatter;
 pub mod scan;
 mod skill;
