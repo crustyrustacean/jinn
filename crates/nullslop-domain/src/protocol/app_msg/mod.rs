@@ -1,6 +1,12 @@
 //! Application message type for the processing loop.
 
-use crate::protocol::{ActorName, Command, Event};
+pub mod command;
+pub mod event;
+
+pub use command::Command;
+pub use event::Event;
+
+use crate::protocol::ActorName;
 
 /// An application message for the core processing loop.
 #[derive(Debug)]
