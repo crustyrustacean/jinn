@@ -48,6 +48,10 @@ pub struct SessionState {
     /// OWNER: session-actor (clears on SessionLoadCompleted),
     ///        IntentHandler (sets true on confirm_session).
     pub session_loading: bool,
+    /// When the current session load started. Used for timeout detection.
+    /// Set by IntentHandler (on confirm_session), cleared by session-actor (on load completed)
+    /// and TUI tick (on timeout).
+    pub session_load_started_at: Option<std::time::Instant>,
 }
 
 impl Default for SessionState {
@@ -59,6 +63,7 @@ impl Default for SessionState {
             sessions,
             active_session,
             session_loading: false,
+            session_load_started_at: None,
         }
     }
 }
