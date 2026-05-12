@@ -203,11 +203,7 @@ mod tests {
     fn save_creates_parent_directories() {
         // Given a nested path that doesn't exist.
         let dir = TempDir::new().expect("temp dir");
-        let path = dir
-            .path()
-            .join("nested")
-            .join("dir")
-            .join("nullslop.toml");
+        let path = dir.path().join("nested").join("dir").join("nullslop.toml");
         let prefs = UserPreferences {
             last_model: Some("test/model".to_owned()),
         };
@@ -225,8 +221,6 @@ mod tests {
         let path = preferences_path();
 
         // Then it ends with nullslop/nullslop.toml.
-        assert!(path
-            .to_string_lossy()
-            .ends_with("nullslop/nullslop.toml"));
+        assert!(path.to_string_lossy().ends_with("nullslop/nullslop.toml"));
     }
 }

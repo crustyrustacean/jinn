@@ -8,9 +8,8 @@ pub mod preferences_actor;
 pub mod user_preferences;
 pub mod user_preferences_storage;
 
+pub use preferences_actor::spawn_preferences_actor;
 pub use user_preferences::UserPreferences;
 pub use user_preferences_storage::{
-    FilesystemUserPreferencesStorage, InMemoryUserPreferencesStorage,
-    UserPreferencesStorageService,
+    FilesystemUserPreferencesStorage, InMemoryUserPreferencesStorage, UserPreferencesStorageService,
 };
-pub use preferences_actor::spawn_preferences_actor;

@@ -7,11 +7,13 @@
 use std::sync::Arc;
 
 use crate::feat::context::{DefaultStrategyDiscovery, StrategyDiscovery};
+use crate::feat::preferences_actor::{
+    InMemoryUserPreferencesStorage, UserPreferencesStorageService,
+};
 use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use crate::feat::preferences_actor::{InMemoryUserPreferencesStorage, UserPreferencesStorageService};
 use crate::feat::session::{
     PersistedSession, SessionStore, SessionStoreError, SessionStoreService, SessionSummary,
 };

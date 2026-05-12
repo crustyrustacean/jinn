@@ -63,9 +63,7 @@ impl Actor for PreferencesActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Command(_)
-            | ActorEnvelope::Direct(_)
-            | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
         }
     }
 
@@ -124,9 +122,8 @@ mod tests {
     fn create_actor() -> (PreferencesActor, Arc<RecordingSink>, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("preferences-actor", sink.clone() as Arc<dyn MessageSink>);
-        let storage = UserPreferencesStorageService::new(Arc::new(
-            InMemoryUserPreferencesStorage::new(),
-        ));
+        let storage =
+            UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
         ctx.set_data(storage);
         let actor = PreferencesActor::activate(&mut ctx);
         (actor, sink, ctx)

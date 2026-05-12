@@ -13,6 +13,7 @@ use nullslop_domain::ApiKeys;
 use nullslop_domain::ApiKeysService;
 use nullslop_domain::ConfigStorageService;
 use nullslop_domain::FilesystemConfigStorage;
+use nullslop_domain::FilesystemUserPreferencesStorage;
 use nullslop_domain::LlmServiceFactoryService;
 use nullslop_domain::ModelCache;
 use nullslop_domain::NoProvidersAvailableFactory;
@@ -22,9 +23,8 @@ use nullslop_domain::ProviderRegistryService;
 use nullslop_domain::State;
 use nullslop_domain::UserPreferences;
 use nullslop_domain::UserPreferencesStorageService;
-use nullslop_domain::FilesystemUserPreferencesStorage;
-use nullslop_domain::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage;
 use nullslop_domain::cache_path;
+use nullslop_domain::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage;
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -102,8 +102,11 @@ impl App {
         // Determine initial provider and factory.
         // Load user preferences (nullslop.toml) for last_model.
         let user_prefs = load_user_preferences();
-        let (llm_service, initial_provider) =
-            resolve_initial_factory(&provider_registry, &resolved_api_keys, user_prefs.last_model);
+        let (llm_service, initial_provider) = resolve_initial_factory(
+            &provider_registry,
+            &resolved_api_keys,
+            user_prefs.last_model,
+        );
 
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Tui => {

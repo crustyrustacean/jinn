@@ -168,11 +168,8 @@ pub fn create_core_with_actor_host(
     );
 
     // --- Preferences actor ---
-    let (_prefs_ref, prefs_result) = spawn_preferences_actor(
-        user_preferences_storage.clone(),
-        sink.clone(),
-        handle,
-    );
+    let (_prefs_ref, prefs_result) =
+        spawn_preferences_actor(user_preferences_storage.clone(), sink.clone(), handle);
 
     // Emit lifecycle events for all actors.
     let actor_names = [
@@ -202,10 +199,7 @@ pub fn create_core_with_actor_host(
             "shutdown-tracker",
             "Tracks actor lifecycle for shutdown coordination",
         ),
-        (
-            "preferences",
-            "Persists user preferences to nullslop.toml",
-        ),
+        ("preferences", "Persists user preferences to nullslop.toml"),
     ];
     for (name, desc) in &actor_names {
         let _ = sink.send_event(Event::ActorStarting {

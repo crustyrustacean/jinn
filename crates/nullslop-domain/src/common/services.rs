@@ -7,12 +7,14 @@
 use std::sync::Arc;
 
 use crate::feat::context::DefaultStrategyDiscovery;
+use crate::feat::preferences_actor::{
+    InMemoryUserPreferencesStorage, UserPreferencesStorageService,
+};
 pub use crate::feat::provider_infra;
 use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use crate::feat::preferences_actor::{InMemoryUserPreferencesStorage, UserPreferencesStorageService};
 use crate::feat::session::SessionStoreService;
 use crate::protocol::AppMsg;
 use tokio::runtime::Handle;
