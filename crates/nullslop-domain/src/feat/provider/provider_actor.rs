@@ -127,7 +127,9 @@ impl ProviderActor {
             | Command::SessionLoadRequested { .. }
             | Command::LoadSessionPickerEntries { .. }
             | Command::LoadContextStrategyPickerEntries { .. }
-            | Command::ScanSkills => {}
+            | Command::ScanSkills
+            | Command::RescanPersonas { .. }
+            | Command::LoadPersonaPickerEntries { .. } => {}
         }
     }
 

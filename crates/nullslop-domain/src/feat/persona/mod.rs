@@ -9,6 +9,7 @@ mod ensure;
 mod loader;
 mod persona;
 mod persona_entry;
+pub mod persona_scan_actor;
 
 pub use ensure::{EnsurePersonaError, ensure_personas_dir_with_seed};
 pub use loader::{parse_persona_file, scan_personas_dir};

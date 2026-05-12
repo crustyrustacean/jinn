@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 /// A parsed persona ready for use in the system prompt.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Persona {
     /// Unique persona name (from frontmatter).
     pub name: String,

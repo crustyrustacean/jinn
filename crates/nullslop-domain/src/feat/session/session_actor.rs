@@ -166,7 +166,9 @@ impl SessionPersistenceActor {
             | Command::UnpinChatEntry { .. }
             | Command::SwitchPromptStrategy { .. }
             | Command::RestoreStrategyState { .. }
-            | Command::ScanSkills => {}
+            | Command::ScanSkills
+            | Command::RescanPersonas { .. }
+            | Command::LoadPersonaPickerEntries { .. } => {}
         }
     }
 

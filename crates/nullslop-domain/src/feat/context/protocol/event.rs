@@ -50,6 +50,19 @@ pub struct StrategyStateUpdated {
     pub blob: serde_json::Value,
 }
 
+/// Emitted when personas have been scanned and loaded from disk.
+///
+/// The context actor receives this event and stores the loaded personas
+/// in `AppState`. If no active persona is set, the first one becomes default.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("context")]
+pub struct PersonasLoaded {
+    /// The loaded persona files.
+    pub personas: Vec<crate::feat::persona::Persona>,
+    /// Error message if scanning failed, `None` on success.
+    pub error: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +119,30 @@ mod tests {
         // Then fields are preserved.
         assert_eq!(back.strategy_id, PromptStrategyId::compaction());
         assert_eq!(back.blob["compaction_count"], 3);
+    }
+
+    #[rstest::rstest]
+    fn personas_loaded_serialization_roundtrip() {
+        // Given a PersonasLoaded event with personas.
+        use crate::feat::persona::Persona;
+        let persona = Persona {
+            name: "coding-assistant".to_owned(),
+            description: "Expert coder".to_owned(),
+            body: "You are helpful.".to_owned(),
+            file_path: std::path::PathBuf::from("/test/coding-assistant.md"),
+        };
+        let evt = PersonasLoaded {
+            personas: vec![persona],
+            error: None,
+        };
+
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&evt).expect("serialize");
+        let back: PersonasLoaded = serde_json::from_str(&json).expect("deserialize");
+
+        // Then fields are preserved.
+        assert_eq!(back.personas.len(), 1);
+        assert_eq!(back.personas[0].name, "coding-assistant");
+        assert!(back.error.is_none());
     }
 }
