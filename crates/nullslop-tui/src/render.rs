@@ -49,12 +49,14 @@ impl AppLayout {
     ///
     /// `queue_lines` is the number of rows for the queue display area
     /// (0 when queue is empty).
+    ///
+    /// `max_input_height` caps the input box height (e.g., 50% of terminal).
     #[must_use]
-    pub fn new(area: Rect, input_lines: u16, queue_lines: u16) -> Self {
+    pub fn new(area: Rect, input_lines: u16, queue_lines: u16, max_input_height: u16) -> Self {
         let [tabs, rest] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
 
-        let input_height = 2 + input_lines.max(1); // top border + text + bottom border
+        let input_height = (2 + input_lines.max(1)).min(max_input_height);
         let [content, indicator, queue, counter, input, status_bar] = Layout::vertical([
             Constraint::Min(1),
             Constraint::Length(1),
@@ -93,12 +95,37 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         return;
     }
 
+    // Pre-render mutation: set wrap width and scroll offset using a write lock.
+    {
+        let mut wstate = app.core.state.write();
+        let text_width = area.width.saturating_sub(2) as usize;
+        wstate.active_chat_input_mut().set_wrap_width(text_width);
+        // Need layout to know inner height — compute a preliminary layout.
+        let queue_len = wstate.active_session().queue_len() as u16;
+        let max_input_height = area.height / 2;
+        let pre_layout = AppLayout::new(
+            area,
+            wstate.active_chat_input().visual_line_count() as u16,
+            queue_len,
+            max_input_height,
+        );
+        if wstate.frontend.mode == Mode::Input {
+            let inner_height = pre_layout.input.height.saturating_sub(2) as usize;
+            wstate
+                .active_chat_input_mut()
+                .scroll_to_cursor(inner_height);
+        }
+    }
+
     let state = app.core.state.read();
+
     let queue_len = state.active_session().queue_len() as u16;
+    let max_input_height = area.height / 2;
     let layout = AppLayout::new(
         area,
         state.active_chat_input().visual_line_count() as u16,
         queue_len,
+        max_input_height,
     );
 
     // Tab bar — always visible.
@@ -364,6 +391,7 @@ fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::App
         }
         Some(PickerKind::Keymap) => render_keymap_picker(frame, area, state),
         Some(PickerKind::Session) => render_session_picker(frame, area, state),
+        Some(PickerKind::Persona) => render_persona_picker(frame, area, state),
         None => {}
     }
 }
@@ -390,6 +418,11 @@ fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_doma
 /// Renders the session picker overlay (delegates to slice).
 fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
     nullslop_domain::feat::session::render::render_session_picker(frame, area, state);
+}
+
+/// Renders the persona picker overlay (delegates to domain render).
+fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
+    nullslop_domain::feat::picker::render::render_persona_picker(frame, area, state);
 }
 
 /// Renders a "terminal too small" message.

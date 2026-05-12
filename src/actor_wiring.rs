@@ -138,6 +138,14 @@ pub fn create_core_with_actor_host(
         handle,
     );
 
+    // --- Persona scan actor ---
+    let (_persona_scan_ref, persona_scan_result) =
+        nullslop_domain::feat::persona::persona_scan_actor::spawn_persona_scan_actor(
+            nullslop_domain::personas_dir(),
+            sink.clone(),
+            handle,
+        );
+
     // --- Provider actor ---
     let (_prov_ref, prov_result) =
         nullslop_domain::feat::provider::provider_actor::spawn_provider_actor(
@@ -170,6 +178,10 @@ pub fn create_core_with_actor_host(
         (
             "skills-scan",
             "Scans and loads agent skills from ~/.agents/skills",
+        ),
+        (
+            "persona-scan",
+            "Scans and loads persona files from ~/.config/nullslop/personas",
         ),
         (
             "provider",
@@ -205,6 +217,7 @@ pub fn create_core_with_actor_host(
             sp_result,
             scan_result,
             skills_result,
+            persona_scan_result,
             prov_result,
             st_result,
         ],
@@ -224,6 +237,11 @@ pub fn create_core_with_actor_host(
 
     // Trigger initial skills scan.
     let _ = sink.send_command(nullslop_domain::Command::ScanSkills);
+
+    // Trigger initial persona scan.
+    let _ = sink.send_command(nullslop_domain::Command::RescanPersonas {
+        payload: nullslop_domain::feat::context::protocol::command::RescanPersonas,
+    });
 
     (core, services, actor_host_service, core_notify_rx)
 }

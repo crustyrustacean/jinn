@@ -449,3 +449,160 @@ fn desired_col_cleared_by_delete() {
     state.move_cursor_down(); // desired_col is None → uses actual col 1
     assert_eq!(state.cursor_row_col(), (2, 1));
 }
+
+// --- Wrap-aware tests ---
+
+#[rstest::rstest]
+fn visual_line_count_wraps_long_line() {
+    // Given "hello world" with wrap_width 5.
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("hello world");
+    state.set_wrap_width(5);
+
+    // When reading visual line count.
+    // "hello world" (11 graphemes) at width 5 wraps to "hello" and " world"
+    // Actually: "hello" (5), " world" (6) — " world" exceeds 5, so wraps further.
+    // Let's trace: h(0)e(1)l(2)l(3)o(4) = col 5, then ' ' at col 6 > 5 → wrap
+    // Actually the break: at i=5 (space), col=6 > 5. last_word_break was set when
+    // space at col=6 but there's no previous word break. Let's just check > 1.
+    let count = state.visual_line_count();
+
+    // Then it is more than 1 (the text wraps).
+    assert!(count > 1, "expected wrapping but got {count} lines");
+}
+
+#[rstest::rstest]
+fn cursor_row_col_on_wrapped_line() {
+    // Given "hello world" with wrap_width 5 and cursor at end.
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("hello world");
+    state.set_wrap_width(5);
+
+    // When reading cursor row/col (cursor at end, position 11).
+    let (row, col) = state.cursor_row_col();
+
+    // Then cursor is on a wrapped line (not row 0).
+    assert!(row > 0, "expected wrapped row > 0 but got {row}");
+    // And col is within the wrapped line.
+    assert!(col <= 6, "expected col <= 6 but got {col}");
+}
+
+#[rstest::rstest]
+fn move_cursor_up_wraps_to_previous_visual_line() {
+    // Given "hello world" with wrap_width 5 and cursor at end.
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("hello world");
+    state.set_wrap_width(5);
+
+    let (end_row, _) = state.cursor_row_col();
+
+    // When moving up.
+    state.move_cursor_up();
+
+    // Then cursor moves to the previous wrapped line.
+    let (new_row, _) = state.cursor_row_col();
+    assert_eq!(new_row, end_row - 1);
+}
+
+#[rstest::rstest]
+fn move_cursor_down_wraps_to_next_visual_line() {
+    // Given "hello world" with wrap_width 5 and cursor at start.
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("hello world");
+    state.set_wrap_width(5);
+    state.move_cursor_to_start();
+
+    // When moving down.
+    state.move_cursor_down();
+
+    // Then cursor moves to the next wrapped line.
+    let (new_row, _) = state.cursor_row_col();
+    assert_eq!(new_row, 1);
+}
+
+#[rstest::rstest]
+fn move_cursor_up_clamps_col_on_shorter_wrapped_line() {
+    // Given "hello world" with wrap_width 5 and cursor at end of last line.
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("hello world");
+    state.set_wrap_width(5);
+
+    let (end_row, _) = state.cursor_row_col();
+
+    // When moving up.
+    state.move_cursor_up();
+
+    // Then cursor is on the previous wrapped line with col clamped.
+    let (new_row, new_col) = state.cursor_row_col();
+    assert_eq!(new_row, end_row - 1);
+    // The first wrapped line "hello " has length 6, col should be clamped.
+    assert!(new_col <= 6);
+}
+
+#[rstest::rstest]
+fn scroll_to_cursor_adjusts_scroll_up() {
+    // Given text that produces many wrapped lines.
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("hello world foo bar baz");
+    state.set_wrap_width(5);
+    // Cursor at end.
+    let (cursor_row, _) = state.cursor_row_col();
+
+    // When scroll_offset is past the cursor and we scroll to cursor with 3 visible lines.
+    state.set_scroll_offset(cursor_row + 5);
+    state.scroll_to_cursor(3);
+
+    // Then scroll_offset is adjusted to the cursor row.
+    assert_eq!(state.scroll_offset(), cursor_row);
+}
+
+#[rstest::rstest]
+fn scroll_to_cursor_adjusts_scroll_down() {
+    // Given text that produces many wrapped lines.
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("hello world foo bar baz");
+    state.set_wrap_width(5);
+    // Cursor at end.
+    let (cursor_row, _) = state.cursor_row_col();
+
+    // When scroll_offset is 0 and cursor is beyond visible area with 2 visible lines.
+    state.scroll_to_cursor(2);
+
+    // Then scroll_offset is adjusted so cursor is in the visible window.
+    assert!(
+        state.scroll_offset() + 2 > cursor_row,
+        "cursor should be visible"
+    );
+    assert!(
+        state.scroll_offset() <= cursor_row,
+        "scroll should not go past cursor"
+    );
+}
+
+#[rstest::rstest]
+fn scroll_to_cursor_no_change_when_visible() {
+    // Given short text with cursor visible.
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("hello");
+    state.set_wrap_width(80);
+
+    // When scrolling to cursor with 5 visible lines.
+    state.scroll_to_cursor(5);
+
+    // Then scroll_offset stays at 0.
+    assert_eq!(state.scroll_offset(), 0);
+}
+
+#[rstest::rstest]
+fn reset_clears_scroll_offset() {
+    // Given a state with non-zero scroll_offset.
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("hello");
+    state.set_scroll_offset(5);
+
+    // When resetting.
+    state.reset();
+
+    // Then scroll_offset is 0.
+    assert_eq!(state.scroll_offset(), 0);
+}

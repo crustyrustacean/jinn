@@ -10,6 +10,7 @@
 //! pinning, templates) and **PromptScanActor** (template scanning).
 
 pub mod context_actor;
+pub mod env_context;
 pub mod prompt_scan_actor;
 pub mod prompt_template;
 pub mod protocol;

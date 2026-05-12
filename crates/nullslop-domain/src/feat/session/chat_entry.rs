@@ -126,6 +126,8 @@ pub enum ChatEntryKind {
     User(String),
     /// A system-generated message (status updates, etc.).
     System(String),
+    /// An error message displayed prominently (e.g., stream cancelled).
+    Error(String),
     /// A response from an AI assistant.
     Assistant(String),
     /// A message from an actor, identified by source name.
@@ -184,6 +186,20 @@ impl ChatEntry {
             id: ChatEntryId::new(),
             timestamp: jiff::Timestamp::now(),
             kind: ChatEntryKind::System(text.into()),
+            pin_position: None,
+        }
+    }
+
+    /// Create a new error chat entry with the current timestamp.
+    #[must_use]
+    pub fn error<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Error(text.into()),
             pin_position: None,
         }
     }
@@ -312,6 +328,11 @@ impl Serialize for ChatEntryKind {
                 map.serialize_entry("System", t)?;
                 map.end()
             }
+            ChatEntryKind::Error(t) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("Error", t)?;
+                map.end()
+            }
             ChatEntryKind::Assistant(t) => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("Assistant", t)?;
@@ -411,6 +432,10 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         let text: String = map.next_value()?;
                         Ok(ChatEntryKind::System(text))
                     }
+                    "Error" => {
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::Error(text))
+                    }
                     "Assistant" => {
                         let text: String = map.next_value()?;
                         Ok(ChatEntryKind::Assistant(text))
@@ -463,6 +488,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         &[
                             "User",
                             "System",
+                            "Error",
                             "Assistant",
                             "Actor",
                             "ToolCall",

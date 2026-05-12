@@ -18,8 +18,8 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::context::protocol::command::{
-    AssemblePrompt, LoadContextStrategyPickerEntries, PinChatEntry, RestoreStrategyState,
-    SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
+    RescanPersonas, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
 use crate::feat::provider::protocol::command::{
     CancelStream, LoadProviderPickerEntries, ProviderSwitch, RefreshModels, RescanPromptTemplates,
@@ -29,7 +29,9 @@ use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPick
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::skills::skills_scan_actor::ScanSkills;
-use crate::feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
+use crate::feat::tools_actor::protocol::command::{
+    CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
+};
 
 /// Every domain command the actor system can receive.
 ///
@@ -150,6 +152,13 @@ pub enum Command {
         #[serde(flatten)]
         payload: ExecuteTool,
     },
+    /// Cancel all pending tool executions for a session.
+    #[serde(rename = "cancel_tool_batch")]
+    CancelToolBatch {
+        /// The cancellation payload.
+        #[serde(flatten)]
+        payload: CancelToolBatch,
+    },
     /// Proceed with shutdown after actor coordination.
     #[serde(rename = "proceed_with_shutdown")]
     ProceedWithShutdown {
@@ -192,6 +201,18 @@ pub enum Command {
     /// Scan the agent skills directory and reload skills.
     #[serde(rename = "scan_skills")]
     ScanSkills,
+    /// Rescan the personas directory and reload persona files.
+    #[serde(rename = "rescan_personas")]
+    RescanPersonas {
+        #[serde(flatten)]
+        payload: RescanPersonas,
+    },
+    /// Load entries for the persona picker.
+    #[serde(rename = "load_persona_picker_entries")]
+    LoadPersonaPickerEntries {
+        #[serde(flatten)]
+        payload: LoadPersonaPickerEntries,
+    },
 }
 
 impl Command {
@@ -216,6 +237,7 @@ impl Command {
             Self::RegisterTools { .. } => Some(RegisterTools::NAME),
             Self::ExecuteToolBatch { .. } => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool { .. } => Some(ExecuteTool::NAME),
+            Self::CancelToolBatch { .. } => Some(CancelToolBatch::NAME),
             Self::ProceedWithShutdown { .. } => Some(ProceedWithShutdown::NAME),
             Self::SessionLoadCompleted { .. } => Some(SessionLoadCompleted::NAME),
             Self::LoadProviderPickerEntries { .. } => Some(LoadProviderPickerEntries::NAME),
@@ -225,6 +247,8 @@ impl Command {
             }
             Self::SessionLoadRequested { .. } => Some(SessionLoadRequested::NAME),
             Self::ScanSkills => Some(ScanSkills::NAME),
+            Self::RescanPersonas { .. } => Some(RescanPersonas::NAME),
+            Self::LoadPersonaPickerEntries { .. } => Some(LoadPersonaPickerEntries::NAME),
         }
     }
 }
@@ -274,6 +298,7 @@ impl std::fmt::Display for Command {
                     payload.tool_call.name, payload.tool_call.id
                 )
             }
+            Command::CancelToolBatch { .. } => write!(f, "cancel tool batch"),
             Command::ProceedWithShutdown { payload } => {
                 write!(
                     f,
@@ -290,6 +315,10 @@ impl std::fmt::Display for Command {
             }
             Command::SessionLoadRequested { .. } => write!(f, "session load requested"),
             Command::ScanSkills => write!(f, "scan skills"),
+            Command::RescanPersonas { .. } => write!(f, "rescan personas"),
+            Command::LoadPersonaPickerEntries { .. } => {
+                write!(f, "load persona picker entries")
+            }
         }
     }
 }
@@ -315,6 +344,7 @@ mod tests {
     #[case::register_tools(Command::RegisterTools { payload: RegisterTools { provider: "echo-actor".into(), definitions: vec![crate::ToolDefinition { name: "echo".into(), description: "echo".into(), parameters: serde_json::json!({}) }] } })]
     #[case::execute_tool_batch(Command::ExecuteToolBatch { payload: ExecuteToolBatch { session_id: SessionId::new(), tool_calls: vec![crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() }] } })]
     #[case::execute_tool(Command::ExecuteTool { payload: ExecuteTool { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
+    #[case::cancel_tool_batch(Command::CancelToolBatch { payload: CancelToolBatch { session_id: SessionId::new() } })]
     #[case::proceed_with_shutdown(Command::ProceedWithShutdown { payload: ProceedWithShutdown { completed: vec!["ext-a".into()], timed_out: vec!["ext-b".into()] } })]
     #[case::session_load_completed(Command::SessionLoadCompleted { payload: SessionLoadCompleted {
         session_id: SessionId::new(),
@@ -332,6 +362,8 @@ mod tests {
         session_id: SessionId::new(), byte_offset: 42u64,
     } })]
     #[case::scan_skills(Command::ScanSkills)]
+    #[case::rescan_personas(Command::RescanPersonas { payload: RescanPersonas })]
+    #[case::load_persona_picker_entries(Command::LoadPersonaPickerEntries { payload: LoadPersonaPickerEntries })]
     fn command_roundtrip_all_variants(#[case] cmd: Command) {
         // Given a command variant.
         let json = serde_json::to_string(&cmd).expect("serialize");

@@ -206,6 +206,13 @@ pub enum Event {
         #[serde(flatten)]
         payload: SkillsLoaded,
     },
+    /// Personas have been scanned and loaded from disk.
+    #[serde(rename = "personas_loaded")]
+    PersonasLoaded {
+        /// The loaded personas and optional error.
+        #[serde(flatten)]
+        payload: crate::feat::context::protocol::event::PersonasLoaded,
+    },
 }
 
 impl Event {
@@ -237,6 +244,9 @@ impl Event {
 
             Self::SessionSaveRequested { .. } => Some(SessionSaveRequested::TYPE_NAME),
             Self::SkillsLoaded { .. } => Some(SkillsLoaded::TYPE_NAME),
+            Self::PersonasLoaded { .. } => Some(
+                crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME,
+            ),
         }
     }
 }
@@ -306,6 +316,10 @@ mod tests {
     } })]
     #[case::skills_loaded(Event::SkillsLoaded { payload: crate::feat::skills::skills_scan_actor::SkillsLoaded {
         skills: vec![],
+        error: None,
+    } })]
+    #[case::personas_loaded(Event::PersonasLoaded { payload: crate::feat::context::protocol::event::PersonasLoaded {
+        personas: vec![],
         error: None,
     } })]
     fn event_roundtrip_all_variants(#[case] event: Event) {

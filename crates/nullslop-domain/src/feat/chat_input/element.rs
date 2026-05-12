@@ -4,16 +4,21 @@
 //! actively typing (input mode), the prompt and border are highlighted in yellow and
 //! the cursor appears at the current cursor position within the text. When browsing
 //! (normal mode), the prompt is shown without highlighting and no cursor is displayed.
+//!
+//! Long lines are word-wrapped at the available width, with continuation lines indented
+//! by two spaces. When the content exceeds the visible area, it scrolls to keep the
+//! cursor visible.
 
+use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
+use crate::feat::chat_input::state::wrap::WrappedLine;
 use crate::protocol::Mode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
-
-use crate::common::app_state::AppState;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Display element for the user's message composition area.
 #[derive(Debug)]
@@ -43,12 +48,20 @@ impl UiElement<AppState> for ChatInputBoxElement {
 
         let text_style = Style::default();
 
-        let lines = build_lines(state.active_chat_input().text(), prompt_style, text_style);
-
         let block = Block::default()
             .borders(Borders::TOP | Borders::BOTTOM)
             .border_style(border_style);
         let inner = block.inner(area);
+        let max_visible_lines = inner.height as usize;
+
+        let lines = build_wrapped_lines(
+            state.active_chat_input().text(),
+            state.active_chat_input().wrapped_lines(),
+            state.active_chat_input().scroll_offset(),
+            max_visible_lines,
+            prompt_style,
+            text_style,
+        );
 
         let input_widget = Paragraph::new(lines).block(block);
         frame.render_widget(input_widget, area);
@@ -56,37 +69,55 @@ impl UiElement<AppState> for ChatInputBoxElement {
         // Position cursor when in input mode.
         if input_mode {
             let (row, col) = state.active_chat_input().cursor_row_col();
-            let prompt_width: usize = 2; // "> " = 2 columns
-            let indent_width: usize = 2; // "  " = 2 columns
-            let x_offset = if row == 0 { prompt_width } else { indent_width };
-            let cursor_x = inner.x + (x_offset + col) as u16;
-            let cursor_y = inner.y + row as u16;
+            let scroll_offset = state.active_chat_input().scroll_offset();
+            let visual_row = row.saturating_sub(scroll_offset);
+            let prefix_width: usize = 2; // "> " = 2 columns
+            let cursor_x = inner.x + (prefix_width + col) as u16;
+            let cursor_y = inner.y + visual_row as u16;
             frame.set_cursor_position((cursor_x, cursor_y));
         }
     }
 }
 
-/// Build visual lines from the input buffer text, splitting on `\n`.
+/// Build visual lines from wrapped line data, applying scroll offset and visibility limit.
 ///
-/// The first line gets a `> ` prompt prefix, continuation lines get `  ` indentation.
-fn build_lines<'a, S>(text: S, prompt_style: Style, text_style: Style) -> Vec<Line<'a>>
-where
-    S: AsRef<str>,
-{
-    let text = text.as_ref();
+/// The first visual line gets a `> ` prompt prefix, all others get `  ` indentation.
+fn build_wrapped_lines<'a>(
+    text: &str,
+    wrapped: Vec<WrappedLine>,
+    scroll_offset: usize,
+    max_visible_lines: usize,
+    prompt_style: Style,
+    text_style: Style,
+) -> Vec<Line<'a>> {
     if text.is_empty() {
         return vec![Line::from(vec![Span::styled("> ", prompt_style)])];
     }
 
-    let segments = text.split('\n');
+    let graphemes: Vec<&str> = text.graphemes(true).collect();
     let mut lines = Vec::new();
-    for (i, segment) in segments.enumerate() {
-        let prefix = if i == 0 { "> " } else { "  " };
+
+    for (row, line) in wrapped.iter().enumerate() {
+        if row < scroll_offset {
+            continue;
+        }
+        if lines.len() >= max_visible_lines {
+            break;
+        }
+
+        let prefix = if row == 0 { "> " } else { "  " };
+        let content: String = graphemes[line.grapheme_start..line.grapheme_end].join("");
         lines.push(Line::from(vec![
             Span::styled(prefix, prompt_style),
-            Span::styled(segment.to_owned(), text_style),
+            Span::styled(content, text_style),
         ]));
     }
+
+    // If all lines were scrolled past, show at least the prompt.
+    if lines.is_empty() {
+        lines.push(Line::from(vec![Span::styled("> ", prompt_style)]));
+    }
+
     lines
 }
 
@@ -376,7 +407,7 @@ mod tests {
             })
             .unwrap();
 
-        // Then cursor is at position (4, 2): row 1, col 2 ("ab\n" → row 0 col 2, "cd" → row 1 col 2).
+        // Then cursor is at position (4, 2): row 1, col 2.
         // inner.x=0, indent=2, col=2 → x=4, y=inner.y + 1 = 1 + 1 = 2.
         terminal
             .backend_mut()
@@ -385,7 +416,7 @@ mod tests {
 
     #[rstest::rstest]
     fn render_multiline_cursor_between_newlines() {
-        // Given a ChatInputBoxElement in Input mode with "a\n\nb" and cursor at the empty middle line.
+        // Given a ChatInputBoxElement in Input mode with "a\n\nb" and cursor on the empty middle line.
         let mut element = ChatInputBoxElement;
         let state = {
             let mut s = AppState {
@@ -418,5 +449,75 @@ mod tests {
         terminal
             .backend_mut()
             .assert_cursor_position(Position { x: 2, y: 2 });
+    }
+
+    #[rstest::rstest]
+    fn render_wraps_long_text() {
+        // Given "hello world" in a narrow terminal (width 10) so it wraps.
+        let mut element = ChatInputBoxElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_chat_input_mut().insert_text("hello world");
+            // Set wrap width to simulate narrow terminal: 10 - 2 prefix = 8
+            s.active_chat_input_mut().set_wrap_width(8);
+            s
+        };
+
+        let (mut terminal, area) = setup_term(10, 5);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the text is rendered across multiple visual lines.
+        let buffer = terminal.backend().buffer().clone();
+        // Row 1 should have "> hello " (prefix + first part of wrapped text).
+        let cell = buffer.cell((2, 1)).expect("cell should exist");
+        assert_eq!(cell.symbol(), "h");
+        // Row 2 should have continuation with "world".
+        let w_cell = buffer.cell((2, 2)).expect("cell should exist");
+        assert_eq!(w_cell.symbol(), "w");
+    }
+
+    #[rstest::rstest]
+    fn render_cursor_on_wrapped_continuation() {
+        // Given "hello world" in a narrow terminal with cursor on wrapped line.
+        let mut element = ChatInputBoxElement;
+        let state = {
+            let mut s = AppState {
+                frontend: FrontendState {
+                    mode: Mode::Input,
+                    ..FrontendState::default()
+                },
+                ..Default::default()
+            };
+            s.active_chat_input_mut().insert_text("hello world");
+            s.active_chat_input_mut().set_wrap_width(8);
+            s
+        };
+
+        let (mut terminal, area) = setup_term(10, 5);
+
+        // When rendering (cursor is at end, which is on the wrapped continuation line).
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then cursor is on row 2 (the continuation line).
+        let buffer = terminal.backend().buffer().clone();
+        // The cursor should be visible on the second visual line.
+        // Cursor at pos 11 (end). Wrapped lines: "> hello " and "  world".
+        // Row 0 = "> hello " (8 graphemes), Row 1 = "  world" (5 graphemes).
+        // cursor_row_col returns (1, 5) — row 1, col 5.
+        // visual_row = 1, cursor_y = inner.y + 1 = 2.
+        // cursor_x = inner.x + 2 + 5 = 7.
+        terminal
+            .backend_mut()
+            .assert_cursor_position(Position { x: 7, y: 2 });
     }
 }
