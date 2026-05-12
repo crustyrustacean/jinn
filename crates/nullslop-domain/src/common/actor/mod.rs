@@ -13,16 +13,20 @@
 
 pub mod actor;
 pub mod actor_ref;
+pub mod command_msg;
 pub mod context;
 pub mod envelope;
+pub mod event_msg;
 pub mod message_sink;
 pub mod protocol;
 
 pub use actor::Actor;
 pub use actor_ref::ActorRef;
 pub use actor_ref::{ActorSendError, SendResult};
+pub use command_msg::{CommandMsg, CommandName};
 pub use context::ActorContext;
 pub use envelope::{ActorEnvelope, SystemMessage};
+pub use event_msg::{EventMsg, EventTypeName};
 pub use message_sink::MessageSink;
 
 /// Shared test utilities.
@@ -30,3 +34,6 @@ pub use message_sink::MessageSink;
 /// Provides a canonical [`RecordingSink`] that replaces local duplicates
 /// across actor crates.
 pub use message_sink::RecordingSink;
+
+#[cfg(test)]
+mod derive_tests;

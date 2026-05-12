@@ -1,5 +1,6 @@
 //! Tests for `EventMsg` and `CommandMsg` derive macro code generation.
 
+// Import from protocol:: which re-exports both the derive macros and the traits.
 use crate::protocol::{CommandMsg, EventMsg};
 
 // -- Test-only structs with derive macros applied --
