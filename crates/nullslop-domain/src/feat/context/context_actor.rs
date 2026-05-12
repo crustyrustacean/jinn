@@ -22,10 +22,11 @@ use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::context::protocol::command::{
-    AssemblePrompt, LoadContextStrategyPickerEntries, PinChatEntry, RestoreStrategyState,
-    SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
+    RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
-use crate::feat::context::protocol::event::PromptStrategySwitched;
+use crate::feat::context::protocol::event::{PersonasLoaded, PromptStrategySwitched};
+use crate::feat::persona::PersonaEntry;
 use crate::feat::picker::strategy_entries::load_strategy_picker_items;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
@@ -65,6 +66,7 @@ impl Actor for PromptAssemblyActor {
         ctx.subscribe_command::<PinChatEntry>();
         ctx.subscribe_command::<UnpinChatEntry>();
         ctx.subscribe_command::<LoadContextStrategyPickerEntries>();
+        ctx.subscribe_command::<LoadPersonaPickerEntries>();
         ctx.subscribe_event::<PromptTemplatesLoaded>();
 
         ctx.set_description("Context assembly, strategy management, pinning, and templates");
@@ -132,6 +134,12 @@ impl PromptAssemblyActor {
             Command::LoadContextStrategyPickerEntries { payload } => {
                 self.handle_load_context_strategy_picker_entries(payload);
             }
+            Command::LoadPersonaPickerEntries { payload } => {
+                self.handle_load_persona_picker_entries(payload);
+            }
+            Command::RescanPersonas { .. } => {
+                // Handled by persona-scan actor.
+            }
             _ => {}
         }
     }
@@ -148,6 +156,9 @@ impl PromptAssemblyActor {
             Event::PromptTemplatesLoaded { payload } => {
                 self.on_prompt_templates_loaded(payload);
             }
+            Event::PersonasLoaded { payload } => {
+                self.on_personas_loaded(payload);
+            }
             _ => {}
         }
     }
@@ -159,6 +170,46 @@ impl PromptAssemblyActor {
     ) {
         let mut state = self.state.write();
         load_strategy_picker_items(&self.services, &mut state);
+    }
+
+    /// Loads persona picker entries into `AppState`.
+    fn handle_load_persona_picker_entries(&self, _payload: &LoadPersonaPickerEntries) {
+        let state = self.state.read();
+        let active_name = state
+            .context
+            .active_persona
+            .as_ref()
+            .map(|p| p.name.clone());
+        let entries: Vec<PersonaEntry> = state
+            .context
+            .personas
+            .iter()
+            .map(|p| PersonaEntry {
+                name: p.name.clone(),
+                description: p.description.clone(),
+                is_active: active_name.as_ref() == Some(&p.name),
+            })
+            .collect();
+        drop(state);
+
+        let mut state = self.state.write();
+        state.frontend.persona_picker.set_items(entries);
+    }
+
+    /// Stores loaded personas in state and sets the first as default if none active.
+    fn on_personas_loaded(&self, payload: &PersonasLoaded) {
+        if payload.error.is_some() {
+            tracing::warn!(
+                error = ?payload.error,
+                "persona scan reported an error"
+            );
+            return;
+        }
+        let mut state = self.state.write();
+        state.context.personas = payload.personas.clone();
+        if state.context.active_persona.is_none() {
+            state.context.active_persona = payload.personas.first().cloned();
+        }
     }
 }
 
