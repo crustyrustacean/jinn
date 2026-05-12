@@ -119,6 +119,7 @@ pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
             .delete_grapheme_before_cursor();
     }
 
+    try_reactivate_autocomplete(state);
     IntentResult::empty()
 }
 
@@ -151,6 +152,7 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
         state.active_chat_input_mut().delete_grapheme_after_cursor();
     }
 
+    try_reactivate_autocomplete(state);
     IntentResult::empty()
 }
 
@@ -209,6 +211,7 @@ pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
     if should_deactivate {
         state.active_chat_input_mut().deactivate_autocomplete();
     }
+    try_reactivate_autocomplete(state);
     IntentResult::empty()
 }
 
@@ -219,6 +222,7 @@ pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
     if should_deactivate {
         state.active_chat_input_mut().deactivate_autocomplete();
     }
+    try_reactivate_autocomplete(state);
     IntentResult::empty()
 }
 
@@ -347,6 +351,72 @@ fn compute_matches(store: &PromptTemplateStore, filter: &str) -> Vec<Autocomplet
             description: t.description.clone(),
         })
         .collect()
+}
+
+/// Scans the buffer to detect if the cursor sits inside a `#token` region.
+///
+/// Returns `Some((token_start, filter_text))` if the cursor is within a valid
+/// token, where `token_start` is the grapheme index of the `#` and `filter_text`
+/// is the text between `#+1` and the cursor position.
+fn find_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String)> {
+    use unicode_segmentation::UnicodeSegmentation as _;
+
+    let cursor = input.cursor_pos();
+    let graphemes: Vec<&str> = input.text().graphemes(true).collect();
+    let len = graphemes.len();
+
+    // Scan leftward from the cursor to find a '#' at a valid trigger position.
+    let mut i = cursor;
+    loop {
+        if graphemes.get(i) == Some(&"#") {
+            // Check that the '#' is at a valid trigger position.
+            let preceded_by_boundary = i == 0 || graphemes.get(i.wrapping_sub(1)) == Some(&" ");
+            if !preceded_by_boundary {
+                return None;
+            }
+            // The token extends from i+1 to the next whitespace, '#', or end.
+            let mut token_end = i + 1;
+            while token_end < len {
+                let g = graphemes.get(token_end);
+                if g.is_none() || g.is_some_and(|c| c.trim().is_empty() || *c == "#") {
+                    break;
+                }
+                token_end += 1;
+            }
+            // The cursor must be >= i (on the '#' or within the token) and <= token_end.
+            if cursor >= i && cursor <= token_end {
+                let filter: String = graphemes
+                    .get((i + 1)..cursor)
+                    .map(|s| s.join(""))
+                    .unwrap_or_default();
+                return Some((i, filter));
+            }
+            return None;
+        }
+        // If we hit whitespace going left, stop — no valid token.
+        let g = graphemes.get(i);
+        if g.is_some_and(|c| c.trim().is_empty()) {
+            return None;
+        }
+        if i == 0 {
+            return None;
+        }
+        i -= 1;
+    }
+}
+
+/// Attempts to re-activate autocomplete if the cursor sits inside a `#token` region.
+fn try_reactivate_autocomplete(state: &mut AppState) {
+    if state.active_chat_input().autocomplete().is_some() {
+        return;
+    }
+    let Some((token_start, filter)) = find_token_at_cursor(state.active_chat_input()) else {
+        return;
+    };
+    let matches = compute_matches(&state.context.prompt_templates, &filter);
+    state
+        .active_chat_input_mut()
+        .activate_autocomplete(token_start, matches);
 }
 
 #[cfg(test)]
@@ -550,6 +620,66 @@ mod tests {
 
         // Then cursor moves to end.
         assert_eq!(state.active_chat_input().cursor_pos(), 2);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn cursor_left_reactivates_autocomplete_when_re_entering_token() {
+        // Given a state with "#code " in the buffer (autocomplete was dismissed by space).
+        let mut state = AppState::default();
+        state.active_chat_input_mut().insert_text("#code ");
+        // Cursor is at end (after space). Move left twice to get back into "code".
+        state.active_chat_input_mut().move_cursor_left(); // cursor on space
+        state.active_chat_input_mut().move_cursor_left(); // cursor on 'e'
+
+        // When handling MoveCursorLeft.
+        let result = super::handle_move_cursor_left(&mut state);
+
+        // Then autocomplete is re-activated.
+        assert!(
+            state.active_chat_input().autocomplete().is_some(),
+            "autocomplete should be re-activated when cursor re-enters token"
+        );
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn backspace_reactivates_autocomplete_when_re_entering_token() {
+        // Given a state with "#code " and cursor at end.
+        let mut state = AppState::default();
+        state.active_chat_input_mut().insert_text("#code ");
+
+        // When handling DeleteGrapheme (removes the space).
+        let result = super::handle_delete_grapheme(&mut state);
+
+        // Then autocomplete is re-activated.
+        assert!(
+            state.active_chat_input().autocomplete().is_some(),
+            "autocomplete should be re-activated when backspace re-enters token"
+        );
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn cursor_move_away_from_token_does_not_reactivate() {
+        // Given a state with "hello #code" and cursor at end.
+        let mut state = AppState::default();
+        state.active_chat_input_mut().insert_text("hello #code");
+
+        // When moving cursor left past the token boundary (into "hello ").
+        super::handle_move_cursor_left(&mut state); // 'e'
+        super::handle_move_cursor_left(&mut state); // 'd'
+        super::handle_move_cursor_left(&mut state); // 'o'
+        super::handle_move_cursor_left(&mut state); // 'c'
+        super::handle_move_cursor_left(&mut state); // '#'
+        // Now cursor is on '#'. Move left one more to space.
+        let result = super::handle_move_cursor_left(&mut state);
+
+        // Then autocomplete is NOT active (cursor left the token region).
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "autocomplete should NOT activate when cursor moves away from token"
+        );
         assert!(result.commands.is_empty());
     }
 
