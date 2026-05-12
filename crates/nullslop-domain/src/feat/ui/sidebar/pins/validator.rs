@@ -1,79 +1,75 @@
-//! Pinned panel intent validators.
+//! Pins section validators — validate pin/unpin actions for the sidebar pins section.
 //!
-//! Validators for pinned panel navigation, toggling, and pin/unpin actions.
-//! Navigation and toggle intents are infallible; pin/unpin actions are fallible.
+//! Pin/unpin actions are fallible; navigation intents within the sidebar
+//! are handled by the section itself and are infallible.
 
 use crate::common::app_state::AppState;
 use wherror::Error;
 
-// --- Fallible validators ---
-
-/// Errors from validating pinned panel pin/unpin intents.
+/// Errors from validating pins section actions.
 #[derive(Debug, Error)]
 #[error(debug)]
-pub enum PinnedPanelActionError {
+pub enum PinsActionError {
     /// No pinned entry is selected.
     NoSelection,
     /// No pinned entries exist.
     Empty,
 }
 
-/// Validates the PinnedPanelUnpin intent.
-///
-/// Returns an error if there are no pinned entries or no entry is selected.
+/// Validates the unpin action.
 ///
 /// # Errors
 ///
 /// Returns an error if there are no pinned entries or no entry is selected.
-pub fn validate_pinned_panel_unpin(state: &AppState) -> Result<(), PinnedPanelActionError> {
+pub fn validate_unpin(state: &AppState) -> Result<(), PinsActionError> {
     validate_pin_action(state)
 }
 
-/// Validates the PinnedPanelPinTop intent.
+/// Validates the pin-top action.
 ///
 /// # Errors
 ///
 /// Returns an error if there are no pinned entries or no entry is selected.
-pub fn validate_pinned_panel_pin_top(state: &AppState) -> Result<(), PinnedPanelActionError> {
+pub fn validate_pin_top(state: &AppState) -> Result<(), PinsActionError> {
     validate_pin_action(state)
 }
 
-/// Validates the PinnedPanelPinBottom intent.
+/// Validates the pin-bottom action.
 ///
 /// # Errors
 ///
 /// Returns an error if there are no pinned entries or no entry is selected.
-pub fn validate_pinned_panel_pin_bottom(state: &AppState) -> Result<(), PinnedPanelActionError> {
+pub fn validate_pin_bottom(state: &AppState) -> Result<(), PinsActionError> {
     validate_pin_action(state)
 }
 
-/// Validates the PinnedPanelPinRelative intent.
+/// Validates the pin-relative action.
 ///
 /// # Errors
 ///
 /// Returns an error if there are no pinned entries or no entry is selected.
-pub fn validate_pinned_panel_pin_relative(state: &AppState) -> Result<(), PinnedPanelActionError> {
+pub fn validate_pin_relative(state: &AppState) -> Result<(), PinsActionError> {
     validate_pin_action(state)
 }
 
-/// Validates the PinnedPanelPinCycle intent.
+/// Validates the pin-cycle action.
 ///
 /// # Errors
 ///
 /// Returns an error if there are no pinned entries or no entry is selected.
-pub fn validate_pinned_panel_pin_cycle(state: &AppState) -> Result<(), PinnedPanelActionError> {
+pub fn validate_pin_cycle(state: &AppState) -> Result<(), PinsActionError> {
     validate_pin_action(state)
 }
 
 /// Shared validation logic for all pin/unpin actions.
 ///
 /// Checks that there are pinned entries and one is selected.
-fn validate_pin_action(state: &AppState) -> Result<(), PinnedPanelActionError> {
+fn validate_pin_action(state: &AppState) -> Result<(), PinsActionError> {
     if state.sorted_pinned_ids().is_empty() {
-        return Err(PinnedPanelActionError::Empty);
+        return Err(PinsActionError::Empty);
     }
-    if state.frontend.pinned_panel.selected_id().is_none() {
-        return Err(PinnedPanelActionError::NoSelection);
+    if state.frontend.pins.selected_id().is_none() {
+        return Err(PinsActionError::NoSelection);
     }
     Ok(())
 }
@@ -91,7 +87,7 @@ mod tests {
             state.active_session().history()[index].id.clone()
         };
         state.active_session_mut().pin_entry(&entry_id, position);
-        state.frontend.pinned_panel.select_by_id(entry_id);
+        state.frontend.pins.select_by_id(entry_id);
         state
     }
 
@@ -105,15 +101,13 @@ mod tests {
         state
     }
 
-    // --- PinnedPanelUnpin tests ---
-
     #[rstest::rstest]
     fn unpin_succeeds_with_selected_pinned_entry() {
         // Given a state with a pinned entry that is selected.
         let state = state_with_selected_pin("hello", PinPosition::Top);
 
         // When validating unpin.
-        let result = validate_pinned_panel_unpin(&state);
+        let result = validate_unpin(&state);
 
         // Then it succeeds.
         assert!(result.is_ok());
@@ -125,10 +119,10 @@ mod tests {
         let state = AppState::default();
 
         // When validating unpin.
-        let result = validate_pinned_panel_unpin(&state);
+        let result = validate_unpin(&state);
 
         // Then it returns Empty error.
-        assert!(matches!(result, Err(PinnedPanelActionError::Empty)));
+        assert!(matches!(result, Err(PinsActionError::Empty)));
     }
 
     #[rstest::rstest]
@@ -137,9 +131,9 @@ mod tests {
         let state = state_with_unselected_pin("hello", PinPosition::Top);
 
         // When validating unpin.
-        let result = validate_pinned_panel_unpin(&state);
+        let result = validate_unpin(&state);
 
         // Then it returns NoSelection error.
-        assert!(matches!(result, Err(PinnedPanelActionError::NoSelection)));
+        assert!(matches!(result, Err(PinsActionError::NoSelection)));
     }
 }

@@ -64,7 +64,6 @@ impl TuiAppBuilder {
         nullslop_domain::feat::dashboard::register(&mut ui_registry);
         nullslop_domain::feat::ui::chat_log::register(&mut ui_registry);
         nullslop_domain::feat::provider::register(&mut ui_registry);
-        nullslop_domain::feat::pinned_panel::register(&mut ui_registry);
         nullslop_domain::feat::chat_input::register(&mut ui_registry);
 
         TuiApp {
