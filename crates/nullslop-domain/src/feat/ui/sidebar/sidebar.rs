@@ -142,11 +142,7 @@ impl Sidebar {
     }
 
     fn prev_section_index(&self, current: usize) -> Option<usize> {
-        if current > 0 {
-            Some(current - 1)
-        } else {
-            None
-        }
+        if current > 0 { Some(current - 1) } else { None }
     }
 }
 

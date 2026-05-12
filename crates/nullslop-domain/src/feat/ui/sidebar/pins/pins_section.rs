@@ -1,9 +1,8 @@
 //! [`PinsSection`] — the pinned entries sidebar section.
 //!
 //! Implements [`SidebarSection`] for pinned context entries.
-//! Also provides standalone handler functions that the `IntentHandler`
-//! calls during Phase 2 (while intents are still `PinnedPanel*` variants).
-//! Phase 3 will migrate intent handling into the section directly.
+//! Also provides handler functions that the `IntentHandler` calls
+//! for sidebar and pins intents.
 
 use crate::common::app_state::AppState;
 use crate::common::app_state::pin_sort_key;
@@ -17,8 +16,6 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
-
-use super::validator;
 
 /// The pinned entries sidebar section.
 ///
@@ -110,47 +107,45 @@ impl SidebarSection for PinsSection {
 }
 
 // ---------------------------------------------------------------------------
-// Bridge handler functions (Phase 2 — temporary until Phase 3 migrates intents)
+// Intent handler functions (called by IntentHandler)
 // ---------------------------------------------------------------------------
 
-/// Handles `PinnedPanelToggle` — sets the toggle signal.
-pub fn handle_toggle(state: &mut AppState) -> IntentResult {
-    state.frontend.tui_signals.pinned_pane_toggle = true;
-    IntentResult::empty()
-}
-
-/// Handles `PinnedPanelOpen` — sets the open signal.
-pub fn handle_open(state: &mut AppState) -> IntentResult {
+/// Handles `SidebarFocus` — enters sidebar scope.
+pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
+    use crate::protocol::Mode;
+    state.frontend.sidebar.origin_scope = Some(match state.frontend.mode {
+        Mode::Input => crate::feat::ui::sidebar::state::SidebarOriginScope::Input,
+        _ => crate::feat::ui::sidebar::state::SidebarOriginScope::Normal,
+    });
     state.frontend.tui_signals.pinned_pane_open = true;
     IntentResult::empty()
 }
 
-/// Handles `PinnedPanelClose` — sets the close signal.
-pub fn handle_close(state: &mut AppState) -> IntentResult {
+/// Handles `SidebarLeave` — returns to origin scope.
+pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
     state.frontend.tui_signals.pinned_pane_close = true;
     IntentResult::empty()
 }
 
-/// Handles `PinnedPanelSelectDown` — moves selection to the next pinned entry.
-pub fn handle_select_down(state: &mut AppState) -> IntentResult {
+/// Handles `SidebarMoveDown` — delegates to pins section.
+pub fn handle_sidebar_move_down(state: &mut AppState) -> IntentResult {
     let sorted_ids = state.sorted_pinned_ids();
     state.frontend.pins.select_next(&sorted_ids);
     IntentResult::empty()
 }
 
-/// Handles `PinnedPanelSelectUp` — moves selection to the previous pinned entry.
-pub fn handle_select_up(state: &mut AppState) -> IntentResult {
+/// Handles `SidebarMoveUp` — delegates to pins section.
+pub fn handle_sidebar_move_up(state: &mut AppState) -> IntentResult {
     let sorted_ids = state.sorted_pinned_ids();
     state.frontend.pins.select_prev(&sorted_ids);
     IntentResult::empty()
 }
 
-/// Handles `PinnedPanelUnpin` — unpins the selected entry.
-pub fn handle_unpin(state: &mut AppState) -> IntentResult {
-    if validator::validate_unpin(state).is_err() {
+/// Handles `PinsUnpin`.
+pub fn handle_pins_unpin(state: &mut AppState) -> IntentResult {
+    if super::validator::validate_unpin(state).is_err() {
         return IntentResult::empty();
     }
-
     if let Some((session_id, entry_id)) = resolve_selected_entry_id(state) {
         IntentResult::with_commands(vec![Command::UnpinChatEntry {
             payload: UnpinChatEntry {
@@ -163,12 +158,11 @@ pub fn handle_unpin(state: &mut AppState) -> IntentResult {
     }
 }
 
-/// Handles `PinnedPanelPinTop/Bottom/Relative` — sets the selected entry's pin position.
-pub fn handle_pin(state: &mut AppState, position: PinPosition) -> IntentResult {
-    if validator::validate_pin_top(state).is_err() {
+/// Handles `PinsPinTop/Bottom/Relative`.
+pub fn handle_pins_pin(state: &mut AppState, position: PinPosition) -> IntentResult {
+    if super::validator::validate_pin(state).is_err() {
         return IntentResult::empty();
     }
-
     if let Some((session_id, entry_id)) = resolve_selected_entry_id(state) {
         IntentResult::with_commands(vec![Command::PinChatEntry {
             payload: PinChatEntry {
@@ -182,27 +176,22 @@ pub fn handle_pin(state: &mut AppState, position: PinPosition) -> IntentResult {
     }
 }
 
-/// Handles `PinnedPanelPinCycle` — rotates the selected entry's pin position.
-pub fn handle_pin_cycle(state: &mut AppState) -> IntentResult {
-    if validator::validate_pin_cycle(state).is_err() {
+/// Handles `PinsPinCycle`.
+pub fn handle_pins_pin_cycle(state: &mut AppState) -> IntentResult {
+    if super::validator::validate_pin_cycle(state).is_err() {
         return IntentResult::empty();
     }
-
     let sorted_ids = state.sorted_pinned_ids();
     let index = state.frontend.pins.selection_index(&sorted_ids);
-
     let mut pinned = state.active_session().pinned_entries();
     pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
-
     let Some(entry) = pinned.get(index) else {
         return IntentResult::empty();
     };
-
     let current = entry.pin_position.unwrap_or(PinPosition::Relative);
     let next = cycle_position(current);
     let session_id = state.session.active_session.clone();
     let entry_id = entry.id.clone();
-
     IntentResult::with_commands(vec![Command::PinChatEntry {
         payload: PinChatEntry {
             session_id,
@@ -391,28 +380,15 @@ mod tests {
         state
     }
 
-    // --- Bridge handler tests ---
+    // --- Sidebar handler tests ---
 
     #[rstest::rstest]
-    fn toggle_sets_signal() {
+    fn sidebar_focus_sets_open_signal() {
         // Given a default state.
         let mut state = AppState::default();
 
-        // When handling toggle.
-        let result = handle_toggle(&mut state);
-
-        // Then the toggle signal is set.
-        assert!(state.frontend.tui_signals.pinned_pane_toggle);
-        assert!(result.commands.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn open_sets_signal() {
-        // Given a default state.
-        let mut state = AppState::default();
-
-        // When handling open.
-        let result = handle_open(&mut state);
+        // When handling sidebar focus.
+        let result = handle_sidebar_focus(&mut state);
 
         // Then the open signal is set.
         assert!(state.frontend.tui_signals.pinned_pane_open);
@@ -420,12 +396,12 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn close_sets_signal() {
+    fn sidebar_leave_sets_close_signal() {
         // Given a default state.
         let mut state = AppState::default();
 
-        // When handling close.
-        let result = handle_close(&mut state);
+        // When handling sidebar leave.
+        let result = handle_sidebar_leave(&mut state);
 
         // Then the close signal is set.
         assert!(state.frontend.tui_signals.pinned_pane_close);
@@ -433,12 +409,12 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn select_down_moves_selection() {
+    fn sidebar_move_down_moves_selection() {
         // Given a state with 3 pinned entries.
         let mut state = state_with_pinned(3);
 
-        // When handling select down.
-        let result = handle_select_down(&mut state);
+        // When handling sidebar move down.
+        let result = handle_sidebar_move_down(&mut state);
 
         // Then selection moved.
         let sorted_ids = state.sorted_pinned_ids();
@@ -447,14 +423,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn select_up_moves_selection() {
+    fn sidebar_move_up_moves_selection() {
         // Given a state with 3 pinned entries at index 1.
         let mut state = state_with_pinned(3);
         let sorted_ids = state.sorted_pinned_ids();
         state.frontend.pins.select_next(&sorted_ids);
 
-        // When handling select up.
-        let result = handle_select_up(&mut state);
+        // When handling sidebar move up.
+        let result = handle_sidebar_move_up(&mut state);
 
         // Then selection moved back.
         let sorted_ids = state.sorted_pinned_ids();
@@ -463,12 +439,12 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn unpin_returns_command() {
+    fn pins_unpin_returns_command() {
         // Given a state with pinned entries.
         let mut state = state_with_pinned(2);
 
-        // When handling unpin.
-        let result = handle_unpin(&mut state);
+        // When handling pins unpin.
+        let result = handle_pins_unpin(&mut state);
 
         // Then an UnpinChatEntry command is returned.
         assert!(
@@ -480,24 +456,24 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn unpin_noop_when_empty() {
+    fn pins_unpin_noop_when_empty() {
         // Given a state with no pinned entries.
         let mut state = AppState::default();
 
-        // When handling unpin.
-        let result = handle_unpin(&mut state);
+        // When handling pins unpin.
+        let result = handle_pins_unpin(&mut state);
 
         // Then no commands.
         assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
-    fn pin_top_returns_command() {
+    fn pins_pin_top_returns_command() {
         // Given a state with pinned entries.
         let mut state = state_with_pinned(1);
 
-        // When handling pin top.
-        let result = handle_pin(&mut state, PinPosition::Top);
+        // When handling pins pin top.
+        let result = handle_pins_pin(&mut state, PinPosition::Top);
 
         // Then a PinChatEntry command with Top is returned.
         let pin_cmd = result.commands.iter().find_map(|c| match c {
@@ -508,12 +484,12 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn pin_bottom_returns_command() {
+    fn pins_pin_bottom_returns_command() {
         // Given a state with pinned entries.
         let mut state = state_with_pinned(1);
 
-        // When handling pin bottom.
-        let result = handle_pin(&mut state, PinPosition::Bottom);
+        // When handling pins pin bottom.
+        let result = handle_pins_pin(&mut state, PinPosition::Bottom);
 
         // Then a PinChatEntry command with Bottom is returned.
         let pin_cmd = result.commands.iter().find_map(|c| match c {
@@ -524,12 +500,12 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn pin_relative_returns_command() {
+    fn pins_pin_relative_returns_command() {
         // Given a state with pinned entries.
         let mut state = state_with_pinned(1);
 
-        // When handling pin relative.
-        let result = handle_pin(&mut state, PinPosition::Relative);
+        // When handling pins pin relative.
+        let result = handle_pins_pin(&mut state, PinPosition::Relative);
 
         // Then a PinChatEntry command with Relative is returned.
         let pin_cmd = result.commands.iter().find_map(|c| match c {
@@ -540,7 +516,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn pin_cycle_rotates_top_to_bottom() {
+    fn pins_pin_cycle_rotates_top_to_bottom() {
         // Given a pinned entry at Top.
         let mut state = AppState::default();
         let entry = ChatEntry::user("entry");
@@ -552,8 +528,8 @@ mod tests {
         let sorted_ids = state.sorted_pinned_ids();
         state.frontend.pins.select_by_id(sorted_ids[0].clone());
 
-        // When handling pin cycle.
-        let result = handle_pin_cycle(&mut state);
+        // When handling pins pin cycle.
+        let result = handle_pins_pin_cycle(&mut state);
 
         // Then a PinChatEntry command with Bottom is returned.
         let pin_cmd = result.commands.iter().find_map(|c| match c {
@@ -564,19 +540,19 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn pin_cycle_noop_when_empty() {
+    fn pins_pin_cycle_noop_when_empty() {
         // Given a state with no pinned entries.
         let mut state = AppState::default();
 
-        // When handling pin cycle.
-        let result = handle_pin_cycle(&mut state);
+        // When handling pins pin cycle.
+        let result = handle_pins_pin_cycle(&mut state);
 
         // Then no commands.
         assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
-    fn pin_top_noop_when_no_selection() {
+    fn pins_pin_top_noop_when_no_selection() {
         // Given a state with pinned entries but no selection.
         let mut state = AppState::default();
         let entry = ChatEntry::user("entry");
@@ -587,8 +563,8 @@ mod tests {
             .pin_entry(&entry_id, PinPosition::Top);
         // Don't select anything.
 
-        // When handling pin top.
-        let result = handle_pin(&mut state, PinPosition::Top);
+        // When handling pins pin top.
+        let result = handle_pins_pin(&mut state, PinPosition::Top);
 
         // Then no commands.
         assert!(result.commands.is_empty());
@@ -751,7 +727,10 @@ mod tests {
         let bot_pos = combined
             .find("bottom entry")
             .expect("should contain bottom entry");
-        assert!(top_pos < rel_pos, "TOP entry should appear before REL entry");
+        assert!(
+            top_pos < rel_pos,
+            "TOP entry should appear before REL entry"
+        );
         assert!(
             rel_pos < bot_pos,
             "REL entry should appear before BOT entry"
