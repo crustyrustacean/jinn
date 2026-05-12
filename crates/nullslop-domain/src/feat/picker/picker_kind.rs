@@ -23,10 +23,10 @@ pub enum PickerKind {
 impl std::fmt::Display for PickerKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Provider => write!(f, "provider"),
+            Self::Provider => write!(f, "models"),
             Self::ContextAssembly => write!(f, "context-assembly"),
-            Self::Keymap => write!(f, "keymap"),
-            Self::Session => write!(f, "session"),
+            Self::Keymap => write!(f, "keybinds"),
+            Self::Session => write!(f, "sessions"),
         }
     }
 }
