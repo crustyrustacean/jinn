@@ -183,7 +183,7 @@ impl std::fmt::Display for Intent {
             Intent::EnterNormalMode => write!(f, "enter normal mode"),
             Intent::ToggleWhichkey => write!(f, "toggle which-key"),
             Intent::NormalEscape => write!(f, "escape"),
-            Intent::OpenPicker { kind } => write!(f, "open {kind} picker"),
+            Intent::OpenPicker { kind } => write!(f, "search {kind}"),
             Intent::PickerInsertChar { ch } => write!(f, "picker insert '{ch}'"),
             Intent::PickerBackspace => write!(f, "picker backspace"),
             Intent::PickerConfirm => write!(f, "picker confirm"),

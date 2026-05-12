@@ -30,25 +30,25 @@ fn g_shows_in_which_key_with_general_description() {
 }
 
 #[rstest::rstest]
-fn gmp_produces_open_picker_provider() {
+fn leader_sm_produces_open_picker_provider() {
     // Given the keymap.
     let keymap = init();
 
-    // When looking up 'g' then 'm' then 'p'.
-    let g_key = KeyEvent {
-        key: Key::Char('g'),
+    // When looking up '<leader>' then 's' then 'm'.
+    let space_key = KeyEvent {
+        key: Key::Char(' '),
+        modifiers: Modifiers::none(),
+    };
+    let s_key = KeyEvent {
+        key: Key::Char('s'),
         modifiers: Modifiers::none(),
     };
     let m_key = KeyEvent {
         key: Key::Char('m'),
         modifiers: Modifiers::none(),
     };
-    let p_key = KeyEvent {
-        key: Key::Char('p'),
-        modifiers: Modifiers::none(),
-    };
 
-    let node = keymap.get_node_at_path(&[g_key, m_key, p_key]);
+    let node = keymap.get_node_at_path(&[space_key, s_key, m_key]);
 
     // Then it's a leaf with the OpenPicker Provider intent.
     assert!(node.is_some());
@@ -61,7 +61,7 @@ fn gmp_produces_open_picker_provider() {
             "expected OpenPicker Provider, got {cmd:?}"
         );
     } else {
-        panic!("Expected leaf node for 'gmp'");
+        panic!("Expected leaf node for '<leader>sm'");
     }
 }
 
@@ -543,25 +543,25 @@ fn dashboard_uppercase_g_produces_dashboard_select_last() {
 }
 
 #[rstest::rstest]
-fn gcs_produces_open_picker_context_assembly() {
+fn leader_sc_produces_open_picker_context_assembly() {
     // Given the keymap.
     let keymap = init();
 
-    // When looking up 'g' then 'c' then 's'.
-    let g_key = KeyEvent {
-        key: Key::Char('g'),
-        modifiers: Modifiers::none(),
-    };
-    let c_key = KeyEvent {
-        key: Key::Char('c'),
+    // When looking up '<leader>' then 's' then 'c'.
+    let space_key = KeyEvent {
+        key: Key::Char(' '),
         modifiers: Modifiers::none(),
     };
     let s_key = KeyEvent {
         key: Key::Char('s'),
         modifiers: Modifiers::none(),
     };
+    let c_key = KeyEvent {
+        key: Key::Char('c'),
+        modifiers: Modifiers::none(),
+    };
 
-    let node = keymap.get_node_at_path(&[g_key, c_key, s_key]);
+    let node = keymap.get_node_at_path(&[space_key, s_key, c_key]);
 
     // Then it's a leaf with the OpenPicker ContextAssembly intent.
     assert!(node.is_some());
@@ -574,7 +574,7 @@ fn gcs_produces_open_picker_context_assembly() {
             "expected OpenPicker ContextAssembly, got {cmd:?}"
         );
     } else {
-        panic!("Expected leaf node for 'gcs'");
+        panic!("Expected leaf node for '<leader>sc'");
     }
 }
 
@@ -671,20 +671,20 @@ fn collect_bindings_for_scope_finds_multi_key_sequence() {
 }
 
 #[rstest::rstest]
-fn collect_bindings_for_scope_finds_three_key_sequence() {
+fn collect_bindings_for_scope_finds_leader_key_sequence() {
     // Given the keymap.
     let keymap = init();
 
     // When collecting bindings for Normal scope.
     let entries = collect_bindings_for_scope(&keymap, &Scope::Normal);
 
-    // Then 'gmp' (open provider picker) is present.
-    let gmp_entry = entries.iter().find(|e| e.key_sequence == "gmp");
+    // Then 'Spacesm' (search models) is present.
+    let sm_entry = entries.iter().find(|e| e.key_sequence == "Spacesm");
     assert!(
-        gmp_entry.is_some(),
-        "'gmp' should be in Normal scope bindings"
+        sm_entry.is_some(),
+        "'Spacesm' should be in Normal scope bindings"
     );
-    let entry = gmp_entry.unwrap();
+    let entry = sm_entry.unwrap();
     assert!(
         matches!(entry.command, Intent::OpenPicker { .. }),
         "expected OpenPicker, got {:?}",
