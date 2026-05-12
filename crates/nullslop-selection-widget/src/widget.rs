@@ -12,7 +12,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::{PickerItem, SelectionState};
 
@@ -138,6 +138,9 @@ where
     /// Sets the cursor position for the filter input.
     pub fn render(self, frame: &mut Frame<'_>, area: Rect) {
         let popup_area = compute_popup_rect(area);
+
+        // Clear the popup area so content behind it doesn't show through.
+        frame.render_widget(Clear, popup_area);
 
         // Bordered block with muted border.
         let block = Block::default()
@@ -523,6 +526,50 @@ mod tests {
                 "second result row should be empty/padded"
             );
         }
+    }
+
+    #[rstest::rstest]
+    fn render_clears_popup_background() {
+        // Given a selection state with items and a pre-filled buffer.
+        let state = SelectionState::with_items(make_items(&["test"]));
+        let (mut terminal, _) = setup_term(80, 24);
+
+        // Pre-fill the buffer with 'X' characters so we can verify clearing.
+        terminal.draw(|frame| {
+            let area = frame.area();
+            let x_text = "X".repeat(area.width as usize);
+            for row in 0..area.height {
+                frame.render_widget(
+                    ratatui::widgets::Paragraph::new(x_text.clone()),
+                    ratatui::layout::Rect::new(0, row, area.width, 1),
+                );
+            }
+        }).unwrap();
+
+        // When rendering the widget.
+        terminal
+            .draw(|frame| {
+                let widget = SelectionWidget::new(&state);
+                widget.render(frame, frame.area());
+            })
+            .unwrap();
+
+        // Then the popup interior cells are cleared (not 'X').
+        let buffer = terminal.backend().buffer().clone();
+        let popup = compute_popup_rect(Rect::new(0, 0, 80, 24));
+        let inner = {
+            let b = Block::default().borders(Borders::ALL);
+            b.inner(popup)
+        };
+        // Check a cell in the middle of the inner area — should be space, not 'X'.
+        let mid_x = inner.x + inner.width / 2;
+        let mid_y = inner.y + inner.height / 2;
+        let cell = buffer.cell((mid_x, mid_y)).expect("mid cell");
+        assert_ne!(
+            cell.symbol(),
+            "X",
+            "popup interior should be cleared, not showing previous content"
+        );
     }
 
     #[rstest::rstest]
