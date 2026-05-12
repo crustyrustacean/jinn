@@ -9,8 +9,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::protocol::LlmMessage;
 use crate::feat::tools::tool_types::ToolCall;
+use crate::protocol::LlmMessage;
 use error_stack::Report;
 use futures::stream;
 

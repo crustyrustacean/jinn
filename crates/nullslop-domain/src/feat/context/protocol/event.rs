@@ -2,10 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::EventMsg;
-use crate::protocol::SessionId;
 use crate::feat::context::protocol::strategy_id::PromptStrategyId;
 use crate::feat::provider::llm_message::LlmMessage;
+use crate::protocol::EventMsg;
+use crate::protocol::SessionId;
 
 /// Emitted when a prompt has been assembled and is ready to send.
 ///

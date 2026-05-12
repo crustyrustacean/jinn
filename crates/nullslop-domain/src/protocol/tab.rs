@@ -119,10 +119,7 @@ mod tests {
     fn labels_are_distinct() {
         // Given all tabs.
         // When collecting labels from each tab.
-        let labels: Vec<&str> = ActiveTab::all()
-            .iter()
-            .map(ActiveTab::label)
-            .collect();
+        let labels: Vec<&str> = ActiveTab::all().iter().map(ActiveTab::label).collect();
 
         // Then no two labels are the same.
         for i in 0..labels.len() {

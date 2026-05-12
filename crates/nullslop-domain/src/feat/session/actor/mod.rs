@@ -22,7 +22,9 @@ mod handlers;
 use super::SessionStoreService;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::common::state::State;
-use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+use crate::feat::chat_input::protocol::command::{
+    EnqueueUserMessage, PushChatEntry, SetChatInputText,
+};
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamToken};
@@ -168,22 +170,25 @@ mod tests {
     use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink};
     use crate::common::app_state::AppState;
     use crate::common::state::State;
-    use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+    use crate::feat::chat_input::protocol::command::{
+        EnqueueUserMessage, PushChatEntry, SetChatInputText,
+    };
     // no context imports needed in tests currently
     use super::super::session_store::{JsonlSessionStore, SessionStoreService};
+    use crate::SessionSaveRequested;
     use crate::common::services::Services;
     use crate::feat::provider::protocol::command::SendMessage;
-    use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
+    use crate::feat::provider::protocol::event::{
+        StreamCompleted, StreamCompletedReason, StreamToken,
+    };
     use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
     use crate::feat::tools::protocol::command::PushToolResult;
     use crate::feat::tools::protocol::event::{
         ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     };
     use crate::protocol::{
-        ChatEntry, ChatEntryKind, Command, Event, PromptStrategyId, SessionId,
-        ToolCall, ToolResult,
+        ChatEntry, ChatEntryKind, Command, Event, PromptStrategyId, SessionId, ToolCall, ToolResult,
     };
-    use crate::SessionSaveRequested;
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;

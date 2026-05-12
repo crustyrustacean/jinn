@@ -141,10 +141,10 @@ mod tests {
     use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::state::State;
+    use crate::feat::context::protocol::event::PromptAssembled;
     use crate::protocol::ChatEntry;
     use crate::protocol::PinPosition;
     use crate::protocol::PromptStrategyId;
-    use crate::feat::context::protocol::event::PromptAssembled;
 
     use super::*;
 

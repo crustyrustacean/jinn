@@ -85,17 +85,23 @@ pub use protocol::{
     ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, CoreNotification, Event,
     Intent, IntentResult, Key, KeyEvent, Mode, Modifiers, PickerKind, PromptTemplate,
 };
-pub use protocol::{CommandMsg, CommandName, EventMsg, EventTypeName, KeymapEntry, PickerEntry, StrategyEntry};
+pub use protocol::{
+    CommandMsg, CommandName, EventMsg, EventTypeName, KeymapEntry, PickerEntry, StrategyEntry,
+};
 
 // Re-export domain types from their canonical locations
 pub use common::actor::protocol::command::ProceedWithShutdown;
 pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
-pub use feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+pub use feat::chat_input::protocol::command::{
+    EnqueueUserMessage, PushChatEntry, SetChatInputText,
+};
 pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
 pub use feat::context::protocol::command::{
     AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
-pub use feat::context::protocol::event::{PromptAssembled, PromptStrategySwitched, StrategyStateUpdated};
+pub use feat::context::protocol::event::{
+    PromptAssembled, PromptStrategySwitched, StrategyStateUpdated,
+};
 pub use feat::context::protocol::strategy_id::PromptStrategyId;
 pub use feat::provider::llm_message::LlmMessage;
 pub use feat::provider::protocol::command::{
@@ -111,7 +117,9 @@ pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;
 pub use feat::session::protocol::session_load_requested::SessionLoadRequested;
 pub use feat::session::protocol::session_new::SessionNew;
 pub use feat::session::protocol::session_save_requested::SessionSaveRequested;
-pub use feat::tools::protocol::command::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
+pub use feat::tools::protocol::command::{
+    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools,
+};
 pub use feat::tools::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolUseStarted, ToolsRegistered,

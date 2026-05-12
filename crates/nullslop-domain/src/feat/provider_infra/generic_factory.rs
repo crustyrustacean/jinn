@@ -5,8 +5,8 @@
 //! is provided at construction time (resolved from env vars at startup), not
 //! read from the environment.
 
-use crate::protocol::LlmMessage;
 use crate::feat::tools::tool_types::ToolDefinition;
+use crate::protocol::LlmMessage;
 use error_stack::{Report, ResultExt as _};
 use futures::StreamExt;
 use llm::builder::{LLMBackend, LLMBuilder};

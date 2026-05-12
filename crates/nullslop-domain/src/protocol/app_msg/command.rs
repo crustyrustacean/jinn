@@ -12,20 +12,24 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::common::actor::command_msg::CommandMsg;
 use crate::common::actor::protocol::command::ProceedWithShutdown;
-use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+use crate::feat::chat_input::protocol::command::{
+    EnqueueUserMessage, PushChatEntry, SetChatInputText,
+};
 use crate::feat::context::protocol::command::{
     AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
-pub use crate::common::actor::command_msg::CommandMsg;
 use crate::feat::provider::protocol::command::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
     SendToLlmProvider,
 };
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use crate::feat::tools::protocol::command::{
+    ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools,
+};
 use crate::protocol::system::LoadPickerEntries;
-use crate::feat::tools::protocol::command::{ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools};
 
 /// Every domain command the actor system can receive.
 ///

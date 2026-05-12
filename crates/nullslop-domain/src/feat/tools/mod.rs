@@ -25,7 +25,9 @@ use crate::common::actor::{
 };
 use crate::common::actor_host::spawn_actor;
 use crate::feat::tools::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
-use crate::feat::tools::protocol::event::{ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered};
+use crate::feat::tools::protocol::event::{
+    ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
+};
 use crate::feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
 

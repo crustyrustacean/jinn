@@ -2,10 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::EventMsg;
-use crate::protocol::SessionId;
 use crate::feat::context::protocol::prompt_template::PromptTemplate;
 use crate::feat::tools::tool_types::ToolCall;
+use crate::protocol::EventMsg;
+use crate::protocol::SessionId;
 
 /// Why the stream completed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
