@@ -1,6 +1,7 @@
 //! Event handlers — process streaming and tool call events.
 
 use crate::feat::context::protocol::event::PromptAssembled;
+use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::provider::protocol::event::{
     ModelsRefreshed, StreamCompleted, StreamCompletedReason, StreamToken,
@@ -14,12 +15,13 @@ use super::super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
     /// PromptAssembled (event): transition session from assembling to streaming,
-    /// emit SendToLlmProvider.
+    /// count input tokens, record in ledger, emit SendToLlmProvider.
     pub(in crate::feat::session::session_actor) fn handle_prompt_assembled(
         &self,
         payload: &PromptAssembled,
         ctx: &crate::common::actor::ActorContext,
     ) {
+        let input_tokens: usize;
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
@@ -29,6 +31,30 @@ impl SessionPersistenceActor {
             if session.is_sending() {
                 session.finish_sending();
             }
+
+            // Count tokens in all assembled messages.
+            input_tokens = payload
+                .messages
+                .iter()
+                .map(|msg| match msg {
+                    crate::protocol::LlmMessage::System { content }
+                    | crate::protocol::LlmMessage::User { content } => self.counter.count(content),
+                    crate::protocol::LlmMessage::Assistant { content, .. } => {
+                        self.counter.count(content)
+                    }
+                    crate::protocol::LlmMessage::Tool { content, .. } => {
+                        self.counter.count(content)
+                    }
+                })
+                .sum();
+
+            session.push_token_record(crate::feat::session::token_stats::TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: input_tokens as u32,
+                tokens_received: 0,
+            });
+            session.set_context_size(input_tokens as u32);
+
             session.begin_streaming();
         }
 
@@ -53,7 +79,7 @@ impl SessionPersistenceActor {
         session.append_stream_token(&event.token);
     }
 
-    /// Marks the session's stream as finished.
+    /// Marks the session's stream as finished and records output tokens.
     pub(in crate::feat::session::session_actor) fn on_stream_completed(
         &self,
         event: &StreamCompleted,
@@ -62,6 +88,13 @@ impl SessionPersistenceActor {
         let session = state.session_mut_or_create(&event.session_id);
         if event.reason == StreamCompletedReason::Canceled {
             session.push_entry(ChatEntry::error("Cancelled"));
+        } else if let Some(ref content) = event.assistant_content {
+            let output_tokens = self.counter.count(content) as u32;
+            // Finalize the last record if one exists (i.e., PromptAssembled fired first).
+            // If no record exists (e.g., session restored mid-stream), skip silently.
+            if !session.token_ledger().is_empty() {
+                session.finalize_last_token_record(output_tokens);
+            }
         }
         session.finish_streaming();
     }
