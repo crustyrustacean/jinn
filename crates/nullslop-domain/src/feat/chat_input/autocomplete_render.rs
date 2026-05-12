@@ -22,7 +22,7 @@ pub const AUTOCOMPLETE_NO_MATCHES: &str = "<no prompts found>";
 ///
 /// The popup is a transient visual element — not a `UiElement`. It reads autocomplete
 /// state directly from `AppState` and renders a bordered box with match entries.
-/// The popup is horizontally anchored at the `$` token's screen column and sits
+/// The popup is horizontally anchored at the `#` token's screen column and sits
 /// directly above the input box.
 pub fn render_autocomplete_popup(frame: &mut Frame<'_>, input_area: Rect, state: &AppState) {
     let input = state.active_chat_input();
@@ -76,7 +76,7 @@ pub fn render_autocomplete_popup(frame: &mut Frame<'_>, input_area: Rect, state:
             .min(input_area.y)
     };
 
-    // Position: above the input box, horizontally anchored at the $.
+    // Position: above the input box, horizontally anchored at the #.
     let popup_y = input_area.y.saturating_sub(popup_height);
     let popup_x = anchor_x.min(term_width.saturating_sub(popup_width));
 
