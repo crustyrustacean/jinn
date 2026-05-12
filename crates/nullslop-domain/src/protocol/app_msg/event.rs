@@ -27,6 +27,7 @@ use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
 };
 use crate::feat::session::protocol::session_save_requested::SessionSaveRequested;
+use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolUseStarted, ToolsRegistered,
@@ -198,6 +199,13 @@ pub enum Event {
         #[serde(flatten)]
         payload: SessionSaveRequested,
     },
+    /// Agent skills have been scanned and loaded.
+    #[serde(rename = "skills_loaded")]
+    SkillsLoaded {
+        /// The loaded skills and optional error.
+        #[serde(flatten)]
+        payload: SkillsLoaded,
+    },
 }
 
 impl Event {
@@ -228,6 +236,7 @@ impl Event {
             Self::StrategyStateUpdated { .. } => Some(StrategyStateUpdated::TYPE_NAME),
 
             Self::SessionSaveRequested { .. } => Some(SessionSaveRequested::TYPE_NAME),
+            Self::SkillsLoaded { .. } => Some(SkillsLoaded::TYPE_NAME),
         }
     }
 }
@@ -294,6 +303,10 @@ mod tests {
         history: vec![ChatEntry::user("hello")],
         active_strategy: crate::PromptStrategyId::passthrough(),
         blobs: std::collections::HashMap::new(),
+    } })]
+    #[case::skills_loaded(Event::SkillsLoaded { payload: crate::feat::skills::skills_scan_actor::SkillsLoaded {
+        skills: vec![],
+        error: None,
     } })]
     fn event_roundtrip_all_variants(#[case] event: Event) {
         // Given an event variant.
