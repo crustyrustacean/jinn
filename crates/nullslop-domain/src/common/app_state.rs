@@ -121,6 +121,18 @@ impl Default for ShutdownCoordinatorState {
     }
 }
 
+/// A transient status bar notification with auto-expiry.
+///
+/// Created with a timestamp and lazily checked for expiry during rendering.
+/// No background timer — the renderer checks elapsed time each frame.
+#[derive(Debug)]
+pub struct StatusNotification {
+    /// The notification message text.
+    pub message: String,
+    /// When this notification was created.
+    pub created_at: std::time::Instant,
+}
+
 /// Frontend / UI state — owned by the IntentHandler (main thread).
 ///
 /// Written to by `IntentHandler` and various UI elements (read-only).
@@ -183,6 +195,10 @@ pub struct FrontendState {
     /// Context strategy picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (strategy picker navigation).
     pub context_strategy_picker: nullslop_selection_widget::SelectionState<StrategyEntry>,
+
+    /// Transient status bar notification (auto-dismisses after 3 seconds).
+    /// OWNER: TUI render loop (sets on clipboard copy), tick handler (clears expired).
+    pub status_notification: Option<StatusNotification>,
 }
 
 impl Default for FrontendState {
@@ -202,6 +218,34 @@ impl Default for FrontendState {
             keymap_picker_origin_scope: None,
             session_picker: nullslop_selection_widget::SelectionState::new(),
             context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
+            status_notification: None,
+        }
+    }
+}
+
+impl FrontendState {
+    /// Sets a transient status bar notification.
+    pub fn set_status_notification(&mut self, message: impl Into<String>) {
+        self.status_notification = Some(StatusNotification {
+            message: message.into(),
+            created_at: std::time::Instant::now(),
+        });
+    }
+
+    /// Returns the active notification message if it hasn't expired (3 seconds).
+    pub fn active_status_notification(&self) -> Option<&str> {
+        self.status_notification
+            .as_ref()
+            .filter(|n| n.created_at.elapsed().as_secs() < 3)
+            .map(|n| n.message.as_str())
+    }
+
+    /// Clears the notification if it has expired (3 seconds).
+    pub fn clear_expired_notification(&mut self) {
+        if let Some(ref n) = self.status_notification {
+            if n.created_at.elapsed().as_secs() >= 3 {
+                self.status_notification = None;
+            }
         }
     }
 }
@@ -369,5 +413,62 @@ mod tests {
         // Then the index is 0 and history has one entry.
         assert_eq!(index, 0);
         assert_eq!(data.active_session().history().len(), 1);
+    }
+
+    // --- StatusNotification tests ---
+
+    #[rstest::rstest]
+    fn set_status_notification_stores_message() {
+        // Given a default FrontendState.
+        let mut state = FrontendState::default();
+
+        // When setting a notification.
+        state.set_status_notification("Copied to clipboard");
+
+        // Then active_status_notification returns the message.
+        assert_eq!(
+            state.active_status_notification(),
+            Some("Copied to clipboard")
+        );
+    }
+
+    #[rstest::rstest]
+    fn active_status_notification_returns_none_when_unset() {
+        // Given a default FrontendState.
+        let state = FrontendState::default();
+
+        // When checking for an active notification.
+        // Then it returns None.
+        assert_eq!(state.active_status_notification(), None);
+    }
+
+    #[rstest::rstest]
+    fn clear_expired_notification_removes_when_old() {
+        // Given a FrontendState with a manually constructed expired notification.
+        let mut state = FrontendState::default();
+        state.status_notification = Some(StatusNotification {
+            message: "old".to_owned(),
+            // Created 10 seconds ago — expired.
+            created_at: std::time::Instant::now() - std::time::Duration::from_secs(10),
+        });
+
+        // When clearing expired notifications.
+        state.clear_expired_notification();
+
+        // Then the notification is removed.
+        assert!(state.status_notification.is_none());
+    }
+
+    #[rstest::rstest]
+    fn clear_expired_notification_keeps_when_fresh() {
+        // Given a FrontendState with a fresh notification.
+        let mut state = FrontendState::default();
+        state.set_status_notification("fresh");
+
+        // When clearing expired notifications.
+        state.clear_expired_notification();
+
+        // Then the notification is still present.
+        assert!(state.status_notification.is_some());
     }
 }
