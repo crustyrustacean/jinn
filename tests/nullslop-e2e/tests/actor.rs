@@ -127,6 +127,9 @@ fn create_actor_core(
     >();
     let orch_ref = ActorRef::new(orch_tx);
     let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
+    orch_ctx.set_data(nullslop_domain::State::new(
+        nullslop_domain::AppState::default(),
+    ));
     let orch_actor = ToolOrchestratorActor::activate(&mut orch_ctx);
     let orch_result = spawn_actor(
         "tool-orchestrator",
