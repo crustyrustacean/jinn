@@ -372,7 +372,7 @@ impl ChatInputBoxState {
     }
 
     /// Computes wrapped lines for the current buffer and wrap_width.
-    fn wrapped_lines(&self) -> Vec<super::wrap::WrappedLine> {
+    pub fn wrapped_lines(&self) -> Vec<super::wrap::WrappedLine> {
         super::wrap::wrap_text(&self.input_buffer, self.wrap_width)
     }
 
