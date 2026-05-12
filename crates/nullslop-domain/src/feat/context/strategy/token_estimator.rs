@@ -78,6 +78,56 @@ impl TokenEstimator for CharRatioEstimator {
     }
 }
 
+/// Counts tokens in text using a specific tokenizer.
+///
+/// Unlike [`TokenEstimator`] which is a rough heuristic for budget planning,
+/// [`TokenCounter`] produces counts suitable for recording in the session's
+/// immutable token ledger. Implementations may use real tokenizers (tiktoken)
+/// or simple heuristics.
+pub trait TokenCounter: Send + Sync {
+    /// Count the number of tokens in `text`.
+    fn count(&self, text: &str) -> usize;
+
+    /// The name of this counter, for debugging.
+    fn name(&self) -> &'static str;
+}
+
+/// Token counter using the `tiktoken` crate with a configurable encoding.
+///
+/// Wraps a `tiktoken::CoreBPE` encoder. The encoding is chosen at construction
+/// time and does not change — counts are deterministic for a given text input.
+/// This is important: once a count is recorded in the token ledger, it is
+/// immutable regardless of future model/tokenizer changes.
+pub struct TiktokenCounter {
+    encoder: &'static tiktoken::CoreBpe,
+    encoding_name: &'static str,
+}
+
+impl TiktokenCounter {
+    /// Create a counter using the `o200k_base` encoding (GPT-4o, o1, o3).
+    ///
+    /// This is a reasonable default for most LLM interactions.
+    #[must_use]
+    pub fn o200k_base() -> Self {
+        let encoder = tiktoken::get_encoding("o200k_base")
+            .expect("o200k_base encoding should always be available");
+        Self {
+            encoder,
+            encoding_name: "o200k_base",
+        }
+    }
+}
+
+impl TokenCounter for TiktokenCounter {
+    fn count(&self, text: &str) -> usize {
+        self.encoder.count(text)
+    }
+
+    fn name(&self) -> &'static str {
+        self.encoding_name
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::protocol::{ChatEntry, PinPosition};
@@ -213,5 +263,52 @@ mod tests {
         // Then pinned actor entries contribute tokens matching the formatted output.
         assert_eq!(tokens, estimator.estimate("[Actor: echo] HELLO"));
         assert!(tokens > 0);
+    }
+
+    // --- TiktokenCounter tests ---
+
+    #[rstest::rstest]
+    fn tiktoken_counter_counts_hello_world() {
+        // Given a tiktoken counter with o200k_base.
+        let counter = TiktokenCounter::o200k_base();
+
+        // When counting "hello world".
+        let count = counter.count("hello world");
+
+        // Then it returns 2 tokens.
+        assert_eq!(count, 2);
+    }
+
+    #[rstest::rstest]
+    fn tiktoken_counter_returns_nonzero_for_empty_string() {
+        // Given a tiktoken counter.
+        let counter = TiktokenCounter::o200k_base();
+
+        // When counting an empty string.
+        let count = counter.count("");
+
+        // Then it returns 0.
+        assert_eq!(count, 0);
+    }
+
+    #[rstest::rstest]
+    fn tiktoken_counter_name_is_o200k_base() {
+        // Given a tiktoken counter.
+        let counter = TiktokenCounter::o200k_base();
+
+        // Then its name is "o200k_base".
+        assert_eq!(counter.name(), "o200k_base");
+    }
+
+    #[rstest::rstest]
+    fn tiktoken_counter_counts_multibyte_characters() {
+        // Given a tiktoken counter.
+        let counter = TiktokenCounter::o200k_base();
+
+        // When counting Japanese text.
+        let count = counter.count("日本語テスト");
+
+        // Then it returns a nonzero count.
+        assert!(count > 0);
     }
 }

@@ -123,6 +123,9 @@ proc-macro2 = "1"
 # UUID
 uuid = { version = "1.23.1", features = ["v4", "serde"] }
 
+# Tokenization
+tiktoken = "3"
+
 # Testing (e2e)
 cucumber = "0.23"
 

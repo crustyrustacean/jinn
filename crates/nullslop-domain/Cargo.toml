@@ -28,6 +28,7 @@ dirs = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 unicode-segmentation = { workspace = true }
+tiktoken = { workspace = true }
 textwrap = { workspace = true }
 throbber-widgets-tui = { workspace = true }
 humantime = { workspace = true }
