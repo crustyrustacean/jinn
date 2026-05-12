@@ -391,6 +391,7 @@ fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::App
         }
         Some(PickerKind::Keymap) => render_keymap_picker(frame, area, state),
         Some(PickerKind::Session) => render_session_picker(frame, area, state),
+        Some(PickerKind::Persona) => render_persona_picker(frame, area, state),
         None => {}
     }
 }
@@ -417,6 +418,11 @@ fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_doma
 /// Renders the session picker overlay (delegates to slice).
 fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
     nullslop_domain::feat::session::render::render_session_picker(frame, area, state);
+}
+
+/// Renders the persona picker overlay (delegates to domain render).
+fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
+    nullslop_domain::feat::picker::render::render_persona_picker(frame, area, state);
 }
 
 /// Renders a "terminal too small" message.

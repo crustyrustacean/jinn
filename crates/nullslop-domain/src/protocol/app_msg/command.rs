@@ -18,8 +18,8 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::context::protocol::command::{
-    AssemblePrompt, LoadContextStrategyPickerEntries, PinChatEntry, RestoreStrategyState,
-    SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
+    RescanPersonas, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
 use crate::feat::provider::protocol::command::{
     CancelStream, LoadProviderPickerEntries, ProviderSwitch, RefreshModels, RescanPromptTemplates,
@@ -201,6 +201,18 @@ pub enum Command {
     /// Scan the agent skills directory and reload skills.
     #[serde(rename = "scan_skills")]
     ScanSkills,
+    /// Rescan the personas directory and reload persona files.
+    #[serde(rename = "rescan_personas")]
+    RescanPersonas {
+        #[serde(flatten)]
+        payload: RescanPersonas,
+    },
+    /// Load entries for the persona picker.
+    #[serde(rename = "load_persona_picker_entries")]
+    LoadPersonaPickerEntries {
+        #[serde(flatten)]
+        payload: LoadPersonaPickerEntries,
+    },
 }
 
 impl Command {
@@ -235,6 +247,8 @@ impl Command {
             }
             Self::SessionLoadRequested { .. } => Some(SessionLoadRequested::NAME),
             Self::ScanSkills => Some(ScanSkills::NAME),
+            Self::RescanPersonas { .. } => Some(RescanPersonas::NAME),
+            Self::LoadPersonaPickerEntries { .. } => Some(LoadPersonaPickerEntries::NAME),
         }
     }
 }
@@ -301,6 +315,10 @@ impl std::fmt::Display for Command {
             }
             Command::SessionLoadRequested { .. } => write!(f, "session load requested"),
             Command::ScanSkills => write!(f, "scan skills"),
+            Command::RescanPersonas { .. } => write!(f, "rescan personas"),
+            Command::LoadPersonaPickerEntries { .. } => {
+                write!(f, "load persona picker entries")
+            }
         }
     }
 }
@@ -344,6 +362,8 @@ mod tests {
         session_id: SessionId::new(), byte_offset: 42u64,
     } })]
     #[case::scan_skills(Command::ScanSkills)]
+    #[case::rescan_personas(Command::RescanPersonas { payload: RescanPersonas })]
+    #[case::load_persona_picker_entries(Command::LoadPersonaPickerEntries { payload: LoadPersonaPickerEntries })]
     fn command_roundtrip_all_variants(#[case] cmd: Command) {
         // Given a command variant.
         let json = serde_json::to_string(&cmd).expect("serialize");

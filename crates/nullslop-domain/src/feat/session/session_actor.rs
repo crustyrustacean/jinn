@@ -167,7 +167,9 @@ impl SessionPersistenceActor {
             | Command::SwitchPromptStrategy { .. }
             | Command::RestoreStrategyState { .. }
             | Command::CancelToolBatch { .. }
-            | Command::ScanSkills => {}
+            | Command::ScanSkills
+            | Command::RescanPersonas { .. }
+            | Command::LoadPersonaPickerEntries { .. } => {}
         }
     }
 
