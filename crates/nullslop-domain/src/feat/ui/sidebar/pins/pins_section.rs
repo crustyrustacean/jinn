@@ -120,9 +120,15 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `SidebarLeave` — returns to origin scope.
+/// Handles `SidebarLeave` — restores origin scope and clears tracking.
 pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
-    state.frontend.sidebar.origin_scope = None;
+    use crate::protocol::Mode;
+    if let Some(origin) = state.frontend.sidebar.origin_scope.take() {
+        state.frontend.mode = match origin {
+            crate::feat::ui::sidebar::state::SidebarOriginScope::Input => Mode::Input,
+            crate::feat::ui::sidebar::state::SidebarOriginScope::Normal => Mode::Normal,
+        };
+    }
     IntentResult::empty()
 }
 
@@ -396,7 +402,7 @@ mod tests {
 
     #[rstest::rstest]
     fn sidebar_leave_clears_origin_scope() {
-        // Given a state with origin_scope set.
+        // Given a state with origin_scope set to Normal.
         let mut state = AppState::default();
         state.frontend.sidebar.origin_scope =
             Some(crate::feat::ui::sidebar::state::SidebarOriginScope::Normal);
@@ -407,6 +413,34 @@ mod tests {
         // Then origin_scope is cleared.
         assert!(state.frontend.sidebar.origin_scope.is_none());
         assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sidebar_leave_restores_normal_mode() {
+        // Given a state that entered sidebar from Normal mode.
+        let mut state = AppState::default();
+        state.frontend.sidebar.origin_scope =
+            Some(crate::feat::ui::sidebar::state::SidebarOriginScope::Normal);
+
+        // When handling sidebar leave.
+        handle_sidebar_leave(&mut state);
+
+        // Then mode is restored to Normal.
+        assert_eq!(state.frontend.mode, crate::protocol::Mode::Normal);
+    }
+
+    #[rstest::rstest]
+    fn sidebar_leave_restores_input_mode() {
+        // Given a state that entered sidebar from Input mode.
+        let mut state = AppState::default();
+        state.frontend.sidebar.origin_scope =
+            Some(crate::feat::ui::sidebar::state::SidebarOriginScope::Input);
+
+        // When handling sidebar leave.
+        handle_sidebar_leave(&mut state);
+
+        // Then mode is restored to Input.
+        assert_eq!(state.frontend.mode, crate::protocol::Mode::Input);
     }
 
     #[rstest::rstest]
