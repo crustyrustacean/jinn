@@ -29,7 +29,9 @@ use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPick
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::skills::skills_scan_actor::ScanSkills;
-use crate::feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
+use crate::feat::tools_actor::protocol::command::{
+    CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
+};
 
 /// Every domain command the actor system can receive.
 ///
@@ -150,6 +152,13 @@ pub enum Command {
         #[serde(flatten)]
         payload: ExecuteTool,
     },
+    /// Cancel all pending tool executions for a session.
+    #[serde(rename = "cancel_tool_batch")]
+    CancelToolBatch {
+        /// The cancellation payload.
+        #[serde(flatten)]
+        payload: CancelToolBatch,
+    },
     /// Proceed with shutdown after actor coordination.
     #[serde(rename = "proceed_with_shutdown")]
     ProceedWithShutdown {
@@ -216,6 +225,7 @@ impl Command {
             Self::RegisterTools { .. } => Some(RegisterTools::NAME),
             Self::ExecuteToolBatch { .. } => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool { .. } => Some(ExecuteTool::NAME),
+            Self::CancelToolBatch { .. } => Some(CancelToolBatch::NAME),
             Self::ProceedWithShutdown { .. } => Some(ProceedWithShutdown::NAME),
             Self::SessionLoadCompleted { .. } => Some(SessionLoadCompleted::NAME),
             Self::LoadProviderPickerEntries { .. } => Some(LoadProviderPickerEntries::NAME),
@@ -274,6 +284,7 @@ impl std::fmt::Display for Command {
                     payload.tool_call.name, payload.tool_call.id
                 )
             }
+            Command::CancelToolBatch { .. } => write!(f, "cancel tool batch"),
             Command::ProceedWithShutdown { payload } => {
                 write!(
                     f,
@@ -315,6 +326,7 @@ mod tests {
     #[case::register_tools(Command::RegisterTools { payload: RegisterTools { provider: "echo-actor".into(), definitions: vec![crate::ToolDefinition { name: "echo".into(), description: "echo".into(), parameters: serde_json::json!({}) }] } })]
     #[case::execute_tool_batch(Command::ExecuteToolBatch { payload: ExecuteToolBatch { session_id: SessionId::new(), tool_calls: vec![crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() }] } })]
     #[case::execute_tool(Command::ExecuteTool { payload: ExecuteTool { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
+    #[case::cancel_tool_batch(Command::CancelToolBatch { payload: CancelToolBatch { session_id: SessionId::new() } })]
     #[case::proceed_with_shutdown(Command::ProceedWithShutdown { payload: ProceedWithShutdown { completed: vec!["ext-a".into()], timed_out: vec!["ext-b".into()] } })]
     #[case::session_load_completed(Command::SessionLoadCompleted { payload: SessionLoadCompleted {
         session_id: SessionId::new(),

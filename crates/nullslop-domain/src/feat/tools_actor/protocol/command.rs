@@ -45,6 +45,17 @@ pub struct ExecuteTool {
     pub tool_call: ToolCall,
 }
 
+/// Cancel all pending tool executions for a session.
+///
+/// Sent by the LLM actor when a stream is cancelled while tool results
+/// are pending. Routed to the tool orchestrator.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("tool")]
+pub struct CancelToolBatch {
+    /// The session whose tool executions should be cancelled.
+    pub session_id: SessionId,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +119,23 @@ mod tests {
 
         // Then it matches.
         assert_eq!(back.tool_call.name, "echo");
+    }
+
+    #[rstest::rstest]
+    fn cancel_tool_batch_roundtrip() {
+        // Given a CancelToolBatch command.
+        let cmd = CancelToolBatch {
+            session_id: SessionId::new(),
+        };
+
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&cmd).expect("serialize");
+        let back: CancelToolBatch = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the session_id field is preserved.
+        assert_eq!(
+            cmd.session_id, back.session_id,
+            "session_id should roundtrip"
+        );
     }
 }

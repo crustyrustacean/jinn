@@ -122,6 +122,7 @@ impl ProviderActor {
             | Command::RegisterTools { .. }
             | Command::ExecuteToolBatch { .. }
             | Command::ExecuteTool { .. }
+            | Command::CancelToolBatch { .. }
             | Command::ProceedWithShutdown { .. }
             | Command::SessionLoadCompleted { .. }
             | Command::SessionLoadRequested { .. }
