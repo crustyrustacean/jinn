@@ -10,6 +10,7 @@ use crate::feat::provider_infra::NO_PROVIDER_ID;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 /// A display element that shows the active strategy and provider/model in the status bar.
@@ -44,9 +45,16 @@ impl UiElement<AppState> for StatusBarElement {
         let strategy_widget = Paragraph::new(left).style(style).alignment(Alignment::Left);
         frame.render_widget(strategy_widget, area);
 
-        let model_widget = Paragraph::new(model)
-            .style(style)
-            .alignment(Alignment::Right);
+        let notification = state.frontend.active_status_notification();
+        let right_line = if let Some(msg) = notification {
+            Line::from(vec![
+                Span::styled(msg, Style::default().fg(Color::Green)),
+                Span::styled(format!("  {model}"), style),
+            ])
+        } else {
+            Line::from(Span::styled(model, style))
+        };
+        let model_widget = Paragraph::new(right_line).alignment(Alignment::Right);
         frame.render_widget(model_widget, area);
     }
 }
@@ -64,7 +72,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::common::app_state::AppState;
+    use crate::common::app_state::{AppState, StatusNotification};
     use crate::feat::provider::ProviderState;
 
     #[rstest::rstest]
@@ -266,5 +274,118 @@ mod tests {
             .collect();
         assert!(row.starts_with("(Passthrough) "));
         assert!(!row.contains("\u{1f4cc}"));
+    }
+
+    #[rstest::rstest]
+    fn render_shows_notification_when_active() {
+        // Given a state with a notification and a model.
+        let mut element = StatusBarElement;
+        let mut state = AppState {
+            provider: ProviderState {
+                active_provider: "ollama/llama3".to_owned(),
+                ..ProviderState::default()
+            },
+            ..AppState::default()
+        };
+        state.frontend.set_status_notification("Copied to clipboard");
+        let (mut terminal, area) = setup_term(80, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row: String = (0..80)
+            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
+            .collect();
+        // Then the notification text appears in the right portion.
+        assert!(row.contains("Copied to clipboard"));
+        // And the model is still shown.
+        assert!(row.contains("(ollama)/llama3"));
+    }
+
+    #[rstest::rstest]
+    fn render_notification_uses_green_color() {
+        // Given a state with an active notification.
+        let mut element = StatusBarElement;
+        let mut state = AppState {
+            provider: ProviderState {
+                active_provider: "ollama/llama3".to_owned(),
+                ..ProviderState::default()
+            },
+            ..AppState::default()
+        };
+        state.frontend.set_status_notification("Copied!");
+        let (mut terminal, area) = setup_term(80, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+
+        // Find a cell in the notification text ("Copied!") that has green fg.
+        // The notification is right-aligned, so scan right side for 'C'.
+        let green_cell = (0..80)
+            .filter_map(|x| buffer.cell((x, 0)))
+            .find(|c| c.symbol() == "C" && c.fg == Color::Green);
+        assert!(green_cell.is_some(), "notification text should be green");
+    }
+
+    #[rstest::rstest]
+    fn render_no_notification_shows_model_only() {
+        // Given a state with no notification.
+        let mut element = StatusBarElement;
+        let state = AppState {
+            provider: ProviderState {
+                active_provider: "ollama/llama3".to_owned(),
+                ..ProviderState::default()
+            },
+            ..AppState::default()
+        };
+        let (mut terminal, area) = setup_term(80, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row: String = (0..80)
+            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
+            .collect();
+        // Then only the model is shown on the right.
+        assert!(row.contains("(ollama)/llama3"));
+        assert!(!row.contains("Copied"));
+    }
+
+    #[rstest::rstest]
+    fn render_expired_notification_not_shown() {
+        // Given a state with an expired notification.
+        let mut element = StatusBarElement;
+        let mut state = AppState {
+            provider: ProviderState {
+                active_provider: "ollama/llama3".to_owned(),
+                ..ProviderState::default()
+            },
+            ..AppState::default()
+        };
+        state.frontend.status_notification = Some(StatusNotification {
+            message: "old msg".to_owned(),
+            created_at: std::time::Instant::now() - std::time::Duration::from_secs(5),
+        });
+        let (mut terminal, area) = setup_term(80, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row: String = (0..80)
+            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
+            .collect();
+        // Then the notification is not shown.
+        assert!(!row.contains("old msg"));
+        // And the model is still shown normally.
+        assert!(row.contains("(ollama)/llama3"));
     }
 }
