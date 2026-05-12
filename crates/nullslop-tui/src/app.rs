@@ -379,6 +379,7 @@ pub fn scope_for_mode(mode: Mode, active_tab: ActiveTab, pane_focus: PaneFocus) 
         },
         Mode::Input => Scope::Input,
         Mode::Picker => Scope::Picker,
+        Mode::ToolContent => Scope::ToolContent,
     }
 }
 
@@ -439,6 +440,7 @@ mod tests {
     #[case::pinned(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, Scope::Pinned)]
     #[case::input(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, Scope::Input)]
     #[case::picker(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, Scope::Picker)]
+    #[case::tool_content(Mode::ToolContent, ActiveTab::Chat, PaneFocus::Chat, Scope::ToolContent)]
     fn scope_for_mode_maps_correctly(
         #[case] mode: Mode,
         #[case] tab: ActiveTab,
