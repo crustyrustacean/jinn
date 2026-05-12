@@ -124,7 +124,8 @@ impl ProviderActor {
             | Command::ExecuteTool { .. }
             | Command::ProceedWithShutdown { .. }
             | Command::SessionLoadCompleted { .. }
-            | Command::SessionLoadRequested { .. } => {}
+            | Command::SessionLoadRequested { .. }
+            | Command::ScanSkills => {}
         }
     }
 
