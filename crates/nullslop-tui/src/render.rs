@@ -195,6 +195,13 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         rects.push(nullslop_selection_widget::compute_popup_rect(area));
     }
 
+    // Tool content popup overlay.
+    if state.frontend.tool_content_popup.is_open {
+        nullslop_domain::feat::ui::tool_content_popup::render::render_tool_content_popup(
+            frame, area, &state,
+        );
+    }
+
     // Release the state read lock before clipboard flush needs &mut app.
     drop(state);
 
