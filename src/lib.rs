@@ -1,5 +1,6 @@
 //! nullslop: a TUI agent harness with a component/actor system.
 
+pub mod actor_wiring;
 pub mod app;
 pub mod headless;
 pub mod runner;
