@@ -18,6 +18,7 @@ pub(crate) mod builtin_echo;
 pub(crate) mod builtin_get_time;
 pub(crate) mod builtin_read;
 pub(crate) mod builtin_write;
+pub(crate) mod edit;
 pub mod protocol;
 pub mod tool_types;
 
@@ -453,7 +454,7 @@ mod tests {
     use super::*;
 
     /// Creates a test context backed by a recording sink.
-    fn test_context(sink: &std::sync::Arc<RecordingSink>) -> ActorContext {
+    fn _test_context(sink: &std::sync::Arc<RecordingSink>) -> ActorContext {
         ActorContext::new("test-tool-orchestrator", sink.clone())
     }
 
@@ -570,7 +571,7 @@ mod tests {
             .iter()
             .find(|p| p.provider == "builtin")
             .expect("expected builtin ToolsRegistered");
-        assert_eq!(builtin_evt.definitions.len(), 5);
+        assert_eq!(builtin_evt.definitions.len(), 6);
     }
 
     // --- RegisterTools command tests ---
@@ -1307,7 +1308,7 @@ mod tests {
     #[tokio::test]
     async fn build_tool_context_reads_session_cwd() {
         // Given an activated actor with a session that has a specific CWD.
-        let (sink, mut ctx) = default_test_ctx();
+        let (_sink, mut ctx) = default_test_ctx();
         let actor = ToolOrchestratorActor::activate(&mut ctx);
 
         let session_id = {
@@ -1328,7 +1329,7 @@ mod tests {
     #[tokio::test]
     async fn build_tool_context_returns_root_for_unknown_session() {
         // Given an activated actor.
-        let (sink, mut ctx) = default_test_ctx();
+        let (_sink, mut ctx) = default_test_ctx();
         let actor = ToolOrchestratorActor::activate(&mut ctx);
 
         // When building tool context for an unknown session.

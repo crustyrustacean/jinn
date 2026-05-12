@@ -3,8 +3,6 @@
 //! Spawns a shell process, captures stdout + stderr, and returns the combined
 //! output. Supports optional timeout and CWD resolution.
 
-use std::path::Path;
-
 use crate::feat::tools::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
 use super::BoxedToolFuture;
