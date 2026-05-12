@@ -14,7 +14,8 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use serde_json::Value as JsonValue;
 
 use crate::feat::chat_input::ChatInputBoxState;
-use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId};
+use crate::feat::session::token_stats::TokenRecord;
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId, SessionId};
 
 /// Core session state — owned by session-actor and context-actor.
 ///
@@ -52,6 +53,17 @@ pub struct SessionCore {
     /// Working directory for tool execution in this session.
     /// OWNER: IntentHandler (set on session creation and cd commands)
     cwd: std::path::PathBuf,
+    /// Token usage ledger — one immutable record per request/response pair.
+    /// OWNER: session-actor (records tokens on PromptAssembled and StreamCompleted).
+    token_ledger: Vec<TokenRecord>,
+    /// Parent session ID, if this session was forked from another.
+    /// `None` means this is a root session.
+    /// OWNER: session-actor (set at session creation).
+    parent_session: Option<SessionId>,
+    /// Cached context size in tokens (assembled prompt size).
+    /// Updated when PromptAssembled fires.
+    /// OWNER: session-actor.
+    cached_context_size: Option<u32>,
 }
 
 impl Default for SessionCore {
@@ -67,6 +79,9 @@ impl Default for SessionCore {
             streaming_tool_call_indices: HashMap::new(),
             strategy_state: None,
             cwd: std::path::PathBuf::new(),
+            token_ledger: Vec::new(),
+            parent_session: None,
+            cached_context_size: None,
         }
     }
 }
@@ -627,6 +642,66 @@ impl ChatSessionState {
     /// Sets this session's working directory.
     pub fn set_cwd(&mut self, cwd: std::path::PathBuf) {
         self.core.cwd = cwd;
+    }
+
+    // --- Token ledger ---
+
+    /// Read-only access to the token ledger.
+    pub fn token_ledger(&self) -> &[TokenRecord] {
+        &self.core.token_ledger
+    }
+
+    /// Push a token record onto the ledger.
+    ///
+    /// Records are immutable once pushed — this is the only way to add them.
+    pub fn push_token_record(&mut self, record: TokenRecord) {
+        self.core.token_ledger.push(record);
+    }
+
+    /// Update the last token record's received count.
+    ///
+    /// Called when `StreamCompleted` arrives to finalize the pending record.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the ledger is empty.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "caller guarantees a record exists"
+    )]
+    pub fn finalize_last_token_record(&mut self, tokens_received: u32) {
+        let last = self.core.token_ledger.last_mut().expect("ledger must not be empty");
+        last.tokens_received = tokens_received;
+    }
+
+    /// The parent session, if this session was forked from another.
+    pub fn parent_session(&self) -> &Option<SessionId> {
+        &self.core.parent_session
+    }
+
+    /// Set the parent session.
+    pub fn set_parent_session(&mut self, parent: SessionId) {
+        self.core.parent_session = Some(parent);
+    }
+
+    /// The cached context size in tokens, if a prompt has been assembled.
+    pub fn context_size(&self) -> Option<u32> {
+        self.core.cached_context_size
+    }
+
+    /// Update the cached context size.
+    pub fn set_context_size(&mut self, size: u32) {
+        self.core.cached_context_size = Some(size);
+    }
+
+    /// Restore the token ledger from persisted data.
+    pub fn restore_token_ledger(&mut self, records: Vec<TokenRecord>) {
+        self.core.token_ledger = records;
+    }
+
+    /// Restore the parent session from persisted data.
+    pub fn restore_parent_session(&mut self, parent: Option<SessionId>) {
+        self.core.parent_session = parent;
     }
 }
 
