@@ -327,7 +327,7 @@ mod tests {
         // Then the assembled event contains the expected messages.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 2);
+        assert_eq!(assembled.messages.len(), 3);
     }
 
     #[rstest::rstest]
@@ -475,7 +475,7 @@ mod tests {
         // Then only the last 5 entries are in the output.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 5);
+        assert_eq!(assembled.messages.len(), 6);
     }
 
     #[rstest::rstest]
@@ -599,7 +599,7 @@ mod tests {
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert!(!assembled.messages.is_empty());
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::System {
                 content: "important instruction".to_owned(),
             }
@@ -635,7 +635,7 @@ mod tests {
         // Then three messages are produced.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 3);
+        assert_eq!(assembled.messages.len(), 4);
     }
 
     #[rstest::rstest]
@@ -668,19 +668,19 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[1],
+            assembled.messages[2],
             crate::protocol::LlmMessage::System {
                 content: "remember this".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[2],
+            assembled.messages[3],
             crate::protocol::LlmMessage::User {
                 content: "what is 2+2?".to_owned(),
             }
@@ -716,7 +716,7 @@ mod tests {
         // Then three messages are produced.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 3);
+        assert_eq!(assembled.messages.len(), 4);
     }
 
     #[rstest::rstest]
@@ -749,19 +749,19 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[1],
+            assembled.messages[2],
             crate::protocol::LlmMessage::System {
                 content: "keep me".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[2],
+            assembled.messages[3],
             crate::protocol::LlmMessage::User {
                 content: "goodbye".to_owned(),
             }
@@ -796,15 +796,15 @@ mod tests {
         // Then result is [top_messages] + [bottom_messages].
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 2);
+        assert_eq!(assembled.messages.len(), 3);
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::System {
                 content: "top instruction".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[1],
+            assembled.messages[2],
             crate::protocol::LlmMessage::System {
                 content: "bottom reminder".to_owned(),
             }
@@ -839,15 +839,15 @@ mod tests {
         // Then result is [bottom_pins] + [user_message].
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 2);
+        assert_eq!(assembled.messages.len(), 3);
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::System {
                 content: "reminder".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[1],
+            assembled.messages[2],
             crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
@@ -886,9 +886,9 @@ mod tests {
         // Then TOP pin appears as the first message.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 6);
+        assert_eq!(assembled.messages.len(), 7);
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::System {
                 content: "top rule".to_owned(),
             }
@@ -928,7 +928,7 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[2],
+            assembled.messages[3],
             crate::protocol::LlmMessage::System {
                 content: "relative note".to_owned(),
             }
@@ -968,13 +968,13 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[4],
+            assembled.messages[5],
             crate::protocol::LlmMessage::System {
                 content: "bottom reminder".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[5],
+            assembled.messages[6],
             crate::protocol::LlmMessage::User {
                 content: "latest question".to_owned(),
             }
@@ -1011,7 +1011,7 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert!(assembled.system_prompt.is_none());
-        assert_eq!(assembled.messages.len(), 3);
+        assert_eq!(assembled.messages.len(), 4);
     }
 
     #[rstest::rstest]
@@ -1044,20 +1044,20 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[1],
+            assembled.messages[2],
             crate::protocol::LlmMessage::Assistant {
                 content: "hi".to_owned(),
                 tool_calls: None,
             }
         );
         assert_eq!(
-            assembled.messages[2],
+            assembled.messages[3],
             crate::protocol::LlmMessage::User {
                 content: "how are you?".to_owned(),
             }
@@ -1292,7 +1292,7 @@ mod tests {
         // Then the first message is the skills block.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        let first = &assembled.messages[0];
+        let first = &assembled.messages[1];
         match first {
             LlmMessage::System { content } => {
                 assert!(content.contains("<available_skills>"));
