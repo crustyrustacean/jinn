@@ -3,6 +3,9 @@ COPYRIGHT_YEAR := "2026"
 
 export RSTEST_TIMEOUT := "3"
 
+fossil-branch NAME:
+    fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
+
 test:
     cargo nextest run --workspace --all-features --exclude nullslop-e2e --exclude llm
     cargo test --test e2e -p nullslop-e2e
