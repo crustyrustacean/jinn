@@ -12,6 +12,7 @@ use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
+use crate::feat::preferences_actor::{InMemoryUserPreferencesStorage, UserPreferencesStorageService};
 use crate::feat::session::SessionStoreService;
 use crate::protocol::AppMsg;
 use tokio::runtime::Handle;
@@ -70,6 +71,8 @@ pub struct Services {
     pub session_store: SessionStoreService,
     /// Strategy discovery for listing available prompt assembly strategies.
     pub strategy_registry: StrategyRegistryService,
+    /// User preferences storage for persisting `nullslop.toml`.
+    pub user_preferences_storage: UserPreferencesStorageService,
 }
 
 impl Default for Services {
@@ -120,6 +123,9 @@ impl Services {
             config_storage: ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new())),
             session_store: SessionStoreService::new(Arc::new(test_services::FakeSessionStore)),
             strategy_registry: StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery)),
+            user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
+                InMemoryUserPreferencesStorage::new(),
+            )),
         }
     }
 }
