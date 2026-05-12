@@ -242,10 +242,10 @@ impl FrontendState {
 
     /// Clears the notification if it has expired (3 seconds).
     pub fn clear_expired_notification(&mut self) {
-        if let Some(ref n) = self.status_notification {
-            if n.created_at.elapsed().as_secs() >= 3 {
-                self.status_notification = None;
-            }
+        if let Some(ref n) = self.status_notification
+            && n.created_at.elapsed().as_secs() >= 3
+        {
+            self.status_notification = None;
         }
     }
 }
