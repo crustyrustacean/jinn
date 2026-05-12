@@ -8,6 +8,7 @@ mod openai;
 mod openai_compatible;
 mod phind;
 mod xai;
+mod zai;
 
 use crate::{
     builder::LLMBackend,
@@ -41,5 +42,6 @@ pub(super) fn build_backend(
         LLMBackend::AzureOpenAI => azure::build_azure_openai(state, tools, tool_choice),
         LLMBackend::ElevenLabs => elevenlabs::build_elevenlabs(state),
         LLMBackend::AwsBedrock => azure::build_bedrock(state, tools, tool_choice),
+        LLMBackend::ZAI => zai::build_zai(state),
     }
 }

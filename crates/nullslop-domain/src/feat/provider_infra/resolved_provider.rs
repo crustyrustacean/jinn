@@ -23,4 +23,6 @@ pub struct ResolvedProvider {
     pub api_key_env: Option<String>,
     /// Whether this provider requires an API key.
     pub requires_key: bool,
+    /// Extra JSON body parameters for the LLM builder.
+    pub extra_body: Option<serde_json::Value>,
 }

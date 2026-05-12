@@ -13,6 +13,7 @@ fn ollama_entry() -> ProviderEntry {
         base_url: Some("http://localhost:11434".to_owned()),
         api_key_env: None,
         requires_key: false,
+        extra_body: None,
     }
 }
 
@@ -24,6 +25,7 @@ fn openrouter_entry() -> ProviderEntry {
         base_url: None,
         api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
         requires_key: true,
+        extra_body: None,
     }
 }
 

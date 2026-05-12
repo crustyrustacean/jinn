@@ -105,6 +105,7 @@ impl ProviderRegistry {
                     base_url: entry.base_url.clone(),
                     api_key_env: entry.api_key_env.clone(),
                     requires_key: entry.requires_key,
+                    extra_body: entry.extra_body.clone(),
                 };
                 resolved_map.insert(id, resolved.clone());
                 resolved_list.push(resolved);
@@ -187,6 +188,7 @@ impl ProviderRegistry {
             model.to_owned(),
             entry.base_url.clone(),
             api_key,
+            entry.extra_body.clone(),
         );
 
         Ok(Box::new(factory))
@@ -329,6 +331,7 @@ impl ProviderRegistry {
             resolved.model.clone(),
             resolved.base_url.clone(),
             api_key,
+            resolved.extra_body.clone(),
         );
 
         Ok(Box::new(factory))

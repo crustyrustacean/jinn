@@ -95,6 +95,7 @@ llm = { path = "vendor/llm", default-features = false, features = [
     "cohere",
     "mistral",
     "huggingface",
+    "zai",
     "elevenlabs",
 ] }
 

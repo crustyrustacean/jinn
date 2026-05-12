@@ -99,6 +99,16 @@ backend = "sample"
 requires_key = false
 models = ["sample"]
 
+[[providers]]
+name = "zai"
+backend = "zai"
+api_key_env = "ZAI_API_KEY"
+models = ["glm-4.5-air", "glm-4.7", "glm-4.7-flash", "glm-5", "glm-5-turbo", "glm-5.1"]
+
+[providers.extra_body]
+enable_thinking = true
+tool_stream = true
+
 # [[aliases]]
 # name = "fast"
 # target = "ollama/llama3"
