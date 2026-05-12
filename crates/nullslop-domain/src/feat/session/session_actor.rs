@@ -226,6 +226,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::SessionPersistenceActor;
+    use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 
     // --- Test helpers ---
 
@@ -491,6 +492,40 @@ mod tests {
         assert_eq!(full.title, "Round Trip");
         assert_eq!(full.history.len(), 3);
         assert_eq!(full.blobs["test_blob"]["key"], "value");
+    }
+
+    // --- LoadSessionPickerEntries ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_session_picker_entries_populates_picker() {
+        // Given a SessionPersistenceActor with a store containing a saved session.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        // Save a session to the store.
+        let session_id = SessionId::new();
+        let event = make_save_event(&session_id, "Test Session");
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
+
+        // When processing LoadSessionPickerEntries.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::LoadSessionPickerEntries {
+                    payload: LoadSessionPickerEntries,
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the session picker has entries.
+        let guard = actor.state.read();
+        let items = guard.frontend.session_picker.items();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Test Session");
     }
 
     // =========================================================
