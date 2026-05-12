@@ -278,6 +278,17 @@ fn create_core_with_actor_host(
     // Create shared State FIRST — injected into multiple actors.
     let state = State::new(AppState::default());
 
+    // Set default CWD on all sessions (inherited from shell).
+    {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+        let mut guard = state.write();
+        guard
+            .session
+            .sessions
+            .values_mut()
+            .for_each(|s| s.set_cwd(cwd.clone()));
+    }
+
     // --- Echo actor ---
     let (_echo_ref, echo_result) = nullslop_domain::feat::echo::spawn(sink.clone(), handle);
 
@@ -294,7 +305,8 @@ fn create_core_with_actor_host(
     );
 
     // --- Tool orchestrator actor ---
-    let (_orch_ref, orch_result) = nullslop_domain::feat::tools::spawn(sink.clone(), handle);
+    let (_orch_ref, orch_result) =
+        nullslop_domain::feat::tools::spawn(state.clone(), sink.clone(), handle);
 
     // --- Prompt assembly actor ---
     let (_ctx_ref, prompt_result) = nullslop_domain::feat::context::spawn_context_actor(
