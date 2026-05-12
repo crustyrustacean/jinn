@@ -569,8 +569,14 @@ fn scroll_to_cursor_adjusts_scroll_down() {
     state.scroll_to_cursor(2);
 
     // Then scroll_offset is adjusted so cursor is in the visible window.
-    assert!(state.scroll_offset() + 2 > cursor_row, "cursor should be visible");
-    assert!(state.scroll_offset() <= cursor_row, "scroll should not go past cursor");
+    assert!(
+        state.scroll_offset() + 2 > cursor_row,
+        "cursor should be visible"
+    );
+    assert!(
+        state.scroll_offset() <= cursor_row,
+        "scroll should not go past cursor"
+    );
 }
 
 #[rstest::rstest]

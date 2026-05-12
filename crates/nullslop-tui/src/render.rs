@@ -111,7 +111,9 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         );
         if wstate.frontend.mode == Mode::Input {
             let inner_height = pre_layout.input.height.saturating_sub(2) as usize;
-            wstate.active_chat_input_mut().scroll_to_cursor(inner_height);
+            wstate
+                .active_chat_input_mut()
+                .scroll_to_cursor(inner_height);
         }
     }
 

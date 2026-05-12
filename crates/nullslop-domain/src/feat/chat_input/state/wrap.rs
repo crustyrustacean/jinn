@@ -292,16 +292,10 @@ mod tests {
         let lines = wrap_text(text, 10);
 
         // Then the first logical line is wrapped into 3 visual lines.
-        let first_logical: Vec<_> = lines
-            .iter()
-            .filter(|l| l.logical_line_index == 0)
-            .collect();
+        let first_logical: Vec<_> = lines.iter().filter(|l| l.logical_line_index == 0).collect();
         assert_eq!(first_logical.len(), 3);
         // And the second logical line is a single visual line.
-        let second_logical: Vec<_> = lines
-            .iter()
-            .filter(|l| l.logical_line_index == 1)
-            .collect();
+        let second_logical: Vec<_> = lines.iter().filter(|l| l.logical_line_index == 1).collect();
         assert_eq!(second_logical.len(), 1);
         // And the second logical line starts at the correct offset.
         // "hello world and more\n" = 21 graphemes, so "short" starts at 21.
