@@ -59,7 +59,7 @@ fn init_tab_manager_has_two_tabs() {
 fn app_layout_includes_indicator_row() {
     // Given a 40x14 area.
     let area = Rect::new(0, 0, 40, 14);
-    let layout = AppLayout::new(area, 1, 0);
+    let layout = AppLayout::new(area, 1, 0, area.height / 2);
 
     // Then the indicator row has height 1 and is between content and counter.
     assert_eq!(layout.indicator.height, 1);
@@ -71,7 +71,7 @@ fn app_layout_includes_indicator_row() {
 fn app_layout_queue_area_has_dynamic_height() {
     // Given a 40x20 area with 3 queued messages.
     let area = Rect::new(0, 0, 40, 20);
-    let layout = AppLayout::new(area, 1, 3);
+    let layout = AppLayout::new(area, 1, 3, area.height / 2);
 
     // Then the queue area has height 3 and sits between indicator and counter.
     assert_eq!(layout.queue.height, 3);
@@ -83,7 +83,7 @@ fn app_layout_queue_area_has_dynamic_height() {
 fn app_layout_queue_area_zero_height_when_empty() {
     // Given a 40x14 area with no queued messages.
     let area = Rect::new(0, 0, 40, 14);
-    let layout = AppLayout::new(area, 1, 0);
+    let layout = AppLayout::new(area, 1, 0, area.height / 2);
 
     // Then the queue area has height 0.
     assert_eq!(layout.queue.height, 0);
@@ -93,7 +93,7 @@ fn app_layout_queue_area_zero_height_when_empty() {
 fn app_layout_includes_status_bar() {
     // Given a 40x14 area.
     let area = Rect::new(0, 0, 40, 14);
-    let layout = AppLayout::new(area, 1, 0);
+    let layout = AppLayout::new(area, 1, 0, area.height / 2);
 
     // Then the status bar has height 1 and is at the bottom.
     assert_eq!(layout.status_bar.height, 1);
@@ -468,7 +468,7 @@ fn render_registers_content_rect_for_selectable_chat_log() {
 
     // Then the content area rect is registered as selectable.
     // Chat log is selectable, so layout.content should be in selectable_rects.
-    let layout = AppLayout::new(frame_area(80, 24), 1, 0);
+    let layout = AppLayout::new(frame_area(80, 24), 1, 0, 12);
     let found = app
         .selectable_rects
         .find_for_position(layout.content.x + 1, layout.content.y + 1);
@@ -527,7 +527,7 @@ fn content_area_rect_is_selectable() {
         .unwrap();
 
     // Then the content area rect is also still selectable (chat-log is selectable).
-    let layout = AppLayout::new(frame_area(80, 24), 1, 0);
+    let layout = AppLayout::new(frame_area(80, 24), 1, 0, 12);
     let content_found = app
         .selectable_rects
         .find_for_position(layout.content.x + 1, layout.content.y + 1);
