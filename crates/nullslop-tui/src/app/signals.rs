@@ -8,12 +8,6 @@ pub(super) struct TuiSignalsSnapshot {
     pub toggle_whichkey: bool,
     /// Whether an external editor was requested.
     pub edit_requested: bool,
-    /// Whether to toggle the pinned pane visibility.
-    pub pinned_pane_toggle: bool,
-    /// Whether to open the pinned pane.
-    pub pinned_pane_open: bool,
-    /// Whether to close the pinned pane.
-    pub pinned_pane_close: bool,
 }
 
 impl TuiSignalsSnapshot {
@@ -22,9 +16,6 @@ impl TuiSignalsSnapshot {
         Self {
             toggle_whichkey: state.frontend.tui_signals.toggle_whichkey,
             edit_requested: state.frontend.tui_signals.edit_requested,
-            pinned_pane_toggle: state.frontend.tui_signals.pinned_pane_toggle,
-            pinned_pane_open: state.frontend.tui_signals.pinned_pane_open,
-            pinned_pane_close: state.frontend.tui_signals.pinned_pane_close,
         }
     }
 }

@@ -2918,7 +2918,6 @@ dependencies = [
  "nullslop-selection-widget",
  "parking_lot",
  "ratatui",
- "ratatui-spatial-splits",
  "ratatui-tabs",
  "ratatui-which-key",
  "rstest",

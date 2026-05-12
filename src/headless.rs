@@ -110,7 +110,7 @@ impl HeadlessApp {
                 let scope = nullslop_tui::app::scope_for_mode(
                     state_read.frontend.mode,
                     state_read.frontend.active_tab,
-                    nullslop_tui::app::PaneFocus::Chat,
+                    false,
                 );
                 drop(state_read);
                 which_key.set_scope(scope);

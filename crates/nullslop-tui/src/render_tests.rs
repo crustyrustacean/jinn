@@ -484,17 +484,27 @@ fn render_registers_content_rect_for_selectable_chat_log() {
         })
         .unwrap();
 
-    // Then the content area rect is registered as selectable.
-    // Chat log is selectable, so layout.content should be in selectable_rects.
+    // Then the chat area rect is registered as selectable.
+    // Chat log is selectable — chat area is the 70% portion after sidebar split.
     let layout = AppLayout::new(frame_area(80, 24), 1, 0, 12);
+    let content_w = layout.content.width;
+    let sidebar_width = (content_w as f32 * 0.3).ceil() as u16;
+    let border_width: u16 = 1;
+    let chat_width = content_w.saturating_sub(sidebar_width).saturating_sub(border_width);
+    let chat_area = Rect {
+        x: layout.content.x,
+        y: layout.content.y,
+        width: chat_width,
+        height: layout.content.height,
+    };
     let found = app
         .selectable_rects
-        .find_for_position(layout.content.x + 1, layout.content.y + 1);
+        .find_for_position(chat_area.x + 1, chat_area.y + 1);
     assert!(
         found.is_some(),
         "chat log content rect should be selectable"
     );
-    assert_eq!(found.unwrap(), layout.content);
+    assert_eq!(found.unwrap(), chat_area);
 }
 
 #[rstest::rstest]

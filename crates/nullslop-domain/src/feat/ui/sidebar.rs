@@ -18,3 +18,8 @@ pub use section_trait::{
 };
 pub use sidebar::Sidebar;
 pub use state::{SidebarOriginScope, SidebarState};
+
+/// Registers all built-in sidebar sections into the given sidebar.
+pub fn register_sections(sidebar: &mut Sidebar) {
+    sidebar.register(Box::new(pins::PinsSection));
+}
