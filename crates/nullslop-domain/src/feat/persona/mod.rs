@@ -35,7 +35,7 @@ fn seed_content() -> String {
     let mut content = String::new();
     content.push_str("+++\n");
     content.push_str("name = \"coding-assistant\"\n");
-    content.push_str("description = \"Expert coding assistant — the default persona\"\n");
+    content.push_str("description = \"Expert coding assistant\"\n");
     content.push_str("+++\n\n");
     content.push_str(
         "You are an expert coding assistant. You help users by reading files, executing commands, editing code, and writing new files.\n\n",
