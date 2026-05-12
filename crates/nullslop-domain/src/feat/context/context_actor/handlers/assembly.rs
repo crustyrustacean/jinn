@@ -15,7 +15,10 @@ use super::super::PromptAssemblyActor;
 
 impl PromptAssemblyActor {
     /// Lazily initializes a passthrough strategy for unknown sessions.
-    pub(in crate::feat::context::context_actor) fn ensure_strategy(&mut self, session_id: &SessionId) {
+    pub(in crate::feat::context::context_actor) fn ensure_strategy(
+        &mut self,
+        session_id: &SessionId,
+    ) {
         if !self.strategies.contains_key(session_id) {
             self.strategies
                 .insert(session_id.clone(), Box::new(PassthroughStrategy));

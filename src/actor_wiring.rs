@@ -22,7 +22,9 @@ use nullslop_domain::feat::session::JsonlSessionStore as DomainJsonlSessionStore
 use nullslop_domain::feat::session::SessionStoreService as DomainSessionStoreService;
 use nullslop_domain::strategy_registry::StrategyRegistryService;
 use nullslop_domain::{ActorHostService, InMemoryActorHost};
-use nullslop_domain::{ActorMessageSink, AppCore, AppMsg, MessageSink, State, spawn_forwarding_task};
+use nullslop_domain::{
+    ActorMessageSink, AppCore, AppMsg, MessageSink, State, spawn_forwarding_task,
+};
 use nullslop_domain::{ActorStarted, ActorStarting};
 
 /// Creates an `AppCore` with all actors registered and the async forwarding task started.
@@ -71,24 +73,26 @@ pub fn create_core_with_actor_host(
         nullslop_domain::feat::llm_actor::spawn(llm_service.clone(), sink.clone(), handle);
 
     // --- Discover actor ---
-    let (_discover_ref, discover_result) = nullslop_domain::feat::provider::discover_actor::spawn_discover_actor(
-        provider_registry.clone(),
-        api_keys.clone(),
-        sink.clone(),
-        handle,
-    );
+    let (_discover_ref, discover_result) =
+        nullslop_domain::feat::provider::discover_actor::spawn_discover_actor(
+            provider_registry.clone(),
+            api_keys.clone(),
+            sink.clone(),
+            handle,
+        );
 
     // --- Tool orchestrator actor ---
     let (_orch_ref, orch_result) =
         nullslop_domain::feat::tools_actor::spawn(state.clone(), sink.clone(), handle);
 
     // --- Prompt assembly actor ---
-    let (_ctx_ref, prompt_result) = nullslop_domain::feat::context::context_actor::spawn_context_actor(
-        state.clone(),
-        Box::new(DefaultStrategyFactory),
-        sink.clone(),
-        handle,
-    );
+    let (_ctx_ref, prompt_result) =
+        nullslop_domain::feat::context::context_actor::spawn_context_actor(
+            state.clone(),
+            Box::new(DefaultStrategyFactory),
+            sink.clone(),
+            handle,
+        );
 
     // --- Session persistence actor ---
     let domain_session_store = DomainJsonlSessionStore::new();
@@ -102,11 +106,12 @@ pub fn create_core_with_actor_host(
     );
 
     // --- Prompt scan actor ---
-    let (_scan_ref, scan_result) = nullslop_domain::feat::context::prompt_scan_actor::spawn_prompt_scan_actor(
-        nullslop_domain::prompts_dir(),
-        sink.clone(),
-        handle,
-    );
+    let (_scan_ref, scan_result) =
+        nullslop_domain::feat::context::prompt_scan_actor::spawn_prompt_scan_actor(
+            nullslop_domain::prompts_dir(),
+            sink.clone(),
+            handle,
+        );
 
     // Build services (needed by provider actor and shutdown tracker).
     let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
@@ -125,12 +130,13 @@ pub fn create_core_with_actor_host(
     };
 
     // --- Provider actor ---
-    let (_prov_ref, prov_result) = nullslop_domain::feat::provider::provider_actor::spawn_provider_actor(
-        state.clone(),
-        services.clone(),
-        sink.clone(),
-        handle,
-    );
+    let (_prov_ref, prov_result) =
+        nullslop_domain::feat::provider::provider_actor::spawn_provider_actor(
+            state.clone(),
+            services.clone(),
+            sink.clone(),
+            handle,
+        );
 
     // --- Shutdown tracker actor ---
     let (_st_ref, st_result) = nullslop_domain::feat::shutdown_actor::spawn(

@@ -7,7 +7,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
+use crate::common::actor::{
+    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
+};
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::provider::protocol::command::RescanPromptTemplates;

@@ -52,21 +52,30 @@ impl SessionPersistenceActor {
     }
 
     /// Marks the session's stream as finished.
-    pub(in crate::feat::session::session_actor) fn on_stream_completed(&self, event: &StreamCompleted) {
+    pub(in crate::feat::session::session_actor) fn on_stream_completed(
+        &self,
+        event: &StreamCompleted,
+    ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         session.finish_streaming();
     }
 
     /// Begins tracking a streaming tool call.
-    pub(in crate::feat::session::session_actor) fn on_tool_use_started(&self, event: &ToolUseStarted) {
+    pub(in crate::feat::session::session_actor) fn on_tool_use_started(
+        &self,
+        event: &ToolUseStarted,
+    ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         session.begin_tool_call(event.index, &event.id, &event.name);
     }
 
     /// Pushes a tool call entry into the session history.
-    pub(in crate::feat::session::session_actor) fn on_tool_call_received(&self, event: &ToolCallReceived) {
+    pub(in crate::feat::session::session_actor) fn on_tool_call_received(
+        &self,
+        event: &ToolCallReceived,
+    ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         session.push_entry(ChatEntry::tool_call(

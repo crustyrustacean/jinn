@@ -8,7 +8,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
+use crate::common::actor::{
+    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
+};
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::feat::provider::protocol::command::RefreshModels;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
