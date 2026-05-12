@@ -5,15 +5,15 @@
 #[derive(Debug)]
 pub(super) struct TuiSignalsSnapshot {
     /// Whether to toggle the which-key overlay.
-    pub(super) toggle_whichkey: bool,
+    pub toggle_whichkey: bool,
     /// Whether an external editor was requested.
-    pub(super) edit_requested: bool,
+    pub edit_requested: bool,
     /// Whether to toggle the pinned pane visibility.
-    pub(super) pinned_pane_toggle: bool,
+    pub pinned_pane_toggle: bool,
     /// Whether to open the pinned pane.
-    pub(super) pinned_pane_open: bool,
+    pub pinned_pane_open: bool,
     /// Whether to close the pinned pane.
-    pub(super) pinned_pane_close: bool,
+    pub pinned_pane_close: bool,
 }
 
 impl TuiSignalsSnapshot {
