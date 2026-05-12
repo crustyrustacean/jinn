@@ -163,6 +163,7 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::context::protocol::event::PromptAssembled;
     use crate::protocol::ChatEntry;
+    use crate::protocol::LlmMessage;
     use crate::protocol::PinPosition;
     use crate::protocol::PromptStrategyId;
 
@@ -1176,5 +1177,83 @@ mod tests {
                 .map(|t| &t.body),
             Some(&"Hello!".to_owned())
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn skills_block_is_prepended_to_assembled_messages() {
+        // Given an actor with skills loaded in AppState.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let state = ctx
+            .take_data::<State>()
+            .expect("state was injected");
+        {
+            let mut guard = state.write();
+            guard.context.skills = vec![crate::feat::skills::Skill {
+                name: "test-skill".to_owned(),
+                description: "A test skill".to_owned(),
+                file_path: std::path::PathBuf::from("/path/to/SKILL.md"),
+                base_dir: std::path::PathBuf::from("/path/to"),
+            }];
+        }
+        ctx.set_data(state);
+        let mut actor = PromptAssemblyActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        let cmd = crate::protocol::Command::AssemblePrompt {
+            payload: AssemblePrompt {
+                session_id: session_id.clone(),
+                history: vec![ChatEntry::user("hello")],
+                tools: vec![],
+                model_name: "test".to_owned(),
+            },
+        };
+
+        // When assembling.
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+
+        // Then the first message is the skills block.
+        let events = sink.events();
+        let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
+        let first = &assembled.messages[0];
+        match first {
+            LlmMessage::System { content } => {
+                assert!(content.contains("<available_skills>"));
+                assert!(content.contains("test-skill"));
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn no_skills_block_when_skills_empty() {
+        // Given an actor with no skills.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let mut actor = PromptAssemblyActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        let cmd = crate::protocol::Command::AssemblePrompt {
+            payload: AssemblePrompt {
+                session_id,
+                history: vec![ChatEntry::user("hello")],
+                tools: vec![],
+                model_name: "test".to_owned(),
+            },
+        };
+
+        // When assembling.
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
+
+        // Then no skills block appears.
+        let events = sink.events();
+        let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
+        for msg in &assembled.messages {
+            if let LlmMessage::System { content } = msg {
+                assert!(!content.contains("<available_skills>"));
+            }
+        }
     }
 }
