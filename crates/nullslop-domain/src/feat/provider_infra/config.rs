@@ -366,7 +366,10 @@ tool_stream = true
         let reloaded = load_config_from(&path).expect("reload");
 
         // Then extra_body is preserved.
-        let extra = reloaded.providers[0].extra_body.as_ref().expect("extra_body");
+        let extra = reloaded.providers[0]
+            .extra_body
+            .as_ref()
+            .expect("extra_body");
         assert_eq!(extra["enable_thinking"], true);
     }
 }
