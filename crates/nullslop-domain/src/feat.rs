@@ -12,6 +12,7 @@ pub mod navigation;
 pub mod persona;
 pub mod picker;
 pub mod pinned_panel;
+pub mod preferences_actor;
 pub mod provider;
 pub mod provider_infra;
 pub mod session;
