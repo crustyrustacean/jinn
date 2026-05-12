@@ -49,6 +49,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
             .bind("<c-p>", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
             .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
+            .describe_group_with_category("<leader>s", "search", KeyCategory::General)
+            .bind("<leader>sm", Intent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
+            .bind("<leader>ss", Intent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
             // Input — enter input mode
             .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
             // Navigation — scrolling and tab switching
@@ -64,14 +67,11 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .describe_group_with_category("g", "general", KeyCategory::General)
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
-            .describe_group_with_category("gs", "session", KeyCategory::General)
             .bind("gg", Intent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
-            .bind("gmp", Intent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::Model)
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
-            .bind("gcs", Intent::OpenPicker { kind: PickerKind::ContextAssembly }, KeyCategory::Context)
+            .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::ContextAssembly }, KeyCategory::General)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
-            .bind("gs", Intent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
             .bind("<c-l>", Intent::PinnedPanelOpen, KeyCategory::Navigation)
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
