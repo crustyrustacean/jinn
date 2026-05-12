@@ -15,9 +15,9 @@ use super::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory,
 
 /// Generic factory that builds an LLM service from a provider config.
 ///
-/// Stores the backend, model, optional base URL, and a resolved API key.
-/// The key is provided at construction time — environment access belongs
-/// at application startup, not in the factory.
+/// Stores the backend, model, optional base URL, a resolved API key,
+/// and optional extra body parameters. The key is provided at construction
+/// time — environment access belongs at application startup, not in the factory.
 #[derive(Debug, Clone)]
 pub struct GenericLlmServiceFactory {
     /// Display name for this factory.
@@ -31,6 +31,9 @@ pub struct GenericLlmServiceFactory {
     /// Resolved API key. `None` means no key was provided.
     /// Will cause build failure for backends that require a key.
     api_key: Option<String>,
+    /// Extra JSON body parameters for vendor-specific options.
+    /// Passed to `LLMBuilder::extra_body()`.
+    extra_body: Option<serde_json::Value>,
 }
 
 impl GenericLlmServiceFactory {
@@ -42,6 +45,7 @@ impl GenericLlmServiceFactory {
         model: String,
         base_url: Option<String>,
         api_key: Option<String>,
+        extra_body: Option<serde_json::Value>,
     ) -> Self {
         Self {
             name,
@@ -49,6 +53,7 @@ impl GenericLlmServiceFactory {
             model,
             base_url,
             api_key,
+            extra_body,
         }
     }
 }
@@ -65,6 +70,10 @@ impl LlmServiceFactory for GenericLlmServiceFactory {
 
         if let Some(ref key) = self.api_key {
             builder = builder.api_key(key);
+        }
+
+        if let Some(ref extra) = self.extra_body {
+            builder = builder.extra_body(extra);
         }
 
         let provider = builder
@@ -145,6 +154,7 @@ mod tests {
             "openai".to_owned(),
             LLMBackend::OpenAI,
             "gpt-4".to_owned(),
+            None,
             None,
             None,
         );
