@@ -35,7 +35,7 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
             ' ' => {
                 state.active_chat_input_mut().deactivate_autocomplete();
             }
-            '$' => {
+            '#' => {
                 let Some(token_start) = state.active_chat_input().autocomplete_token_start() else {
                     return IntentResult::empty();
                 };
@@ -70,7 +70,7 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
     } else {
         state.active_chat_input_mut().insert_grapheme_at_cursor(ch);
 
-        if ch == '$' {
+        if ch == '#' {
             let input = state.active_chat_input();
             if is_valid_trigger_position(input) {
                 let token_start = input.cursor_pos() - 1;
@@ -316,7 +316,7 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
 
 // --- Helpers ---
 
-/// Checks whether the `$` at the cursor is in a valid position to trigger autocomplete.
+/// Checks whether the `#` at the cursor is in a valid position to trigger autocomplete.
 fn is_valid_trigger_position(input: &ChatInputBoxState) -> bool {
     let dollar_pos = input.cursor_pos() - 1;
     if dollar_pos == 0 {
