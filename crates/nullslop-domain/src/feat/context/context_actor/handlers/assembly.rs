@@ -11,6 +11,7 @@ use crate::feat::context::{
     AssemblyContext, CharRatioEstimator, PassthroughStrategy, estimate_entry_tokens,
 };
 
+use crate::feat::context::env_context::{build_env_context, load_project_context_files};
 use crate::feat::skills::format::format_skills_for_prompt;
 
 use super::super::PromptAssemblyActor;
@@ -135,6 +136,28 @@ impl PromptAssemblyActor {
                 0,
                 LlmMessage::System {
                     content: skills_block,
+                },
+            );
+        }
+
+        // Build and prepend environment context (persona, project files, date, CWD).
+        let env_context = {
+            let guard = self.state.read();
+            let cwd = guard
+                .session
+                .sessions
+                .get(&session_id)
+                .map(|s| s.cwd().to_path_buf())
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            let context_files = load_project_context_files(&cwd);
+            let persona = guard.context.active_persona.as_ref();
+            build_env_context(persona, &context_files, &cwd)
+        };
+        if !env_context.is_empty() {
+            final_messages.insert(
+                0,
+                LlmMessage::System {
+                    content: env_context,
                 },
             );
         }

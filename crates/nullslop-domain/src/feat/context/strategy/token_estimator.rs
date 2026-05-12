@@ -53,6 +53,8 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         }
         // Table entries are ephemeral display data — estimate based on plain-text content.
         ChatEntryKind::Table(data) => estimator.estimate(&data.to_plain_text()),
+        // Error entries are short status messages — count as their text content.
+        ChatEntryKind::Error(text) => estimator.estimate(text),
     }
 }
 

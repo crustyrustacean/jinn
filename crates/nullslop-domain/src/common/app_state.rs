@@ -24,6 +24,8 @@ pub use crate::feat::pinned_panel::PinnedPanelState;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::shutdown_actor::ShutdownTrackerState;
 use crate::feat::skills::Skill;
+use crate::feat::persona::Persona;
+use crate::feat::persona::PersonaEntry;
 use crate::protocol::KeymapEntry;
 use crate::protocol::SessionEntry;
 use crate::protocol::StrategyEntry;
@@ -85,6 +87,12 @@ pub struct ContextAssemblyState {
     /// Discovered agent skills from `~/.agents/skills/`.
     /// OWNER: skills-scan-actor (replaces on ScanSkills command).
     pub skills: Vec<Skill>,
+    /// Discovered personas from `~/.config/nullslop/personas/`.
+    /// OWNER: context-actor (replaces on PersonasLoaded event).
+    pub personas: Vec<Persona>,
+    /// The currently active persona (injected into system prompt).
+    /// OWNER: context-actor (updated on PersonasLoaded, set on picker confirm).
+    pub active_persona: Option<Persona>,
 }
 
 impl Default for ContextAssemblyState {
@@ -93,6 +101,8 @@ impl Default for ContextAssemblyState {
             strategy_state: HashMap::new(),
             prompt_templates: PromptTemplateStore::new(),
             skills: Vec::new(),
+            personas: Vec::new(),
+            active_persona: None,
         }
     }
 }
@@ -195,6 +205,9 @@ pub struct FrontendState {
     /// Context strategy picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (strategy picker navigation).
     pub context_strategy_picker: nullslop_selection_widget::SelectionState<StrategyEntry>,
+    /// Persona picker state (items, filter text, selection index).
+    /// OWNER: IntentHandler (persona picker navigation).
+    pub persona_picker: nullslop_selection_widget::SelectionState<PersonaEntry>,
 
     /// Transient status bar notification (auto-dismisses after 3 seconds).
     /// OWNER: TUI render loop (sets on clipboard copy), tick handler (clears expired).
@@ -218,6 +231,7 @@ impl Default for FrontendState {
             keymap_picker_origin_scope: None,
             session_picker: nullslop_selection_widget::SelectionState::new(),
             context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
+            persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
         }
     }

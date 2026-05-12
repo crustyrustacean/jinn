@@ -14,6 +14,7 @@ use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, Provid
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::protocol::{Command, Intent, IntentResult, Mode, PickerKind};
+use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 
 use super::validator;
 
@@ -43,6 +44,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Session => {
             state.frontend.session_picker.reset();
         }
+        PickerKind::Persona => {
+            state.frontend.persona_picker.reset();
+        }
     }
 
     state.frontend.mode = Mode::Picker;
@@ -63,6 +67,11 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 payload: LoadContextStrategyPickerEntries,
             }])
         }
+        PickerKind::Persona => {
+            IntentResult::with_commands(vec![Command::LoadPersonaPickerEntries {
+                payload: LoadPersonaPickerEntries,
+            }])
+        }
         PickerKind::Keymap => IntentResult::empty(),
     }
 }
@@ -77,6 +86,7 @@ pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
         }
         Some(PickerKind::Keymap) => state.frontend.keymap_picker.insert_char(ch),
         Some(PickerKind::Session) => state.frontend.session_picker.insert_char(ch),
+        Some(PickerKind::Persona) => state.frontend.persona_picker.insert_char(ch),
         None => {}
     }
     IntentResult::empty()
@@ -92,6 +102,7 @@ pub fn handle_backspace(state: &mut AppState) -> IntentResult {
         }
         Some(PickerKind::Keymap) => state.frontend.keymap_picker.backspace(),
         Some(PickerKind::Session) => state.frontend.session_picker.backspace(),
+        Some(PickerKind::Persona) => state.frontend.persona_picker.backspace(),
         None => {}
     }
     IntentResult::empty()
@@ -112,6 +123,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::ContextAssembly) => (confirm_strategy(state), None),
         Some(PickerKind::Keymap) => confirm_keymap(state),
         Some(PickerKind::Session) => (confirm_session(state), None),
+        Some(PickerKind::Persona) => (confirm_persona(state), None),
         None => (IntentResult::empty(), None),
     }
 }
@@ -134,6 +146,9 @@ pub fn handle_move_up(state: &mut AppState) -> IntentResult {
         }
         Some(PickerKind::Session) => {
             state.frontend.session_picker.move_up(PICKER_MAX_VISIBLE);
+        }
+        Some(PickerKind::Persona) => {
+            state.frontend.persona_picker.move_up(PICKER_MAX_VISIBLE);
         }
         None => {}
     }
@@ -159,6 +174,9 @@ pub fn handle_move_down(state: &mut AppState) -> IntentResult {
         Some(PickerKind::Session) => {
             state.frontend.session_picker.move_down(PICKER_MAX_VISIBLE);
         }
+        Some(PickerKind::Persona) => {
+            state.frontend.persona_picker.move_down(PICKER_MAX_VISIBLE);
+        }
         None => {}
     }
     IntentResult::empty()
@@ -174,6 +192,7 @@ pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
         }
         Some(PickerKind::Keymap) => state.frontend.keymap_picker.move_cursor_left(),
         Some(PickerKind::Session) => state.frontend.session_picker.move_cursor_left(),
+        Some(PickerKind::Persona) => state.frontend.persona_picker.move_cursor_left(),
         None => {}
     }
     IntentResult::empty()
@@ -191,6 +210,7 @@ pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
         }
         Some(PickerKind::Keymap) => state.frontend.keymap_picker.move_cursor_right(),
         Some(PickerKind::Session) => state.frontend.session_picker.move_cursor_right(),
+        Some(PickerKind::Persona) => state.frontend.persona_picker.move_cursor_right(),
         None => {}
     }
     IntentResult::empty()
@@ -272,6 +292,28 @@ fn confirm_keymap(state: &mut AppState) -> (IntentResult, Option<Intent>) {
 
     state.frontend.mode = Mode::Normal;
     (IntentResult::empty(), Some(intent))
+}
+
+/// Confirms the selected persona and sets it as active.
+fn confirm_persona(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.persona_picker.selected_item() else {
+        return IntentResult::empty();
+    };
+    let persona_name = entry.name.clone();
+
+    // Find the matching persona and set it as active.
+    let persona = state
+        .context
+        .personas
+        .iter()
+        .find(|p| p.name == persona_name)
+        .cloned();
+    if let Some(p) = persona {
+        state.context.active_persona = Some(p);
+    }
+
+    state.frontend.mode = Mode::Normal;
+    IntentResult::empty()
 }
 
 /// Confirms the selected session and dispatches a switch command.

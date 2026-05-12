@@ -22,10 +22,11 @@ use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::context::protocol::command::{
-    AssemblePrompt, LoadContextStrategyPickerEntries, PinChatEntry, RestoreStrategyState,
-    SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
+    RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
-use crate::feat::context::protocol::event::PromptStrategySwitched;
+use crate::feat::context::protocol::event::{PersonasLoaded, PromptStrategySwitched};
+use crate::feat::persona::PersonaEntry;
 use crate::feat::picker::strategy_entries::load_strategy_picker_items;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
@@ -65,6 +66,7 @@ impl Actor for PromptAssemblyActor {
         ctx.subscribe_command::<PinChatEntry>();
         ctx.subscribe_command::<UnpinChatEntry>();
         ctx.subscribe_command::<LoadContextStrategyPickerEntries>();
+        ctx.subscribe_command::<LoadPersonaPickerEntries>();
         ctx.subscribe_event::<PromptTemplatesLoaded>();
 
         ctx.set_description("Context assembly, strategy management, pinning, and templates");
@@ -132,6 +134,12 @@ impl PromptAssemblyActor {
             Command::LoadContextStrategyPickerEntries { payload } => {
                 self.handle_load_context_strategy_picker_entries(payload);
             }
+            Command::LoadPersonaPickerEntries { payload } => {
+                self.handle_load_persona_picker_entries(payload);
+            }
+            Command::RescanPersonas { .. } => {
+                // Handled by persona-scan actor.
+            }
             _ => {}
         }
     }
@@ -148,6 +156,9 @@ impl PromptAssemblyActor {
             Event::PromptTemplatesLoaded { payload } => {
                 self.on_prompt_templates_loaded(payload);
             }
+            Event::PersonasLoaded { payload } => {
+                self.on_personas_loaded(payload);
+            }
             _ => {}
         }
     }
@@ -159,6 +170,46 @@ impl PromptAssemblyActor {
     ) {
         let mut state = self.state.write();
         load_strategy_picker_items(&self.services, &mut state);
+    }
+
+    /// Loads persona picker entries into `AppState`.
+    fn handle_load_persona_picker_entries(&self, _payload: &LoadPersonaPickerEntries) {
+        let state = self.state.read();
+        let active_name = state
+            .context
+            .active_persona
+            .as_ref()
+            .map(|p| p.name.clone());
+        let entries: Vec<PersonaEntry> = state
+            .context
+            .personas
+            .iter()
+            .map(|p| PersonaEntry {
+                name: p.name.clone(),
+                description: p.description.clone(),
+                is_active: active_name.as_ref() == Some(&p.name),
+            })
+            .collect();
+        drop(state);
+
+        let mut state = self.state.write();
+        state.frontend.persona_picker.set_items(entries);
+    }
+
+    /// Stores loaded personas in state and sets the first as default if none active.
+    fn on_personas_loaded(&self, payload: &PersonasLoaded) {
+        if payload.error.is_some() {
+            tracing::warn!(
+                error = ?payload.error,
+                "persona scan reported an error"
+            );
+            return;
+        }
+        let mut state = self.state.write();
+        state.context.personas = payload.personas.clone();
+        if state.context.active_persona.is_none() {
+            state.context.active_persona = payload.personas.first().cloned();
+        }
     }
 }
 
@@ -276,7 +327,7 @@ mod tests {
         // Then the assembled event contains the expected messages.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 2);
+        assert_eq!(assembled.messages.len(), 3);
     }
 
     #[rstest::rstest]
@@ -424,7 +475,7 @@ mod tests {
         // Then only the last 5 entries are in the output.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 5);
+        assert_eq!(assembled.messages.len(), 6);
     }
 
     #[rstest::rstest]
@@ -548,7 +599,7 @@ mod tests {
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert!(!assembled.messages.is_empty());
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::System {
                 content: "important instruction".to_owned(),
             }
@@ -584,7 +635,7 @@ mod tests {
         // Then three messages are produced.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 3);
+        assert_eq!(assembled.messages.len(), 4);
     }
 
     #[rstest::rstest]
@@ -617,19 +668,19 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[1],
+            assembled.messages[2],
             crate::protocol::LlmMessage::System {
                 content: "remember this".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[2],
+            assembled.messages[3],
             crate::protocol::LlmMessage::User {
                 content: "what is 2+2?".to_owned(),
             }
@@ -665,7 +716,7 @@ mod tests {
         // Then three messages are produced.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 3);
+        assert_eq!(assembled.messages.len(), 4);
     }
 
     #[rstest::rstest]
@@ -698,19 +749,19 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[1],
+            assembled.messages[2],
             crate::protocol::LlmMessage::System {
                 content: "keep me".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[2],
+            assembled.messages[3],
             crate::protocol::LlmMessage::User {
                 content: "goodbye".to_owned(),
             }
@@ -745,15 +796,15 @@ mod tests {
         // Then result is [top_messages] + [bottom_messages].
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 2);
+        assert_eq!(assembled.messages.len(), 3);
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::System {
                 content: "top instruction".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[1],
+            assembled.messages[2],
             crate::protocol::LlmMessage::System {
                 content: "bottom reminder".to_owned(),
             }
@@ -788,15 +839,15 @@ mod tests {
         // Then result is [bottom_pins] + [user_message].
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 2);
+        assert_eq!(assembled.messages.len(), 3);
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::System {
                 content: "reminder".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[1],
+            assembled.messages[2],
             crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
@@ -835,9 +886,9 @@ mod tests {
         // Then TOP pin appears as the first message.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 6);
+        assert_eq!(assembled.messages.len(), 7);
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::System {
                 content: "top rule".to_owned(),
             }
@@ -877,7 +928,7 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[2],
+            assembled.messages[3],
             crate::protocol::LlmMessage::System {
                 content: "relative note".to_owned(),
             }
@@ -917,13 +968,13 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[4],
+            assembled.messages[5],
             crate::protocol::LlmMessage::System {
                 content: "bottom reminder".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[5],
+            assembled.messages[6],
             crate::protocol::LlmMessage::User {
                 content: "latest question".to_owned(),
             }
@@ -960,7 +1011,7 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert!(assembled.system_prompt.is_none());
-        assert_eq!(assembled.messages.len(), 3);
+        assert_eq!(assembled.messages.len(), 4);
     }
 
     #[rstest::rstest]
@@ -993,20 +1044,20 @@ mod tests {
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[0],
+            assembled.messages[1],
             crate::protocol::LlmMessage::User {
                 content: "hello".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[1],
+            assembled.messages[2],
             crate::protocol::LlmMessage::Assistant {
                 content: "hi".to_owned(),
                 tool_calls: None,
             }
         );
         assert_eq!(
-            assembled.messages[2],
+            assembled.messages[3],
             crate::protocol::LlmMessage::User {
                 content: "how are you?".to_owned(),
             }
@@ -1241,7 +1292,7 @@ mod tests {
         // Then the first message is the skills block.
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        let first = &assembled.messages[0];
+        let first = &assembled.messages[1];
         match first {
             LlmMessage::System { content } => {
                 assert!(content.contains("<available_skills>"));

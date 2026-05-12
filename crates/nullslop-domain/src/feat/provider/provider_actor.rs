@@ -122,12 +122,15 @@ impl ProviderActor {
             | Command::RegisterTools { .. }
             | Command::ExecuteToolBatch { .. }
             | Command::ExecuteTool { .. }
+            | Command::CancelToolBatch { .. }
             | Command::ProceedWithShutdown { .. }
             | Command::SessionLoadCompleted { .. }
             | Command::SessionLoadRequested { .. }
             | Command::LoadSessionPickerEntries { .. }
             | Command::LoadContextStrategyPickerEntries { .. }
-            | Command::ScanSkills => {}
+            | Command::ScanSkills
+            | Command::RescanPersonas { .. }
+            | Command::LoadPersonaPickerEntries { .. } => {}
         }
     }
 
