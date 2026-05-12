@@ -114,13 +114,12 @@ pub fn create_core_with_actor_host(
         );
 
     // --- Skills scan actor ---
-    let (_skills_ref, skills_result) =
-        nullslop_domain::feat::skills::spawn_skills_scan_actor(
-            nullslop_domain::feat::skills::skills_dir(),
-            state.clone(),
-            sink.clone(),
-            handle,
-        );
+    let (_skills_ref, skills_result) = nullslop_domain::feat::skills::spawn_skills_scan_actor(
+        nullslop_domain::feat::skills::skills_dir(),
+        state.clone(),
+        sink.clone(),
+        handle,
+    );
 
     // Build services (needed by provider actor and shutdown tracker).
     let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));

@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use super::frontmatter::parse_frontmatter;
 use super::Skill;
+use super::frontmatter::parse_frontmatter;
 
 /// Scans a directory for agent skills.
 ///
@@ -40,9 +40,9 @@ pub fn scan_skills(dir: &Path) -> Vec<Skill> {
             continue;
         }
 
-        let name = frontmatter.name.unwrap_or_else(|| {
-            entry.file_name().to_string_lossy().to_string()
-        });
+        let name = frontmatter
+            .name
+            .unwrap_or_else(|| entry.file_name().to_string_lossy().to_string());
 
         skills.push(Skill {
             name,
@@ -173,8 +173,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let skill_dir = dir.path().join("no-frontmatter");
         fs::create_dir_all(&skill_dir).expect("create skill dir");
-        fs::write(skill_dir.join("SKILL.md"), "# Just markdown\n\nNo frontmatter.")
-            .expect("write SKILL.md");
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "# Just markdown\n\nNo frontmatter.",
+        )
+        .expect("write SKILL.md");
 
         // When scanning for skills.
         let skills = scan_skills(dir.path());

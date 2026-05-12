@@ -103,7 +103,9 @@ mod tests {
         assert!(result.contains("</available_skills>"));
         assert!(result.contains("<name>my-skill</name>"));
         assert!(result.contains("<description>A test skill</description>"));
-        assert!(result.contains("<location>/home/user/.agents/skills/my-skill/SKILL.md</location>"));
+        assert!(
+            result.contains("<location>/home/user/.agents/skills/my-skill/SKILL.md</location>")
+        );
     }
 
     #[rstest::rstest]

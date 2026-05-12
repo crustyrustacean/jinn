@@ -61,10 +61,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 return ToolResult {
                     tool_call_id: call.id,
                     name: call.name,
-                    content: format!(
-                        "failed to read skill '{}': {e}",
-                        skill_path.display()
-                    ),
+                    content: format!("failed to read skill '{}': {e}", skill_path.display()),
                     success: false,
                 };
             }
@@ -132,8 +129,16 @@ mod tests {
         let def = definition();
 
         // Then the parameters require "name".
-        let required = def.parameters.get("required").expect("should have required");
-        assert!(required.as_array().unwrap().contains(&serde_json::json!("name")));
+        let required = def
+            .parameters
+            .get("required")
+            .expect("should have required");
+        assert!(
+            required
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("name"))
+        );
     }
 
     #[rstest::rstest]

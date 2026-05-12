@@ -1185,9 +1185,7 @@ mod tests {
         // Given an actor with skills loaded in AppState.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
-        let state = ctx
-            .take_data::<State>()
-            .expect("state was injected");
+        let state = ctx.take_data::<State>().expect("state was injected");
         {
             let mut guard = state.write();
             guard.context.skills = vec![crate::feat::skills::Skill {
