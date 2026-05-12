@@ -9,6 +9,7 @@ pub mod global;
 pub mod intent;
 pub mod llm_actor;
 pub mod navigation;
+pub mod persona;
 pub mod picker;
 pub mod pinned_panel;
 pub mod provider;
