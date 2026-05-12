@@ -6,8 +6,8 @@
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 
 use super::{
-    BoxedToolFuture, builtin_bash, builtin_echo, builtin_get_time, builtin_read, builtin_write,
-    edit,
+    BoxedToolFuture, builtin_bash, builtin_echo, builtin_get_time, builtin_read, builtin_skill,
+    builtin_write, edit,
 };
 
 /// A built-in tool entry: its definition paired with its execute function.
@@ -39,6 +39,10 @@ pub(super) fn builtin_tools() -> Vec<BuiltinToolEntry> {
         (
             edit::definition(),
             edit::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
+        (
+            builtin_skill::definition(),
+            builtin_skill::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
     ]
 }

@@ -113,6 +113,14 @@ pub fn create_core_with_actor_host(
             handle,
         );
 
+    // --- Skills scan actor ---
+    let (_skills_ref, skills_result) = nullslop_domain::feat::skills::spawn_skills_scan_actor(
+        nullslop_domain::feat::skills::skills_dir(),
+        state.clone(),
+        sink.clone(),
+        handle,
+    );
+
     // Build services (needed by provider actor and shutdown tracker).
     let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
     let services = Services {
@@ -159,6 +167,10 @@ pub fn create_core_with_actor_host(
         ("session-persistence", "Persists session data to disk"),
         ("prompt-scan", "Scans and reloads prompt templates"),
         (
+            "skills-scan",
+            "Scans and loads agent skills from ~/.agents/skills",
+        ),
+        (
             "provider",
             "Manages provider selection, LLM factory, and model cache",
         ),
@@ -191,6 +203,7 @@ pub fn create_core_with_actor_host(
             prompt_result,
             sp_result,
             scan_result,
+            skills_result,
             prov_result,
             st_result,
         ],
@@ -203,7 +216,13 @@ pub fn create_core_with_actor_host(
     spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
     // Build AppCore with shared state and sender only.
-    let core = AppCore { state, sender };
+    let core = AppCore {
+        state: state.clone(),
+        sender: sender.clone(),
+    };
+
+    // Trigger initial skills scan.
+    let _ = sink.send_command(nullslop_domain::Command::ScanSkills);
 
     (core, services, actor_host_service, core_notify_rx)
 }

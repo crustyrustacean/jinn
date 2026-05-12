@@ -17,6 +17,7 @@ pub(crate) mod builtin_bash;
 pub(crate) mod builtin_echo;
 pub(crate) mod builtin_get_time;
 pub(crate) mod builtin_read;
+pub(crate) mod builtin_skill;
 pub(crate) mod builtin_write;
 pub(crate) mod edit;
 pub mod protocol;
@@ -300,7 +301,12 @@ impl ToolOrchestratorActor {
                 .map(|s| s.cwd().to_owned())
                 .unwrap_or_else(|| PathBuf::from("/"))
         };
-        ToolContext { cwd, timeout: None }
+        ToolContext {
+            cwd,
+            timeout: None,
+            state: Some(self.state.clone()),
+            session_id: Some(session_id.clone()),
+        }
     }
 
     /// Dispatches a single tool call to the appropriate handler.
@@ -571,7 +577,7 @@ mod tests {
             .iter()
             .find(|p| p.provider == "builtin")
             .expect("expected builtin ToolsRegistered");
-        assert_eq!(builtin_evt.definitions.len(), 6);
+        assert_eq!(builtin_evt.definitions.len(), 7);
     }
 
     // --- RegisterTools command tests ---
@@ -696,6 +702,8 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            state: None,
+            session_id: None,
         };
 
         // When executing the echo tool.
@@ -718,6 +726,8 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            state: None,
+            session_id: None,
         };
 
         // When executing the echo tool.
@@ -739,6 +749,8 @@ mod tests {
         let ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            state: None,
+            session_id: None,
         };
 
         // When executing the get_time tool.
@@ -769,6 +781,8 @@ mod tests {
         let tool_ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            state: None,
+            session_id: None,
         };
 
         // When executing the read tool.
@@ -793,6 +807,8 @@ mod tests {
         let tool_ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            state: None,
+            session_id: None,
         };
 
         // When executing the read tool.
@@ -1148,6 +1164,8 @@ mod tests {
         let tool_ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            state: None,
+            session_id: None,
         };
 
         // When executing the write tool.
@@ -1178,6 +1196,8 @@ mod tests {
         let tool_ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            state: None,
+            session_id: None,
         };
 
         // When executing the write tool.
@@ -1207,6 +1227,8 @@ mod tests {
         let tool_ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            state: None,
+            session_id: None,
         };
 
         // When executing the write tool.
@@ -1240,6 +1262,8 @@ mod tests {
         let tool_ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            state: None,
+            session_id: None,
         };
 
         // When executing the write tool.
@@ -1263,6 +1287,8 @@ mod tests {
         let tool_ctx = ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            state: None,
+            session_id: None,
         };
 
         // When executing the write tool.

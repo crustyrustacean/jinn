@@ -11,6 +11,8 @@ use crate::feat::context::{
     AssemblyContext, CharRatioEstimator, PassthroughStrategy, estimate_entry_tokens,
 };
 
+use crate::feat::skills::format::format_skills_for_prompt;
+
 use super::super::PromptAssemblyActor;
 
 impl PromptAssemblyActor {
@@ -117,9 +119,25 @@ impl PromptAssemblyActor {
             messages.extend(bottom_messages);
         }
 
+        // Prepend skills block (if any skills are loaded).
+        let skills_block = {
+            let guard = self.state.read();
+            format_skills_for_prompt(&guard.context.skills)
+        };
+
         // Prepend TOP pins.
         let mut final_messages = top_messages;
         final_messages.append(&mut messages);
+
+        // Prepend skills block as a system message before everything else.
+        if !skills_block.is_empty() {
+            final_messages.insert(
+                0,
+                LlmMessage::System {
+                    content: skills_block,
+                },
+            );
+        }
 
         let _ = ctx.send_event(Event::PromptAssembled {
             payload: PromptAssembled {
