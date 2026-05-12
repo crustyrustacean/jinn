@@ -6,6 +6,7 @@
 //! - **User messages** appear bold with a `>` prefix.
 //! - **System messages** appear muted with indentation.
 //! - **Actor messages** appear highlighted with the actor's name and content.
+//! - **Assistant messages** appear in cyan (no icon — color distinguishes them).
 //!
 //! Text wraps within the available space.
 
@@ -186,7 +187,7 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, is_selected: bool) -> Vec<
             )
         }
         ChatEntryKind::Assistant(text) => {
-            let prefix = if pinned { "📌 ✦ " } else { "✦ " };
+            let prefix = if pinned { "📌 " } else { "" };
             multiline_styled(
                 text,
                 prefix,
@@ -247,6 +248,7 @@ where
     I: AsRef<str>,
 {
     let text = text.as_ref();
+    let text = text.trim_start_matches('\n');
     let prefix = prefix.as_ref();
     let _ = indent.as_ref();
     let segments = text.split('\n');
@@ -395,10 +397,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then the bottom row has "\u{2726}" (✦) and is cyan.
+        // Then the bottom row has the text content (no icon) and is cyan.
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((0, 9)).expect("cell should exist");
-        assert_eq!(cell.symbol(), "\u{2726}");
+        assert_eq!(cell.symbol(), "h");
         assert_eq!(cell.style().fg, Some(Color::Cyan));
     }
 
@@ -475,10 +477,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then line 8 has "✦ " prefix (cyan).
+        // Then line 8 has the text content (no icon) and is cyan.
         let buffer = terminal.backend().buffer().clone();
         let line8 = buffer.cell((0, 8)).expect("cell should exist");
-        assert_eq!(line8.symbol(), "\u{2726}");
+        assert_eq!(line8.symbol(), "l");
         assert_eq!(line8.style().fg, Some(Color::Cyan));
     }
 
