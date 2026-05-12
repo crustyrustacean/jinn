@@ -18,8 +18,8 @@ use nullslop_domain::ModelCache;
 use nullslop_domain::NoProvidersAvailableFactory;
 use nullslop_domain::ProviderRegistry;
 use nullslop_domain::ProviderRegistryService;
-use nullslop_domain::cache_path;
 use nullslop_domain::State;
+use nullslop_domain::cache_path;
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -100,13 +100,14 @@ impl App {
 
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Tui => {
-                let (core, services, actor_host, core_receiver) = actor_wiring::create_core_with_actor_host(
-                    &self.handle(),
-                    llm_service.clone(),
-                    provider_registry.clone(),
-                    resolved_api_keys.clone(),
-                    config_storage.clone(),
-                );
+                let (core, services, actor_host, core_receiver) =
+                    actor_wiring::create_core_with_actor_host(
+                        &self.handle(),
+                        llm_service.clone(),
+                        provider_registry.clone(),
+                        resolved_api_keys.clone(),
+                        config_storage.clone(),
+                    );
                 core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
@@ -147,13 +148,14 @@ impl App {
                 runner.run().change_context(AppError)?;
             }
             Commands::Headless { command, .. } => {
-                let (core, _services, actor_host, core_receiver) = actor_wiring::create_core_with_actor_host(
-                    &self.handle(),
-                    llm_service.clone(),
-                    provider_registry,
-                    resolved_api_keys,
-                    config_storage,
-                );
+                let (core, _services, actor_host, core_receiver) =
+                    actor_wiring::create_core_with_actor_host(
+                        &self.handle(),
+                        llm_service.clone(),
+                        provider_registry,
+                        resolved_api_keys,
+                        config_storage,
+                    );
                 core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();

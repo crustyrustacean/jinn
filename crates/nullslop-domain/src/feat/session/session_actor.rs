@@ -22,7 +22,9 @@ mod handlers;
 use super::SessionStoreService;
 use std::sync::Arc;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
+use crate::common::actor::{
+    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
+};
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
@@ -159,6 +161,22 @@ impl SessionPersistenceActor {
     }
 }
 
+pub fn spawn_session_actor(
+    state: crate::common::state::State,
+    session_store: super::SessionStoreService,
+    sink: Arc<dyn MessageSink>,
+    handle: &tokio::runtime::Handle,
+) -> (ActorRef<SessionPersistenceDirectMsg>, ActorSpawnResult) {
+    let (tx, rx) = kanal::unbounded::<ActorEnvelope<SessionPersistenceDirectMsg>>();
+    let actor_ref = ActorRef::new(tx);
+    let mut ctx = ActorContext::new("session-persistence", sink);
+    ctx.set_description("Persists session data to disk");
+    ctx.set_data(state);
+    ctx.set_data(session_store);
+    let actor = SessionPersistenceActor::activate(&mut ctx);
+    let result = spawn_actor("session-persistence", actor, &actor_ref, rx, ctx, handle);
+    (actor_ref, result)
+}
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -1177,33 +1195,4 @@ mod tests {
             other => panic!("expected ToolResult, got {other:?}"),
         }
     }
-}
-
-/// Spawns the session persistence actor on the given tokio runtime handle.
-///
-/// Creates the actor's channel, injects `state` and `session_store` as context
-/// data, activates the actor, and returns the [`ActorRef`] for sending direct
-/// messages and the [`ActorSpawnResult`] for routing integration.
-///
-/// # Panics
-///
-/// Panics if the actor fails to activate (should never happen with valid injection).
-pub fn spawn_session_actor(
-    state: crate::common::state::State,
-    session_store: super::SessionStoreService,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (
-    ActorRef<SessionPersistenceDirectMsg>,
-    ActorSpawnResult,
-) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<SessionPersistenceDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("session-persistence", sink);
-    ctx.set_description("Persists session data to disk");
-    ctx.set_data(state);
-    ctx.set_data(session_store);
-    let actor = SessionPersistenceActor::activate(&mut ctx);
-    let result = spawn_actor("session-persistence", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
 }

@@ -8,7 +8,10 @@ use super::super::PromptAssemblyActor;
 
 impl PromptAssemblyActor {
     /// Caches tool definitions from a [`ToolsRegistered`] event.
-    pub(in crate::feat::context::context_actor) fn on_tools_registered(&mut self, evt: &ToolsRegistered) {
+    pub(in crate::feat::context::context_actor) fn on_tools_registered(
+        &mut self,
+        evt: &ToolsRegistered,
+    ) {
         for def in &evt.definitions {
             self.tool_definitions.insert(def.name.clone(), def.clone());
         }

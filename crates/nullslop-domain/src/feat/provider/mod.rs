@@ -5,7 +5,6 @@
 //! and UI elements (streaming indicator, queue display).
 
 pub mod discover_actor;
-pub mod provider_actor;
 pub mod entries;
 pub mod entries_to_messages;
 pub mod indicator;
@@ -13,6 +12,7 @@ pub mod llm_message;
 pub mod loader;
 pub mod picker_entry;
 pub mod protocol;
+pub mod provider_actor;
 pub mod queue_element;
 pub mod render;
 
@@ -65,5 +65,3 @@ pub fn register(registry: &mut AppUiRegistry) {
     registry.register(Box::new(StreamingIndicatorElement::new()));
     registry.register(Box::new(QueueDisplayElement));
 }
-
-
