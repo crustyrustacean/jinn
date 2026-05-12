@@ -18,8 +18,6 @@ pub enum Scope {
     Picker,
     /// Input mode — typing into the input buffer.
     Input,
-    /// Tool content popup mode — scroll and close the popup.
-    ToolContent,
 }
 
 impl std::fmt::Display for Scope {
@@ -30,7 +28,6 @@ impl std::fmt::Display for Scope {
             Self::Pinned => write!(f, "Pinned"),
             Self::Picker => write!(f, "Picker"),
             Self::Input => write!(f, "Input"),
-            Self::ToolContent => write!(f, "ToolContent"),
         }
     }
 }
@@ -45,7 +42,6 @@ impl std::str::FromStr for Scope {
             "Pinned" => Ok(Self::Pinned),
             "Picker" => Ok(Self::Picker),
             "Input" => Ok(Self::Input),
-            "ToolContent" => Ok(Self::ToolContent),
             _ => Err(()),
         }
     }

@@ -141,7 +141,8 @@ fn cell_inside_selection_is_inverted() {
     // Given a buffer with distinctively colored cells and an active selection.
     let area = Rect::new(0, 0, 20, 10);
     let mut buf = ratatui::buffer::Buffer::empty(area);
-    // Paint a cell inside the selection with known colors.
+    // Paint a cell inside the selection with known colors and non-whitespace symbol.
+    buf.cell_mut((3, 3)).unwrap().set_symbol("X");
     buf.cell_mut((3, 3)).unwrap().set_fg(Color::Yellow);
     buf.cell_mut((3, 3)).unwrap().set_bg(Color::Blue);
     // Paint a cell outside the selection with known colors.
@@ -200,7 +201,8 @@ fn cell_inside_clamped_selection_is_inverted() {
     // extends beyond the selection's constraining bounds.
     let full_area = Rect::new(0, 0, 30, 30);
     let mut buf = ratatui::buffer::Buffer::empty(full_area);
-    // Paint cell inside bounds (will be in clamped selection).
+    // Paint cell inside bounds (will be in clamped selection) with non-whitespace symbol.
+    buf.cell_mut((7, 7)).unwrap().set_symbol("X");
     buf.cell_mut((7, 7)).unwrap().set_fg(Color::Cyan);
     buf.cell_mut((7, 7)).unwrap().set_bg(Color::Magenta);
     // Paint cell at raw anchor position (0, 0) — outside bounds.
@@ -293,7 +295,9 @@ fn reset_bg_cell_gets_explicit_colors() {
     buf.cell_mut((3, 3))
         .unwrap()
         .set_style(Style::default().add_modifier(Modifier::BOLD));
+    buf.cell_mut((3, 3)).unwrap().set_symbol("X");
     // Adjacent cell with distinct colors (assistant-style).
+    buf.cell_mut((4, 3)).unwrap().set_symbol("Y");
     buf.cell_mut((4, 3)).unwrap().set_fg(Color::Cyan);
 
     // And an Active selection covering both cells.
@@ -323,7 +327,9 @@ fn distinct_color_cell_gets_swapped() {
     buf.cell_mut((3, 3))
         .unwrap()
         .set_style(Style::default().add_modifier(Modifier::BOLD));
+    buf.cell_mut((3, 3)).unwrap().set_symbol("X");
     // Adjacent cell with distinct colors (assistant-style).
+    buf.cell_mut((4, 3)).unwrap().set_symbol("Y");
     buf.cell_mut((4, 3)).unwrap().set_fg(Color::Cyan);
 
     // And an Active selection covering both cells.

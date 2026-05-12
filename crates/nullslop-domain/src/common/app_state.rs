@@ -121,23 +121,6 @@ impl Default for ShutdownCoordinatorState {
     }
 }
 
-/// State for the tool content popup overlay.
-///
-/// OWNER: IntentHandler (open/close/scroll).
-#[derive(Debug, Default)]
-pub struct ToolContentPopupState {
-    /// The tool name shown in the popup title.
-    pub name: String,
-    /// The full content to display.
-    pub content: String,
-    /// Current scroll offset in lines.
-    pub scroll_offset: u16,
-    /// Whether it was a success (for title styling).
-    pub success: bool,
-    /// Whether the popup is currently visible.
-    pub is_open: bool,
-}
-
 /// Frontend / UI state — owned by the IntentHandler (main thread).
 ///
 /// Written to by `IntentHandler` and various UI elements (read-only).
@@ -200,10 +183,6 @@ pub struct FrontendState {
     /// Context strategy picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (strategy picker navigation).
     pub context_strategy_picker: nullslop_selection_widget::SelectionState<StrategyEntry>,
-
-    /// Tool content popup state.
-    /// OWNER: IntentHandler (open/close/scroll).
-    pub tool_content_popup: ToolContentPopupState,
 }
 
 impl Default for FrontendState {
@@ -223,7 +202,6 @@ impl Default for FrontendState {
             keymap_picker_origin_scope: None,
             session_picker: nullslop_selection_widget::SelectionState::new(),
             context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
-            tool_content_popup: ToolContentPopupState::default(),
         }
     }
 }
