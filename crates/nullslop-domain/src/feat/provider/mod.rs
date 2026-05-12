@@ -44,7 +44,7 @@ pub struct ProviderState {
     pub last_refreshed_at: Option<jiff::Timestamp>,
 
     /// Provider picker state (items, filter text, selection index).
-    /// OWNER: provider-actor (loads entries via LoadPickerEntries),
+    /// OWNER: provider-actor (loads entries via LoadProviderPickerEntries),
     ///        IntentHandler (navigates picker, reads selected item).
     pub provider_picker: nullslop_selection_widget::SelectionState<PickerEntry>,
 }

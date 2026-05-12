@@ -7,7 +7,7 @@
 //! - **[`intent`]** — `Intent` (user-initiated action) and `IntentResult`
 //! - **[`key`]** — `Key`, `KeyEvent`, `Modifiers` (keyboard input types)
 //! - **[`mode`]** — `Mode` (application interaction mode)
-//! - **[`system`]** — `LoadPickerEntries`, `KeyDown`, `KeyUp`, `ModeChanged`
+//! - **[`system`]** — `KeyDown`, `KeyUp`, `ModeChanged`
 //! - **[`tab`]** — `ActiveTab`, `TabDirection`
 //!
 //! Domain-specific types (session, provider, context, tools, chat input, etc.) live
