@@ -3,7 +3,8 @@
 //! Each [`ChatEntry`] records a timestamped message from the user,
 //! the system, or an actor.
 
-use serde::{Deserialize, Serialize};
+use ratatui::text::Span;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A unique identifier for a [`ChatEntry`].
 ///
@@ -63,6 +64,34 @@ impl std::fmt::Display for PinPosition {
     }
 }
 
+/// Structured table data for rendering in the chat log.
+///
+/// Carries styled headers and rows so the renderer can produce
+/// a properly aligned table with per-cell coloring.
+/// This type is not serializable — table entries are ephemeral
+/// and do not survive session persistence.
+#[derive(Debug, Clone)]
+pub struct TableData {
+    /// Column headers (styled).
+    pub headers: Vec<Span<'static>>,
+    /// Data rows, one `Vec<Span>` per row (one span per column).
+    pub rows: Vec<Vec<Span<'static>>>,
+}
+
+impl TableData {
+    /// Returns a plain-text representation of the table for serialization fallback.
+    pub(crate) fn to_plain_text(&self) -> String {
+        let mut lines = Vec::new();
+        let header_text: Vec<&str> = self.headers.iter().map(|s| s.content.as_ref()).collect();
+        lines.push(header_text.join(" | "));
+        for row in &self.rows {
+            let cell_text: Vec<&str> = row.iter().map(|s| s.content.as_ref()).collect();
+            lines.push(cell_text.join(" | "));
+        }
+        lines.join("\n")
+    }
+}
+
 /// A single entry in the chat history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatEntry {
@@ -84,7 +113,14 @@ pub struct ChatEntry {
 }
 
 /// The kind of chat entry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// # Serialization
+///
+/// The `Table` variant is not serializable (it contains ratatui `Span`s).
+/// Custom `Serialize`/`Deserialize` impls handle this: `Table` serializes
+/// as `System` with a plain-text fallback, and is never produced during
+/// deserialization (tables are ephemeral display data).
+#[derive(Debug, Clone, PartialEq)]
 pub enum ChatEntryKind {
     /// A message typed by the user.
     User(String),
@@ -99,6 +135,8 @@ pub enum ChatEntryKind {
         /// The message text.
         text: String,
     },
+    /// A structured table with styled headers and rows.
+    Table(TableData),
     /// A tool call requested by the LLM.
     ToolCall {
         /// Unique ID assigned by the LLM provider.
@@ -182,6 +220,17 @@ impl ChatEntry {
         }
     }
 
+    /// Create a new table entry with the current timestamp.
+    #[must_use]
+    pub fn table(data: TableData) -> Self {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Table(data),
+            pin_position: None,
+        }
+    }
+
     /// Create a new tool call entry with the current timestamp.
     #[must_use]
     pub fn tool_call<S1, S2, S3>(id: S1, name: S2, arguments: S3) -> Self
@@ -242,6 +291,199 @@ impl ChatEntry {
         self.pin_position
     }
 }
+
+impl Serialize for ChatEntryKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        match self {
+            // Table serializes as System with a plain-text fallback.
+            ChatEntryKind::Table(data) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("System", &data.to_plain_text())?;
+                map.end()
+            }
+            ChatEntryKind::User(t) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("User", t)?;
+                map.end()
+            }
+            ChatEntryKind::System(t) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("System", t)?;
+                map.end()
+            }
+            ChatEntryKind::Assistant(t) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("Assistant", t)?;
+                map.end()
+            }
+            ChatEntryKind::Actor { source, text } => {
+                #[derive(Serialize)]
+                struct ActorData {
+                    source: String,
+                    text: String,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "Actor",
+                    &ActorData {
+                        source: source.clone(),
+                        text: text.clone(),
+                    },
+                )?;
+                map.end()
+            }
+            ChatEntryKind::ToolCall {
+                id,
+                name,
+                arguments,
+            } => {
+                #[derive(Serialize)]
+                struct ToolCallData {
+                    id: String,
+                    name: String,
+                    arguments: String,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "ToolCall",
+                    &ToolCallData {
+                        id: id.clone(),
+                        name: name.clone(),
+                        arguments: arguments.clone(),
+                    },
+                )?;
+                map.end()
+            }
+            ChatEntryKind::ToolResult {
+                id,
+                name,
+                content,
+                success,
+            } => {
+                #[derive(Serialize)]
+                struct ToolResultData {
+                    id: String,
+                    name: String,
+                    content: String,
+                    success: bool,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "ToolResult",
+                    &ToolResultData {
+                        id: id.clone(),
+                        name: name.clone(),
+                        content: content.clone(),
+                        success: *success,
+                    },
+                )?;
+                map.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ChatEntryKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        struct ChatEntryKindVisitor;
+
+        impl<'de> Visitor<'de> for ChatEntryKindVisitor {
+            type Value = ChatEntryKind;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a ChatEntryKind map")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let key: String = map
+                    .next_key()?
+                    .ok_or_else(|| de::Error::missing_field("variant"))?;
+                match key.as_str() {
+                    "User" => {
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::User(text))
+                    }
+                    "System" => {
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::System(text))
+                    }
+                    "Assistant" => {
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::Assistant(text))
+                    }
+                    "Actor" => {
+                        #[derive(Deserialize)]
+                        struct ActorData {
+                            source: String,
+                            text: String,
+                        }
+                        let data: ActorData = map.next_value()?;
+                        Ok(ChatEntryKind::Actor {
+                            source: data.source,
+                            text: data.text,
+                        })
+                    }
+                    "ToolCall" => {
+                        #[derive(Deserialize)]
+                        struct ToolCallData {
+                            id: String,
+                            name: String,
+                            arguments: String,
+                        }
+                        let data: ToolCallData = map.next_value()?;
+                        Ok(ChatEntryKind::ToolCall {
+                            id: data.id,
+                            name: data.name,
+                            arguments: data.arguments,
+                        })
+                    }
+                    "ToolResult" => {
+                        #[derive(Deserialize)]
+                        struct ToolResultData {
+                            id: String,
+                            name: String,
+                            content: String,
+                            success: bool,
+                        }
+                        let data: ToolResultData = map.next_value()?;
+                        Ok(ChatEntryKind::ToolResult {
+                            id: data.id,
+                            name: data.name,
+                            content: data.content,
+                            success: data.success,
+                        })
+                    }
+                    // "Table" is never deserialized — it's ephemeral.
+                    other => Err(de::Error::unknown_variant(
+                        other,
+                        &[
+                            "User",
+                            "System",
+                            "Assistant",
+                            "Actor",
+                            "ToolCall",
+                            "ToolResult",
+                        ],
+                    )),
+                }
+            }
+        }
+
+        deserializer.deserialize_map(ChatEntryKindVisitor)
+    }
+}
+
+impl PartialEq for TableData {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_plain_text() == other.to_plain_text()
+    }
+}
+
+impl Eq for ChatEntryKind {}
 
 #[cfg(test)]
 #[path = "chat_entry_tests.rs"]
