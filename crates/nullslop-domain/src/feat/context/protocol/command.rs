@@ -92,6 +92,16 @@ pub struct UnpinChatEntry {
 #[cmd("context")]
 pub struct LoadContextStrategyPickerEntries;
 
+/// Rescan the personas directory and reload persona files.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("context")]
+pub struct RescanPersonas;
+
+/// Load entries for the persona picker.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("context")]
+pub struct LoadPersonaPickerEntries;
+
 #[cfg(test)]
 mod tests {
     use super::*;
