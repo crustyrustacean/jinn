@@ -13,7 +13,6 @@ pub mod render;
 pub mod run;
 pub mod scope;
 pub mod selection;
-pub(crate) mod split_borders;
 pub mod suspend;
 pub mod terminal;
 

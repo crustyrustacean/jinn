@@ -277,8 +277,6 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
 // --- Normal Escape ---
 
 /// Handles `NormalEscape` — clears chat entry selection if present.
-///
-/// Does NOT set `pinned_pane_close` — the pinned panel has its own close intent.
 pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     super::validator::validate_normal_escape(state);
 
@@ -846,8 +844,6 @@ mod tests {
 
         // Then the selection is cleared.
         assert!(state.active_session().selected_entry_index().is_none());
-        // And pinned_pane_close signal is NOT set.
-        assert!(!state.frontend.tui_signals.pinned_pane_close);
         assert!(result.commands.is_empty());
     }
 }

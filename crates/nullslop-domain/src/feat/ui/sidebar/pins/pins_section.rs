@@ -117,13 +117,12 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
         Mode::Input => crate::feat::ui::sidebar::state::SidebarOriginScope::Input,
         _ => crate::feat::ui::sidebar::state::SidebarOriginScope::Normal,
     });
-    state.frontend.tui_signals.pinned_pane_open = true;
     IntentResult::empty()
 }
 
 /// Handles `SidebarLeave` — returns to origin scope.
 pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
-    state.frontend.tui_signals.pinned_pane_close = true;
+    state.frontend.sidebar.origin_scope = None;
     IntentResult::empty()
 }
 
@@ -383,28 +382,30 @@ mod tests {
     // --- Sidebar handler tests ---
 
     #[rstest::rstest]
-    fn sidebar_focus_sets_open_signal() {
+    fn sidebar_focus_sets_origin_scope() {
         // Given a default state.
         let mut state = AppState::default();
 
         // When handling sidebar focus.
         let result = handle_sidebar_focus(&mut state);
 
-        // Then the open signal is set.
-        assert!(state.frontend.tui_signals.pinned_pane_open);
+        // Then origin_scope is set.
+        assert!(state.frontend.sidebar.origin_scope.is_some());
         assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
-    fn sidebar_leave_sets_close_signal() {
-        // Given a default state.
+    fn sidebar_leave_clears_origin_scope() {
+        // Given a state with origin_scope set.
         let mut state = AppState::default();
+        state.frontend.sidebar.origin_scope =
+            Some(crate::feat::ui::sidebar::state::SidebarOriginScope::Normal);
 
         // When handling sidebar leave.
         let result = handle_sidebar_leave(&mut state);
 
-        // Then the close signal is set.
-        assert!(state.frontend.tui_signals.pinned_pane_close);
+        // Then origin_scope is cleared.
+        assert!(state.frontend.sidebar.origin_scope.is_none());
         assert!(result.commands.is_empty());
     }
 

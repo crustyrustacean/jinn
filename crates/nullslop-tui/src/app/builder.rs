@@ -3,9 +3,9 @@
 use nullslop_domain::ActorHostService;
 use nullslop_domain::AppCore;
 use nullslop_domain::AppUiRegistry;
-use ratatui_spatial_splits::SplitManager;
+use nullslop_domain::feat::ui::sidebar::sidebar::Sidebar;
 
-use super::{PaneFocus, TuiApp, WhichKeyInstance};
+use super::{TuiApp, WhichKeyInstance};
 use crate::config::TuiConfig;
 use crate::scope::Scope;
 use crate::selection::{SelectableRects, SelectionState};
@@ -82,10 +82,11 @@ impl TuiAppBuilder {
             selectable_rects: SelectableRects::default(),
             pending_clipboard: false,
             config: TuiConfig::default(),
-            split_manager: SplitManager::new(),
-            pane_focus: PaneFocus::Chat,
-            pinned_pane_visible: false,
-            pinned_pane_id: None,
+            sidebar: {
+                let mut s = Sidebar::new();
+                nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                s
+            },
         }
     }
 }

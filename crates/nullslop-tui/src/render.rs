@@ -9,7 +9,6 @@ use ratatui_tabs::{TabManager, TabsBar, TabsStyle};
 use ratatui_which_key::{PopupPosition, WhichKey};
 
 use crate::TuiApp;
-use crate::app::{CHAT_PANE, PaneFocus};
 use crate::selection::{SelectionState, find_last_nonws_in_row};
 
 /// Minimum terminal width.
@@ -133,42 +132,58 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
     // Collect selectable rects during rendering.
     let mut rects = vec![];
-    // Split border lines (rendered after elements, before selection highlight).
-    let mut borders: Option<Vec<crate::split_borders::BorderLine>> = None;
 
     match state.frontend.active_tab {
         nullslop_domain::ActiveTab::Chat => {
-            let content_area = if app.pinned_pane_visible {
-                app.split_manager.set_viewport(layout.content);
-                let areas = app.split_manager.areas();
-                let result = crate::split_borders::compute_split_borders(areas);
-                let chat_rect = result.rect_for(CHAT_PANE).unwrap_or(layout.content);
+            // Fixed 70/30 split between chat and sidebar.
+            let sidebar_ratio: f32 = 0.3;
+            let sidebar_width =
+                (layout.content.width as f32 * sidebar_ratio).ceil() as u16;
+            let border_width: u16 = 1;
+            let chat_width = layout
+                .content
+                .width
+                .saturating_sub(sidebar_width)
+                .saturating_sub(border_width);
+            let sidebar_x = layout.content.x + chat_width + border_width;
 
-                if app.pinned_pane_visible {
-                    let pinned_rect = app
-                        .pinned_pane_id
-                        .and_then(|id| result.rect_for(id))
-                        .unwrap_or_default();
-
-                    // Render pinned panel into sidebar.
-                    if let Some(element) = app.ui_registry.get_mut("pinned-panel") {
-                        element.render(frame, pinned_rect, &state);
-                        if element.is_selectable() && app.pane_focus == PaneFocus::Sidebar {
-                            rects.push(pinned_rect);
-                        }
-                    }
-                }
-
-                borders = Some(result.lines);
-                chat_rect
-            } else {
-                layout.content
+            let chat_area = Rect {
+                x: layout.content.x,
+                y: layout.content.y,
+                width: chat_width,
+                height: layout.content.height,
             };
+            let sidebar_area = Rect {
+                x: sidebar_x,
+                y: layout.content.y,
+                width: sidebar_width,
+                height: layout.content.height,
+            };
+
+            // Draw vertical border line between chat and sidebar.
+            let border_x = layout.content.x + chat_width;
+            let border_style = Style::default().fg(Color::DarkGray);
+            for y in layout.content.y..(layout.content.y + layout.content.height) {
+                if let Some(cell) = frame.buffer_mut().cell_mut((border_x, y)) {
+                    cell.set_symbol("\u{2502}");
+                    cell.set_style(border_style);
+                }
+            }
+
+            // Render sidebar sections.
+            let sidebar_focused = state.frontend.sidebar.origin_scope.is_some();
+            app.sidebar.render(frame, sidebar_area, &state);
+            if sidebar_focused {
+                rects.push(sidebar_area);
+            }
+
+            // Use chat_area as content_area for the chat log.
+            let content_area = chat_area;
 
             // Chat log
             if let Some(element) = app.ui_registry.get_mut("chat-log") {
                 element.render(frame, content_area, &state);
-                if element.is_selectable() && app.pane_focus == PaneFocus::Chat {
+                if element.is_selectable() && !sidebar_focused {
                     rects.push(content_area);
                 }
             }
@@ -227,11 +242,6 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     drop(state);
 
     app.selectable_rects.rebuild(rects);
-
-    // Draw split borders on top of element content (but below selection highlight).
-    if let Some(ref lines) = borders {
-        crate::split_borders::render_borders(frame, lines);
-    }
 
     // Apply selection highlight after all elements have rendered.
     apply_selection_highlight(app, frame.buffer_mut());

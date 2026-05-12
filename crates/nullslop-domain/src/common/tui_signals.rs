@@ -35,14 +35,7 @@ pub struct TuiSignals {
     /// An external editor should be launched for the chat input.
     pub edit_requested: bool,
 
-    /// The pinned pane should be toggled (shown ↔ hidden).
-    pub pinned_pane_toggle: bool,
 
-    /// The pinned pane should be opened.
-    pub pinned_pane_open: bool,
-
-    /// The pinned pane should be closed.
-    pub pinned_pane_close: bool,
 }
 
 impl Default for TuiSignals {
@@ -58,9 +51,7 @@ impl TuiSignals {
         Self {
             toggle_whichkey: false,
             edit_requested: false,
-            pinned_pane_toggle: false,
-            pinned_pane_open: false,
-            pinned_pane_close: false,
+
         }
     }
 
@@ -68,9 +59,7 @@ impl TuiSignals {
     pub fn clear(&mut self) {
         self.toggle_whichkey = false;
         self.edit_requested = false;
-        self.pinned_pane_toggle = false;
-        self.pinned_pane_open = false;
-        self.pinned_pane_close = false;
+
     }
 }
 
@@ -84,7 +73,7 @@ mod tests {
         let mut signals = TuiSignals::new();
         signals.toggle_whichkey = true;
         signals.edit_requested = true;
-        signals.pinned_pane_toggle = true;
+        signals.toggle_whichkey = true;
 
         // When clearing.
         signals.clear();
@@ -92,8 +81,5 @@ mod tests {
         // Then all flags are false.
         assert!(!signals.toggle_whichkey);
         assert!(!signals.edit_requested);
-        assert!(!signals.pinned_pane_toggle);
-        assert!(!signals.pinned_pane_open);
-        assert!(!signals.pinned_pane_close);
     }
 }
