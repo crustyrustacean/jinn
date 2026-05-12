@@ -535,16 +535,18 @@ mod tests {
         let (mut terminal, _) = setup_term(80, 24);
 
         // Pre-fill the buffer with 'X' characters so we can verify clearing.
-        terminal.draw(|frame| {
-            let area = frame.area();
-            let x_text = "X".repeat(area.width as usize);
-            for row in 0..area.height {
-                frame.render_widget(
-                    ratatui::widgets::Paragraph::new(x_text.clone()),
-                    ratatui::layout::Rect::new(0, row, area.width, 1),
-                );
-            }
-        }).unwrap();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let x_text = "X".repeat(area.width as usize);
+                for row in 0..area.height {
+                    frame.render_widget(
+                        ratatui::widgets::Paragraph::new(x_text.clone()),
+                        ratatui::layout::Rect::new(0, row, area.width, 1),
+                    );
+                }
+            })
+            .unwrap();
 
         // When rendering the widget.
         terminal
