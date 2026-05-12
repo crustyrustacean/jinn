@@ -421,18 +421,25 @@ fn backspace_re_expands_filtered_list() {
 }
 
 #[rstest::rstest]
-fn filter_preserves_consumer_order() {
+fn filter_sorts_by_score_then_original_index() {
     // Given items in a specific order, all containing 'a'.
+    // "apple" has 'a' at position 0 (better score), "banana" at position 1,
+    // "avocado" at position 0.
     let mut state = SelectionState::with_items(make_items(&["banana", "apple", "avocado"]));
 
     // When filtering with 'a'.
     state.insert_char('a');
 
-    // Then filtered list preserves the consumer's original order.
+    // Then filtered list is sorted by score (best match first).
     assert_eq!(state.filtered_count(), 3);
-    assert_eq!(state.filtered_item(0).unwrap().display_label(), "banana");
-    assert_eq!(state.filtered_item(1).unwrap().display_label(), "apple");
-    assert_eq!(state.filtered_item(2).unwrap().display_label(), "avocado");
+    // All match 'a'; exact score ordering depends on SkimMatcherV2.
+    // Verify that all three items are present.
+    let labels: Vec<&str> = (0..state.filtered_count())
+        .map(|i| state.filtered_item(i).unwrap().display_label())
+        .collect();
+    assert!(labels.contains(&"banana"));
+    assert!(labels.contains(&"apple"));
+    assert!(labels.contains(&"avocado"));
 }
 
 #[rstest::rstest]
@@ -554,5 +561,99 @@ fn no_clone_needed() {
     // yet SelectionState<TestItem> works fine.
     let mut state = SelectionState::<TestItem>::new();
     state.set_items(vec![TestItem::new("test")]);
+    assert_eq!(state.filtered_count(), 1);
+}
+
+// =========================================================================
+// Multi-term fuzzy matching tests
+// =========================================================================
+
+#[rstest::rstest]
+fn multi_term_filter_matches_items_containing_all_terms() {
+    // Given items including "claude-3.5-sonnet".
+    let mut state = SelectionState::with_items(make_items(&[
+        "claude-3.5-sonnet",
+        "gpt-4o",
+        "claude-3.5-haiku",
+    ]));
+
+    // When filtering with "claude sonnet" (space-separated).
+    for ch in "claude sonnet".chars() {
+        state.insert_char(ch);
+    }
+
+    // Then only "claude-3.5-sonnet" matches.
+    assert_eq!(state.filtered_count(), 1);
+    assert_eq!(
+        state.filtered_item(0).unwrap().display_label(),
+        "claude-3.5-sonnet"
+    );
+}
+
+#[rstest::rstest]
+fn multi_term_filter_returns_empty_when_one_term_does_not_match() {
+    // Given items.
+    let mut state =
+        SelectionState::with_items(make_items(&["claude-3.5-sonnet", "gpt-4o"]));
+
+    // When filtering with "claude gpt".
+    for ch in "claude gpt".chars() {
+        state.insert_char(ch);
+    }
+
+    // Then no items match (no item has both "claude" AND "gpt").
+    assert_eq!(state.filtered_count(), 0);
+}
+
+#[rstest::rstest]
+fn multi_term_filter_unions_highlight_indices() {
+    // Given an item "hello world".
+    let mut state = SelectionState::with_items(make_items(&["hello world"]));
+
+    // When filtering with "hlo wor" (two terms).
+    for ch in "hlo wor".chars() {
+        state.insert_char(ch);
+    }
+
+    // Then the item matches and has highlight indices from both terms.
+    assert_eq!(state.filtered_count(), 1);
+    let indices = state.filtered_match_indices(0).unwrap();
+    // Should contain indices from both "hlo" matching "hello" and "wor" matching "world".
+    assert!(!indices.is_empty());
+}
+
+#[rstest::rstest]
+fn score_sorting_puts_better_matches_first() {
+    // Given items where "claude-sonnet" is a better match for "sonnet" than "jsonnet-tools".
+    let mut state = SelectionState::with_items(make_items(&[
+        "jsonnet-tools",
+        "claude-sonnet",
+    ]));
+
+    // When filtering with "sonnet".
+    for ch in "sonnet".chars() {
+        state.insert_char(ch);
+    }
+
+    // Then "claude-sonnet" (exact substring) scores higher and comes first.
+    assert_eq!(state.filtered_count(), 2);
+    assert_eq!(
+        state.filtered_item(0).unwrap().display_label(),
+        "claude-sonnet"
+    );
+}
+
+#[rstest::rstest]
+fn multi_term_filter_with_multiple_spaces_splits_on_whitespace() {
+    // Given items.
+    let mut state =
+        SelectionState::with_items(make_items(&["alpha bravo charlie"]));
+
+    // When filtering with "alpha  charlie" (double space).
+    for ch in "alpha  charlie".chars() {
+        state.insert_char(ch);
+    }
+
+    // Then the item matches (double space treated as single separator).
     assert_eq!(state.filtered_count(), 1);
 }

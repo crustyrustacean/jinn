@@ -294,28 +294,50 @@ where
 
     /// Recomputes the filtered index cache based on the current filter text.
     ///
-    /// When the filter is empty, all items are included. Otherwise, uses
-    /// [`SkimMatcherV2`] for fuzzy matching against each item's
-    /// [`display_label`](PickerItem::display_label). Preserves the consumer's
-    /// original order.
+    /// When the filter is empty, all items are included in original order.
+    /// Otherwise, the filter is split on whitespace into terms and each term must
+    /// independently fuzzy-match the item's [`display_label`](PickerItem::display_label)
+    /// (AND logic). Results are sorted by cumulative match score (descending), with
+    /// ties broken by original item index. Match byte indices from all terms are
+    /// union'd for highlighting.
     fn recompute_filtered(&mut self) {
         if self.filter.is_empty() {
             self.filtered_indices = (0..self.items.len()).collect();
             self.filtered_match_indices = vec![Vec::new(); self.items.len()];
         } else {
             let matcher = SkimMatcherV2::default();
-            let mut indices = Vec::new();
-            let mut match_indices = Vec::new();
+            let terms: Vec<&str> = self.filter.split_whitespace().collect();
+
+            let mut scored: Vec<(i64, usize, Vec<usize>)> = Vec::new();
             for (i, item) in self.items.iter().enumerate() {
-                if let Some((_, byte_indices)) =
-                    matcher.fuzzy_indices(item.display_label(), &self.filter)
-                {
-                    indices.push(i);
-                    match_indices.push(byte_indices);
+                let label = item.display_label();
+                let mut total_score: i64 = 0;
+                let mut all_byte_indices: Vec<usize> = Vec::new();
+                let mut all_match = true;
+
+                for term in &terms {
+                    if let Some((score, byte_indices)) = matcher.fuzzy_indices(label, term) {
+                        total_score += score;
+                        all_byte_indices.extend_from_slice(&byte_indices);
+                    } else {
+                        all_match = false;
+                        break;
+                    }
+                }
+
+                if all_match {
+                    all_byte_indices.sort_unstable();
+                    all_byte_indices.dedup();
+                    scored.push((total_score, i, all_byte_indices));
                 }
             }
-            self.filtered_indices = indices;
-            self.filtered_match_indices = match_indices;
+
+            // Sort by score descending, then by original index ascending for stable ordering.
+            scored.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+
+            self.filtered_indices = scored.iter().map(|(_, i, _)| *i).collect();
+            self.filtered_match_indices =
+                scored.into_iter().map(|(_, _, idx)| idx).collect();
         }
     }
 }
