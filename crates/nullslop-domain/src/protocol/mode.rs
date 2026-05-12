@@ -15,6 +15,8 @@ pub enum Mode {
     Input,
     /// Provider picker mode — keystrokes filter/select a provider.
     Picker,
+    /// Tool content popup mode — keystrokes scroll/close the popup.
+    ToolContent,
 }
 
 impl std::fmt::Display for Mode {
@@ -23,6 +25,7 @@ impl std::fmt::Display for Mode {
             Self::Normal => write!(f, "normal"),
             Self::Input => write!(f, "input"),
             Self::Picker => write!(f, "picker"),
+            Self::ToolContent => write!(f, "tool-content"),
         }
     }
 }
@@ -34,7 +37,7 @@ mod tests {
     #[rstest::rstest]
     fn mode_serialization_roundtrip() {
         // Given both mode variants.
-        for mode in [Mode::Normal, Mode::Input, Mode::Picker] {
+        for mode in [Mode::Normal, Mode::Input, Mode::Picker, Mode::ToolContent] {
             // When serialized and deserialized.
             let json = serde_json::to_string(&mode).expect("serialize");
             let back: Mode = serde_json::from_str(&json).expect("deserialize");

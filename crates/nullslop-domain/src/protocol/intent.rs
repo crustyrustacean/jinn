@@ -151,6 +151,16 @@ pub enum Intent {
     ChatEntrySelectPrev,
     /// Pin the currently selected chat entry.
     ChatEntryPinSelected,
+
+    // --- Tool Content Popup ---
+    /// Open the full tool content popup for the selected entry.
+    OpenToolContent,
+    /// Close the tool content popup.
+    CloseToolContent,
+    /// Scroll the tool content popup down (Ctrl+D).
+    ToolContentScrollDown,
+    /// Scroll the tool content popup up (Ctrl+U).
+    ToolContentScrollUp,
 }
 
 impl std::fmt::Display for Intent {
@@ -212,6 +222,10 @@ impl std::fmt::Display for Intent {
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),
+            Intent::OpenToolContent => write!(f, "open tool content"),
+            Intent::CloseToolContent => write!(f, "close tool content"),
+            Intent::ToolContentScrollDown => write!(f, "tool content scroll down"),
+            Intent::ToolContentScrollUp => write!(f, "tool content scroll up"),
         }
     }
 }
