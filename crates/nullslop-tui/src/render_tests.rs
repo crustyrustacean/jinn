@@ -390,13 +390,14 @@ fn clipboard_copy_skips_empty_selection() {
     // And the selection is cleared to Idle (no highlight persists).
     assert_eq!(app.selection, SelectionState::Idle);
     // And no notification is set.
-    assert!(app
-        .core
-        .state
-        .read()
-        .frontend
-        .active_status_notification()
-        .is_none());
+    assert!(
+        app.core
+            .state
+            .read()
+            .frontend
+            .active_status_notification()
+            .is_none()
+    );
 }
 
 #[rstest::rstest]
@@ -428,11 +429,7 @@ fn clipboard_clears_pending_flag_immediately() {
     assert_eq!(app.selection, SelectionState::Idle);
     // And a notification is set.
     assert_eq!(
-        app.core
-            .state
-            .read()
-            .frontend
-            .active_status_notification(),
+        app.core.state.read().frontend.active_status_notification(),
         Some("Copied to clipboard")
     );
 }

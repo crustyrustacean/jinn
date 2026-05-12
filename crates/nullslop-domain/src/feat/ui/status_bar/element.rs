@@ -287,7 +287,9 @@ mod tests {
             },
             ..AppState::default()
         };
-        state.frontend.set_status_notification("Copied to clipboard");
+        state
+            .frontend
+            .set_status_notification("Copied to clipboard");
         let (mut terminal, area) = setup_term(80, 1);
         terminal
             .draw(|frame| {
