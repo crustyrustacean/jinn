@@ -44,3 +44,6 @@ pub mod huggingface;
 pub mod aws;
 
 pub mod lmstudio;
+
+#[cfg(feature = "zai")]
+pub mod zai;

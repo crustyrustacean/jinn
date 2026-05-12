@@ -19,6 +19,7 @@ pub enum LLMBackend {
     HuggingFace,
     AwsBedrock,
     LmStudio,
+    ZAI,
 }
 
 impl std::str::FromStr for LLMBackend {
@@ -42,6 +43,7 @@ impl std::str::FromStr for LLMBackend {
             "huggingface" => Ok(LLMBackend::HuggingFace),
             "aws-bedrock" => Ok(LLMBackend::AwsBedrock),
             "lmstudio" => Ok(LLMBackend::LmStudio),
+            "zai" => Ok(LLMBackend::ZAI),
             _ => Err(LLMError::InvalidRequest(format!(
                 "Unknown LLM backend: {s}"
             ))),
