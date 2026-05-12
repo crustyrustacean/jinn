@@ -62,6 +62,14 @@ pub struct RefreshModels;
 #[cmd("provider")]
 pub struct RescanPromptTemplates;
 
+/// Load entries for the provider/model picker.
+///
+/// The provider actor receives this, loads entries from the provider registry,
+/// and writes them into `AppState`.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("provider")]
+pub struct LoadProviderPickerEntries;
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -27,11 +27,10 @@ use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, ProviderSwitched};
-use crate::protocol::system::LoadPickerEntries;
-use crate::protocol::{Command, Event, PickerKind};
+use crate::protocol::{Command, Event};
 
 use super::loader::load_provider_picker_items;
-use crate::feat::picker::strategy_entries::load_strategy_picker_items;
+use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
 
 /// Direct message type (unused — the provider actor only responds to bus commands).
 pub enum ProviderDirectMsg {}
@@ -52,7 +51,7 @@ impl Actor for ProviderActor {
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<ProviderSwitch>();
-        ctx.subscribe_command::<LoadPickerEntries>();
+        ctx.subscribe_command::<LoadProviderPickerEntries>();
         ctx.subscribe_event::<ModelsRefreshed>();
 
         ctx.set_description("Manages provider selection, LLM factory, and model cache");
@@ -103,8 +102,8 @@ impl ProviderActor {
             Command::ProviderSwitch { payload } => {
                 self.handle_provider_switch(payload, ctx);
             }
-            Command::LoadPickerEntries { payload } => {
-                self.handle_load_picker_entries(payload);
+            Command::LoadProviderPickerEntries { payload } => {
+                self.handle_load_provider_picker_entries(payload);
             }
             // Commands NOT subscribed to — these should not arrive.
             Command::SendMessage { .. }
@@ -126,6 +125,8 @@ impl ProviderActor {
             | Command::ProceedWithShutdown { .. }
             | Command::SessionLoadCompleted { .. }
             | Command::SessionLoadRequested { .. }
+            | Command::LoadSessionPickerEntries { .. }
+            | Command::LoadContextStrategyPickerEntries { .. }
             | Command::ScanSkills => {}
         }
     }
@@ -178,21 +179,10 @@ impl ProviderActor {
         }
     }
 
-    /// LoadPickerEntries: load entries based on picker kind.
-    fn handle_load_picker_entries(&self, payload: &LoadPickerEntries) {
-        match payload.kind {
-            PickerKind::Provider => {
-                let mut state = self.state.write();
-                load_provider_picker_items(&self.services, &mut state);
-            }
-            PickerKind::ContextAssembly => {
-                let mut state = self.state.write();
-                load_strategy_picker_items(&self.services, &mut state);
-            }
-            PickerKind::Session | PickerKind::Keymap => {
-                // Future: load from services or state as appropriate.
-            }
-        }
+    /// LoadProviderPickerEntries: load provider picker entries.
+    fn handle_load_provider_picker_entries(&self, _payload: &LoadProviderPickerEntries) {
+        let mut state = self.state.write();
+        load_provider_picker_items(&self.services, &mut state);
     }
 
     // --- Event handlers ---
@@ -246,8 +236,7 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::provider::protocol::command::ProviderSwitch;
     use crate::feat::provider::protocol::event::ModelsRefreshed;
-    use crate::protocol::system::LoadPickerEntries;
-    use crate::protocol::{Command, Event, PickerKind};
+    use crate::protocol::{Command, Event};
 
     use super::ProviderActor;
 
@@ -367,32 +356,6 @@ mod tests {
         let name_after = actor.services.llm_service.name();
         assert_ne!(name_before, name_after);
         assert_eq!(name_after, "Sample");
-    }
-
-    // --- LoadPickerEntries ---
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn load_picker_entries_context_assembly_populates_strategy_picker() {
-        // Given a provider actor.
-        let (mut actor, state, _sink, ctx) = create_actor();
-
-        // When processing LoadPickerEntries for ContextAssembly.
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::LoadPickerEntries {
-                    payload: LoadPickerEntries {
-                        kind: PickerKind::ContextAssembly,
-                    },
-                }),
-                &ctx,
-            )
-            .await;
-
-        // Then the context strategy picker has entries.
-        let guard = state.read();
-        let items = guard.frontend.context_strategy_picker.items();
-        assert!(!items.is_empty(), "strategy picker should have entries");
     }
 
     // --- ModelsRefreshed (event) ---

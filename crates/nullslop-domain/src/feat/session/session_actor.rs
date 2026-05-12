@@ -149,7 +149,9 @@ impl SessionPersistenceActor {
             | Command::ExecuteToolBatch { .. }
             | Command::RegisterTools { .. }
             | Command::ProviderSwitch { .. }
-            | Command::LoadPickerEntries { .. }
+            | Command::LoadProviderPickerEntries { .. }
+            | Command::LoadSessionPickerEntries { .. }
+            | Command::LoadContextStrategyPickerEntries { .. }
             | Command::PinChatEntry { .. }
             | Command::UnpinChatEntry { .. }
             | Command::SwitchPromptStrategy { .. }
