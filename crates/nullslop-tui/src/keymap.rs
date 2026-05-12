@@ -52,6 +52,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .describe_group_with_category("<leader>s", "search", KeyCategory::General)
             .bind("<leader>sm", Intent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
             .bind("<leader>ss", Intent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
+            .bind("<leader>sp", Intent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
             // Input — enter input mode
             .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
             // Navigation — scrolling and tab switching

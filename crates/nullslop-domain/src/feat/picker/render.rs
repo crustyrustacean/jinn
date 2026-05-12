@@ -52,6 +52,31 @@ pub fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
     widget.render(frame, area);
 }
 
+/// Renders the persona picker overlay using [`SelectionWidget`].
+///
+/// Telescope-style layout: bordered popup with filter input at top,
+/// horizontal separator, scrollable persona entries.
+pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let footer = {
+        use ratatui::style::{Color, Style};
+        use ratatui::text::{Line, Span};
+        let gray = Style::default().fg(Color::DarkGray);
+        let active_name = state
+            .context
+            .active_persona
+            .as_ref()
+            .map_or("none", |p| p.name.as_str());
+        Line::from(vec![
+            Span::styled("Active: ".to_owned(), gray),
+            Span::styled(active_name.to_owned(), Style::default().fg(Color::White)),
+        ])
+    };
+    let widget = SelectionWidget::new(&state.frontend.persona_picker)
+        .title(Line::from(" Personas "))
+        .footer(footer);
+    widget.render(frame, area);
+}
+
 #[cfg(test)]
 #[path = "picker_render_tests.rs"]
 mod render_tests;
