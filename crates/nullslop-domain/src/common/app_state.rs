@@ -21,6 +21,7 @@ pub use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 pub use crate::feat::dashboard::DashboardState;
 pub use crate::feat::pinned_panel::PinnedPanelState;
+use crate::feat::ui::sidebar::state::SidebarState;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::shutdown_actor::ShutdownTrackerState;
 use crate::feat::skills::Skill;
@@ -170,6 +171,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (pinned panel navigation).
     pub pinned_panel: PinnedPanelState,
 
+    /// Sidebar state — focus tracking and origin scope.
+    /// OWNER: IntentHandler (sidebar focus/leave).
+    pub sidebar: SidebarState,
+
     /// Actor dashboard — tracks registered actors and their status.
     /// OWNER: IntentHandler (dashboard navigation).
     pub dashboard: DashboardState,
@@ -222,6 +227,7 @@ impl Default for FrontendState {
             should_quit: false,
             active_picker_kind: None,
             pinned_panel: PinnedPanelState::default(),
+            sidebar: SidebarState::default(),
             dashboard: DashboardState::new(),
             tui_signals: TuiSignals::new(),
             default_strategy: PromptStrategyId::passthrough(),

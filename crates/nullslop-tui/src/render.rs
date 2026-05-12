@@ -153,7 +153,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
                     // Render pinned panel into sidebar.
                     if let Some(element) = app.ui_registry.get_mut("pinned-panel") {
                         element.render(frame, pinned_rect, &state);
-                        if element.is_selectable() && app.pane_focus == PaneFocus::Pinned {
+                        if element.is_selectable() && app.pane_focus == PaneFocus::Sidebar {
                             rects.push(pinned_rect);
                         }
                     }

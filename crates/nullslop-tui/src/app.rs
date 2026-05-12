@@ -36,8 +36,8 @@ pub(crate) const CHAT_PANE: AreaId = AreaId(1);
 pub enum PaneFocus {
     /// The chat log pane (left side).
     Chat,
-    /// The pinned context sidebar pane (right side).
-    Pinned,
+    /// The sidebar pane (right side).
+    Sidebar,
 }
 
 /// Type alias for the which-key state parameterized for nullslop.
@@ -327,7 +327,7 @@ impl TuiApp {
     pub fn open_pinned_pane(&mut self) {
         if self.pinned_pane_visible {
             // Already visible — just ensure focus is set.
-            self.pane_focus = PaneFocus::Pinned;
+            self.pane_focus = PaneFocus::Sidebar;
             return;
         }
         // Defensive: if we have a stale tracked ID in the tree, reuse it.
@@ -335,7 +335,7 @@ impl TuiApp {
             && self.split_manager.contains(id)
         {
             self.pinned_pane_visible = true;
-            self.pane_focus = PaneFocus::Pinned;
+            self.pane_focus = PaneFocus::Sidebar;
             return;
         }
         let result = self
@@ -344,7 +344,7 @@ impl TuiApp {
             .expect("CHAT_PANE should always be a valid leaf");
         self.pinned_pane_id = Some(result.new);
         self.pinned_pane_visible = true;
-        self.pane_focus = PaneFocus::Pinned;
+        self.pane_focus = PaneFocus::Sidebar;
     }
 
     /// Closes the pinned context sidebar pane.
@@ -376,8 +376,8 @@ pub fn scope_for_mode(mode: Mode, active_tab: ActiveTab, pane_focus: PaneFocus) 
         Mode::Normal => match active_tab {
             ActiveTab::Dashboard => Scope::Dashboard,
             ActiveTab::Chat => {
-                if pane_focus == PaneFocus::Pinned {
-                    Scope::Pinned
+                if pane_focus == PaneFocus::Sidebar {
+                    Scope::Sidebar
                 } else {
                     Scope::Normal
                 }
@@ -442,7 +442,7 @@ mod tests {
     #[rstest::rstest]
     #[case::normal_chat(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, Scope::Normal)]
     #[case::normal_dashboard(Mode::Normal, ActiveTab::Dashboard, PaneFocus::Chat, Scope::Dashboard)]
-    #[case::pinned(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, Scope::Pinned)]
+    #[case::sidebar(Mode::Normal, ActiveTab::Chat, PaneFocus::Sidebar, Scope::Sidebar)]
     #[case::input(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, Scope::Input)]
     #[case::picker(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, Scope::Picker)]
     fn scope_for_mode_maps_correctly(
@@ -765,7 +765,7 @@ mod tests {
         // Then the tracked ID is set and the pane is visible.
         assert!(app.pinned_pane_id.is_some());
         assert!(app.pinned_pane_visible);
-        assert_eq!(app.pane_focus, PaneFocus::Pinned);
+        assert_eq!(app.pane_focus, PaneFocus::Sidebar);
     }
 
     #[rstest::rstest]

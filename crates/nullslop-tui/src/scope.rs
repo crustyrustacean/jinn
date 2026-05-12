@@ -12,8 +12,8 @@ pub enum Scope {
     Normal,
     /// Dashboard mode — actor list navigation.
     Dashboard,
-    /// Pinned panel mode — pinned entry navigation and management.
-    Pinned,
+    /// Sidebar mode — sidebar section navigation and management.
+    Sidebar,
     /// Picker mode — filtering and selecting a provider.
     Picker,
     /// Input mode — typing into the input buffer.
@@ -25,7 +25,7 @@ impl std::fmt::Display for Scope {
         match self {
             Self::Normal => write!(f, "Normal"),
             Self::Dashboard => write!(f, "Dashboard"),
-            Self::Pinned => write!(f, "Pinned"),
+            Self::Sidebar => write!(f, "Sidebar"),
             Self::Picker => write!(f, "Picker"),
             Self::Input => write!(f, "Input"),
         }
@@ -39,7 +39,7 @@ impl std::str::FromStr for Scope {
         match s {
             "Normal" => Ok(Self::Normal),
             "Dashboard" => Ok(Self::Dashboard),
-            "Pinned" => Ok(Self::Pinned),
+            "Sidebar" => Ok(Self::Sidebar),
             "Picker" => Ok(Self::Picker),
             "Input" => Ok(Self::Input),
             _ => Err(()),
