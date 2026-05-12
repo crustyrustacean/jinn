@@ -164,6 +164,23 @@ chat_input_box/
 
 Not every component needs all three files. A display-only component (like chat log) may only have `mod.rs` and `element.rs`.
 
+### Module System
+
+Use the new Rust module system throughout:
+
+- **Top-level feature directories** use `mod.rs` (e.g., `feat/chat_input/mod.rs`). This is the only exception.
+- **All other modules** use `foo.rs` alongside `foo/` directory — never `mod.rs` inside a non-feature directory.
+- The `feat/` directory itself has `feat.rs` at the `src/` level, not `feat/mod.rs`.
+
+### Actor Naming
+
+Actors are domain logic that spans the entire application, so they have specific naming conventions for discoverability:
+
+- **Actor-only features** are named with an `_actor` suffix: `echo_actor/`, `llm_actor/`, `tools_actor/`, `shutdown_actor/`.
+- **Within domain features**, each actor lives in its own `*_actor.rs` file (e.g., `provider_actor.rs`, `discover_actor.rs`, `context_actor.rs`, `session_actor.rs`, `prompt_scan_actor.rs`).
+- **One actor per file.** Never combine multiple actors in a single file.
+- **Spawn functions live with their actor.** Each `*_actor.rs` file contains both the actor struct/impl and the `spawn_*()` function that creates it. Feature `mod.rs` files do not contain spawn functions.
+
 ### Dependency Injection
 
 **Services container (in `nullslop-services`):**

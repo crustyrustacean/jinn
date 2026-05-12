@@ -26,7 +26,7 @@ use crate::feat::provider::protocol::command::{
 };
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::feat::tools::protocol::command::{
+use crate::feat::tools_actor::protocol::command::{
     ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools,
 };
 use crate::protocol::system::LoadPickerEntries;

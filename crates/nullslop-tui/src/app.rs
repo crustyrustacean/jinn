@@ -385,7 +385,7 @@ mod tests {
             nullslop_domain::FakeActorHost::new(),
         ));
         let mut ui_registry = AppUiRegistry::new();
-        nullslop_domain::register_all(&mut ui_registry);
+        nullslop_domain::register_all_ui_elements(&mut ui_registry);
         nullslop_domain::feat::ui::status_bar::register(&mut ui_registry);
         nullslop_domain::feat::ui::char_counter::register(&mut ui_registry);
         nullslop_domain::feat::dashboard::register(&mut ui_registry);
@@ -588,7 +588,7 @@ mod tests {
             nullslop_domain::FakeActorHost::new(),
         ));
         let mut ui_registry = AppUiRegistry::new();
-        nullslop_domain::register_all(&mut ui_registry);
+        nullslop_domain::register_all_ui_elements(&mut ui_registry);
         nullslop_domain::feat::ui::status_bar::register(&mut ui_registry);
         nullslop_domain::feat::ui::char_counter::register(&mut ui_registry);
         nullslop_domain::feat::dashboard::register(&mut ui_registry);
