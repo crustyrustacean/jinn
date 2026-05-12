@@ -377,7 +377,7 @@ impl ChatInputBoxState {
         self.autocomplete = None;
     }
 
-    /// Activates autocomplete at the given grapheme index (where `$` was typed).
+    /// Activates autocomplete at the given grapheme index (where `#` was typed).
     ///
     /// If `matches` is empty, `selected_index` is set to 0.
     /// If non-empty, `selected_index` defaults to the last entry (most relevant).
@@ -450,9 +450,9 @@ impl ChatInputBoxState {
         self.autocomplete.as_ref().map(|ac| ac.token_start)
     }
 
-    /// Returns the screen column of the autocomplete `$` trigger within its visual line.
+    /// Returns the screen column of the autocomplete `#` trigger within its visual line.
     ///
-    /// The column is a grapheme offset within the line that contains the `$`.
+    /// The column is a grapheme offset within the line that contains the `#`.
     /// Returns `None` if autocomplete is not active.
     #[must_use]
     pub fn autocomplete_token_screen_col(&self) -> Option<usize> {
@@ -472,7 +472,7 @@ impl ChatInputBoxState {
         Some(col) // token_start at end of buffer
     }
 
-    /// Completes the autocomplete: replaces the `$partial` region with `$name`.
+    /// Completes the autocomplete: replaces the `#partial` region with `#name`.
     ///
     /// The region replaced is `token_start..cursor_pos` (grapheme indices).
     /// After completion, the cursor lands after the completed text,
@@ -482,15 +482,15 @@ impl ChatInputBoxState {
             return;
         };
         let token_start = ac.token_start;
-        let replacement = format!("${name}");
+        let replacement = format!("#{name}");
         self.replace_grapheme_range(token_start, self.cursor_pos, &replacement);
         // Cursor is now after the replacement text.
         // Autocomplete stays active — the filter is now the exact name.
     }
 
-    /// Expands a double-`$` token: replaces `$name$` with the template body.
+    /// Expands a double-`#` token: replaces `#name#` with the template body.
     ///
-    /// The region replaced is `token_start..cursor_pos` (which includes `$name$`).
+    /// The region replaced is `token_start..cursor_pos` (which includes `#name#`).
     /// After expansion, autocomplete is deactivated and the cursor lands after
     /// the body text.
     pub fn expand_autocomplete(&mut self, body: &str) {

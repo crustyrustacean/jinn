@@ -70,7 +70,7 @@ fn render_autocomplete_popup_shows_matches() {
             description: "Generate tests".to_owned(),
         },
     ];
-    let state = state_with_autocomplete("$co", 0, matches);
+    let state = state_with_autocomplete("#co", 0, matches);
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -117,7 +117,7 @@ fn render_autocomplete_popup_highlights_selected() {
             description: String::new(),
         },
     ];
-    let mut state = state_with_autocomplete("$", 0, matches);
+    let mut state = state_with_autocomplete("#", 0, matches);
     // Default selected_index is last (index 1 = "beta").
     // Move selection up to select index 0 ("alpha").
     state.active_chat_input_mut().autocomplete_move_up();
@@ -154,7 +154,7 @@ fn render_autocomplete_popup_highlights_selected() {
 fn render_autocomplete_popup_shows_no_matches_message() {
     // Given an AppState with autocomplete active but 0 matches.
 
-    let state = state_with_autocomplete("$xyz", 0, vec![]);
+    let state = state_with_autocomplete("#xyz", 0, vec![]);
 
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
@@ -183,7 +183,7 @@ fn render_autocomplete_popup_positioned_above_input() {
         name: "test".to_owned(),
         description: "A test".to_owned(),
     }];
-    let state = state_with_autocomplete("$", 0, matches);
+    let state = state_with_autocomplete("#", 0, matches);
 
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
@@ -207,14 +207,14 @@ fn render_autocomplete_popup_positioned_above_input() {
 }
 
 #[rstest::rstest]
-fn render_autocomplete_popup_anchored_at_dollar() {
-    // Given a buffer "foo $co" — the $ is at grapheme index 4.
+fn render_autocomplete_popup_anchored_at_hash() {
+    // Given a buffer "foo #co" — the # is at grapheme index 4.
 
     let matches = vec![AutocompleteMatch {
         name: "code".to_owned(),
         description: "Code stuff".to_owned(),
     }];
-    let state = state_with_autocomplete("foo $co", 4, matches);
+    let state = state_with_autocomplete("foo #co", 4, matches);
 
     let (mut terminal, _area) = setup_term(80, 24);
     // Input area starts at x=10 to see horizontal anchoring.
@@ -226,8 +226,8 @@ fn render_autocomplete_popup_anchored_at_dollar() {
         })
         .unwrap();
 
-    // Then the popup's left edge is near the $ column.
-    // $ is at grapheme index 4 in the buffer, col 4 on the first line.
+    // Then the popup's left edge is near the # column.
+    // # is at grapheme index 4 in the buffer, col 4 on the first line.
     // Input inner starts at x=10, prompt_indent=2, so anchor_x = 10 + 2 + 4 = 16.
     let buffer = terminal.backend().buffer().clone();
     let popup_top = 20 - 3; // 1 match + 2 borders
@@ -236,7 +236,7 @@ fn render_autocomplete_popup_anchored_at_dollar() {
     assert_eq!(
         corner_cell.fg,
         Color::DarkGray,
-        "popup left border should be anchored at $ column (x=16)"
+        "popup left border should be anchored at # column (x=16)"
     );
 }
 
@@ -254,7 +254,7 @@ fn render_autocomplete_popup_width_based_on_content() {
             description: "A very long description indeed".to_owned(),
         },
     ];
-    let state = state_with_autocomplete("$", 0, matches);
+    let state = state_with_autocomplete("#", 0, matches);
 
     let (mut terminal, _area) = setup_term(80, 24);
     let input_area = Rect::new(0, 20, 80, 4);
