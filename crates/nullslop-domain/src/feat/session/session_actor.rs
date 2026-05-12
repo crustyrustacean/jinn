@@ -166,6 +166,7 @@ impl SessionPersistenceActor {
             | Command::UnpinChatEntry { .. }
             | Command::SwitchPromptStrategy { .. }
             | Command::RestoreStrategyState { .. }
+            | Command::CancelToolBatch { .. }
             | Command::ScanSkills => {}
         }
     }

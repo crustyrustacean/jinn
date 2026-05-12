@@ -34,7 +34,9 @@ use crate::common::actor::{
 };
 use crate::common::actor_host::spawn_actor;
 use crate::common::state::State;
-use crate::feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
+use crate::feat::tools_actor::protocol::command::{
+    CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
+};
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
 };
@@ -87,6 +89,8 @@ struct PendingBatch {
     remaining: usize,
     /// Collected results so far.
     results: Vec<ToolResult>,
+    /// Join handles for spawned builtin tool tasks (for cancellation).
+    handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
 /// Spawns the tool orchestrator actor on the given tokio runtime.
@@ -135,6 +139,7 @@ impl Actor for ToolOrchestratorActor {
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<RegisterTools>();
         ctx.subscribe_command::<ExecuteToolBatch>();
+        ctx.subscribe_command::<CancelToolBatch>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
 
         let state: State = ctx
@@ -205,6 +210,9 @@ impl ToolOrchestratorActor {
                     payload.tool_calls.clone(),
                     ctx,
                 );
+            }
+            Command::CancelToolBatch { payload } => {
+                self.handle_cancel_tool_batch(&payload.session_id);
             }
             _ => {}
         }
@@ -278,15 +286,38 @@ impl ToolOrchestratorActor {
         }
 
         let remaining = tool_calls.len();
+        let mut handles = Vec::new();
+        for tc in tool_calls {
+            if let Some(handle) = self.dispatch_tool_call(session_id.clone(), tc, ctx) {
+                handles.push(handle);
+            }
+        }
         self.pending.insert(
             session_id.clone(),
             PendingBatch {
                 remaining,
                 results: vec![],
+                handles,
             },
         );
-        for tc in tool_calls {
-            self.dispatch_tool_call(session_id.clone(), tc, ctx);
+    }
+
+    /// Cancels all pending tool executions for a session.
+    ///
+    /// Aborts spawned builtin tasks and removes the pending batch.
+    /// Any `ToolExecutionCompleted` events that already arrived for this
+    /// session will be ignored (the pending batch is gone).
+    fn handle_cancel_tool_batch(&mut self, session_id: &SessionId) {
+        if let Some(batch) = self.pending.remove(session_id) {
+            let handle_count = batch.handles.len();
+            for handle in batch.handles {
+                handle.abort();
+            }
+            tracing::trace!(
+                session_id = ?session_id,
+                "handle_cancel_tool_batch — aborted {} tasks",
+                handle_count
+            );
         }
     }
 
@@ -310,7 +341,16 @@ impl ToolOrchestratorActor {
     }
 
     /// Dispatches a single tool call to the appropriate handler.
-    fn dispatch_tool_call(&self, session_id: SessionId, tool_call: ToolCall, ctx: &ActorContext) {
+    ///
+    /// Returns a `JoinHandle` for builtin tool spawns so callers can track
+    /// and abort them on cancellation. Returns `None` for actor-routed and
+    /// unknown tools (they have no local task to abort).
+    fn dispatch_tool_call(
+        &self,
+        session_id: SessionId,
+        tool_call: ToolCall,
+        ctx: &ActorContext,
+    ) -> Option<tokio::task::JoinHandle<()>> {
         tracing::trace!(
             session_id = ?session_id,
             tool = %tool_call.name,
@@ -329,7 +369,7 @@ impl ToolOrchestratorActor {
                 let tool_ctx = self.build_tool_context(&session_id);
                 let timeout = tool_ctx.timeout;
 
-                tokio::spawn(async move {
+                let handle = tokio::spawn(async move {
                     let call_id = tool_call.id.clone();
                     let call_name = tool_call.name.clone();
                     let result = match timeout {
@@ -355,6 +395,7 @@ impl ToolOrchestratorActor {
                         );
                     }
                 });
+                Some(handle)
             }
             Some(ToolRegistration::Actor { provider, .. }) => {
                 if let Err(e) = ctx.send_command(Command::ExecuteTool {
@@ -369,6 +410,7 @@ impl ToolOrchestratorActor {
                         "failed to send ExecuteTool command"
                     );
                 }
+                None
             }
             None => {
                 let call_id = tool_call.id.clone();
@@ -388,6 +430,7 @@ impl ToolOrchestratorActor {
                         "failed to send unknown-tool ToolExecutionCompleted"
                     );
                 }
+                None
             }
         }
     }
@@ -1364,5 +1407,121 @@ mod tests {
 
         // Then the CWD falls back to "/".
         assert_eq!(tool_ctx.cwd, PathBuf::from("/"));
+    }
+
+    // --- CancelToolBatch tests ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cancel_tool_batch_removes_pending_batch() {
+        // Given an activated actor with a pending batch of two echo calls.
+        let (sink, mut ctx) = default_test_ctx();
+        let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::ExecuteToolBatch {
+            payload: ExecuteToolBatch {
+                session_id: session_id.clone(),
+                tool_calls: vec![
+                    ToolCall {
+                        id: "call_a".to_owned(),
+                        name: "echo".to_owned(),
+                        arguments: r#"{"input":"first"}"#.to_owned(),
+                    },
+                    ToolCall {
+                        id: "call_b".to_owned(),
+                        name: "echo".to_owned(),
+                        arguments: r#"{"input":"second"}"#.to_owned(),
+                    },
+                ],
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        // Then the pending batch exists.
+        assert!(actor.pending.contains_key(&session_id));
+
+        // When cancelling the tool batch.
+        let cancel_cmd = Command::CancelToolBatch {
+            payload: CancelToolBatch {
+                session_id: session_id.clone(),
+            },
+        };
+        actor.handle_command(&cancel_cmd, &ctx);
+
+        // Then the pending batch is removed.
+        assert!(!actor.pending.contains_key(&session_id));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cancel_tool_batch_aborts_spawned_tasks() {
+        // Given an activated actor with a pending batch of echo calls.
+        let (sink, mut ctx) = default_test_ctx();
+        let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        let cmd = Command::ExecuteToolBatch {
+            payload: ExecuteToolBatch {
+                session_id: session_id.clone(),
+                tool_calls: vec![ToolCall {
+                    id: "call_1".to_owned(),
+                    name: "echo".to_owned(),
+                    arguments: r#"{"input":"hello"}"#.to_owned(),
+                }],
+            },
+        };
+        actor.handle_command(&cmd, &ctx);
+
+        // Verify the batch has a spawned handle.
+        let handle_count = actor
+            .pending
+            .get(&session_id)
+            .map(|b| b.handles.len())
+            .unwrap_or(0);
+        assert_eq!(handle_count, 1, "should have one spawned task handle");
+
+        // When cancelling the tool batch.
+        let cancel_cmd = Command::CancelToolBatch {
+            payload: CancelToolBatch {
+                session_id: session_id.clone(),
+            },
+        };
+        actor.handle_command(&cancel_cmd, &ctx);
+
+        // Then the pending batch is removed (handles were aborted).
+        assert!(!actor.pending.contains_key(&session_id));
+        // And no ToolBatchCompleted was emitted (cancellation doesn't emit batch complete).
+        let events = sink.events();
+        let batch_completed = find_batch_completed(&events);
+        assert!(batch_completed.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cancel_tool_batch_for_unknown_session_is_noop() {
+        // Given an activated actor with no pending batches.
+        let (sink, mut ctx) = default_test_ctx();
+        let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+        sink.clear();
+
+        let unknown_session = SessionId::new();
+
+        // When cancelling a tool batch for an unknown session.
+        let cancel_cmd = Command::CancelToolBatch {
+            payload: CancelToolBatch {
+                session_id: unknown_session,
+            },
+        };
+        actor.handle_command(&cancel_cmd, &ctx);
+
+        // Then no events are emitted and no panic.
+        let events = sink.events();
+        let batch_completed = find_batch_completed(&events);
+        assert!(batch_completed.is_empty());
     }
 }
