@@ -8,14 +8,14 @@ use super::super::PromptAssemblyActor;
 
 impl PromptAssemblyActor {
     /// Caches tool definitions from a [`ToolsRegistered`] event.
-    pub(in crate::feat::context::actor) fn on_tools_registered(&mut self, evt: &ToolsRegistered) {
+    pub(in crate::feat::context::context_actor) fn on_tools_registered(&mut self, evt: &ToolsRegistered) {
         for def in &evt.definitions {
             self.tool_definitions.insert(def.name.clone(), def.clone());
         }
     }
 
     /// Replaces the prompt template store with the loaded templates.
-    pub(in crate::feat::context::actor) fn on_prompt_templates_loaded(
+    pub(in crate::feat::context::context_actor) fn on_prompt_templates_loaded(
         &self,
         event: &PromptTemplatesLoaded,
     ) {

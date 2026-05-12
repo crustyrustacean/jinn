@@ -297,7 +297,7 @@ fn create_core_with_actor_host(
         nullslop_domain::feat::llm_actor::spawn(llm_service.clone(), sink.clone(), handle);
 
     // --- Discover actor ---
-    let (_discover_ref, discover_result) = nullslop_domain::feat::provider::spawn_discover_actor(
+    let (_discover_ref, discover_result) = nullslop_domain::feat::provider::discover_actor::spawn_discover_actor(
         provider_registry.clone(),
         api_keys.clone(),
         sink.clone(),
@@ -309,7 +309,7 @@ fn create_core_with_actor_host(
         nullslop_domain::feat::tools_actor::spawn(state.clone(), sink.clone(), handle);
 
     // --- Prompt assembly actor ---
-    let (_ctx_ref, prompt_result) = nullslop_domain::feat::context::spawn_context_actor(
+    let (_ctx_ref, prompt_result) = nullslop_domain::feat::context::context_actor::spawn_context_actor(
         state.clone(),
         Box::new(DefaultStrategyFactory),
         sink.clone(),
@@ -320,7 +320,7 @@ fn create_core_with_actor_host(
     let domain_session_store = DomainJsonlSessionStore::new();
     let domain_session_store_service =
         DomainSessionStoreService::new(Arc::new(domain_session_store));
-    let (_sp_ref, sp_result) = nullslop_domain::feat::session::spawn_session_actor(
+    let (_sp_ref, sp_result) = nullslop_domain::feat::session::session_actor::spawn_session_actor(
         state.clone(),
         domain_session_store_service.clone(),
         sink.clone(),
@@ -328,7 +328,7 @@ fn create_core_with_actor_host(
     );
 
     // --- Prompt scan actor ---
-    let (_scan_ref, scan_result) = nullslop_domain::feat::context::spawn_prompt_scan_actor(
+    let (_scan_ref, scan_result) = nullslop_domain::feat::context::prompt_scan_actor::spawn_prompt_scan_actor(
         nullslop_domain::prompts_dir(),
         sink.clone(),
         handle,
@@ -351,7 +351,7 @@ fn create_core_with_actor_host(
     };
 
     // --- Provider actor ---
-    let (_prov_ref, prov_result) = nullslop_domain::feat::provider::spawn_provider_actor(
+    let (_prov_ref, prov_result) = nullslop_domain::feat::provider::provider_actor::spawn_provider_actor(
         state.clone(),
         services.clone(),
         sink.clone(),

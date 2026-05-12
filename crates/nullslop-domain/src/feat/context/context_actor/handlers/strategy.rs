@@ -9,7 +9,7 @@ use super::super::PromptAssemblyActor;
 
 impl PromptAssemblyActor {
     /// Handles [`PromptStrategySwitched`] by creating a new strategy via the factory.
-    pub(in crate::feat::context::actor) fn on_prompt_strategy_switched(
+    pub(in crate::feat::context::context_actor) fn on_prompt_strategy_switched(
         &mut self,
         evt: &PromptStrategySwitched,
     ) {
@@ -28,7 +28,7 @@ impl PromptAssemblyActor {
     }
 
     /// SwitchPromptStrategy: switch strategy, emit RestoreStrategyState + PromptStrategySwitched.
-    pub(in crate::feat::context::actor) fn handle_switch_prompt_strategy(
+    pub(in crate::feat::context::context_actor) fn handle_switch_prompt_strategy(
         &self,
         payload: &SwitchPromptStrategy,
         ctx: &ActorContext,
@@ -69,7 +69,7 @@ impl PromptAssemblyActor {
     }
 
     /// RestoreStrategyState: set strategy blob on session, emit StrategyStateUpdated.
-    pub(in crate::feat::context::actor) fn handle_restore_strategy_state(
+    pub(in crate::feat::context::context_actor) fn handle_restore_strategy_state(
         &self,
         payload: &RestoreStrategyState,
         ctx: &ActorContext,
