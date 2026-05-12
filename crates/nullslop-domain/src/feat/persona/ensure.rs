@@ -5,7 +5,7 @@ use std::path::Path;
 use error_stack::{Report, ResultExt as _};
 use wherror::Error;
 
-use super::{personas_dir, seed_content, SEED_FILENAME};
+use super::{SEED_FILENAME, personas_dir, seed_content};
 
 /// Errors during seed persona creation.
 #[derive(Debug, Error)]
@@ -93,11 +93,7 @@ mod tests {
         // Then the file parses back to a valid persona.
         let seed = personas.join(SEED_FILENAME);
         let content = std::fs::read_to_string(&seed).expect("read");
-        let persona = super::super::loader::parse_persona_content(
-            &content,
-            &seed,
-        )
-        .expect("parse");
+        let persona = super::super::loader::parse_persona_content(&content, &seed).expect("parse");
         assert_eq!(persona.name, "coding-assistant");
     }
 
@@ -130,11 +126,7 @@ mod tests {
         // Then exactly one seed file exists with valid content.
         let seed = personas.join(SEED_FILENAME);
         let content = std::fs::read_to_string(&seed).expect("read");
-        let persona = super::super::loader::parse_persona_content(
-            &content,
-            &seed,
-        )
-        .expect("parse");
+        let persona = super::super::loader::parse_persona_content(&content, &seed).expect("parse");
         assert_eq!(persona.name, "coding-assistant");
     }
 }
