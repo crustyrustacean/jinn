@@ -11,8 +11,6 @@ use wherror::Error;
 pub enum SubmitMessageError {
     /// The input buffer is empty.
     EmptyBuffer,
-    /// Autocomplete is active — complete instead of submit.
-    AutocompleteActive,
 }
 
 /// Validates the SubmitMessage intent.
@@ -23,9 +21,6 @@ pub enum SubmitMessageError {
 ///
 /// Returns an error if autocomplete is active or the input buffer is empty.
 pub fn validate_submit_message(state: &AppState) -> Result<(), SubmitMessageError> {
-    if state.active_chat_input().autocomplete().is_some() {
-        return Err(SubmitMessageError::AutocompleteActive);
-    }
     if state.active_chat_input().is_empty() {
         return Err(SubmitMessageError::EmptyBuffer);
     }
@@ -89,27 +84,6 @@ mod tests {
         // Then it returns EmptyBuffer error.
         assert!(matches!(result, Err(SubmitMessageError::EmptyBuffer)));
     }
-
-    #[rstest::rstest]
-    fn submit_message_fails_when_autocomplete_active() {
-        // Given a state with text and autocomplete active.
-        let mut state = AppState::default();
-        state.active_chat_input_mut().insert_grapheme_at_cursor('h');
-        state
-            .active_chat_input_mut()
-            .activate_autocomplete(0, vec![]);
-
-        // When validating submit message.
-        let result = validate_submit_message(&state);
-
-        // Then it returns AutocompleteActive error.
-        assert!(matches!(
-            result,
-            Err(SubmitMessageError::AutocompleteActive)
-        ));
-    }
-
-    // --- AutocompleteConfirm tests ---
 
     #[rstest::rstest]
     fn autocomplete_confirm_succeeds_when_active() {

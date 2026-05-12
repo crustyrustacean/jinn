@@ -156,8 +156,12 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
 
 // --- Submission ---
 
-/// Handles `SubmitMessage` — validates, extracts text, resets buffer, returns command.
+/// Handles `SubmitMessage` — confirms autocomplete if active, otherwise submits the message.
 pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
+    if state.active_chat_input().autocomplete().is_some() {
+        return handle_autocomplete_confirm(state);
+    }
+
     if validator::validate_submit_message(state).is_err() {
         return IntentResult::empty();
     }
@@ -421,6 +425,29 @@ mod tests {
         let result = super::handle_submit_message(&mut state);
 
         // Then no commands are returned.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn submit_message_confirms_autocomplete_when_active() {
+        // Given a state with text and autocomplete active.
+        let mut state = AppState::default();
+        state.active_chat_input_mut().insert_text("#cod");
+        let matches = vec![AutocompleteMatch {
+            name: "code-review".to_owned(),
+            description: "Perform code review".to_owned(),
+        }];
+        state
+            .active_chat_input_mut()
+            .activate_autocomplete(0, matches);
+
+        // When handling SubmitMessage.
+        let result = super::handle_submit_message(&mut state);
+
+        // Then the autocomplete is confirmed (not a message submit).
+        // The text should now be "#code-review" after completion.
+        assert_eq!(state.active_chat_input().text(), "#code-review");
+        // And no EnqueueUserMessage command was emitted.
         assert!(result.commands.is_empty());
     }
 
