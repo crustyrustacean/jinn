@@ -33,7 +33,9 @@ pub fn parse_frontmatter(content: &str) -> Option<SkillFrontmatter> {
 
     // Skip the opening ---
     let after_opening = &trimmed[3..];
-    let rest = after_opening.trim_start_matches('\n').trim_start_matches('\r');
+    let rest = after_opening
+        .trim_start_matches('\n')
+        .trim_start_matches('\r');
 
     // Find the closing ---
     let close_offset = rest.find("\n---")?;
@@ -63,7 +65,9 @@ pub fn strip_frontmatter(content: &str) -> String {
     }
 
     let after_opening = &trimmed[3..];
-    let rest = after_opening.trim_start_matches('\n').trim_start_matches('\r');
+    let rest = after_opening
+        .trim_start_matches('\n')
+        .trim_start_matches('\r');
 
     let Some(close_offset) = rest.find("\n---") else {
         return content.to_owned();
@@ -131,7 +135,8 @@ mod tests {
     #[rstest::rstest]
     fn strip_frontmatter_removes_yaml_block() {
         // Given a SKILL.md with frontmatter.
-        let content = "---\nname: test\ndescription: test desc\n---\n\n# Skill Body\n\nSome content.";
+        let content =
+            "---\nname: test\ndescription: test desc\n---\n\n# Skill Body\n\nSome content.";
 
         // When stripping frontmatter.
         let body = strip_frontmatter(content);

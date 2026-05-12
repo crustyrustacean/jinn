@@ -11,7 +11,7 @@ pub mod skills_scan_actor;
 
 pub use scan::scan_skills;
 pub use skill::Skill;
-pub use skills_scan_actor::{SkillsLoaded, ScanSkills, spawn_skills_scan_actor};
+pub use skills_scan_actor::{ScanSkills, SkillsLoaded, spawn_skills_scan_actor};
 
 use std::path::PathBuf;
 

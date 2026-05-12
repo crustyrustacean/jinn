@@ -17,7 +17,7 @@ use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
 use crate::common::state::State;
 use crate::feat::skills::scan::scan_skills;
 use crate::feat::skills::skill::Skill;
-use crate::protocol::{Command, Event, CommandMsg, EventMsg};
+use crate::protocol::{Command, CommandMsg, Event, EventMsg};
 
 /// Direct message type for the skills scan actor (unused).
 pub enum SkillsScanDirectMsg {}
