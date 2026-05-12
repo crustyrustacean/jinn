@@ -116,6 +116,12 @@ impl TuiApp {
                             "Failed to load session: timed out",
                         ));
                 }
+                // Lazy cleanup of expired status notifications.
+                self.core
+                    .state
+                    .write()
+                    .frontend
+                    .clear_expired_notification();
             }
             Msg::Input(event) => {
                 match event {
