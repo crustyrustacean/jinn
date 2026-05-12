@@ -218,10 +218,18 @@ impl IntentHandler {
             }
 
             // --- Tool Content Popup ---
-            Intent::OpenToolContent => IntentResult::empty(),
-            Intent::CloseToolContent => IntentResult::empty(),
-            Intent::ToolContentScrollDown => IntentResult::empty(),
-            Intent::ToolContentScrollUp => IntentResult::empty(),
+            Intent::OpenToolContent => {
+                crate::feat::ui::tool_content_popup::intent::handle_open(state)
+            }
+            Intent::CloseToolContent => {
+                crate::feat::ui::tool_content_popup::intent::handle_close(state)
+            }
+            Intent::ToolContentScrollDown => {
+                crate::feat::ui::tool_content_popup::intent::handle_scroll_down(state)
+            }
+            Intent::ToolContentScrollUp => {
+                crate::feat::ui::tool_content_popup::intent::handle_scroll_up(state)
+            }
         }
     }
 }

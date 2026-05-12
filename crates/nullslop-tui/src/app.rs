@@ -259,6 +259,14 @@ impl TuiApp {
                 }
             }
 
+            // Close tool content popup when leaving ToolContent mode.
+            if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape)
+                && !matches!(state.frontend.mode, Mode::ToolContent)
+            {
+                state.frontend.tool_content_popup =
+                    nullslop_domain::common::app_state::ToolContentPopupState::default();
+            }
+
             // Collect signals and mode before releasing lock.
             let signals = signals::TuiSignalsSnapshot::from_state(&state);
             let mode = state.frontend.mode;
