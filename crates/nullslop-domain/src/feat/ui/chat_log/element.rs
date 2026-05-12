@@ -147,6 +147,29 @@ impl UiElement<AppState> for ChatLogElement {
     }
 }
 
+/// Maximum number of lines to display for tool entries in the chat log.
+const MAX_TOOL_LINES: usize = 5;
+
+/// Truncate text to at most `max_lines` lines.
+///
+/// Returns the lines and a count of hidden lines. When there are more than
+/// `max_lines` logical lines, the last returned line is replaced with a
+/// `… (N more lines)` indicator showing how many lines are hidden.
+fn truncate_lines(text: &str, max_lines: usize) -> (Vec<String>, usize) {
+    let all_lines: Vec<&str> = text.split('\n').collect();
+    if all_lines.len() <= max_lines {
+        let lines = all_lines.iter().map(|s| (*s).to_owned()).collect();
+        return (lines, 0);
+    }
+    let hidden = all_lines.len() - (max_lines - 1);
+    let mut result: Vec<String> = all_lines[..max_lines - 1]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+    result.push(format!("\u{2026} ({hidden} more lines)"));
+    (result, hidden)
+}
+
 /// Convert a chat entry into one or more visual lines, splitting on `\n`.
 ///
 /// The first line gets the entry-type prefix; continuation lines get indentation.
@@ -200,10 +223,11 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, is_selected: bool) -> Vec<
             name, arguments, ..
         } => {
             let prefix = if pinned { "📌 " } else { "  " };
-            multiline_styled(
-                format!("🔧 {name}({arguments})"),
+            let text = format!("🔧 {name}({arguments})");
+            let (lines, _) = truncate_lines(&text, MAX_TOOL_LINES);
+            truncated_multiline_styled(
+                lines,
                 prefix,
-                "  ",
                 Style::default().fg(Color::Magenta),
                 is_selected,
             )
@@ -216,10 +240,11 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, is_selected: bool) -> Vec<
         } => {
             let icon = if *success { "✅" } else { "❌" };
             let prefix = if pinned { "📌 " } else { "  " };
-            multiline_styled(
-                format!("{icon} {name}: {content}"),
+            let text = format!("{icon} {name}: {content}");
+            let (lines, _) = truncate_lines(&text, MAX_TOOL_LINES);
+            truncated_multiline_styled(
+                lines,
                 prefix,
-                "  ",
                 if *success {
                     Style::default().fg(Color::Green)
                 } else {
@@ -267,6 +292,37 @@ where
         lines.push(Line::from(Span::styled(content, line_style)));
     }
     lines
+}
+
+/// Produce styled lines from pre-split segments (e.g., from [`truncate_lines`]).
+///
+/// First line gets the prefix and optional selection indicator.
+/// Continuation lines get no prefix.
+fn truncated_multiline_styled<P>(
+    lines: Vec<String>,
+    prefix: P,
+    style: Style,
+    is_selected: bool,
+) -> Vec<Line<'static>>
+where
+    P: AsRef<str>,
+{
+    let prefix = prefix.as_ref();
+    let mut result = Vec::new();
+    for (i, segment) in lines.into_iter().enumerate() {
+        let (content, line_style) = if i == 0 && is_selected {
+            (
+                format!("▶ {prefix}{segment}"),
+                style.add_modifier(Modifier::REVERSED),
+            )
+        } else if i == 0 {
+            (format!("{prefix}{segment}"), style)
+        } else {
+            (segment, style)
+        };
+        result.push(Line::from(Span::styled(content, line_style)));
+    }
+    result
 }
 
 #[cfg(test)]
@@ -820,6 +876,122 @@ mod tests {
         assert!(
             has_indicator,
             "selected entry should be visible in viewport when scroll-to-selected is active"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_tool_result_short_content_not_truncated() {
+        // Given a ChatLogElement with a tool result entry with 3 lines.
+        let mut element = ChatLogElement;
+        let content = "line1\nline2\nline3";
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::tool_result("id1", "bash", content, true));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(60, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then all 3 lines are visible (no truncation indicator).
+        let buffer = terminal.backend().buffer().clone();
+        let combined: String = (0..10)
+            .map(|y| {
+                (0..60)
+                    .map(|x| buffer.cell((x, y)).map_or(" ", ratatui::buffer::Cell::symbol))
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !combined.contains("more lines"),
+            "short content should not be truncated"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_tool_result_long_content_is_truncated() {
+        // Given a ChatLogElement with a tool result entry with 10 lines of content.
+        let mut element = ChatLogElement;
+        let content = (1..=10).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::tool_result("id1", "bash", content, true));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(80, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the truncation indicator is visible.
+        let buffer = terminal.backend().buffer().clone();
+        let combined: String = (0..10)
+            .map(|y| {
+                (0..80)
+                    .map(|x| buffer.cell((x, y)).map_or(" ", ratatui::buffer::Cell::symbol))
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            combined.contains("more lines"),
+            "long content should show truncation indicator"
+        );
+        // And the original 10th line is NOT visible.
+        assert!(
+            !combined.contains("line10"),
+            "content beyond 5 lines should be hidden"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_tool_call_long_arguments_is_truncated() {
+        // Given a ChatLogElement with a tool call entry with long arguments.
+        let mut element = ChatLogElement;
+        let arguments = (1..=10).map(|i| format!("arg{i}")).collect::<Vec<_>>().join("\n");
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::tool_call("id1", "bash", arguments));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(80, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the truncation indicator is visible.
+        let buffer = terminal.backend().buffer().clone();
+        let combined: String = (0..10)
+            .map(|y| {
+                (0..80)
+                    .map(|x| buffer.cell((x, y)).map_or(" ", ratatui::buffer::Cell::symbol))
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            combined.contains("more lines"),
+            "long tool call arguments should show truncation indicator"
         );
     }
 }
