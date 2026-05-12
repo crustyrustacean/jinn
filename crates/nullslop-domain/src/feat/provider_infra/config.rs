@@ -66,6 +66,11 @@ pub struct ProviderEntry {
     /// Defaults to `true`. Set to `false` for local providers (Ollama).
     #[serde(default = "default_true")]
     pub requires_key: bool,
+    /// Extra JSON body parameters passed to the LLM builder.
+    /// Used for vendor-specific options like z.ai's `enable_thinking`.
+    /// Maps to `LLMBuilder::extra_body()`.
+    #[serde(default)]
+    pub extra_body: Option<serde_json::Value>,
 }
 
 /// A named alias for a provider entry.
@@ -280,6 +285,7 @@ target = "ollama/llama3"
                 base_url: None,
                 api_key_env: Some("TEST_KEY".to_owned()),
                 requires_key: true,
+                extra_body: None,
             }],
             aliases: vec![],
             default_provider: Some("test/gpt-4".to_owned()),
@@ -305,5 +311,62 @@ target = "ollama/llama3"
 
         // Then it ends with nullslop/providers.toml.
         assert!(path.to_string_lossy().ends_with("nullslop/providers.toml"));
+    }
+
+    #[rstest::rstest]
+    fn load_config_parses_extra_body() {
+        // Given a config with extra_body.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let toml = r#"
+[[providers]]
+name = "zai"
+backend = "zai"
+api_key_env = "ZAI_API_KEY"
+models = ["glm-5.1"]
+
+[providers.extra_body]
+enable_thinking = true
+tool_stream = true
+"#;
+        std::fs::write(&path, toml).expect("write");
+
+        // When loading.
+        let config = load_config_from(&path).expect("load");
+
+        // Then extra_body is parsed.
+        assert_eq!(config.providers.len(), 1);
+        let extra = config.providers[0].extra_body.as_ref().expect("extra_body");
+        assert_eq!(extra["enable_thinking"], true);
+        assert_eq!(extra["tool_stream"], true);
+    }
+
+    #[rstest::rstest]
+    fn round_trip_preserves_extra_body() {
+        // Given a config with extra_body.
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "zai".to_owned(),
+                backend: "zai".to_owned(),
+                models: vec!["glm-5.1".to_owned()],
+                base_url: None,
+                api_key_env: Some("ZAI_API_KEY".to_owned()),
+                requires_key: true,
+                extra_body: Some(serde_json::json!({"enable_thinking": true})),
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+
+        // When saving and reloading.
+        save_config_to(&config, &path).expect("save");
+        let reloaded = load_config_from(&path).expect("reload");
+
+        // Then extra_body is preserved.
+        let extra = reloaded.providers[0].extra_body.as_ref().expect("extra_body");
+        assert_eq!(extra["enable_thinking"], true);
     }
 }

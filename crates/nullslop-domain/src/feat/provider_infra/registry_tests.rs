@@ -22,6 +22,7 @@ fn ollama_entry() -> ProviderEntry {
         base_url: Some("http://localhost:11434".to_owned()),
         api_key_env: None,
         requires_key: false,
+        extra_body: None,
     }
 }
 
@@ -33,6 +34,7 @@ fn openrouter_entry() -> ProviderEntry {
         base_url: None,
         api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
         requires_key: true,
+        extra_body: None,
     }
 }
 
@@ -78,6 +80,7 @@ fn rejects_invalid_backend_string() {
             base_url: None,
             api_key_env: None,
             requires_key: false,
+            extra_body: None,
         }],
         vec![],
         None,
@@ -101,6 +104,7 @@ fn rejects_empty_models_list() {
             base_url: None,
             api_key_env: None,
             requires_key: false,
+            extra_body: None,
         }],
         vec![],
         None,
@@ -124,6 +128,7 @@ fn registry_has_two_entries() {
             base_url: None,
             api_key_env: None,
             requires_key: false,
+            extra_body: None,
         }],
         vec![],
         None,
@@ -148,6 +153,7 @@ fn entries_have_correct_ids() {
             base_url: None,
             api_key_env: None,
             requires_key: false,
+            extra_body: None,
         }],
         vec![],
         None,
@@ -178,6 +184,7 @@ fn entries_are_individually_lookupable() {
             base_url: None,
             api_key_env: None,
             requires_key: false,
+            extra_body: None,
         }],
         vec![],
         None,
@@ -294,6 +301,7 @@ fn create_factory_succeeds_for_sample_backend() {
             base_url: None,
             api_key_env: None,
             requires_key: false,
+            extra_body: None,
         }],
         vec![],
         None,
@@ -320,6 +328,7 @@ fn create_factory_succeeds_for_keyless_openai_backend() {
             base_url: Some("http://localhost:1234/v1".to_owned()),
             api_key_env: None,
             requires_key: false,
+            extra_body: None,
         }],
         vec![],
         None,
@@ -459,6 +468,7 @@ fn create_factory_succeeds_for_remote_model_via_fallback() {
             base_url: Some("http://localhost:1234/v1".to_owned()),
             api_key_env: None,
             requires_key: false,
+            extra_body: None,
         }],
         vec![],
         None,
@@ -503,6 +513,7 @@ fn create_factory_falls_back_for_model_with_slashes() {
             base_url: None,
             api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
             requires_key: true,
+            extra_body: None,
         }],
         vec![],
         None,
@@ -520,4 +531,48 @@ fn create_factory_falls_back_for_model_with_slashes() {
     // Then it succeeds (splits on first "/" → provider="openrouter", model="anthropic/claude-sonnet-4").
     assert!(factory.is_ok());
     assert_eq!(factory.unwrap().name(), "openrouter");
+}
+
+#[rstest::rstest]
+fn registry_propagates_extra_body_to_resolved_provider() {
+    // Given a config with extra_body.
+    let config = make_config(
+        vec![ProviderEntry {
+            name: "zai".to_owned(),
+            backend: "ollama".to_owned(), // Use ollama to avoid key requirement
+            models: vec!["glm-5.1".to_owned()],
+            base_url: None,
+            api_key_env: None,
+            requires_key: false,
+            extra_body: Some(serde_json::json!({"enable_thinking": true, "tool_stream": true})),
+        }],
+        vec![],
+        None,
+    );
+
+    // When building the registry.
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+
+    // Then the resolved provider carries the extra_body.
+    let resolved = registry
+        .get(&ProviderId::new("zai/glm-5.1".to_owned()))
+        .expect("resolved");
+    let extra = resolved.extra_body.as_ref().expect("extra_body");
+    assert_eq!(extra["enable_thinking"], true);
+    assert_eq!(extra["tool_stream"], true);
+}
+
+#[rstest::rstest]
+fn registry_propagates_none_extra_body_when_absent() {
+    // Given a config without extra_body.
+    let config = make_config(vec![ollama_entry()], vec![], None);
+
+    // When building the registry.
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+
+    // Then the resolved provider has None for extra_body.
+    let resolved = registry
+        .get(&ProviderId::new("ollama/llama3".to_owned()))
+        .expect("resolved");
+    assert!(resolved.extra_body.is_none());
 }

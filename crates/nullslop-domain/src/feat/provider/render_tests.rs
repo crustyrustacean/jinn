@@ -30,6 +30,7 @@ fn picker_state_with_ollama() -> (AppState, Services) {
             base_url: Some("http://localhost:11434".to_owned()),
             api_key_env: None,
             requires_key: false,
+            extra_body: None,
         }],
         aliases: vec![],
         default_provider: None,

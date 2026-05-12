@@ -429,6 +429,7 @@ mod tests {
                 base_url: Some("http://localhost:1234/v1".to_owned()),
                 api_key_env: None,
                 requires_key: false,
+                extra_body: None,
             }],
             aliases: vec![],
             default_provider: None,
