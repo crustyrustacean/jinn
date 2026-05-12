@@ -117,11 +117,11 @@ pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;
 pub use feat::session::protocol::session_load_requested::SessionLoadRequested;
 pub use feat::session::protocol::session_new::SessionNew;
 pub use feat::session::protocol::session_save_requested::SessionSaveRequested;
-pub use feat::tools::protocol::command::{
+pub use feat::tools_actor::protocol::command::{
     ExecuteTool, ExecuteToolBatch, PushToolResult, RegisterTools,
 };
-pub use feat::tools::protocol::event::{
+pub use feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolUseStarted, ToolsRegistered,
 };
-pub use feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};
+pub use feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};

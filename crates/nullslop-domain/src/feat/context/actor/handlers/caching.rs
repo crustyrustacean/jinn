@@ -2,7 +2,7 @@
 
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
-use crate::feat::tools::protocol::event::ToolsRegistered;
+use crate::feat::tools_actor::protocol::event::ToolsRegistered;
 
 use super::super::PromptAssemblyActor;
 

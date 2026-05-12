@@ -33,11 +33,11 @@ use crate::common::actor::{
 };
 use crate::common::actor_host::spawn_actor;
 use crate::common::state::State;
-use crate::feat::tools::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
-use crate::feat::tools::protocol::event::{
+use crate::feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
+use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
 };
-use crate::feat::tools::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
+use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
 
 /// A boxed future returned by built-in tool execute functions.
@@ -449,7 +449,7 @@ mod tests {
     use crate::common::actor::RecordingSink;
     use crate::common::app_state::AppState;
     use crate::common::state::State;
-    use crate::feat::tools::protocol::command::{ExecuteToolBatch, RegisterTools};
+    use crate::feat::tools_actor::protocol::command::{ExecuteToolBatch, RegisterTools};
 
     use super::*;
 

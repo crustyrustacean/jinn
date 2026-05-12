@@ -3,7 +3,7 @@
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamToken};
-use crate::feat::tools::protocol::event::{
+use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
 use crate::protocol::{ChatEntry, Command};

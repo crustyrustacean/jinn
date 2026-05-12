@@ -27,7 +27,7 @@ use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
 };
 use crate::feat::session::protocol::session_save_requested::SessionSaveRequested;
-use crate::feat::tools::protocol::event::{
+use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolUseStarted, ToolsRegistered,
 };

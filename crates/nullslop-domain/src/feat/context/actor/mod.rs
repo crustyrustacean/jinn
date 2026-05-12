@@ -20,7 +20,7 @@ use crate::feat::context::protocol::command::{
 };
 use crate::feat::context::protocol::event::PromptStrategySwitched;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
-use crate::feat::tools::protocol::event::ToolsRegistered;
+use crate::feat::tools_actor::protocol::event::ToolsRegistered;
 use crate::protocol::{Command, Event, SessionId, ToolDefinition};
 
 use crate::feat::context::{DefaultStrategyFactory, PromptAssembly, StrategyFactory};

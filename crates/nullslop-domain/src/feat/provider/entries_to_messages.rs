@@ -1,7 +1,7 @@
 //! Conversion from chat entries to LLM messages.
 
 use crate::feat::provider::llm_message::LlmMessage;
-use crate::feat::tools::tool_types::ToolCall;
+use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::ChatEntry;
 use crate::protocol::ChatEntryKind;
 

@@ -29,8 +29,8 @@ use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamToken};
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::feat::tools::protocol::command::PushToolResult;
-use crate::feat::tools::protocol::event::{
+use crate::feat::tools_actor::protocol::command::PushToolResult;
+use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
 use crate::protocol::{Command, Event};
@@ -182,8 +182,8 @@ mod tests {
         StreamCompleted, StreamCompletedReason, StreamToken,
     };
     use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-    use crate::feat::tools::protocol::command::PushToolResult;
-    use crate::feat::tools::protocol::event::{
+    use crate::feat::tools_actor::protocol::command::PushToolResult;
+    use crate::feat::tools_actor::protocol::event::{
         ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     };
     use crate::protocol::{

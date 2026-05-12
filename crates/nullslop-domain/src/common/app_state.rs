@@ -22,7 +22,7 @@ use crate::feat::context::prompt_template::PromptTemplateStore;
 pub use crate::feat::dashboard::DashboardState;
 pub use crate::feat::pinned_panel::PinnedPanelState;
 use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::shutdown::ShutdownTrackerState;
+use crate::feat::shutdown_actor::ShutdownTrackerState;
 use crate::protocol::KeymapEntry;
 use crate::protocol::SessionEntry;
 use crate::protocol::StrategyEntry;
