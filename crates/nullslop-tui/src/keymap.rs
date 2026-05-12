@@ -75,6 +75,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-l>", Intent::PinnedPanelOpen, KeyCategory::Navigation)
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
+            // Tool content popup
+            .bind("f", Intent::OpenToolContent, KeyCategory::Navigation)
             // Escape: cancel selection, close pinned panel
             .bind("<esc>", Intent::NormalEscape, KeyCategory::General)
             // Pinned panel toggle (mnemonic: "go to pins")
@@ -180,6 +182,15 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
                     None
                 }
             });
+        });
+
+    keymap
+        .scope(Scope::ToolContent, |b| {
+            b
+            .bind("<esc>", Intent::CloseToolContent, KeyCategory::General)
+            .bind("q", Intent::CloseToolContent, KeyCategory::General)
+            .bind("<c-d>", Intent::ToolContentScrollDown, KeyCategory::Navigation)
+            .bind("<c-u>", Intent::ToolContentScrollUp, KeyCategory::Navigation);
         });
 
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {

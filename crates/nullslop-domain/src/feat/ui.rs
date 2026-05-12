@@ -3,3 +3,4 @@
 pub mod char_counter;
 pub mod chat_log;
 pub mod status_bar;
+pub mod tool_content_popup;
