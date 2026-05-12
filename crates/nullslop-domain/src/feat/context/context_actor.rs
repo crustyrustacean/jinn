@@ -19,11 +19,14 @@ use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
 use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::context::protocol::command::{
-    AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, LoadContextStrategyPickerEntries, PinChatEntry, RestoreStrategyState,
+    SwitchPromptStrategy, UnpinChatEntry,
 };
 use crate::feat::context::protocol::event::PromptStrategySwitched;
+use crate::feat::picker::strategy_entries::load_strategy_picker_items;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
 use crate::protocol::{Command, Event, SessionId, ToolDefinition};
@@ -43,6 +46,8 @@ pub struct PromptAssemblyActor {
     pub(super) tool_definitions: HashMap<String, ToolDefinition>,
     /// Factory for creating new strategies on switch.
     pub(super) factory: Option<Box<dyn StrategyFactory>>,
+    /// Runtime services (strategy registry for picker loading).
+    pub(super) services: Services,
 }
 
 impl Actor for PromptAssemblyActor {
@@ -54,11 +59,12 @@ impl Actor for PromptAssemblyActor {
         ctx.subscribe_event::<PromptStrategySwitched>();
         ctx.subscribe_event::<ToolsRegistered>();
 
-        // New subscriptions (strategy management, pinning, templates).
+        // New subscriptions (strategy management, pinning, templates, picker).
         ctx.subscribe_command::<SwitchPromptStrategy>();
         ctx.subscribe_command::<RestoreStrategyState>();
         ctx.subscribe_command::<PinChatEntry>();
         ctx.subscribe_command::<UnpinChatEntry>();
+        ctx.subscribe_command::<LoadContextStrategyPickerEntries>();
         ctx.subscribe_event::<PromptTemplatesLoaded>();
 
         ctx.set_description("Context assembly, strategy management, pinning, and templates");
@@ -70,11 +76,16 @@ impl Actor for PromptAssemblyActor {
         let factory = ctx
             .take_data::<Box<dyn StrategyFactory>>()
             .unwrap_or_else(|| Box::new(DefaultStrategyFactory));
+        #[expect(clippy::expect_used, reason = "Services is always injected at startup")]
+        let services = ctx
+            .take_data::<Services>()
+            .expect("PromptAssemblyActor requires Services injection");
         Self {
             state,
             strategies: HashMap::new(),
             tool_definitions: HashMap::new(),
             factory: Some(factory),
+            services,
         }
     }
 
@@ -118,6 +129,9 @@ impl PromptAssemblyActor {
             Command::RestoreStrategyState { payload } => {
                 self.handle_restore_strategy_state(payload, ctx);
             }
+            Command::LoadContextStrategyPickerEntries { payload } => {
+                self.handle_load_context_strategy_picker_entries(payload);
+            }
             _ => {}
         }
     }
@@ -137,11 +151,21 @@ impl PromptAssemblyActor {
             _ => {}
         }
     }
+
+    /// Loads context strategy picker entries into `AppState`.
+    fn handle_load_context_strategy_picker_entries(
+        &self,
+        _payload: &LoadContextStrategyPickerEntries,
+    ) {
+        let mut state = self.state.write();
+        load_strategy_picker_items(&self.services, &mut state);
+    }
 }
 
 pub fn spawn_context_actor(
     state: crate::common::state::State,
     strategy_factory: Box<dyn super::StrategyFactory>,
+    services: Services,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
 ) -> (ActorRef<ContextDirectMsg>, ActorSpawnResult) {
@@ -150,6 +174,7 @@ pub fn spawn_context_actor(
     let mut ctx = ActorContext::new("context", sink);
     ctx.set_data(state);
     ctx.set_data(strategy_factory);
+    ctx.set_data(services);
     let actor = PromptAssemblyActor::activate(&mut ctx);
     let result = spawn_actor("context", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
@@ -172,6 +197,7 @@ mod tests {
     fn test_context(sink: Arc<RecordingSink>) -> ActorContext {
         let mut ctx = ActorContext::new("context", sink as Arc<dyn MessageSink>);
         ctx.set_data(State::new(AppState::default()));
+        ctx.set_data(Services::new());
         ctx
     }
 
@@ -182,6 +208,7 @@ mod tests {
         let state = State::new(AppState::default());
         ctx.set_data(state.clone());
         ctx.set_data::<Box<dyn StrategyFactory>>(Box::new(DefaultStrategyFactory));
+        ctx.set_data(Services::new());
         let actor = PromptAssemblyActor::activate(&mut ctx);
         (actor, state, sink, ctx)
     }

@@ -85,11 +85,28 @@ pub fn create_core_with_actor_host(
     let (_orch_ref, orch_result) =
         nullslop_domain::feat::tools_actor::spawn(state.clone(), sink.clone(), handle);
 
+    // Build services (needed by provider actor, context actor, and shutdown tracker).
+    let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
+    let services = Services {
+        handle: handle.clone(),
+        actor_channel: ActorChannelService::new(sender.clone()),
+        core_channel: CoreChannelService::new(core_notify_tx),
+        llm_service: llm_service.clone(),
+        provider_registry: provider_registry.clone(),
+        api_keys: api_keys.clone(),
+        config_storage: config_storage.clone(),
+        session_store: SessionStoreService::new(
+            Arc::new(nullslop_domain::JsonlSessionStore::new()),
+        ),
+        strategy_registry: strategy_registry.clone(),
+    };
+
     // --- Prompt assembly actor ---
     let (_ctx_ref, prompt_result) =
         nullslop_domain::feat::context::context_actor::spawn_context_actor(
             state.clone(),
             Box::new(DefaultStrategyFactory),
+            services.clone(),
             sink.clone(),
             handle,
         );
@@ -120,22 +137,6 @@ pub fn create_core_with_actor_host(
         sink.clone(),
         handle,
     );
-
-    // Build services (needed by provider actor and shutdown tracker).
-    let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
-    let services = Services {
-        handle: handle.clone(),
-        actor_channel: ActorChannelService::new(sender.clone()),
-        core_channel: CoreChannelService::new(core_notify_tx),
-        llm_service: llm_service.clone(),
-        provider_registry: provider_registry.clone(),
-        api_keys: api_keys.clone(),
-        config_storage: config_storage.clone(),
-        session_store: SessionStoreService::new(
-            Arc::new(nullslop_domain::JsonlSessionStore::new()),
-        ),
-        strategy_registry: strategy_registry.clone(),
-    };
 
     // --- Provider actor ---
     let (_prov_ref, prov_result) =
