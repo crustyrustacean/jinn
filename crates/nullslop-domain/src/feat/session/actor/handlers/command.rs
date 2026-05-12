@@ -1,9 +1,13 @@
 //! Command handlers — process session lifecycle commands.
 
 use crate::common::actor::ActorContext;
-use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
+use crate::feat::chat_input::protocol::command::{
+    EnqueueUserMessage, PushChatEntry, SetChatInputText,
+};
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use crate::feat::context::protocol::command::{AssemblePrompt, RestoreStrategyState, SwitchPromptStrategy};
+use crate::feat::context::protocol::command::{
+    AssemblePrompt, RestoreStrategyState, SwitchPromptStrategy,
+};
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::tools::protocol::command::PushToolResult;

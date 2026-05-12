@@ -1,9 +1,17 @@
 //! Protocol types for the nullslop actor system.
 //!
-//! This module contains truly shared types that cross feature boundaries:
-//! the `Command` and `Event` mega-enums, `Intent`, `Key`, `Mode`, and
-//! other cross-cutting types. Domain-specific types live in their feature
-//! modules under `feat/` and are re-exported from `lib.rs` for convenience.
+//! This module defines cross-cutting types that are used across feature boundaries:
+//!
+//! - **[`app_msg`]** — `AppMsg` (processing loop message), `Command` (mega-enum),
+//!   `Event` (mega-enum)
+//! - **[`intent`]** — `Intent` (user-initiated action) and `IntentResult`
+//! - **[`key`]** — `Key`, `KeyEvent`, `Modifiers` (keyboard input types)
+//! - **[`mode`]** — `Mode` (application interaction mode)
+//! - **[`system`]** — `LoadPickerEntries`, `KeyDown`, `KeyUp`, `ModeChanged`
+//! - **[`tab`]** — `ActiveTab`, `TabDirection`
+//!
+//! Domain-specific types (session, provider, context, tools, chat input, etc.) live
+//! in their feature modules under `feat/` and are re-exported here for convenience.
 
 pub mod app_msg;
 pub mod intent;
@@ -13,10 +21,10 @@ pub mod system;
 pub mod tab;
 
 // Re-export primary types
+pub use crate::common::actor::{CommandMsg, CommandName, EventMsg, EventTypeName};
 pub use app_msg::AppMsg;
 pub use app_msg::Command;
 pub use app_msg::Event;
-pub use crate::common::actor::{CommandMsg, CommandName, EventMsg, EventTypeName};
 pub use intent::Intent;
 pub use intent::IntentResult;
 pub use key::{Key, KeyEvent, Modifiers};
@@ -25,12 +33,12 @@ pub use nullslop_protocol_derive::{CommandMsg, EventMsg};
 pub use tab::ActiveTab;
 pub use tab::TabDirection;
 
-// Re-export types that have been moved to their domain homes
+// Re-export domain types that are widely used as cross-cutting protocol concerns
 pub use crate::common::actor::actor_name::ActorName;
 pub use crate::common::core::core_notification::CoreNotification;
+pub use crate::feat::context::protocol::command::SwitchPromptStrategy;
 pub use crate::feat::context::protocol::prompt_template::PromptTemplate;
 pub use crate::feat::context::protocol::strategy_id::PromptStrategyId;
-pub use crate::feat::context::protocol::command::SwitchPromptStrategy;
 pub use crate::feat::picker::picker_kind::PickerKind;
 pub use crate::feat::provider::llm_message::LlmMessage;
 pub use crate::feat::session::protocol::session_id::SessionId;
@@ -41,5 +49,5 @@ pub use crate::feat::picker::strategy_entry::StrategyEntry;
 pub use crate::feat::provider::entries_to_messages::entries_to_messages;
 pub use crate::feat::provider::picker_entry::PickerEntry;
 pub use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
-pub use crate::feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};
 pub use crate::feat::session::picker_entry::SessionEntry;
+pub use crate::feat::tools::tool_types::{ToolCall, ToolDefinition, ToolResult};

@@ -4,8 +4,8 @@
 //! used by service implementations. No llm crate types leak through the
 //! public [`LlmService`](crate::LlmService) trait.
 
-use crate::protocol::LlmMessage;
 use crate::feat::tools::tool_types::{ToolCall, ToolDefinition};
+use crate::protocol::LlmMessage;
 use llm::chat::{ChatMessage, ChatRole, FunctionTool, MessageType, StreamChunk, Tool};
 use llm::{FunctionCall, ToolCall as LlmToolCall};
 

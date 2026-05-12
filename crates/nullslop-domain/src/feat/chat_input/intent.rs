@@ -15,8 +15,8 @@
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::ChatInputBoxState;
-use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
+use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::protocol::{Command, IntentResult, Mode};
 use unicode_segmentation::UnicodeSegmentation as _;
 
