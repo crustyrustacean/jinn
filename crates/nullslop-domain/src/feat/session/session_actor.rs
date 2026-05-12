@@ -1156,9 +1156,10 @@ mod tests {
         // Then the session has an error entry with "Cancelled".
         let guard = state.read();
         let session = guard.session(&session_id);
-        let has_cancelled = session.history().iter().any(|e| {
-            matches!(&e.kind, ChatEntryKind::Error(t) if t == "Cancelled")
-        });
+        let has_cancelled = session
+            .history()
+            .iter()
+            .any(|e| matches!(&e.kind, ChatEntryKind::Error(t) if t == "Cancelled"));
         assert!(has_cancelled, "expected an Error entry with 'Cancelled'");
         // And the session is no longer streaming.
         assert!(!session.is_streaming());

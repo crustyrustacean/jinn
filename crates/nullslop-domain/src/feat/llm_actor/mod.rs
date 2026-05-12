@@ -1056,7 +1056,10 @@ mod tests {
         }
 
         // Verify we're in the right state.
-        let session = actor.sessions.get(&session_id).expect("session should exist");
+        let session = actor
+            .sessions
+            .get(&session_id)
+            .expect("session should exist");
         assert_eq!(session.state, SessionState::AwaitingToolResults);
 
         sink.clear();
