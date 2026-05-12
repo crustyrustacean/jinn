@@ -1249,7 +1249,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn models_refreshed_pushes_success_system_entry() {
+    async fn models_refreshed_pushes_success_table_entry() {
         // Given a session actor.
         let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
 
@@ -1272,7 +1272,7 @@ mod tests {
             )
             .await;
 
-        // Then the active session has a system entry with the success message.
+        // Then the active session has a table entry with the provider.
         let guard = state.read();
         let last = guard
             .active_session()
@@ -1280,16 +1280,20 @@ mod tests {
             .last()
             .expect("should have entry");
         match &last.kind {
-            ChatEntryKind::System(text) => {
-                assert_eq!(text, "Models refreshed: 2 models from 1 providers");
+            ChatEntryKind::Table(data) => {
+                assert_eq!(data.headers.len(), 3);
+                assert_eq!(data.rows.len(), 1);
+                assert_eq!(data.rows[0][0].content, "lmstudio");
+                assert_eq!(data.rows[0][1].content, "2");
+                assert!(data.rows[0][2].content.contains('\u{2705}'));
             }
-            other => panic!("expected System, got {other:?}"),
+            other => panic!("expected Table, got {other:?}"),
         }
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn models_refreshed_pushes_error_system_entry() {
+    async fn models_refreshed_pushes_error_table_entry() {
         // Given a session actor.
         let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
 
@@ -1313,7 +1317,7 @@ mod tests {
             )
             .await;
 
-        // Then the active session has a system entry with the failure message.
+        // Then the active session has a table entry with error rows (sorted alphabetically).
         let guard = state.read();
         let last = guard
             .active_session()
@@ -1321,18 +1325,24 @@ mod tests {
             .last()
             .expect("should have entry");
         match &last.kind {
-            ChatEntryKind::System(text) => {
-                assert!(text.starts_with("Failed to refresh models:"));
-                assert!(text.contains("lmstudio: timeout"));
-                assert!(text.contains("ollama: HTTP error: connection refused"));
+            ChatEntryKind::Table(data) => {
+                assert_eq!(data.rows.len(), 2);
+                // lmstudio comes first (alphabetical).
+                assert_eq!(data.rows[0][0].content, "lmstudio");
+                assert_eq!(data.rows[0][1].content, "0");
+                assert!(data.rows[0][2].content.contains('\u{274c}'));
+                assert!(data.rows[0][2].content.contains("timeout"));
+                // ollama comes second.
+                assert_eq!(data.rows[1][0].content, "ollama");
+                assert!(data.rows[1][2].content.contains("connection refused"));
             }
-            other => panic!("expected System, got {other:?}"),
+            other => panic!("expected Table, got {other:?}"),
         }
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn models_refreshed_pushes_partial_failure_system_entry() {
+    async fn models_refreshed_pushes_partial_failure_table_entry() {
         // Given a session actor.
         let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
 
@@ -1351,7 +1361,7 @@ mod tests {
             )
             .await;
 
-        // Then the active session has a system entry mentioning both.
+        // Then the active session has a table entry with both success and error rows.
         let guard = state.read();
         let last = guard
             .active_session()
@@ -1359,12 +1369,18 @@ mod tests {
             .last()
             .expect("should have entry");
         match &last.kind {
-            ChatEntryKind::System(text) => {
-                assert!(text.starts_with("Models refreshed: 1 models from 1 providers"));
-                assert!(text.contains("Errors:"));
-                assert!(text.contains("ollama: connection refused"));
+            ChatEntryKind::Table(data) => {
+                assert_eq!(data.rows.len(), 2);
+                // lmstudio comes first (alphabetical) — success.
+                assert_eq!(data.rows[0][0].content, "lmstudio");
+                assert_eq!(data.rows[0][1].content, "1");
+                assert!(data.rows[0][2].content.contains('\u{2705}'));
+                // ollama comes second — error.
+                assert_eq!(data.rows[1][0].content, "ollama");
+                assert!(data.rows[1][2].content.contains('\u{274c}'));
+                assert!(data.rows[1][2].content.contains("connection refused"));
             }
-            other => panic!("expected System, got {other:?}"),
+            other => panic!("expected Table, got {other:?}"),
         }
     }
 }
