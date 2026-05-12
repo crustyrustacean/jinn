@@ -153,7 +153,8 @@ impl SessionPersistenceActor {
             | Command::PinChatEntry { .. }
             | Command::UnpinChatEntry { .. }
             | Command::SwitchPromptStrategy { .. }
-            | Command::RestoreStrategyState { .. } => {}
+            | Command::RestoreStrategyState { .. }
+            | Command::ScanSkills => {}
         }
     }
 }

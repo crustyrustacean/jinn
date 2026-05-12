@@ -1,5 +1,6 @@
 //! Skill data model.
 
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// A discovered agent skill.
@@ -7,7 +8,7 @@ use std::path::PathBuf;
 /// Parsed from `SKILL.md` files in `~/.agents/skills/<name>/`.
 /// The name comes from the YAML frontmatter (must match the parent directory name).
 /// The description comes from the YAML frontmatter.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Skill {
     /// The skill name (from frontmatter, must match parent directory).
     pub name: String,

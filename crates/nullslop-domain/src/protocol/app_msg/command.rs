@@ -26,6 +26,7 @@ use crate::feat::provider::protocol::command::{
 };
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
 use crate::protocol::system::LoadPickerEntries;
 
@@ -176,6 +177,9 @@ pub enum Command {
         #[serde(flatten)]
         payload: SessionLoadRequested,
     },
+    /// Scan the agent skills directory and reload skills.
+    #[serde(rename = "scan_skills")]
+    ScanSkills,
 }
 
 impl Command {
@@ -204,6 +208,7 @@ impl Command {
             Self::SessionLoadCompleted { .. } => Some(SessionLoadCompleted::NAME),
             Self::LoadPickerEntries { .. } => Some(LoadPickerEntries::NAME),
             Self::SessionLoadRequested { .. } => Some("SessionLoadRequested"),
+            Self::ScanSkills => Some(ScanSkills::NAME),
         }
     }
 }
@@ -266,6 +271,7 @@ impl std::fmt::Display for Command {
                 write!(f, "load {} picker entries", payload.kind)
             }
             Command::SessionLoadRequested { .. } => write!(f, "session load requested"),
+            Command::ScanSkills => write!(f, "scan skills"),
         }
     }
 }
@@ -305,6 +311,7 @@ mod tests {
     #[case::session_load_requested(Command::SessionLoadRequested { payload: SessionLoadRequested {
         session_id: SessionId::new(), byte_offset: 42u64,
     } })]
+    #[case::scan_skills(Command::ScanSkills)]
     fn command_roundtrip_all_variants(#[case] cmd: Command) {
         // Given a command variant.
         let json = serde_json::to_string(&cmd).expect("serialize");
