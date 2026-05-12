@@ -4,7 +4,7 @@
 //! that records the current state, accumulated messages, and stream data.
 
 use crate::feat::provider::llm_message::LlmMessage;
-use crate::feat::tools::tool_types::ToolCall;
+use crate::feat::tools_actor::tool_types::ToolCall;
 
 /// Per-session state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

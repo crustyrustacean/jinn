@@ -5,7 +5,7 @@
 //! is provided at construction time (resolved from env vars at startup), not
 //! read from the environment.
 
-use crate::feat::tools::tool_types::ToolDefinition;
+use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::LlmMessage;
 use error_stack::{Report, ResultExt as _};
 use futures::StreamExt;

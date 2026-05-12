@@ -3,7 +3,7 @@
 //! Wires each tool module into a list of (definition, execute) pairs
 //! for registration by the tool orchestrator at activation.
 
-use crate::feat::tools::tool_types::{ToolCall, ToolContext, ToolDefinition};
+use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 
 use super::{
     BoxedToolFuture, builtin_bash, builtin_echo, builtin_get_time, builtin_read, builtin_write,

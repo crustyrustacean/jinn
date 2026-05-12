@@ -10,7 +10,7 @@ use crate::feat::context::protocol::command::{
 };
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::feat::tools::protocol::command::PushToolResult;
+use crate::feat::tools_actor::protocol::command::PushToolResult;
 use crate::protocol::{ChatEntry, Command, Event};
 
 use super::super::SessionPersistenceActor;

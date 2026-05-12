@@ -8,7 +8,7 @@ mod line_ending;
 
 use std::path::{Path, PathBuf};
 
-use crate::feat::tools::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
+use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
 use super::BoxedToolFuture;
 use diff::Edit;

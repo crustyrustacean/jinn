@@ -290,11 +290,11 @@ fn create_core_with_actor_host(
     }
 
     // --- Echo actor ---
-    let (_echo_ref, echo_result) = nullslop_domain::feat::echo::spawn(sink.clone(), handle);
+    let (_echo_ref, echo_result) = nullslop_domain::feat::echo_actor::spawn(sink.clone(), handle);
 
     // --- LLM actor ---
     let (_llm_ref, llm_result) =
-        nullslop_domain::feat::llm::spawn(llm_service.clone(), sink.clone(), handle);
+        nullslop_domain::feat::llm_actor::spawn(llm_service.clone(), sink.clone(), handle);
 
     // --- Discover actor ---
     let (_discover_ref, discover_result) = nullslop_domain::feat::provider::spawn_discover_actor(
@@ -306,7 +306,7 @@ fn create_core_with_actor_host(
 
     // --- Tool orchestrator actor ---
     let (_orch_ref, orch_result) =
-        nullslop_domain::feat::tools::spawn(state.clone(), sink.clone(), handle);
+        nullslop_domain::feat::tools_actor::spawn(state.clone(), sink.clone(), handle);
 
     // --- Prompt assembly actor ---
     let (_ctx_ref, prompt_result) = nullslop_domain::feat::context::spawn_context_actor(
@@ -359,7 +359,7 @@ fn create_core_with_actor_host(
     );
 
     // --- Shutdown tracker actor ---
-    let (_st_ref, st_result) = nullslop_domain::feat::shutdown::spawn(
+    let (_st_ref, st_result) = nullslop_domain::feat::shutdown_actor::spawn(
         state.clone(),
         services.clone(),
         sink.clone(),
