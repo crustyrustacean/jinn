@@ -21,6 +21,7 @@ pub use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 pub use crate::feat::dashboard::DashboardState;
 pub use crate::feat::pinned_panel::PinnedPanelState;
+use crate::feat::skills::Skill;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::shutdown_actor::ShutdownTrackerState;
 use crate::protocol::KeymapEntry;
@@ -75,6 +76,10 @@ pub struct ContextAssemblyState {
     /// Loaded prompt templates from `~/.config/nullslop/prompts/`.
     /// OWNER: context-actor (replaces on PromptTemplatesLoaded event).
     pub prompt_templates: PromptTemplateStore,
+
+    /// Discovered agent skills from `~/.agents/skills/`.
+    /// OWNER: skills-scan-actor (replaces on ScanSkills command).
+    pub skills: Vec<Skill>,
 }
 
 impl Default for ContextAssemblyState {
@@ -82,6 +87,7 @@ impl Default for ContextAssemblyState {
         Self {
             strategy_state: HashMap::new(),
             prompt_templates: PromptTemplateStore::new(),
+            skills: Vec::new(),
         }
     }
 }
