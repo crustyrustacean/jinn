@@ -59,6 +59,7 @@ impl Actor for PromptAssemblyActor {
         ctx.subscribe_command::<AssemblePrompt>();
         ctx.subscribe_event::<PromptStrategySwitched>();
         ctx.subscribe_event::<ToolsRegistered>();
+        ctx.subscribe_event::<PersonasLoaded>();
 
         // New subscriptions (strategy management, pinning, templates, picker).
         ctx.subscribe_command::<SwitchPromptStrategy>();
