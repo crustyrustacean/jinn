@@ -42,6 +42,10 @@ pub struct ToolContext {
     pub cwd: PathBuf,
     /// Optional execution timeout.
     pub timeout: Option<Duration>,
+    /// Shared application state (only available for tools that need it).
+    pub state: Option<crate::common::state::State>,
+    /// Session ID (only available for tools that need it).
+    pub session_id: Option<crate::protocol::SessionId>,
 }
 
 /// The result of executing a tool call.

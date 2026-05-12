@@ -198,6 +198,8 @@ mod tests {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+    state: None,
+    session_id: None,
         }
     }
 
@@ -411,6 +413,8 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             timeout: None,
+    state: None,
+    session_id: None,
         };
 
         let call = ToolCall {
