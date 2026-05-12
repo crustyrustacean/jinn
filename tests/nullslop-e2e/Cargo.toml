@@ -11,24 +11,14 @@ harness = false
 cucumber = { workspace = true }
 tokio = { workspace = true }
 nullslop-tui = { workspace = true }
-nullslop-protocol = { workspace = true, features = ["which-key"] }
-nullslop-services = { workspace = true }
-nullslop-providers = { workspace = true }
-nullslop-actor-host = { workspace = true }
-nullslop-component = { workspace = true }
+nullslop-domain = { workspace = true, features = ["which-key"] }
 crossterm = { workspace = true }
 ratatui-which-key = { workspace = true }
 ratatui-spatial-splits = { workspace = true }
-nullslop-core = { workspace = true }
-nullslop-actor = { workspace = true }
-nullslop-intent = { workspace = true }
-nsslice-context-protocol = { workspace = true }
-nsslice-llm = { workspace = true }
-nsslice-session-management = { workspace = true }
-nsslice-session-management-protocol = { workspace = true }
 tempfile = { workspace = true }
 kanal = { workspace = true }
-nsslice-tools = { workspace = true }
+# These are needed because nullslop-services exposes types/traits from these crates
+# and e2e tests must match those exact types.
 
 [lints.clippy]
 # Test-only crate: relax production lints.

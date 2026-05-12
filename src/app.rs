@@ -8,29 +8,32 @@ use std::path::Path;
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
-use nsslice_context_protocol::DefaultStrategyFactory;
-use nsslice_session_management::persistence::{JsonlSessionStore, SessionStoreService};
-use nullslop_actor::MessageSink;
-use nullslop_actor_host::{ActorHostService, InMemoryActorHost};
 use nullslop_cli::Cli;
-use nullslop_component::AppState;
-use nullslop_core::{ActorMessageSink, AppCore, AppMsg, State, spawn_forwarding_task};
-use nullslop_protocol::Event;
-use nullslop_protocol::actor::{ActorStarted, ActorStarting};
-use nullslop_providers::ApiKeys;
-use nullslop_providers::ApiKeysService;
-use nullslop_providers::ConfigStorageService;
-use nullslop_providers::FilesystemConfigStorage;
-use nullslop_providers::LlmServiceFactoryService;
-use nullslop_providers::ModelCache;
-use nullslop_providers::NoProvidersAvailableFactory;
-use nullslop_providers::ProviderRegistry;
-use nullslop_providers::ProviderRegistryService;
-use nullslop_providers::cache_path;
-use nullslop_services::Services;
-use nullslop_services::actor_channel::ActorChannelService;
-use nullslop_services::core_channel::CoreChannelService;
-use nullslop_services::strategy_registry::StrategyRegistryService;
+use nullslop_domain::ApiKeys;
+use nullslop_domain::ApiKeysService;
+use nullslop_domain::AppState;
+use nullslop_domain::ConfigStorageService;
+use nullslop_domain::DefaultStrategyDiscovery;
+use nullslop_domain::Event;
+use nullslop_domain::FilesystemConfigStorage;
+use nullslop_domain::LlmServiceFactoryService;
+use nullslop_domain::MessageSink;
+use nullslop_domain::ModelCache;
+use nullslop_domain::NoProvidersAvailableFactory;
+use nullslop_domain::ProviderRegistry;
+use nullslop_domain::ProviderRegistryService;
+use nullslop_domain::Services;
+use nullslop_domain::SessionStoreService;
+use nullslop_domain::actor_channel::ActorChannelService;
+use nullslop_domain::cache_path;
+use nullslop_domain::core_channel::CoreChannelService;
+use nullslop_domain::feat::context::DefaultStrategyFactory;
+use nullslop_domain::feat::session::JsonlSessionStore as DomainJsonlSessionStore;
+use nullslop_domain::feat::session::SessionStoreService as DomainSessionStoreService;
+use nullslop_domain::strategy_registry::StrategyRegistryService;
+use nullslop_domain::{ActorHostService, InMemoryActorHost};
+use nullslop_domain::{ActorMessageSink, AppCore, AppMsg, State, spawn_forwarding_task};
+use nullslop_domain::{ActorStarted, ActorStarting};
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -120,21 +123,21 @@ impl App {
                 core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
-                load_prompt_templates(&core.state, &nullslop_prompt_template::prompts_dir());
+                load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
 
                 // Resolve mouse selection config from environment.
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
 
                 let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
-                let mut ui_registry = nullslop_component::AppUiRegistry::new();
-                nullslop_component::register_tui_elements(&mut ui_registry);
-                nsslice_status_bar::register(&mut ui_registry);
-                nsslice_char_counter::register(&mut ui_registry);
-                nsslice_dashboard::register(&mut ui_registry);
-                nsslice_chat_log::register(&mut ui_registry);
-                nsslice_provider::register(&mut ui_registry);
-                nsslice_pinned_panel::register(&mut ui_registry);
-                nsslice_chat_input_box::register(&mut ui_registry);
+                let mut ui_registry = nullslop_domain::AppUiRegistry::new();
+                nullslop_domain::register_tui_elements(&mut ui_registry);
+                nullslop_domain::feat::ui::status_bar::register(&mut ui_registry);
+                nullslop_domain::feat::ui::char_counter::register(&mut ui_registry);
+                nullslop_domain::feat::dashboard::register(&mut ui_registry);
+                nullslop_domain::feat::ui::chat_log::register(&mut ui_registry);
+                nullslop_domain::feat::provider::register(&mut ui_registry);
+                nullslop_domain::feat::pinned_panel::register(&mut ui_registry);
+                nullslop_domain::feat::chat_input::register(&mut ui_registry);
                 let which_key = nullslop_tui::app::WhichKeyInstance::new(
                     nullslop_tui::keymap::init(),
                     nullslop_tui::Scope::Normal,
@@ -174,7 +177,7 @@ impl App {
                 core.state.write().provider.active_provider = initial_provider;
                 load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
-                load_prompt_templates(&core.state, &nullslop_prompt_template::prompts_dir());
+                load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
                 let mut headless = HeadlessApp::new(core, actor_host, core_receiver, self.handle());
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
@@ -238,7 +241,7 @@ fn resolve_initial_factory(
     tracing::warn!("no provider configured or available; use the picker to select one");
     (
         LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory)),
-        nullslop_providers::NO_PROVIDER_ID.to_owned(),
+        nullslop_domain::NO_PROVIDER_ID.to_owned(),
     )
 }
 
@@ -259,7 +262,7 @@ fn create_core_with_actor_host(
     AppCore,
     Services,
     ActorHostService,
-    kanal::Receiver<nullslop_protocol::CoreNotification>,
+    kanal::Receiver<nullslop_domain::CoreNotification>,
 ) {
     // Create channel first — actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
@@ -267,8 +270,7 @@ fn create_core_with_actor_host(
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
 
     // Create the actor→core notification channel.
-    let (core_notify_tx, core_notify_rx) =
-        kanal::unbounded::<nullslop_protocol::CoreNotification>();
+    let (core_notify_tx, core_notify_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
 
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
@@ -277,13 +279,14 @@ fn create_core_with_actor_host(
     let state = State::new(AppState::default());
 
     // --- Echo actor ---
-    let (_echo_ref, echo_result) = nsslice_echo::spawn(sink.clone(), handle);
+    let (_echo_ref, echo_result) = nullslop_domain::feat::echo::spawn(sink.clone(), handle);
 
     // --- LLM actor ---
-    let (_llm_ref, llm_result) = nsslice_llm::spawn(llm_service.clone(), sink.clone(), handle);
+    let (_llm_ref, llm_result) =
+        nullslop_domain::feat::llm::spawn(llm_service.clone(), sink.clone(), handle);
 
     // --- Discover actor ---
-    let (_discover_ref, discover_result) = nsslice_provider::spawn_discover_actor(
+    let (_discover_ref, discover_result) = nullslop_domain::feat::provider::spawn_discover_actor(
         provider_registry.clone(),
         api_keys.clone(),
         sink.clone(),
@@ -291,10 +294,10 @@ fn create_core_with_actor_host(
     );
 
     // --- Tool orchestrator actor ---
-    let (_orch_ref, orch_result) = nsslice_tools::spawn(sink.clone(), handle);
+    let (_orch_ref, orch_result) = nullslop_domain::feat::tools::spawn(sink.clone(), handle);
 
     // --- Prompt assembly actor ---
-    let (_ctx_ref, prompt_result) = nsslice_context::spawn_context_actor(
+    let (_ctx_ref, prompt_result) = nullslop_domain::feat::context::spawn_context_actor(
         state.clone(),
         Box::new(DefaultStrategyFactory),
         sink.clone(),
@@ -302,25 +305,25 @@ fn create_core_with_actor_host(
     );
 
     // --- Session persistence actor ---
-    let session_store = JsonlSessionStore::new();
-    let session_store_service = SessionStoreService::new(Arc::new(session_store));
-    let (_sp_ref, sp_result) = nsslice_session_management::spawn_session_actor(
+    let domain_session_store = DomainJsonlSessionStore::new();
+    let domain_session_store_service =
+        DomainSessionStoreService::new(Arc::new(domain_session_store));
+    let (_sp_ref, sp_result) = nullslop_domain::feat::session::spawn_session_actor(
         state.clone(),
-        session_store_service.clone(),
+        domain_session_store_service.clone(),
         sink.clone(),
         handle,
     );
 
     // --- Prompt scan actor ---
-    let (_scan_ref, scan_result) = nsslice_context::spawn_prompt_scan_actor(
-        nullslop_prompt_template::prompts_dir(),
+    let (_scan_ref, scan_result) = nullslop_domain::feat::context::spawn_prompt_scan_actor(
+        nullslop_domain::prompts_dir(),
         sink.clone(),
         handle,
     );
 
     // Build services (needed by provider actor and shutdown tracker).
-    let strategy_registry =
-        StrategyRegistryService::new(Arc::new(nsslice_context_protocol::DefaultStrategyDiscovery));
+    let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
     let services = Services {
         handle: handle.clone(),
         actor_channel: ActorChannelService::new(sender.clone()),
@@ -329,12 +332,14 @@ fn create_core_with_actor_host(
         provider_registry: provider_registry.clone(),
         api_keys: api_keys.clone(),
         config_storage: config_storage.clone(),
-        session_store: session_store_service.clone(),
+        session_store: SessionStoreService::new(
+            Arc::new(nullslop_domain::JsonlSessionStore::new()),
+        ),
         strategy_registry: strategy_registry.clone(),
     };
 
     // --- Provider actor ---
-    let (_prov_ref, prov_result) = nsslice_provider::spawn_provider_actor(
+    let (_prov_ref, prov_result) = nullslop_domain::feat::provider::spawn_provider_actor(
         state.clone(),
         services.clone(),
         sink.clone(),
@@ -342,8 +347,12 @@ fn create_core_with_actor_host(
     );
 
     // --- Shutdown tracker actor ---
-    let (_st_ref, st_result) =
-        nsslice_shutdown::spawn(state.clone(), services.clone(), sink.clone(), handle);
+    let (_st_ref, st_result) = nullslop_domain::feat::shutdown::spawn(
+        state.clone(),
+        services.clone(),
+        sink.clone(),
+        handle,
+    );
 
     // Emit lifecycle events for all actors.
     let actor_names = [
@@ -395,7 +404,7 @@ fn create_core_with_actor_host(
         ],
         handle.clone(),
     );
-    let host_arc: Arc<dyn nullslop_actor_host::ActorHost> = Arc::new(host);
+    let host_arc: Arc<dyn nullslop_domain::ActorHost> = Arc::new(host);
 
     // Spawn the async forwarding task — continuously drains AppMsg channel → actor host.
     let actor_host_service = ActorHostService::new(host_arc);
@@ -403,15 +412,15 @@ fn create_core_with_actor_host(
 
     // Build AppCore with shared state and sender only.
     let core = AppCore { state, sender };
-    let mut registry = nullslop_component::AppUiRegistry::new();
-    nullslop_component::register_all(&mut registry);
-    nsslice_status_bar::register(&mut registry);
-    nsslice_char_counter::register(&mut registry);
-    nsslice_dashboard::register(&mut registry);
-    nsslice_chat_log::register(&mut registry);
-    nsslice_provider::register(&mut registry);
-    nsslice_pinned_panel::register(&mut registry);
-    nsslice_chat_input_box::register(&mut registry);
+    let mut registry = nullslop_domain::AppUiRegistry::new();
+    nullslop_domain::register_all(&mut registry);
+    nullslop_domain::feat::ui::status_bar::register(&mut registry);
+    nullslop_domain::feat::ui::char_counter::register(&mut registry);
+    nullslop_domain::feat::dashboard::register(&mut registry);
+    nullslop_domain::feat::ui::chat_log::register(&mut registry);
+    nullslop_domain::feat::provider::register(&mut registry);
+    nullslop_domain::feat::pinned_panel::register(&mut registry);
+    nullslop_domain::feat::chat_input::register(&mut registry);
 
     (core, services, actor_host_service, core_notify_rx)
 }
@@ -438,7 +447,7 @@ fn load_model_cache(state: &State, path: &Path) {
 /// Called once after core creation. Failures are logged but not fatal —
 /// the example is a convenience, not a requirement.
 fn ensure_prompt_example() {
-    if let Err(e) = nullslop_prompt_template::ensure_prompts_dir_with_example() {
+    if let Err(e) = nullslop_domain::ensure_prompts_dir_with_example() {
         tracing::warn!("failed to ensure prompt example: {e:?}");
     }
 }
@@ -448,11 +457,10 @@ fn ensure_prompt_example() {
 /// Called once after core creation. Failures are logged but not fatal —
 /// an empty store is used when the directory is missing or unreadable.
 fn load_prompt_templates(state: &State, path: &Path) {
-    let store =
-        nullslop_prompt_template::PromptTemplateStore::load_from_dir(path).unwrap_or_else(|e| {
-            tracing::warn!("failed to load prompt templates: {e:?}");
-            nullslop_prompt_template::PromptTemplateStore::new()
-        });
+    let store = nullslop_domain::PromptTemplateStore::load_from_dir(path).unwrap_or_else(|e| {
+        tracing::warn!("failed to load prompt templates: {e:?}");
+        nullslop_domain::PromptTemplateStore::new()
+    });
     tracing::info!(count = store.len(), "loaded prompt templates");
     state.write().context.prompt_templates = store;
 }
@@ -559,7 +567,7 @@ mod tests {
         // Given a temp directory with a model cache file.
         let dir = tempfile::tempdir().expect("temp dir");
         let cache_path = dir.path().join("model_cache.json");
-        let cache = nullslop_providers::ModelCache {
+        let cache = nullslop_domain::ModelCache {
             entries: {
                 let mut map = std::collections::HashMap::new();
                 map.insert(
@@ -604,8 +612,8 @@ mod tests {
     #[rstest::rstest]
     fn resolve_initial_factory_finds_keyless_provider_without_default() {
         // Given a registry with a keyless lmstudio provider (no default set).
-        let config = nullslop_providers::ProvidersConfig {
-            providers: vec![nullslop_providers::ProviderEntry {
+        let config = nullslop_domain::ProvidersConfig {
+            providers: vec![nullslop_domain::feat::provider_infra::ProviderEntry {
                 name: "lmstudio".to_owned(),
                 backend: "ollama".to_owned(),
                 models: vec!["my-model".to_owned()],
@@ -616,16 +624,16 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let registry = nullslop_providers::ProviderRegistry::from_config(config).expect("registry");
-        let registry_service = nullslop_providers::ProviderRegistryService::new(registry);
+        let registry = nullslop_domain::ProviderRegistry::from_config(config).expect("registry");
+        let registry_service = nullslop_domain::ProviderRegistryService::new(registry);
         let api_keys_service =
-            nullslop_providers::ApiKeysService::new(nullslop_providers::ApiKeys::new());
+            nullslop_domain::ApiKeysService::new(nullslop_domain::ApiKeys::new());
 
         // When resolving the initial factory.
         let (factory, name) = resolve_initial_factory(&registry_service, &api_keys_service);
 
         // Then a real factory is returned (not the no-provider sentinel).
-        assert_ne!(name, nullslop_providers::NO_PROVIDER_ID);
+        assert_ne!(name, nullslop_domain::NO_PROVIDER_ID);
         assert_eq!(name, "lmstudio/my-model");
         assert_ne!(factory.name(), "NoProvidersAvailable");
     }

@@ -5,11 +5,11 @@
 //! host gracefully.
 
 use error_stack::{Report, ResultExt};
-use nullslop_actor_host::ActorHostService;
-use nullslop_core::{AppCore, AppMsg};
-use nullslop_intent::IntentHandler;
-use nullslop_protocol::Command;
-use nullslop_protocol::chat_input::EnqueueUserMessage;
+use nullslop_domain::ActorHostService;
+use nullslop_domain::Command;
+use nullslop_domain::EnqueueUserMessage;
+use nullslop_domain::IntentHandler;
+use nullslop_domain::{AppCore, AppMsg};
 use wherror::Error;
 
 /// Error type for headless operations.
@@ -27,7 +27,7 @@ pub struct HeadlessApp {
     /// Actor host for coordinated shutdown.
     actor_host: ActorHostService,
     /// Receiver for core lifecycle notifications (shutdown complete).
-    core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
+    core_receiver: kanal::Receiver<nullslop_domain::CoreNotification>,
     /// Tokio runtime handle for spawning async shutdown task.
     handle: tokio::runtime::Handle,
 }
@@ -38,7 +38,7 @@ impl HeadlessApp {
     pub fn new(
         core: AppCore,
         actor_host: ActorHostService,
-        core_receiver: kanal::Receiver<nullslop_protocol::CoreNotification>,
+        core_receiver: kanal::Receiver<nullslop_domain::CoreNotification>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         Self {
@@ -91,9 +91,9 @@ impl HeadlessApp {
         let keymap = nullslop_tui::keymap::init();
         let mut which_key =
             nullslop_tui::app::WhichKeyInstance::new(keymap, nullslop_tui::Scope::Normal);
-        let leader = nullslop_protocol::KeyEvent {
-            key: nullslop_protocol::Key::Char('\\'),
-            modifiers: nullslop_protocol::Modifiers::none(),
+        let leader = nullslop_domain::KeyEvent {
+            key: nullslop_domain::Key::Char('\\'),
+            modifiers: nullslop_domain::Modifiers::none(),
         };
 
         let mut content = String::new();
@@ -149,12 +149,12 @@ impl HeadlessApp {
 
     /// Shuts down the actor host gracefully.
     pub fn shutdown(&mut self) {
-        nullslop_core::coordinated_shutdown(
+        nullslop_domain::coordinated_shutdown(
             self.actor_host.backend(),
             &self.core.state,
             &self.core_receiver,
             &self.handle,
-            nullslop_core::SHUTDOWN_TIMEOUT,
+            nullslop_domain::SHUTDOWN_TIMEOUT,
         );
     }
 }
@@ -166,8 +166,8 @@ impl HeadlessApp {
 /// with `#` are skipped. Returns one `Vec<KeyEvent>` per non-skipped line.
 pub fn parse_script(
     content: &str,
-    leader: &nullslop_protocol::KeyEvent,
-) -> Vec<Vec<nullslop_protocol::KeyEvent>> {
+    leader: &nullslop_domain::KeyEvent,
+) -> Vec<Vec<nullslop_domain::KeyEvent>> {
     content
         .lines()
         .map(|line| line.trim())
@@ -178,7 +178,7 @@ pub fn parse_script(
 
 #[cfg(test)]
 mod tests {
-    use nullslop_protocol::{Key, KeyEvent, Modifiers};
+    use nullslop_domain::{Key, KeyEvent, Modifiers};
 
     use super::*;
 

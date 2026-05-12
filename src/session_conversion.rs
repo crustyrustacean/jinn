@@ -8,9 +8,9 @@
 
 use std::collections::HashMap;
 
-use nsslice_session_management_protocol::{BLOB_STRATEGY_STATE, PersistedSession};
-use nsslice_chat_session_protocol::ChatSessionState;
-use nullslop_protocol::SessionId;
+use nullslop_domain::SessionId;
+use nullslop_domain::feat::session::chat_session::ChatSessionState;
+use nullslop_domain::feat::session::{BLOB_STRATEGY_STATE, PersistedSession};
 
 /// Reconstruct runtime state from a persisted snapshot.
 ///
@@ -20,7 +20,7 @@ use nullslop_protocol::SessionId;
 ///
 /// Returns a fully reconstructed [`ChatSessionState`] with strategy
 /// state already set — the caller just inserts it into
-/// [`AppState`](nullslop_component::app_state::AppState).
+/// [`AppState`](nullslop_domain::app_state::AppState).
 #[must_use]
 pub fn persisted_into_session(persisted: PersistedSession) -> ChatSessionState {
     let mut session = ChatSessionState::new();
@@ -70,9 +70,9 @@ pub fn session_to_persisted(
 mod tests {
     use std::collections::HashMap;
 
-    use nsslice_session_management_protocol::PersistedSession;
-    use nsslice_chat_session_protocol::ChatSessionState;
-    use nullslop_protocol::{ChatEntry, PromptStrategyId, SessionId};
+    use nullslop_domain::feat::session::PersistedSession;
+    use nullslop_domain::feat::session::chat_session::ChatSessionState;
+    use nullslop_domain::{ChatEntry, PromptStrategyId, SessionId};
 
     use super::*;
 

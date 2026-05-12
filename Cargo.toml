@@ -6,43 +6,15 @@ resolver = "3"
 default-run = "nullslop"
 
 [workspace]
-members = ["crates/common/*", "crates/slices/*", "tests/*"]
+members = ["crates/*", "tests/*"]
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
 nullslop-cli = { workspace = true }
-nullslop-core = { workspace = true }
-nullslop-intent = { workspace = true }
 nullslop-tui = { workspace = true }
-nullslop-services = { workspace = true }
-nullslop-providers = { workspace = true }
-nullslop-component = { workspace = true }
-nullslop-actor-host = { workspace = true }
-nullslop-actor = { workspace = true }
-nsslice-echo = { workspace = true }
-nsslice-shutdown = { workspace = true }
-nsslice-llm = { workspace = true }
-nsslice-context = { workspace = true }
-nsslice-context-protocol = { workspace = true }
-nullslop-prompt-template = { workspace = true }
-nsslice-tools = { workspace = true }
-nsslice-chat-session-protocol = { workspace = true }
-nsslice-provider-protocol = { workspace = true }
-nsslice-status-bar = { workspace = true }
-nsslice-char-counter = { workspace = true }
-nsslice-dashboard = { workspace = true }
-nsslice-chat-log = { workspace = true }
-nsslice-provider = { workspace = true }
-nsslice-pinned-panel = { workspace = true }
-nsslice-chat-input-box = { workspace = true }
-nsslice-picker = { workspace = true }
-nsslice-chat-entry-selection = { workspace = true }
-nsslice-navigation = { workspace = true }
-nsslice-session-management = { workspace = true }
-nsslice-session-management-protocol = { workspace = true }
-nsslice-global = { workspace = true }
+nullslop-domain = { workspace = true, features = ["which-key"] }
 tokio = { workspace = true }
 kanal = { workspace = true }
 wherror = { workspace = true }
@@ -55,7 +27,7 @@ clap = { workspace = true }
 clap-verbosity-flag = { workspace = true }
 ratatui-which-key = { workspace = true }
 ratatui-spatial-splits = { workspace = true }
-nullslop-protocol = { workspace = true, features = ["which-key"] }
+
 tempfile = { workspace = true }
 dotenvy = { workspace = true }
 
@@ -64,46 +36,12 @@ rstest = { workspace = true }
 
 [workspace.dependencies]
 # Internal
-nsslice-context = { path = "crates/slices/nsslice-context" }
-nsslice-context-protocol = { path = "crates/slices/nsslice-context-protocol" }
-nullslop-prompt-template = { path = "crates/common/nullslop-prompt-template" }
-nullslop-protocol = { path = "crates/common/nullslop-protocol" }
-nullslop-core = { path = "crates/common/nullslop-core" }
-nullslop-tui = { path = "crates/common/nullslop-tui" }
-nullslop-component-ui = { path = "crates/common/nullslop-component-ui" }
-nullslop-component = { path = "crates/common/nullslop-component" }
-nullslop-cli = { path = "crates/common/nullslop-cli" }
-nullslop-services = { path = "crates/common/nullslop-services" }
-nsslice-echo = { path = "crates/slices/nsslice-echo" }
-nsslice-shutdown = { path = "crates/slices/nsslice-shutdown" }
-nsslice-shutdown-protocol = { path = "crates/slices/nsslice-shutdown-protocol" }
-nsslice-llm = { path = "crates/slices/nsslice-llm" }
-nullslop-actor = { path = "crates/common/nullslop-actor" }
-nullslop-actor-host = { path = "crates/common/nullslop-actor-host" }
-nullslop-providers = { path = "crates/common/nullslop-providers" }
-nullslop-protocol-derive = { path = "crates/common/nullslop-protocol-derive" }
-nullslop-selection-widget = { path = "crates/common/nullslop-selection-widget" }
-nullslop-workflow = { path = "crates/common/nullslop-workflow" }
-nsslice-tools = { path = "crates/slices/nsslice-tools" }
-nullslop-intent = { path = "crates/common/nullslop-intent" }
-nsslice-status-bar = { path = "crates/slices/nsslice-status-bar" }
-nsslice-char-counter = { path = "crates/slices/nsslice-char-counter" }
-nsslice-dashboard = { path = "crates/slices/nsslice-dashboard" }
-nsslice-dashboard-protocol = { path = "crates/slices/nsslice-dashboard-protocol" }
-nsslice-pinned-panel-protocol = { path = "crates/slices/nsslice-pinned-panel-protocol" }
-nsslice-chat-input-box-protocol = { path = "crates/slices/nsslice-chat-input-box-protocol" }
-nsslice-chat-log = { path = "crates/slices/nsslice-chat-log" }
-nsslice-provider = { path = "crates/slices/nsslice-provider" }
-nsslice-provider-protocol = { path = "crates/slices/nsslice-provider-protocol" }
-nsslice-pinned-panel = { path = "crates/slices/nsslice-pinned-panel" }
-nsslice-chat-input-box = { path = "crates/slices/nsslice-chat-input-box" }
-nsslice-picker = { path = "crates/slices/nsslice-picker" }
-nsslice-chat-entry-selection = { path = "crates/slices/nsslice-chat-entry-selection" }
-nsslice-navigation = { path = "crates/slices/nsslice-navigation" }
-nsslice-session-management = { path = "crates/slices/nsslice-session-management" }
-nsslice-session-management-protocol = { path = "crates/slices/nsslice-session-management-protocol" }
-nsslice-global = { path = "crates/slices/nsslice-global" }
-nsslice-chat-session-protocol = { path = "crates/slices/nsslice-chat-session-protocol" }
+nullslop-domain = { path = "crates/nullslop-domain" }
+nullslop-tui = { path = "crates/nullslop-tui" }
+nullslop-cli = { path = "crates/nullslop-cli" }
+nullslop-protocol-derive = { path = "crates/nullslop-protocol-derive" }
+nullslop-selection-widget = { path = "crates/nullslop-selection-widget" }
+nullslop-workflow = { path = "crates/nullslop-workflow" }
 
 # Error handling
 wherror = "2.3.1"
