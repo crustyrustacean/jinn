@@ -7,6 +7,9 @@
 use std::sync::Arc;
 
 use crate::feat::context::{DefaultStrategyDiscovery, StrategyDiscovery};
+use crate::feat::preferences_actor::{
+    InMemoryUserPreferencesStorage, UserPreferencesStorageService,
+};
 use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
@@ -203,6 +206,9 @@ impl TestServices {
                 Some(d) => StrategyRegistryService::new(d),
                 None => StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery)),
             },
+            user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
+                InMemoryUserPreferencesStorage::new(),
+            )),
         }
     }
 }

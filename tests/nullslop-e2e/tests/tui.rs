@@ -60,6 +60,9 @@ impl TuiWorld {
                 ),
             )),
             strategy_registry,
+            user_preferences_storage: nullslop_domain::UserPreferencesStorageService::new(
+                Arc::new(nullslop_domain::InMemoryUserPreferencesStorage::new()),
+            ),
         };
 
         let app = TuiApp::test_builder().services(services).build();

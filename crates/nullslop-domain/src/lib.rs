@@ -59,7 +59,7 @@ pub use feat::provider_infra::cache_path;
 pub use feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, FilesystemConfigStorage,
     InMemoryConfigStorage, LlmServiceFactoryService, ModelCache, NoProvidersAvailableFactory,
-    ProviderRegistry, ProviderRegistryService, ProvidersConfig,
+    ProviderId, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 
 // Re-export context types
@@ -69,6 +69,12 @@ pub use feat::context::DefaultStrategyFactory;
 // Re-export session types
 pub use feat::session::JsonlSessionStore;
 pub use feat::session::SessionStoreService;
+
+// Re-export preferences types
+pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
+pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
+pub use feat::preferences_actor::UserPreferences;
+pub use feat::preferences_actor::UserPreferencesStorageService;
 
 // Re-export prompt template utilities
 pub use feat::context::prompt_template::{ensure_prompts_dir_with_example, prompts_dir};

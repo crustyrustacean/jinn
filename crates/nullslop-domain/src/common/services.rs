@@ -7,6 +7,9 @@
 use std::sync::Arc;
 
 use crate::feat::context::DefaultStrategyDiscovery;
+use crate::feat::preferences_actor::{
+    InMemoryUserPreferencesStorage, UserPreferencesStorageService,
+};
 pub use crate::feat::provider_infra;
 use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
@@ -70,6 +73,8 @@ pub struct Services {
     pub session_store: SessionStoreService,
     /// Strategy discovery for listing available prompt assembly strategies.
     pub strategy_registry: StrategyRegistryService,
+    /// User preferences storage for persisting `nullslop.toml`.
+    pub user_preferences_storage: UserPreferencesStorageService,
 }
 
 impl Default for Services {
@@ -120,6 +125,9 @@ impl Services {
             config_storage: ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new())),
             session_store: SessionStoreService::new(Arc::new(test_services::FakeSessionStore)),
             strategy_registry: StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery)),
+            user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
+                InMemoryUserPreferencesStorage::new(),
+            )),
         }
     }
 }
