@@ -78,6 +78,8 @@ impl SessionPersistenceActor {
                 }) {
                     tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
                 }
+
+                self.save_active_session(&payload.session_id);
             }
             EnqueueAction::Queued => {}
             EnqueueAction::SetInputText(text) => {
