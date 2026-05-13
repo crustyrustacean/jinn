@@ -32,6 +32,7 @@ use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolUseStarted, ToolsRegistered,
 };
+use crate::init::EnvironmentLoaded;
 use crate::protocol::system::{KeyDown, KeyUp, ModeChanged};
 
 /// Every event the host can broadcast.
@@ -213,6 +214,13 @@ pub enum Event {
         #[serde(flatten)]
         payload: crate::feat::context::protocol::event::PersonasLoaded,
     },
+    /// Environment variables and API keys have been loaded.
+    #[serde(rename = "environment_loaded")]
+    EnvironmentLoaded {
+        /// The parsed provider config and resolved keys.
+        #[serde(flatten)]
+        payload: EnvironmentLoaded,
+    },
 }
 
 impl Event {
@@ -247,6 +255,7 @@ impl Event {
             Self::PersonasLoaded { .. } => {
                 Some(crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME)
             }
+            Self::EnvironmentLoaded { .. } => Some(EnvironmentLoaded::TYPE_NAME),
         }
     }
 }

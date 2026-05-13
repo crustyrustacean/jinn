@@ -1,14 +1,18 @@
 //! In-memory actor host — spawns tokio tasks and routes events/commands.
 //!
-//! Provides [`spawn_actor`] for spawning individual actors and
-//! [`InMemoryActorHost`] for managing a collection of actors with
+//! Provides [`spawn`] for spawning actors with lifecycle events,
+//! [`system_spawn`] for infrastructure actors (no lifecycle events),
+//! and [`InMemoryActorHost`] for managing a collection of actors with
 //! pre-computed routing tables.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, SystemMessage};
+use crate::common::actor::protocol::event::{ActorStarted, ActorStarting};
+use crate::common::actor::{
+    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
+};
 use crate::protocol::{ActorName, Command, CommandName, Event, EventTypeName};
 use error_stack::Report;
 use kanal::Receiver;
@@ -21,7 +25,7 @@ use super::routing::RoutingEntry;
 /// Maximum time to wait for each actor task to join during shutdown.
 const JOIN_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Result of spawning an actor via [`spawn_actor`].
+/// Result of spawning an actor.
 pub struct ActorSpawnResult {
     /// Routing entry for bus event/command dispatch.
     /// Contains closures, name, and subscription metadata.
@@ -30,24 +34,94 @@ pub struct ActorSpawnResult {
     pub task: tokio::task::JoinHandle<()>,
 }
 
-/// Spawns a single actor's run loop as a tokio task.
+/// Spawns an actor with lifecycle events and self-ref injection.
 ///
-/// The caller is responsible for creating the `ActorRef`, the `ActorContext`
-/// (with peer refs set), and activating the actor before calling this function.
-/// This matches the two-phase startup pattern: Phase 1 creates channels/refs,
-/// Phase 2 activates and spawns.
-///
-/// This function:
-/// 1. Reads registrations (subscriptions + commands) from the context
-/// 2. Builds a [`RoutingEntry`] with closures capturing the `ActorRef`
-/// 3. Spawns a tokio task running the actor's async message loop
+/// This is the primary spawn function for all regular actors. It:
+/// 1. Creates the channel and `ActorRef`
+/// 2. Emits `ActorStarting` via the sink
+/// 3. Injects the actor's own `ActorRef` into the context (for self-scheduling)
+/// 4. Calls the `configure` closure for dependency injection and subscriptions
+/// 5. Calls `Actor::activate` to create the actor
+/// 6. Spawns the tokio task via [`spawn_actor_impl`]
+/// 7. Emits `ActorStarted` via the sink
 ///
 /// Returns the routing entry and task join handle.
 ///
 /// # Panics
 ///
 /// Panics if the tokio task cannot be spawned.
-pub fn spawn_actor<M, A>(
+pub fn spawn<A>(
+    name: &str,
+    sink: Arc<dyn MessageSink>,
+    handle: &tokio::runtime::Handle,
+    configure: impl FnOnce(&mut ActorContext),
+) -> ActorSpawnResult
+where
+    A: Actor + Send + 'static,
+{
+    let _ = sink.send_event(Event::ActorStarting {
+        payload: ActorStarting {
+            name: name.to_owned(),
+            description: None,
+        },
+    });
+
+    let (tx, rx) = kanal::unbounded::<ActorEnvelope<A::Message>>();
+    let actor_ref = ActorRef::new(tx);
+    let mut ctx = ActorContext::new(name, sink.clone());
+    ctx.set_actor_ref(actor_ref.clone());
+    configure(&mut ctx);
+    let description = ctx.description().map(str::to_owned);
+    let actor = A::activate(&mut ctx);
+    let result = spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle);
+
+    let _ = sink.send_event(Event::ActorStarted {
+        payload: ActorStarted {
+            name: name.to_owned(),
+            description,
+        },
+    });
+
+    result
+}
+
+/// Spawns an infrastructure actor without lifecycle events.
+///
+/// Same as [`spawn`] but does not emit `ActorStarting`/`ActorStarted`.
+/// Used for system-level actors (system-ready, shutdown-tracker) that need
+/// to observe lifecycle events from all other actors. The caller is responsible
+/// for emitting lifecycle events after spawning.
+///
+/// # Panics
+///
+/// Panics if the tokio task cannot be spawned.
+pub fn system_spawn<A>(
+    name: &str,
+    sink: Arc<dyn MessageSink>,
+    handle: &tokio::runtime::Handle,
+    configure: impl FnOnce(&mut ActorContext),
+) -> ActorSpawnResult
+where
+    A: Actor + Send + 'static,
+{
+    let (tx, rx) = kanal::unbounded::<ActorEnvelope<A::Message>>();
+    let actor_ref = ActorRef::new(tx);
+    let mut ctx = ActorContext::new(name, sink);
+    ctx.set_actor_ref(actor_ref.clone());
+    configure(&mut ctx);
+    let actor = A::activate(&mut ctx);
+    spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle)
+}
+
+/// Internal: spawns a single actor's run loop as a tokio task.
+///
+/// Reads registrations from the context, builds routing closures,
+/// and spawns the async message loop.
+///
+/// # Panics
+///
+/// Panics if the tokio task cannot be spawned.
+pub fn spawn_actor_impl<M, A>(
     name: &str,
     actor: A,
     actor_ref: &ActorRef<M>,
@@ -378,7 +452,7 @@ mod tests {
         let actor_ref = ActorRef::new(tx);
         let mut ctx = ActorContext::new(name, sink);
         let actor = NoopActor::activate(&mut ctx);
-        spawn_actor(name, actor, &actor_ref, rx, ctx, handle)
+        spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle)
     }
 
     fn spawn_recording_actor(
@@ -398,7 +472,7 @@ mod tests {
         for cmd in commands {
             ctx.subscribe_command_by_name(*cmd);
         }
-        let result = spawn_actor(name, actor, &actor_ref, rx, ctx, handle);
+        let result = spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle);
         (result, received)
     }
 
@@ -466,8 +540,8 @@ mod tests {
         let host =
             InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone());
 
-        // When sending SystemMessage::ApplicationReady.
-        host.send_system(SystemMessage::ApplicationReady);
+        // When sending SystemMessage::ApplicationShuttingDown.
+        host.send_system(SystemMessage::ApplicationShuttingDown);
         std::thread::sleep(Duration::from_millis(50));
 
         // Then both actors receive it regardless of subscriptions.
@@ -705,7 +779,7 @@ mod tests {
         let (tx_b, rx_b) = kanal::unbounded::<ActorEnvelope<String>>();
         let ref_b = ActorRef::new(tx_b);
         let ctx_b = ActorContext::new("actor-b", sink.clone());
-        let result_b = spawn_actor("actor-b", actor_b, &ref_b, rx_b, ctx_b, runtime.handle());
+        let result_b = spawn_actor_impl("actor-b", actor_b, &ref_b, rx_b, ctx_b, runtime.handle());
 
         // Create actor-a with ref_b injected.
         let (tx_a, rx_a) = kanal::unbounded::<ActorEnvelope<String>>();
@@ -713,7 +787,7 @@ mod tests {
         let mut ctx_a = ActorContext::new("actor-a", sink.clone());
         ctx_a.set_actor_ref(ref_b.clone());
         let actor_a = DirectActor::activate(&mut ctx_a);
-        let result_a = spawn_actor(
+        let result_a = spawn_actor_impl(
             "actor-a",
             actor_a,
             &actor_ref_a,

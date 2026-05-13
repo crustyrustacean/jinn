@@ -106,6 +106,7 @@ impl ProviderRegistry {
                     api_key_env: entry.api_key_env.clone(),
                     requires_key: entry.requires_key,
                     extra_body: entry.extra_body.clone(),
+                    is_remote: false,
                 };
                 resolved_map.insert(id, resolved.clone());
                 resolved_list.push(resolved);
@@ -136,67 +137,48 @@ impl ProviderRegistry {
         &self.config
     }
 
-    /// Creates an `LlmServiceFactory` for a remote (cache-discovered) model.
-    ///
-    /// Unlike [`create_factory`](Self::create_factory), this takes raw provider name
-    /// and model strings rather than a resolved `ProviderId`. It looks up the
-    /// `ProviderEntry` by name, parses the backend, resolves the API key, and
-    /// builds a `GenericLlmServiceFactory`.
-    ///
-    /// Used for models discovered at runtime that are not in the static config's
-    /// model list.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`LlmServiceError::Config`] if the provider is not found or the
-    /// backend is invalid.
-    pub fn create_factory_for_model(
-        &self,
-        provider_name: &str,
-        model: &str,
-        api_keys: &ApiKeys,
-    ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
-        let entry = self
-            .config
-            .providers
-            .iter()
-            .find(|p| p.name == provider_name)
-            .ok_or_else(|| {
-                Report::new(LlmServiceError::Config)
-                    .attach(format!("unknown provider: {provider_name}"))
-            })?;
-
-        let backend: LLMBackend = entry
-            .backend
-            .parse()
-            .change_context(LlmServiceError::Config)
-            .attach(format!(
-                "invalid backend '{}' for provider '{}'",
-                entry.backend, provider_name
-            ))?;
-
-        let api_key = if entry.requires_key {
-            let env_var = entry.api_key_env.as_deref().unwrap_or("");
-            api_keys.get(env_var).map(String::from)
-        } else {
-            Some("dummy-key".to_owned())
-        };
-
-        let factory = GenericLlmServiceFactory::new(
-            entry.name.clone(),
-            backend,
-            model.to_owned(),
-            entry.base_url.clone(),
-            api_key,
-            entry.extra_body.clone(),
-        );
-
-        Ok(Box::new(factory))
-    }
-
     /// Updates the default provider in the config (for persistence on switch).
     pub fn set_default_provider(&mut self, name: Option<String>) {
         self.config.default_provider = name;
+    }
+
+    /// Merges runtime-discovered models from the model cache into the registry.
+    ///
+    /// For each cached model that isn't already in the registry (static entries win
+    /// on collision), creates a `ResolvedProvider` with `is_remote: true` by looking
+    /// up the provider block's backend, API key settings, etc.
+    pub fn merge_cache(&mut self, cache: &super::ModelCache) {
+        for (provider_name, models) in &cache.entries {
+            let Some(entry) = self
+                .config
+                .providers
+                .iter()
+                .find(|p| p.name == *provider_name)
+            else {
+                continue;
+            };
+
+            for model in models {
+                let id = ProviderId::new(format!("{}/{}", entry.name, model));
+                if self.resolved_map.contains_key(&id) {
+                    continue; // Static entry wins.
+                }
+
+                let resolved = ResolvedProvider {
+                    id: id.clone(),
+                    name: entry.name.clone(),
+                    model: model.clone(),
+                    backend: entry.backend.clone(),
+                    base_url: entry.base_url.clone(),
+                    api_key_env: entry.api_key_env.clone(),
+                    requires_key: entry.requires_key,
+                    extra_body: entry.extra_body.clone(),
+                    is_remote: true,
+                };
+                self.resolved_map.insert(id.clone(), resolved.clone());
+                self.resolved_list.push(resolved);
+            }
+        }
     }
 
     /// Returns all expanded (per-model) providers.
@@ -282,18 +264,10 @@ impl ProviderRegistry {
         id: &ProviderId,
         api_keys: &ApiKeys,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
-        // Try static (config) lookup first.
-        if let Some(resolved) = self.get(id) {
-            return self.create_factory_from_resolved(resolved, api_keys);
-        }
-
-        // Fallback: remote/cache-discovered model. Parse "{name}/{model}"
-        // and delegate to create_factory_for_model.
-        if let Some((provider_name, model)) = id.as_str().split_once('/') {
-            return self.create_factory_for_model(provider_name, model, api_keys);
-        }
-
-        Err(Report::new(LlmServiceError::Config).attach(format!("unknown provider: {id}")))
+        let resolved = self.get(id).ok_or_else(|| {
+            Report::new(LlmServiceError::Config).attach(format!("unknown provider: {id}"))
+        })?;
+        self.create_factory_from_resolved(resolved, api_keys)
     }
 
     /// Creates a factory from a statically resolved provider entry.

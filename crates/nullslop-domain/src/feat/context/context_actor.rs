@@ -13,12 +13,7 @@ mod handlers;
 
 use std::collections::HashMap;
 
-use std::sync::Arc;
-
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::context::protocol::command::{
@@ -99,9 +94,6 @@ impl Actor for PromptAssemblyActor {
             }
             ActorEnvelope::Event(evt) => {
                 self.handle_event(&evt);
-            }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
             }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
@@ -214,23 +206,6 @@ impl PromptAssemblyActor {
     }
 }
 
-pub fn spawn_context_actor(
-    state: crate::common::state::State,
-    strategy_factory: Box<dyn super::StrategyFactory>,
-    services: Services,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<ContextDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<ContextDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("context", sink);
-    ctx.set_data(state);
-    ctx.set_data(strategy_factory);
-    ctx.set_data(services);
-    let actor = PromptAssemblyActor::activate(&mut ctx);
-    let result = spawn_actor("context", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
-}
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

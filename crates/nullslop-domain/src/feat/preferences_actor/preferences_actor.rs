@@ -9,12 +9,7 @@
 //! This actor owns no `AppState` fields. Its sole responsibility is writing
 //! the preferences file. It does not read or write shared state.
 
-use std::sync::Arc;
-
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::feat::preferences_actor::user_preferences::UserPreferences;
 use crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorageService;
 use crate::feat::provider::protocol::event::ProviderSwitched;
@@ -57,9 +52,6 @@ impl Actor for PreferencesActor {
                     self.handle_provider_switched(payload);
                 }
             }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
-            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
@@ -81,27 +73,6 @@ impl PreferencesActor {
             tracing::warn!(err = ?e, "preferences-actor failed to save user preferences");
         }
     }
-}
-
-/// Spawns the preferences actor on the given tokio runtime.
-///
-/// Creates the actor's channel, context, and run loop. Injects
-/// [`UserPreferencesStorageService`]. Returns the `ActorRef` for
-/// sending direct messages and the `ActorSpawnResult` containing
-/// the routing entry and join handle.
-pub fn spawn_preferences_actor(
-    storage: UserPreferencesStorageService,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<PreferencesDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<PreferencesDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("preferences", sink);
-    ctx.set_description("Persists user preferences to nullslop.toml");
-    ctx.set_data(storage);
-    let actor = PreferencesActor::activate(&mut ctx);
-    let result = spawn_actor("preferences", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
 }
 
 #[cfg(test)]

@@ -9,12 +9,8 @@
 mod session;
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
@@ -36,30 +32,6 @@ use session::{SessionData, SessionState};
 /// Currently unused — the actor responds to bus commands and events.
 /// Reserved for future intra-actor communication.
 pub enum LlmDirectMsg {}
-
-/// Spawns the LLM streaming actor on the given tokio runtime handle.
-///
-/// Creates the actor's channel, context, and run loop, returning the
-/// [`ActorRef`] for sending direct messages and the [`ActorSpawnResult`]
-/// for routing integration.
-///
-/// # Errors
-///
-/// Returns an error if the actor fails to activate.
-pub fn spawn(
-    llm_service: crate::feat::provider_infra::LlmServiceFactoryService,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<LlmDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<LlmDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("llm-streaming", sink);
-    ctx.set_description("LLM streaming with tool support");
-    ctx.set_data(llm_service);
-    let actor = LlmActor::activate(&mut ctx);
-    let result = spawn_actor("llm-streaming", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
-}
 
 /// LLM streaming actor with tool support.
 ///
@@ -109,9 +81,6 @@ impl Actor for LlmActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 self.cancel_all();
                 ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
             }
             ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
         }

@@ -10,7 +10,7 @@ use derive_more::Debug;
 use nullslop_domain::ActorHostService;
 use nullslop_domain::AppUiRegistry;
 use nullslop_domain::IntentHandler;
-use nullslop_domain::feat::ui::sidebar::sidebar::Sidebar;
+use nullslop_domain::feat::ui::sidebar::Sidebar;
 use nullslop_domain::{ActiveTab, FocusScope, Intent, PickerKind};
 use nullslop_domain::{AppCore, AppMsg};
 use ratatui::Frame;

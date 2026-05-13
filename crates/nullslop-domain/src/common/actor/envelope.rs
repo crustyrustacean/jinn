@@ -12,8 +12,6 @@
 /// `handle` method via [`ActorEnvelope::System`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemMessage {
-    /// The application has finished starting up.
-    ApplicationReady,
     /// The application is shutting down.
     ApplicationShuttingDown,
 }
