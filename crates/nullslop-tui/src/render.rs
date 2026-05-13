@@ -155,7 +155,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         // Wrap width is based on the main column (not full terminal width).
         let text_width = pre_layout.main.width.saturating_sub(2) as usize;
         wstate.active_chat_input_mut().set_wrap_width(text_width);
-        if wstate.frontend.mode == Mode::Input {
+        if wstate.frontend.scope_stack.current().mode() == Mode::Input {
             let inner_height = pre_layout.input.height.saturating_sub(2) as usize;
             wstate
                 .active_chat_input_mut()
@@ -253,7 +253,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // Which-key popup overlay (app-level, not a component element)
     render_which_key(frame, &mut app.which_key);
 
-    if state.frontend.mode == Mode::Picker {
+    if state.frontend.scope_stack.is_picker() {
         render_picker(frame, area, &state);
         // Provider picker popup is selectable — not a UiElement, register inline.
         rects.push(nullslop_selection_widget::compute_popup_rect(area));
@@ -415,7 +415,7 @@ fn render_which_key(frame: &mut Frame<'_>, state: &mut crate::app::WhichKeyInsta
 
 /// Renders the active picker overlay, dispatching on [`PickerKind`].
 fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
-    match state.frontend.active_picker_kind {
+    match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => render_provider_picker(frame, area, state),
         Some(PickerKind::ContextAssembly) => {
             render_context_strategy_picker(frame, area, state);

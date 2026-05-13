@@ -272,10 +272,6 @@ pub struct StatusNotification {
 /// Actors should NOT write to these fields — they are for the frontend only.
 #[derive(Debug)]
 pub struct FrontendState {
-    /// Whether the user is browsing or actively typing.
-    /// OWNER: IntentHandler (all mode transitions).
-    pub mode: Mode,
-
     /// The currently active tab.
     /// OWNER: IntentHandler (tab switching).
     pub active_tab: ActiveTab,
@@ -285,15 +281,11 @@ pub struct FrontendState {
     ///        shutdown-tracker (ProceedWithShutdown command).
     pub should_quit: bool,
 
-    /// Which picker is currently active. `None` when not in picker mode.
-    /// OWNER: IntentHandler (open/close picker).
-    pub active_picker_kind: Option<PickerKind>,
-
     /// Pins sidebar section state — selection index within the pinned entries list.
     /// OWNER: IntentHandler (pins navigation).
     pub pins: PinsState,
 
-    /// Sidebar state — focus tracking and origin scope.
+    /// Sidebar state — focus tracking.
     /// OWNER: IntentHandler (sidebar focus/leave).
     pub sidebar: SidebarState,
 
@@ -321,10 +313,6 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (toggle filter).
     pub keymap_picker_show_all: bool,
 
-    /// The scope the user was in when they opened the keymap picker.
-    /// OWNER: IntentHandler (set on open, cleared on close).
-    pub keymap_picker_origin_scope: Option<String>,
-
     /// Session picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (session picker navigation).
     pub session_picker: nullslop_selection_widget::SelectionState<SessionEntry>,
@@ -342,18 +330,14 @@ pub struct FrontendState {
 
     /// Focus scope stack — single source of truth for what the user is focused on.
     /// OWNER: IntentHandler (push/pop on scope transitions).
-    /// Replaces `mode`, `active_picker_kind`, `sidebar.origin_scope`, and
-    /// `keymap_picker_origin_scope` (migration in phases 2–4).
     pub scope_stack: ScopeStack,
 }
 
 impl Default for FrontendState {
     fn default() -> Self {
         Self {
-            mode: Mode::Normal,
             active_tab: ActiveTab::Chat,
             should_quit: false,
-            active_picker_kind: None,
             pins: PinsState::default(),
             sidebar: SidebarState::default(),
             dashboard: DashboardState::new(),
@@ -362,7 +346,6 @@ impl Default for FrontendState {
             all_keymap_entries: vec![],
             keymap_picker: nullslop_selection_widget::SelectionState::new(),
             keymap_picker_show_all: false,
-            keymap_picker_origin_scope: None,
             session_picker: nullslop_selection_widget::SelectionState::new(),
             context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),

@@ -316,9 +316,6 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
     // Pop the scope stack — restores previous scope.
     state.frontend.scope_stack.pop();
 
-    // TODO(phase 4): remove old field writes once mode field is gone.
-    state.frontend.mode = Mode::Normal;
-
     IntentResult::with_commands(commands)
 }
 
