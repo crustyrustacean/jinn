@@ -50,9 +50,6 @@ pub struct SessionCore {
     /// Maps stream tool call index to history index for in-progress tool calls.
     /// OWNER: session-actor
     streaming_tool_call_indices: HashMap<usize, usize>,
-    /// Persisted strategy state blob for the active strategy.
-    /// OWNER: context-actor (via RestoreStrategyState command)
-    strategy_state: Option<JsonValue>,
     /// Working directory for tool execution in this session.
     /// OWNER: IntentHandler (set on session creation and cd commands)
     cwd: std::path::PathBuf,
@@ -80,7 +77,6 @@ impl Default for SessionCore {
             is_assembling: false,
             profile: SessionProfile::default(),
             streaming_tool_call_indices: HashMap::new(),
-            strategy_state: None,
             cwd: std::path::PathBuf::new(),
             token_ledger: Vec::new(),
             parent_session: None,
@@ -658,18 +654,6 @@ impl ChatSessionState {
     /// The ID of the currently selected entry, if any.
     pub fn selected_entry_id(&self) -> Option<&ChatEntryId> {
         self.selected_entry().map(|e| &e.id)
-    }
-
-    // --- Strategy state ---
-
-    /// Read-only access to the persisted strategy state blob.
-    pub fn strategy_state(&self) -> Option<&JsonValue> {
-        self.core.strategy_state.as_ref()
-    }
-
-    /// Update the strategy state blob.
-    pub fn set_strategy_state(&mut self, blob: JsonValue) {
-        self.core.strategy_state = Some(blob);
     }
 
     /// Returns this session's working directory for tool execution.

@@ -68,7 +68,7 @@ impl PromptAssemblyActor {
         }
     }
 
-    /// RestoreStrategyState: set strategy blob on session, emit StrategyStateUpdated.
+    /// RestoreStrategyState: set strategy blob in context state, emit StrategyStateUpdated.
     pub(in crate::feat::context::context_actor) fn handle_restore_strategy_state(
         &self,
         payload: &RestoreStrategyState,
@@ -76,8 +76,6 @@ impl PromptAssemblyActor {
     ) {
         {
             let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.set_strategy_state(payload.blob.clone());
             state.context.strategy_state.insert(
                 (payload.session_id.clone(), payload.strategy_id.clone()),
                 payload.blob.clone(),
