@@ -23,6 +23,7 @@ use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use nullslop_domain::feat::preferences_actor::spawn_preferences_actor;
 use nullslop_domain::feat::session::JsonlSessionStore as DomainJsonlSessionStore;
 use nullslop_domain::feat::session::SessionStoreService as DomainSessionStoreService;
+use nullslop_domain::init::env_init_actor::spawn_env_init_actor;
 use nullslop_domain::strategy_registry::StrategyRegistryService;
 use nullslop_domain::{ActorHostService, InMemoryActorHost};
 use nullslop_domain::{
@@ -170,6 +171,10 @@ pub fn create_core_with_actor_host(
         handle,
     );
 
+    // --- Env init actor ---
+    let (_env_init_ref, env_init_result) =
+        spawn_env_init_actor(config_storage.clone(), api_keys.clone(), sink.clone(), handle);
+
     // --- Preferences actor ---
     let (_prefs_ref, prefs_result) =
         spawn_preferences_actor(user_preferences_storage.clone(), sink.clone(), handle);
@@ -203,6 +208,7 @@ pub fn create_core_with_actor_host(
             "Tracks actor lifecycle for shutdown coordination",
         ),
         ("preferences", "Persists user preferences to nullslop.toml"),
+        ("env-init", "Loads environment variables and API keys"),
     ];
     for (name, desc) in &actor_names {
         let _ = sink.send_event(Event::ActorStarting {
@@ -232,6 +238,7 @@ pub fn create_core_with_actor_host(
             persona_scan_result,
             prov_result,
             st_result,
+            env_init_result,
             prefs_result,
         ],
         handle.clone(),
