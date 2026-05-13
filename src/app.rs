@@ -154,10 +154,11 @@ impl App {
                     selectable_rects: Default::default(),
                     pending_clipboard: false,
                     config: tui_config,
-                    split_manager: ratatui_spatial_splits::SplitManager::new(),
-                    pane_focus: nullslop_tui::app::PaneFocus::Chat,
-                    pinned_pane_visible: false,
-                    pinned_pane_id: None,
+                    sidebar: {
+                        let mut s = nullslop_domain::feat::ui::sidebar::Sidebar::new();
+                        nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                        s
+                    },
                 }));
                 runner.run().change_context(AppError)?;
             }

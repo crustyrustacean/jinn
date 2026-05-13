@@ -12,8 +12,8 @@ use nullslop_domain::AppUiRegistry;
 use nullslop_domain::IntentHandler;
 use nullslop_domain::{ActiveTab, Intent, Mode, PickerKind};
 use nullslop_domain::{AppCore, AppMsg};
+use nullslop_domain::feat::ui::sidebar::sidebar::Sidebar;
 use ratatui::Frame;
-use ratatui_spatial_splits::{AreaId, SplitManager};
 use ratatui_tabs::TabManager;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
 
@@ -27,18 +27,6 @@ use crate::suspend::{Suspend, SuspendAction};
 use crate::{AppStatus, MsgHandler};
 
 pub use builder::TuiAppBuilder;
-
-/// Well-known area ID for the chat pane in the split layout.
-pub(crate) const CHAT_PANE: AreaId = AreaId(1);
-
-/// Which pane currently has keyboard focus in the Chat tab.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaneFocus {
-    /// The chat log pane (left side).
-    Chat,
-    /// The pinned context sidebar pane (right side).
-    Pinned,
-}
 
 /// Type alias for the which-key state parameterized for nullslop.
 pub type WhichKeyInstance =
@@ -80,14 +68,8 @@ pub struct TuiApp {
     pub pending_clipboard: bool,
     /// TUI configuration (mouse capture, etc.).
     pub config: TuiConfig,
-    /// Split manager for the chat tab's pane layout.
-    pub split_manager: SplitManager,
-    /// Which pane currently has keyboard focus in the Chat tab.
-    pub pane_focus: PaneFocus,
-    /// Whether the pinned context sidebar pane is visible.
-    pub pinned_pane_visible: bool,
-    /// Tracked [`AreaId`] for the pinned context sidebar pane (set when opened, cleared when closed).
-    pub pinned_pane_id: Option<AreaId>,
+    /// Sidebar container with registered sections.
+    pub sidebar: Sidebar,
 }
 
 impl TuiApp {
@@ -292,19 +274,11 @@ impl TuiApp {
                 on_result: Box::new(|result| result),
             });
         }
-        if signals.pinned_pane_toggle {
-            self.toggle_pinned_pane();
-        }
-        if signals.pinned_pane_open {
-            self.open_pinned_pane();
-        }
-        if signals.pinned_pane_close {
-            self.close_pinned_pane();
-        }
 
         // Step 6: Update scope based on new mode.
         let active_tab = self.core.state.read().frontend.active_tab;
-        let new_scope = scope_for_mode(mode, active_tab, self.pane_focus);
+        let sidebar_focused = self.core.state.read().frontend.sidebar.origin_scope.is_some();
+        let new_scope = scope_for_mode(mode, active_tab, sidebar_focused);
         self.which_key.set_scope(new_scope);
     }
 
@@ -312,72 +286,16 @@ impl TuiApp {
     pub fn render(&mut self, frame: &mut Frame<'_>) {
         render::render(self, frame);
     }
-
-    // -- Pinned context sidebar pane management --
-
-    /// Opens the pinned context sidebar pane by splitting the chat area vertically.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `CHAT_PANE` is not a valid leaf in the split manager.
-    #[expect(
-        clippy::expect_used,
-        reason = "CHAT_PANE invariant maintained by split manager"
-    )]
-    pub fn open_pinned_pane(&mut self) {
-        if self.pinned_pane_visible {
-            // Already visible — just ensure focus is set.
-            self.pane_focus = PaneFocus::Pinned;
-            return;
-        }
-        // Defensive: if we have a stale tracked ID in the tree, reuse it.
-        if let Some(id) = self.pinned_pane_id
-            && self.split_manager.contains(id)
-        {
-            self.pinned_pane_visible = true;
-            self.pane_focus = PaneFocus::Pinned;
-            return;
-        }
-        let result = self
-            .split_manager
-            .split_vertical_with_ratio(CHAT_PANE, 0.7)
-            .expect("CHAT_PANE should always be a valid leaf");
-        self.pinned_pane_id = Some(result.new);
-        self.pinned_pane_visible = true;
-        self.pane_focus = PaneFocus::Pinned;
-    }
-
-    /// Closes the pinned context sidebar pane.
-    pub fn close_pinned_pane(&mut self) {
-        if !self.pinned_pane_visible {
-            return;
-        }
-        if let Some(id) = self.pinned_pane_id {
-            self.split_manager.close(id);
-            self.pinned_pane_id = None;
-        }
-        self.pinned_pane_visible = false;
-        self.pane_focus = PaneFocus::Chat;
-    }
-
-    /// Toggles the pinned context sidebar pane.
-    pub fn toggle_pinned_pane(&mut self) {
-        if self.pinned_pane_visible {
-            self.close_pinned_pane();
-        } else {
-            self.open_pinned_pane();
-        }
-    }
 }
 
-/// Returns the scope corresponding to the given mode, active tab, and pane focus.
-pub fn scope_for_mode(mode: Mode, active_tab: ActiveTab, pane_focus: PaneFocus) -> Scope {
+/// Returns the scope corresponding to the given mode, active tab, and sidebar focus.
+pub fn scope_for_mode(mode: Mode, active_tab: ActiveTab, sidebar_focused: bool) -> Scope {
     match mode {
         Mode::Normal => match active_tab {
             ActiveTab::Dashboard => Scope::Dashboard,
             ActiveTab::Chat => {
-                if pane_focus == PaneFocus::Pinned {
-                    Scope::Pinned
+                if sidebar_focused {
+                    Scope::Sidebar
                 } else {
                     Scope::Normal
                 }
@@ -414,7 +332,6 @@ mod tests {
         nullslop_domain::feat::dashboard::register(&mut ui_registry);
         nullslop_domain::feat::ui::chat_log::register(&mut ui_registry);
         nullslop_domain::feat::provider::register(&mut ui_registry);
-        nullslop_domain::feat::pinned_panel::register(&mut ui_registry);
         nullslop_domain::feat::chat_input::register(&mut ui_registry);
         TuiApp {
             core,
@@ -432,29 +349,30 @@ mod tests {
             selectable_rects: SelectableRects::default(),
             pending_clipboard: false,
             config: TuiConfig::default(),
-            split_manager: SplitManager::new(),
-            pane_focus: PaneFocus::Chat,
-            pinned_pane_visible: false,
-            pinned_pane_id: None,
+            sidebar: {
+                let mut s = Sidebar::new();
+                nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                s
+            },
         }
     }
 
     #[rstest::rstest]
-    #[case::normal_chat(Mode::Normal, ActiveTab::Chat, PaneFocus::Chat, Scope::Normal)]
-    #[case::normal_dashboard(Mode::Normal, ActiveTab::Dashboard, PaneFocus::Chat, Scope::Dashboard)]
-    #[case::pinned(Mode::Normal, ActiveTab::Chat, PaneFocus::Pinned, Scope::Pinned)]
-    #[case::input(Mode::Input, ActiveTab::Chat, PaneFocus::Chat, Scope::Input)]
-    #[case::picker(Mode::Picker, ActiveTab::Chat, PaneFocus::Chat, Scope::Picker)]
+    #[case::normal_chat(Mode::Normal, ActiveTab::Chat, false, Scope::Normal)]
+    #[case::normal_dashboard(Mode::Normal, ActiveTab::Dashboard, false, Scope::Dashboard)]
+    #[case::sidebar(Mode::Normal, ActiveTab::Chat, true, Scope::Sidebar)]
+    #[case::input(Mode::Input, ActiveTab::Chat, false, Scope::Input)]
+    #[case::picker(Mode::Picker, ActiveTab::Chat, false, Scope::Picker)]
     fn scope_for_mode_maps_correctly(
         #[case] mode: Mode,
         #[case] tab: ActiveTab,
-        #[case] focus: PaneFocus,
+        #[case] sidebar_focused: bool,
         #[case] expected: Scope,
     ) {
-        // Given a mode, tab, and pane focus.
+        // Given a mode, tab, and sidebar focus state.
         // When mapping to a scope.
         // Then the expected scope is returned.
-        assert_eq!(scope_for_mode(mode, tab, focus), expected);
+        assert_eq!(scope_for_mode(mode, tab, sidebar_focused), expected);
     }
 
     #[rstest::rstest]
@@ -617,7 +535,6 @@ mod tests {
         nullslop_domain::feat::dashboard::register(&mut ui_registry);
         nullslop_domain::feat::ui::chat_log::register(&mut ui_registry);
         nullslop_domain::feat::provider::register(&mut ui_registry);
-        nullslop_domain::feat::pinned_panel::register(&mut ui_registry);
         nullslop_domain::feat::chat_input::register(&mut ui_registry);
         let mut app = TuiApp {
             core,
@@ -635,10 +552,11 @@ mod tests {
             selectable_rects: SelectableRects::default(),
             pending_clipboard: false,
             config: crate::config::TuiConfig::new(false),
-            split_manager: SplitManager::new(),
-            pane_focus: PaneFocus::Chat,
-            pinned_pane_visible: false,
-            pinned_pane_id: None,
+            sidebar: {
+                let mut s = Sidebar::new();
+                nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                s
+            },
         };
         let rect = Rect::new(5, 5, 20, 10);
         app.selectable_rects.rebuild(vec![rect]);
@@ -751,140 +669,4 @@ mod tests {
         );
     }
 
-    // --- Pinned pane tracking tests ---
-
-    #[rstest::rstest]
-    fn open_pinned_sets_tracked_id() {
-        // Given a fresh app.
-        let mut app = test_app();
-        assert!(app.pinned_pane_id.is_none());
-
-        // When opening the pinned pane.
-        app.open_pinned_pane();
-
-        // Then the tracked ID is set and the pane is visible.
-        assert!(app.pinned_pane_id.is_some());
-        assert!(app.pinned_pane_visible);
-        assert_eq!(app.pane_focus, PaneFocus::Pinned);
-    }
-
-    #[rstest::rstest]
-    fn open_pinned_adds_split() {
-        // Given a fresh app.
-        let mut app = test_app();
-        assert!(app.pinned_pane_id.is_none());
-
-        // When opening the pinned pane.
-        app.open_pinned_pane();
-
-        // Then the split manager contains the tracked ID.
-        let id = app.pinned_pane_id.unwrap();
-        assert!(app.split_manager.contains(id));
-    }
-
-    #[rstest::rstest]
-    fn open_pinned_has_two_leaves() {
-        // Given a fresh app.
-        let mut app = test_app();
-        assert!(app.pinned_pane_id.is_none());
-
-        // When opening the pinned pane.
-        app.open_pinned_pane();
-
-        // Then there are exactly 2 leaves (chat + pinned).
-        assert_eq!(app.split_manager.leaves().len(), 2);
-    }
-
-    #[rstest::rstest]
-    fn opening_pinned_pane_twice_is_idempotent() {
-        // Given an app with the pinned pane already open.
-        let mut app = test_app();
-        app.open_pinned_pane();
-        let first_id = app.pinned_pane_id;
-
-        // When opening it again.
-        app.open_pinned_pane();
-
-        // Then the tracked ID is unchanged and no extra split is created.
-        assert_eq!(app.pinned_pane_id, first_id);
-        assert_eq!(app.split_manager.leaves().len(), 2);
-    }
-
-    #[rstest::rstest]
-    fn close_pinned_clears_tracked_id() {
-        // Given an app with the pinned pane open.
-        let mut app = test_app();
-        app.open_pinned_pane();
-
-        // When closing the pinned pane.
-        app.close_pinned_pane();
-
-        // Then the tracked ID is cleared and the pane is hidden.
-        assert!(app.pinned_pane_id.is_none());
-        assert!(!app.pinned_pane_visible);
-        assert_eq!(app.pane_focus, PaneFocus::Chat);
-    }
-
-    #[rstest::rstest]
-    fn close_pinned_removes_split() {
-        // Given an app with the pinned pane open.
-        let mut app = test_app();
-        app.open_pinned_pane();
-        let id = app.pinned_pane_id.unwrap();
-
-        // When closing the pinned pane.
-        app.close_pinned_pane();
-
-        // Then the split is removed and only one leaf remains.
-        assert!(!app.split_manager.contains(id));
-        assert_eq!(app.split_manager.leaves().len(), 1);
-    }
-
-    #[rstest::rstest]
-    fn reopen_assigns_new_id() {
-        // Given an app where the pinned pane is opened, closed, then reopened.
-        let mut app = test_app();
-        app.open_pinned_pane();
-        let first_id = app.pinned_pane_id.unwrap();
-        app.close_pinned_pane();
-
-        // When reopening.
-        app.open_pinned_pane();
-
-        // Then a new tracked ID is assigned.
-        let second_id = app.pinned_pane_id.unwrap();
-        assert_ne!(second_id, first_id);
-        assert!(app.split_manager.contains(second_id));
-    }
-
-    #[rstest::rstest]
-    fn reopen_has_two_leaves() {
-        // Given an app where the pinned pane is opened, closed, then reopened.
-        let mut app = test_app();
-        app.open_pinned_pane();
-        app.close_pinned_pane();
-
-        // When reopening.
-        app.open_pinned_pane();
-
-        // Then there are exactly 2 leaves (no orphans).
-        assert_eq!(app.split_manager.leaves().len(), 2);
-    }
-
-    #[rstest::rstest]
-    fn open_close_reopen_pinned_pane_many_times_no_orphans() {
-        // Given an app.
-        let mut app = test_app();
-
-        // When opening and closing the pinned pane 5 times.
-        for _ in 0..5 {
-            app.open_pinned_pane();
-            assert_eq!(app.split_manager.leaves().len(), 2);
-            app.close_pinned_pane();
-            assert_eq!(app.split_manager.leaves().len(), 1);
-        }
-
-        // Then there is still exactly 1 leaf (the chat pane).
-        assert_eq!(app.split_manager.leaves().len(), 1);
-    }
 }

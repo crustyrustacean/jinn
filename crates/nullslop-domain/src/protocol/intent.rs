@@ -122,27 +122,25 @@ pub enum Intent {
     /// Move the dashboard selection to the last entry.
     DashboardSelectLast,
 
-    // --- Pinned Panel ---
-    /// Toggle the pinned context panel visibility.
-    PinnedPanelToggle,
-    /// Open the pinned context panel.
-    PinnedPanelOpen,
-    /// Close the pinned context panel.
-    PinnedPanelClose,
-    /// Move the pinned panel selection down.
-    PinnedPanelSelectDown,
-    /// Move the pinned panel selection up.
-    PinnedPanelSelectUp,
+    // --- Sidebar ---
+    /// Enter the sidebar scope.
+    SidebarFocus,
+    /// Leave the sidebar, returning to origin scope.
+    SidebarLeave,
+    /// Move selection down in the sidebar.
+    SidebarMoveDown,
+    /// Move selection up in the sidebar.
+    SidebarMoveUp,
     /// Unpin the selected pinned entry.
-    PinnedPanelUnpin,
+    PinsUnpin,
     /// Set the selected pinned entry's position to TOP.
-    PinnedPanelPinTop,
+    PinsPinTop,
     /// Set the selected pinned entry's position to BOTTOM.
-    PinnedPanelPinBottom,
+    PinsPinBottom,
     /// Set the selected pinned entry's position to RELATIVE.
-    PinnedPanelPinRelative,
-    /// Cycle the selected pinned entry's position.
-    PinnedPanelPinCycle,
+    PinsPinRelative,
+    /// Cycle the selected pinned entry's pin position.
+    PinsPinCycle,
 
     // --- Chat Entry Selection ---
     /// Select the next chat entry.
@@ -199,16 +197,15 @@ impl std::fmt::Display for Intent {
             Intent::DashboardSelectUp => write!(f, "dashboard select up"),
             Intent::DashboardSelectFirst => write!(f, "dashboard select first"),
             Intent::DashboardSelectLast => write!(f, "dashboard select last"),
-            Intent::PinnedPanelToggle => write!(f, "toggle pinned panel"),
-            Intent::PinnedPanelOpen => write!(f, "open pinned panel"),
-            Intent::PinnedPanelClose => write!(f, "close pinned panel"),
-            Intent::PinnedPanelSelectDown => write!(f, "pinned panel select down"),
-            Intent::PinnedPanelSelectUp => write!(f, "pinned panel select up"),
-            Intent::PinnedPanelUnpin => write!(f, "pinned panel unpin"),
-            Intent::PinnedPanelPinTop => write!(f, "pinned panel pin top"),
-            Intent::PinnedPanelPinBottom => write!(f, "pinned panel pin bottom"),
-            Intent::PinnedPanelPinRelative => write!(f, "pinned panel pin relative"),
-            Intent::PinnedPanelPinCycle => write!(f, "pinned panel pin cycle"),
+            Intent::SidebarFocus => write!(f, "sidebar focus"),
+            Intent::SidebarLeave => write!(f, "sidebar leave"),
+            Intent::SidebarMoveDown => write!(f, "sidebar move down"),
+            Intent::SidebarMoveUp => write!(f, "sidebar move up"),
+            Intent::PinsUnpin => write!(f, "pins unpin"),
+            Intent::PinsPinTop => write!(f, "pins pin top"),
+            Intent::PinsPinBottom => write!(f, "pins pin bottom"),
+            Intent::PinsPinRelative => write!(f, "pins pin relative"),
+            Intent::PinsPinCycle => write!(f, "pins pin cycle"),
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),

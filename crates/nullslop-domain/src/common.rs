@@ -24,6 +24,5 @@ pub fn register_all_ui_elements(registry: &mut AppUiRegistry) {
     crate::feat::dashboard::register(registry);
     crate::feat::ui::chat_log::register(registry);
     crate::feat::provider::register(registry);
-    crate::feat::pinned_panel::register(registry);
     crate::feat::chat_input::register(registry);
 }
