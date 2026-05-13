@@ -289,21 +289,23 @@ pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
 
 // --- Mode transitions ---
 
-/// Handles `EnterInsertMode` — switches to Input mode.
+/// Handles `EnterInsertMode` — pushes Input onto the scope stack.
 pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
-    state.frontend.mode = Mode::Input;
+    use crate::common::app_state::FocusScope;
+    state.frontend.scope_stack.push(FocusScope::Input);
     IntentResult::empty()
 }
 
-/// Handles `EnterNormalMode` — cancels streams, clears picker, switches to Normal mode.
+/// Handles `EnterNormalMode` — pops the scope stack (restores previous scope).
 ///
 /// If currently in Input mode and the session is busy (streaming/sending),
 /// cancels the stream and drains queued messages back to the input buffer.
-/// If in Picker mode, clears the active picker kind.
 pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
     let mut commands = vec![];
 
-    if state.frontend.mode == Mode::Input && !state.active_session().is_idle() {
+    if state.frontend.scope_stack.current().mode() == Mode::Input
+        && !state.active_session().is_idle()
+    {
         let session_id = state.session.active_session.clone();
         state.active_session_mut().cancel_stream_and_drain();
         commands.push(Command::CancelStream {
@@ -311,13 +313,10 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         });
     }
 
-    if state.frontend.mode == Mode::Picker {
-        state.frontend.active_picker_kind = None;
-    }
-
-    // Pop the scope stack — restores previous scope (Input, Sidebar, or Normal).
+    // Pop the scope stack — restores previous scope.
     state.frontend.scope_stack.pop();
 
+    // TODO(phase 4): remove old field writes once mode field is gone.
     state.frontend.mode = Mode::Normal;
 
     IntentResult::with_commands(commands)
@@ -720,29 +719,24 @@ mod tests {
         // When handling EnterInsertMode.
         let result = super::handle_enter_insert_mode(&mut state);
 
-        // Then mode is Input.
-        assert_eq!(state.frontend.mode, Mode::Input);
+        // Then scope_stack has Input on top.
+        assert_eq!(state.frontend.scope_stack.current().mode(), Mode::Input);
         assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
     fn enter_normal_mode_sets_mode_to_normal() {
         // Given a state in Input mode.
-        use crate::common::app_state::FrontendState;
+        use crate::common::app_state::FocusScope;
 
-        let mut state = AppState {
-            frontend: FrontendState {
-                mode: Mode::Input,
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Input);
 
         // When handling EnterNormalMode.
         let result = super::handle_enter_normal_mode(&mut state);
 
-        // Then mode is Normal.
-        assert_eq!(state.frontend.mode, Mode::Normal);
+        // Then scope_stack is back to Normal.
+        assert!(!state.frontend.scope_stack.is_picker());
         assert!(result.commands.is_empty());
     }
 
@@ -753,7 +747,6 @@ mod tests {
         use crate::protocol::PickerKind;
 
         let mut state = AppState::default();
-        state.frontend.mode = Mode::Picker;
         state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
 
         // When handling EnterNormalMode.
@@ -767,16 +760,11 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_cancels_stream_when_in_input_mode() {
         // Given a state in Input mode with active stream.
-        use crate::common::app_state::FrontendState;
+        use crate::common::app_state::FocusScope;
         use crate::protocol::Command;
 
-        let mut state = AppState {
-            frontend: FrontendState {
-                mode: Mode::Input,
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Input);
         state.active_session_mut().begin_streaming();
 
         // When handling EnterNormalMode.
@@ -796,16 +784,11 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_drains_queue_when_cancelling_stream() {
         // Given a state in Input mode with active stream and queued messages.
-        use crate::common::app_state::FrontendState;
+        use crate::common::app_state::FocusScope;
         use crate::protocol::Command;
 
-        let mut state = AppState {
-            frontend: FrontendState {
-                mode: Mode::Input,
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Input);
         state.active_session_mut().begin_streaming();
         state.active_session_mut().enqueue_message("msg1".into());
         state.active_session_mut().enqueue_message("msg2".into());

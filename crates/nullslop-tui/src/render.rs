@@ -192,7 +192,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             }
 
             // Render sidebar sections.
-            let sidebar_focused = state.frontend.sidebar.origin_scope.is_some();
+            let sidebar_focused = state.frontend.scope_stack.is_sidebar();
             app.sidebar.render(frame, layout.sidebar, &state);
             if sidebar_focused {
                 rects.push(layout.sidebar);
