@@ -31,7 +31,9 @@ use nullslop_domain::Services;
 use nullslop_domain::SessionStoreService;
 use nullslop_domain::UserPreferencesStorageService;
 use nullslop_domain::actor_channel::ActorChannelService;
-use nullslop_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
+use nullslop_domain::common::actor::protocol::event::{
+    ActorStarted, ActorStarting, AllActorsSpawned,
+};
 use nullslop_domain::core_channel::CoreChannelService;
 use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -45,7 +47,6 @@ use nullslop_domain::{
     ActorCounter, ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost,
     MessageSink, State, spawn, spawn_forwarding_task, system_spawn, wait_for_system_ready,
 };
-
 
 /// Creates an `AppCore` with all actors registered and the async forwarding task started.
 ///
@@ -167,11 +168,12 @@ pub fn create_core_with_actor_host(
     });
 
     // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
-    let provider_init_result = spawn::<ProviderInitActor>("provider-init", &sink, handle, &counter, |ctx| {
-        ctx.set_description("Loads provider config, merges cache, resolves last_model");
-        ctx.set_data(services.clone());
-        ctx.set_data(state.clone());
-    });
+    let provider_init_result =
+        spawn::<ProviderInitActor>("provider-init", &sink, handle, &counter, |ctx| {
+            ctx.set_description("Loads provider config, merges cache, resolves last_model");
+            ctx.set_data(services.clone());
+            ctx.set_data(state.clone());
+        });
 
     // Preferences: loads and persists user preferences.
     let prefs_result = spawn::<
@@ -192,10 +194,15 @@ pub fn create_core_with_actor_host(
     // ── Domain actors ────────────────────────────────────────────────────
 
     // Echo actor.
-    let echo_result =
-        spawn::<nullslop_domain::feat::echo_actor::EchoActor>("echo", &sink, handle, &counter, |ctx| {
+    let echo_result = spawn::<nullslop_domain::feat::echo_actor::EchoActor>(
+        "echo",
+        &sink,
+        handle,
+        &counter,
+        |ctx| {
             ctx.set_description("Echoes messages back");
-        });
+        },
+    );
 
     // LLM streaming actor.
     let llm_result = spawn::<nullslop_domain::feat::llm_actor::LlmActor>(

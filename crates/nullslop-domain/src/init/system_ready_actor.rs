@@ -90,14 +90,149 @@ impl SystemReadyActor {
         }
         let expected = self.counter.load() as usize;
         if self.received >= expected {
-            tracing::info!(
-                received = self.received,
-                expected,
-                "actor system ready"
-            );
+            tracing::info!(received = self.received, expected, "actor system ready");
             if let Some(tx) = self.ready_tx.take() {
                 let _ = tx.send(());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::actor::{ActorContext, MessageSink, SendResult};
+    use crate::protocol::Event;
+
+    /// No-op sink for testing — records nothing.
+    struct TestSink;
+    impl MessageSink for TestSink {
+        fn send_command(&self, _command: crate::protocol::Command) -> SendResult {
+            Ok(())
+        }
+        fn send_event(&self, _event: crate::protocol::Event) -> SendResult {
+            Ok(())
+        }
+    }
+
+    fn create_ctx() -> ActorContext {
+        ActorContext::new("test", std::sync::Arc::new(TestSink))
+    }
+
+    #[rstest::rstest]
+    fn does_not_signal_before_all_actors_spawned() {
+        // Given a SystemReadyActor with counter=2 and 2 ActorStarted received.
+        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        let counter = ActorCounter::new();
+        counter.increment();
+        counter.increment();
+        let mut actor = SystemReadyActor {
+            ready_tx: Some(tx),
+            received: 2,
+            counter: counter.clone(),
+            all_spawned: false,
+        };
+
+        // When processing another ActorStarted (count already matches).
+        actor.handle_event(Event::ActorStarted {
+            payload: crate::common::actor::protocol::event::ActorStarted {
+                name: "test".to_owned(),
+                description: None,
+            },
+        });
+
+        // Then the oneshot is NOT consumed (ready_tx still present).
+        assert!(
+            actor.ready_tx.is_some(),
+            "should not signal before AllActorsSpawned"
+        );
+        drop(actor);
+        assert!(rx.try_recv().is_err(), "oneshot should not be sent");
+    }
+
+    #[rstest::rstest]
+    fn does_not_signal_when_count_does_not_match() {
+        // Given a SystemReadyActor with counter=3, 2 ActorStarted, and AllActorsSpawned.
+        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        let counter = ActorCounter::new();
+        counter.increment();
+        counter.increment();
+        counter.increment();
+        let mut actor = SystemReadyActor {
+            ready_tx: Some(tx),
+            received: 2,
+            counter: counter.clone(),
+            all_spawned: false,
+        };
+
+        // When receiving AllActorsSpawned.
+        actor.handle_event(Event::AllActorsSpawned {
+            payload: crate::common::actor::protocol::event::AllActorsSpawned,
+        });
+
+        // Then the oneshot is NOT consumed (count mismatch: 2 < 3).
+        assert!(
+            actor.ready_tx.is_some(),
+            "should not signal when count mismatch"
+        );
+        drop(actor);
+        assert!(rx.try_recv().is_err(), "oneshot should not be sent");
+    }
+
+    #[rstest::rstest]
+    fn signals_when_all_spawned_and_count_matches() {
+        // Given a SystemReadyActor with counter=2, 2 ActorStarted.
+        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        let counter = ActorCounter::new();
+        counter.increment();
+        counter.increment();
+        let mut actor = SystemReadyActor {
+            ready_tx: Some(tx),
+            received: 2,
+            counter: counter.clone(),
+            all_spawned: false,
+        };
+
+        // When receiving AllActorsSpawned (count matches: 2 == 2).
+        actor.handle_event(Event::AllActorsSpawned {
+            payload: crate::common::actor::protocol::event::AllActorsSpawned,
+        });
+
+        // Then the oneshot is consumed.
+        assert!(actor.ready_tx.is_none(), "should have signaled");
+        assert!(rx.try_recv().is_ok(), "oneshot should be sent");
+    }
+
+    #[rstest::rstest]
+    fn signals_on_late_actor_started_after_all_spawned() {
+        // Given a SystemReadyActor with counter=2, 1 ActorStarted, AllActorsSpawned received.
+        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        let counter = ActorCounter::new();
+        counter.increment();
+        counter.increment();
+        let mut actor = SystemReadyActor {
+            ready_tx: Some(tx),
+            received: 1,
+            counter: counter.clone(),
+            all_spawned: false,
+        };
+
+        // First: receive AllActorsSpawned (count mismatch: 1 < 2).
+        actor.handle_event(Event::AllActorsSpawned {
+            payload: crate::common::actor::protocol::event::AllActorsSpawned,
+        });
+        assert!(actor.ready_tx.is_some(), "should not signal yet");
+
+        // Then: receive second ActorStarted (now 2 == 2).
+        actor.handle_event(Event::ActorStarted {
+            payload: crate::common::actor::protocol::event::ActorStarted {
+                name: "late-actor".to_owned(),
+                description: None,
+            },
+        });
+
+        // Then the oneshot is consumed.
+        assert!(actor.ready_tx.is_none(), "should have signaled");
+        assert!(rx.try_recv().is_ok(), "oneshot should be sent");
     }
 }
