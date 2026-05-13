@@ -88,7 +88,6 @@ impl App {
 
         // Initial factory is the no-provider sentinel until actors resolve the real one.
         let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
-        let initial_provider = nullslop_domain::NO_PROVIDER_ID.to_owned();
 
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Tui => {
@@ -104,7 +103,6 @@ impl App {
                             FilesystemUserPreferencesStorage::default_path(),
                         )),
                     );
-                core.state.write().provider.active_provider = initial_provider;
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
 
@@ -156,7 +154,6 @@ impl App {
                             FilesystemUserPreferencesStorage::default_path(),
                         )),
                     );
-                core.state.write().provider.active_provider = initial_provider;
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
                 let mut headless = HeadlessApp::new(core, actor_host, core_receiver, self.handle());

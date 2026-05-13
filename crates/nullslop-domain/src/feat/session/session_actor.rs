@@ -603,7 +603,9 @@ mod tests {
         let session_id = SessionId::new();
         {
             let mut guard = state.write();
-            guard.provider.active_provider = "lmstudio/my-model".to_owned();
+            guard
+                .session_mut_or_create(&session_id)
+                .set_model("lmstudio/my-model".to_owned());
         }
 
         // When processing EnqueueUserMessage while idle.
@@ -1482,10 +1484,12 @@ mod tests {
         );
 
         // When processing ModelsRefreshed with results and no errors.
+        let session_id = state.read().session.active_session.clone();
         actor
             .handle(
                 ActorEnvelope::Event(Event::ModelsRefreshed {
                     payload: ModelsRefreshed {
+                        session_id,
                         results,
                         errors: HashMap::new(),
                     },
@@ -1527,10 +1531,12 @@ mod tests {
         errors.insert("lmstudio".to_owned(), "timeout".to_owned());
 
         // When processing ModelsRefreshed with only errors.
+        let session_id = state.read().session.active_session.clone();
         actor
             .handle(
                 ActorEnvelope::Event(Event::ModelsRefreshed {
                     payload: ModelsRefreshed {
+                        session_id,
                         results: HashMap::new(),
                         errors,
                     },
@@ -1574,10 +1580,15 @@ mod tests {
         errors.insert("ollama".to_owned(), "connection refused".to_owned());
 
         // When processing ModelsRefreshed with both results and errors.
+        let session_id = state.read().session.active_session.clone();
         actor
             .handle(
                 ActorEnvelope::Event(Event::ModelsRefreshed {
-                    payload: ModelsRefreshed { results, errors },
+                    payload: ModelsRefreshed {
+                        session_id,
+                        results,
+                        errors,
+                    },
                 }),
                 &ctx,
             )

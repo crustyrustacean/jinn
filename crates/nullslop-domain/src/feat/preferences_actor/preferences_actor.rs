@@ -162,6 +162,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Event(Event::ModelsRefreshed {
                     payload: crate::feat::provider::protocol::event::ModelsRefreshed {
+                        session_id: crate::protocol::SessionId::new(),
                         results: std::collections::HashMap::new(),
                         errors: std::collections::HashMap::new(),
                     },

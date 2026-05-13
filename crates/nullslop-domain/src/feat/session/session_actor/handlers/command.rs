@@ -51,7 +51,7 @@ impl SessionPersistenceActor {
             EnqueueAction::AssemblePrompt => {
                 let state = self.state.read();
                 let history = state.session(&payload.session_id).history().to_vec();
-                let model_name = state.provider.active_provider.clone();
+                let model_name = state.session(&payload.session_id).profile().model.clone();
                 (history, model_name)
             }
             EnqueueAction::Queued | EnqueueAction::SetInputText(_) => (vec![], String::new()),

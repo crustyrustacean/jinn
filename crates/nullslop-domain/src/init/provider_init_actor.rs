@@ -8,6 +8,7 @@
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::services::Services;
+use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
 use crate::feat::provider_infra::{ModelCache, ProviderRegistry, cache_path};
 use crate::init::EnvironmentLoaded;
@@ -22,6 +23,8 @@ use crate::protocol::{Command, Event};
 pub struct ProviderInitActor {
     /// Shared services (registry, API keys, user preferences storage).
     services: Services,
+    /// Shared application state (to read active session ID).
+    state: State,
 }
 
 impl Actor for ProviderInitActor {
@@ -38,8 +41,11 @@ impl Actor for ProviderInitActor {
         let services = ctx
             .take_data::<Services>()
             .expect("ProviderInitActor requires Services injection");
+        let state = ctx
+            .take_data::<State>()
+            .expect("ProviderInitActor requires State injection");
 
-        Self { services }
+        Self { services, state }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
@@ -102,6 +108,7 @@ impl ProviderInitActor {
                 tracing::info!(last_model = %model, "provider-init resolving last_model");
                 if let Err(e) = ctx.send_command(Command::ProviderSwitch {
                     payload: ProviderSwitch {
+                        session_id: self.state.read().session.active_session.clone(),
                         provider_id: model.clone(),
                     },
                 }) {
@@ -118,10 +125,12 @@ impl ProviderInitActor {
 mod tests {
     use std::sync::Arc;
 
+    use crate::AppState;
     use crate::common::actor::{
         Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
     };
     use crate::common::services::Services;
+    use crate::common::state::State;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::provider_infra::ProviderEntry;
     use crate::init::EnvironmentLoaded;
@@ -140,7 +149,9 @@ mod tests {
         let mut ctx = ActorContext::new("provider-init", sink.clone() as Arc<dyn MessageSink>);
 
         let services = Services::new();
+        let state = State::new(AppState::default());
         ctx.set_data(services.clone());
+        ctx.set_data(state);
         let actor = ProviderInitActor::activate(&mut ctx);
         (actor, services, sink, ctx)
     }

@@ -51,7 +51,6 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
 #[cfg(test)]
 mod tests {
     use crate::common::app_state::AppState;
-    use crate::feat::provider::ProviderState;
     use crate::protocol::{ChatEntry, Command, PickerKind};
 
     use super::*;
@@ -97,13 +96,8 @@ mod tests {
     #[rstest::rstest]
     fn refresh_models_posts_system_message_and_returns_command() {
         // Given a state with a provider.
-        let mut state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama".to_owned(),
-                ..ProviderState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.active_session_mut().set_model("ollama".to_owned());
         let initial_len = state.active_session().history().len();
 
         // When handling RefreshModels.

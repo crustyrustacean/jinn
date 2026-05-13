@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::state::State;
 use crate::feat::provider::protocol::command::RefreshModels;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::provider_infra::{
@@ -31,6 +32,8 @@ pub struct DiscoverActor {
     registry: ProviderRegistryService,
     /// Resolved API keys for provider authentication.
     api_keys: ApiKeysService,
+    /// Shared application state (to read active session ID).
+    state: State,
 }
 
 impl Actor for DiscoverActor {
@@ -49,8 +52,15 @@ impl Actor for DiscoverActor {
         let api_keys = ctx
             .take_data::<ApiKeysService>()
             .expect("ApiKeysService must be injected via ctx.set_data()");
+        let state = ctx
+            .take_data::<State>()
+            .expect("State must be injected via ctx.set_data()");
 
-        Self { registry, api_keys }
+        Self {
+            registry,
+            api_keys,
+            state,
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
@@ -169,8 +179,13 @@ impl DiscoverActor {
         }
 
         // Emit ModelsRefreshed event.
+        let session_id = self.state.read().session.active_session.clone();
         let _ = ctx.send_event(Event::ModelsRefreshed {
-            payload: ModelsRefreshed { results, errors },
+            payload: ModelsRefreshed {
+                session_id,
+                results,
+                errors,
+            },
         });
     }
 }

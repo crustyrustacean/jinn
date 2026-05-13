@@ -158,7 +158,7 @@ impl SessionPersistenceActor {
         if event.results.is_empty() && event.errors.is_empty() {
             let mut state = self.state.write();
             state
-                .active_session_mut()
+                .session_mut_or_create(&event.session_id)
                 .push_entry(ChatEntry::system("Models refreshed: no providers found"));
             return;
         }
@@ -199,7 +199,7 @@ impl SessionPersistenceActor {
         let data = TableData { headers, rows };
         let mut state = self.state.write();
         state
-            .active_session_mut()
+            .session_mut_or_create(&event.session_id)
             .push_entry(ChatEntry::table(data));
     }
 }

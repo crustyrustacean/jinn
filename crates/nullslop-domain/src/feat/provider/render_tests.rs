@@ -106,7 +106,9 @@ fn render_provider_picker_shows_active_model_marker() {
     state.frontend.scope_stack.push(FocusScope::Picker {
         kind: PickerKind::Provider,
     });
-    state.provider.active_provider = "ollama/llama3".to_owned();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
     load_picker_items(&mut state, &services);
 
     let (mut terminal, _area) = setup_term(80, 24);

@@ -190,10 +190,14 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
     let provider_id = entry.provider_id.clone();
+    let session_id = state.session.active_session.clone();
 
     state.frontend.scope_stack.pop();
     IntentResult::with_commands(vec![Command::ProviderSwitch {
-        payload: ProviderSwitch { provider_id },
+        payload: ProviderSwitch {
+            session_id,
+            provider_id,
+        },
     }])
 }
 
@@ -204,8 +208,6 @@ fn confirm_strategy(state: &mut AppState) -> IntentResult {
     };
     let strategy_id = entry.strategy_id.clone();
     let session_id = state.session.active_session.clone();
-
-    state.set_default_strategy(strategy_id.clone());
 
     state.frontend.scope_stack.pop();
     IntentResult::with_commands(vec![Command::SwitchPromptStrategy {
@@ -533,12 +535,7 @@ mod tests {
         // When confirming picker.
         let (result, maybe_intent) = handle_picker_confirm(&mut state);
 
-        // Then default_strategy was updated.
-        assert_ne!(
-            state.frontend.default_strategy,
-            crate::protocol::PromptStrategyId::passthrough()
-        );
-        // And SwitchPromptStrategy command is returned.
+        // Then SwitchPromptStrategy command is returned.
         assert!(
             result
                 .commands
