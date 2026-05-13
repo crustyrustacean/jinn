@@ -20,22 +20,16 @@ pub const MIN_HEIGHT: u16 = 14;
 pub struct AppLayout {
     /// The tab bar area (1 row at top, full width).
     pub tabs: Rect,
-    /// The left column: chat + indicator + queue + counter + input + status bar.
+    /// The left column: chat + indicator + queue + input + status bar.
     pub main: Rect,
     /// The right column: sidebar (full height below tabs).
     pub sidebar: Rect,
     /// The vertical border between main and sidebar (1 column wide).
     pub border: Rect,
     // Sub-areas of the main column:
-    /// The chat log area.
+    /// The content area (chat log + indicator + queue + bottom line).
     pub content: Rect,
-    /// The streaming indicator area (1 row between content and counter).
-    pub indicator: Rect,
-    /// The queue display area (dynamic height based on queue length).
-    pub queue: Rect,
-    /// The character counter area (1 row above input, chat tab only).
-    pub counter: Rect,
-    /// The input box area (3 rows at bottom, chat tab only).
+    /// The input box area (dynamic height, chat tab only).
     pub input: Rect,
     /// The status bar area (1 row at very bottom).
     pub status_bar: Rect,
@@ -55,9 +49,6 @@ impl AppLayout {
     /// tabs (full width)
     /// main column | border | sidebar (full height)
     ///   content   |        |
-    ///   indicator |        |
-    ///   queue     |        |
-    ///   counter   |        |
     ///   input     |        |
     ///   status    |        |
     /// ```
@@ -65,12 +56,9 @@ impl AppLayout {
     /// `input_lines` is the number of visual lines the input box needs
     /// (used for dynamic multi-line input height).
     ///
-    /// `queue_lines` is the number of rows for the queue display area
-    /// (0 when queue is empty).
-    ///
     /// `max_input_height` caps the input box height (e.g., 50% of terminal).
     #[must_use]
-    pub fn new(area: Rect, input_lines: u16, queue_lines: u16, max_input_height: u16) -> Self {
+    pub fn new(area: Rect, input_lines: u16, max_input_height: u16) -> Self {
         let [tabs, rest] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
 
@@ -102,11 +90,8 @@ impl AppLayout {
         };
 
         let input_height = (2 + input_lines.max(1)).min(max_input_height);
-        let [content, indicator, queue, counter, input, status_bar] = Layout::vertical([
+        let [content, input, status_bar] = Layout::vertical([
             Constraint::Min(1),
-            Constraint::Length(1),
-            Constraint::Length(queue_lines),
-            Constraint::Length(1),
             Constraint::Length(input_height),
             Constraint::Length(1),
         ])
@@ -118,9 +103,6 @@ impl AppLayout {
             sidebar,
             border,
             content,
-            indicator,
-            queue,
-            counter,
             input,
             status_bar,
         }
@@ -147,12 +129,10 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     {
         let mut wstate = app.core.state.write();
         // Compute a preliminary layout to determine main column width.
-        let queue_len = wstate.active_session().queue_len() as u16;
         let max_input_height = area.height / 2;
         let pre_layout = AppLayout::new(
             area,
             wstate.active_chat_input().visual_line_count() as u16,
-            queue_len,
             max_input_height,
         );
         // Wrap width is based on the main column (not full terminal width).
@@ -168,12 +148,10 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
     let state = app.core.state.read();
 
-    let queue_len = state.active_session().queue_len() as u16;
     let max_input_height = area.height / 2;
     let layout = AppLayout::new(
         area,
         state.active_chat_input().visual_line_count() as u16,
-        queue_len,
         max_input_height,
     );
 
@@ -204,24 +182,64 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             // Use layout.content (main column sub-area) for the chat log.
             let content_area = layout.content;
 
+            // Compute sub-areas at the bottom of the content area for
+            // the streaming indicator, queue, and bottom line.
+            let queue_len = state.active_session().queue_len() as u16;
+            let bottom_lines = 1 + queue_len + 1; // indicator + queue + chat bottom line
+            let chat_log_area = if content_area.height > bottom_lines {
+                Rect {
+                    x: content_area.x,
+                    y: content_area.y,
+                    width: content_area.width,
+                    height: content_area.height - bottom_lines,
+                }
+            } else {
+                // Not enough space — give everything to chat log.
+                content_area
+            };
+
             // Chat log
             if let Some(element) = app.ui_registry.get_mut("chat-log") {
-                element.render(frame, content_area, &state);
+                element.render(frame, chat_log_area, &state);
                 if element.is_selectable() && !sidebar_focused {
                     rects.push(content_area);
                 }
             }
-            // Streaming indicator (dedicated row between content and input)
-            if let Some(element) = app.ui_registry.get_mut("streaming-indicator") {
-                element.render(frame, layout.indicator, &state);
+            // Streaming indicator (1 row at bottom of content area)
+            if queue_len > 0 || true {
+                // Always reserve indicator row position
+                let indicator_y = content_area.y + content_area.height.saturating_sub(bottom_lines);
+                let indicator_area = Rect {
+                    x: content_area.x,
+                    y: indicator_y,
+                    width: content_area.width,
+                    height: 1,
+                };
+                if let Some(element) = app.ui_registry.get_mut("streaming-indicator") {
+                    element.render(frame, indicator_area, &state);
+                }
             }
-            // Queue display
-            if let Some(element) = app.ui_registry.get_mut("queue-display") {
-                element.render(frame, layout.queue, &state);
+            // Queue display (dynamic rows)
+            if queue_len > 0 {
+                let queue_y = content_area.y + content_area.height.saturating_sub(bottom_lines) + 1;
+                let queue_area = Rect {
+                    x: content_area.x,
+                    y: queue_y,
+                    width: content_area.width,
+                    height: queue_len,
+                };
+                if let Some(element) = app.ui_registry.get_mut("queue-display") {
+                    element.render(frame, queue_area, &state);
+                }
             }
-            // Character counter
-            if let Some(element) = app.ui_registry.get_mut("char-counter") {
-                element.render(frame, layout.counter, &state);
+            // Chat bottom line — horizontal separator at the bottom of content area
+            let line_y = content_area.y + content_area.height.saturating_sub(1);
+            let chat_line_style = Style::default().fg(Color::DarkGray);
+            for x in content_area.x..(content_area.x + content_area.width) {
+                if let Some(cell) = frame.buffer_mut().cell_mut((x, line_y)) {
+                    cell.set_symbol("\u{2500}");
+                    cell.set_style(chat_line_style);
+                }
             }
             // Input box
             if let Some(element) = app.ui_registry.get_mut("chat-input-box") {
