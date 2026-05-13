@@ -13,7 +13,6 @@ use crate::feat::provider_infra::{ModelCache, ProviderRegistry, cache_path};
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
 
-
 /// The provider initialization actor.
 ///
 /// On `EnvironmentLoaded`: builds the registry from config, replaces the empty
@@ -56,7 +55,6 @@ impl Actor for ProviderInitActor {
             ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
         }
     }
-
 }
 
 impl ProviderInitActor {

@@ -21,7 +21,6 @@ use llm::builder::LLMBuilder;
 #[error(debug)]
 pub struct DiscoverError;
 
-
 /// Model discovery actor.
 ///
 /// On `RefreshModels`, iterates all provider entries from the registry,
@@ -63,7 +62,6 @@ impl Actor for DiscoverActor {
             ActorEnvelope::Event(_) | ActorEnvelope::Shutdown => {}
         }
     }
-
 }
 
 impl DiscoverActor {

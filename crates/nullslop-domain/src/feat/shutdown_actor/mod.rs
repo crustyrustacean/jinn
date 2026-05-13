@@ -65,7 +65,6 @@ impl ShutdownTrackerState {
     }
 }
 
-
 /// Actor that coordinates startup tracking and shutdown sequencing.
 ///
 /// On `ActorStarting`, the actor name is added to the pending set.
@@ -112,7 +111,6 @@ impl Actor for ShutdownTrackerActor {
             ActorEnvelope::Shutdown => {}
         }
     }
-
 }
 
 impl ShutdownTrackerActor {

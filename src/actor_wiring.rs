@@ -166,11 +166,10 @@ pub fn create_core_with_actor_host(
     });
 
     // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
-    let provider_init_result =
-        spawn::<ProviderInitActor>("provider-init", &sink, handle, |ctx| {
-            ctx.set_description("Loads provider config, merges cache, resolves last_model");
-            ctx.set_data(services.clone());
-        });
+    let provider_init_result = spawn::<ProviderInitActor>("provider-init", &sink, handle, |ctx| {
+        ctx.set_description("Loads provider config, merges cache, resolves last_model");
+        ctx.set_data(services.clone());
+    });
 
     // Preferences: loads and persists user preferences.
     let prefs_result = spawn::<
@@ -183,14 +182,10 @@ pub fn create_core_with_actor_host(
     // ── Domain actors ────────────────────────────────────────────────────
 
     // Echo actor.
-    let echo_result = spawn::<nullslop_domain::feat::echo_actor::EchoActor>(
-        "echo",
-        &sink,
-        handle,
-        |ctx| {
+    let echo_result =
+        spawn::<nullslop_domain::feat::echo_actor::EchoActor>("echo", &sink, handle, |ctx| {
             ctx.set_description("Echoes messages back");
-        },
-    );
+        });
 
     // LLM streaming actor.
     let llm_result = spawn::<nullslop_domain::feat::llm_actor::LlmActor>(

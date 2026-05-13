@@ -45,10 +45,6 @@ pub enum LlmMessage {
 mod tests {
     use super::*;
 
-
-
-
-
     #[rstest::rstest]
     fn backward_compat_user_deserialization() {
         // Given old-format JSON for a user message.

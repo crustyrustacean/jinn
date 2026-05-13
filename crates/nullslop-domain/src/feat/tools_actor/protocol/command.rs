@@ -55,4 +55,3 @@ pub struct CancelToolBatch {
     /// The session whose tool executions should be cancelled.
     pub session_id: SessionId,
 }
-

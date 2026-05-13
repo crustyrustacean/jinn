@@ -6,8 +6,8 @@
 
 use std::path::Path;
 
+use crate::common::actor::ActorContext;
 use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
-use crate::common::actor::{ActorContext};
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::provider::protocol::command::RescanPromptTemplates;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
@@ -71,11 +71,7 @@ impl ScanConfig for PromptScanConfig {
         }
     }
 
-    fn on_panic(
-        join_error: tokio::task::JoinError,
-        _config: &Self,
-        ctx: &ActorContext,
-    ) {
+    fn on_panic(join_error: tokio::task::JoinError, _config: &Self, ctx: &ActorContext) {
         tracing::error!("rescan task panicked: {join_error}");
         let _ = ctx.send_event(Event::PromptTemplatesLoaded {
             payload: PromptTemplatesLoaded {

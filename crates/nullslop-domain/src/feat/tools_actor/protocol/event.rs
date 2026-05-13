@@ -89,4 +89,3 @@ pub struct ToolCallStreaming {
     /// Partial JSON string for the tool arguments (accumulated so far).
     pub partial_json: String,
 }
-

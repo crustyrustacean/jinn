@@ -96,9 +96,10 @@ pub fn render_template_file(template: &PromptTemplate) -> String {
 pub(crate) fn parse_template_content(
     content: &str,
 ) -> Result<PromptTemplate, Report<PromptTemplateParseError>> {
-    let (frontmatter, body) = crate::common::frontmatter::parse_toml_frontmatter::<Frontmatter>(content)
-        .change_context(PromptTemplateParseError::Frontmatter)
-        .attach("failed to parse template file")?;
+    let (frontmatter, body) =
+        crate::common::frontmatter::parse_toml_frontmatter::<Frontmatter>(content)
+            .change_context(PromptTemplateParseError::Frontmatter)
+            .attach("failed to parse template file")?;
 
     Ok(PromptTemplate {
         name: frontmatter.name,

@@ -9,7 +9,6 @@ use crate::common::actor::protocol::event::ActorStarted;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::protocol::Event;
 
-
 /// The system-ready actor.
 ///
 /// On each `ActorStarted` event, increments a counter. When the counter reaches
@@ -72,5 +71,4 @@ impl Actor for SystemReadyActor {
             ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
         }
     }
-
 }

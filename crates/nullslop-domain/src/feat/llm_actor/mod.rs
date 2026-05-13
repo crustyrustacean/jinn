@@ -27,7 +27,6 @@ use futures::StreamExt as _;
 
 use session::{SessionData, SessionState};
 
-
 /// LLM streaming actor with tool support.
 ///
 /// Holds a reference to the LLM service factory and tracks active
@@ -80,7 +79,6 @@ impl Actor for LlmActor {
             ActorEnvelope::Shutdown => {}
         }
     }
-
 }
 
 impl LlmActor {

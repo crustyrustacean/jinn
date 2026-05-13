@@ -262,8 +262,6 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-
-
     #[cfg(feature = "which-key")]
     #[rstest::rstest]
     fn parse_notation_s_enter_returns_shift_enter() {

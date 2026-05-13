@@ -40,7 +40,6 @@ use crate::{SessionLoadRequested, SessionSaveRequested};
 
 use super::entries::load_session_picker_items_from_store;
 
-
 /// Session lifecycle and persistence actor.
 ///
 /// Subscribes to session-related commands and events, mutates [`State`],
@@ -109,7 +108,6 @@ impl Actor for SessionPersistenceActor {
             ActorEnvelope::Shutdown => {}
         }
     }
-
 }
 
 impl SessionPersistenceActor {

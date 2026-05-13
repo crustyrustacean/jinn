@@ -6,8 +6,8 @@
 
 use std::path::Path;
 
+use crate::common::actor::ActorContext;
 use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
-use crate::common::actor::{ActorContext};
 use crate::feat::context::protocol::command::RescanPersonas;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::persona::scan_personas_dir;
@@ -35,7 +35,11 @@ impl ScanConfig for PersonaScanConfig {
         scan_personas_dir(path)
     }
 
-    fn on_success(personas: Vec<crate::feat::persona::Persona>, _config: &Self, ctx: &ActorContext) {
+    fn on_success(
+        personas: Vec<crate::feat::persona::Persona>,
+        _config: &Self,
+        ctx: &ActorContext,
+    ) {
         tracing::info!(count = personas.len(), "rescanned personas");
         let _ = ctx.send_event(Event::PersonasLoaded {
             payload: PersonasLoaded {
@@ -45,11 +49,7 @@ impl ScanConfig for PersonaScanConfig {
         });
     }
 
-    fn on_panic(
-        join_error: tokio::task::JoinError,
-        _config: &Self,
-        ctx: &ActorContext,
-    ) {
+    fn on_panic(join_error: tokio::task::JoinError, _config: &Self, ctx: &ActorContext) {
         tracing::error!("persona rescan task panicked: {join_error}");
         let _ = ctx.send_event(Event::PersonasLoaded {
             payload: PersonasLoaded {

@@ -60,4 +60,3 @@ pub struct ToolResult {
     /// Whether execution succeeded.
     pub success: bool,
 }
-

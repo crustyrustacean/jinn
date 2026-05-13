@@ -244,5 +244,3 @@ fn step_order_returns_definition_order() {
     let state = WorkflowState::new(make_workflow(3));
     assert_eq!(state.step_order(), vec!["step-0", "step-1", "step-2"]);
 }
-
-

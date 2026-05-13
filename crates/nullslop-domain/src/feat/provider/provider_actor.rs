@@ -27,7 +27,6 @@ use crate::protocol::{Command, Event};
 use super::loader::load_provider_picker_items;
 use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
 
-
 /// The provider actor.
 ///
 /// Subscribes to provider-related commands, mutates [`State`], and emits events
@@ -81,7 +80,6 @@ impl Actor for ProviderActor {
             ActorEnvelope::Shutdown => {}
         }
     }
-
 }
 
 impl ProviderActor {

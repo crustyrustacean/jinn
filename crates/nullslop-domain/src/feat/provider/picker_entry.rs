@@ -2,9 +2,9 @@
 
 use std::ops::Range;
 
+use crate::feat::picker::style::{active_marker, selected_style};
 use nullslop_selection_widget::PickerItem;
 use nullslop_selection_widget::highlight_text;
-use crate::feat::picker::style::{active_marker, selected_style};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 

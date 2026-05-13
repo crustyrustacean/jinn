@@ -101,4 +101,3 @@ pub struct RescanPersonas;
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("context")]
 pub struct LoadPersonaPickerEntries;
-

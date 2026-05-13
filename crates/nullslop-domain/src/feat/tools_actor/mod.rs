@@ -89,7 +89,6 @@ struct PendingBatch {
     handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
-
 /// Tool orchestrator actor.
 ///
 /// Subscribes to [`RegisterTools`] and [`ExecuteToolBatch`] commands, and
@@ -161,7 +160,6 @@ impl Actor for ToolOrchestratorActor {
             ActorEnvelope::Shutdown => {}
         }
     }
-
 }
 
 impl ToolOrchestratorActor {

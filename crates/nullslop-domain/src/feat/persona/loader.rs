@@ -56,14 +56,16 @@ pub(crate) fn parse_persona_content(
     content: &str,
     path: &Path,
 ) -> Result<Persona, Report<PersonaParseError>> {
-    let (frontmatter, body) = crate::common::frontmatter::parse_toml_frontmatter::<Frontmatter>(content)
-        .map_err(|report| {
-            let ctx = match report.current_context() {
-                crate::common::frontmatter::FrontmatterError::Parse => PersonaParseError::Parse,
-                _ => PersonaParseError::Frontmatter,
-            };
-            report.change_context(ctx)
-        })?;
+    let (frontmatter, body) = crate::common::frontmatter::parse_toml_frontmatter::<Frontmatter>(
+        content,
+    )
+    .map_err(|report| {
+        let ctx = match report.current_context() {
+            crate::common::frontmatter::FrontmatterError::Parse => PersonaParseError::Parse,
+            _ => PersonaParseError::Frontmatter,
+        };
+        report.change_context(ctx)
+    })?;
 
     Ok(Persona {
         name: frontmatter.name,
