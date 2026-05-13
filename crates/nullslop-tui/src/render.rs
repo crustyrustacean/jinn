@@ -1,6 +1,6 @@
 //! Layout computation and rendering for the application.
 
-use nullslop_domain::{Mode, PickerKind};
+use nullslop_domain::{FocusScope, Mode, PickerKind};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
@@ -164,7 +164,12 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     match state.frontend.active_tab {
         nullslop_domain::ActiveTab::Chat => {
             // Draw vertical border line between main and sidebar.
-            let border_style = Style::default().fg(Color::DarkGray);
+            let border_color = if state.frontend.scope_stack.is_sidebar() {
+                Color::Yellow
+            } else {
+                Color::DarkGray
+            };
+            let border_style = Style::default().fg(border_color);
             for y in layout.border.y..(layout.border.y + layout.border.height) {
                 if let Some(cell) = frame.buffer_mut().cell_mut((layout.border.x, y)) {
                     cell.set_symbol("\u{2502}");
@@ -234,7 +239,12 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             }
             // Chat bottom line — horizontal separator at the bottom of content area
             let line_y = content_area.y + content_area.height.saturating_sub(1);
-            let chat_line_style = Style::default().fg(Color::DarkGray);
+            let chat_line_color = if matches!(state.frontend.scope_stack.current(), FocusScope::Normal) {
+                Color::Yellow
+            } else {
+                Color::DarkGray
+            };
+            let chat_line_style = Style::default().fg(chat_line_color);
             for x in content_area.x..(content_area.x + content_area.width) {
                 if let Some(cell) = frame.buffer_mut().cell_mut((x, line_y)) {
                     cell.set_symbol("\u{2500}");
