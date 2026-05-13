@@ -130,9 +130,7 @@ impl PromptAssemblyActor {
             Command::LoadPersonaPickerEntries { payload } => {
                 self.handle_load_persona_picker_entries(payload);
             }
-            Command::RescanPersonas { .. } => {
-                // Handled by persona-scan actor.
-            }
+            // RescanPersonas is handled by persona-scan actor.
             _ => {}
         }
     }
@@ -199,7 +197,7 @@ impl PromptAssemblyActor {
             return;
         }
         let mut state = self.state.write();
-        state.context.personas = payload.personas.clone();
+        state.context.personas.clone_from(&payload.personas);
         if state.context.active_persona.is_none() {
             state.context.active_persona = payload.personas.first().cloned();
         }

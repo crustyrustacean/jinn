@@ -75,7 +75,7 @@ impl Sidebar {
                 // If no next section, selection sticks (do nothing).
             }
             SidebarSectionResult::UnhandledUp => {
-                if let Some(prev_index) = self.prev_section_index(focused_index) {
+                if let Some(prev_index) = Self::prev_section_index(focused_index) {
                     // Move focus up to previous section.
                     sidebar_state.focused_section = self.sections[prev_index].id();
                     let prev_config = self.config_for(prev_index);
@@ -141,7 +141,7 @@ impl Sidebar {
         }
     }
 
-    fn prev_section_index(&self, current: usize) -> Option<usize> {
+    fn prev_section_index(current: usize) -> Option<usize> {
         if current > 0 { Some(current - 1) } else { None }
     }
 }
