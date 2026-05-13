@@ -123,8 +123,7 @@ impl ProviderActor {
 
     // --- Command handlers ---
 
-    /// ProviderSwitch: update session profile, emit ProviderSwitched event,
-    /// and swap the LLM factory so subsequent messages use the new provider.
+    /// ProviderSwitch: update session profile and emit ProviderSwitched event.
     fn handle_provider_switch(&self, payload: &ProviderSwitch, ctx: &ActorContext) {
         {
             let mut state = self.state.write();
@@ -139,32 +138,6 @@ impl ProviderActor {
             },
         }) {
             tracing::warn!(err = ?e, "provider-actor failed to emit ProviderSwitched");
-        }
-
-        // Swap the LLM factory to the newly selected provider.
-        let provider_id = crate::feat::provider_infra::ProviderId::new(payload.provider_id.clone());
-        let api_keys = self.services.api_keys.read();
-        match self
-            .services
-            .provider_registry
-            .create_factory(&provider_id, &api_keys)
-        {
-            Ok(factory) => {
-                self.services
-                    .llm_service
-                    .swap(std::sync::Arc::from(factory));
-                tracing::info!(
-                    provider = %payload.provider_id,
-                    "swapped LLM factory"
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    err = ?e,
-                    provider = %payload.provider_id,
-                    "failed to create factory for provider; leaving existing factory in place"
-                );
-            }
         }
     }
 
@@ -287,7 +260,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn provider_switch_swaps_factory_for_valid_provider() {
+    async fn provider_switch_updates_session_model() {
         // Given a provider actor with a registry containing a sample provider.
         use crate::common::services::test_services::TestServices;
         use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
@@ -307,15 +280,15 @@ mod tests {
         };
         let services = TestServices::builder().with_providers(config).build();
 
-        let (mut actor, _state, _sink, ctx) = create_actor_with_services(services);
-        let name_before = actor.services.llm_service.name();
+        let (mut actor, state, _sink, ctx) = create_actor_with_services(services);
+        let session_id = SessionId::new();
 
         // When switching to a known provider.
         actor
             .handle(
                 ActorEnvelope::Command(Command::ProviderSwitch {
                     payload: ProviderSwitch {
-                        session_id: SessionId::new(),
+                        session_id: session_id.clone(),
                         provider_id: "sample/sample".into(),
                     },
                 }),
@@ -323,10 +296,10 @@ mod tests {
             )
             .await;
 
-        // Then the factory name changes to the new provider.
-        let name_after = actor.services.llm_service.name();
-        assert_ne!(name_before, name_after);
-        assert_eq!(name_after, "Sample");
+        // Then the session profile model is updated.
+        let guard = state.read();
+        let model = guard.session(&session_id).profile().model.clone();
+        assert_eq!(model, "sample/sample");
     }
 
     // --- ModelsRefreshed (event) ---

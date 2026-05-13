@@ -197,6 +197,7 @@ pub fn create_core_with_actor_host(
         |ctx| {
             ctx.set_description("LLM streaming with tool support");
             ctx.set_data(llm_service.clone());
+            ctx.set_data(services.clone());
         },
     );
 

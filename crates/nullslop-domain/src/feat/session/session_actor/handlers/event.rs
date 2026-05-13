@@ -59,11 +59,21 @@ impl SessionPersistenceActor {
             session.begin_streaming();
         }
 
+        let provider_id = {
+            let state = self.state.read();
+            let model = state.session(&payload.session_id).profile().model.clone();
+            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                None
+            } else {
+                Some(model)
+            }
+        };
+
         if let Err(e) = ctx.send_command(Command::SendToLlmProvider {
             payload: SendToLlmProvider {
                 session_id: payload.session_id.clone(),
                 messages: payload.messages.clone(),
-                provider_id: None,
+                provider_id,
             },
         }) {
             tracing::warn!(err = ?e, "session-actor failed to emit SendToLlmProvider");
