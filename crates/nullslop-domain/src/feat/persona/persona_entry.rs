@@ -24,7 +24,13 @@ impl PickerItem for PersonaEntry {
     }
 
     fn render_row(&self, is_selected: bool) -> Line<'static> {
-        render_persona_row(&self.name, &self.description, self.is_active, is_selected, &[])
+        render_persona_row(
+            &self.name,
+            &self.description,
+            self.is_active,
+            is_selected,
+            &[],
+        )
     }
 
     fn render_row_with_highlight(
