@@ -132,6 +132,114 @@ impl Default for ShutdownCoordinatorState {
     }
 }
 
+/// A single focus context on the scope stack.
+///
+/// Each layer of the [`ScopeStack`] is a `FocusScope`. The top of the stack
+/// determines the active mode, keymap scope, and which overlays are visible.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FocusScope {
+    /// Browsing chat entries (base scope).
+    Normal,
+    /// Typing into the input buffer.
+    Input,
+    /// Sidebar panel focused.
+    Sidebar,
+    /// Picker overlay active — kind distinguishes Provider/Session/Keymap/etc.
+    Picker { kind: PickerKind },
+}
+
+impl FocusScope {
+    /// Returns the [`Mode`] corresponding to this scope.
+    #[must_use]
+    pub fn mode(&self) -> Mode {
+        match self {
+            Self::Normal | Self::Sidebar => Mode::Normal,
+            Self::Input => Mode::Input,
+            Self::Picker { .. } => Mode::Picker,
+        }
+    }
+}
+
+impl std::fmt::Display for FocusScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Normal => write!(f, "Normal"),
+            Self::Input => write!(f, "Input"),
+            Self::Sidebar => write!(f, "Sidebar"),
+            Self::Picker { kind } => write!(f, "Picker({kind})"),
+        }
+    }
+}
+
+/// A LIFO stack of [`FocusScope`] layers.
+///
+/// Always has at least one entry (the base scope). Entering an overlay
+/// pushes a new scope; escaping pops one level, restoring the previous scope.
+#[derive(Debug, Clone, Default)]
+pub struct ScopeStack {
+    stack: Vec<FocusScope>,
+}
+
+impl ScopeStack {
+    /// Pushes a new scope onto the stack (entering an overlay).
+    pub fn push(&mut self, scope: FocusScope) {
+        self.stack.push(scope);
+    }
+
+    /// Pops the top scope, returning it. Returns `None` if only the base remains.
+    pub fn pop(&mut self) -> Option<FocusScope> {
+        if self.stack.len() <= 1 {
+            None
+        } else {
+            self.stack.pop()
+        }
+    }
+
+    /// Returns the current (top) scope.
+    #[must_use]
+    pub fn current(&self) -> &FocusScope {
+        self.stack.last().expect("stack always has base")
+    }
+
+    /// Returns the scope one level below the top (the "return target").
+    ///
+    /// Returns `None` if only the base scope is on the stack.
+    #[must_use]
+    pub fn parent(&self) -> Option<&FocusScope> {
+        if self.stack.len() < 2 {
+            None
+        } else {
+            self.stack.get(self.stack.len() - 2)
+        }
+    }
+
+    /// Pops all overlay scopes, returning to the base scope.
+    pub fn clear_overlays(&mut self) {
+        self.stack.truncate(1);
+    }
+
+    /// Returns `true` if the current scope is a Picker.
+    #[must_use]
+    pub fn is_picker(&self) -> bool {
+        matches!(self.current(), FocusScope::Picker { .. })
+    }
+
+    /// Returns the `PickerKind` if the current scope is a Picker.
+    #[must_use]
+    pub fn picker_kind(&self) -> Option<&PickerKind> {
+        match self.current() {
+            FocusScope::Picker { kind } => Some(kind),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the current scope is Sidebar.
+    #[must_use]
+    pub fn is_sidebar(&self) -> bool {
+        matches!(self.current(), FocusScope::Sidebar)
+    }
+}
+
 /// A transient status bar notification with auto-expiry.
 ///
 /// Created with a timestamp and lazily checked for expiry during rendering.
@@ -217,6 +325,12 @@ pub struct FrontendState {
     /// Transient status bar notification (auto-dismisses after 3 seconds).
     /// OWNER: TUI render loop (sets on clipboard copy), tick handler (clears expired).
     pub status_notification: Option<StatusNotification>,
+
+    /// Focus scope stack — single source of truth for what the user is focused on.
+    /// OWNER: IntentHandler (push/pop on scope transitions).
+    /// Replaces `mode`, `active_picker_kind`, `sidebar.origin_scope`, and
+    /// `keymap_picker_origin_scope` (migration in phases 2–4).
+    pub scope_stack: ScopeStack,
 }
 
 impl Default for FrontendState {
@@ -239,6 +353,7 @@ impl Default for FrontendState {
             context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
+            scope_stack: ScopeStack::default(),
         }
     }
 }
