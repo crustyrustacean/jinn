@@ -1,42 +1,38 @@
 //! Preferences actor — persists user preferences to `nullslop.toml`.
 //!
-//! Subscribes to [`ProviderSwitched`] and [`PromptStrategySwitched`] events
-//! emitted when the user selects a model or strategy from the pickers.
-//! On each event, persists the corresponding preference to disk and syncs
-//! the in-memory cache in `AppState.frontend.preferences`.
+//! Subscribes to [`UpdatePreferences`] commands carrying batches of
+//! [`PreferenceUpdate`] diffs. On each command, loads current preferences,
+//! applies all diffs, saves to disk, and emits a [`PreferencesUpdated`]
+//! event with the full result.
 //!
 //! # State ownership
 //!
-//! This actor writes `frontend.preferences` — the in-memory cache of
-//! `nullslop.toml`. The file is the authoritative source; the cache
-//! is a convenience for the sync IntentHandler.
+//! This actor does **not** write `AppState.frontend.preferences` directly.
+//! That is the exclusive responsibility of `PreferencesStateSyncActor`,
+//! which subscribes to the `PreferencesUpdated` events emitted here.
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
-use crate::common::state::State;
-use crate::feat::context::protocol::event::PromptStrategySwitched;
+use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
+use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::preferences_actor::user_preferences::UserPreferences;
 use crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorageService;
-use crate::feat::provider::protocol::event::ProviderSwitched;
-use crate::protocol::Event;
+use crate::protocol::{Command, Event};
 
 /// The preferences actor.
 ///
-/// Subscribes to `ProviderSwitched` and `PromptStrategySwitched` events and
-/// persists the selected model/strategy as `last_model`/`last_strategy`
-/// in `nullslop.toml`.
+/// Subscribes to `UpdatePreferences` commands and persists preference
+/// diffs to `nullslop.toml`, then emits `PreferencesUpdated` so
+/// downstream actors can sync their caches.
 pub struct PreferencesActor {
     /// User preferences storage service for reading/writing `nullslop.toml`.
     storage: UserPreferencesStorageService,
-    /// Shared application state (to sync `frontend.preferences` cache).
-    state: State,
 }
 
 impl Actor for PreferencesActor {
     type Message = NoDirectMsg;
 
     fn activate(ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_event::<ProviderSwitched>();
-        ctx.subscribe_event::<PromptStrategySwitched>();
+        ctx.subscribe_command::<UpdatePreferences>();
         ctx.set_description("Persists user preferences to nullslop.toml");
 
         #[expect(
@@ -46,49 +42,41 @@ impl Actor for PreferencesActor {
         let storage = ctx
             .take_data::<UserPreferencesStorageService>()
             .expect("PreferencesActor requires UserPreferencesStorageService injection");
-        #[expect(
-            clippy::expect_used,
-            reason = "State injection is required at activation"
-        )]
-        let state = ctx
-            .take_data::<State>()
-            .expect("PreferencesActor requires State injection");
 
-        Self { storage, state }
+        Self { storage }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::Event(event) => match event {
-                Event::ProviderSwitched { ref payload } => {
-                    self.handle_provider_switched(payload);
-                }
-                Event::PromptStrategySwitched { ref payload } => {
-                    self.handle_prompt_strategy_switched(payload);
-                }
-                _ => {}
-            },
+            ActorEnvelope::Command(Command::UpdatePreferences { ref payload }) => {
+                self.handle_update_preferences(payload, ctx);
+            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Event(_) | ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
         }
     }
 }
 
 impl PreferencesActor {
-    /// Persists the selected provider as `last_model` in `nullslop.toml`.
-    fn handle_provider_switched(&self, payload: &ProviderSwitched) {
+    /// Processes a batch of preference diffs: load, apply, save, emit.
+    fn handle_update_preferences(&self, payload: &UpdatePreferences, ctx: &ActorContext) {
         let mut prefs = self.load_or_default();
-        prefs.last_model = Some(payload.provider_name.clone());
-        self.save_and_sync(&prefs);
-    }
-
-    /// Persists the selected strategy as `last_strategy` in `nullslop.toml`.
-    fn handle_prompt_strategy_switched(&self, payload: &PromptStrategySwitched) {
-        let mut prefs = self.load_or_default();
-        prefs.last_strategy = Some(payload.strategy_id.as_str().to_owned());
-        self.save_and_sync(&prefs);
+        for update in &payload.updates {
+            update.apply(&mut prefs);
+        }
+        if let Err(e) = self.storage.save(&prefs) {
+            tracing::warn!(err = ?e, "preferences-actor failed to save user preferences");
+            return;
+        }
+        if let Err(e) = ctx.send_event(Event::PreferencesUpdated {
+            payload: PreferencesUpdated {
+                preferences: prefs,
+            },
+        }) {
+            tracing::warn!(err = ?e, "preferences-actor failed to emit PreferencesUpdated");
+        }
     }
 
     /// Loads current preferences or returns defaults.
@@ -101,16 +89,6 @@ impl PreferencesActor {
             }
         }
     }
-
-    /// Saves preferences to disk and syncs the AppState cache.
-    fn save_and_sync(&self, prefs: &UserPreferences) {
-        if let Err(e) = self.storage.save(prefs) {
-            tracing::warn!(err = ?e, "preferences-actor failed to save user preferences");
-            return;
-        }
-        let mut state = self.state.write();
-        state.frontend.preferences = prefs.clone();
-    }
 }
 
 #[cfg(test)]
@@ -120,41 +98,39 @@ mod tests {
     use crate::common::actor::{
         Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
     };
-    use crate::common::app_state::AppState;
-    use crate::common::state::State;
-    use crate::feat::context::protocol::event::PromptStrategySwitched;
+    use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
+    use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
     use crate::feat::preferences_actor::user_preferences_storage::InMemoryUserPreferencesStorage;
     use crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorageService;
-    use crate::feat::provider::protocol::event::ProviderSwitched;
-    use crate::protocol::{Event, PromptStrategyId, SessionId};
+    use crate::protocol::{Command, Event};
 
     use super::PreferencesActor;
 
     /// Creates a test actor with in-memory storage.
-    fn create_actor() -> (PreferencesActor, State, Arc<RecordingSink>, ActorContext) {
+    fn create_actor() -> (PreferencesActor, Arc<RecordingSink>, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("preferences-actor", sink.clone() as Arc<dyn MessageSink>);
         let storage =
             UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
-        let state = State::new(AppState::default());
         ctx.set_data(storage);
-        ctx.set_data(state.clone());
         let actor = PreferencesActor::activate(&mut ctx);
-        (actor, state, sink, ctx)
+        (actor, sink, ctx)
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn provider_switched_saves_last_model() {
+    async fn set_last_model_saves_to_storage() {
         // Given a preferences actor with in-memory storage.
-        let (mut actor, _state, _sink, ctx) = create_actor();
+        let (mut actor, _sink, ctx) = create_actor();
 
-        // When processing ProviderSwitched.
+        // When sending UpdatePreferences with SetLastModel.
         actor
             .handle(
-                ActorEnvelope::Event(Event::ProviderSwitched {
-                    payload: ProviderSwitched {
-                        provider_name: "ollama/llama3".into(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![PreferenceUpdate::SetLastModel(Some(
+                            "ollama/llama3".into(),
+                        ))],
                     },
                 }),
                 &ctx,
@@ -168,26 +144,30 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn provider_switched_overwrites_previous_model() {
-        // Given a preferences actor with in-memory storage.
-        let (mut actor, _state, _sink, ctx) = create_actor();
-
-        // When processing ProviderSwitched twice.
+    async fn set_last_model_overwrites_previous() {
+        // Given a preferences actor with a saved model.
+        let (mut actor, _sink, ctx) = create_actor();
         actor
             .handle(
-                ActorEnvelope::Event(Event::ProviderSwitched {
-                    payload: ProviderSwitched {
-                        provider_name: "ollama/llama3".into(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![PreferenceUpdate::SetLastModel(Some(
+                            "ollama/llama3".into(),
+                        ))],
                     },
                 }),
                 &ctx,
             )
             .await;
+
+        // When sending a second UpdatePreferences with a different model.
         actor
             .handle(
-                ActorEnvelope::Event(Event::ProviderSwitched {
-                    payload: ProviderSwitched {
-                        provider_name: "openrouter/gpt-4".into(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![PreferenceUpdate::SetLastModel(Some(
+                            "openrouter/gpt-4".into(),
+                        ))],
                     },
                 }),
                 &ctx,
@@ -201,27 +181,30 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn provider_switched_preserves_last_strategy() {
+    async fn set_last_model_preserves_last_strategy() {
         // Given a preferences actor with a saved strategy.
-        let (mut actor, _state, _sink, ctx) = create_actor();
+        let (mut actor, _sink, ctx) = create_actor();
         actor
             .handle(
-                ActorEnvelope::Event(Event::PromptStrategySwitched {
-                    payload: PromptStrategySwitched {
-                        session_id: SessionId::new(),
-                        strategy_id: PromptStrategyId::sliding_window(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![PreferenceUpdate::SetLastStrategy(Some(
+                            "sliding_window".into(),
+                        ))],
                     },
                 }),
                 &ctx,
             )
             .await;
 
-        // When processing ProviderSwitched.
+        // When sending UpdatePreferences with SetLastModel.
         actor
             .handle(
-                ActorEnvelope::Event(Event::ProviderSwitched {
-                    payload: ProviderSwitched {
-                        provider_name: "ollama/llama3".into(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![PreferenceUpdate::SetLastModel(Some(
+                            "ollama/llama3".into(),
+                        ))],
                     },
                 }),
                 &ctx,
@@ -236,17 +219,18 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn strategy_switched_saves_last_strategy() {
+    async fn set_last_strategy_saves_to_storage() {
         // Given a preferences actor.
-        let (mut actor, _state, _sink, ctx) = create_actor();
+        let (mut actor, _sink, ctx) = create_actor();
 
-        // When processing PromptStrategySwitched.
+        // When sending UpdatePreferences with SetLastStrategy.
         actor
             .handle(
-                ActorEnvelope::Event(Event::PromptStrategySwitched {
-                    payload: PromptStrategySwitched {
-                        session_id: SessionId::new(),
-                        strategy_id: PromptStrategyId::sliding_window(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![PreferenceUpdate::SetLastStrategy(Some(
+                            "sliding_window".into(),
+                        ))],
                     },
                 }),
                 &ctx,
@@ -260,27 +244,30 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn strategy_switched_preserves_last_model() {
+    async fn set_last_strategy_preserves_last_model() {
         // Given a preferences actor with a saved model.
-        let (mut actor, _state, _sink, ctx) = create_actor();
+        let (mut actor, _sink, ctx) = create_actor();
         actor
             .handle(
-                ActorEnvelope::Event(Event::ProviderSwitched {
-                    payload: ProviderSwitched {
-                        provider_name: "ollama/llama3".into(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![PreferenceUpdate::SetLastModel(Some(
+                            "ollama/llama3".into(),
+                        ))],
                     },
                 }),
                 &ctx,
             )
             .await;
 
-        // When processing PromptStrategySwitched.
+        // When sending UpdatePreferences with SetLastStrategy.
         actor
             .handle(
-                ActorEnvelope::Event(Event::PromptStrategySwitched {
-                    payload: PromptStrategySwitched {
-                        session_id: SessionId::new(),
-                        strategy_id: PromptStrategyId::sliding_window(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![PreferenceUpdate::SetLastStrategy(Some(
+                            "sliding_window".into(),
+                        ))],
                     },
                 }),
                 &ctx,
@@ -295,73 +282,109 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn provider_switched_syncs_app_state_cache() {
+    async fn batch_diffs_apply_all_at_once() {
         // Given a preferences actor.
-        let (mut actor, state, _sink, ctx) = create_actor();
+        let (mut actor, _sink, ctx) = create_actor();
 
-        // When processing ProviderSwitched.
+        // When sending UpdatePreferences with both diffs in one batch.
         actor
             .handle(
-                ActorEnvelope::Event(Event::ProviderSwitched {
-                    payload: ProviderSwitched {
-                        provider_name: "ollama/llama3".into(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![
+                            PreferenceUpdate::SetLastModel(Some("ollama/llama3".into())),
+                            PreferenceUpdate::SetLastStrategy(Some("sliding_window".into())),
+                        ],
                     },
                 }),
                 &ctx,
             )
             .await;
 
-        // Then the AppState preferences cache is updated.
-        let guard = state.read();
-        assert_eq!(
-            guard.frontend.preferences.last_model.as_deref(),
-            Some("ollama/llama3")
-        );
+        // Then both fields are persisted.
+        let prefs = actor.storage.load().expect("load");
+        assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
+        assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn strategy_switched_syncs_app_state_cache() {
+    async fn emits_preferences_updated_event() {
         // Given a preferences actor.
-        let (mut actor, state, _sink, ctx) = create_actor();
+        let (mut actor, sink, ctx) = create_actor();
 
-        // When processing PromptStrategySwitched.
+        // When sending UpdatePreferences.
         actor
             .handle(
-                ActorEnvelope::Event(Event::PromptStrategySwitched {
-                    payload: PromptStrategySwitched {
-                        session_id: SessionId::new(),
-                        strategy_id: PromptStrategyId::sliding_window(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![PreferenceUpdate::SetLastModel(Some(
+                            "ollama/llama3".into(),
+                        ))],
                     },
                 }),
                 &ctx,
             )
             .await;
 
-        // Then the AppState preferences cache is updated.
-        let guard = state.read();
-        assert_eq!(
-            guard.frontend.preferences.last_strategy.as_deref(),
-            Some("sliding_window")
-        );
+        // Then a PreferencesUpdated event was emitted with the full preferences.
+        let events = sink.events();
+        let found = events.iter().any(|e| {
+            matches!(
+                e,
+                Event::PreferencesUpdated {
+                    payload: PreferencesUpdated {
+                        preferences
+                    }
+                } if preferences.last_model.as_deref() == Some("ollama/llama3")
+            )
+        });
+        assert!(found, "expected PreferencesUpdated event with last_model=ollama/llama3");
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn ignores_unrelated_events() {
-        // Given a preferences actor.
-        let (mut actor, _state, _sink, ctx) = create_actor();
-
-        // When processing an unrelated event (ModelsRefreshed).
+    async fn empty_diffs_does_not_change_storage() {
+        // Given a preferences actor with a saved model.
+        let (mut actor, _sink, ctx) = create_actor();
         actor
             .handle(
-                ActorEnvelope::Event(Event::ModelsRefreshed {
-                    payload: crate::feat::provider::protocol::event::ModelsRefreshed {
-                        session_id: crate::protocol::SessionId::new(),
-                        results: std::collections::HashMap::new(),
-                        errors: std::collections::HashMap::new(),
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences {
+                        updates: vec![PreferenceUpdate::SetLastModel(Some(
+                            "ollama/llama3".into(),
+                        ))],
                     },
                 }),
+                &ctx,
+            )
+            .await;
+
+        // When sending UpdatePreferences with empty diffs.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::UpdatePreferences {
+                    payload: UpdatePreferences { updates: vec![] },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the existing preferences are preserved.
+        let prefs = actor.storage.load().expect("load");
+        assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn ignores_unrelated_commands() {
+        // Given a preferences actor.
+        let (mut actor, _sink, ctx) = create_actor();
+
+        // When sending an unrelated command (RefreshModels).
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::RefreshModels),
                 &ctx,
             )
             .await;

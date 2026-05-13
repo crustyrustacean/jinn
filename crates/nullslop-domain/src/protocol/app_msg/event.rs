@@ -16,7 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 // Internal imports for enum definition, type_name(), and tests.
-use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
+use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned};
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::protocol::event::{
     PromptAssembled, PromptStrategySwitched, StrategyStateUpdated,
@@ -32,6 +32,7 @@ use crate::feat::tools_actor::protocol::event::{
     ToolUseStarted, ToolsRegistered,
 };
 use crate::init::EnvironmentLoaded;
+use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::protocol::system::{KeyDown, KeyUp, ModeChanged};
 
 /// Every event the host can broadcast.
@@ -93,6 +94,13 @@ pub enum Event {
         /// Which actor finished shutting down.
         #[serde(flatten)]
         payload: ActorShutdownCompleted,
+    },
+    /// All actors have been spawned.
+    #[serde(rename = "all_actors_spawned")]
+    AllActorsSpawned {
+        /// Empty payload — the event itself is the signal.
+        #[serde(flatten)]
+        payload: AllActorsSpawned,
     },
     /// A streaming LLM response completed.
     #[serde(rename = "stream_completed")]
@@ -213,6 +221,13 @@ pub enum Event {
         #[serde(flatten)]
         payload: EnvironmentLoaded,
     },
+    /// User preferences have been updated and persisted.
+    #[serde(rename = "preferences_updated")]
+    PreferencesUpdated {
+        /// The updated preferences.
+        #[serde(flatten)]
+        payload: PreferencesUpdated,
+    },
 }
 
 impl Event {
@@ -224,6 +239,7 @@ impl Event {
             Self::ActorStarting { .. } => Some(ActorStarting::TYPE_NAME),
             Self::ActorStarted { .. } => Some(ActorStarted::TYPE_NAME),
             Self::ActorShutdownCompleted { .. } => Some(ActorShutdownCompleted::TYPE_NAME),
+            Self::AllActorsSpawned { .. } => Some(AllActorsSpawned::TYPE_NAME),
             Self::KeyDown { .. } => Some(KeyDown::TYPE_NAME),
             Self::KeyUp { .. } => Some(KeyUp::TYPE_NAME),
             Self::ModeChanged { .. } => Some(ModeChanged::TYPE_NAME),
@@ -247,6 +263,7 @@ impl Event {
                 Some(crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME)
             }
             Self::EnvironmentLoaded { .. } => Some(EnvironmentLoaded::TYPE_NAME),
+            Self::PreferencesUpdated { .. } => Some(PreferencesUpdated::TYPE_NAME),
         }
     }
 }
@@ -302,6 +319,10 @@ mod tests {
     #[case::actor_shutdown_completed(
         Event::ActorShutdownCompleted { payload: ActorShutdownCompleted { name: "actor-a".into() } },
         ActorShutdownCompleted::TYPE_NAME
+    )]
+    #[case::all_actors_spawned(
+        Event::AllActorsSpawned { payload: AllActorsSpawned },
+        AllActorsSpawned::TYPE_NAME
     )]
     #[case::key_down(
         Event::KeyDown { payload: KeyDown { key: KeyEvent { key: Key::Enter, modifiers: Modifiers::none() } } },

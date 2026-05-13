@@ -234,6 +234,7 @@ mod tests {
     }
 
     #[rstest::rstest]
+    #[timeout(std::time::Duration::from_secs(15))]
     fn dispatch_headless_script_completes_successfully() {
         // Given a script file containing "q".
         let dir = tempfile::tempdir().expect("temp dir");

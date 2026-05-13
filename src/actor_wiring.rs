@@ -48,7 +48,7 @@ use nullslop_domain::{
 
 /// Total number of actors in the system.
 /// Used by the system-ready actor to know when all actors have started.
-const ACTOR_COUNT: usize = 15;
+const ACTOR_COUNT: usize = 16;
 
 /// Creates an `AppCore` with all actors registered and the async forwarding task started.
 ///
@@ -178,6 +178,13 @@ pub fn create_core_with_actor_host(
     >("preferences", &sink, handle, |ctx| {
         ctx.set_description("Persists user preferences to nullslop.toml");
         ctx.set_data(user_preferences_storage.clone());
+    });
+
+    // Preferences state sync: updates AppState from PreferencesUpdated events.
+    let prefs_sync_result = spawn::<
+        nullslop_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor,
+    >("preferences-sync", &sink, handle, |ctx| {
+        ctx.set_description("Syncs AppState.frontend.preferences from PreferencesUpdated events");
         ctx.set_data(state.clone());
     });
 
@@ -312,6 +319,7 @@ pub fn create_core_with_actor_host(
             env_init_result,
             provider_init_result,
             prefs_result,
+            prefs_sync_result,
             echo_result,
             llm_result,
             discover_result,
