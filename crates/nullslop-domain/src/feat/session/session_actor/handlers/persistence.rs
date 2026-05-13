@@ -6,9 +6,9 @@ use jiff::Timestamp;
 
 use super::super::super::PersistedSession;
 use super::super::SessionPersistenceActor;
+use crate::SessionLoadRequested;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::protocol::{ChatEntryKind, Command, PromptStrategyId};
-use crate::SessionLoadRequested;
 
 impl SessionPersistenceActor {
     /// Saves the current state of a session to disk.
@@ -37,9 +37,7 @@ impl SessionPersistenceActor {
                 .history()
                 .iter()
                 .find_map(|entry| match &entry.kind {
-                    ChatEntryKind::User(text) => {
-                        Some(text.lines().next().unwrap_or("").to_owned())
-                    }
+                    ChatEntryKind::User(text) => Some(text.lines().next().unwrap_or("").to_owned()),
                     _ => None,
                 })
                 .unwrap_or_else(|| "Untitled Session".to_owned());

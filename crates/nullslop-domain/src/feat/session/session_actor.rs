@@ -21,6 +21,7 @@ mod handlers;
 
 use super::SessionStoreService;
 
+use crate::SessionLoadRequested;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::services::Services;
 use crate::common::state::State;
@@ -41,7 +42,6 @@ use crate::feat::tools_actor::protocol::event::{
 };
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event, PromptStrategyId};
-use crate::SessionLoadRequested;
 
 use super::entries::load_session_picker_items_from_store;
 
@@ -485,7 +485,9 @@ mod tests {
         let session_id = SessionId::new();
         {
             let mut guard = actor.state.write();
-            guard.session_mut_or_create(&session_id).push_entry(ChatEntry::user("do the thing"));
+            guard
+                .session_mut_or_create(&session_id)
+                .push_entry(ChatEntry::user("do the thing"));
         }
 
         // When processing ToolExecutionCompleted.
@@ -526,7 +528,9 @@ mod tests {
         let session_id = SessionId::new();
         {
             let mut guard = actor.state.write();
-            guard.session_mut_or_create(&session_id).push_entry(ChatEntry::user("line one\nline two"));
+            guard
+                .session_mut_or_create(&session_id)
+                .push_entry(ChatEntry::user("line one\nline two"));
         }
 
         // When saving via tool execution completion.
@@ -566,7 +570,9 @@ mod tests {
         let session_id = SessionId::new();
         {
             let mut guard = actor.state.write();
-            guard.session_mut_or_create(&session_id).push_entry(ChatEntry::system("system msg"));
+            guard
+                .session_mut_or_create(&session_id)
+                .push_entry(ChatEntry::system("system msg"));
         }
 
         // When saving via tool execution completion.
