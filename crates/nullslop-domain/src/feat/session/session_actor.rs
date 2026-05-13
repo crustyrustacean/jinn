@@ -176,7 +176,8 @@ impl SessionPersistenceActor {
             | Command::CancelToolBatch { .. }
             | Command::ScanSkills
             | Command::RescanPersonas { .. }
-            | Command::LoadPersonaPickerEntries { .. } => {}
+            | Command::LoadPersonaPickerEntries { .. }
+            | Command::UpdatePreferences { .. } => {}
         }
     }
 

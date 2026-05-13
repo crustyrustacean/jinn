@@ -77,6 +77,8 @@ pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
 pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
 pub use feat::preferences_actor::UserPreferences;
 pub use feat::preferences_actor::UserPreferencesStorageService;
+pub use feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
+pub use feat::preferences_actor::protocol::event::PreferencesUpdated;
 
 // Re-export prompt template utilities
 pub use feat::context::prompt_template::{ensure_prompts_dir_with_example, prompts_dir};
