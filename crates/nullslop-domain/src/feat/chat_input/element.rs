@@ -43,7 +43,7 @@ impl UiElement<AppState> for ChatInputBoxElement {
         let border_style = if input_mode {
             Style::default().fg(Color::Yellow)
         } else {
-            Style::default().fg(Color::White)
+            Style::default().fg(Color::DarkGray)
         };
 
         let text_style = Style::default();
