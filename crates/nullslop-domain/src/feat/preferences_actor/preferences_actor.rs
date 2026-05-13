@@ -9,14 +9,12 @@
 //! This actor owns no `AppState` fields. Its sole responsibility is writing
 //! the preferences file. It does not read or write shared state.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::feat::preferences_actor::user_preferences::UserPreferences;
 use crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorageService;
 use crate::feat::provider::protocol::event::ProviderSwitched;
 use crate::protocol::Event;
 
-/// Direct message type (unused — the preferences actor only reacts to events).
-pub enum PreferencesDirectMsg {}
 
 /// The preferences actor.
 ///
@@ -28,7 +26,7 @@ pub struct PreferencesActor {
 }
 
 impl Actor for PreferencesActor {
-    type Message = PreferencesDirectMsg;
+    type Message = NoDirectMsg;
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<ProviderSwitched>();
@@ -55,11 +53,10 @@ impl Actor for PreferencesActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Command(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
         }
     }
 
-    async fn shutdown(self) {}
 }
 
 impl PreferencesActor {

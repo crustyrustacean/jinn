@@ -6,15 +6,13 @@
 //! cache entries into the registry, loads user preferences, and if `last_model`
 //! is set, sends a `ProviderSwitch` command to apply it.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::services::Services;
 use crate::feat::provider::protocol::command::ProviderSwitch;
 use crate::feat::provider_infra::{ModelCache, ProviderRegistry, cache_path};
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
 
-/// Direct message type (unused — the provider init actor only reacts to events).
-pub enum ProviderInitDirectMsg {}
 
 /// The provider initialization actor.
 ///
@@ -28,7 +26,7 @@ pub struct ProviderInitActor {
 }
 
 impl Actor for ProviderInitActor {
-    type Message = ProviderInitDirectMsg;
+    type Message = NoDirectMsg;
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<EnvironmentLoaded>();
@@ -55,11 +53,10 @@ impl Actor for ProviderInitActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Command(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
         }
     }
 
-    async fn shutdown(self) {}
 }
 
 impl ProviderInitActor {

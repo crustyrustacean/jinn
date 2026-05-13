@@ -21,7 +21,7 @@ mod handlers;
 
 use super::SessionStoreService;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
@@ -40,8 +40,6 @@ use crate::{SessionLoadRequested, SessionSaveRequested};
 
 use super::entries::load_session_picker_items_from_store;
 
-/// Direct message type (unused — the actor only responds to bus commands/events).
-pub enum SessionPersistenceDirectMsg {}
 
 /// Session lifecycle and persistence actor.
 ///
@@ -58,7 +56,7 @@ pub struct SessionPersistenceActor {
 }
 
 impl Actor for SessionPersistenceActor {
-    type Message = SessionPersistenceDirectMsg;
+    type Message = NoDirectMsg;
 
     fn activate(ctx: &mut ActorContext) -> Self {
         // Persistence subscriptions.
@@ -108,11 +106,10 @@ impl Actor for SessionPersistenceActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Shutdown => {}
         }
     }
 
-    async fn shutdown(self) {}
 }
 
 impl SessionPersistenceActor {

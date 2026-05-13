@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::feat::provider::protocol::command::RefreshModels;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::provider_infra::{
@@ -21,10 +21,6 @@ use llm::builder::LLMBuilder;
 #[error(debug)]
 pub struct DiscoverError;
 
-/// Direct message type for the discover actor.
-///
-/// Currently unused — the actor responds to bus commands only.
-pub enum DiscoverDirectMsg {}
 
 /// Model discovery actor.
 ///
@@ -39,7 +35,7 @@ pub struct DiscoverActor {
 }
 
 impl Actor for DiscoverActor {
-    type Message = DiscoverDirectMsg;
+    type Message = NoDirectMsg;
 
     #[expect(
         clippy::expect_used,
@@ -58,17 +54,16 @@ impl Actor for DiscoverActor {
         Self { registry, api_keys }
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<DiscoverDirectMsg>, ctx: &ActorContext) {
+    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx).await,
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Event(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Event(_) | ActorEnvelope::Shutdown => {}
         }
     }
 
-    async fn shutdown(self) {}
 }
 
 impl DiscoverActor {

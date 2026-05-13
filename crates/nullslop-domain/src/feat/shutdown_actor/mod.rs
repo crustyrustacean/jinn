@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use crate::common::actor::protocol::command::ProceedWithShutdown;
 use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarting};
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::protocol::{Command, Event};
@@ -65,8 +65,6 @@ impl ShutdownTrackerState {
     }
 }
 
-/// Direct message type for the shutdown tracker actor (unused).
-pub enum ShutdownTrackerDirectMsg {}
 
 /// Actor that coordinates startup tracking and shutdown sequencing.
 ///
@@ -83,7 +81,7 @@ pub struct ShutdownTrackerActor {
 }
 
 impl Actor for ShutdownTrackerActor {
-    type Message = ShutdownTrackerDirectMsg;
+    type Message = NoDirectMsg;
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<ActorStarting>();
@@ -111,11 +109,10 @@ impl Actor for ShutdownTrackerActor {
             ActorEnvelope::Command(command) => {
                 self.handle_command(&command);
             }
-            ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Shutdown => {}
         }
     }
 
-    async fn shutdown(self) {}
 }
 
 impl ShutdownTrackerActor {
