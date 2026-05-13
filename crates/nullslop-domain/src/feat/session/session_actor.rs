@@ -31,7 +31,7 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::context::protocol::event::PromptAssembled;
-use crate::feat::context::strategy::token_estimator::{TokenCounter, TiktokenCounter};
+use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
