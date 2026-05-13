@@ -46,6 +46,14 @@ impl PromptStrategyId {
     pub fn compaction() -> Self {
         Self::new("compaction")
     }
+
+    /// The internal string identifier (e.g., `"sliding_window"`).
+    ///
+    /// Use this for serialization and persistence, not [`Display`].
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl fmt::Display for PromptStrategyId {

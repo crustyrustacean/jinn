@@ -22,9 +22,13 @@ mod handlers;
 use super::SessionStoreService;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
+};
+use crate::feat::context::protocol::command::{
+    AssemblePrompt, RestoreStrategyState, SwitchPromptStrategy,
 };
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -35,7 +39,8 @@ use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted
 use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
-use crate::protocol::{Command, Event};
+use crate::init::EnvironmentLoaded;
+use crate::protocol::{Command, Event, PromptStrategyId};
 use crate::{SessionLoadRequested, SessionSaveRequested};
 
 use super::entries::load_session_picker_items_from_store;
@@ -48,6 +53,8 @@ use super::entries::load_session_picker_items_from_store;
 pub struct SessionPersistenceActor {
     /// Shared application state.
     pub(super) state: State,
+    /// Runtime services (user preferences storage for startup config loading).
+    pub(super) services: Option<Services>,
     /// The session store service for writing session snapshots.
     pub(super) store: Option<SessionStoreService>,
     /// Token counter for recording token usage in the session ledger.
@@ -79,6 +86,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<ToolCallStreaming>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
         ctx.subscribe_event::<ModelsRefreshed>();
+        ctx.subscribe_event::<EnvironmentLoaded>();
 
         ctx.set_description("Session lifecycle and persistence");
 
@@ -87,12 +95,14 @@ impl Actor for SessionPersistenceActor {
             .take_data::<State>()
             .expect("SessionPersistenceActor requires State injection");
         let store = ctx.take_data::<SessionStoreService>();
+        let services = ctx.take_data::<Services>();
         let counter = ctx
             .take_data::<TiktokenCounter>()
             .unwrap_or_else(TiktokenCounter::o200k_base);
 
         Self {
             state,
+            services,
             store,
             counter,
         }
@@ -126,6 +136,9 @@ impl SessionPersistenceActor {
             }
             Event::ModelsRefreshed { payload } => {
                 self.on_models_refreshed(payload);
+            }
+            Event::EnvironmentLoaded { payload } => {
+                self.on_environment_loaded(&payload.config, ctx);
             }
             _ => {}
         }
@@ -176,6 +189,62 @@ impl SessionPersistenceActor {
         if let Some(ref store) = self.store {
             let mut state = self.state.write();
             load_session_picker_items_from_store(store, &mut state);
+        }
+    }
+
+    /// Applies config defaults to the default session profile on startup.
+    ///
+    /// Loads user preferences, caches them in `AppState.frontend.preferences`,
+    /// and applies `last_model` and `last_strategy` to the default session.
+    ///
+    /// NOTE: Using `active_session_mut()` is acceptable here because this runs
+    /// at startup before any user interaction. There is only one session.
+    fn on_environment_loaded(
+        &self,
+        _config: &crate::feat::provider_infra::ProvidersConfig,
+        ctx: &ActorContext,
+    ) {
+        let Some(ref services) = self.services else {
+            return;
+        };
+
+        let prefs = match services.user_preferences_storage.load() {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(err = ?e, "session-actor failed to load preferences on startup");
+                return;
+            }
+        };
+
+        let session_id;
+        {
+            let mut state = self.state.write();
+            // Cache preferences in AppState.
+            state.frontend.preferences = prefs.clone();
+
+            // Apply config defaults to the default session.
+            let session = state.active_session_mut();
+            if let Some(ref model) = prefs.last_model {
+                session.set_model(model.clone());
+            }
+            if let Some(ref strategy_str) = prefs.last_strategy {
+                let strategy_id = PromptStrategyId::new(strategy_str.clone());
+                session.switch_strategy(strategy_id.clone());
+            }
+            session_id = state.session.active_session.clone();
+        }
+
+        // Emit SwitchPromptStrategy so the context actor initializes the strategy.
+        if let Some(ref strategy_str) = prefs.last_strategy {
+            let strategy_id = PromptStrategyId::new(strategy_str.clone());
+            if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy {
+                payload: SwitchPromptStrategy {
+                    session_id,
+                    strategy_id,
+                },
+            }) {
+                tracing::warn!(err = ?e, "session-actor failed to emit SwitchPromptStrategy on startup");
+            }
         }
     }
 }
