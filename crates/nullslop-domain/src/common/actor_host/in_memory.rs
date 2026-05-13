@@ -52,7 +52,7 @@ pub struct ActorSpawnResult {
 /// Panics if the tokio task cannot be spawned.
 pub fn spawn<A>(
     name: &str,
-    sink: Arc<dyn MessageSink>,
+    sink: &Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
     configure: impl FnOnce(&mut ActorContext),
 ) -> ActorSpawnResult

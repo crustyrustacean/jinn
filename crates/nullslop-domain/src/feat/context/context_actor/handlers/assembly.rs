@@ -29,6 +29,7 @@ impl PromptAssemblyActor {
     }
 
     /// Handles [`AssemblePrompt`] by running the session's strategy.
+    #[allow(clippy::too_many_lines)]
     pub(in crate::feat::context::context_actor) async fn on_assemble_prompt(
         &mut self,
         cmd: &AssemblePrompt,
@@ -147,8 +148,7 @@ impl PromptAssemblyActor {
                 .session
                 .sessions
                 .get(&session_id)
-                .map(|s| s.cwd().to_path_buf())
-                .unwrap_or_else(|| std::path::PathBuf::from("."));
+                .map_or_else(|| std::path::PathBuf::from("."), |s| s.cwd().to_path_buf());
             let context_files = load_project_context_files(&cwd);
             let persona = guard.context.active_persona.as_ref();
             build_env_context(persona, &context_files, &cwd)

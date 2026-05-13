@@ -6,9 +6,10 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 
 /// Identifies a sidebar section. Used for focus tracking and dispatch.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SidebarSectionId {
     /// The pinned context entries section.
+    #[default]
     Pins,
 }
 
@@ -20,11 +21,6 @@ impl std::fmt::Display for SidebarSectionId {
     }
 }
 
-impl Default for SidebarSectionId {
-    fn default() -> Self {
-        Self::Pins
-    }
-}
 
 /// Configuration passed to a section during intent handling.
 ///

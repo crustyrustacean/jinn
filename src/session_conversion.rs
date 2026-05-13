@@ -36,17 +36,17 @@ pub fn persisted_into_session(persisted: PersistedSession) -> ChatSessionState {
     }
 
     // Restore token ledger from blob — missing/malformed → empty.
-    if let Some(blob) = persisted.blobs.get(BLOB_TOKEN_STATS) {
-        if let Ok(records) = serde_json::from_value::<Vec<TokenRecord>>(blob.clone()) {
-            session.restore_token_ledger(records);
-        }
+    if let Some(blob) = persisted.blobs.get(BLOB_TOKEN_STATS)
+        && let Ok(records) = serde_json::from_value::<Vec<TokenRecord>>(blob.clone())
+    {
+        session.restore_token_ledger(records);
     }
 
     // Restore parent session from blob — missing/malformed → None.
-    if let Some(blob) = persisted.blobs.get(BLOB_PARENT_SESSION) {
-        if let Ok(parent) = serde_json::from_value::<Option<SessionId>>(blob.clone()) {
-            session.restore_parent_session(parent);
-        }
+    if let Some(blob) = persisted.blobs.get(BLOB_PARENT_SESSION)
+        && let Ok(parent) = serde_json::from_value::<Option<SessionId>>(blob.clone())
+    {
+        session.restore_parent_session(parent);
     }
 
     session

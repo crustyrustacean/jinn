@@ -667,7 +667,6 @@ impl ChatSessionState {
     /// # Panics
     ///
     /// Panics if the ledger is empty.
-    #[expect(clippy::indexing_slicing, reason = "caller guarantees a record exists")]
     pub fn finalize_last_token_record(&mut self, tokens_received: u32) {
         let last = self
             .core

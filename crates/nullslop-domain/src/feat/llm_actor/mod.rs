@@ -433,17 +433,17 @@ impl LlmActor {
             .get(session_id)
             .is_some_and(|s| s.state == SessionState::AwaitingToolResults);
 
-        if awaiting_tools {
-            if let Err(e) = ctx.send_command(Command::CancelToolBatch {
+        if awaiting_tools
+            && let Err(e) = ctx.send_command(Command::CancelToolBatch {
                 payload: CancelToolBatch {
                     session_id: session_id.clone(),
                 },
-            }) {
-                tracing::warn!(
-                    err = ?e,
-                    "failed to emit CancelToolBatch during stream cancellation"
-                );
-            }
+            })
+        {
+            tracing::warn!(
+                err = ?e,
+                "failed to emit CancelToolBatch during stream cancellation"
+            );
         }
 
         if let Some(handle) = self.tasks.remove(session_id) {

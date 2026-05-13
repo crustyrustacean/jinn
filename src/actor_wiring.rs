@@ -76,7 +76,7 @@ pub fn create_core_with_actor_host(
     let (core_notify_tx, core_notify_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
 
     // Create the message sink that bridges actor output to AppCore's channel.
-    let sink = Arc::new(ActorMessageSink::new(sender.clone()));
+    let sink: Arc<dyn MessageSink> = Arc::new(ActorMessageSink::new(sender.clone()));
 
     // Create shared State FIRST — injected into multiple actors.
     let state = State::new(AppState::default());
@@ -159,7 +159,7 @@ pub fn create_core_with_actor_host(
     // ── Init actors (self-schedule Initialize during activate) ────────────
 
     // Env init: loads providers.toml, resolves API keys, emits EnvironmentLoaded.
-    let env_init_result = spawn::<EnvInitActor>("env-init", sink.clone(), handle, |ctx| {
+    let env_init_result = spawn::<EnvInitActor>("env-init", &sink, handle, |ctx| {
         ctx.set_description("Loads environment variables and API keys");
         ctx.set_data(config_storage.clone());
         ctx.set_data(api_keys.clone());
@@ -167,7 +167,7 @@ pub fn create_core_with_actor_host(
 
     // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
     let provider_init_result =
-        spawn::<ProviderInitActor>("provider-init", sink.clone(), handle, |ctx| {
+        spawn::<ProviderInitActor>("provider-init", &sink, handle, |ctx| {
             ctx.set_description("Loads provider config, merges cache, resolves last_model");
             ctx.set_data(services.clone());
         });
@@ -175,7 +175,7 @@ pub fn create_core_with_actor_host(
     // Preferences: loads and persists user preferences.
     let prefs_result = spawn::<
         nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActor,
-    >("preferences", sink.clone(), handle, |ctx| {
+    >("preferences", &sink, handle, |ctx| {
         ctx.set_description("Persists user preferences to nullslop.toml");
         ctx.set_data(user_preferences_storage.clone());
     });
@@ -185,7 +185,7 @@ pub fn create_core_with_actor_host(
     // Echo actor.
     let echo_result = spawn::<nullslop_domain::feat::echo_actor::EchoActor>(
         "echo",
-        sink.clone(),
+        &sink,
         handle,
         |ctx| {
             ctx.set_description("Echoes messages back");
@@ -195,7 +195,7 @@ pub fn create_core_with_actor_host(
     // LLM streaming actor.
     let llm_result = spawn::<nullslop_domain::feat::llm_actor::LlmActor>(
         "llm-streaming",
-        sink.clone(),
+        &sink,
         handle,
         |ctx| {
             ctx.set_description("LLM streaming with tool support");
@@ -206,7 +206,7 @@ pub fn create_core_with_actor_host(
     // Model discovery actor.
     let discover_result = spawn::<nullslop_domain::feat::provider::discover_actor::DiscoverActor>(
         "llm-provider-listing",
-        sink.clone(),
+        &sink,
         handle,
         |ctx| {
             ctx.set_description("Discovers available models");
@@ -218,7 +218,7 @@ pub fn create_core_with_actor_host(
     // Tool orchestrator actor.
     let orch_result = spawn::<nullslop_domain::feat::tools_actor::ToolOrchestratorActor>(
         "tool-orchestrator",
-        sink.clone(),
+        &sink,
         handle,
         |ctx| {
             ctx.set_description("Dispatches and manages tool execution");
@@ -229,7 +229,7 @@ pub fn create_core_with_actor_host(
     // Context / prompt assembly actor.
     let prompt_result = spawn::<nullslop_domain::feat::context::context_actor::PromptAssemblyActor>(
         "context",
-        sink.clone(),
+        &sink,
         handle,
         |ctx| {
             ctx.set_description("Context assembly, strategy management, pinning, and templates");
@@ -249,7 +249,7 @@ pub fn create_core_with_actor_host(
     let token_counter = TiktokenCounter::o200k_base();
     let sp_result = spawn::<nullslop_domain::feat::session::session_actor::SessionPersistenceActor>(
         "session-persistence",
-        sink.clone(),
+        &sink,
         handle,
         |ctx| {
             ctx.set_description("Persists session data to disk");
@@ -262,7 +262,7 @@ pub fn create_core_with_actor_host(
     // Prompt scan actor.
     let scan_result = spawn::<nullslop_domain::feat::context::prompt_scan_actor::PromptScanActor>(
         "prompt-scan",
-        sink.clone(),
+        &sink,
         handle,
         |ctx| {
             ctx.set_description("Scans and reloads prompt templates");
@@ -273,7 +273,7 @@ pub fn create_core_with_actor_host(
     // Skills scan actor.
     let skills_result = spawn::<nullslop_domain::feat::skills::skills_scan_actor::SkillsScanActor>(
         "skills-scan",
-        sink.clone(),
+        &sink,
         handle,
         |ctx| {
             ctx.set_description("Scans and loads agent skills from ~/.agents/skills");
@@ -285,7 +285,7 @@ pub fn create_core_with_actor_host(
     // Persona scan actor.
     let persona_scan_result = spawn::<
         nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActor,
-    >("persona-scan", sink.clone(), handle, |ctx| {
+    >("persona-scan", &sink, handle, |ctx| {
         ctx.set_description("Scans and loads persona files from ~/.config/nullslop/personas");
         ctx.set_data(nullslop_domain::personas_dir());
     });
@@ -293,7 +293,7 @@ pub fn create_core_with_actor_host(
     // Provider actor.
     let prov_result = spawn::<nullslop_domain::feat::provider::provider_actor::ProviderActor>(
         "provider",
-        sink.clone(),
+        &sink,
         handle,
         |ctx| {
             ctx.set_description("Manages provider selection, LLM factory, and model cache");

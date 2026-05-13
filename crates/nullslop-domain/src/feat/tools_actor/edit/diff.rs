@@ -6,6 +6,8 @@
 //! - Applying replacements
 //! - Generating unified diff output
 
+use std::fmt::Write;
+
 /// A single edit operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Edit {
@@ -151,8 +153,8 @@ pub fn generate_unified_diff(original: &str, modified: &str, path: &str) -> Stri
     let modified_lines: Vec<&str> = modified.lines().collect();
 
     let mut diff = String::new();
-    diff.push_str(&format!("--- {path}\n"));
-    diff.push_str(&format!("+++ {path}\n"));
+    let _ = writeln!(diff, "--- {path}");
+    let _ = writeln!(diff, "+++ {path}");
 
     // Simple line-by-line diff
     let max_lines = original_lines.len().max(modified_lines.len());
@@ -175,10 +177,7 @@ pub fn generate_unified_diff(original: &str, modified: &str, path: &str) -> Stri
                 // Flush the hunk before adding context
                 let removed = hunk_lines.iter().filter(|l| l.starts_with('-')).count();
                 let added = hunk_lines.iter().filter(|l| l.starts_with('+')).count();
-                diff.push_str(&format!(
-                    "@@ -{},{} +{},{} @@\n",
-                    hunk_start, removed, hunk_start, added
-                ));
+                let _ = writeln!(diff, "@@ -{hunk_start},{removed} +{hunk_start},{added} @@");
                 for line in &hunk_lines {
                     diff.push_str(line);
                     diff.push('\n');
@@ -212,10 +211,7 @@ pub fn generate_unified_diff(original: &str, modified: &str, path: &str) -> Stri
     if in_hunk {
         let removed = hunk_lines.iter().filter(|l| l.starts_with('-')).count();
         let added = hunk_lines.iter().filter(|l| l.starts_with('+')).count();
-        diff.push_str(&format!(
-            "@@ -{},{} +{},{} @@\n",
-            hunk_start, removed, hunk_start, added
-        ));
+        let _ = writeln!(diff, "@@ -{hunk_start},{removed} +{hunk_start},{added} @@");
         for line in &hunk_lines {
             diff.push_str(line);
             diff.push('\n');

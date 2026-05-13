@@ -51,8 +51,8 @@ impl TokenStats {
     pub fn from_ledger(records: &[TokenRecord]) -> Self {
         let mut stats = Self::default();
         for record in records {
-            stats.total_sent += record.tokens_sent as u64;
-            stats.total_received += record.tokens_received as u64;
+            stats.total_sent += u64::from(record.tokens_sent);
+            stats.total_received += u64::from(record.tokens_received);
             stats.request_count += 1;
         }
         stats
@@ -97,8 +97,8 @@ pub const BLOB_PARENT_SESSION: &str = "parent_session";
 ///
 /// This function handles the general case (non-trivial session trees)
 /// even though `parent_session` is currently always `None`.
-pub fn aggregate_session_stats(
-    sessions: &HashMap<SessionId, ChatSessionState>,
+pub fn aggregate_session_stats<S: std::hash::BuildHasher>(
+    sessions: &HashMap<SessionId, ChatSessionState, S>,
     session_id: &SessionId,
 ) -> AggregatedTokenStats {
     let own_session = sessions.get(session_id);
@@ -112,8 +112,8 @@ pub fn aggregate_session_stats(
 }
 
 /// Recursively sum token stats for all descendants of a session.
-fn aggregate_children(
-    sessions: &HashMap<SessionId, ChatSessionState>,
+fn aggregate_children<S: std::hash::BuildHasher>(
+    sessions: &HashMap<SessionId, ChatSessionState, S>,
     parent_id: &SessionId,
 ) -> TokenStats {
     let mut total = TokenStats::default();
