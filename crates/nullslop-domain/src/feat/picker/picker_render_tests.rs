@@ -5,6 +5,7 @@ use crate::common::app_state::FocusScope;
 use crate::common::services::Services;
 use crate::protocol::{Intent, KeymapEntry, PickerKind};
 use nullslop_selection_widget::compute_popup_rect;
+use nullslop_testutil::setup_term;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
@@ -12,14 +13,6 @@ use ratatui::style::Color;
 
 use super::super::render::{render_context_strategy_picker, render_keymap_picker};
 use super::super::strategy_entries;
-
-/// Creates a test terminal with the given dimensions.
-fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
-    let backend = TestBackend::new(width, height);
-    let terminal = Terminal::new(backend).unwrap();
-    let area = Rect::new(0, 0, width, height);
-    (terminal, area)
-}
 
 // --- Context strategy picker rendering tests ---
 

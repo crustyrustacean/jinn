@@ -123,15 +123,10 @@ fn build_wrapped_lines<'a>(
 
 #[cfg(test)]
 mod tests {
+    use nullslop_testutil::setup_term;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::{Position, Rect};
-    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
-        let backend = TestBackend::new(width, height);
-        let terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, width, height);
-        (terminal, area)
-    }
 
     use super::*;
     use crate::common::app_state::FocusScope;

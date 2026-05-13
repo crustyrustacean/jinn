@@ -13,3 +13,4 @@ workspace = true
 
 [dev-dependencies]
 rstest = { workspace = true }
+nullslop-testutil = { workspace = true }
