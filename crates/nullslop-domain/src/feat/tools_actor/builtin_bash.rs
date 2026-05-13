@@ -3,6 +3,8 @@
 //! Spawns a shell process, captures stdout + stderr, and returns the combined
 //! output. Supports optional timeout and CWD resolution.
 
+use std::fmt::Write as _;
+
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
 use super::BoxedToolFuture;
@@ -44,7 +46,7 @@ fn parse_args(raw: &str) -> Result<(String, Option<u64>), serde_json::Error> {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_owned();
-    let timeout = v.get("timeout").and_then(|v| v.as_u64());
+    let timeout = v.get("timeout").and_then(serde_json::Value::as_u64);
     Ok((command, timeout))
 }
 
@@ -118,13 +120,13 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     if !content.is_empty() && !content.ends_with('\n') {
                         content.push('\n');
                     }
-                    content.push_str(&format!(
+                    let _ = write!(
+                        content,
                         "Command exited with code {}",
                         out.status
                             .code()
-                            .map(|c| c.to_string())
-                            .unwrap_or_else(|| "unknown (signal)".to_owned())
-                    ));
+                            .map_or_else(|| "unknown (signal)".to_owned(), |c| c.to_string())
+                    );
                 }
 
                 ToolResult {

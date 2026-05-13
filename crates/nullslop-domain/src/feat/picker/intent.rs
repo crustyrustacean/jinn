@@ -226,7 +226,7 @@ pub fn handle_toggle_keymap_scope_filter(state: &mut AppState) -> IntentResult {
         .frontend
         .scope_stack
         .parent()
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .unwrap_or_default();
 
     let filtered: Vec<_> = if state.frontend.keymap_picker_show_all {

@@ -4,6 +4,7 @@
 //! current date, and working directory into a single string that is injected
 //! as a `LlmMessage::System` at the front of every assembled prompt.
 
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use crate::feat::persona::Persona;
@@ -27,10 +28,10 @@ pub fn build_env_context(
     let mut parts = Vec::new();
 
     // Persona body.
-    if let Some(p) = persona {
-        if !p.body.is_empty() {
-            parts.push(p.body.clone());
-        }
+    if let Some(p) = persona
+        && !p.body.is_empty()
+    {
+        parts.push(p.body.clone());
     }
 
     // Project context files.
@@ -38,11 +39,12 @@ pub fn build_env_context(
         let mut section = String::from("\n\n# Project Context\n\n");
         section.push_str("Project-specific instructions and guidelines:\n\n");
         for file in context_files {
-            section.push_str(&format!(
-                "## {}\n\n{}\n\n",
-                file.path.display(),
-                file.content
-            ));
+            let _ = write!(
+            section,
+            "## {}\n\n{}\n\n",
+            file.path.display(),
+            file.content
+        );
         }
         parts.push(section);
     }
@@ -86,10 +88,12 @@ pub fn load_project_context_files(cwd: &Path) -> Vec<ContextFile> {
         }
 
         // Stop at root.
-        if dir.parent().is_none() || dir.parent() == Some(dir.as_path()) {
+        if dir.parent().is_none()
+            || dir.parent() == Some(dir.as_path())
+        {
             break;
         }
-        current = dir.parent().map(|p| p.to_path_buf());
+        current = dir.parent().map(std::path::Path::to_path_buf);
     }
 
     // Reverse so root files come first, CWD files come last.
@@ -101,10 +105,10 @@ pub fn load_project_context_files(cwd: &Path) -> Vec<ContextFile> {
 fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
     for filename in CONTEXT_FILE_CANDIDATES {
         let path = dir.join(filename);
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                return Some(ContextFile { path, content });
-            }
+        if path.exists()
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            return Some(ContextFile { path, content });
         }
     }
     None
@@ -126,10 +130,10 @@ fn format_current_date() -> String {
 /// Converts days since Unix epoch to YYYY-MM-DD string.
 fn date_from_days(total_days: i64) -> String {
     // Algorithm from Howard Hinnant.
-    let z = total_days + 719468;
-    let era = if z >= 0 { z } else { z - 146096 } / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let z = total_days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let y = yoe + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;

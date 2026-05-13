@@ -112,7 +112,7 @@ fn wrap_logical_line(
     let mut first_line = true;
 
     for (i, g) in graphemes.iter().enumerate() {
-        let is_whitespace = g.chars().all(|c| c.is_whitespace());
+        let is_whitespace = g.chars().all(char::is_whitespace);
 
         if is_whitespace && col > 0 {
             // Record potential break point: break *before* this whitespace,
