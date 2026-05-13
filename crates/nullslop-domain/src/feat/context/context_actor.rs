@@ -25,7 +25,7 @@ use crate::feat::persona::PersonaEntry;
 use crate::feat::picker::strategy_entries::load_strategy_picker_items;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
-use crate::protocol::{Command, Event, SessionId, ToolDefinition};
+use crate::protocol::{Command, Event, SessionId};
 
 use crate::feat::context::{DefaultStrategyFactory, PromptAssembly, StrategyFactory};
 
@@ -208,6 +208,7 @@ mod tests {
     use crate::protocol::LlmMessage;
     use crate::protocol::PinPosition;
     use crate::protocol::PromptStrategyId;
+    use crate::protocol::ToolDefinition;
 
     use super::*;
 
@@ -1156,7 +1157,10 @@ mod tests {
         let (mut actor, state, sink, ctx) = create_actor();
         let session_id = SessionId::new();
         let strategy_id = PromptStrategyId::compaction();
-        let blob = serde_json::json!({"compaction_count": 5});
+        let strategy_state = crate::feat::context::strategy::types::StrategyState::Compaction(
+            crate::feat::context::strategy::compaction_data::CompactionSessionData::new(),
+        );
+        let blob = serde_json::to_value(&strategy_state).expect("serialize");
 
         // When processing RestoreStrategyState.
         actor
@@ -1172,14 +1176,14 @@ mod tests {
             )
             .await;
 
-        // Then the blob is stored in strategy_state.
+        // Then the strategy state is stored on the session.
         {
             let guard = state.read();
-            let stored = guard
-                .context
-                .strategy_state
-                .get(&(session_id.clone(), strategy_id.clone()));
-            assert_eq!(stored, Some(&blob));
+            let session = guard.session(&session_id);
+            let stored = session.strategy_state().get(&strategy_id);
+            assert!(stored.is_some());
+            let stored_value = serde_json::to_value(stored.unwrap()).ok();
+            assert_eq!(stored_value, Some(blob));
         }
 
         // And a StrategyStateUpdated event was emitted.

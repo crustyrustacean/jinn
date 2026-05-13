@@ -11,8 +11,6 @@
 //! `nullslop.toml`. The file is the authoritative source; the cache
 //! is a convenience for the sync IntentHandler.
 
-use std::sync::Arc;
-
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::state::State;
 use crate::feat::context::protocol::event::PromptStrategySwitched;

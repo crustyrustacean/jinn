@@ -5,6 +5,8 @@
 //! picker selections update both the session profile and the global config,
 //! while session load/save only touches the session's own profile.
 
+use serde::{Deserialize, Serialize};
+
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::protocol::PromptStrategyId;
 
@@ -14,7 +16,7 @@ use crate::protocol::PromptStrategyId;
 /// is the single source of truth for "what model/strategy does this session use?"
 /// The global config (`nullslop.toml`) holds the user's preferred defaults
 /// and is updated by the picker, but session load/restore never touches it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionProfile {
     /// The model/provider for this session (e.g., "ollama/llama3").
     /// Defaults to `NO_PROVIDER_ID` — the user must select a model.

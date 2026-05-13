@@ -1,13 +1,9 @@
 //! Compaction session data — state that persists across assembly invocations.
 //!
 //! In the full implementation, this will store compaction summaries keyed by
-//! `ChatEntryId` ranges. For the stub, it carries a compaction counter
-//! to validate the [`StrategySessionData`] round-trip path.
+//! `ChatEntryId` ranges. For the stub, it carries a compaction counter.
 
-use error_stack::Report;
 use serde::{Deserialize, Serialize};
-
-use super::types::{PromptAssemblyError, StrategySessionData};
 
 /// Placeholder session data for the compaction strategy.
 ///
@@ -32,23 +28,6 @@ impl CompactionSessionData {
 impl Default for CompactionSessionData {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl StrategySessionData for CompactionSessionData {
-    fn serialize(&self) -> Option<serde_json::Value> {
-        serde_json::to_value(self).ok()
-    }
-
-    fn deserialize(
-        value: serde_json::Value,
-    ) -> Result<Box<dyn StrategySessionData>, Report<PromptAssemblyError>>
-    where
-        Self: Sized,
-    {
-        let data: CompactionSessionData = serde_json::from_value(value)
-            .map_err(|e| Report::new(PromptAssemblyError).attach(e.to_string()))?;
-        Ok(Box::new(data))
     }
 }
 

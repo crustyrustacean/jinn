@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 use error_stack::Report;
 
-use crate::feat::session::{PersistedSession, SessionSummary};
+use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::session_summary::SessionSummary;
 use crate::protocol::SessionId;
 
 use super::{SessionStore, SessionStoreError};
@@ -34,7 +35,7 @@ impl SessionStoreService {
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if the write fails.
-    pub fn save(&self, session: &PersistedSession) -> Result<(), Report<SessionStoreError>> {
+    pub fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
         self.svc.save(session)
     }
 
@@ -57,7 +58,7 @@ impl SessionStoreService {
     pub fn load_full(
         &self,
         byte_offset: u64,
-    ) -> Result<Option<PersistedSession>, Report<SessionStoreError>> {
+    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
         self.svc.load_full(byte_offset)
     }
 

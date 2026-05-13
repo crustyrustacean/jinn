@@ -3,7 +3,7 @@
 //! Defines [`SessionStore`] as the trait for session persistence and
 //! [`JsonlSessionStore`] as the append-only JSONL file backend. Startup scans
 //! lightweight [`SessionSummary`] entries with byte offsets; full
-//! [`PersistedSession`] data loads on demand via seek.
+//! [`ChatSessionState`](super::chat_session::ChatSessionState) data loads on demand via seek.
 
 mod jsonl;
 mod service;
@@ -15,7 +15,8 @@ pub use service::SessionStoreService;
 use error_stack::Report;
 use wherror::Error;
 
-use crate::feat::session::{PersistedSession, SessionSummary};
+use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::session_summary::SessionSummary;
 use crate::protocol::SessionId;
 
 /// Error type for session store operations.
@@ -40,7 +41,7 @@ pub trait SessionStore: Send + Sync + 'static {
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if the write fails.
-    fn save(&self, session: &PersistedSession) -> Result<(), Report<SessionStoreError>>;
+    fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>>;
 
     /// Scan all lines and return lightweight summaries with byte offsets.
     ///
@@ -60,7 +61,7 @@ pub trait SessionStore: Send + Sync + 'static {
     /// Load a full session by seeking to the given byte offset.
     ///
     /// Returns `None` if the line at the offset cannot be parsed as a
-    /// [`PersistedSession`].
+    /// [`ChatSessionState`](super::chat_session::ChatSessionState).
     ///
     /// # Errors
     ///
@@ -68,7 +69,7 @@ pub trait SessionStore: Send + Sync + 'static {
     fn load_full(
         &self,
         byte_offset: u64,
-    ) -> Result<Option<PersistedSession>, Report<SessionStoreError>>;
+    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>>;
 
     /// Rewrite the store, keeping only the latest snapshot per session.
     ///
@@ -98,22 +99,19 @@ mod tests {
     use jiff::Timestamp;
     use tempfile::TempDir;
 
-    use crate::protocol::{ChatEntry, PromptStrategyId, SessionId};
+    use crate::protocol::SessionId;
 
     use super::*;
-    use crate::feat::session::PersistedSession;
+    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::protocol::ChatEntry;
 
-    /// Creates a minimal `PersistedSession` for testing.
-    fn make_session(id: &SessionId, title: &str) -> PersistedSession {
-        PersistedSession {
-            session_id: id.clone(),
-            title: title.to_owned(),
-            updated_at: Timestamp::now(),
-            history: vec![ChatEntry::user("hello")],
-            active_strategy: PromptStrategyId::passthrough(),
-            blobs: std::collections::HashMap::new(),
-            model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
-        }
+    /// Creates a minimal `ChatSessionState` for testing.
+    fn make_session(id: &SessionId, title: &str) -> ChatSessionState {
+        let mut session = ChatSessionState::new();
+        session.set_session_id(id.clone());
+        session.set_title(title.to_owned());
+        session.push_entry(ChatEntry::user("hello"));
+        session
     }
 
     // --- Test 1: Save + load round-trip ---
@@ -155,9 +153,9 @@ mod tests {
             .load_full(offset)
             .expect("load_full")
             .expect("should have a session");
-        assert_eq!(full.session_id, session_id);
-        assert_eq!(full.title, "Test Session");
-        assert_eq!(full.history.len(), 1);
+        assert_eq!(full.session_id(), &session_id);
+        assert_eq!(full.title(), Some("Test Session"));
+        assert_eq!(full.history().len(), 1);
     }
 
     // --- Test 2: Multiple sessions, latest wins ---
@@ -238,7 +236,7 @@ mod tests {
             .load_full(entry_a.2)
             .expect("load_full")
             .expect("should have session A");
-        assert_eq!(full_a.title, "A v2");
+        assert_eq!(full_a.title(), Some("A v2"));
     }
 
     // --- Test 3: Compaction removes stale snapshots ---
@@ -480,7 +478,7 @@ mod tests {
             .expect("should have session B");
 
         // Then session B's data is returned (not A or C).
-        assert_eq!(full_b.session_id, id_b);
-        assert_eq!(full_b.title, "Session B");
+        assert_eq!(full_b.session_id(), &id_b);
+        assert_eq!(full_b.title(), Some("Session B"));
     }
 }

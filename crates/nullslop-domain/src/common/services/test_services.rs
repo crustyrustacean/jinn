@@ -14,9 +14,8 @@ use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use crate::feat::session::{
-    PersistedSession, SessionStore, SessionStoreError, SessionStoreService, SessionSummary,
-};
+use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService, SessionSummary};
 use crate::protocol::{AppMsg, SessionId};
 use error_stack::Report;
 use kanal::Sender;
@@ -39,7 +38,7 @@ impl SessionStore for FakeSessionStore {
         "fake"
     }
 
-    fn save(&self, _session: &PersistedSession) -> Result<(), Report<SessionStoreError>> {
+    fn save(&self, _session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
         Ok(())
     }
 
@@ -52,7 +51,7 @@ impl SessionStore for FakeSessionStore {
     fn load_full(
         &self,
         _byte_offset: u64,
-    ) -> Result<Option<PersistedSession>, Report<SessionStoreError>> {
+    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
         Ok(None)
     }
 
