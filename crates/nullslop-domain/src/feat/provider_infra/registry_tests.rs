@@ -431,11 +431,20 @@ fn config_accessor_returns_config() {
 fn create_factory_for_model_succeeds_for_known_provider() {
     // Given a registry with ollama.
     let config = make_config(vec![ollama_entry()], vec![], None);
-    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let mut registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
-    // When creating a factory for a remote model.
-    let factory = registry.create_factory_for_model("ollama", "mistral", &api_keys);
+    // And a cache with a remote model.
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert("ollama".to_owned(), vec!["mistral".to_owned()]);
+    let cache = crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+    registry.merge_cache(&cache);
+
+    // When creating a factory for the remote model.
+    let factory = registry.create_factory(&ProviderId::new("ollama/mistral".to_owned()), &api_keys);
 
     // Then it succeeds.
     assert!(factory.is_ok());
@@ -443,23 +452,23 @@ fn create_factory_for_model_succeeds_for_known_provider() {
 }
 
 #[rstest::rstest]
-fn create_factory_for_model_fails_for_unknown_provider() {
+fn create_factory_fails_for_unknown_provider_after_merge() {
     // Given a registry with ollama.
     let config = make_config(vec![ollama_entry()], vec![], None);
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
-    // When creating a factory for an unknown provider.
-    let factory = registry.create_factory_for_model("unknown", "model", &api_keys);
+    // When creating a factory for an unknown provider (no cache merged).
+    let factory = registry.create_factory(&ProviderId::new("unknown/model".to_owned()), &api_keys);
 
     // Then it fails.
     assert!(factory.is_err());
 }
 
 #[rstest::rstest]
-fn create_factory_succeeds_for_remote_model_via_fallback() {
+fn create_factory_succeeds_for_merged_remote_model() {
     // Given a registry with an LMStudio-like provider that has "local-model" as a
-    // static placeholder, simulating runtime-discovered models.
+    // static placeholder, and a cache with a runtime-discovered model.
     let config = make_config(
         vec![ProviderEntry {
             name: "lmstudio".to_owned(),
@@ -473,16 +482,24 @@ fn create_factory_succeeds_for_remote_model_via_fallback() {
         vec![],
         None,
     );
-    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let mut registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
 
-    // When creating a factory for a remote-only model (not in static config).
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert("lmstudio".to_owned(), vec!["my-real-model".to_owned()]);
+    let cache = crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+    registry.merge_cache(&cache);
+
+    // When creating a factory for the merged remote model.
     let factory = registry.create_factory(
         &ProviderId::new("lmstudio/my-real-model".to_owned()),
         &api_keys,
     );
 
-    // Then it succeeds via the create_factory_for_model fallback.
+    // Then it succeeds (merged into registry).
     assert!(factory.is_ok());
     assert_eq!(factory.unwrap().name(), "lmstudio");
 }
@@ -503,8 +520,9 @@ fn create_factory_for_static_model_still_works() {
 }
 
 #[rstest::rstest]
-fn create_factory_falls_back_for_model_with_slashes() {
-    // Given a registry with an OpenRouter-like provider whose models contain slashes.
+fn create_factory_succeeds_for_merged_model_with_slashes() {
+    // Given a registry with an OpenRouter-like provider whose models contain slashes,
+    // and a cache with a remote model.
     let config = make_config(
         vec![ProviderEntry {
             name: "openrouter".to_owned(),
@@ -518,17 +536,25 @@ fn create_factory_falls_back_for_model_with_slashes() {
         vec![],
         None,
     );
-    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let mut registry = ProviderRegistry::from_config(config).expect("registry");
     let mut api_keys = ApiKeys::new();
     api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
 
-    // When creating a factory for a remote model with a slash in the model name.
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert("openrouter".to_owned(), vec!["anthropic/claude-sonnet-4".to_owned()]);
+    let cache = crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+    registry.merge_cache(&cache);
+
+    // When creating a factory for the merged remote model with a slash in the name.
     let factory = registry.create_factory(
         &ProviderId::new("openrouter/anthropic/claude-sonnet-4".to_owned()),
         &api_keys,
     );
 
-    // Then it succeeds (splits on first "/" → provider="openrouter", model="anthropic/claude-sonnet-4").
+    // Then it succeeds.
     assert!(factory.is_ok());
     assert_eq!(factory.unwrap().name(), "openrouter");
 }
@@ -575,4 +601,103 @@ fn registry_propagates_none_extra_body_when_absent() {
         .get(&ProviderId::new("ollama/llama3".to_owned()))
         .expect("resolved");
     assert!(resolved.extra_body.is_none());
+}
+
+// --- merge_cache tests ---
+
+#[rstest::rstest]
+fn merge_cache_adds_remote_entries() {
+    // Given a registry with ollama (static: llama3).
+    let config = make_config(vec![ollama_entry()], vec![], None);
+    let mut registry = ProviderRegistry::from_config(config).expect("registry");
+
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert("ollama".to_owned(), vec!["mistral".to_owned()]);
+    let cache = crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+
+    // When merging the cache.
+    registry.merge_cache(&cache);
+
+    // Then the remote model is in the registry.
+    assert_eq!(registry.providers().len(), 2);
+    let remote = registry
+        .get(&ProviderId::new("ollama/mistral".to_owned()))
+        .expect("remote entry");
+    assert!(remote.is_remote);
+    assert_eq!(remote.model, "mistral");
+}
+
+#[rstest::rstest]
+fn merge_cache_static_wins_on_collision() {
+    // Given a registry with ollama (static: llama3).
+    let config = make_config(vec![ollama_entry()], vec![], None);
+    let mut registry = ProviderRegistry::from_config(config).expect("registry");
+
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert("ollama".to_owned(), vec!["llama3".to_owned()]);
+    let cache = crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+
+    // When merging a cache that has the same model as a static entry.
+    registry.merge_cache(&cache);
+
+    // Then the static entry wins (is_remote is still false).
+    assert_eq!(registry.providers().len(), 1);
+    let entry = registry
+        .get(&ProviderId::new("ollama/llama3".to_owned()))
+        .expect("entry");
+    assert!(!entry.is_remote);
+}
+
+#[rstest::rstest]
+fn merge_cache_sets_is_remote_true() {
+    // Given a registry with ollama.
+    let config = make_config(vec![ollama_entry()], vec![], None);
+    let mut registry = ProviderRegistry::from_config(config).expect("registry");
+
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert("ollama".to_owned(), vec!["deepseek-v3".to_owned()]);
+    let cache = crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+
+    // When merging.
+    registry.merge_cache(&cache);
+
+    // Then static entries have is_remote=false, cached have is_remote=true.
+    let static_entry = registry
+        .get(&ProviderId::new("ollama/llama3".to_owned()))
+        .expect("static");
+    assert!(!static_entry.is_remote);
+
+    let remote_entry = registry
+        .get(&ProviderId::new("ollama/deepseek-v3".to_owned()))
+        .expect("remote");
+    assert!(remote_entry.is_remote);
+}
+
+#[rstest::rstest]
+fn merge_cache_ignores_unknown_provider() {
+    // Given a registry with ollama.
+    let config = make_config(vec![ollama_entry()], vec![], None);
+    let mut registry = ProviderRegistry::from_config(config).expect("registry");
+
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert("unknown-provider".to_owned(), vec!["model".to_owned()]);
+    let cache = crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+
+    // When merging a cache with an unknown provider.
+    registry.merge_cache(&cache);
+
+    // Then no new entries are added.
+    assert_eq!(registry.providers().len(), 1);
 }
