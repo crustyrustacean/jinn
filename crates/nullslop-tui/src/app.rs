@@ -226,7 +226,6 @@ impl TuiApp {
                 }
             ) {
                 let scope = *self.which_key.scope();
-                state.frontend.keymap_picker_origin_scope = Some(scope.to_string());
                 let intent_entries = if state.frontend.keymap_picker_show_all {
                     keymap::collect_all_bindings(self.which_key.keymap())
                 } else {
@@ -242,14 +241,11 @@ impl TuiApp {
             // Cancel selection when mode changes away from Picker.
             if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape) {
                 self.selection = mem::take(&mut self.selection).cancel();
-                if !matches!(state.frontend.mode, Mode::Picker) {
-                    state.frontend.keymap_picker_origin_scope = None;
-                }
             }
 
             // Collect signals and mode before releasing lock.
             let signals = signals::TuiSignalsSnapshot::from_state(&state);
-            let mode = state.frontend.mode;
+            let mode = state.frontend.scope_stack.current().mode();
             let commands = result.commands;
 
             (commands, signals, mode)
@@ -277,7 +273,7 @@ impl TuiApp {
 
         // Step 6: Update scope based on new mode.
         let active_tab = self.core.state.read().frontend.active_tab;
-        let sidebar_focused = self.core.state.read().frontend.sidebar.origin_scope.is_some();
+        let sidebar_focused = self.core.state.read().frontend.scope_stack.is_sidebar();
         let new_scope = scope_for_mode(mode, active_tab, sidebar_focused);
         self.which_key.set_scope(new_scope);
     }

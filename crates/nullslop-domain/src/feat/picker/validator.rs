@@ -52,7 +52,9 @@ pub enum PickerConfirmError {
 pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmError> {
     let kind = state
         .frontend
-        .active_picker_kind
+        .scope_stack
+        .picker_kind()
+        .cloned()
         .ok_or(PickerConfirmError::NoActivePicker)?;
 
     let has_selection = match kind {
@@ -90,7 +92,7 @@ pub enum OpenPickerError {
 ///
 /// Returns an error if a picker is already active.
 pub fn validate_open_picker(state: &AppState, _kind: &PickerKind) -> Result<(), OpenPickerError> {
-    if state.frontend.active_picker_kind.is_some() {
+    if state.frontend.scope_stack.is_picker() {
         return Err(OpenPickerError::AlreadyInPicker);
     }
     Ok(())
@@ -99,6 +101,8 @@ pub fn validate_open_picker(state: &AppState, _kind: &PickerKind) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::common::app_state::FocusScope;
 
     // --- PickerConfirm tests ---
 
@@ -118,7 +122,7 @@ mod tests {
     fn picker_confirm_fails_with_no_selection() {
         // Given a state with an active picker but no items.
         let mut state = AppState::default();
-        state.frontend.active_picker_kind = Some(PickerKind::Provider);
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
 
         // When validating picker confirm.
         let result = validate_picker_confirm(&state);
@@ -132,7 +136,7 @@ mod tests {
         // Given a state with an active provider picker and items.
         use crate::protocol::PickerEntry;
         let mut state = AppState::default();
-        state.frontend.active_picker_kind = Some(PickerKind::Provider);
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
         state.provider.provider_picker.set_items(vec![PickerEntry {
             provider_id: "test/test-model".to_owned(),
             name: "test".to_owned(),
@@ -158,7 +162,7 @@ mod tests {
         // Given a state with an active keymap picker and items.
         use crate::protocol::KeymapEntry;
         let mut state = AppState::default();
-        state.frontend.active_picker_kind = Some(PickerKind::Keymap);
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Keymap });
         state.frontend.keymap_picker.set_items(vec![KeymapEntry {
             key_sequence: "q".to_owned(),
             description: "quit".to_owned(),
@@ -180,7 +184,7 @@ mod tests {
         // Given a state with an active session picker and items.
         use crate::protocol::SessionEntry;
         let mut state = AppState::default();
-        state.frontend.active_picker_kind = Some(PickerKind::Session);
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Session });
         state.frontend.session_picker.set_items(vec![SessionEntry {
             session_id: crate::protocol::SessionId::new(),
             title: "Test Session".to_owned(),
@@ -200,7 +204,7 @@ mod tests {
         // Given a state with an active context strategy picker and items.
         use crate::protocol::StrategyEntry;
         let mut state = AppState::default();
-        state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::ContextAssembly });
         state
             .frontend
             .context_strategy_picker
@@ -236,7 +240,7 @@ mod tests {
     fn open_picker_fails_when_already_in_picker() {
         // Given a state with an active picker.
         let mut state = AppState::default();
-        state.frontend.active_picker_kind = Some(PickerKind::Keymap);
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Keymap });
 
         // When validating open provider picker.
         let result = validate_open_picker(&state, &PickerKind::Provider);

@@ -14,7 +14,8 @@ use crate::feat::context::protocol::command::{
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::protocol::{Command, Intent, IntentResult, Mode, PickerKind};
+use crate::common::app_state::FocusScope;
+use crate::protocol::{Command, Intent, IntentResult, PickerKind};
 
 use super::validator;
 
@@ -28,7 +29,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         return IntentResult::empty();
     }
 
-    state.frontend.active_picker_kind = Some(kind);
+    state.frontend.scope_stack.push(FocusScope::Picker { kind });
 
     match kind {
         PickerKind::Provider => {
@@ -48,8 +49,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             state.frontend.persona_picker.reset();
         }
     }
-
-    state.frontend.mode = Mode::Picker;
 
     match kind {
         PickerKind::Provider => {
@@ -79,7 +78,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
 /// Inserts a character into the active picker's filter.
 pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
     validator::validate_picker_insert_char(state, ch);
-    match state.frontend.active_picker_kind {
+    match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => state.provider.provider_picker.insert_char(ch),
         Some(PickerKind::ContextAssembly) => {
             state.frontend.context_strategy_picker.insert_char(ch);
@@ -95,7 +94,7 @@ pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
 /// Removes the last character from the active picker's filter.
 pub fn handle_backspace(state: &mut AppState) -> IntentResult {
     validator::validate_picker_backspace(state);
-    match state.frontend.active_picker_kind {
+    match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => state.provider.provider_picker.backspace(),
         Some(PickerKind::ContextAssembly) => {
             state.frontend.context_strategy_picker.backspace();
@@ -118,7 +117,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         return (IntentResult::empty(), None);
     }
 
-    match state.frontend.active_picker_kind {
+    match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => (confirm_provider(state), None),
         Some(PickerKind::ContextAssembly) => (confirm_strategy(state), None),
         Some(PickerKind::Keymap) => confirm_keymap(state),
@@ -131,7 +130,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
 /// Moves the selection up in the active picker.
 pub fn handle_move_up(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_up(state);
-    match state.frontend.active_picker_kind {
+    match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => {
             state.provider.provider_picker.move_up(PICKER_MAX_VISIBLE);
         }
@@ -158,7 +157,7 @@ pub fn handle_move_up(state: &mut AppState) -> IntentResult {
 /// Moves the selection down in the active picker.
 pub fn handle_move_down(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_down(state);
-    match state.frontend.active_picker_kind {
+    match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => {
             state.provider.provider_picker.move_down(PICKER_MAX_VISIBLE);
         }
@@ -185,7 +184,7 @@ pub fn handle_move_down(state: &mut AppState) -> IntentResult {
 /// Moves the filter cursor left in the active picker.
 pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_cursor_left(state);
-    match state.frontend.active_picker_kind {
+    match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => state.provider.provider_picker.move_cursor_left(),
         Some(PickerKind::ContextAssembly) => {
             state.frontend.context_strategy_picker.move_cursor_left();
@@ -201,7 +200,7 @@ pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
 /// Moves the filter cursor right in the active picker.
 pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_cursor_right(state);
-    match state.frontend.active_picker_kind {
+    match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => {
             state.provider.provider_picker.move_cursor_right();
         }
@@ -225,8 +224,9 @@ pub fn handle_toggle_keymap_scope_filter(state: &mut AppState) -> IntentResult {
 
     let scope = state
         .frontend
-        .keymap_picker_origin_scope
-        .clone()
+        .scope_stack
+        .parent()
+        .map(|s| s.to_string())
         .unwrap_or_default();
 
     let filtered: Vec<_> = if state.frontend.keymap_picker_show_all {
@@ -257,7 +257,7 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     }
     let provider_id = entry.provider_id.clone();
 
-    state.frontend.mode = Mode::Normal;
+    state.frontend.scope_stack.pop();
     IntentResult::with_commands(vec![Command::ProviderSwitch {
         payload: ProviderSwitch { provider_id },
     }])
@@ -273,7 +273,7 @@ fn confirm_strategy(state: &mut AppState) -> IntentResult {
 
     state.set_default_strategy(strategy_id.clone());
 
-    state.frontend.mode = Mode::Normal;
+    state.frontend.scope_stack.pop();
     IntentResult::with_commands(vec![Command::SwitchPromptStrategy {
         payload: SwitchPromptStrategy {
             session_id,
@@ -290,7 +290,7 @@ fn confirm_keymap(state: &mut AppState) -> (IntentResult, Option<Intent>) {
     };
     let intent = entry.command.clone();
 
-    state.frontend.mode = Mode::Normal;
+    state.frontend.scope_stack.pop();
     (IntentResult::empty(), Some(intent))
 }
 
@@ -312,7 +312,7 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
         state.context.active_persona = Some(p);
     }
 
-    state.frontend.mode = Mode::Normal;
+    state.frontend.scope_stack.pop();
     IntentResult::empty()
 }
 
@@ -326,7 +326,7 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 
     state.session.session_loading = true;
     state.session.session_load_started_at = Some(std::time::Instant::now());
-    state.frontend.mode = Mode::Normal;
+    state.frontend.scope_stack.pop();
 
     IntentResult::with_commands(vec![Command::SessionLoadRequested {
         payload: SessionLoadRequested {
@@ -338,8 +338,8 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::app_state::{AppState, FrontendState};
-    use crate::protocol::{Command, Intent, Mode, PickerKind, SessionId};
+    use crate::common::app_state::{AppState, FocusScope};
+    use crate::protocol::{Command, Intent, PickerKind, SessionId};
     use crate::protocol::{KeymapEntry, PickerEntry, SessionEntry, StrategyEntry};
 
     use super::*;
@@ -354,12 +354,11 @@ mod tests {
         // When opening a Provider picker.
         let result = handle_open_picker(&mut state, PickerKind::Provider);
 
-        // Then active_picker_kind and mode are set.
+        // Then scope_stack has a Picker(Provider) on top.
         assert_eq!(
-            state.frontend.active_picker_kind,
+            state.frontend.scope_stack.picker_kind().copied(),
             Some(PickerKind::Provider)
         );
-        assert_eq!(state.frontend.mode, Mode::Picker);
         // And a LoadProviderPickerEntries command is returned.
         assert!(
             result
@@ -372,39 +371,29 @@ mod tests {
     #[rstest::rstest]
     fn open_picker_keymap_resets_show_all() {
         // Given a state with show_all=true.
-        let mut state = AppState {
-            frontend: FrontendState {
-                keymap_picker_show_all: true,
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.keymap_picker_show_all = true;
 
         // When opening a Keymap picker.
         let result = handle_open_picker(&mut state, PickerKind::Keymap);
 
         // Then show_all is false.
         assert!(!state.frontend.keymap_picker_show_all);
-        assert_eq!(state.frontend.active_picker_kind, Some(PickerKind::Keymap));
+        assert_eq!(state.frontend.scope_stack.picker_kind().copied(), Some(PickerKind::Keymap));
         assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
     fn open_picker_noop_when_already_in_picker() {
         // Given a state already in picker mode.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Session),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Session });
 
         // When opening a Provider picker.
         let result = handle_open_picker(&mut state, PickerKind::Provider);
 
         // Then nothing changed.
-        assert_eq!(state.frontend.active_picker_kind, Some(PickerKind::Session));
+        assert_eq!(state.frontend.scope_stack.picker_kind().copied(), Some(PickerKind::Session));
         assert!(result.commands.is_empty());
     }
 
@@ -413,13 +402,8 @@ mod tests {
     #[rstest::rstest]
     fn picker_insert_char_updates_filter() {
         // Given a state with active provider picker.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Provider),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
         state.provider.provider_picker.set_items(vec![PickerEntry {
             provider_id: "test/model".to_owned(),
             name: "test".to_owned(),
@@ -444,13 +428,8 @@ mod tests {
     #[rstest::rstest]
     fn picker_backspace_removes_from_filter() {
         // Given a state with active provider picker and "te" in filter.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Provider),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
         state.provider.provider_picker.set_items(vec![PickerEntry {
             provider_id: "test/model".to_owned(),
             name: "test".to_owned(),
@@ -479,13 +458,8 @@ mod tests {
     #[rstest::rstest]
     fn picker_confirm_provider_returns_provider_switch() {
         // Given a state with active provider picker and a selected entry.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Provider),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
         state.provider.provider_picker.set_items(vec![PickerEntry {
             provider_id: "test/model".to_owned(),
             name: "test".to_owned(),
@@ -502,27 +476,22 @@ mod tests {
         // When confirming picker.
         let (result, maybe_intent) = handle_picker_confirm(&mut state);
 
-        // Then a ProviderSwitch command is returned and mode is Normal.
+        // Then a ProviderSwitch command is returned and picker is closed.
         assert!(
             result
                 .commands
                 .iter()
                 .any(|c| matches!(c, Command::ProviderSwitch { .. }))
         );
-        assert_eq!(state.frontend.mode, Mode::Normal);
+        assert!(!state.frontend.scope_stack.is_picker());
         assert!(maybe_intent.is_none());
     }
 
     #[rstest::rstest]
     fn picker_confirm_session_returns_session_load_command() {
         // Given a state with active session picker and a selected entry.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Session),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Session });
         state.frontend.session_picker.set_items(vec![SessionEntry {
             session_id: SessionId::new(),
             title: "Test".to_owned(),
@@ -544,21 +513,16 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Command::SessionLoadRequested { .. }))
         );
-        // And mode is Normal.
-        assert_eq!(state.frontend.mode, Mode::Normal);
+        // And picker is closed.
+        assert!(!state.frontend.scope_stack.is_picker());
         assert!(maybe_intent.is_none());
     }
 
     #[rstest::rstest]
     fn picker_confirm_keymap_returns_intent_for_redispatch() {
         // Given a state with active keymap picker.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Keymap),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Keymap });
         state.frontend.keymap_picker.set_items(vec![KeymapEntry {
             key_sequence: "q".to_owned(),
             description: "quit".to_owned(),
@@ -571,8 +535,8 @@ mod tests {
         // When confirming picker.
         let (result, maybe_intent) = handle_picker_confirm(&mut state);
 
-        // Then mode is Normal and the intent is returned for redispatch.
-        assert_eq!(state.frontend.mode, Mode::Normal);
+        // Then picker is closed and the intent is returned for redispatch.
+        assert!(!state.frontend.scope_stack.is_picker());
         assert!(result.commands.is_empty());
         assert!(matches!(maybe_intent, Some(Intent::Quit)));
     }
@@ -593,13 +557,8 @@ mod tests {
     #[rstest::rstest]
     fn picker_confirm_strategy_updates_default() {
         // Given a state with active context strategy picker and manual entries.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::ContextAssembly),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::ContextAssembly });
         state.frontend.context_strategy_picker.set_items(vec![
             StrategyEntry {
                 strategy_id: crate::protocol::PromptStrategyId::passthrough(),
@@ -632,8 +591,8 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Command::SwitchPromptStrategy { .. }))
         );
-        // And mode is Normal.
-        assert_eq!(state.frontend.mode, Mode::Normal);
+        // And picker is closed.
+        assert!(!state.frontend.scope_stack.is_picker());
         assert!(maybe_intent.is_none());
     }
 
@@ -642,13 +601,8 @@ mod tests {
     #[rstest::rstest]
     fn picker_move_up_decrements_selection() {
         // Given a state with active provider picker at index 1.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Provider),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
         state.provider.provider_picker.set_items(vec![
             PickerEntry {
                 provider_id: "a".to_owned(),
@@ -689,13 +643,8 @@ mod tests {
     #[rstest::rstest]
     fn picker_move_down_increments_selection() {
         // Given a state with active provider picker at index 0.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Provider),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
         state.provider.provider_picker.set_items(vec![
             PickerEntry {
                 provider_id: "a".to_owned(),
@@ -736,13 +685,8 @@ mod tests {
     #[rstest::rstest]
     fn picker_move_cursor_left_moves_cursor() {
         // Given a state with active provider picker with "ab" in filter.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Provider),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
         state.provider.provider_picker.insert_char('a');
         state.provider.provider_picker.insert_char('b');
 
@@ -757,13 +701,8 @@ mod tests {
     #[rstest::rstest]
     fn picker_move_cursor_right_moves_cursor() {
         // Given a state with cursor at start of filter.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Provider),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
         state.provider.provider_picker.insert_char('a');
         state.provider.provider_picker.insert_char('b');
         state.provider.provider_picker.move_cursor_left();
@@ -782,21 +721,17 @@ mod tests {
     #[rstest::rstest]
     fn toggle_keymap_scope_filter_toggles_flag() {
         // Given a state with keymap entries.
-        let mut state = AppState {
-            frontend: FrontendState {
-                all_keymap_entries: vec![KeymapEntry {
-                    key_sequence: "q".to_owned(),
-                    description: "quit".to_owned(),
-                    scope: "Normal".to_owned(),
-                    category: "General".to_owned(),
-                    command: Intent::Quit,
-                    search_text: "q quit".to_owned(),
-                }],
-                keymap_picker_origin_scope: Some("Input".to_owned()),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.all_keymap_entries = vec![KeymapEntry {
+            key_sequence: "q".to_owned(),
+            description: "quit".to_owned(),
+            scope: "Normal".to_owned(),
+            category: "General".to_owned(),
+            command: Intent::Quit,
+            search_text: "q quit".to_owned(),
+        }];
+        state.frontend.scope_stack.push(FocusScope::Input);
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Keymap });
 
         // When handling toggle keymap scope filter.
         let result = handle_toggle_keymap_scope_filter(&mut state);

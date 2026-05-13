@@ -16,8 +16,7 @@
 //! Tests for the [`IntentHandler`] — one test per Intent variant.
 
 use crate::KeymapEntry;
-use crate::{AppState, FrontendState};
-use crate::{Mode, PickerKind};
+use crate::{AppState, FocusScope, PickerKind};
 
 use crate::Intent;
 use crate::IntentHandler;
@@ -33,13 +32,8 @@ fn handle(intent: &Intent, state: &mut AppState) -> super::IntentResult {
 #[rstest::rstest]
 fn picker_confirm_keymap_sets_mode_and_signal() {
     // Given a state with active keymap picker.
-    let mut state = AppState {
-        frontend: FrontendState {
-            active_picker_kind: Some(PickerKind::Keymap),
-            ..FrontendState::default()
-        },
-        ..Default::default()
-    };
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Keymap });
     state.frontend.keymap_picker.set_items(vec![KeymapEntry {
         key_sequence: "q".to_owned(),
         description: "quit".to_owned(),
@@ -52,8 +46,8 @@ fn picker_confirm_keymap_sets_mode_and_signal() {
     // When handling PickerConfirm.
     let result = handle(&Intent::PickerConfirm, &mut state);
 
-    // Then mode is Normal and the intent was executed (should_quit is set).
-    assert_eq!(state.frontend.mode, Mode::Normal);
+    // Then the intent was executed (should_quit is set).
+    assert!(!state.frontend.scope_stack.is_picker());
     assert!(state.frontend.should_quit);
     assert!(result.commands.is_empty());
 }

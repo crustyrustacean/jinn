@@ -77,13 +77,10 @@ mod tests {
     #[rstest::rstest]
     fn session_new_noop_when_picker_active() {
         // Given a state with an active picker.
-        let mut state = AppState {
-            frontend: FrontendState {
-                active_picker_kind: Some(PickerKind::Provider),
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(
+            crate::common::app_state::FocusScope::Picker { kind: PickerKind::Provider },
+        );
         let old_id = state.session.active_session.clone();
 
         // When handling SessionNew.
