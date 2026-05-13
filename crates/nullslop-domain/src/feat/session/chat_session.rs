@@ -27,7 +27,7 @@ use crate::protocol::{
 ///
 /// IntentHandler is exempt and may read/write any field.
 /// No other actor should mutate these fields.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCore {
     /// Unique identifier for this session.
     /// Generated at construction. Matches the HashMap key in `SessionState.sessions`.
@@ -35,6 +35,7 @@ pub struct SessionCore {
     /// Human-readable title. `None` until the first user message is sent.
     /// OWNER: session-actor (set on first user message, changeable by user).
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
     /// When this session was last updated. Set at construction, updated on save.
     updated_at: Timestamp,
@@ -145,6 +146,17 @@ pub struct SessionUi {
     last_max_offset: AtomicU16,
 }
 
+impl Clone for SessionUi {
+    fn clone(&self) -> Self {
+        Self {
+            chat_input: self.chat_input.clone(),
+            scroll_offset: self.scroll_offset,
+            selected_entry_index: self.selected_entry_index,
+            last_max_offset: AtomicU16::new(self.last_max_offset.load(Ordering::Relaxed)),
+        }
+    }
+}
+
 impl Default for SessionUi {
     fn default() -> Self {
         Self {
@@ -166,9 +178,10 @@ impl Default for SessionUi {
 /// Fields are grouped into [`SessionCore`] (session-actor / context-actor)
 /// and [`SessionUi`] (IntentHandler) sub-structs to make cross-boundary
 /// writes visually obvious during code review.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatSessionState {
     /// Core domain state managed by session-actor and context-actor.
+    #[serde(flatten)]
     core: SessionCore,
     /// UI state managed by IntentHandler.
     #[serde(skip)]

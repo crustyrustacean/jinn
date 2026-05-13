@@ -3,7 +3,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::profile::SessionProfile;
-use crate::protocol::{ChatEntry, Command, IntentResult, PromptStrategyId, SessionId};
+use crate::protocol::{ChatEntry, Command, IntentResult, PromptStrategyId};
 
 use super::validator;
 

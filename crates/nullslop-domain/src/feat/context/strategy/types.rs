@@ -5,9 +5,8 @@ use error_stack::Report;
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
+use crate::feat::context::strategy::compaction_data::CompactionSessionData;
 use crate::protocol::{ChatEntry, LlmMessage, PromptStrategyId, SessionId, ToolDefinition};
-
-use super::compaction_data::CompactionSessionData;
 
 /// Typed strategy state — each variant carries its strategy-specific persistent data.
 ///
@@ -73,26 +72,6 @@ pub trait PromptAssembly: Send + Sync {
 
     /// The name of this strategy, for debugging.
     fn name(&self) -> &'static str;
-}
-
-/// Serializable state that a strategy can persist across sessions.
-///
-/// Strategies that maintain state (e.g., compaction summaries) implement this
-/// trait. Stateless strategies (like passthrough) return `None` from `serialize`.
-pub trait StrategySessionData: Send + Sync {
-    /// Serialize the session data to an opaque JSON blob.
-    fn serialize(&self) -> Option<serde_json::Value>;
-
-    /// Deserialize session data from an opaque JSON blob.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if deserialization fails.
-    fn deserialize(
-        value: serde_json::Value,
-    ) -> Result<Box<dyn StrategySessionData>, Report<PromptAssemblyError>>
-    where
-        Self: Sized;
 }
 
 /// Factory for creating prompt assembly strategies by ID.

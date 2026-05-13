@@ -83,12 +83,6 @@ impl AggregatedTokenStats {
     }
 }
 
-/// Blob key for persisting token stats in the session blobs map.
-pub const BLOB_TOKEN_STATS: &str = "token_stats";
-
-/// Blob key for persisting the parent session ID.
-pub const BLOB_PARENT_SESSION: &str = "parent_session";
-
 /// Compute aggregated token stats for a session and all its descendants.
 ///
 /// Walks the sessions map recursively: finds all sessions whose

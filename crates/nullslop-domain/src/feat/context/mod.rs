@@ -27,5 +27,5 @@ pub use strategy::token_budget::TokenBudgetStrategy;
 pub use strategy::token_estimator::{CharRatioEstimator, TokenEstimator, estimate_entry_tokens};
 pub use strategy::types::{
     AssembledPrompt, AssemblyContext, PromptAssembly, PromptAssemblyError, StrategyDiscovery,
-    StrategyFactory, StrategyInfo, StrategySessionData, StrategyState,
+    StrategyFactory, StrategyInfo, StrategyState,
 };

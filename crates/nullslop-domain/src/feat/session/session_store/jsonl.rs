@@ -1,7 +1,7 @@
 //! JSONL-backed session store implementation.
 //!
 //! Reads and writes `sessions.jsonl` in a platform-appropriate data directory.
-//! Each line is a full [`PersistedSession`] JSON snapshot. Multiple snapshots
+//! Each line is a full [`ChatSessionState`] JSON snapshot. Multiple snapshots
 //! for the same session ID may exist; [`SessionStore::load_summaries`] returns
 //! the byte offset of the latest one.
 //!
@@ -15,7 +15,8 @@ use std::path::PathBuf;
 
 use error_stack::{Report, ResultExt as _};
 
-use crate::feat::session::{PersistedSession, SessionSummary};
+use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::session_summary::SessionSummary;
 use crate::protocol::SessionId;
 
 use super::{SessionStore, SessionStoreError};
@@ -32,7 +33,7 @@ const COMPACTION_THRESHOLD: usize = 500;
 /// JSONL-backed session store.
 ///
 /// Reads and writes `sessions.jsonl` in a platform-appropriate data directory.
-/// Each line is a full [`PersistedSession`] JSON snapshot. Multiple snapshots
+/// Each line is a full [`ChatSessionState`] JSON snapshot. Multiple snapshots
 /// for the same session ID may exist; [`SessionStore::load_summaries`] returns
 /// the byte offset of the latest one.
 ///
@@ -97,7 +98,7 @@ impl SessionStore for JsonlSessionStore {
         "jsonl"
     }
 
-    fn save(&self, session: &PersistedSession) -> Result<(), Report<SessionStoreError>> {
+    fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
         self.ensure_dir()?;
 
         let line = serde_json::to_string(session)
@@ -168,7 +169,7 @@ impl SessionStore for JsonlSessionStore {
     fn load_full(
         &self,
         byte_offset: u64,
-    ) -> Result<Option<PersistedSession>, Report<SessionStoreError>> {
+    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
         let path = self.file_path();
         if !path.exists() {
             return Ok(None);
@@ -198,7 +199,7 @@ impl SessionStore for JsonlSessionStore {
             return Ok(None);
         }
 
-        match serde_json::from_str::<PersistedSession>(trimmed) {
+        match serde_json::from_str::<ChatSessionState>(trimmed) {
             Ok(session) => Ok(Some(session)),
             Err(_) => Ok(None),
         }
@@ -216,7 +217,7 @@ impl SessionStore for JsonlSessionStore {
             .attach("failed to open sessions file for compaction")?;
 
         let reader = BufReader::new(file);
-        let mut latest: HashMap<SessionId, PersistedSession> = HashMap::new();
+        let mut latest: HashMap<SessionId, ChatSessionState> = HashMap::new();
         let mut total_lines: usize = 0;
 
         for line_result in reader.lines() {
@@ -231,8 +232,8 @@ impl SessionStore for JsonlSessionStore {
                 continue;
             }
 
-            if let Ok(session) = serde_json::from_str::<PersistedSession>(trimmed) {
-                latest.insert(session.session_id.clone(), session);
+            if let Ok(session) = serde_json::from_str::<ChatSessionState>(trimmed) {
+                latest.insert(session.session_id().clone(), session);
             }
             // Corrupted lines are silently skipped.
         }
