@@ -8,7 +8,7 @@ use crate::protocol::{Command, CommandName, Event, EventTypeName};
 
 /// A routing entry that wraps a typed actor sender in closures.
 ///
-/// Created during [`spawn_actor`](crate::spawn_actor) by capturing a cloned
+/// Created during [`spawn_actor_impl`](crate::spawn_actor_impl) by capturing a cloned
 /// [`ActorRef<M>`](crate::common::actor::ActorRef). Stored in
 /// `HashMap<String, Vec<RoutingEntry>>` — no type parameter, enabling
 /// heterogeneous collections of actors with different message types.
@@ -151,8 +151,8 @@ mod tests {
             send_shutdown: Box::new(|| {}),
         };
 
-        // When calling send_system with ApplicationReady.
-        (entry.send_system)(crate::common::actor::SystemMessage::ApplicationReady);
+        // When calling send_system with ApplicationShuttingDown.
+        (entry.send_system)(crate::common::actor::SystemMessage::ApplicationShuttingDown);
 
         // Then it is received as a System envelope.
         let msg = rx
@@ -161,7 +161,7 @@ mod tests {
             .expect("should have value");
         assert!(matches!(
             msg,
-            ActorEnvelope::System(crate::common::actor::SystemMessage::ApplicationReady)
+            ActorEnvelope::System(crate::common::actor::SystemMessage::ApplicationShuttingDown)
         ));
     }
 }

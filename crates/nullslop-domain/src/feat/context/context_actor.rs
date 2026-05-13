@@ -18,7 +18,7 @@ use std::sync::Arc;
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::context::protocol::command::{
@@ -99,9 +99,6 @@ impl Actor for PromptAssemblyActor {
             }
             ActorEnvelope::Event(evt) => {
                 self.handle_event(&evt);
-            }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
             }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
@@ -228,7 +225,7 @@ pub fn spawn_context_actor(
     ctx.set_data(strategy_factory);
     ctx.set_data(services);
     let actor = PromptAssemblyActor::activate(&mut ctx);
-    let result = spawn_actor("context", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("context", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 #[cfg(test)]

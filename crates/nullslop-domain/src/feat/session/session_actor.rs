@@ -25,7 +25,7 @@ use std::sync::Arc;
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
@@ -109,9 +109,6 @@ impl Actor for SessionPersistenceActor {
         match msg {
             ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
             ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx),
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
-            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
@@ -207,7 +204,7 @@ pub fn spawn_session_actor(
     ctx.set_data(session_store);
     ctx.set_data(counter);
     let actor = SessionPersistenceActor::activate(&mut ctx);
-    let result = spawn_actor("session-persistence", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("session-persistence", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 #[cfg(test)]

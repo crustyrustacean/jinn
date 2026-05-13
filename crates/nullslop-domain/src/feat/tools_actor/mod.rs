@@ -32,7 +32,7 @@ use std::sync::Arc;
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::spawn_actor;
+use crate::common::actor_host::spawn_actor_impl;
 use crate::common::state::State;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
@@ -110,7 +110,7 @@ pub fn spawn(
     ctx.set_description("Dispatches and manages tool execution");
     ctx.set_data(state);
     let actor = ToolOrchestratorActor::activate(&mut ctx);
-    let result = spawn_actor("tool-orchestrator", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("tool-orchestrator", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 
@@ -186,9 +186,6 @@ impl Actor for ToolOrchestratorActor {
             ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
             }
             ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
         }

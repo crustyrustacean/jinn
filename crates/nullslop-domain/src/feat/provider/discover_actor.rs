@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 use crate::feat::provider::protocol::command::RefreshModels;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::provider_infra::{
@@ -67,9 +67,6 @@ impl Actor for DiscoverActor {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx).await,
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
             }
             ActorEnvelope::Event(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
         }
@@ -207,6 +204,6 @@ pub fn spawn_discover_actor(
     ctx.set_data(registry);
     ctx.set_data(api_keys);
     let actor = DiscoverActor::activate(&mut ctx);
-    let result = spawn_actor("llm-provider-listing", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("llm-provider-listing", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }

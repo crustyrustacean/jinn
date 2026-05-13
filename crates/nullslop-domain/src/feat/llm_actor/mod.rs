@@ -14,7 +14,7 @@ use std::sync::Arc;
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
@@ -57,7 +57,7 @@ pub fn spawn(
     ctx.set_description("LLM streaming with tool support");
     ctx.set_data(llm_service);
     let actor = LlmActor::activate(&mut ctx);
-    let result = spawn_actor("llm-streaming", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("llm-streaming", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 
@@ -109,9 +109,6 @@ impl Actor for LlmActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 self.cancel_all();
                 ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
             }
             ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
         }

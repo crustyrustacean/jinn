@@ -12,7 +12,7 @@ use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStartin
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::protocol::{Command, Event};
@@ -90,7 +90,7 @@ pub fn spawn(
     ctx.set_data(state);
     ctx.set_data(services);
     let actor = ShutdownTrackerActor::activate(&mut ctx);
-    let result = spawn_actor("shutdown-tracker", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("shutdown-tracker", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 
@@ -128,9 +128,6 @@ impl Actor for ShutdownTrackerActor {
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
-            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 use crate::common::services::Services;
 use crate::feat::provider::protocol::command::ProviderSwitch;
 use crate::feat::provider_infra::{ModelCache, ProviderRegistry, cache_path};
@@ -56,9 +56,6 @@ impl Actor for ProviderInitActor {
                 if let Event::EnvironmentLoaded { ref payload } = event {
                     self.on_environment_loaded(&payload.config, ctx);
                 }
-            }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
             }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
@@ -139,7 +136,7 @@ pub fn spawn_provider_init_actor(
     ctx.set_description("Loads provider config, merges cache, resolves last_model");
     ctx.set_data(services);
     let actor = ProviderInitActor::activate(&mut ctx);
-    let result = spawn_actor("provider-init", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("provider-init", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 

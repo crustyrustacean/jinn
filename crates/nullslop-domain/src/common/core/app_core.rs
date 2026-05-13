@@ -16,6 +16,9 @@ use crate::AppMsg;
 /// Default timeout for coordinated shutdown.
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Default timeout for actor system startup.
+pub const STARTUP_TIMEOUT: Duration = Duration::from_secs(3);
+
 /// Application core: state and message channel.
 ///
 /// Owns the shared state and a sender for the internal [`AppMsg`] channel.
@@ -133,5 +136,40 @@ pub fn coordinated_shutdown(
     // 4. Join actor tasks.
     if let Err(e) = actor_host.shutdown() {
         tracing::error!(err = ?e, "actor host shutdown error");
+    }
+}
+
+/// Blocks the calling thread until the actor system signals readiness.
+///
+/// Spawns an async task that waits for [`CoreNotification::ActorSystemReady`]
+/// on the core receiver with a [`STARTUP_TIMEOUT`] timeout. Must be called
+/// from outside the tokio runtime (e.g., main thread).
+///
+/// # Panics
+///
+/// Panics if called from within the tokio runtime context.
+///
+/// [`CoreNotification`]: crate::CoreNotification
+pub fn wait_for_system_ready(
+    core_receiver: &kanal::Receiver<crate::CoreNotification>,
+    handle: &tokio::runtime::Handle,
+) {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let cloned = core_receiver.clone();
+    handle.spawn(async move {
+        let async_rx = cloned.as_async();
+        let result = tokio::time::timeout(STARTUP_TIMEOUT, async_rx.recv()).await;
+        let _ = tx.send(result);
+    });
+    match rx.blocking_recv() {
+        Ok(Ok(Ok(crate::CoreNotification::ActorSystemReady))) => {
+            tracing::info!("actor system ready");
+        }
+        _ => {
+            tracing::error!(
+                timeout = ?STARTUP_TIMEOUT,
+                "actor system failed to start within timeout"
+            );
+        }
     }
 }

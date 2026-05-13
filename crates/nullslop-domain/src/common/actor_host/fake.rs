@@ -148,13 +148,13 @@ mod tests {
         let host = FakeActorHost::new();
 
         // When sending a system message.
-        host.send_system(SystemMessage::ApplicationReady);
+        host.send_system(SystemMessage::ApplicationShuttingDown);
 
         // Then the system message is recorded.
         assert_eq!(host.system_sent().len(), 1);
         assert!(matches!(
             host.system_sent()[0],
-            SystemMessage::ApplicationReady
+            SystemMessage::ApplicationShuttingDown
         ));
     }
 

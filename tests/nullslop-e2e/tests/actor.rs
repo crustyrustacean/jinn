@@ -20,7 +20,7 @@ use nullslop_domain::feat::session::session_actor::{
 };
 use nullslop_domain::feat::tools_actor::ToolOrchestratorActor;
 use nullslop_domain::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use nullslop_domain::{ActorHostService, InMemoryActorHost, spawn_actor};
+use nullslop_domain::{ActorHostService, InMemoryActorHost, spawn_actor_impl};
 use nullslop_domain::{ActorMessageSink, AppCore, AppMsg};
 use nullslop_domain::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
 
@@ -133,7 +133,7 @@ fn create_actor_core(
         nullslop_domain::AppState::default(),
     ));
     let orch_actor = ToolOrchestratorActor::activate(&mut orch_ctx);
-    let orch_result = spawn_actor(
+    let orch_result = spawn_actor_impl(
         "tool-orchestrator",
         orch_actor,
         &orch_ref,
@@ -149,7 +149,7 @@ fn create_actor_core(
     let mut llm_ctx = ActorContext::new("llm-streaming", sink.clone());
     llm_ctx.set_data(llm_service.clone());
     let llm_actor = LlmActor::activate(&mut llm_ctx);
-    let llm_result = spawn_actor(
+    let llm_result = spawn_actor_impl(
         "llm-streaming",
         llm_actor,
         &llm_ref,
@@ -167,7 +167,7 @@ fn create_actor_core(
     sp_ctx.set_data(state.clone());
     // SessionStoreService is optional — the e2e test only needs streaming event→state writes.
     let sp_actor = SessionPersistenceActor::activate(&mut sp_ctx);
-    let sp_result = spawn_actor(
+    let sp_result = spawn_actor_impl(
         "session-persistence",
         sp_actor,
         &sp_ref,
