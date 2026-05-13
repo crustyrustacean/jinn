@@ -78,13 +78,18 @@ impl SidebarSection for PinsSection {
         let mut pinned = state.active_session().pinned_entries();
         // Sort to match sorted_ids order (TOP → REL → BOT, stable by history).
         pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
-        if pinned.is_empty() {
-            render_no_entries(frame, area);
-            return;
-        }
 
         let selected_index = state.frontend.pins.selection_index(&sorted_ids);
-        let lines = build_entry_list(&pinned, selected_index, area.width);
+        let lines = if pinned.is_empty() {
+            vec![Line::from(vec![Span::styled(
+                " Pinned Context \u{2014} 0",
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )])]
+        } else {
+            build_entry_list(&pinned, selected_index, area.width)
+        };
 
         let total_lines = lines.len() as u16;
         let max_offset = total_lines.saturating_sub(area.height);
@@ -98,8 +103,9 @@ impl SidebarSection for PinsSection {
 
     fn content_height(&self, state: &AppState) -> u16 {
         let count = state.active_session().pinned_entries().len();
+        // Always at least 1 (the header line).
         if count == 0 {
-            return 1; // "No pinned entries" message
+            return 1;
         }
         // Header line + blank + (entry line + blank) * count - last blank
         (2 + count * 2).saturating_sub(1) as u16
@@ -241,15 +247,7 @@ const SELECTED_INDICATOR: &str = "\u{2588}\u{2588}";
 /// Two spaces used as the unselected border.
 const UNSELECTED_BORDER: &str = "  ";
 
-/// Renders the "No pinned entries." placeholder.
-fn render_no_entries(frame: &mut Frame<'_>, area: Rect) {
-    let msg = Paragraph::new("No pinned entries.")
-        .style(Style::default().fg(Color::DarkGray))
-        .block(Block::default().borders(Borders::NONE));
-    frame.render_widget(msg, area);
-}
-
-/// Returns the badge text and color for a pin position.
+/// Builds the list of lines for the pinned entries panel.
 fn position_badge(position: PinPosition) -> (&'static str, Color) {
     match position {
         PinPosition::Top => ("[TOP]", Color::Cyan),
@@ -626,7 +624,7 @@ mod tests {
         // When asking for content height.
         let height = section.content_height(&state);
 
-        // Then it returns 1 (placeholder message).
+        // Then it returns 1 (the header line).
         assert_eq!(height, 1);
     }
 
@@ -682,11 +680,12 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_no_entries_shows_message() {
+    fn render_empty_shows_header_with_zero_count() {
         let mut section = PinsSection;
         let state = AppState::default();
         let rows = render_rows(&mut section, &state, 40, 10);
-        assert!(rows[0].contains("No pinned entries."));
+        assert!(rows[0].contains("Pinned Context"));
+        assert!(rows[0].contains('0'));
     }
 
     #[rstest::rstest]
