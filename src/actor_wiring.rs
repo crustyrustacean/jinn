@@ -31,7 +31,7 @@ use nullslop_domain::Services;
 use nullslop_domain::SessionStoreService;
 use nullslop_domain::UserPreferencesStorageService;
 use nullslop_domain::actor_channel::ActorChannelService;
-use nullslop_domain::common::actor::protocol::event::{ActorStarted, ActorStarting};
+use nullslop_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use nullslop_domain::core_channel::CoreChannelService;
 use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -42,13 +42,10 @@ use nullslop_domain::init::provider_init_actor::ProviderInitActor;
 use nullslop_domain::init::system_ready_actor::SystemReadyActor;
 use nullslop_domain::strategy_registry::StrategyRegistryService;
 use nullslop_domain::{
-    ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost, MessageSink, State,
-    spawn, spawn_forwarding_task, system_spawn, wait_for_system_ready,
+    ActorCounter, ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost,
+    MessageSink, State, spawn, spawn_forwarding_task, system_spawn, wait_for_system_ready,
 };
 
-/// Total number of actors in the system.
-/// Used by the system-ready actor to know when all actors have started.
-const ACTOR_COUNT: usize = 16;
 
 /// Creates an `AppCore` with all actors registered and the async forwarding task started.
 ///
@@ -77,6 +74,9 @@ pub fn create_core_with_actor_host(
 
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink: Arc<dyn MessageSink> = Arc::new(ActorMessageSink::new(sender.clone()));
+
+    // Create the actor counter — incremented by every spawn/system_spawn call.
+    let counter = ActorCounter::new();
 
     // Create shared State FIRST — injected into multiple actors.
     let state = State::new(AppState::default());
@@ -114,9 +114,9 @@ pub fn create_core_with_actor_host(
     // System-ready actor: counts ActorStarted, signals main thread when done.
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
     let system_ready_result =
-        system_spawn::<SystemReadyActor>("system-ready", sink.clone(), handle, |ctx| {
+        system_spawn::<SystemReadyActor>("system-ready", sink.clone(), handle, &counter, |ctx| {
             ctx.set_data(ready_tx);
-            ctx.set_data(ACTOR_COUNT);
+            ctx.set_data(counter.clone());
         });
 
     // Shutdown tracker: tracks actor lifecycle for coordinated shutdown.
@@ -124,6 +124,7 @@ pub fn create_core_with_actor_host(
         "shutdown-tracker",
         sink.clone(),
         handle,
+        &counter,
         |ctx| {
             ctx.set_data(state.clone());
             ctx.set_data(services.clone());
@@ -159,14 +160,14 @@ pub fn create_core_with_actor_host(
     // ── Init actors (self-schedule Initialize during activate) ────────────
 
     // Env init: loads providers.toml, resolves API keys, emits EnvironmentLoaded.
-    let env_init_result = spawn::<EnvInitActor>("env-init", &sink, handle, |ctx| {
+    let env_init_result = spawn::<EnvInitActor>("env-init", &sink, handle, &counter, |ctx| {
         ctx.set_description("Loads environment variables and API keys");
         ctx.set_data(config_storage.clone());
         ctx.set_data(api_keys.clone());
     });
 
     // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
-    let provider_init_result = spawn::<ProviderInitActor>("provider-init", &sink, handle, |ctx| {
+    let provider_init_result = spawn::<ProviderInitActor>("provider-init", &sink, handle, &counter, |ctx| {
         ctx.set_description("Loads provider config, merges cache, resolves last_model");
         ctx.set_data(services.clone());
         ctx.set_data(state.clone());
@@ -175,7 +176,7 @@ pub fn create_core_with_actor_host(
     // Preferences: loads and persists user preferences.
     let prefs_result = spawn::<
         nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActor,
-    >("preferences", &sink, handle, |ctx| {
+    >("preferences", &sink, handle, &counter, |ctx| {
         ctx.set_description("Persists user preferences to nullslop.toml");
         ctx.set_data(user_preferences_storage.clone());
     });
@@ -183,7 +184,7 @@ pub fn create_core_with_actor_host(
     // Preferences state sync: updates AppState from PreferencesUpdated events.
     let prefs_sync_result = spawn::<
         nullslop_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor,
-    >("preferences-sync", &sink, handle, |ctx| {
+    >("preferences-sync", &sink, handle, &counter, |ctx| {
         ctx.set_description("Syncs AppState.frontend.preferences from PreferencesUpdated events");
         ctx.set_data(state.clone());
     });
@@ -192,7 +193,7 @@ pub fn create_core_with_actor_host(
 
     // Echo actor.
     let echo_result =
-        spawn::<nullslop_domain::feat::echo_actor::EchoActor>("echo", &sink, handle, |ctx| {
+        spawn::<nullslop_domain::feat::echo_actor::EchoActor>("echo", &sink, handle, &counter, |ctx| {
             ctx.set_description("Echoes messages back");
         });
 
@@ -201,6 +202,7 @@ pub fn create_core_with_actor_host(
         "llm-streaming",
         &sink,
         handle,
+        &counter,
         |ctx| {
             ctx.set_description("LLM streaming with tool support");
             ctx.set_data(llm_service.clone());
@@ -214,6 +216,7 @@ pub fn create_core_with_actor_host(
         "llm-provider-listing",
         &sink,
         handle,
+        &counter,
         |ctx| {
             ctx.set_description("Discovers available models");
             ctx.set_data(provider_registry.clone());
@@ -227,6 +230,7 @@ pub fn create_core_with_actor_host(
         "tool-orchestrator",
         &sink,
         handle,
+        &counter,
         |ctx| {
             ctx.set_description("Dispatches and manages tool execution");
             ctx.set_data(state.clone());
@@ -238,6 +242,7 @@ pub fn create_core_with_actor_host(
         "context",
         &sink,
         handle,
+        &counter,
         |ctx| {
             ctx.set_description("Context assembly, strategy management, pinning, and templates");
             ctx.set_data(state.clone());
@@ -258,6 +263,7 @@ pub fn create_core_with_actor_host(
         "session-persistence",
         &sink,
         handle,
+        &counter,
         |ctx| {
             ctx.set_description("Persists session data to disk");
             ctx.set_data(state.clone());
@@ -272,6 +278,7 @@ pub fn create_core_with_actor_host(
         "prompt-scan",
         &sink,
         handle,
+        &counter,
         |ctx| {
             ctx.set_description("Scans and reloads prompt templates");
             ctx.set_data(nullslop_domain::prompts_dir());
@@ -283,6 +290,7 @@ pub fn create_core_with_actor_host(
         "skills-scan",
         &sink,
         handle,
+        &counter,
         |ctx| {
             ctx.set_description("Scans and loads agent skills from ~/.agents/skills");
             ctx.set_data(nullslop_domain::feat::skills::skills_dir());
@@ -293,7 +301,7 @@ pub fn create_core_with_actor_host(
     // Persona scan actor.
     let persona_scan_result = spawn::<
         nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActor,
-    >("persona-scan", &sink, handle, |ctx| {
+    >("persona-scan", &sink, handle, &counter, |ctx| {
         ctx.set_description("Scans and loads persona files from ~/.config/nullslop/personas");
         ctx.set_data(nullslop_domain::personas_dir());
     });
@@ -303,6 +311,7 @@ pub fn create_core_with_actor_host(
         "provider",
         &sink,
         handle,
+        &counter,
         |ctx| {
             ctx.set_description("Manages provider selection, LLM factory, and model cache");
             ctx.set_data(state.clone());
@@ -338,6 +347,12 @@ pub fn create_core_with_actor_host(
     // Spawn the async forwarding task — continuously drains AppMsg channel → actor host.
     let actor_host_service = ActorHostService::new(host_arc);
     spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
+
+    // Signal that all actors have been spawned.
+    // SystemReadyActor waits for this before checking its count.
+    let _ = sink.send_event(Event::AllActorsSpawned {
+        payload: AllActorsSpawned,
+    });
 
     // Wait for the actor system to become ready (3-second timeout).
     wait_for_system_ready(ready_rx, handle);
