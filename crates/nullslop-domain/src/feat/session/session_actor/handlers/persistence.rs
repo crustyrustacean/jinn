@@ -1,46 +1,11 @@
-//! Persistence handlers — save and load session snapshots.
+//! Persistence handlers — load session snapshots.
 
-use jiff::Timestamp;
-
-use super::super::super::PersistedSession;
 use crate::protocol::{Command, PromptStrategyId};
-use crate::{SessionLoadRequested, SessionSaveRequested};
+use crate::SessionLoadRequested;
 
 use super::super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
-    /// Constructs a [`PersistedSession`] from the event payload and saves it.
-    ///
-    /// Errors are logged as warnings — persistence failure must not break
-    /// the user experience.
-    pub(in crate::feat::session::session_actor) fn on_save_requested(
-        &mut self,
-        evt: &SessionSaveRequested,
-    ) {
-        let Some(store) = &self.store else {
-            tracing::warn!("session-actor has no store — dropping save request");
-            return;
-        };
-
-        let persisted = PersistedSession {
-            session_id: evt.session_id.clone(),
-            title: evt.title.clone(),
-            updated_at: Timestamp::now(),
-            history: evt.history.clone(),
-            active_strategy: evt.active_strategy.clone(),
-            model: evt.model.clone(),
-            blobs: evt.blobs.clone(),
-        };
-
-        if let Err(e) = store.save(&persisted) {
-            tracing::warn!(
-                session_id = ?evt.session_id,
-                err = ?e,
-                "failed to persist session"
-            );
-        }
-    }
-
     /// Loads a full session from disk and sends back a `SessionLoadCompleted` command.
     pub(in crate::feat::session::session_actor) fn on_load_requested(
         &mut self,
