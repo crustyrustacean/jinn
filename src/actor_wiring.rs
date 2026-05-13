@@ -169,6 +169,7 @@ pub fn create_core_with_actor_host(
     let provider_init_result = spawn::<ProviderInitActor>("provider-init", &sink, handle, |ctx| {
         ctx.set_description("Loads provider config, merges cache, resolves last_model");
         ctx.set_data(services.clone());
+        ctx.set_data(state.clone());
     });
 
     // Preferences: loads and persists user preferences.
@@ -177,6 +178,7 @@ pub fn create_core_with_actor_host(
     >("preferences", &sink, handle, |ctx| {
         ctx.set_description("Persists user preferences to nullslop.toml");
         ctx.set_data(user_preferences_storage.clone());
+        ctx.set_data(state.clone());
     });
 
     // ── Domain actors ────────────────────────────────────────────────────
@@ -195,6 +197,8 @@ pub fn create_core_with_actor_host(
         |ctx| {
             ctx.set_description("LLM streaming with tool support");
             ctx.set_data(llm_service.clone());
+            ctx.set_data(services.clone());
+            ctx.set_data(state.clone());
         },
     );
 
@@ -207,6 +211,7 @@ pub fn create_core_with_actor_host(
             ctx.set_description("Discovers available models");
             ctx.set_data(provider_registry.clone());
             ctx.set_data(api_keys.clone());
+            ctx.set_data(state.clone());
         },
     );
 
@@ -249,6 +254,7 @@ pub fn create_core_with_actor_host(
         |ctx| {
             ctx.set_description("Persists session data to disk");
             ctx.set_data(state.clone());
+            ctx.set_data(services.clone());
             ctx.set_data(domain_session_store_service.clone());
             ctx.set_data(token_counter);
         },

@@ -28,6 +28,7 @@ impl SessionPersistenceActor {
             updated_at: Timestamp::now(),
             history: evt.history.clone(),
             active_strategy: evt.active_strategy.clone(),
+            model: evt.model.clone(),
             blobs: evt.blobs.clone(),
         };
 
@@ -61,6 +62,7 @@ impl SessionPersistenceActor {
                         title: persisted.title,
                         history: persisted.history,
                         active_strategy: persisted.active_strategy,
+                        model: persisted.model,
                         blobs: persisted.blobs,
                     },
                 });
@@ -76,6 +78,7 @@ impl SessionPersistenceActor {
                         title: String::new(),
                         history: vec![],
                         active_strategy: PromptStrategyId::passthrough(),
+                        model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
                         blobs: std::collections::HashMap::new(),
                     },
                 });
@@ -88,6 +91,7 @@ impl SessionPersistenceActor {
                         title: String::new(),
                         history: vec![],
                         active_strategy: PromptStrategyId::passthrough(),
+                        model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
                         blobs: std::collections::HashMap::new(),
                     },
                 });

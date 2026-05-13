@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use crate::protocol::{
     ActiveTab, ChatEntryId, Mode, PickerKind, PinPosition, PromptStrategyId, SessionId,
+    ToolDefinition,
 };
 use serde_json::Value as JsonValue;
 
@@ -22,6 +23,7 @@ use crate::feat::context::prompt_template::PromptTemplateStore;
 pub use crate::feat::dashboard::DashboardState;
 use crate::feat::persona::Persona;
 use crate::feat::persona::PersonaEntry;
+use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::shutdown_actor::ShutdownTrackerState;
 use crate::feat::skills::Skill;
@@ -94,6 +96,9 @@ pub struct ContextAssemblyState {
     /// The currently active persona (injected into system prompt).
     /// OWNER: context-actor (updated on PersonasLoaded, set on picker confirm).
     pub active_persona: Option<Persona>,
+    /// Registered tool definitions, keyed by tool name.
+    /// OWNER: tools-actor (populated on ToolsRegistered event), read by context-actor and llm-actor.
+    pub tool_definitions: HashMap<String, ToolDefinition>,
 }
 
 impl Default for ContextAssemblyState {
@@ -104,6 +109,7 @@ impl Default for ContextAssemblyState {
             skills: Vec::new(),
             personas: Vec::new(),
             active_persona: None,
+            tool_definitions: HashMap::new(),
         }
     }
 }
@@ -307,9 +313,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (cleared and set each handle() call).
     pub tui_signals: TuiSignals,
 
-    /// The default strategy for new sessions.
-    /// OWNER: IntentHandler (updated when user confirms strategy selection).
-    pub default_strategy: PromptStrategyId,
+    /// Cached copy of user preferences from `nullslop.toml`.
+    /// Updated whenever preferences are loaded/saved/reloaded.
+    /// This is a cache — the file is the authoritative source.
+    pub preferences: UserPreferences,
 
     /// All keymap entries, populated once at startup.
     /// OWNER: IntentHandler (populated when keymap picker opens).
@@ -352,7 +359,7 @@ impl Default for FrontendState {
             sidebar: SidebarState::default(),
             dashboard: DashboardState::new(),
             tui_signals: TuiSignals::new(),
-            default_strategy: PromptStrategyId::passthrough(),
+            preferences: UserPreferences::default(),
             all_keymap_entries: vec![],
             keymap_picker: nullslop_selection_widget::SelectionState::new(),
             keymap_picker_show_all: false,
@@ -527,16 +534,6 @@ impl AppState {
         let mut pinned = self.active_session().pinned_entries();
         pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
         pinned.iter().map(|e| e.id.clone()).collect()
-    }
-
-    /// The default strategy used for new sessions.
-    pub fn default_strategy(&self) -> &PromptStrategyId {
-        &self.frontend.default_strategy
-    }
-
-    /// Update the sticky default strategy for future sessions.
-    pub fn set_default_strategy(&mut self, strategy: PromptStrategyId) {
-        self.frontend.default_strategy = strategy;
     }
 }
 

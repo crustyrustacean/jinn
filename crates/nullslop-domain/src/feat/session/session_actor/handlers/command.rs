@@ -51,7 +51,7 @@ impl SessionPersistenceActor {
             EnqueueAction::AssemblePrompt => {
                 let state = self.state.read();
                 let history = state.session(&payload.session_id).history().to_vec();
-                let model_name = state.provider.active_provider.clone();
+                let model_name = state.session(&payload.session_id).profile().model.clone();
                 (history, model_name)
             }
             EnqueueAction::Queued | EnqueueAction::SetInputText(_) => (vec![], String::new()),
@@ -148,12 +148,26 @@ impl SessionPersistenceActor {
     ) {
         {
             let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.restore_history(payload.history.clone());
-            session.push_entry(ChatEntry::system(format!(
-                "Session restored: {}",
-                payload.title
-            )));
+            // Restore model — fallback to config if not in payload (old session migration).
+            let model = if payload.model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                state
+                    .frontend
+                    .preferences
+                    .last_model
+                    .clone()
+                    .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned())
+            } else {
+                payload.model.clone()
+            };
+            {
+                let session = state.session_mut_or_create(&payload.session_id);
+                session.restore_history(payload.history.clone());
+                session.push_entry(ChatEntry::system(format!(
+                    "Session restored: {}",
+                    payload.title
+                )));
+                session.set_model(model);
+            }
             state.session.active_session = payload.session_id.clone();
             state.session.session_loading = false;
             state.session.session_load_started_at = None;
