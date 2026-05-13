@@ -29,7 +29,6 @@ use crate::protocol::{Command, Event, SessionId, ToolDefinition};
 
 use crate::feat::context::{DefaultStrategyFactory, PromptAssembly, StrategyFactory};
 
-
 /// The context actor — handles prompt assembly, strategy management, pinning, and templates.
 pub struct PromptAssemblyActor {
     /// Shared application state.
@@ -99,7 +98,6 @@ impl Actor for PromptAssemblyActor {
             ActorEnvelope::Shutdown => {}
         }
     }
-
 }
 
 impl PromptAssemblyActor {

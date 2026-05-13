@@ -434,4 +434,3 @@ fn none_guard_always_passes() {
     let result = evaluator.evaluate(&GuardExpr::None, &HashMap::new(), &HashMap::new());
     assert!(result.is_passed());
 }
-

@@ -14,8 +14,8 @@ use nullslop_domain::AppState;
 use nullslop_domain::SendToLlmProvider;
 use nullslop_domain::Services;
 use nullslop_domain::ToolCall;
-use nullslop_domain::feat::llm_actor::LlmActor;
 use nullslop_domain::common::actor::NoDirectMsg;
+use nullslop_domain::feat::llm_actor::LlmActor;
 use nullslop_domain::feat::session::session_actor::SessionPersistenceActor;
 use nullslop_domain::feat::tools_actor::ToolOrchestratorActor;
 use nullslop_domain::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
@@ -123,9 +123,8 @@ fn create_actor_core(
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
 
     // Create tool orchestrator actor.
-    let (orch_tx, orch_rx) = kanal::unbounded::<
-        ActorEnvelope<nullslop_domain::common::actor::NoDirectMsg>,
-    >();
+    let (orch_tx, orch_rx) =
+        kanal::unbounded::<ActorEnvelope<nullslop_domain::common::actor::NoDirectMsg>>();
     let orch_ref = ActorRef::new(orch_tx);
     let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
     orch_ctx.set_data(nullslop_domain::State::new(

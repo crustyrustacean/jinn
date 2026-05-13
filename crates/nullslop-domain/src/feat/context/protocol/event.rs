@@ -62,4 +62,3 @@ pub struct PersonasLoaded {
     /// Error message if scanning failed, `None` on success.
     pub error: Option<String>,
 }
-

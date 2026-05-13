@@ -328,7 +328,7 @@ mod tests {
     use super::*;
     use crate::protocol::SessionId;
 
-#[rstest::rstest]
+    #[rstest::rstest]
     fn command_name_returns_name_for_routable_commands() {
         // Given routable command variants.
         // When calling command_name().

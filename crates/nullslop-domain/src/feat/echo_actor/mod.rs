@@ -13,7 +13,6 @@ use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
 
-
 /// Reference echo actor that echoes user messages back as actor entries.
 pub struct EchoActor;
 
@@ -35,7 +34,6 @@ impl Actor for EchoActor {
             ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
         }
     }
-
 }
 
 impl EchoActor {

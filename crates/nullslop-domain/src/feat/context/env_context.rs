@@ -40,11 +40,11 @@ pub fn build_env_context(
         section.push_str("Project-specific instructions and guidelines:\n\n");
         for file in context_files {
             let _ = write!(
-            section,
-            "## {}\n\n{}\n\n",
-            file.path.display(),
-            file.content
-        );
+                section,
+                "## {}\n\n{}\n\n",
+                file.path.display(),
+                file.content
+            );
         }
         parts.push(section);
     }
@@ -88,9 +88,7 @@ pub fn load_project_context_files(cwd: &Path) -> Vec<ContextFile> {
         }
 
         // Stop at root.
-        if dir.parent().is_none()
-            || dir.parent() == Some(dir.as_path())
-        {
+        if dir.parent().is_none() || dir.parent() == Some(dir.as_path()) {
             break;
         }
         current = dir.parent().map(std::path::Path::to_path_buf);

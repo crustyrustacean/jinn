@@ -33,7 +33,6 @@ pub struct UserPreferences {
     pub last_model: Option<String>,
 }
 
-
 /// Returns the path to the user preferences file.
 ///
 /// Uses `dirs::config_dir()` → `~/.config/nullslop/nullslop.toml`.

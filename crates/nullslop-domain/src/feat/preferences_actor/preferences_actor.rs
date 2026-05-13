@@ -15,7 +15,6 @@ use crate::feat::preferences_actor::user_preferences_storage::UserPreferencesSto
 use crate::feat::provider::protocol::event::ProviderSwitched;
 use crate::protocol::Event;
 
-
 /// The preferences actor.
 ///
 /// Subscribes to `ProviderSwitched` events and persists the selected model
@@ -56,7 +55,6 @@ impl Actor for PreferencesActor {
             ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
         }
     }
-
 }
 
 impl PreferencesActor {

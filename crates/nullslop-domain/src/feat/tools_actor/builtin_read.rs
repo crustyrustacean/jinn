@@ -94,8 +94,14 @@ fn parse_args(raw: &str) -> Result<(String, Option<usize>, Option<usize>), serde
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_owned();
-    let offset = v.get("offset").and_then(serde_json::Value::as_u64).map(|n| n as usize);
-    let limit = v.get("limit").and_then(serde_json::Value::as_u64).map(|n| n as usize);
+    let offset = v
+        .get("offset")
+        .and_then(serde_json::Value::as_u64)
+        .map(|n| n as usize);
+    let limit = v
+        .get("limit")
+        .and_then(serde_json::Value::as_u64)
+        .map(|n| n as usize);
     Ok((path, offset, limit))
 }
 

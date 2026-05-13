@@ -39,7 +39,6 @@ mod tests {
         assert_ne!(a, b);
     }
 
-
     #[rstest::rstest]
     fn session_id_starts_with_prefix() {
         // Given a new session ID.

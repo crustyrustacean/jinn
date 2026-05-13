@@ -20,7 +20,6 @@ fn chat_entry_id_is_valid_uuid() {
     assert!(uuid::Uuid::parse_str(&s).is_ok());
 }
 
-
 #[rstest::rstest]
 fn user_entry_has_user_kind() {
     // Given text "hello".
@@ -59,14 +58,12 @@ fn entry_has_timestamp() {
     assert!(entry.timestamp <= after);
 }
 
-
 #[rstest::rstest]
 fn assistant_entry_has_assistant_kind() {
     let text = "hello";
     let entry = ChatEntry::assistant(text);
     assert_eq!(entry.kind, ChatEntryKind::Assistant("hello".to_owned()));
 }
-
 
 #[rstest::rstest]
 fn actor_entry_has_actor_kind() {
@@ -86,7 +83,6 @@ fn actor_entry_has_actor_kind() {
         }
     );
 }
-
 
 #[rstest::rstest]
 fn tool_call_entry_has_tool_call_kind() {
@@ -192,7 +188,6 @@ fn pin_position_returns_none_when_unpinned() {
     assert_eq!(entry.pin_position(), None);
 }
 
-
 #[rstest::rstest]
 fn pin_position_deserializes_old_format() {
     // Given JSON without pin_position field (old format).
@@ -204,5 +199,3 @@ fn pin_position_deserializes_old_format() {
     // Then pin_position is None (backward compat via #[serde(default)]).
     assert_eq!(entry.pin_position, None);
 }
-
-

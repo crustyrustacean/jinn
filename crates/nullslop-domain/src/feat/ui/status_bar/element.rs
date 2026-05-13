@@ -375,7 +375,9 @@ mod tests {
         };
         state.frontend.status_notification = Some(StatusNotification {
             message: "old msg".to_owned(),
-            created_at: std::time::Instant::now().checked_sub(std::time::Duration::from_secs(5)).unwrap(),
+            created_at: std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(5))
+                .unwrap(),
         });
         let (mut terminal, area) = setup_term(80, 1);
         terminal

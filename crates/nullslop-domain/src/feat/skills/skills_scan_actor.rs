@@ -9,8 +9,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::common::actor::ActorContext;
 use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
-use crate::common::actor::{ActorContext};
 use crate::common::state::State;
 use crate::feat::skills::scan::scan_skills;
 use crate::feat::skills::skill::Skill;
@@ -65,11 +65,7 @@ impl ScanConfig for SkillsScanConfig {
         });
     }
 
-    fn on_panic(
-        join_error: tokio::task::JoinError,
-        _config: &Self,
-        ctx: &ActorContext,
-    ) {
+    fn on_panic(join_error: tokio::task::JoinError, _config: &Self, ctx: &ActorContext) {
         tracing::error!("skills scan task panicked: {join_error}");
         let _ = ctx.send_event(Event::SkillsLoaded {
             payload: SkillsLoaded {
