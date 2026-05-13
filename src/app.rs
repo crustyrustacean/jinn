@@ -77,36 +77,23 @@ impl App {
         // Load config from providers.toml (auto-creates on first run).
         let config_storage =
             ConfigStorageService::new(Arc::new(FilesystemConfigStorage::default_path()));
-        let provider_config = config_storage
-            .load()
-            .change_context(AppError)
-            .attach("failed to load provider config")?;
+        // API keys are resolved by the env-init actor.
+        let resolved_api_keys = ApiKeysService::new(ApiKeys::new());
 
-        // Resolve API keys at startup from environment variables.
-        let mut api_keys = ApiKeys::new();
-        for provider in &provider_config.providers {
-            if let Some(ref env_var) = provider.api_key_env
-                && let Ok(value) = std::env::var(env_var)
-                && !value.is_empty()
-            {
-                api_keys.insert(env_var.clone(), value);
-            }
-        }
-        let resolved_api_keys = ApiKeysService::new(api_keys);
-
-        // Build provider registry.
+        // Provider registry is populated by the provider-init actor.
+        // Start with an empty registry.
+        let empty_config = nullslop_domain::ProvidersConfig {
+            providers: vec![],
+            aliases: vec![],
+            default_provider: None,
+        };
         let provider_registry = ProviderRegistryService::new(
-            ProviderRegistry::from_config(provider_config).change_context(AppError)?,
+            ProviderRegistry::from_config(empty_config).change_context(AppError)?,
         );
 
-        // Determine initial provider and factory.
-        // Load user preferences (nullslop.toml) for last_model.
-        let user_prefs = load_user_preferences();
-        let (llm_service, initial_provider) = resolve_initial_factory(
-            &provider_registry,
-            &resolved_api_keys,
-            user_prefs.last_model,
-        );
+        // Initial factory is the no-provider sentinel until actors resolve the real one.
+        let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
+        let initial_provider = nullslop_domain::NO_PROVIDER_ID.to_owned();
 
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Tui => {

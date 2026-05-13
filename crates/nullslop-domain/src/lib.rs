@@ -14,6 +14,7 @@
 
 pub mod common;
 pub mod feat;
+pub mod init;
 
 // Not yet reorganized (handled in later phases)
 pub mod protocol;
