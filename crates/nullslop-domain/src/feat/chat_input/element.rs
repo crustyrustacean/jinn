@@ -49,7 +49,7 @@ impl UiElement<AppState> for ChatInputBoxElement {
         let text_style = Style::default();
 
         let block = Block::default()
-            .borders(Borders::TOP | Borders::BOTTOM)
+            .borders(Borders::BOTTOM)
             .border_style(border_style);
         let inner = block.inner(area);
         let max_visible_lines = inner.height as usize;
@@ -164,7 +164,7 @@ mod tests {
 
         // Then the buffer contains the ">" prompt character.
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 1)).expect("cell should exist");
+        let cell = buffer.cell((0, 0)).expect("cell should exist");
         assert_eq!(cell.symbol(), ">");
     }
 
@@ -190,7 +190,7 @@ mod tests {
 
         // Then the ">" prompt is yellow.
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 1)).expect("cell should exist");
+        let cell = buffer.cell((0, 0)).expect("cell should exist");
         assert_eq!(cell.symbol(), ">");
         assert_eq!(cell.style().fg, Some(Color::Yellow));
     }
@@ -211,9 +211,9 @@ mod tests {
             })
             .unwrap();
 
-        // Then the top border is yellow.
+        // Then the bottom border is yellow.
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 0)).expect("cell should exist");
+        let cell = buffer.cell((0, 2)).expect("cell should exist");
         assert_eq!(cell.style().fg, Some(Color::Yellow));
     }
 
@@ -237,10 +237,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then cursor is at position (5, 1): inner.x=0 + "> "=2 + "abc"=3.
+        // Then cursor is at position (5, 0): inner.x=0 + "> "=2 + "abc"=3.
         terminal
             .backend_mut()
-            .assert_cursor_position(Position { x: 5, y: 1 });
+            .assert_cursor_position(Position { x: 5, y: 0 });
     }
 
     #[rstest::rstest]
@@ -265,10 +265,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then cursor is at position (3, 1): inner.x=0 + "> "=2 + cursor_pos=1.
+        // Then cursor is at position (3, 0): inner.x=0 + "> "=2 + cursor_pos=1.
         terminal
             .backend_mut()
-            .assert_cursor_position(Position { x: 3, y: 1 });
+            .assert_cursor_position(Position { x: 3, y: 0 });
     }
 
     #[rstest::rstest]
@@ -292,10 +292,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then cursor is at position (2, 1): inner.x=0 + "> "=2 + cursor_pos=0.
+        // Then cursor is at position (2, 0): inner.x=0 + "> "=2 + cursor_pos=0.
         terminal
             .backend_mut()
-            .assert_cursor_position(Position { x: 2, y: 1 });
+            .assert_cursor_position(Position { x: 2, y: 0 });
     }
 
     #[rstest::rstest]
@@ -317,11 +317,11 @@ mod tests {
             })
             .unwrap();
 
-        // Then line 1 (row 1) has "> " prefix and "hello".
+        // Then line 0 (row 0) has "> " prefix and "hello".
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 1)).expect("cell should exist");
+        let cell = buffer.cell((0, 0)).expect("cell should exist");
         assert_eq!(cell.symbol(), ">");
-        let h_cell = buffer.cell((2, 1)).expect("cell should exist");
+        let h_cell = buffer.cell((2, 0)).expect("cell should exist");
         assert_eq!(h_cell.symbol(), "h");
     }
 
@@ -344,11 +344,11 @@ mod tests {
             })
             .unwrap();
 
-        // Then line 2 (row 2) has "  " indent and "world".
+        // Then line 1 (row 1) has "  " indent and "world".
         let buffer = terminal.backend().buffer().clone();
-        let indent_cell = buffer.cell((0, 2)).expect("cell should exist");
+        let indent_cell = buffer.cell((0, 1)).expect("cell should exist");
         assert_eq!(indent_cell.symbol(), " ");
-        let w_cell = buffer.cell((2, 2)).expect("cell should exist");
+        let w_cell = buffer.cell((2, 1)).expect("cell should exist");
         assert_eq!(w_cell.symbol(), "w");
     }
 
@@ -372,11 +372,11 @@ mod tests {
             })
             .unwrap();
 
-        // Then cursor is at position (4, 2): row 1, col 2.
-        // inner.x=0, indent=2, col=2 → x=4, y=inner.y + 1 = 1 + 1 = 2.
+        // Then cursor is at position (4, 1): row 1, col 2.
+        // inner.x=0, indent=2, col=2 → x=4, y=inner.y + 1 = 0 + 1 = 1.
         terminal
             .backend_mut()
-            .assert_cursor_position(Position { x: 4, y: 2 });
+            .assert_cursor_position(Position { x: 4, y: 1 });
     }
 
     #[rstest::rstest]
@@ -405,10 +405,10 @@ mod tests {
             .unwrap();
 
         // Then cursor is on row 1 (empty middle line), col 0.
-        // inner.y=1, row=1 → y=2, indent=2, col=0 → x=2.
+        // inner.y=0, row=1 → y=1, indent=2, col=0 → x=2.
         terminal
             .backend_mut()
-            .assert_cursor_position(Position { x: 2, y: 2 });
+            .assert_cursor_position(Position { x: 2, y: 1 });
     }
 
     #[rstest::rstest]
@@ -434,11 +434,11 @@ mod tests {
 
         // Then the text is rendered across multiple visual lines.
         let buffer = terminal.backend().buffer().clone();
-        // Row 1 should have "> hello " (prefix + first part of wrapped text).
-        let cell = buffer.cell((2, 1)).expect("cell should exist");
+        // Row 0 should have "> hello " (prefix + first part of wrapped text).
+        let cell = buffer.cell((2, 0)).expect("cell should exist");
         assert_eq!(cell.symbol(), "h");
-        // Row 2 should have continuation with "world".
-        let w_cell = buffer.cell((2, 2)).expect("cell should exist");
+        // Row 1 should have continuation with "world".
+        let w_cell = buffer.cell((2, 1)).expect("cell should exist");
         assert_eq!(w_cell.symbol(), "w");
     }
 
@@ -463,16 +463,16 @@ mod tests {
             })
             .unwrap();
 
-        // Then cursor is on row 2 (the continuation line).
+        // Then cursor is on row 1 (the continuation line).
         let _buffer = terminal.backend().buffer().clone();
         // The cursor should be visible on the second visual line.
         // Cursor at pos 11 (end). Wrapped lines: "> hello " and "  world".
         // Row 0 = "> hello " (8 graphemes), Row 1 = "  world" (5 graphemes).
         // cursor_row_col returns (1, 5) — row 1, col 5.
-        // visual_row = 1, cursor_y = inner.y + 1 = 2.
+        // visual_row = 1, cursor_y = inner.y + 1 = 1.
         // cursor_x = inner.x + 2 + 5 = 7.
         terminal
             .backend_mut()
-            .assert_cursor_position(Position { x: 7, y: 2 });
+            .assert_cursor_position(Position { x: 7, y: 1 });
     }
 }
