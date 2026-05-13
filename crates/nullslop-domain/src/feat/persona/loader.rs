@@ -56,31 +56,14 @@ pub(crate) fn parse_persona_content(
     content: &str,
     path: &Path,
 ) -> Result<Persona, Report<PersonaParseError>> {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("+++") {
-        return Err(Report::new(PersonaParseError::Frontmatter)
-            .attach("persona file must start with +++ frontmatter delimiter"));
-    }
-
-    let after_open = &trimmed[3..];
-    let newline_pos = after_open.find('\n').ok_or_else(|| {
-        Report::new(PersonaParseError::Frontmatter)
-            .attach("persona frontmatter: expected newline after opening +++")
-    })?;
-
-    let rest = &after_open[newline_pos + 1..];
-    let close_pos = rest.find("\n+++").ok_or_else(|| {
-        Report::new(PersonaParseError::Frontmatter)
-            .attach("persona frontmatter: missing closing +++ delimiter")
-    })?;
-
-    let frontmatter_str = &rest[..close_pos];
-    let body_start = close_pos + 4; // skip "\n+++"
-    let body = rest[body_start..].trim().to_owned();
-
-    let frontmatter: Frontmatter = toml::from_str(frontmatter_str)
-        .change_context(PersonaParseError::Parse)
-        .attach("failed to parse persona frontmatter TOML")?;
+    let (frontmatter, body) = crate::common::frontmatter::parse_toml_frontmatter::<Frontmatter>(content)
+        .map_err(|report| {
+            let ctx = match report.current_context() {
+                crate::common::frontmatter::FrontmatterError::Parse => PersonaParseError::Parse,
+                _ => PersonaParseError::Frontmatter,
+            };
+            report.change_context(ctx)
+        })?;
 
     Ok(Persona {
         name: frontmatter.name,
