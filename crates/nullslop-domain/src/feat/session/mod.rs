@@ -24,6 +24,6 @@ pub use chat_session::{ChatSessionState, SessionCore, SessionUi};
 pub use persisted_session::{BLOB_STRATEGY_STATE, PersistedSession, SessionSummary};
 pub use session_store::{JsonlSessionStore, SessionStore, SessionStoreError, SessionStoreService};
 pub use token_stats::{
-    AggregatedTokenStats, TokenRecord, TokenStats,
-    aggregate_session_stats, BLOB_PARENT_SESSION, BLOB_TOKEN_STATS,
+    AggregatedTokenStats, BLOB_PARENT_SESSION, BLOB_TOKEN_STATS, TokenRecord, TokenStats,
+    aggregate_session_stats,
 };

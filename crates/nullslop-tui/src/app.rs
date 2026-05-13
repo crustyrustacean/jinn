@@ -10,9 +10,9 @@ use derive_more::Debug;
 use nullslop_domain::ActorHostService;
 use nullslop_domain::AppUiRegistry;
 use nullslop_domain::IntentHandler;
+use nullslop_domain::feat::ui::sidebar::sidebar::Sidebar;
 use nullslop_domain::{ActiveTab, FocusScope, Intent, PickerKind};
 use nullslop_domain::{AppCore, AppMsg};
-use nullslop_domain::feat::ui::sidebar::sidebar::Sidebar;
 use ratatui::Frame;
 use ratatui_tabs::TabManager;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
@@ -350,7 +350,11 @@ mod tests {
 
     #[rstest::rstest]
     #[case::normal_chat(nullslop_domain::FocusScope::Normal, ActiveTab::Chat, Scope::Normal)]
-    #[case::normal_dashboard(nullslop_domain::FocusScope::Normal, ActiveTab::Dashboard, Scope::Dashboard)]
+    #[case::normal_dashboard(
+        nullslop_domain::FocusScope::Normal,
+        ActiveTab::Dashboard,
+        Scope::Dashboard
+    )]
     #[case::sidebar(nullslop_domain::FocusScope::Sidebar, ActiveTab::Chat, Scope::Sidebar)]
     #[case::input(nullslop_domain::FocusScope::Input, ActiveTab::Chat, Scope::Input)]
     #[case::picker(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, ActiveTab::Chat, Scope::Picker)]
@@ -658,5 +662,4 @@ mod tests {
             "filter text should be preserved after toggle"
         );
     }
-
 }

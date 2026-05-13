@@ -121,9 +121,12 @@ mod tests {
     fn session_new_fails_when_picker_active() {
         // Given a state with an active picker.
         let mut state = AppState::default();
-        state.frontend.scope_stack.push(
-            crate::common::app_state::FocusScope::Picker { kind: PickerKind::Provider },
-        );
+        state
+            .frontend
+            .scope_stack
+            .push(crate::common::app_state::FocusScope::Picker {
+                kind: PickerKind::Provider,
+            });
 
         // When validating session new.
         let result = validate_session_new(&state);
