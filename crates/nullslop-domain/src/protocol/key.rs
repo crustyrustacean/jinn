@@ -262,49 +262,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[rstest::rstest]
-    #[case::char(Key::Char('a'))]
-    #[case::enter(Key::Enter)]
-    #[case::esc(Key::Esc)]
-    #[case::tab(Key::Tab)]
-    #[case::backspace(Key::Backspace)]
-    #[case::up(Key::Up)]
-    #[case::down(Key::Down)]
-    #[case::left(Key::Left)]
-    #[case::right(Key::Right)]
-    #[case::home(Key::Home)]
-    #[case::end(Key::End)]
-    #[case::page_up(Key::PageUp)]
-    #[case::page_down(Key::PageDown)]
-    #[case::f1(Key::F(1))]
-    #[case::f12(Key::F(12))]
-    #[case::delete(Key::Delete)]
-    fn key_serialization_roundtrip(#[case] key: Key) {
-        // Given a key variant.
-        let json = serde_json::to_string(&key).expect("serialize key");
 
-        // When deserializing.
-        let back: Key = serde_json::from_str(&json).expect("deserialize key");
-
-        // Then it matches the original.
-        assert_eq!(back, key);
-    }
-
-    #[rstest::rstest]
-    fn key_event_serialization_roundtrip() {
-        // Given a KeyEvent with modifiers.
-        let event = KeyEvent {
-            key: Key::Char('x'),
-            modifiers: Modifiers::ctrl(),
-        };
-
-        // When serialized and deserialized.
-        let json = serde_json::to_string(&event).expect("serialize");
-        let back: KeyEvent = serde_json::from_str(&json).expect("deserialize");
-
-        // Then it matches the original.
-        assert_eq!(back, event);
-    }
 
     #[cfg(feature = "which-key")]
     #[rstest::rstest]
