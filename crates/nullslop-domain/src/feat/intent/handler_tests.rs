@@ -68,7 +68,6 @@ fn tui_signals_are_cleared_at_start_of_handle() {
     let mut state = AppState::default();
     state.frontend.tui_signals.toggle_whichkey = true;
     state.frontend.tui_signals.edit_requested = true;
-    state.frontend.tui_signals.pinned_pane_toggle = true;
 
     // When handling any intent that doesn't set signals.
     let result = handle(&Intent::Quit, &mut state);
@@ -76,7 +75,6 @@ fn tui_signals_are_cleared_at_start_of_handle() {
     // Then the previous signals are cleared (only should_quit is set).
     assert!(!state.frontend.tui_signals.toggle_whichkey);
     assert!(!state.frontend.tui_signals.edit_requested);
-    assert!(!state.frontend.tui_signals.pinned_pane_toggle);
     assert!(state.frontend.should_quit);
     assert!(result.commands.is_empty());
 }

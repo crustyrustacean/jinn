@@ -22,7 +22,8 @@ use crate::feat::context::prompt_template::PromptTemplateStore;
 pub use crate::feat::dashboard::DashboardState;
 use crate::feat::persona::Persona;
 use crate::feat::persona::PersonaEntry;
-pub use crate::feat::pinned_panel::PinnedPanelState;
+pub use crate::feat::ui::sidebar::pins::state::PinsState;
+use crate::feat::ui::sidebar::state::SidebarState;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::shutdown_actor::ShutdownTrackerState;
 use crate::feat::skills::Skill;
@@ -166,9 +167,13 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (open/close picker).
     pub active_picker_kind: Option<PickerKind>,
 
-    /// Pinned panel state — selection index within the pinned entries list.
-    /// OWNER: IntentHandler (pinned panel navigation).
-    pub pinned_panel: PinnedPanelState,
+    /// Pins sidebar section state — selection index within the pinned entries list.
+    /// OWNER: IntentHandler (pins navigation).
+    pub pins: PinsState,
+
+    /// Sidebar state — focus tracking and origin scope.
+    /// OWNER: IntentHandler (sidebar focus/leave).
+    pub sidebar: SidebarState,
 
     /// Actor dashboard — tracks registered actors and their status.
     /// OWNER: IntentHandler (dashboard navigation).
@@ -221,7 +226,8 @@ impl Default for FrontendState {
             active_tab: ActiveTab::Chat,
             should_quit: false,
             active_picker_kind: None,
-            pinned_panel: PinnedPanelState::default(),
+            pins: PinsState::default(),
+            sidebar: SidebarState::default(),
             dashboard: DashboardState::new(),
             tui_signals: TuiSignals::new(),
             default_strategy: PromptStrategyId::passthrough(),

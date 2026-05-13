@@ -73,13 +73,11 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
             .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::ContextAssembly }, KeyCategory::General)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
-            .bind("<c-l>", Intent::PinnedPanelOpen, KeyCategory::Navigation)
+            .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
-            // Escape: cancel selection, close pinned panel
-            .bind("<esc>", Intent::NormalEscape, KeyCategory::General)
-            // Pinned panel toggle (mnemonic: "go to pins")
-            .bind("gp", Intent::PinnedPanelToggle, KeyCategory::Context);
+            // Escape: cancel selection
+            .bind("<esc>", Intent::NormalEscape, KeyCategory::General);
         })
         // Dashboard scope: actor list navigation
         .scope(Scope::Dashboard, |b| {
@@ -99,31 +97,31 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<tab>", Intent::SwitchTab { direction: TabDirection::Next }, KeyCategory::Navigation)
             .bind("<s-tab>", Intent::SwitchTab { direction: TabDirection::Prev }, KeyCategory::Navigation)
             // Pane navigation
-            .bind("<c-l>", Intent::PinnedPanelOpen, KeyCategory::Navigation);
+            .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation);
         })
         // Pinned scope: pinned entry navigation and management
-        .scope(Scope::Pinned, |b| {
+        .scope(Scope::Sidebar, |b| {
             b
             // General — app control
             .bind("q", Intent::Quit, KeyCategory::General)
             .bind("<c-c>", Intent::Quit, KeyCategory::General)
             .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
             // Navigation — pinned entry list
-            .bind("j", Intent::PinnedPanelSelectDown, KeyCategory::Navigation)
-            .bind("k", Intent::PinnedPanelSelectUp, KeyCategory::Navigation)
+            .bind("j", Intent::SidebarMoveDown, KeyCategory::Navigation)
+            .bind("k", Intent::SidebarMoveUp, KeyCategory::Navigation)
             // Actions
-            .bind("u", Intent::PinnedPanelUnpin, KeyCategory::Context)
+            .bind("u", Intent::PinsUnpin, KeyCategory::Context)
             // Position — change pin position of selected entry
-            .bind("t", Intent::PinnedPanelPinTop, KeyCategory::Context)
-            .bind("b", Intent::PinnedPanelPinBottom, KeyCategory::Context)
-            .bind("r", Intent::PinnedPanelPinRelative, KeyCategory::Context)
-            .bind("m", Intent::PinnedPanelPinCycle, KeyCategory::Context)
-            .bind("<esc>", Intent::PinnedPanelClose, KeyCategory::General)
+            .bind("t", Intent::PinsPinTop, KeyCategory::Context)
+            .bind("b", Intent::PinsPinBottom, KeyCategory::Context)
+            .bind("r", Intent::PinsPinRelative, KeyCategory::Context)
+            .bind("m", Intent::PinsPinCycle, KeyCategory::Context)
+            .bind("<esc>", Intent::SidebarLeave, KeyCategory::General)
             // Tab switching
             .bind("<tab>", Intent::SwitchTab { direction: TabDirection::Next }, KeyCategory::Navigation)
             .bind("<s-tab>", Intent::SwitchTab { direction: TabDirection::Prev }, KeyCategory::Navigation)
             // Pane navigation — focus back to chat
-            .bind("<c-h>", Intent::PinnedPanelClose, KeyCategory::Navigation)
+            .bind("<c-h>", Intent::SidebarLeave, KeyCategory::Navigation)
             // Input — external editor
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
             // Input — enter input mode
@@ -216,7 +214,7 @@ pub fn collect_all_bindings(
     for scope in &[
         Scope::Normal,
         Scope::Dashboard,
-        Scope::Pinned,
+        Scope::Sidebar,
         Scope::Picker,
         Scope::Input,
     ] {
