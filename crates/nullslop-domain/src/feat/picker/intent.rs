@@ -12,6 +12,7 @@ use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::context::protocol::command::{
     LoadContextStrategyPickerEntries, SwitchPromptStrategy,
 };
+use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
@@ -193,12 +194,19 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     let session_id = state.session.active_session.clone();
 
     state.frontend.scope_stack.pop();
-    IntentResult::with_commands(vec![Command::ProviderSwitch {
-        payload: ProviderSwitch {
-            session_id,
-            provider_id,
+    IntentResult::with_commands(vec![
+        Command::ProviderSwitch {
+            payload: ProviderSwitch {
+                session_id,
+                provider_id: provider_id.clone(),
+            },
         },
-    }])
+        Command::UpdatePreferences {
+            payload: UpdatePreferences {
+                updates: vec![PreferenceUpdate::SetLastModel(Some(provider_id))],
+            },
+        },
+    ])
 }
 
 /// Confirms the selected strategy and dispatches a switch command.
@@ -210,12 +218,21 @@ fn confirm_strategy(state: &mut AppState) -> IntentResult {
     let session_id = state.session.active_session.clone();
 
     state.frontend.scope_stack.pop();
-    IntentResult::with_commands(vec![Command::SwitchPromptStrategy {
-        payload: SwitchPromptStrategy {
-            session_id,
-            strategy_id,
+    IntentResult::with_commands(vec![
+        Command::SwitchPromptStrategy {
+            payload: SwitchPromptStrategy {
+                session_id,
+                strategy_id: strategy_id.clone(),
+            },
         },
-    }])
+        Command::UpdatePreferences {
+            payload: UpdatePreferences {
+                updates: vec![PreferenceUpdate::SetLastStrategy(Some(
+                    strategy_id.as_str().to_owned(),
+                ))],
+            },
+        },
+    ])
 }
 
 /// Confirms a keymap selection. Returns the selected intent for the caller
