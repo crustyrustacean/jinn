@@ -13,7 +13,6 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
 
     state.session.sessions.remove(&state.session.active_session);
 
-    let new_id = SessionId::new();
     let model = state
         .frontend
         .preferences
@@ -30,6 +29,7 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
     let new_session = crate::feat::session::chat_session::ChatSessionState::new_with_profile(
         SessionProfile::from_config(model, strategy),
     );
+    let new_id = new_session.session_id().clone();
     state.session.sessions.insert(new_id.clone(), new_session);
     state.session.active_session = new_id;
     state.frontend.scope_stack.clear_overlays();

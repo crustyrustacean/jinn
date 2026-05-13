@@ -61,9 +61,10 @@ pub struct SessionState {
 
 impl Default for SessionState {
     fn default() -> Self {
-        let active_session = SessionId::new();
+        let session = ChatSessionState::new();
+        let active_session = session.session_id().clone();
         let mut sessions = HashMap::new();
-        sessions.insert(active_session.clone(), ChatSessionState::new());
+        sessions.insert(active_session.clone(), session);
         Self {
             sessions,
             active_session,
@@ -500,7 +501,11 @@ impl AppState {
     /// (e.g. workflow executor) which may create new session IDs
     /// not yet present in the sessions map.
     pub fn session_mut_or_create(&mut self, id: &SessionId) -> &mut ChatSessionState {
-        self.session.sessions.entry(id.clone()).or_default()
+        self.session.sessions.entry(id.clone()).or_insert_with(|| {
+            let mut s = ChatSessionState::new();
+            s.set_session_id(id.clone());
+            s
+        })
     }
 
     /// Read-only access to the active session's input box.

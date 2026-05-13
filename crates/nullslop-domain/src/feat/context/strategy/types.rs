@@ -2,9 +2,24 @@
 
 use async_trait::async_trait;
 use error_stack::Report;
+use serde::{Deserialize, Serialize};
 use wherror::Error;
 
 use crate::protocol::{ChatEntry, LlmMessage, PromptStrategyId, SessionId, ToolDefinition};
+
+use super::compaction_data::CompactionSessionData;
+
+/// Typed strategy state — each variant carries its strategy-specific persistent data.
+///
+/// Stored directly on `ChatSessionState` and serialized with the session.
+/// Replaces the opaque `serde_json::Value` blob pattern.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StrategyState {
+    Passthrough,
+    SlidingWindow,
+    TokenBudget,
+    Compaction(CompactionSessionData),
+}
 
 /// Error type for prompt assembly operations.
 #[derive(Debug, Error)]
