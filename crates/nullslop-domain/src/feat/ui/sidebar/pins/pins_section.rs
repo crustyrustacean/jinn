@@ -118,23 +118,14 @@ impl SidebarSection for PinsSection {
 
 /// Handles `SidebarFocus` — enters sidebar scope.
 pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
-    use crate::protocol::Mode;
-    state.frontend.sidebar.origin_scope = Some(match state.frontend.mode {
-        Mode::Input => crate::feat::ui::sidebar::state::SidebarOriginScope::Input,
-        _ => crate::feat::ui::sidebar::state::SidebarOriginScope::Normal,
-    });
+    use crate::common::app_state::FocusScope;
+    state.frontend.scope_stack.push(FocusScope::Sidebar);
     IntentResult::empty()
 }
 
-/// Handles `SidebarLeave` — restores origin scope and clears tracking.
+/// Handles `SidebarLeave` — pops back to previous scope.
 pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
-    use crate::protocol::Mode;
-    if let Some(origin) = state.frontend.sidebar.origin_scope.take() {
-        state.frontend.mode = match origin {
-            crate::feat::ui::sidebar::state::SidebarOriginScope::Input => Mode::Input,
-            crate::feat::ui::sidebar::state::SidebarOriginScope::Normal => Mode::Normal,
-        };
-    }
+    state.frontend.scope_stack.pop();
     IntentResult::empty()
 }
 
@@ -359,7 +350,7 @@ fn build_entry_list(
 
 #[cfg(test)]
 mod tests {
-    use crate::common::app_state::AppState;
+    use crate::common::app_state::{AppState, FocusScope};
     use crate::protocol::{ChatEntry, Command, PinPosition};
 
     use super::*;
@@ -386,59 +377,57 @@ mod tests {
     // --- Sidebar handler tests ---
 
     #[rstest::rstest]
-    fn sidebar_focus_sets_origin_scope() {
+    fn sidebar_focus_pushes_sidebar_scope() {
         // Given a default state.
         let mut state = AppState::default();
 
         // When handling sidebar focus.
         let result = handle_sidebar_focus(&mut state);
 
-        // Then origin_scope is set.
-        assert!(state.frontend.sidebar.origin_scope.is_some());
+        // Then Sidebar is on top of the scope stack.
+        assert!(state.frontend.scope_stack.is_sidebar());
         assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
-    fn sidebar_leave_clears_origin_scope() {
-        // Given a state with origin_scope set to Normal.
+    fn sidebar_leave_pops_scope_stack() {
+        // Given a state with Sidebar pushed onto the scope stack.
         let mut state = AppState::default();
-        state.frontend.sidebar.origin_scope =
-            Some(crate::feat::ui::sidebar::state::SidebarOriginScope::Normal);
+        state.frontend.scope_stack.push(FocusScope::Sidebar);
 
         // When handling sidebar leave.
         let result = handle_sidebar_leave(&mut state);
 
-        // Then origin_scope is cleared.
-        assert!(state.frontend.sidebar.origin_scope.is_none());
+        // Then Sidebar is no longer on the scope stack.
+        assert!(!state.frontend.scope_stack.is_sidebar());
         assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
-    fn sidebar_leave_restores_normal_mode() {
+    fn sidebar_leave_restores_normal_scope() {
         // Given a state that entered sidebar from Normal mode.
         let mut state = AppState::default();
-        state.frontend.sidebar.origin_scope =
-            Some(crate::feat::ui::sidebar::state::SidebarOriginScope::Normal);
+        state.frontend.scope_stack.push(FocusScope::Sidebar);
 
         // When handling sidebar leave.
         handle_sidebar_leave(&mut state);
 
-        // Then mode is restored to Normal.
-        assert_eq!(state.frontend.mode, crate::protocol::Mode::Normal);
+        // Then the scope stack is back to Normal.
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
     }
 
     #[rstest::rstest]
-    fn sidebar_leave_restores_input_mode() {
+    fn sidebar_leave_restores_input_scope() {
         // Given a state that entered sidebar from Input mode.
         let mut state = AppState::default();
-        state.frontend.sidebar.origin_scope =
-            Some(crate::feat::ui::sidebar::state::SidebarOriginScope::Input);
+        state.frontend.scope_stack.push(FocusScope::Input);
+        state.frontend.scope_stack.push(FocusScope::Sidebar);
 
         // When handling sidebar leave.
         handle_sidebar_leave(&mut state);
 
-        // Then mode is restored to Input.
-        assert_eq!(state.frontend.mode, crate::protocol::Mode::Input);
+        // Then the scope stack is back to Input.
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
     }
 
     #[rstest::rstest]
