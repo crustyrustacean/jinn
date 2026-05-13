@@ -1,9 +1,9 @@
 //! Provider picker render tests.
 
-use crate::common::app_state::AppState;
+use crate::common::app_state::{AppState, FocusScope};
 use crate::common::services::Services;
 use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
-use crate::protocol::{Mode, PickerKind};
+use crate::protocol::PickerKind;
 use nullslop_selection_widget::compute_popup_rect;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -51,8 +51,9 @@ fn render_provider_picker_shows_telescope_layout() {
     // Given a terminal area and picker state with filter "ol".
 
     let (mut state, services) = picker_state_with_ollama();
-    state.frontend.mode = Mode::Picker;
-    state.frontend.active_picker_kind = Some(PickerKind::Provider);
+    state.frontend.scope_stack.push(FocusScope::Picker {
+        kind: PickerKind::Provider,
+    });
     load_picker_items(&mut state, &services);
     state.provider.provider_picker.insert_char('o');
     state.provider.provider_picker.insert_char('l');
@@ -109,9 +110,10 @@ fn render_provider_picker_shows_active_model_marker() {
     // Given a state with active_provider set to "ollama/llama3" and items loaded.
 
     let (mut state, services) = picker_state_with_ollama();
-    state.frontend.mode = Mode::Picker;
+    state.frontend.scope_stack.push(FocusScope::Picker {
+        kind: PickerKind::Provider,
+    });
     state.provider.active_provider = "ollama/llama3".to_owned();
-    state.frontend.active_picker_kind = Some(PickerKind::Provider);
     load_picker_items(&mut state, &services);
 
     let (mut terminal, _area) = setup_term(80, 24);

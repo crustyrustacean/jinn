@@ -38,9 +38,10 @@ pub fn render_context_strategy_picker(frame: &mut Frame<'_>, area: Rect, state: 
 pub fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let scope_name = state
         .frontend
-        .keymap_picker_origin_scope
-        .as_deref()
-        .unwrap_or("unknown");
+        .scope_stack
+        .parent()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "unknown".to_owned());
     let footer = if state.frontend.keymap_picker_show_all {
         Line::from(format!(" All scopes | CTRL+A to show {scope_name} "))
     } else {

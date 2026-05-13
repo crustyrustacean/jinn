@@ -18,9 +18,16 @@ pub const MIN_HEIGHT: u16 = 14;
 
 /// Top-level application layout areas.
 pub struct AppLayout {
-    /// The tab bar area (1 row at top).
+    /// The tab bar area (1 row at top, full width).
     pub tabs: Rect,
-    /// The main content area (fills remaining space).
+    /// The left column: chat + indicator + queue + counter + input + status bar.
+    pub main: Rect,
+    /// The right column: sidebar (full height below tabs).
+    pub sidebar: Rect,
+    /// The vertical border between main and sidebar (1 column wide).
+    pub border: Rect,
+    // Sub-areas of the main column:
+    /// The chat log area.
     pub content: Rect,
     /// The streaming indicator area (1 row between content and counter).
     pub indicator: Rect,
@@ -43,6 +50,18 @@ impl AppLayout {
 
     /// Computes the layout for the given terminal area.
     ///
+    /// Layout structure:
+    /// ```text
+    /// tabs (full width)
+    /// main column | border | sidebar (full height)
+    ///   content   |        |
+    ///   indicator |        |
+    ///   queue     |        |
+    ///   counter   |        |
+    ///   input     |        |
+    ///   status    |        |
+    /// ```
+    ///
     /// `input_lines` is the number of visual lines the input box needs
     /// (used for dynamic multi-line input height).
     ///
@@ -55,6 +74,33 @@ impl AppLayout {
         let [tabs, rest] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
 
+        // Horizontal split: main column | border(1) | sidebar
+        let sidebar_width = (rest.width * 20 / 100).min(30);
+        let border_width: u16 = 1;
+        let main_width = rest
+            .width
+            .saturating_sub(sidebar_width)
+            .saturating_sub(border_width);
+
+        let main = Rect {
+            x: rest.x,
+            y: rest.y,
+            width: main_width,
+            height: rest.height,
+        };
+        let border = Rect {
+            x: rest.x + main_width,
+            y: rest.y,
+            width: border_width,
+            height: rest.height,
+        };
+        let sidebar = Rect {
+            x: rest.x + main_width + border_width,
+            y: rest.y,
+            width: sidebar_width,
+            height: rest.height,
+        };
+
         let input_height = (2 + input_lines.max(1)).min(max_input_height);
         let [content, indicator, queue, counter, input, status_bar] = Layout::vertical([
             Constraint::Min(1),
@@ -64,10 +110,13 @@ impl AppLayout {
             Constraint::Length(input_height),
             Constraint::Length(1),
         ])
-        .areas(rest);
+        .areas(main);
 
         Self {
             tabs,
+            main,
+            sidebar,
+            border,
             content,
             indicator,
             queue,
@@ -97,9 +146,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // Pre-render mutation: set wrap width and scroll offset using a write lock.
     {
         let mut wstate = app.core.state.write();
-        let text_width = area.width.saturating_sub(2) as usize;
-        wstate.active_chat_input_mut().set_wrap_width(text_width);
-        // Need layout to know inner height — compute a preliminary layout.
+        // Compute a preliminary layout to determine main column width.
         let queue_len = wstate.active_session().queue_len() as u16;
         let max_input_height = area.height / 2;
         let pre_layout = AppLayout::new(
@@ -108,7 +155,10 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             queue_len,
             max_input_height,
         );
-        if wstate.frontend.mode == Mode::Input {
+        // Wrap width is based on the main column (not full terminal width).
+        let text_width = pre_layout.main.width.saturating_sub(2) as usize;
+        wstate.active_chat_input_mut().set_wrap_width(text_width);
+        if wstate.frontend.scope_stack.current().mode() == Mode::Input {
             let inner_height = pre_layout.input.height.saturating_sub(2) as usize;
             wstate
                 .active_chat_input_mut()
@@ -135,49 +185,24 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
     match state.frontend.active_tab {
         nullslop_domain::ActiveTab::Chat => {
-            // Fixed 70/30 split between chat and sidebar.
-            let sidebar_ratio: f32 = 0.3;
-            let sidebar_width = (layout.content.width as f32 * sidebar_ratio).ceil() as u16;
-            let border_width: u16 = 1;
-            let chat_width = layout
-                .content
-                .width
-                .saturating_sub(sidebar_width)
-                .saturating_sub(border_width);
-            let sidebar_x = layout.content.x + chat_width + border_width;
-
-            let chat_area = Rect {
-                x: layout.content.x,
-                y: layout.content.y,
-                width: chat_width,
-                height: layout.content.height,
-            };
-            let sidebar_area = Rect {
-                x: sidebar_x,
-                y: layout.content.y,
-                width: sidebar_width,
-                height: layout.content.height,
-            };
-
-            // Draw vertical border line between chat and sidebar.
-            let border_x = layout.content.x + chat_width;
+            // Draw vertical border line between main and sidebar.
             let border_style = Style::default().fg(Color::DarkGray);
-            for y in layout.content.y..(layout.content.y + layout.content.height) {
-                if let Some(cell) = frame.buffer_mut().cell_mut((border_x, y)) {
+            for y in layout.border.y..(layout.border.y + layout.border.height) {
+                if let Some(cell) = frame.buffer_mut().cell_mut((layout.border.x, y)) {
                     cell.set_symbol("\u{2502}");
                     cell.set_style(border_style);
                 }
             }
 
             // Render sidebar sections.
-            let sidebar_focused = state.frontend.sidebar.origin_scope.is_some();
-            app.sidebar.render(frame, sidebar_area, &state);
+            let sidebar_focused = state.frontend.scope_stack.is_sidebar();
+            app.sidebar.render(frame, layout.sidebar, &state);
             if sidebar_focused {
-                rects.push(sidebar_area);
+                rects.push(layout.sidebar);
             }
 
-            // Use chat_area as content_area for the chat log.
-            let content_area = chat_area;
+            // Use layout.content (main column sub-area) for the chat log.
+            let content_area = layout.content;
 
             // Chat log
             if let Some(element) = app.ui_registry.get_mut("chat-log") {
@@ -231,7 +256,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // Which-key popup overlay (app-level, not a component element)
     render_which_key(frame, &mut app.which_key);
 
-    if state.frontend.mode == Mode::Picker {
+    if state.frontend.scope_stack.is_picker() {
         render_picker(frame, area, &state);
         // Provider picker popup is selectable — not a UiElement, register inline.
         rects.push(nullslop_selection_widget::compute_popup_rect(area));
@@ -393,7 +418,7 @@ fn render_which_key(frame: &mut Frame<'_>, state: &mut crate::app::WhichKeyInsta
 
 /// Renders the active picker overlay, dispatching on [`PickerKind`].
 fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &nullslop_domain::AppState) {
-    match state.frontend.active_picker_kind {
+    match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => render_provider_picker(frame, area, state),
         Some(PickerKind::ContextAssembly) => {
             render_context_strategy_picker(frame, area, state);

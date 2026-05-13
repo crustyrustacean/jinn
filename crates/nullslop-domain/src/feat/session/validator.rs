@@ -64,7 +64,7 @@ pub enum SessionNewError {
 ///
 /// Returns an error if a picker is currently active.
 pub fn validate_session_new(state: &AppState) -> Result<(), SessionNewError> {
-    if state.frontend.active_picker_kind.is_some() {
+    if state.frontend.scope_stack.is_picker() {
         return Err(SessionNewError::PickerActive);
     }
     Ok(())
@@ -121,7 +121,12 @@ mod tests {
     fn session_new_fails_when_picker_active() {
         // Given a state with an active picker.
         let mut state = AppState::default();
-        state.frontend.active_picker_kind = Some(PickerKind::Provider);
+        state
+            .frontend
+            .scope_stack
+            .push(crate::common::app_state::FocusScope::Picker {
+                kind: PickerKind::Provider,
+            });
 
         // When validating session new.
         let result = validate_session_new(&state);
