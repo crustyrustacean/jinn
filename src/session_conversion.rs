@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use nullslop_domain::SessionId;
 use nullslop_domain::feat::session::chat_session::ChatSessionState;
-use nullslop_domain::feat::session::{BLOB_STRATEGY_STATE, PersistedSession};
+use nullslop_domain::feat::session::{BLOB_STRATEGY_STATE, BLOB_TOKEN_STATS, BLOB_PARENT_SESSION, PersistedSession, TokenRecord};
 
 /// Reconstruct runtime state from a persisted snapshot.
 ///
@@ -33,6 +33,20 @@ pub fn persisted_into_session(persisted: PersistedSession) -> ChatSessionState {
         session.set_strategy_state(strategy_value.clone());
     }
 
+    // Restore token ledger from blob — missing/malformed → empty.
+    if let Some(blob) = persisted.blobs.get(BLOB_TOKEN_STATS) {
+        if let Ok(records) = serde_json::from_value::<Vec<TokenRecord>>(blob.clone()) {
+            session.restore_token_ledger(records);
+        }
+    }
+
+    // Restore parent session from blob — missing/malformed → None.
+    if let Some(blob) = persisted.blobs.get(BLOB_PARENT_SESSION) {
+        if let Ok(parent) = serde_json::from_value::<Option<SessionId>>(blob.clone()) {
+            session.restore_parent_session(parent);
+        }
+    }
+
     session
 }
 
@@ -52,6 +66,22 @@ pub fn session_to_persisted(
 
     if let Some(strategy_state) = session.strategy_state() {
         blobs.insert(BLOB_STRATEGY_STATE.to_owned(), strategy_state.clone());
+    }
+
+    // Serialize token ledger (only if non-empty).
+    if !session.token_ledger().is_empty() {
+        blobs.insert(
+            BLOB_TOKEN_STATS.to_owned(),
+            serde_json::to_value(session.token_ledger()).unwrap_or_default(),
+        );
+    }
+
+    // Serialize parent session (only if set).
+    if let Some(ref parent) = *session.parent_session() {
+        blobs.insert(
+            BLOB_PARENT_SESSION.to_owned(),
+            serde_json::to_value(parent).unwrap_or_default(),
+        );
     }
 
     use jiff::Timestamp;
@@ -178,5 +208,92 @@ mod tests {
             .strategy_state()
             .expect("strategy state should be restored");
         assert_eq!(blob["compaction_count"], 7);
+    }
+
+    // --- Test: Token ledger round-trips through blob ---
+
+    #[rstest::rstest]
+    fn token_ledger_round_trips_through_persisted_session() {
+        // Given a ChatSessionState with token records.
+        let mut runtime = ChatSessionState::new();
+        runtime.push_token_record(TokenRecord {
+            timestamp: jiff::Timestamp::now(),
+            tokens_sent: 1000,
+            tokens_received: 500,
+        });
+        runtime.push_token_record(TokenRecord {
+            timestamp: jiff::Timestamp::now(),
+            tokens_sent: 2000,
+            tokens_received: 800,
+        });
+
+        // When converting to PersistedSession and back.
+        let session_id = SessionId::new();
+        let persisted = session_to_persisted(&runtime, &session_id, "Test");
+        let restored = persisted_into_session(persisted);
+
+        // Then the token ledger is preserved.
+        let ledger = restored.token_ledger();
+        assert_eq!(ledger.len(), 2);
+        assert_eq!(ledger[0].tokens_sent, 1000);
+        assert_eq!(ledger[0].tokens_received, 500);
+        assert_eq!(ledger[1].tokens_sent, 2000);
+        assert_eq!(ledger[1].tokens_received, 800);
+    }
+
+    // --- Test: Parent session round-trips through blob ---
+
+    #[rstest::rstest]
+    fn parent_session_round_trips_through_persisted_session() {
+        // Given a ChatSessionState with a parent session.
+        let mut runtime = ChatSessionState::new();
+        let parent_id = SessionId::new();
+        runtime.set_parent_session(parent_id.clone());
+
+        // When converting to PersistedSession and back.
+        let session_id = SessionId::new();
+        let persisted = session_to_persisted(&runtime, &session_id, "Test");
+        let restored = persisted_into_session(persisted);
+
+        // Then the parent session is preserved.
+        assert_eq!(restored.parent_session(), &Some(parent_id));
+    }
+
+    // --- Test: Old sessions without token blob load cleanly ---
+
+    #[rstest::rstest]
+    fn old_session_without_token_stats_loads_with_empty_ledger() {
+        // Given a PersistedSession without token stats blob.
+        let persisted = PersistedSession {
+            session_id: SessionId::new(),
+            title: "Old Session".to_owned(),
+            updated_at: jiff::Timestamp::now(),
+            history: vec![ChatEntry::user("hello")],
+            active_strategy: PromptStrategyId::passthrough(),
+            blobs: HashMap::new(),
+        };
+
+        // When converting to runtime session.
+        let session = persisted_into_session(persisted);
+
+        // Then the token ledger is empty and parent is None.
+        assert!(session.token_ledger().is_empty());
+        assert!(session.parent_session().is_none());
+    }
+
+    // --- Test: Empty ledger is not serialized ---
+
+    #[rstest::rstest]
+    fn empty_token_ledger_not_included_in_blobs() {
+        // Given a ChatSessionState with no token records.
+        let runtime = ChatSessionState::new();
+
+        // When converting to PersistedSession.
+        let session_id = SessionId::new();
+        let persisted = session_to_persisted(&runtime, &session_id, "Test");
+
+        // Then no token_stats blob is present.
+        assert!(!persisted.blobs.contains_key(BLOB_TOKEN_STATS));
+        assert!(!persisted.blobs.contains_key(BLOB_PARENT_SESSION));
     }
 }

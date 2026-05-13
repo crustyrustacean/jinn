@@ -19,6 +19,7 @@ use nullslop_domain::UserPreferencesStorageService;
 use nullslop_domain::actor_channel::ActorChannelService;
 use nullslop_domain::core_channel::CoreChannelService;
 use nullslop_domain::feat::context::DefaultStrategyFactory;
+use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use nullslop_domain::feat::preferences_actor::spawn_preferences_actor;
 use nullslop_domain::feat::session::JsonlSessionStore as DomainJsonlSessionStore;
 use nullslop_domain::feat::session::SessionStoreService as DomainSessionStoreService;
@@ -119,9 +120,11 @@ pub fn create_core_with_actor_host(
     let domain_session_store = DomainJsonlSessionStore::new();
     let domain_session_store_service =
         DomainSessionStoreService::new(Arc::new(domain_session_store));
+    let token_counter = TiktokenCounter::o200k_base();
     let (_sp_ref, sp_result) = nullslop_domain::feat::session::session_actor::spawn_session_actor(
         state.clone(),
         domain_session_store_service.clone(),
+        token_counter,
         sink.clone(),
         handle,
     );

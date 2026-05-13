@@ -31,6 +31,7 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::context::protocol::event::PromptAssembled;
+use crate::feat::context::strategy::token_estimator::{TokenCounter, TiktokenCounter};
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
@@ -56,6 +57,8 @@ pub struct SessionPersistenceActor {
     pub(super) state: State,
     /// The session store service for writing session snapshots.
     pub(super) store: Option<SessionStoreService>,
+    /// Token counter for recording token usage in the session ledger.
+    pub(super) counter: TiktokenCounter,
 }
 
 impl Actor for SessionPersistenceActor {
@@ -91,8 +94,11 @@ impl Actor for SessionPersistenceActor {
             .take_data::<State>()
             .expect("SessionPersistenceActor requires State injection");
         let store = ctx.take_data::<SessionStoreService>();
+        let counter = ctx
+            .take_data::<TiktokenCounter>()
+            .unwrap_or_else(TiktokenCounter::o200k_base);
 
-        Self { state, store }
+        Self { state, store, counter }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
@@ -185,6 +191,7 @@ impl SessionPersistenceActor {
 pub fn spawn_session_actor(
     state: crate::common::state::State,
     session_store: super::SessionStoreService,
+    counter: TiktokenCounter,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
 ) -> (ActorRef<SessionPersistenceDirectMsg>, ActorSpawnResult) {
@@ -194,6 +201,7 @@ pub fn spawn_session_actor(
     ctx.set_description("Persists session data to disk");
     ctx.set_data(state);
     ctx.set_data(session_store);
+    ctx.set_data(counter);
     let actor = SessionPersistenceActor::activate(&mut ctx);
     let result = spawn_actor("session-persistence", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
@@ -1022,6 +1030,203 @@ mod tests {
             cmds.iter()
                 .any(|c| matches!(c, Command::SendToLlmProvider { .. }))
         );
+    }
+
+    // =========================================================
+    // Token counting tests
+    // =========================================================
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn prompt_assembled_records_input_tokens_in_ledger() {
+        // Given a session actor with a sending session.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        {
+            let mut guard = state.write();
+            guard.session_mut_or_create(&session_id).begin_sending();
+        }
+
+        // When processing PromptAssembled with a user message.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::PromptAssembled {
+                    payload: crate::feat::context::protocol::event::PromptAssembled {
+                        session_id: session_id.clone(),
+                        system_prompt: None,
+                        messages: vec![crate::protocol::LlmMessage::User {
+                            content: "hello world".into(),
+                        }],
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the token ledger has one record with nonzero tokens_sent.
+        let guard = state.read();
+        let session = guard.session(&session_id);
+        let ledger = session.token_ledger();
+        assert_eq!(ledger.len(), 1);
+        assert!(ledger[0].tokens_sent > 0, "tokens_sent should be nonzero");
+        assert_eq!(ledger[0].tokens_received, 0, "tokens_received not yet set");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn prompt_assembled_caches_context_size() {
+        // Given a session actor with a sending session.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        {
+            let mut guard = state.write();
+            guard.session_mut_or_create(&session_id).begin_sending();
+        }
+
+        // When processing PromptAssembled.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::PromptAssembled {
+                    payload: crate::feat::context::protocol::event::PromptAssembled {
+                        session_id: session_id.clone(),
+                        system_prompt: None,
+                        messages: vec![crate::protocol::LlmMessage::User {
+                            content: "hello world".into(),
+                        }],
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the context size is cached.
+        let guard = state.read();
+        let session = guard.session(&session_id);
+        let ctx_size = session.context_size().expect("context size should be cached");
+        assert!(ctx_size > 0, "context size should be nonzero");
+        // And it matches the recorded tokens_sent.
+        assert_eq!(ctx_size, session.token_ledger()[0].tokens_sent);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_records_output_tokens() {
+        // Given a session actor with a streaming session that has a token record.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        // Simulate prompt assembly recording input tokens.
+        {
+            let mut guard = state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.begin_streaming();
+            session.push_token_record(
+                crate::feat::session::token_stats::TokenRecord {
+                    timestamp: jiff::Timestamp::now(),
+                    tokens_sent: 100,
+                    tokens_received: 0,
+                },
+            );
+        }
+
+        // When processing StreamCompleted with assistant content.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::StreamCompleted {
+                    payload: StreamCompleted {
+                        session_id: session_id.clone(),
+                        reason: StreamCompletedReason::Finished,
+                        assistant_content: Some("Hello world response".to_owned()),
+                        tool_calls: None,
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the last token record has nonzero tokens_received.
+        let guard = state.read();
+        let session = guard.session(&session_id);
+        let ledger = session.token_ledger();
+        assert_eq!(ledger.len(), 1);
+        assert_eq!(ledger[0].tokens_sent, 100);
+        assert!(ledger[0].tokens_received > 0, "tokens_received should be nonzero");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_canceled_does_not_record_output_tokens() {
+        // Given a session actor with a streaming session that has a token record.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        {
+            let mut guard = state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.begin_streaming();
+            session.push_token_record(
+                crate::feat::session::token_stats::TokenRecord {
+                    timestamp: jiff::Timestamp::now(),
+                    tokens_sent: 100,
+                    tokens_received: 0,
+                },
+            );
+        }
+
+        // When processing StreamCompleted with Canceled reason.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::StreamCompleted {
+                    payload: StreamCompleted {
+                        session_id: session_id.clone(),
+                        reason: StreamCompletedReason::Canceled,
+                        assistant_content: None,
+                        tool_calls: None,
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the token record is NOT finalized (tokens_received stays 0).
+        let guard = state.read();
+        let session = guard.session(&session_id);
+        assert_eq!(session.token_ledger()[0].tokens_received, 0);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_without_prior_assembly_does_not_panic() {
+        // Given a session actor with a streaming session but NO token record.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        {
+            let mut guard = state.write();
+            guard.session_mut_or_create(&session_id).begin_streaming();
+        }
+
+        // When processing StreamCompleted with content (but no prior PromptAssembled).
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::StreamCompleted {
+                    payload: StreamCompleted {
+                        session_id: session_id.clone(),
+                        reason: StreamCompletedReason::Finished,
+                        assistant_content: Some("response".to_owned()),
+                        tool_calls: None,
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then no panic occurred and the ledger is still empty.
+        let guard = state.read();
+        let session = guard.session(&session_id);
+        assert!(session.token_ledger().is_empty());
     }
 
     // =========================================================
