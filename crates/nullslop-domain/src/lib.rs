@@ -21,8 +21,8 @@ pub mod protocol;
 
 // Re-export actor framework types
 pub use common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, ActorSendError, MessageSink, RecordingSink,
-    SendResult, SystemMessage,
+    Actor, ActorContext, ActorCounter, ActorEnvelope, ActorRef, ActorSendError, MessageSink,
+    RecordingSink, SendResult, SystemMessage,
 };
 pub use common::actor_host::{
     ActorHost, ActorHostService, ActorSpawnResult, FakeActorHost, InMemoryActorHost, RoutingEntry,
@@ -102,7 +102,9 @@ pub use protocol::{
 
 // Re-export domain types from their canonical locations
 pub use common::actor::protocol::command::ProceedWithShutdown;
-pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
+pub use common::actor::protocol::event::{
+    ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned,
+};
 pub use feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
