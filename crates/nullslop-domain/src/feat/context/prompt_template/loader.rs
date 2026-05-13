@@ -96,26 +96,9 @@ pub fn render_template_file(template: &PromptTemplate) -> String {
 pub(crate) fn parse_template_content(
     content: &str,
 ) -> Result<PromptTemplate, Report<PromptTemplateParseError>> {
-    let trimmed = content.trim_start();
-
-    // Find opening +++
-    let Some(after_open) = trimmed.strip_prefix("+++") else {
-        return Err(Report::new(PromptTemplateParseError::Frontmatter)
-            .attach("file must start with +++ frontmatter delimiter"));
-    };
-
-    // Find closing +++ on its own line.
-    let Some((frontmatter_str, body_rest)) = after_open.split_once("\n+++") else {
-        return Err(Report::new(PromptTemplateParseError::Frontmatter)
-            .attach("missing closing +++ frontmatter delimiter"));
-    };
-
-    let frontmatter_str = frontmatter_str.trim();
-    let body = body_rest.trim_start_matches('\n').trim_end().to_owned();
-
-    let frontmatter: Frontmatter = toml::from_str(frontmatter_str)
-        .change_context(PromptTemplateParseError::Parse)
-        .attach("failed to parse frontmatter TOML")?;
+    let (frontmatter, body) = crate::common::frontmatter::parse_toml_frontmatter::<Frontmatter>(content)
+        .change_context(PromptTemplateParseError::Frontmatter)
+        .attach("failed to parse template file")?;
 
     Ok(PromptTemplate {
         name: frontmatter.name,

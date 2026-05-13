@@ -4,6 +4,7 @@ pub mod actor;
 pub mod actor_host;
 pub mod app_state;
 pub mod core;
+pub mod frontmatter;
 pub mod services;
 pub mod state;
 pub mod tui_signals;
