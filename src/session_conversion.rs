@@ -10,7 +10,9 @@ use std::collections::HashMap;
 
 use nullslop_domain::SessionId;
 use nullslop_domain::feat::session::chat_session::ChatSessionState;
-use nullslop_domain::feat::session::{BLOB_STRATEGY_STATE, BLOB_TOKEN_STATS, BLOB_PARENT_SESSION, PersistedSession, TokenRecord};
+use nullslop_domain::feat::session::{
+    BLOB_PARENT_SESSION, BLOB_STRATEGY_STATE, BLOB_TOKEN_STATS, PersistedSession, TokenRecord,
+};
 
 /// Reconstruct runtime state from a persisted snapshot.
 ///

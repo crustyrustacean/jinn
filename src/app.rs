@@ -15,16 +15,11 @@ use nullslop_domain::ConfigStorageService;
 use nullslop_domain::FilesystemConfigStorage;
 use nullslop_domain::FilesystemUserPreferencesStorage;
 use nullslop_domain::LlmServiceFactoryService;
-use nullslop_domain::ModelCache;
 use nullslop_domain::NoProvidersAvailableFactory;
-use nullslop_domain::ProviderId;
 use nullslop_domain::ProviderRegistry;
 use nullslop_domain::ProviderRegistryService;
 use nullslop_domain::State;
-use nullslop_domain::UserPreferences;
 use nullslop_domain::UserPreferencesStorageService;
-use nullslop_domain::cache_path;
-use nullslop_domain::feat::preferences_actor::user_preferences_storage::UserPreferencesStorage;
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -110,7 +105,6 @@ impl App {
                         )),
                     );
                 core.state.write().provider.active_provider = initial_provider;
-                load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
 
@@ -163,7 +157,6 @@ impl App {
                         )),
                     );
                 core.state.write().provider.active_provider = initial_provider;
-                load_model_cache(&core.state, &cache_path());
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
                 let mut headless = HeadlessApp::new(core, actor_host, core_receiver, self.handle());
@@ -188,88 +181,10 @@ impl App {
     }
 }
 
-/// Resolves the initial LLM factory and provider name at startup.
-///
-/// Tries the last model from user preferences first, then the configured
-/// default provider, then falls back to the first available provider.
-/// If none are available, returns a [`NoProvidersAvailableFactory`]
-/// that streams a helpful setup message.
-fn resolve_initial_factory(
-    registry: &ProviderRegistryService,
-    api_keys: &ApiKeysService,
-    last_model: Option<String>,
-) -> (LlmServiceFactoryService, String) {
-    let registry_guard = registry.read();
-    let api_keys_guard = api_keys.read();
-
-    // Try last model from user preferences (nullslop.toml).
-    if let Some(ref model) = last_model {
-        let id = ProviderId::new(model.clone());
-        if registry_guard.is_available(&id, &api_keys_guard)
-            && let Ok(factory) = registry_guard.create_factory(&id, &api_keys_guard)
-        {
-            tracing::info!("using last used provider: {}", id.as_str());
-            return (
-                LlmServiceFactoryService::new(Arc::from(factory)),
-                id.to_string(),
-            );
-        }
-    }
-
-    // Try configured default (providers.toml).
-    if let Some(id) = registry_guard.default_provider_id()
-        && registry_guard.is_available(&id, &api_keys_guard)
-        && let Ok(factory) = registry_guard.create_factory(&id, &api_keys_guard)
-    {
-        tracing::info!("using configured default provider: {}", id.as_str());
-        return (
-            LlmServiceFactoryService::new(Arc::from(factory)),
-            id.to_string(),
-        );
-    }
-
-    // Fallback: first available provider.
-    for provider in registry_guard.providers() {
-        if registry_guard.is_available(&provider.id, &api_keys_guard)
-            && let Ok(factory) = registry_guard.create_factory(&provider.id, &api_keys_guard)
-        {
-            tracing::info!("using first available provider: {}", provider.id.as_str());
-            return (
-                LlmServiceFactoryService::new(Arc::from(factory)),
-                provider.id.to_string(),
-            );
-        }
-    }
-
-    // No provider available — use the no-provider factory.
-    tracing::warn!("no provider configured or available; use the picker to select one");
-    (
-        LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory)),
-        nullslop_domain::NO_PROVIDER_ID.to_owned(),
-    )
-}
-
 impl Default for App {
     fn default() -> Self {
         Self::new().expect("failed to create default App")
     }
-}
-
-/// Loads the model cache from disk into the application state.
-///
-/// Called once after core creation. Failures are logged but not fatal —
-/// the cache is optional and will be populated on first refresh.
-fn load_model_cache(state: &State, path: &Path) {
-    let cache = ModelCache::load(path).unwrap_or_else(|e| {
-        tracing::warn!("failed to load model cache: {e:?}");
-        None
-    });
-    if let Some(ref c) = cache {
-        tracing::info!(providers = c.entries.len(), "loaded model cache");
-    }
-    let mut state = state.write();
-    state.provider.last_refreshed_at = cache.as_ref().and_then(|c| c.last_updated_at);
-    state.provider.model_cache = cache;
 }
 
 /// Ensures the prompts directory exists and contains an example template.
@@ -303,26 +218,6 @@ fn load_prompt_templates(state: &State, path: &Path) {
     });
     tracing::info!(count = store.len(), "loaded prompt templates");
     state.write().context.prompt_templates = store;
-}
-
-/// Loads user preferences from `nullslop.toml`.
-///
-/// Called once at startup, before resolving the initial factory.
-/// Failures are logged but not fatal — default preferences are used.
-fn load_user_preferences() -> UserPreferences {
-    let storage = FilesystemUserPreferencesStorage::default_path();
-    match storage.load() {
-        Ok(prefs) => {
-            if let Some(ref model) = prefs.last_model {
-                tracing::info!(last_model = %model, "loaded user preferences");
-            }
-            prefs
-        }
-        Err(e) => {
-            tracing::warn!("failed to load user preferences: {e:?}");
-            UserPreferences::default()
-        }
-    }
 }
 
 #[cfg(test)]
@@ -421,160 +316,5 @@ mod tests {
                 .find_by_name("test")
                 .is_some()
         );
-    }
-
-    #[rstest::rstest]
-    fn load_model_cache_populates_state_from_file() {
-        // Given a temp directory with a model cache file.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let cache_path = dir.path().join("model_cache.json");
-        let cache = nullslop_domain::ModelCache {
-            entries: {
-                let mut map = std::collections::HashMap::new();
-                map.insert(
-                    "ollama".to_owned(),
-                    vec!["llama3".to_owned(), "mistral".to_owned()],
-                );
-                map
-            },
-            last_updated_at: None,
-        };
-        cache.save(&cache_path).expect("save cache");
-
-        let state = State::new(AppState::default());
-
-        // When loading the model cache from the temp file.
-        load_model_cache(&state, &cache_path);
-
-        // Then the cache is in state with the expected entries.
-        let state = state.read();
-        assert!(state.provider.model_cache.is_some());
-        let cached = state.provider.model_cache.as_ref().expect("cache present");
-        assert_eq!(cached.entries.len(), 1);
-        assert_eq!(cached.entries["ollama"].len(), 2);
-    }
-
-    #[rstest::rstest]
-    fn load_model_cache_uses_empty_when_file_missing() {
-        // Given a path to a nonexistent file.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let cache_path = dir.path().join("nonexistent.json");
-
-        let state = State::new(AppState::default());
-
-        // When loading the model cache from a missing file.
-        load_model_cache(&state, &cache_path);
-
-        // Then the cache is None in state.
-        let state = state.read();
-        assert!(state.provider.model_cache.is_none());
-    }
-
-    #[rstest::rstest]
-    fn resolve_initial_factory_finds_keyless_provider_without_default() {
-        // Given a registry with a keyless lmstudio provider (no default set).
-        let config = nullslop_domain::ProvidersConfig {
-            providers: vec![nullslop_domain::feat::provider_infra::ProviderEntry {
-                name: "lmstudio".to_owned(),
-                backend: "ollama".to_owned(),
-                models: vec!["my-model".to_owned()],
-                base_url: Some("http://localhost:1234/v1".to_owned()),
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-            }],
-            aliases: vec![],
-            default_provider: None,
-        };
-        let registry = nullslop_domain::ProviderRegistry::from_config(config).expect("registry");
-        let registry_service = nullslop_domain::ProviderRegistryService::new(registry);
-        let api_keys_service =
-            nullslop_domain::ApiKeysService::new(nullslop_domain::ApiKeys::new());
-
-        // When resolving the initial factory (no last_model).
-        let (factory, name) = resolve_initial_factory(&registry_service, &api_keys_service, None);
-
-        // Then a real factory is returned (not the no-provider sentinel).
-        assert_ne!(name, nullslop_domain::NO_PROVIDER_ID);
-        assert_eq!(name, "lmstudio/my-model");
-        assert_ne!(factory.name(), "NoProvidersAvailable");
-    }
-
-    #[rstest::rstest]
-    fn resolve_initial_factory_uses_last_model_when_available() {
-        // Given a registry with two keyless providers.
-        let config = nullslop_domain::ProvidersConfig {
-            providers: vec![
-                nullslop_domain::feat::provider_infra::ProviderEntry {
-                    name: "lmstudio".to_owned(),
-                    backend: "ollama".to_owned(),
-                    models: vec!["first".to_owned()],
-                    base_url: Some("http://localhost:1234/v1".to_owned()),
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                },
-                nullslop_domain::feat::provider_infra::ProviderEntry {
-                    name: "ollama".to_owned(),
-                    backend: "ollama".to_owned(),
-                    models: vec!["llama3".to_owned()],
-                    base_url: None,
-                    api_key_env: None,
-                    requires_key: false,
-                    extra_body: None,
-                },
-            ],
-            aliases: vec![],
-            default_provider: Some("lmstudio/first".to_owned()),
-        };
-        let registry = nullslop_domain::ProviderRegistry::from_config(config).expect("registry");
-        let registry_service = nullslop_domain::ProviderRegistryService::new(registry);
-        let api_keys_service =
-            nullslop_domain::ApiKeysService::new(nullslop_domain::ApiKeys::new());
-
-        // When resolving with last_model set to the second provider.
-        let (factory, name) = resolve_initial_factory(
-            &registry_service,
-            &api_keys_service,
-            Some("ollama/llama3".to_owned()),
-        );
-
-        // Then last_model wins over default_provider.
-        assert_ne!(name, nullslop_domain::NO_PROVIDER_ID);
-        assert_eq!(name, "ollama/llama3");
-        assert_ne!(factory.name(), "NoProvidersAvailable");
-    }
-
-    #[rstest::rstest]
-    fn resolve_initial_factory_falls_back_to_default_when_last_model_invalid() {
-        // Given a registry with a provider and a default.
-        let config = nullslop_domain::ProvidersConfig {
-            providers: vec![nullslop_domain::feat::provider_infra::ProviderEntry {
-                name: "lmstudio".to_owned(),
-                backend: "ollama".to_owned(),
-                models: vec!["my-model".to_owned()],
-                base_url: Some("http://localhost:1234/v1".to_owned()),
-                api_key_env: None,
-                requires_key: false,
-                extra_body: None,
-            }],
-            aliases: vec![],
-            default_provider: Some("lmstudio/my-model".to_owned()),
-        };
-        let registry = nullslop_domain::ProviderRegistry::from_config(config).expect("registry");
-        let registry_service = nullslop_domain::ProviderRegistryService::new(registry);
-        let api_keys_service =
-            nullslop_domain::ApiKeysService::new(nullslop_domain::ApiKeys::new());
-
-        // When resolving with an invalid last_model.
-        let (factory, name) = resolve_initial_factory(
-            &registry_service,
-            &api_keys_service,
-            Some("nonexistent/model".to_owned()),
-        );
-
-        // Then falls back to default_provider.
-        assert_eq!(name, "lmstudio/my-model");
-        assert_ne!(factory.name(), "NoProvidersAvailable");
     }
 }

@@ -137,8 +137,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         nullslop_domain::ActiveTab::Chat => {
             // Fixed 70/30 split between chat and sidebar.
             let sidebar_ratio: f32 = 0.3;
-            let sidebar_width =
-                (layout.content.width as f32 * sidebar_ratio).ceil() as u16;
+            let sidebar_width = (layout.content.width as f32 * sidebar_ratio).ceil() as u16;
             let border_width: u16 = 1;
             let chat_width = layout
                 .content

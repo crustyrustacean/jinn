@@ -15,7 +15,9 @@ use serde_json::Value as JsonValue;
 
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::session::token_stats::TokenRecord;
-use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId, SessionId};
+use crate::protocol::{
+    ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId, SessionId,
+};
 
 /// Core session state — owned by session-actor and context-actor.
 ///
@@ -665,12 +667,13 @@ impl ChatSessionState {
     /// # Panics
     ///
     /// Panics if the ledger is empty.
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "caller guarantees a record exists"
-    )]
+    #[expect(clippy::indexing_slicing, reason = "caller guarantees a record exists")]
     pub fn finalize_last_token_record(&mut self, tokens_received: u32) {
-        let last = self.core.token_ledger.last_mut().expect("ledger must not be empty");
+        let last = self
+            .core
+            .token_ledger
+            .last_mut()
+            .expect("ledger must not be empty");
         last.tokens_received = tokens_received;
     }
 

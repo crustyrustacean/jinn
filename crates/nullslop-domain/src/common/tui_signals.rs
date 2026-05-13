@@ -34,8 +34,6 @@ pub struct TuiSignals {
 
     /// An external editor should be launched for the chat input.
     pub edit_requested: bool,
-
-
 }
 
 impl Default for TuiSignals {
@@ -51,7 +49,6 @@ impl TuiSignals {
         Self {
             toggle_whichkey: false,
             edit_requested: false,
-
         }
     }
 
@@ -59,7 +56,6 @@ impl TuiSignals {
     pub fn clear(&mut self) {
         self.toggle_whichkey = false;
         self.edit_requested = false;
-
     }
 }
 

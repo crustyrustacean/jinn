@@ -28,11 +28,11 @@ use crate::feat::provider::protocol::event::{
 };
 use crate::feat::session::protocol::session_save_requested::SessionSaveRequested;
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
-use crate::init::EnvironmentLoaded;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolUseStarted, ToolsRegistered,
 };
+use crate::init::EnvironmentLoaded;
 use crate::protocol::system::{KeyDown, KeyUp, ModeChanged};
 
 /// Every event the host can broadcast.
