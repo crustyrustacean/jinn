@@ -359,6 +359,240 @@ mod tests {
     }
 
     // =========================================================
+    // Save behavior tests
+    // =========================================================
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn enqueue_user_message_saves_session_to_store() {
+        // Given a SessionPersistenceActor with a store.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+
+        // When processing EnqueueUserMessage while idle.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::EnqueueUserMessage {
+                    payload: EnqueueUserMessage {
+                        session_id: session_id.clone(),
+                        text: "hello world".into(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the session is persisted with the title from the first user message.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].1.title, "hello world");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_saves_session_to_store() {
+        // Given a SessionPersistenceActor with a store and a streaming session.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        {
+            let mut guard = actor.state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.push_entry(ChatEntry::user("my question"));
+            session.begin_streaming();
+        }
+
+        // When processing StreamCompleted with Finished reason.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::StreamCompleted {
+                    payload: StreamCompleted {
+                        session_id: session_id.clone(),
+                        reason: StreamCompletedReason::Finished,
+                        assistant_content: Some("response".to_owned()),
+                        tool_calls: None,
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the session is persisted.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].1.title, "my question");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_canceled_does_not_save() {
+        // Given a SessionPersistenceActor with a store and a streaming session.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        {
+            let mut guard = actor.state.write();
+            guard.session_mut_or_create(&session_id).begin_streaming();
+        }
+
+        // When processing StreamCompleted with Canceled reason.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::StreamCompleted {
+                    payload: StreamCompleted {
+                        session_id: session_id.clone(),
+                        reason: StreamCompletedReason::Canceled,
+                        assistant_content: None,
+                        tool_calls: None,
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then no session is persisted.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert!(summaries.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_execution_completed_saves_session_to_store() {
+        // Given a SessionPersistenceActor with a store.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        {
+            let mut guard = actor.state.write();
+            guard.session_mut_or_create(&session_id).push_entry(ChatEntry::user("do the thing"));
+        }
+
+        // When processing ToolExecutionCompleted.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::ToolExecutionCompleted {
+                    payload: ToolExecutionCompleted {
+                        session_id: session_id.clone(),
+                        result: ToolResult {
+                            tool_call_id: "call_1".to_owned(),
+                            name: "bash".to_owned(),
+                            content: "ok".to_owned(),
+                            success: true,
+                        },
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the session is persisted.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].1.title, "do the thing");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn save_title_derived_from_first_user_message_first_line() {
+        // Given a session with a multi-line user message.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        {
+            let mut guard = actor.state.write();
+            guard.session_mut_or_create(&session_id).push_entry(ChatEntry::user("line one\nline two"));
+        }
+
+        // When saving via tool execution completion.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::ToolExecutionCompleted {
+                    payload: ToolExecutionCompleted {
+                        session_id: session_id.clone(),
+                        result: ToolResult {
+                            tool_call_id: "call_1".to_owned(),
+                            name: "bash".to_owned(),
+                            content: "ok".to_owned(),
+                            success: true,
+                        },
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the title is the first line only.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries[0].1.title, "line one");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn save_title_is_untitled_when_no_user_messages() {
+        // Given a session with no user messages.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        {
+            let mut guard = actor.state.write();
+            guard.session_mut_or_create(&session_id).push_entry(ChatEntry::system("system msg"));
+        }
+
+        // When saving via tool execution completion.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::ToolExecutionCompleted {
+                    payload: ToolExecutionCompleted {
+                        session_id: session_id.clone(),
+                        result: ToolResult {
+                            tool_call_id: "call_1".to_owned(),
+                            name: "bash".to_owned(),
+                            content: "ok".to_owned(),
+                            success: true,
+                        },
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the title is "Untitled Session".
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries[0].1.title, "Untitled Session");
+    }
+
+    // =========================================================
     // Lifecycle tests — migrated from coordinator
     // =========================================================
 
