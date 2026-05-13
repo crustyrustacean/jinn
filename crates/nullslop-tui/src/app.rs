@@ -10,9 +10,9 @@ use derive_more::Debug;
 use nullslop_domain::ActorHostService;
 use nullslop_domain::AppUiRegistry;
 use nullslop_domain::IntentHandler;
+use nullslop_domain::feat::ui::sidebar::sidebar::Sidebar;
 use nullslop_domain::{ActiveTab, Intent, Mode, PickerKind};
 use nullslop_domain::{AppCore, AppMsg};
-use nullslop_domain::feat::ui::sidebar::sidebar::Sidebar;
 use ratatui::Frame;
 use ratatui_tabs::TabManager;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
@@ -277,7 +277,14 @@ impl TuiApp {
 
         // Step 6: Update scope based on new mode.
         let active_tab = self.core.state.read().frontend.active_tab;
-        let sidebar_focused = self.core.state.read().frontend.sidebar.origin_scope.is_some();
+        let sidebar_focused = self
+            .core
+            .state
+            .read()
+            .frontend
+            .sidebar
+            .origin_scope
+            .is_some();
         let new_scope = scope_for_mode(mode, active_tab, sidebar_focused);
         self.which_key.set_scope(new_scope);
     }
@@ -668,5 +675,4 @@ mod tests {
             "filter text should be preserved after toggle"
         );
     }
-
 }

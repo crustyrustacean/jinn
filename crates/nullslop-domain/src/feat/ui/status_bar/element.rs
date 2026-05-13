@@ -39,10 +39,7 @@ impl UiElement<AppState> for StatusBarElement {
         let pinned_count = state.active_session().pinned_entries().len();
 
         // Compute aggregated token stats for the active session.
-        let agg = aggregate_session_stats(
-            &state.session.sessions,
-            &state.session.active_session,
-        );
+        let agg = aggregate_session_stats(&state.session.sessions, &state.session.active_session);
         let up_arrow = '\u{2191}';
         let down_arrow = '\u{2193}';
         let mut token_info = format!(

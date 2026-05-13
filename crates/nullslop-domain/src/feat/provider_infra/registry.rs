@@ -149,7 +149,11 @@ impl ProviderRegistry {
     /// up the provider block's backend, API key settings, etc.
     pub fn merge_cache(&mut self, cache: &super::ModelCache) {
         for (provider_name, models) in &cache.entries {
-            let Some(entry) = self.config.providers.iter().find(|p| p.name == *provider_name)
+            let Some(entry) = self
+                .config
+                .providers
+                .iter()
+                .find(|p| p.name == *provider_name)
             else {
                 continue;
             };
@@ -260,9 +264,9 @@ impl ProviderRegistry {
         id: &ProviderId,
         api_keys: &ApiKeys,
     ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
-        let resolved = self
-            .get(id)
-            .ok_or_else(|| Report::new(LlmServiceError::Config).attach(format!("unknown provider: {id}")))?;
+        let resolved = self.get(id).ok_or_else(|| {
+            Report::new(LlmServiceError::Config).attach(format!("unknown provider: {id}"))
+        })?;
         self.create_factory_from_resolved(resolved, api_keys)
     }
 

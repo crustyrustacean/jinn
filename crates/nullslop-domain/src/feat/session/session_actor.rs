@@ -98,7 +98,11 @@ impl Actor for SessionPersistenceActor {
             .take_data::<TiktokenCounter>()
             .unwrap_or_else(TiktokenCounter::o200k_base);
 
-        Self { state, store, counter }
+        Self {
+            state,
+            store,
+            counter,
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
@@ -1104,7 +1108,9 @@ mod tests {
         // Then the context size is cached.
         let guard = state.read();
         let session = guard.session(&session_id);
-        let ctx_size = session.context_size().expect("context size should be cached");
+        let ctx_size = session
+            .context_size()
+            .expect("context size should be cached");
         assert!(ctx_size > 0, "context size should be nonzero");
         // And it matches the recorded tokens_sent.
         assert_eq!(ctx_size, session.token_ledger()[0].tokens_sent);
@@ -1122,13 +1128,11 @@ mod tests {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
             session.begin_streaming();
-            session.push_token_record(
-                crate::feat::session::token_stats::TokenRecord {
-                    timestamp: jiff::Timestamp::now(),
-                    tokens_sent: 100,
-                    tokens_received: 0,
-                },
-            );
+            session.push_token_record(crate::feat::session::token_stats::TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+            });
         }
 
         // When processing StreamCompleted with assistant content.
@@ -1152,7 +1156,10 @@ mod tests {
         let ledger = session.token_ledger();
         assert_eq!(ledger.len(), 1);
         assert_eq!(ledger[0].tokens_sent, 100);
-        assert!(ledger[0].tokens_received > 0, "tokens_received should be nonzero");
+        assert!(
+            ledger[0].tokens_received > 0,
+            "tokens_received should be nonzero"
+        );
     }
 
     #[rstest::rstest]
@@ -1166,13 +1173,11 @@ mod tests {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
             session.begin_streaming();
-            session.push_token_record(
-                crate::feat::session::token_stats::TokenRecord {
-                    timestamp: jiff::Timestamp::now(),
-                    tokens_sent: 100,
-                    tokens_received: 0,
-                },
-            );
+            session.push_token_record(crate::feat::session::token_stats::TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+            });
         }
 
         // When processing StreamCompleted with Canceled reason.

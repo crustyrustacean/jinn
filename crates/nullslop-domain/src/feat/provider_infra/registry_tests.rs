@@ -541,7 +541,10 @@ fn create_factory_succeeds_for_merged_model_with_slashes() {
     api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
 
     let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert("openrouter".to_owned(), vec!["anthropic/claude-sonnet-4".to_owned()]);
+    cache_entries.insert(
+        "openrouter".to_owned(),
+        vec!["anthropic/claude-sonnet-4".to_owned()],
+    );
     let cache = crate::feat::provider_infra::ModelCache {
         entries: cache_entries,
         last_updated_at: None,

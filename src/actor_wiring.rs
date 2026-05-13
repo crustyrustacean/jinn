@@ -173,8 +173,12 @@ pub fn create_core_with_actor_host(
     );
 
     // --- Env init actor ---
-    let (_env_init_ref, env_init_result) =
-        spawn_env_init_actor(config_storage.clone(), api_keys.clone(), sink.clone(), handle);
+    let (_env_init_ref, env_init_result) = spawn_env_init_actor(
+        config_storage.clone(),
+        api_keys.clone(),
+        sink.clone(),
+        handle,
+    );
 
     // --- Provider init actor ---
     let (_provider_init_ref, provider_init_result) =
@@ -214,7 +218,10 @@ pub fn create_core_with_actor_host(
         ),
         ("preferences", "Persists user preferences to nullslop.toml"),
         ("env-init", "Loads environment variables and API keys"),
-        ("provider-init", "Loads provider config, merges cache, resolves last_model"),
+        (
+            "provider-init",
+            "Loads provider config, merges cache, resolves last_model",
+        ),
     ];
     for (name, desc) in &actor_names {
         let _ = sink.send_event(Event::ActorStarting {

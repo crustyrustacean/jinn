@@ -490,7 +490,9 @@ fn render_registers_content_rect_for_selectable_chat_log() {
     let content_w = layout.content.width;
     let sidebar_width = (content_w as f32 * 0.3).ceil() as u16;
     let border_width: u16 = 1;
-    let chat_width = content_w.saturating_sub(sidebar_width).saturating_sub(border_width);
+    let chat_width = content_w
+        .saturating_sub(sidebar_width)
+        .saturating_sub(border_width);
     let chat_area = Rect {
         x: layout.content.x,
         y: layout.content.y,
