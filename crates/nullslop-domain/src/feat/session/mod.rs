@@ -13,6 +13,7 @@ pub mod chat_session;
 pub mod entries;
 pub mod intent;
 pub mod picker_entry;
+pub mod profile;
 pub mod protocol;
 pub mod render;
 pub mod session_actor;
@@ -20,6 +21,7 @@ pub mod token_stats;
 pub mod validator;
 
 pub use chat_session::{ChatSessionState, SessionCore, SessionUi};
+pub use profile::SessionProfile;
 
 pub use persisted_session::{BLOB_STRATEGY_STATE, PersistedSession, SessionSummary};
 pub use session_store::{JsonlSessionStore, SessionStore, SessionStoreError, SessionStoreService};

@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use serde_json::Value as JsonValue;
 
 use crate::feat::chat_input::ChatInputBoxState;
+use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{
     ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId, SessionId,
@@ -43,9 +44,9 @@ pub struct SessionCore {
     /// Whether a prompt assembly request is in progress.
     /// OWNER: session-actor
     is_assembling: bool,
-    /// The active prompt strategy for this session.
-    /// OWNER: context-actor (via SwitchPromptStrategy command)
-    active_strategy: PromptStrategyId,
+    /// Per-session model and strategy selection.
+    /// OWNER: provider-actor (model), context-actor (strategy via SwitchPromptStrategy command)
+    profile: SessionProfile,
     /// Maps stream tool call index to history index for in-progress tool calls.
     /// OWNER: session-actor
     streaming_tool_call_indices: HashMap<usize, usize>,
@@ -77,7 +78,7 @@ impl Default for SessionCore {
             message_queue: VecDeque::new(),
             is_sending: false,
             is_assembling: false,
-            active_strategy: PromptStrategyId::passthrough(),
+            profile: SessionProfile::default(),
             streaming_tool_call_indices: HashMap::new(),
             strategy_state: None,
             cwd: std::path::PathBuf::new(),
@@ -157,7 +158,10 @@ impl ChatSessionState {
     pub fn new_with_strategy(strategy_id: PromptStrategyId) -> Self {
         Self {
             core: SessionCore {
-                active_strategy: strategy_id,
+                profile: SessionProfile::from_config(
+                    crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
+                    strategy_id,
+                ),
                 ..SessionCore::default()
             },
             ui: SessionUi::default(),
@@ -418,12 +422,32 @@ impl ChatSessionState {
 
     /// Switch the active prompt strategy for this session.
     pub fn switch_strategy(&mut self, strategy_id: PromptStrategyId) {
-        self.core.active_strategy = strategy_id;
+        self.core.profile.strategy = strategy_id;
     }
 
     /// The currently active prompt strategy.
     pub fn active_strategy(&self) -> &PromptStrategyId {
-        &self.core.active_strategy
+        &self.core.profile.strategy
+    }
+
+    /// Read-only access to the session profile.
+    pub fn profile(&self) -> &SessionProfile {
+        &self.core.profile
+    }
+
+    /// Mutable access to the session profile.
+    pub fn profile_mut(&mut self) -> &mut SessionProfile {
+        &mut self.core.profile
+    }
+
+    /// Set the model for this session.
+    pub fn set_model(&mut self, model: String) {
+        self.core.profile.model = model;
+    }
+
+    /// The model for this session.
+    pub fn model(&self) -> &str {
+        &self.core.profile.model
     }
 
     // --- Sending ---

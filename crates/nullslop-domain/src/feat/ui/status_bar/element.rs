@@ -58,12 +58,13 @@ impl UiElement<AppState> for StatusBarElement {
             format!("({strategy}) {token_info}")
         };
 
-        let model = if state.provider.active_provider == NO_PROVIDER_ID {
+        let active_model = state.active_session().profile().model.clone();
+        let model = if active_model == NO_PROVIDER_ID {
             "no model selected".to_owned()
-        } else if let Some((provider, model)) = state.provider.active_provider.split_once('/') {
+        } else if let Some((provider, model)) = active_model.split_once('/') {
             format!("({provider})/{model}")
         } else {
-            state.provider.active_provider.clone()
+            active_model.clone()
         };
 
         let style = Style::default().fg(Color::DarkGray);
@@ -91,7 +92,6 @@ mod tests {
 
     use super::*;
     use crate::common::app_state::{AppState, StatusNotification};
-    use crate::feat::provider::ProviderState;
 
     #[rstest::rstest]
     fn name_returns_status_bar() {
@@ -118,13 +118,10 @@ mod tests {
     #[rstest::rstest]
     fn render_shows_provider_and_model() {
         let mut element = StatusBarElement;
-        let state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         let (mut terminal, area) = setup_term(50, 1);
         terminal
             .draw(|frame| {
@@ -140,13 +137,10 @@ mod tests {
     #[rstest::rstest]
     fn render_right_aligns_text() {
         let mut element = StatusBarElement;
-        let state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         let (mut terminal, area) = setup_term(50, 1);
         terminal
             .draw(|frame| {
@@ -163,13 +157,10 @@ mod tests {
     #[rstest::rstest]
     fn render_uses_gray_color() {
         let mut element = StatusBarElement;
-        let state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         let (mut terminal, area) = setup_term(40, 1);
         terminal
             .draw(|frame| {
@@ -187,13 +178,10 @@ mod tests {
     #[rstest::rstest]
     fn render_shows_provider_with_slash_in_model() {
         let mut element = StatusBarElement;
-        let state = AppState {
-            provider: ProviderState {
-                active_provider: "openrouter/anthropic/claude-sonnet-4".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("openrouter/anthropic/claude-sonnet-4".to_owned());
         let (mut terminal, area) = setup_term(80, 1);
         terminal
             .draw(|frame| {
@@ -209,13 +197,10 @@ mod tests {
     #[rstest::rstest]
     fn render_shows_non_default_strategy() {
         let mut element = StatusBarElement;
-        let mut state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         state
             .active_session_mut()
             .switch_strategy(crate::protocol::PromptStrategyId::sliding_window());
@@ -234,13 +219,10 @@ mod tests {
     #[rstest::rstest]
     fn render_shows_pinned_count_when_entries_pinned() {
         let mut element = StatusBarElement;
-        let mut state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         let idx = state
             .active_session_mut()
             .push_entry(crate::protocol::ChatEntry::user("hello"));
@@ -263,13 +245,10 @@ mod tests {
     #[rstest::rstest]
     fn render_hides_pinned_count_when_no_entries_pinned() {
         let mut element = StatusBarElement;
-        let state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         let (mut terminal, area) = setup_term(60, 1);
         terminal
             .draw(|frame| {
@@ -286,13 +265,10 @@ mod tests {
     fn render_shows_notification_when_active() {
         // Given a state with a notification and a model.
         let mut element = StatusBarElement;
-        let mut state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         state
             .frontend
             .set_status_notification("Copied to clipboard");
@@ -314,13 +290,10 @@ mod tests {
     fn render_notification_uses_green_color() {
         // Given a state with an active notification.
         let mut element = StatusBarElement;
-        let mut state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         state.frontend.set_status_notification("Copied!");
         let (mut terminal, area) = setup_term(80, 1);
         terminal
@@ -342,13 +315,10 @@ mod tests {
     fn render_no_notification_shows_model_only() {
         // Given a state with no notification.
         let mut element = StatusBarElement;
-        let state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         let (mut terminal, area) = setup_term(80, 1);
         terminal
             .draw(|frame| {
@@ -366,13 +336,10 @@ mod tests {
     fn render_expired_notification_not_shown() {
         // Given a state with an expired notification.
         let mut element = StatusBarElement;
-        let mut state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         state.frontend.status_notification = Some(StatusNotification {
             message: "old msg".to_owned(),
             created_at: std::time::Instant::now()
@@ -417,13 +384,10 @@ mod tests {
         // Given a session with token records.
         use crate::feat::session::token_stats::TokenRecord;
         let mut element = StatusBarElement;
-        let mut state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         state.active_session_mut().push_token_record(TokenRecord {
             timestamp: jiff::Timestamp::now(),
             tokens_sent: 1500,
@@ -447,13 +411,10 @@ mod tests {
         // Given a session with a cached context size.
         use crate::feat::session::token_stats::TokenRecord;
         let mut element = StatusBarElement;
-        let mut state = AppState {
-            provider: ProviderState {
-                active_provider: "ollama/llama3".to_owned(),
-                ..ProviderState::default()
-            },
-            ..AppState::default()
-        };
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
         state.active_session_mut().push_token_record(TokenRecord {
             timestamp: jiff::Timestamp::now(),
             tokens_sent: 5000,

@@ -307,10 +307,6 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (cleared and set each handle() call).
     pub tui_signals: TuiSignals,
 
-    /// The default strategy for new sessions.
-    /// OWNER: IntentHandler (updated when user confirms strategy selection).
-    pub default_strategy: PromptStrategyId,
-
     /// All keymap entries, populated once at startup.
     /// OWNER: IntentHandler (populated when keymap picker opens).
     pub all_keymap_entries: Vec<KeymapEntry>,
@@ -352,7 +348,6 @@ impl Default for FrontendState {
             sidebar: SidebarState::default(),
             dashboard: DashboardState::new(),
             tui_signals: TuiSignals::new(),
-            default_strategy: PromptStrategyId::passthrough(),
             all_keymap_entries: vec![],
             keymap_picker: nullslop_selection_widget::SelectionState::new(),
             keymap_picker_show_all: false,
@@ -527,16 +522,6 @@ impl AppState {
         let mut pinned = self.active_session().pinned_entries();
         pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
         pinned.iter().map(|e| e.id.clone()).collect()
-    }
-
-    /// The default strategy used for new sessions.
-    pub fn default_strategy(&self) -> &PromptStrategyId {
-        &self.frontend.default_strategy
-    }
-
-    /// Update the sticky default strategy for future sessions.
-    pub fn set_default_strategy(&mut self, strategy: PromptStrategyId) {
-        self.frontend.default_strategy = strategy;
     }
 }
 

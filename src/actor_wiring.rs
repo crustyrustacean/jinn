@@ -169,6 +169,7 @@ pub fn create_core_with_actor_host(
     let provider_init_result = spawn::<ProviderInitActor>("provider-init", &sink, handle, |ctx| {
         ctx.set_description("Loads provider config, merges cache, resolves last_model");
         ctx.set_data(services.clone());
+        ctx.set_data(state.clone());
     });
 
     // Preferences: loads and persists user preferences.
@@ -207,6 +208,7 @@ pub fn create_core_with_actor_host(
             ctx.set_description("Discovers available models");
             ctx.set_data(provider_registry.clone());
             ctx.set_data(api_keys.clone());
+            ctx.set_data(state.clone());
         },
     );
 

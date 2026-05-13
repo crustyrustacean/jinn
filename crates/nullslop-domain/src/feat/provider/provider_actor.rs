@@ -123,15 +123,14 @@ impl ProviderActor {
 
     // --- Command handlers ---
 
-    /// ProviderSwitch: update active provider, emit ProviderSwitched event,
+    /// ProviderSwitch: update session profile, emit ProviderSwitched event,
     /// and swap the LLM factory so subsequent messages use the new provider.
     fn handle_provider_switch(&self, payload: &ProviderSwitch, ctx: &ActorContext) {
         {
             let mut state = self.state.write();
             state
-                .provider
-                .active_provider
-                .clone_from(&payload.provider_id);
+                .session_mut_or_create(&payload.session_id)
+                .set_model(payload.provider_id.clone());
         }
 
         if let Err(e) = ctx.send_event(Event::ProviderSwitched {
@@ -203,7 +202,7 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::provider::protocol::command::ProviderSwitch;
     use crate::feat::provider::protocol::event::ModelsRefreshed;
-    use crate::protocol::{Command, Event};
+    use crate::protocol::{Command, Event, SessionId};
 
     use super::ProviderActor;
 
@@ -232,12 +231,14 @@ mod tests {
     async fn provider_switch_updates_active_provider() {
         // Given a provider actor.
         let (mut actor, state, sink, ctx) = create_actor();
+        let session_id = SessionId::new();
 
         // When processing ProviderSwitch.
         actor
             .handle(
                 ActorEnvelope::Command(Command::ProviderSwitch {
                     payload: ProviderSwitch {
+                        session_id: session_id.clone(),
                         provider_id: "ollama".into(),
                     },
                 }),
@@ -245,10 +246,10 @@ mod tests {
             )
             .await;
 
-        // Then the active provider is updated.
+        // Then the session model is updated.
         {
             let guard = state.read();
-            assert_eq!(guard.provider.active_provider, "ollama");
+            assert_eq!(guard.session(&session_id).profile().model, "ollama");
         }
 
         // And a ProviderSwitched event was emitted.
@@ -271,6 +272,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::ProviderSwitch {
                     payload: ProviderSwitch {
+                        session_id: SessionId::new(),
                         provider_id: "nonexistent/unknown".into(),
                     },
                 }),
@@ -313,6 +315,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::ProviderSwitch {
                     payload: ProviderSwitch {
+                        session_id: SessionId::new(),
                         provider_id: "sample/sample".into(),
                     },
                 }),
@@ -345,6 +348,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Event(Event::ModelsRefreshed {
                     payload: ModelsRefreshed {
+                        session_id: SessionId::new(),
                         results: results.clone(),
                         errors: std::collections::HashMap::new(),
                     },
