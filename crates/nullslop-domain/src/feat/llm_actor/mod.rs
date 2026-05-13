@@ -9,8 +9,10 @@
 mod session;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::services::Services;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
@@ -34,6 +36,8 @@ use session::{SessionData, SessionState};
 pub struct LlmActor {
     /// Factory for creating LLM service instances.
     factory: LlmServiceFactoryService,
+    /// Runtime services (provider registry, API keys for per-request factory creation).
+    services: Option<Services>,
     /// Active stream tasks, keyed by session ID.
     tasks: HashMap<SessionId, tokio::task::JoinHandle<()>>,
     /// Per-session state.
@@ -59,9 +63,11 @@ impl Actor for LlmActor {
         let factory = ctx
             .take_data::<LlmServiceFactoryService>()
             .expect("LlmServiceFactoryService must be injected via ctx.set_data() before activate");
+        let services = ctx.take_data::<Services>();
 
         Self {
             factory,
+            services,
             tasks: HashMap::new(),
             sessions: HashMap::new(),
             tool_definitions: HashMap::new(),
@@ -86,7 +92,12 @@ impl LlmActor {
     fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
         match command {
             Command::SendToLlmProvider { payload } => {
-                self.start_stream(payload.session_id.clone(), payload.messages.clone(), ctx);
+                self.start_stream(
+                    payload.session_id.clone(),
+                    payload.messages.clone(),
+                    payload.provider_id.clone(),
+                    ctx,
+                );
             }
             Command::CancelStream { payload } => {
                 self.cancel_stream(&payload.session_id, ctx);
@@ -120,6 +131,7 @@ impl LlmActor {
         &mut self,
         session_id: SessionId,
         messages: Vec<LlmMessage>,
+        provider_id: Option<String>,
         ctx: &ActorContext,
     ) {
         // Collect current tool definitions.
@@ -145,7 +157,46 @@ impl LlmActor {
         let session = SessionData::new(messages);
         self.sessions.insert(session_id.clone(), session);
 
-        let factory = self.factory.clone();
+        // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
+        let factory = if let Some(ref pid) = provider_id {
+            if let Some(ref services) = self.services {
+                let id = crate::feat::provider_infra::ProviderId::new(pid.clone());
+                let api_keys = services.api_keys.read();
+                match services.provider_registry.create_factory(&id, &api_keys) {
+                    Ok(f) => {
+                        tracing::debug!(provider_id = %pid, "created per-request LLM factory");
+                        LlmServiceFactoryService::new(Arc::from(f))
+                    }
+                    Err(e) => {
+                        tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
+                        let sink = ctx.sink();
+                        let sid = session_id.clone();
+                        let _ = sink.send_command(Command::PushChatEntry {
+                            payload: PushChatEntry {
+                                session_id: sid.clone(),
+                                entry: ChatEntry::system(format!(
+                                    "LLM factory creation failed for {pid}"
+                                )),
+                            },
+                        });
+                        let _ = sink.send_event(Event::StreamCompleted {
+                            payload: StreamCompleted {
+                                session_id: sid,
+                                reason: StreamCompletedReason::Finished,
+                                assistant_content: None,
+                                tool_calls: None,
+                            },
+                        });
+                        return;
+                    }
+                }
+            } else {
+                // No services — fall through to global factory
+                self.factory.clone()
+            }
+        } else {
+            self.factory.clone()
+        };
         let sink = ctx.sink();
         let sid = session_id.clone();
 
@@ -405,7 +456,7 @@ impl LlmActor {
 
         // Take the accumulated messages and start a new stream.
         let messages = std::mem::take(&mut session.messages);
-        self.start_stream(session_id, messages, ctx);
+        self.start_stream(session_id, messages, None, ctx);
     }
 
     /// Caches tool definitions from a [`ToolsRegistered`] event.
