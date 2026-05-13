@@ -1,110 +1,83 @@
-//! Skills scan actor — discovers and loads agent skills from disk.
+//! Skills scan configuration for the generic scan actor.
 //!
 //! Subscribes to [`ScanSkills`](crate::protocol::Command::ScanSkills) commands,
 //! scans the injected skills directory on a blocking thread, writes results to
 //! shared [`State`](crate::common::state::State), and emits
 //! [`SkillsLoaded`](crate::protocol::Event::SkillsLoaded) events.
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::ActorContext;
+use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
 use crate::common::state::State;
 use crate::feat::skills::scan::scan_skills;
 use crate::feat::skills::skill::Skill;
 use crate::protocol::{Command, CommandMsg, Event, EventMsg};
 
-/// Direct message type for the skills scan actor (unused).
-pub enum SkillsScanDirectMsg {}
-
-/// Skills scan actor.
+/// Skills scan configuration for [`ScanActor`].
 ///
 /// On `ScanSkills`, scans the injected directory for `*/SKILL.md` files,
 /// writes results to `AppState.context.skills`, and emits `SkillsLoaded`.
-pub struct SkillsScanActor {
-    /// Directory to scan for skills.
-    scan_path: PathBuf,
+pub struct SkillsScanConfig {
     /// Shared application state.
     state: State,
 }
 
-impl Actor for SkillsScanActor {
-    type Message = SkillsScanDirectMsg;
+impl ScanConfig for SkillsScanConfig {
+    type Output = Vec<Skill>;
 
     #[expect(
         clippy::expect_used,
-        reason = "scan_path and State must be injected via ctx.set_data before activate"
+        reason = "State must be injected via ctx.set_data before activate"
     )]
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<ScanSkills>();
-        let scan_path = ctx
-            .take_data::<PathBuf>()
-            .expect("PathBuf must be injected via ctx.set_data()");
         let state = ctx
             .take_data::<State>()
             .expect("State must be injected via ctx.set_data()");
-        Self { scan_path, state }
+        Self { state }
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<SkillsScanDirectMsg>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(command) => self.handle_command(&command, ctx).await,
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Event(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+    fn is_rescan_command(command: &Command) -> bool {
+        matches!(command, Command::ScanSkills)
+    }
+
+    fn scan(path: &Path) -> Vec<Skill> {
+        scan_skills(path)
+    }
+
+    fn on_success(skills: Vec<Skill>, config: &Self, ctx: &ActorContext) {
+        tracing::info!(count = skills.len(), "scanned agent skills");
+
+        // Write skills to shared state.
+        {
+            let mut guard = config.state.write();
+            guard.context.skills = skills.clone();
         }
+
+        let _ = ctx.send_event(Event::SkillsLoaded {
+            payload: SkillsLoaded {
+                skills,
+                error: None,
+            },
+        });
     }
 
-    async fn shutdown(self) {}
+    fn on_panic(join_error: tokio::task::JoinError, _config: &Self, ctx: &ActorContext) {
+        tracing::error!("skills scan task panicked: {join_error}");
+        let _ = ctx.send_event(Event::SkillsLoaded {
+            payload: SkillsLoaded {
+                skills: vec![],
+                error: Some(format!("skills scan task failed: {join_error}")),
+            },
+        });
+    }
 }
 
-impl SkillsScanActor {
-    /// Dispatches incoming commands.
-    async fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
-        match command {
-            Command::ScanSkills => {
-                self.scan(ctx).await;
-            }
-            _ => {}
-        }
-    }
-
-    /// Scans the skills directory on a blocking thread and emits the result.
-    async fn scan(&self, ctx: &ActorContext) {
-        let scan_path = self.scan_path.clone();
-        let result = tokio::task::spawn_blocking(move || scan_skills(&scan_path)).await;
-
-        match result {
-            Ok(skills) => {
-                tracing::info!(count = skills.len(), "scanned agent skills");
-
-                // Write skills to shared state.
-                {
-                    let mut guard = self.state.write();
-                    guard.context.skills.clone_from(&skills);
-                }
-
-                let _ = ctx.send_event(Event::SkillsLoaded {
-                    payload: SkillsLoaded {
-                        skills,
-                        error: None,
-                    },
-                });
-            }
-            Err(join_err) => {
-                tracing::error!("skills scan task panicked: {join_err}");
-                let _ = ctx.send_event(Event::SkillsLoaded {
-                    payload: SkillsLoaded {
-                        skills: vec![],
-                        error: Some(format!("skills scan task failed: {join_err}")),
-                    },
-                });
-            }
-        }
-    }
-}
+/// Type alias for the skills scan actor.
+pub type SkillsScanActor = ScanActor<SkillsScanConfig>;
 
 /// Emitted when skills have been scanned and loaded.
 ///
@@ -132,7 +105,8 @@ pub struct ScanSkills;
 mod tests {
     use std::sync::Arc;
 
-    use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::common::actor::scan_actor::ScanActor;
+    use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::protocol::Command;
@@ -237,7 +211,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        ctx.set_data(PathBuf::from("/nonexistent/skills"));
+        ctx.set_data(std::path::PathBuf::from("/nonexistent/skills"));
         ctx.set_data(state);
         let mut actor = SkillsScanActor::activate(&mut ctx);
 

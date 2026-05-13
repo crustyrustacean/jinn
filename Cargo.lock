@@ -2851,6 +2851,7 @@ dependencies = [
  "llm",
  "nullslop-protocol-derive",
  "nullslop-selection-widget",
+ "nullslop-testutil",
  "parking_lot",
  "rand 0.9.4",
  "ratatui",
@@ -2899,9 +2900,17 @@ name = "nullslop-selection-widget"
 version = "0.1.0"
 dependencies = [
  "fuzzy-matcher",
+ "nullslop-testutil",
  "ratatui",
  "rstest",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "nullslop-testutil"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
 ]
 
 [[package]]
@@ -2917,6 +2926,7 @@ dependencies = [
  "kanal",
  "nullslop-domain",
  "nullslop-selection-widget",
+ "nullslop-testutil",
  "parking_lot",
  "ratatui",
  "ratatui-tabs",

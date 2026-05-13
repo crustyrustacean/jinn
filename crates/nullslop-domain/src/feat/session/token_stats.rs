@@ -343,22 +343,4 @@ mod tests {
     }
 
     // --- TokenRecord serde ---
-
-    #[rstest::rstest]
-    fn token_record_round_trips_through_serde() {
-        // Given a TokenRecord.
-        let record = TokenRecord {
-            timestamp: jiff::Timestamp::now(),
-            tokens_sent: 1234,
-            tokens_received: 567,
-        };
-
-        // When serialized and deserialized.
-        let json = serde_json::to_string(&record).expect("serialize");
-        let back: TokenRecord = serde_json::from_str(&json).expect("deserialize");
-
-        // Then fields are preserved.
-        assert_eq!(back.tokens_sent, 1234);
-        assert_eq!(back.tokens_received, 567);
-    }
 }

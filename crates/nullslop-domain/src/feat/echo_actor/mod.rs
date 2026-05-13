@@ -7,21 +7,17 @@
 
 use std::time::Duration;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
 
-/// Direct message type for the echo actor.
-/// Currently unused — the echo actor only responds to bus events.
-pub enum EchoDirectMsg {}
-
 /// Reference echo actor that echoes user messages back as actor entries.
 pub struct EchoActor;
 
 impl Actor for EchoActor {
-    type Message = EchoDirectMsg;
+    type Message = NoDirectMsg;
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<ChatEntrySubmitted>();
@@ -29,17 +25,15 @@ impl Actor for EchoActor {
         Self
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<EchoDirectMsg>, ctx: &ActorContext) {
+    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
             ActorEnvelope::Event(event) => Self::process_event(&event, ctx).await,
-            ActorEnvelope::Command(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
         }
     }
-
-    async fn shutdown(self) {}
 }
 
 impl EchoActor {

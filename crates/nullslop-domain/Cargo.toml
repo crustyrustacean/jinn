@@ -41,6 +41,7 @@ toml = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
+nullslop-testutil = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 tempfile = { workspace = true }
 

@@ -2,20 +2,13 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::AutocompleteMatch;
+use nullslop_testutil::setup_term;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier};
 
 use super::render_autocomplete_popup;
-
-/// Creates a test terminal with the given dimensions.
-fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
-    let backend = TestBackend::new(width, height);
-    let terminal = Terminal::new(backend).unwrap();
-    let area = Rect::new(0, 0, width, height);
-    (terminal, area)
-}
 
 /// Helper to create an `AppState` with autocomplete active.
 ///

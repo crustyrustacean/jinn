@@ -2,10 +2,10 @@
 
 use std::ops::Range;
 
+use crate::feat::picker::style::{dim_style, selected_style};
 use crate::protocol::SessionId;
 use nullslop_selection_widget::PickerItem;
 use nullslop_selection_widget::highlight_text;
-use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
 /// A saved session entry ready for display in the picker.
@@ -49,17 +49,9 @@ fn render_session_row(
     is_selected: bool,
     match_indices: &[Range<usize>],
 ) -> Line<'static> {
-    let base_style = if is_selected {
-        Style::default().fg(Color::White).bg(Color::DarkGray)
-    } else {
-        Style::default()
-    };
+    let base_style = selected_style(is_selected);
 
-    let date_style = if is_selected {
-        Style::default().fg(Color::DarkGray).bg(Color::DarkGray)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
+    let date_style = dim_style(is_selected);
 
     let datetime = updated_at.to_zoned(jiff::tz::TimeZone::UTC).datetime();
     let date_str = format!(

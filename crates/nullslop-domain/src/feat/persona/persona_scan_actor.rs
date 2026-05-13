@@ -1,95 +1,173 @@
-//! Persona scanning actor.
+//! Persona scanning configuration for the generic scan actor.
 //!
-//! Subscribes to [`RescanPersonas`] commands, scans the personas
-//! directory (path injected via [`ActorContext`] data), and emits
+//! Subscribes to [`RescanPersonas`](crate::protocol::Command::RescanPersonas) commands,
+//! scans the personas directory (path injected via [`ActorContext`] data), and emits
 //! [`PersonasLoaded`] events with the results.
 
-use std::path::PathBuf;
+use std::path::Path;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::ActorContext;
+use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
 use crate::feat::context::protocol::command::RescanPersonas;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::persona::scan_personas_dir;
 use crate::protocol::{Command, Event};
 
-/// Direct message type for the persona scan actor (unused).
-pub enum PersonaScanDirectMsg {}
-
-/// Persona scanning actor.
+/// Persona scan configuration for [`ScanActor`].
 ///
 /// On `RescanPersonas`, scans the injected directory path, parses all
 /// `*.md` files, and emits `PersonasLoaded` with the results.
-///
-/// The scan path is injected via [`ActorContext::set_data::<PathBuf>()`] during
-/// actor spawn.
-pub struct PersonaScanActor {
-    /// Directory to scan for persona files.
-    scan_path: PathBuf,
-}
+pub struct PersonaScanConfig;
 
-impl Actor for PersonaScanActor {
-    type Message = PersonaScanDirectMsg;
+impl ScanConfig for PersonaScanConfig {
+    type Output = Vec<crate::feat::persona::Persona>;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "scan_path must be injected via ctx.set_data before activate"
-    )]
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<RescanPersonas>();
-        let scan_path = ctx
-            .take_data::<PathBuf>()
-            .expect("PathBuf must be injected via ctx.set_data()");
-        Self { scan_path }
+        Self
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<PersonaScanDirectMsg>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(command) => self.handle_command(&command, ctx).await,
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Event(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
-        }
+    fn is_rescan_command(command: &Command) -> bool {
+        matches!(command, Command::RescanPersonas { .. })
     }
 
-    async fn shutdown(self) {}
+    fn scan(path: &Path) -> Vec<crate::feat::persona::Persona> {
+        scan_personas_dir(path)
+    }
+
+    fn on_success(
+        personas: Vec<crate::feat::persona::Persona>,
+        _config: &Self,
+        ctx: &ActorContext,
+    ) {
+        tracing::info!(count = personas.len(), "rescanned personas");
+        let _ = ctx.send_event(Event::PersonasLoaded {
+            payload: PersonasLoaded {
+                personas,
+                error: None,
+            },
+        });
+    }
+
+    fn on_panic(join_error: tokio::task::JoinError, _config: &Self, ctx: &ActorContext) {
+        tracing::error!("persona rescan task panicked: {join_error}");
+        let _ = ctx.send_event(Event::PersonasLoaded {
+            payload: PersonasLoaded {
+                personas: vec![],
+                error: Some(format!("rescan task failed: {join_error}")),
+            },
+        });
+    }
 }
 
-impl PersonaScanActor {
-    /// Dispatches incoming commands.
-    async fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
-        match command {
-            Command::RescanPersonas { .. } => {
-                self.rescan(ctx).await;
+/// Type alias for the persona scan actor.
+pub type PersonaScanActor = ScanActor<PersonaScanConfig>;
+
+// Re-export the old name for compatibility with actor_wiring.
+// The tests from the original actor module are preserved below.
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::common::app_state::AppState;
+    use crate::feat::context::protocol::command::RescanPersonas;
+    use crate::feat::context::protocol::event::PersonasLoaded;
+    use crate::protocol::{Command, Event};
+
+    use super::*;
+
+    fn find_personas_loaded(events: &[Event]) -> Option<&PersonasLoaded> {
+        for evt in events {
+            if let Event::PersonasLoaded { payload } = evt {
+                return Some(payload);
             }
-            _ => {}
         }
+        None
     }
 
-    /// Scans the injected directory on a blocking thread and emits the result.
-    async fn rescan(&self, ctx: &ActorContext) {
-        let scan_path = self.scan_path.clone();
-        let result = tokio::task::spawn_blocking(move || scan_personas_dir(&scan_path)).await;
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn scan_personas_command_emits_personas_loaded() {
+        // Given an actor with a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
 
-        match result {
-            Ok(personas) => {
-                tracing::info!(count = personas.len(), "rescanned personas");
-                let _ = ctx.send_event(Event::PersonasLoaded {
-                    payload: PersonasLoaded {
-                        personas,
-                        error: None,
-                    },
-                });
-            }
-            Err(join_err) => {
-                tracing::error!("persona rescan task panicked: {join_err}");
-                let _ = ctx.send_event(Event::PersonasLoaded {
-                    payload: PersonasLoaded {
-                        personas: vec![],
-                        error: Some(format!("rescan task failed: {join_err}")),
-                    },
-                });
-            }
-        }
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        ctx.set_data(dir.path().to_owned());
+        let mut actor = PersonaScanActor::activate(&mut ctx);
+
+        // When processing RescanPersonas command.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::RescanPersonas {
+                    payload: RescanPersonas,
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then PersonasLoaded event is emitted.
+        let events = sink.events();
+        let loaded = find_personas_loaded(&events);
+        assert!(loaded.is_some());
+        let loaded = loaded.expect("should have PersonasLoaded");
+        assert!(loaded.error.is_none());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn scan_personas_empty_dir_emits_empty_loaded() {
+        // Given an actor with an empty temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        ctx.set_data(dir.path().to_owned());
+        let mut actor = PersonaScanActor::activate(&mut ctx);
+
+        // When processing RescanPersonas command.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::RescanPersonas {
+                    payload: RescanPersonas,
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then PersonasLoaded has empty list.
+        let events = sink.events();
+        let loaded = find_personas_loaded(&events).expect("should have PersonasLoaded");
+        assert!(loaded.personas.is_empty());
+        assert!(loaded.error.is_none());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn scan_personas_nonexistent_dir_emits_empty_loaded() {
+        // Given an actor with a nonexistent directory.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        ctx.set_data(PathBuf::from("/nonexistent/personas"));
+        let mut actor = PersonaScanActor::activate(&mut ctx);
+
+        // When processing RescanPersonas command.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::RescanPersonas {
+                    payload: RescanPersonas,
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then PersonasLoaded has empty list.
+        let events = sink.events();
+        let loaded = find_personas_loaded(&events).expect("should have PersonasLoaded");
+        assert!(loaded.personas.is_empty());
+        assert!(loaded.error.is_none());
     }
 }

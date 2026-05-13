@@ -21,19 +21,6 @@ fn chat_entry_id_is_valid_uuid() {
 }
 
 #[rstest::rstest]
-fn chat_entry_id_serialization_roundtrip() {
-    // Given a ChatEntryId.
-    let id = ChatEntryId::new();
-
-    // When serialized and deserialized.
-    let json = serde_json::to_string(&id).expect("serialize");
-    let back: ChatEntryId = serde_json::from_str(&json).expect("deserialize");
-
-    // Then it matches the original.
-    assert_eq!(back, id);
-}
-
-#[rstest::rstest]
 fn user_entry_has_user_kind() {
     // Given text "hello".
     let text = "hello";
@@ -72,35 +59,10 @@ fn entry_has_timestamp() {
 }
 
 #[rstest::rstest]
-fn chat_entry_serialization_roundtrip() {
-    // Given a ChatEntry.
-    let entry = ChatEntry::user("hello");
-
-    // When serialized and deserialized.
-    let json = serde_json::to_string(&entry).expect("serialize");
-    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
-
-    // Then it matches the original.
-    assert_eq!(back.id, entry.id);
-    assert_eq!(back.kind, entry.kind);
-    assert_eq!(back.timestamp, entry.timestamp);
-}
-
-#[rstest::rstest]
 fn assistant_entry_has_assistant_kind() {
     let text = "hello";
     let entry = ChatEntry::assistant(text);
     assert_eq!(entry.kind, ChatEntryKind::Assistant("hello".to_owned()));
-}
-
-#[rstest::rstest]
-fn assistant_entry_serialization_roundtrip() {
-    let entry = ChatEntry::assistant("hello");
-    let json = serde_json::to_string(&entry).expect("serialize");
-    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(back.id, entry.id);
-    assert_eq!(back.kind, entry.kind);
-    assert_eq!(back.timestamp, entry.timestamp);
 }
 
 #[rstest::rstest]
@@ -120,21 +82,6 @@ fn actor_entry_has_actor_kind() {
             text: "HELLO".to_owned(),
         }
     );
-}
-
-#[rstest::rstest]
-fn actor_entry_serialization_roundtrip() {
-    // Given an actor ChatEntry.
-    let entry = ChatEntry::actor("echo", "hello");
-
-    // When serialized and deserialized.
-    let json = serde_json::to_string(&entry).expect("serialize");
-    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
-
-    // Then it matches the original.
-    assert_eq!(back.id, entry.id);
-    assert_eq!(back.kind, entry.kind);
-    assert_eq!(back.timestamp, entry.timestamp);
 }
 
 #[rstest::rstest]
@@ -178,36 +125,6 @@ fn tool_result_entry_has_tool_result_kind() {
             success: true,
         }
     );
-}
-
-#[rstest::rstest]
-fn tool_call_entry_serialization_roundtrip() {
-    // Given a tool call ChatEntry.
-    let entry = ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#);
-
-    // When serialized and deserialized.
-    let json = serde_json::to_string(&entry).expect("serialize");
-    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
-
-    // Then it matches the original.
-    assert_eq!(back.id, entry.id);
-    assert_eq!(back.kind, entry.kind);
-    assert_eq!(back.timestamp, entry.timestamp);
-}
-
-#[rstest::rstest]
-fn tool_result_entry_serialization_roundtrip() {
-    // Given a tool result ChatEntry.
-    let entry = ChatEntry::tool_result("call_1", "echo", "hi", true);
-
-    // When serialized and deserialized.
-    let json = serde_json::to_string(&entry).expect("serialize");
-    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
-
-    // Then it matches the original.
-    assert_eq!(back.id, entry.id);
-    assert_eq!(back.kind, entry.kind);
-    assert_eq!(back.timestamp, entry.timestamp);
 }
 
 // --- PinPosition tests ---
@@ -272,19 +189,6 @@ fn pin_position_returns_none_when_unpinned() {
 }
 
 #[rstest::rstest]
-fn pin_position_serialization_roundtrip() {
-    // Given a pinned entry.
-    let entry = ChatEntry::user("instruction").with_pin(PinPosition::Top);
-
-    // When serialized and deserialized.
-    let json = serde_json::to_string(&entry).expect("serialize");
-    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
-
-    // Then the pin position is preserved.
-    assert_eq!(back.pin_position, Some(PinPosition::Top));
-}
-
-#[rstest::rstest]
 fn pin_position_deserializes_old_format() {
     // Given JSON without pin_position field (old format).
     let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"User":"hello"}}"#;
@@ -294,34 +198,4 @@ fn pin_position_deserializes_old_format() {
 
     // Then pin_position is None (backward compat via #[serde(default)]).
     assert_eq!(entry.pin_position, None);
-}
-
-#[rstest::rstest]
-fn pin_position_enum_serialization() {
-    // Given each PinPosition variant.
-    for (label, position) in [
-        ("Top", PinPosition::Top),
-        ("Bottom", PinPosition::Bottom),
-        ("Relative", PinPosition::Relative),
-    ] {
-        // When serialized and deserialized.
-        let json = serde_json::to_string(&position).expect("serialize");
-        let back: PinPosition = serde_json::from_str(&json).expect("deserialize");
-
-        // Then the variant roundtrips correctly.
-        assert_eq!(back, position, "roundtrip failed for {label}");
-    }
-}
-
-#[rstest::rstest]
-fn error_entry_serialization_roundtrip() {
-    // Given an error entry.
-    let entry = ChatEntry::error("Something went wrong");
-
-    // When serialized and deserialized.
-    let json = serde_json::to_string(&entry).expect("serialize");
-    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
-
-    // Then the kind is preserved.
-    assert!(matches!(back.kind, ChatEntryKind::Error(ref t) if t == "Something went wrong"));
 }

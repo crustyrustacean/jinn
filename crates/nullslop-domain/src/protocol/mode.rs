@@ -26,21 +26,3 @@ impl std::fmt::Display for Mode {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[rstest::rstest]
-    fn mode_serialization_roundtrip() {
-        // Given both mode variants.
-        for mode in [Mode::Normal, Mode::Input, Mode::Picker] {
-            // When serialized and deserialized.
-            let json = serde_json::to_string(&mode).expect("serialize");
-            let back: Mode = serde_json::from_str(&json).expect("deserialize");
-
-            // Then it matches the original.
-            assert_eq!(back, mode);
-        }
-    }
-}

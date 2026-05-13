@@ -1,80 +1,56 @@
-//! Prompt template scanning actor.
+//! Prompt template scanning configuration for the generic scan actor.
 //!
 //! Subscribes to [`RescanPromptTemplates`] commands, scans the prompts
 //! directory (path injected via [`ActorContext`] data), and emits
 //! [`PromptTemplatesLoaded`] events with the results.
 
-use std::path::PathBuf;
+use std::path::Path;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::ActorContext;
+use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::provider::protocol::command::RescanPromptTemplates;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::protocol::{Command, Event};
 
-/// Direct message type for the prompt scan actor (unused).
-pub enum PromptScanDirectMsg {}
-
-/// Prompt template scanning actor.
+/// Prompt template scan configuration for [`ScanActor`].
 ///
 /// On `RescanPromptTemplates`, scans the injected directory path recursively,
 /// parses all `*.md` files, and emits `PromptTemplatesLoaded` with the results.
 ///
 /// The scan path is injected via [`ActorContext::set_data::<PathBuf>()`] during
-/// actor spawn in `src/app.rs`.
-pub struct PromptScanActor {
-    /// Directory to scan for prompt templates.
-    scan_path: PathBuf,
-}
+/// actor spawn in `src/actor_wiring.rs`.
+pub struct PromptScanConfig;
 
-impl Actor for PromptScanActor {
-    type Message = PromptScanDirectMsg;
+/// The scan result from `PromptTemplateStore::load_from_dir` — may fail.
+type PromptScanResult = Result<PromptTemplateStore, error_stack::Report<PromptTemplateStoreError>>;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "scan_path must be injected via ctx.set_data before activate"
-    )]
+/// Placeholder error type (unused — `load_from_dir` returns its own error type).
+#[derive(Debug, wherror::Error)]
+#[error(debug)]
+pub struct PromptTemplateLoadError;
+
+use crate::feat::context::prompt_template::PromptTemplateStoreError;
+
+impl ScanConfig for PromptScanConfig {
+    type Output = PromptScanResult;
+
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<RescanPromptTemplates>();
-        let scan_path = ctx
-            .take_data::<PathBuf>()
-            .expect("PathBuf must be injected via ctx.set_data()");
-        Self { scan_path }
+        Self
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<PromptScanDirectMsg>, ctx: &ActorContext) {
-        match msg {
-            ActorEnvelope::Command(command) => self.handle_command(&command, ctx).await,
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Event(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
-        }
+    fn is_rescan_command(command: &Command) -> bool {
+        matches!(command, Command::RescanPromptTemplates)
     }
 
-    async fn shutdown(self) {}
-}
-
-impl PromptScanActor {
-    /// Dispatches incoming commands.
-    async fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
-        match command {
-            Command::RescanPromptTemplates => {
-                self.rescan(ctx).await;
-            }
-            _ => {}
-        }
+    fn scan(path: &Path) -> PromptScanResult {
+        PromptTemplateStore::load_from_dir(path)
     }
 
-    /// Scans the injected directory on a blocking thread and emits the result.
-    async fn rescan(&self, ctx: &ActorContext) {
-        let scan_path = self.scan_path.clone();
-        let result =
-            tokio::task::spawn_blocking(move || PromptTemplateStore::load_from_dir(&scan_path))
-                .await;
-
+    fn on_success(result: PromptScanResult, _config: &Self, ctx: &ActorContext) {
         match result {
-            Ok(Ok(store)) => {
+            Ok(store) => {
                 tracing::info!(count = store.len(), "rescanned prompt templates");
                 let _ = ctx.send_event(Event::PromptTemplatesLoaded {
                     payload: PromptTemplatesLoaded {
@@ -83,7 +59,7 @@ impl PromptScanActor {
                     },
                 });
             }
-            Ok(Err(e)) => {
+            Err(e) => {
                 tracing::warn!("failed to rescan prompt templates: {e:?}");
                 let _ = ctx.send_event(Event::PromptTemplatesLoaded {
                     payload: PromptTemplatesLoaded {
@@ -92,15 +68,19 @@ impl PromptScanActor {
                     },
                 });
             }
-            Err(join_err) => {
-                tracing::error!("rescan task panicked: {join_err}");
-                let _ = ctx.send_event(Event::PromptTemplatesLoaded {
-                    payload: PromptTemplatesLoaded {
-                        templates: vec![],
-                        error: Some(format!("rescan task failed: {join_err}")),
-                    },
-                });
-            }
         }
     }
+
+    fn on_panic(join_error: tokio::task::JoinError, _config: &Self, ctx: &ActorContext) {
+        tracing::error!("rescan task panicked: {join_error}");
+        let _ = ctx.send_event(Event::PromptTemplatesLoaded {
+            payload: PromptTemplatesLoaded {
+                templates: vec![],
+                error: Some(format!("rescan task failed: {join_error}")),
+            },
+        });
+    }
 }
+
+/// Type alias for the prompt scan actor.
+pub type PromptScanActor = ScanActor<PromptScanConfig>;

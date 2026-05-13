@@ -5,6 +5,7 @@ use crate::common::services::Services;
 use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
 use crate::protocol::PickerKind;
 use nullslop_selection_widget::compute_popup_rect;
+use nullslop_testutil::setup_term;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
@@ -12,14 +13,6 @@ use ratatui::style::Color;
 
 use super::super::loader::load_provider_picker_items;
 use super::super::render::render_provider_picker;
-
-/// Creates a test terminal with the given dimensions.
-fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
-    let backend = TestBackend::new(width, height);
-    let terminal = Terminal::new(backend).unwrap();
-    let area = Rect::new(0, 0, width, height);
-    (terminal, area)
-}
 
 fn picker_state_with_ollama() -> (AppState, Services) {
     let config = ProvidersConfig {

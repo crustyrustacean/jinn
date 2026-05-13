@@ -6,11 +6,8 @@
 //! main thread's `wait_for_system_ready` call.
 
 use crate::common::actor::protocol::event::ActorStarted;
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::protocol::Event;
-
-/// Direct message type (unused — the system-ready actor only reacts to events).
-pub enum SystemReadyDirectMsg {}
 
 /// The system-ready actor.
 ///
@@ -27,7 +24,7 @@ pub struct SystemReadyActor {
 }
 
 impl Actor for SystemReadyActor {
-    type Message = SystemReadyDirectMsg;
+    type Message = NoDirectMsg;
 
     #[expect(
         clippy::expect_used,
@@ -71,9 +68,7 @@ impl Actor for SystemReadyActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Command(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
         }
     }
-
-    async fn shutdown(self) {}
 }
