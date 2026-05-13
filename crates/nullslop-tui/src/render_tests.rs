@@ -49,44 +49,10 @@ fn init_tab_manager_has_two_tabs() {
 }
 
 #[rstest::rstest]
-fn app_layout_includes_indicator_row() {
-    // Given a 40x14 area.
-    let area = Rect::new(0, 0, 40, 14);
-    let layout = AppLayout::new(area, 1, 0, area.height / 2);
-
-    // Then the indicator row has height 1 and is between content and counter.
-    assert_eq!(layout.indicator.height, 1);
-    assert!(layout.indicator.y > layout.content.y);
-    assert!(layout.indicator.y < layout.counter.y);
-}
-
-#[rstest::rstest]
-fn app_layout_queue_area_has_dynamic_height() {
-    // Given a 40x20 area with 3 queued messages.
-    let area = Rect::new(0, 0, 40, 20);
-    let layout = AppLayout::new(area, 1, 3, area.height / 2);
-
-    // Then the queue area has height 3 and sits between indicator and counter.
-    assert_eq!(layout.queue.height, 3);
-    assert!(layout.queue.y > layout.indicator.y);
-    assert!(layout.queue.y < layout.counter.y);
-}
-
-#[rstest::rstest]
-fn app_layout_queue_area_zero_height_when_empty() {
-    // Given a 40x14 area with no queued messages.
-    let area = Rect::new(0, 0, 40, 14);
-    let layout = AppLayout::new(area, 1, 0, area.height / 2);
-
-    // Then the queue area has height 0.
-    assert_eq!(layout.queue.height, 0);
-}
-
-#[rstest::rstest]
 fn app_layout_includes_status_bar() {
     // Given a 40x14 area.
     let area = Rect::new(0, 0, 40, 14);
-    let layout = AppLayout::new(area, 1, 0, area.height / 2);
+    let layout = AppLayout::new(area, 1, area.height / 2);
 
     // Then the status bar has height 1 and is at the bottom.
     assert_eq!(layout.status_bar.height, 1);
@@ -479,7 +445,7 @@ fn render_registers_content_rect_for_selectable_chat_log() {
 
     // Then the chat area rect is registered as selectable.
     // Chat log is selectable — content area is the main column's sub-area.
-    let layout = AppLayout::new(frame_area(80, 24), 1, 0, 12);
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
     let chat_area = layout.content;
     let found = app
         .selectable_rects
@@ -549,7 +515,7 @@ fn content_area_rect_is_selectable() {
         .unwrap();
 
     // Then the content area rect is also still selectable (chat-log is selectable).
-    let layout = AppLayout::new(frame_area(80, 24), 1, 0, 12);
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
     let content_found = app
         .selectable_rects
         .find_for_position(layout.content.x + 1, layout.content.y + 1);
@@ -557,6 +523,135 @@ fn content_area_rect_is_selectable() {
         content_found.is_some(),
         "content rect should also be selectable alongside picker"
     );
+}
+
+// --- Focus-dependent color tests ---
+
+#[rstest::rstest]
+fn chat_bottom_line_is_yellow_when_normal_scope() {
+    // Given a TuiApp rendered with Normal scope (default).
+    let mut app = render_test_app();
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the chat bottom line (last row of content area) is Yellow.
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+    let line_y = layout.content.y + layout.content.height - 1;
+    let buffer = terminal.backend().buffer();
+    let cell = buffer.cell((layout.content.x, line_y)).expect("chat bottom line cell");
+    assert_eq!(cell.symbol(), "\u{2500}");
+    assert_eq!(cell.fg, Color::Yellow);
+}
+
+#[rstest::rstest]
+fn chat_bottom_line_is_darkgray_when_input_scope() {
+    // Given a TuiApp rendered with Input scope.
+    let mut app = render_test_app();
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_stack
+        .push(nullslop_domain::FocusScope::Input);
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the chat bottom line is DarkGray.
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+    let line_y = layout.content.y + layout.content.height - 1;
+    let buffer = terminal.backend().buffer();
+    let cell = buffer.cell((layout.content.x, line_y)).expect("chat bottom line cell");
+    assert_eq!(cell.fg, Color::DarkGray);
+}
+
+#[rstest::rstest]
+fn chat_bottom_line_is_darkgray_when_sidebar_scope() {
+    // Given a TuiApp rendered with Sidebar scope.
+    let mut app = render_test_app();
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_stack
+        .push(nullslop_domain::FocusScope::Sidebar);
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the chat bottom line is DarkGray.
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+    let line_y = layout.content.y + layout.content.height - 1;
+    let buffer = terminal.backend().buffer();
+    let cell = buffer.cell((layout.content.x, line_y)).expect("chat bottom line cell");
+    assert_eq!(cell.fg, Color::DarkGray);
+}
+
+#[rstest::rstest]
+fn separator_is_yellow_when_sidebar_focused() {
+    // Given a TuiApp rendered with Sidebar scope.
+    let mut app = render_test_app();
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_stack
+        .push(nullslop_domain::FocusScope::Sidebar);
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the vertical separator is Yellow.
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+    let buffer = terminal.backend().buffer();
+    let cell = buffer
+        .cell((layout.border.x, layout.border.y + 5))
+        .expect("separator cell");
+    assert_eq!(cell.symbol(), "\u{2502}");
+    assert_eq!(cell.fg, Color::Yellow);
+}
+
+#[rstest::rstest]
+fn separator_is_darkgray_when_normal() {
+    // Given a TuiApp rendered with Normal scope.
+    let mut app = render_test_app();
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the vertical separator is DarkGray.
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+    let buffer = terminal.backend().buffer();
+    let cell = buffer
+        .cell((layout.border.x, layout.border.y + 5))
+        .expect("separator cell");
+    assert_eq!(cell.fg, Color::DarkGray);
 }
 
 /// Helper to create a Rect matching the terminal dimensions.

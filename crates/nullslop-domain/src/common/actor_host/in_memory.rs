@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::common::actor::actor_counter::ActorCounter;
 use crate::common::actor::protocol::event::{ActorStarted, ActorStarting};
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
@@ -54,11 +55,14 @@ pub fn spawn<A>(
     name: &str,
     sink: &Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
+    counter: &ActorCounter,
     configure: impl FnOnce(&mut ActorContext),
 ) -> ActorSpawnResult
 where
     A: Actor + Send + 'static,
 {
+    counter.increment();
+
     let _ = sink.send_event(Event::ActorStarting {
         payload: ActorStarting {
             name: name.to_owned(),
@@ -99,11 +103,14 @@ pub fn system_spawn<A>(
     name: &str,
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
+    counter: &ActorCounter,
     configure: impl FnOnce(&mut ActorContext),
 ) -> ActorSpawnResult
 where
     A: Actor + Send + 'static,
 {
+    counter.increment();
+
     let (tx, rx) = kanal::unbounded::<ActorEnvelope<A::Message>>();
     let actor_ref = ActorRef::new(tx);
     let mut ctx = ActorContext::new(name, sink);

@@ -88,7 +88,7 @@ impl SidebarSection for PinsSection {
                     .add_modifier(Modifier::BOLD),
             )])]
         } else {
-            build_entry_list(&pinned, selected_index, area.width)
+            build_entry_list(&pinned, selected_index, area.width, state.frontend.scope_stack.is_sidebar())
         };
 
         let total_lines = lines.len() as u16;
@@ -234,9 +234,9 @@ fn cycle_position(pos: PinPosition) -> PinPosition {
 // ---------------------------------------------------------------------------
 
 /// Solid yellow full block used as the selection indicator.
-const SELECTED_INDICATOR: &str = "\u{2588}\u{2588}";
-/// Two spaces used as the unselected border.
-const UNSELECTED_BORDER: &str = "  ";
+const SELECTED_INDICATOR: &str = "\u{2588}";
+/// One space used as the unselected border.
+const UNSELECTED_BORDER: &str = " ";
 
 /// Builds the list of lines for the pinned entries panel.
 fn position_badge(position: PinPosition) -> (&'static str, Color) {
@@ -298,6 +298,7 @@ fn build_entry_list(
     pinned: &[&crate::protocol::ChatEntry],
     selected_index: usize,
     _area_width: u16,
+    sidebar_focused: bool,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
@@ -313,8 +314,13 @@ fn build_entry_list(
     for (i, entry) in pinned.iter().enumerate() {
         let is_selected = i == selected_index;
 
+        let indicator_color = if sidebar_focused {
+            Color::Yellow
+        } else {
+            Color::DarkGray
+        };
         let border = if is_selected {
-            Span::styled(SELECTED_INDICATOR, Style::default().fg(Color::Yellow))
+            Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
         } else {
             Span::raw(UNSELECTED_BORDER)
         };
@@ -678,9 +684,11 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_selected_entry_has_yellow_marker() {
+    fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
         let mut section = PinsSection;
-        let state = state_with_pinned(2);
+        let mut state = state_with_pinned(2);
+        // Sidebar must be focused for the indicator to be yellow.
+        state.frontend.scope_stack.push(FocusScope::Sidebar);
 
         let (mut terminal, area) = setup_term(60, 20);
         terminal
@@ -695,6 +703,27 @@ mod tests {
         let cell0 = buffer.cell((0, 2)).expect("cell 0,2");
         assert_eq!(cell0.symbol(), "\u{2588}");
         assert_eq!(cell0.fg, Color::Yellow);
+    }
+
+    #[rstest::rstest]
+    fn render_selected_entry_has_darkgray_marker_when_not_focused() {
+        let mut section = PinsSection;
+        let mut state = state_with_pinned(2);
+        // Sidebar is NOT focused (Normal scope is the default).
+
+        let (mut terminal, area) = setup_term(60, 20);
+        terminal
+            .draw(|frame| {
+                section.render(frame, area, &state);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        // First entry at index 0 is selected by default.
+        // The indicator should be DarkGray when sidebar is not focused.
+        let cell0 = buffer.cell((0, 2)).expect("cell 0,2");
+        assert_eq!(cell0.symbol(), "\u{2588}");
+        assert_eq!(cell0.fg, Color::DarkGray);
     }
 
     #[rstest::rstest]
