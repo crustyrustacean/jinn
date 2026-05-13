@@ -167,6 +167,7 @@ mod tests {
             .user_preferences_storage
             .save(&UserPreferences {
                 last_model: Some("sample/sample".to_owned()),
+                last_strategy: None,
             })
             .expect("save prefs");
 

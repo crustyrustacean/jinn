@@ -22,6 +22,7 @@ use crate::feat::context::prompt_template::PromptTemplateStore;
 pub use crate::feat::dashboard::DashboardState;
 use crate::feat::persona::Persona;
 use crate::feat::persona::PersonaEntry;
+use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::shutdown_actor::ShutdownTrackerState;
 use crate::feat::skills::Skill;
@@ -307,6 +308,11 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (cleared and set each handle() call).
     pub tui_signals: TuiSignals,
 
+    /// Cached copy of user preferences from `nullslop.toml`.
+    /// Updated whenever preferences are loaded/saved/reloaded.
+    /// This is a cache — the file is the authoritative source.
+    pub preferences: UserPreferences,
+
     /// All keymap entries, populated once at startup.
     /// OWNER: IntentHandler (populated when keymap picker opens).
     pub all_keymap_entries: Vec<KeymapEntry>,
@@ -348,6 +354,7 @@ impl Default for FrontendState {
             sidebar: SidebarState::default(),
             dashboard: DashboardState::new(),
             tui_signals: TuiSignals::new(),
+            preferences: UserPreferences::default(),
             all_keymap_entries: vec![],
             keymap_picker: nullslop_selection_widget::SelectionState::new(),
             keymap_picker_show_all: false,

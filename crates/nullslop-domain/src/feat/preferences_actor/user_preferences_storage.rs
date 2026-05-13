@@ -234,6 +234,7 @@ mod tests {
         let storage = InMemoryUserPreferencesStorage::new();
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
+            last_strategy: None,
         };
 
         // When saving and reloading.
@@ -270,6 +271,7 @@ mod tests {
 
         let prefs = UserPreferences {
             last_model: Some("test/model".to_owned()),
+            last_strategy: None,
         };
 
         // When saving and reloading.
@@ -289,6 +291,7 @@ mod tests {
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
+            last_strategy: None,
         };
         service.save(&prefs).expect("save");
 
@@ -308,12 +311,14 @@ mod tests {
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
+            last_strategy: None,
         };
         service.save(&prefs).expect("save");
 
         // When saving new preferences.
         let updated = UserPreferences {
             last_model: Some("openrouter/gpt-4".to_owned()),
+            last_strategy: None,
         };
         service.save(&updated).expect("save updated");
 
@@ -329,6 +334,7 @@ mod tests {
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
+            last_strategy: None,
         };
         service.save(&prefs).expect("save");
 
