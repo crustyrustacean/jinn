@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 use crate::common::state::State;
 use crate::feat::skills::scan::scan_skills;
 use crate::feat::skills::skill::Skill;
@@ -54,9 +54,6 @@ impl Actor for SkillsScanActor {
     async fn handle(&mut self, msg: ActorEnvelope<SkillsScanDirectMsg>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx).await,
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
-            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
@@ -148,7 +145,7 @@ pub fn spawn_skills_scan_actor(
     ctx.set_data(scan_path);
     ctx.set_data(state);
     let actor = SkillsScanActor::activate(&mut ctx);
-    let result = spawn_actor("skills-scan", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("skills-scan", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 

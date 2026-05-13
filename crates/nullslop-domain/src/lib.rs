@@ -26,7 +26,7 @@ pub use common::actor::{
 };
 pub use common::actor_host::{
     ActorHost, ActorHostService, ActorSpawnResult, FakeActorHost, InMemoryActorHost, RoutingEntry,
-    spawn_actor,
+    spawn, spawn_actor_impl, system_spawn,
 };
 
 // Re-export component types (state, UI)
@@ -47,7 +47,8 @@ pub use common::services::test_services::TestServices;
 
 // Re-export core types
 pub use common::core::{
-    ActorMessageSink, AppCore, SHUTDOWN_TIMEOUT, coordinated_shutdown, spawn_forwarding_task,
+    ActorMessageSink, AppCore, SHUTDOWN_TIMEOUT, STARTUP_TIMEOUT, coordinated_shutdown,
+    spawn_forwarding_task, wait_for_system_ready,
 };
 
 // Re-export intent types

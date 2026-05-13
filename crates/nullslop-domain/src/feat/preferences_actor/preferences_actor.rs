@@ -14,7 +14,7 @@ use std::sync::Arc;
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 use crate::feat::preferences_actor::user_preferences::UserPreferences;
 use crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorageService;
 use crate::feat::provider::protocol::event::ProviderSwitched;
@@ -57,9 +57,6 @@ impl Actor for PreferencesActor {
                     self.handle_provider_switched(payload);
                 }
             }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
-            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
@@ -100,7 +97,7 @@ pub fn spawn_preferences_actor(
     ctx.set_description("Persists user preferences to nullslop.toml");
     ctx.set_data(storage);
     let actor = PreferencesActor::activate(&mut ctx);
-    let result = spawn_actor("preferences", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("preferences", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 

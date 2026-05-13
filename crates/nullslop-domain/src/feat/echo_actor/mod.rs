@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
@@ -38,9 +38,6 @@ impl Actor for EchoActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
-            }
             ActorEnvelope::Event(event) => Self::process_event(&event, ctx).await,
             ActorEnvelope::Command(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
         }
@@ -60,7 +57,7 @@ pub fn spawn(
     let actor_ref = ActorRef::new(tx);
     let mut ctx = ActorContext::new("echo", sink);
     let actor = EchoActor::activate(&mut ctx);
-    let result = spawn_actor("echo", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("echo", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 

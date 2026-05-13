@@ -9,5 +9,6 @@
 
 pub mod env_init_actor;
 pub mod provider_init_actor;
+pub mod system_ready_actor;
 
 pub use env_init_actor::EnvironmentLoaded;

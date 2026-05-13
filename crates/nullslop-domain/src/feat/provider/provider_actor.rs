@@ -22,7 +22,7 @@ use std::sync::Arc;
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
@@ -81,9 +81,6 @@ impl Actor for ProviderActor {
                 if let Event::ModelsRefreshed { ref payload } = event {
                     self.handle_models_refreshed(payload);
                 }
-            }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
             }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
@@ -223,7 +220,7 @@ pub fn spawn_provider_actor(
     ctx.set_data(state);
     ctx.set_data(services);
     let actor = ProviderActor::activate(&mut ctx);
-    let result = spawn_actor("provider", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("provider", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }
 

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::common::actor::{
     Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
 };
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
 use crate::feat::context::protocol::command::RescanPersonas;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::persona::scan_personas_dir;
@@ -49,9 +49,6 @@ impl Actor for PersonaScanActor {
     async fn handle(&mut self, msg: ActorEnvelope<PersonaScanDirectMsg>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx).await,
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
-            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
@@ -114,6 +111,6 @@ pub fn spawn_persona_scan_actor(
     let mut ctx = ActorContext::new("persona-scan", sink);
     ctx.set_data(personas_dir);
     let actor = PersonaScanActor::activate(&mut ctx);
-    let result = spawn_actor("persona-scan", actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl("persona-scan", actor, &actor_ref, rx, ctx, handle);
     (actor_ref, result)
 }

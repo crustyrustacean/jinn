@@ -258,7 +258,7 @@ mod tests {
 
         // When sending a system message.
         actor_ref
-            .send_system(crate::SystemMessage::ApplicationReady)
+            .send_system(crate::SystemMessage::ApplicationShuttingDown)
             .expect("send should succeed");
 
         // Then it is received as a System envelope.
@@ -268,7 +268,7 @@ mod tests {
             .expect("should have value");
         assert!(matches!(
             msg,
-            ActorEnvelope::System(crate::SystemMessage::ApplicationReady)
+            ActorEnvelope::System(crate::SystemMessage::ApplicationShuttingDown)
         ));
     }
 
