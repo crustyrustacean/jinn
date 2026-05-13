@@ -29,6 +29,7 @@ pub fn persisted_into_session(persisted: PersistedSession) -> ChatSessionState {
 
     session.restore_history(persisted.history);
     session.switch_strategy(persisted.active_strategy);
+    session.set_model(persisted.model);
 
     // Deserialize strategy state blob — missing → None.
     if let Some(strategy_value) = persisted.blobs.get(BLOB_STRATEGY_STATE) {
@@ -94,6 +95,7 @@ pub fn session_to_persisted(
         updated_at: Timestamp::now(),
         history: session.history().to_vec(),
         active_strategy: session.active_strategy().clone(),
+        model: session.profile().model.clone(),
         blobs,
     }
 }
@@ -119,6 +121,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             history: vec![],
             active_strategy: PromptStrategyId::passthrough(),
+            model: nullslop_domain::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             blobs: HashMap::new(),
         };
 
@@ -140,6 +143,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             history: vec![],
             active_strategy: PromptStrategyId::passthrough(),
+            model: nullslop_domain::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             blobs: HashMap::new(),
         };
 
@@ -272,6 +276,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             history: vec![ChatEntry::user("hello")],
             active_strategy: PromptStrategyId::passthrough(),
+            model: nullslop_domain::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             blobs: HashMap::new(),
         };
 

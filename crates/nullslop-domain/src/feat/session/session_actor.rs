@@ -312,6 +312,7 @@ mod tests {
                 history: vec![ChatEntry::user("hello"), ChatEntry::assistant("world")],
                 active_strategy: PromptStrategyId::passthrough(),
                 blobs: HashMap::new(),
+                model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             },
         }
     }
@@ -407,6 +408,7 @@ mod tests {
                     "strategy-state".to_owned(),
                     serde_json::json!({"compaction_count": 5}),
                 )]),
+                model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             },
         };
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
@@ -499,6 +501,7 @@ mod tests {
                     "test_blob".to_owned(),
                     serde_json::json!({"key": "value"}),
                 )]),
+                model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             },
         };
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
@@ -535,6 +538,7 @@ mod tests {
                     "test_blob".to_owned(),
                     serde_json::json!({"key": "value"}),
                 )]),
+                model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             },
         };
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
@@ -958,6 +962,7 @@ mod tests {
                         history: vec![ChatEntry::user("hello"), ChatEntry::assistant("world")],
                         active_strategy: PromptStrategyId::passthrough(),
                         blobs: HashMap::new(),
+                        model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
                     },
                 }),
                 &ctx,
@@ -1013,6 +1018,7 @@ mod tests {
                         history: vec![ChatEntry::user("hello")],
                         active_strategy: PromptStrategyId::passthrough(),
                         blobs: HashMap::new(),
+                        model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
                     },
                 }),
                 &ctx,

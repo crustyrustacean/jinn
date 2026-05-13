@@ -168,6 +168,18 @@ impl ChatSessionState {
         }
     }
 
+    /// Create a new session with a specific profile (model + strategy).
+    #[must_use]
+    pub fn new_with_profile(profile: SessionProfile) -> Self {
+        Self {
+            core: SessionCore {
+                profile,
+                ..SessionCore::default()
+            },
+            ui: SessionUi::default(),
+        }
+    }
+
     /// Read-only access to this session's input box state.
     pub fn chat_input(&self) -> &ChatInputBoxState {
         &self.ui.chat_input

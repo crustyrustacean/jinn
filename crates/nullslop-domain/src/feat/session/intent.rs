@@ -1,7 +1,9 @@
 //! Session management intent handlers — session creation, model refresh, and prompt template rescan.
 
 use crate::common::app_state::AppState;
-use crate::protocol::{ChatEntry, Command, IntentResult, SessionId};
+use crate::feat::provider_infra::NO_PROVIDER_ID;
+use crate::feat::session::profile::SessionProfile;
+use crate::protocol::{ChatEntry, Command, IntentResult, PromptStrategyId, SessionId};
 
 use super::validator;
 
@@ -14,10 +16,23 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
     state.session.sessions.remove(&state.session.active_session);
 
     let new_id = SessionId::new();
-    state.session.sessions.insert(
-        new_id.clone(),
-        crate::feat::session::chat_session::ChatSessionState::new(),
+    let model = state
+        .frontend
+        .preferences
+        .last_model
+        .clone()
+        .unwrap_or_else(|| NO_PROVIDER_ID.to_owned());
+    let strategy = state
+        .frontend
+        .preferences
+        .last_strategy
+        .as_deref()
+        .map(PromptStrategyId::new)
+        .unwrap_or_else(PromptStrategyId::passthrough);
+    let new_session = crate::feat::session::chat_session::ChatSessionState::new_with_profile(
+        SessionProfile::from_config(model, strategy),
     );
+    state.session.sessions.insert(new_id.clone(), new_session);
     state.session.active_session = new_id;
     state.frontend.scope_stack.clear_overlays();
 
