@@ -134,35 +134,73 @@ impl UserPreferencesStorage for InMemoryUserPreferencesStorage {
 ///
 /// Wraps `Arc<dyn UserPreferencesStorage>` for shared ownership across the
 /// application. Follows the service wrapper pattern from the project style guide.
+/// Includes an in-memory cache so repeated reads don't hit disk.
 #[derive(Debug, Clone)]
 pub struct UserPreferencesStorageService {
     /// The underlying preferences storage implementation.
     svc: Arc<dyn UserPreferencesStorage>,
+    /// In-memory cache of the last loaded/saved preferences.
+    cache: Arc<RwLock<Option<UserPreferences>>>,
 }
 
 impl UserPreferencesStorageService {
     /// Creates a new user preferences storage service.
     #[must_use]
     pub fn new(storage: Arc<dyn UserPreferencesStorage>) -> Self {
-        Self { svc: storage }
+        Self {
+            svc: storage,
+            cache: Arc::new(RwLock::new(None)),
+        }
     }
 
     /// Loads user preferences.
+    ///
+    /// Returns the cached value if present, otherwise reads from storage
+    /// and caches the result.
     ///
     /// # Errors
     ///
     /// Returns [`UserPreferencesError::Parse`] if stored content is malformed.
     pub fn load(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
-        self.svc.load()
+        {
+            let guard = self.cache.read();
+            if let Some(ref prefs) = *guard {
+                return Ok(prefs.clone());
+            }
+        }
+        let prefs = self.svc.load()?;
+        let mut guard = self.cache.write();
+        *guard = Some(prefs.clone());
+        Ok(prefs)
     }
 
     /// Saves user preferences.
+    ///
+    /// Writes to storage and updates the in-memory cache.
     ///
     /// # Errors
     ///
     /// Returns [`UserPreferencesError::Parse`] if serialization fails.
     pub fn save(&self, prefs: &UserPreferences) -> Result<(), Report<UserPreferencesError>> {
-        self.svc.save(prefs)
+        self.svc.save(prefs)?;
+        let mut guard = self.cache.write();
+        *guard = Some(prefs.clone());
+        Ok(())
+    }
+
+    /// Reloads preferences from storage, bypassing the cache.
+    ///
+    /// Clears the cache, reads fresh from storage, and caches the result.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UserPreferencesError::Parse`] if stored content is malformed.
+    pub fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
+        {
+            let mut guard = self.cache.write();
+            *guard = None;
+        }
+        self.load()
     }
 }
 
@@ -240,5 +278,64 @@ mod tests {
 
         // Then the round-tripped data matches.
         assert_eq!(reloaded.last_model.as_deref(), Some("test/model"));
+    }
+
+    // --- Service caching tests ---
+
+    #[rstest::rstest]
+    fn service_load_caches_result() {
+        // Given an InMemoryUserPreferencesStorage wrapped in a service.
+        let storage = InMemoryUserPreferencesStorage::new();
+        let service = UserPreferencesStorageService::new(Arc::new(storage));
+        let prefs = UserPreferences {
+            last_model: Some("ollama/llama3".to_owned()),
+        };
+        service.save(&prefs).expect("save");
+
+        // When loading twice.
+        let first = service.load().expect("first load");
+        let second = service.load().expect("second load");
+
+        // Then both return the same value without error.
+        assert_eq!(first.last_model, second.last_model);
+        assert_eq!(first.last_model.as_deref(), Some("ollama/llama3"));
+    }
+
+    #[rstest::rstest]
+    fn service_save_updates_cache() {
+        // Given a service with cached preferences.
+        let storage = InMemoryUserPreferencesStorage::new();
+        let service = UserPreferencesStorageService::new(Arc::new(storage));
+        let prefs = UserPreferences {
+            last_model: Some("ollama/llama3".to_owned()),
+        };
+        service.save(&prefs).expect("save");
+
+        // When saving new preferences.
+        let updated = UserPreferences {
+            last_model: Some("openrouter/gpt-4".to_owned()),
+        };
+        service.save(&updated).expect("save updated");
+
+        // Then load returns the updated value.
+        let loaded = service.load().expect("load");
+        assert_eq!(loaded.last_model.as_deref(), Some("openrouter/gpt-4"));
+    }
+
+    #[rstest::rstest]
+    fn service_reload_clears_cache_and_reads_fresh() {
+        // Given a service with cached preferences.
+        let storage = InMemoryUserPreferencesStorage::new();
+        let service = UserPreferencesStorageService::new(Arc::new(storage));
+        let prefs = UserPreferences {
+            last_model: Some("ollama/llama3".to_owned()),
+        };
+        service.save(&prefs).expect("save");
+
+        // When reloading.
+        let reloaded = service.reload().expect("reload");
+
+        // Then fresh preferences are returned from storage.
+        assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
     }
 }

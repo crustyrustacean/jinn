@@ -50,9 +50,9 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::app_state::{AppState, FrontendState};
+    use crate::common::app_state::AppState;
     use crate::feat::provider::ProviderState;
-    use crate::protocol::{ChatEntry, Command, Mode, PickerKind};
+    use crate::protocol::{ChatEntry, Command, PickerKind};
 
     use super::*;
 

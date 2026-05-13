@@ -129,7 +129,7 @@ mod tests {
             None,
         );
         service.send_command(&Command::RefreshModels, None);
-        service.send_system(crate::common::actor::SystemMessage::ApplicationReady);
+        service.send_system(crate::common::actor::SystemMessage::ApplicationShuttingDown);
     }
 
     #[rstest::rstest]

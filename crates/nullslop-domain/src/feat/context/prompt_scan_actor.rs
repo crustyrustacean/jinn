@@ -5,12 +5,8 @@
 //! [`PromptTemplatesLoaded`] events with the results.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::provider::protocol::command::RescanPromptTemplates;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
@@ -49,9 +45,6 @@ impl Actor for PromptScanActor {
     async fn handle(&mut self, msg: ActorEnvelope<PromptScanDirectMsg>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx).await,
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
-            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
@@ -110,21 +103,4 @@ impl PromptScanActor {
             }
         }
     }
-}
-
-/// Spawns the prompt scan actor on the given tokio runtime.
-///
-/// The prompt scan actor scans and reloads prompt templates from the given directory.
-pub fn spawn_prompt_scan_actor(
-    prompts_dir: PathBuf,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<PromptScanDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<PromptScanDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("prompt-scan", sink);
-    ctx.set_data(prompts_dir);
-    let actor = PromptScanActor::activate(&mut ctx);
-    let result = spawn_actor("prompt-scan", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
 }

@@ -6,14 +6,10 @@
 //! [`SkillsLoaded`](crate::protocol::Event::SkillsLoaded) events.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::common::state::State;
 use crate::feat::skills::scan::scan_skills;
 use crate::feat::skills::skill::Skill;
@@ -54,9 +50,6 @@ impl Actor for SkillsScanActor {
     async fn handle(&mut self, msg: ActorEnvelope<SkillsScanDirectMsg>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx).await,
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
-            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
@@ -135,28 +128,11 @@ pub struct SkillsLoaded {
 #[cmd("skills")]
 pub struct ScanSkills;
 
-/// Spawns the skills scan actor on the given tokio runtime.
-pub fn spawn_skills_scan_actor(
-    scan_path: PathBuf,
-    state: State,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<SkillsScanDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<SkillsScanDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("skills-scan", sink);
-    ctx.set_data(scan_path);
-    ctx.set_data(state);
-    let actor = SkillsScanActor::activate(&mut ctx);
-    let result = spawn_actor("skills-scan", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use crate::common::actor::{ActorContext, ActorEnvelope, RecordingSink};
+    use crate::common::actor::{ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::protocol::Command;

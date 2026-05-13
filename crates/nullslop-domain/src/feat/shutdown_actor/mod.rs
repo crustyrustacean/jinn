@@ -5,14 +5,10 @@
 //! subscribes to lifecycle events and coordinates the shutdown sequence.
 
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use crate::common::actor::protocol::command::ProceedWithShutdown;
 use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarting};
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::protocol::{Command, Event};
@@ -72,28 +68,6 @@ impl ShutdownTrackerState {
 /// Direct message type for the shutdown tracker actor (unused).
 pub enum ShutdownTrackerDirectMsg {}
 
-/// Spawns the shutdown tracker actor.
-///
-/// Creates the actor's channel, context, and run loop. Returns the
-/// `ActorRef` for sending direct messages and the `ActorSpawnResult`
-/// containing the routing entry and join handle.
-pub fn spawn(
-    state: State,
-    services: Services,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<ShutdownTrackerDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<ShutdownTrackerDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("shutdown-tracker", sink);
-    ctx.set_description("Tracks actor lifecycle for shutdown coordination");
-    ctx.set_data(state);
-    ctx.set_data(services);
-    let actor = ShutdownTrackerActor::activate(&mut ctx);
-    let result = spawn_actor("shutdown-tracker", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
-}
-
 /// Actor that coordinates startup tracking and shutdown sequencing.
 ///
 /// On `ActorStarting`, the actor name is added to the pending set.
@@ -128,9 +102,6 @@ impl Actor for ShutdownTrackerActor {
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
-            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }

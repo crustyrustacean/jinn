@@ -27,12 +27,8 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
 
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::spawn_actor;
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::common::state::State;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
@@ -91,27 +87,6 @@ struct PendingBatch {
     results: Vec<ToolResult>,
     /// Join handles for spawned builtin tool tasks (for cancellation).
     handles: Vec<tokio::task::JoinHandle<()>>,
-}
-
-/// Spawns the tool orchestrator actor on the given tokio runtime.
-///
-/// Returns the actor reference and spawn result for routing registration.
-pub fn spawn(
-    state: State,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (
-    ActorRef<ToolOrchestratorDirectMsg>,
-    crate::common::actor_host::ActorSpawnResult,
-) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<ToolOrchestratorDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("tool-orchestrator", sink);
-    ctx.set_description("Dispatches and manages tool execution");
-    ctx.set_data(state);
-    let actor = ToolOrchestratorActor::activate(&mut ctx);
-    let result = spawn_actor("tool-orchestrator", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
 }
 
 /// Direct message type for the tool orchestrator actor.
@@ -186,9 +161,6 @@ impl Actor for ToolOrchestratorActor {
             ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::System(SystemMessage::ApplicationReady) => {
-                ctx.announce_started();
             }
             ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
         }
