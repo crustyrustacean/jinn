@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::services::Services;
+use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
@@ -38,12 +39,12 @@ pub struct LlmActor {
     factory: LlmServiceFactoryService,
     /// Runtime services (provider registry, API keys for per-request factory creation).
     services: Option<Services>,
+    /// Shared application state (for reading tool definitions).
+    state: State,
     /// Active stream tasks, keyed by session ID.
     tasks: HashMap<SessionId, tokio::task::JoinHandle<()>>,
     /// Per-session state.
     sessions: HashMap<SessionId, SessionData>,
-    /// Accumulated tool definitions from [`ToolsRegistered`] events.
-    tool_definitions: HashMap<String, ToolDefinition>,
 }
 
 impl Actor for LlmActor {
@@ -64,13 +65,16 @@ impl Actor for LlmActor {
             .take_data::<LlmServiceFactoryService>()
             .expect("LlmServiceFactoryService must be injected via ctx.set_data() before activate");
         let services = ctx.take_data::<Services>();
+        let state = ctx
+            .take_data::<State>()
+            .expect("State must be injected via ctx.set_data() before activate");
 
         Self {
             factory,
             services,
+            state,
             tasks: HashMap::new(),
             sessions: HashMap::new(),
-            tool_definitions: HashMap::new(),
         }
     }
 
@@ -134,8 +138,11 @@ impl LlmActor {
         provider_id: Option<String>,
         ctx: &ActorContext,
     ) {
-        // Collect current tool definitions.
-        let tools: Vec<ToolDefinition> = self.tool_definitions.values().cloned().collect();
+        // Collect current tool definitions from shared state.
+        let tools: Vec<ToolDefinition> = {
+            let guard = self.state.read();
+            guard.context.tool_definitions.values().cloned().collect()
+        };
 
         let message_count = messages.len();
         tracing::trace!(
@@ -459,10 +466,14 @@ impl LlmActor {
         self.start_stream(session_id, messages, None, ctx);
     }
 
-    /// Caches tool definitions from a [`ToolsRegistered`] event.
-    fn handle_tools_registered(&mut self, definitions: &[ToolDefinition]) {
+    /// Caches tool definitions from a [`ToolsRegistered`] event into shared state.
+    fn handle_tools_registered(&self, definitions: &[ToolDefinition]) {
+        let mut state = self.state.write();
         for def in definitions {
-            self.tool_definitions.insert(def.name.clone(), def.clone());
+            state
+                .context
+                .tool_definitions
+                .insert(def.name.clone(), def.clone());
         }
     }
 
@@ -514,6 +525,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::common::actor::RecordingSink;
+    use crate::common::app_state::AppState;
     use crate::feat::provider_infra::FakeLlmServiceFactory;
     use crate::feat::tools_actor::protocol::event::ToolsRegistered;
     use crate::feat::tools_actor::tool_types::ToolDefinition;
@@ -523,7 +535,9 @@ mod tests {
 
     /// Creates a test context backed by a recording sink.
     fn test_context(sink: &Arc<RecordingSink>) -> ActorContext {
-        ActorContext::new("test-llm", sink.clone())
+        let mut ctx = ActorContext::new("test-llm", sink.clone());
+        ctx.set_data(State::new(AppState::default()));
+        ctx
     }
 
     /// Creates an actor with a fake factory producing the given tokens (text only).
@@ -1142,9 +1156,11 @@ mod tests {
 
     #[rstest::rstest]
     fn tools_registered_updates_definitions() {
-        // Given an activated actor.
+        // Given an activated actor with a shared state we can inspect.
         let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(&sink);
+        let state = State::new(AppState::default());
+        let mut ctx = ActorContext::new("test-llm", sink.clone());
+        ctx.set_data(state.clone());
         let mut actor = actor_with_tokens(&sink, &mut ctx, vec![]);
         sink.clear();
 
@@ -1163,9 +1179,18 @@ mod tests {
         };
         actor.handle_event(&event, &ctx);
 
-        // Then the tool definition is cached.
-        assert!(actor.tool_definitions.contains_key("web_search"));
-        assert_eq!(actor.tool_definitions.get("web_search"), Some(&definition));
+        // Then the tool definition is cached in shared state.
+        assert!(
+            state
+                .read()
+                .context
+                .tool_definitions
+                .contains_key("web_search")
+        );
+        assert_eq!(
+            state.read().context.tool_definitions.get("web_search"),
+            Some(&definition)
+        );
     }
 
     // --- Session state tests ---

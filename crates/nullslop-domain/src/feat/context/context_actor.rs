@@ -35,8 +35,6 @@ pub struct PromptAssemblyActor {
     pub(super) state: State,
     /// Per-session prompt assembly strategies.
     pub(super) strategies: HashMap<SessionId, Box<dyn PromptAssembly>>,
-    /// Cached tool definitions from [`ToolsRegistered`] events.
-    pub(super) tool_definitions: HashMap<String, ToolDefinition>,
     /// Factory for creating new strategies on switch.
     pub(super) factory: Option<Box<dyn StrategyFactory>>,
     /// Runtime services (strategy registry for picker loading).
@@ -78,7 +76,6 @@ impl Actor for PromptAssemblyActor {
         Self {
             state,
             strategies: HashMap::new(),
-            tool_definitions: HashMap::new(),
             factory: Some(factory),
             services,
         }
@@ -327,9 +324,12 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn tools_registered_caches_definitions() {
-        // Given an actor.
+        // Given an actor with a shared state we can inspect.
         let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
+        let state = State::new(AppState::default());
+        let mut ctx = ActorContext::new("context", sink.clone() as Arc<dyn MessageSink>);
+        ctx.set_data(state.clone());
+        ctx.set_data(Services::new());
         let mut actor = PromptAssemblyActor::activate(&mut ctx);
 
         // When receiving a ToolsRegistered event.
@@ -345,8 +345,8 @@ mod tests {
         };
         actor.handle(ActorEnvelope::Event(evt), &ctx).await;
 
-        // Then the tool definition is cached.
-        assert!(actor.tool_definitions.contains_key("echo"));
+        // Then the tool definition is cached in shared state.
+        assert!(state.read().context.tool_definitions.contains_key("echo"));
     }
 
     #[rstest::rstest]
