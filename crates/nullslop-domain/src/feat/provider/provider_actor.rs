@@ -117,7 +117,8 @@ impl ProviderActor {
             | Command::LoadContextStrategyPickerEntries { .. }
             | Command::ScanSkills
             | Command::RescanPersonas { .. }
-            | Command::LoadPersonaPickerEntries { .. } => {}
+            | Command::LoadPersonaPickerEntries { .. }
+            | Command::UpdatePreferences { .. } => {}
         }
     }
 
