@@ -12,10 +12,8 @@
 use std::collections::HashMap;
 
 use crate::protocol::{
-    ActiveTab, ChatEntryId, Mode, PickerKind, PinPosition, PromptStrategyId, SessionId,
-    ToolDefinition,
+    ActiveTab, ChatEntryId, Mode, PickerKind, PinPosition, SessionId, ToolDefinition,
 };
-use serde_json::Value as JsonValue;
 
 use crate::common::tui_signals::TuiSignals;
 pub use crate::feat::chat_input::ChatInputBoxState;
@@ -80,10 +78,6 @@ impl Default for SessionState {
 /// No other actor should mutate these fields.
 #[derive(Debug)]
 pub struct ContextAssemblyState {
-    /// Persisted strategy state blobs, keyed by (session_id, strategy_id).
-    /// OWNER: context-actor (reads/writes during RestoreStrategyState, SwitchPromptStrategy).
-    pub strategy_state: HashMap<(SessionId, PromptStrategyId), JsonValue>,
-
     /// Loaded prompt templates from `~/.config/nullslop/prompts/`.
     /// OWNER: context-actor (replaces on PromptTemplatesLoaded event).
     pub prompt_templates: PromptTemplateStore,
@@ -105,7 +99,6 @@ pub struct ContextAssemblyState {
 impl Default for ContextAssemblyState {
     fn default() -> Self {
         Self {
-            strategy_state: HashMap::new(),
             prompt_templates: PromptTemplateStore::new(),
             skills: Vec::new(),
             personas: Vec::new(),

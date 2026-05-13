@@ -4,7 +4,6 @@ pub mod actor_wiring;
 pub mod app;
 pub mod headless;
 pub mod runner;
-pub mod session_conversion;
 pub mod tracing;
 
 pub use app::{App, AppError};

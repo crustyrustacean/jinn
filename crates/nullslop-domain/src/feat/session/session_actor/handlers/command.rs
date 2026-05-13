@@ -36,6 +36,11 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             if session.is_idle() {
+                // Set title on first user message.
+                if session.title().is_none() {
+                    let title = payload.text.lines().next().unwrap_or("").to_owned();
+                    session.set_title(title);
+                }
                 session.push_entry(ChatEntry::user(&payload.text));
                 session.begin_sending();
                 EnqueueAction::AssemblePrompt
@@ -148,10 +153,15 @@ impl SessionPersistenceActor {
         payload: &SessionLoadCompleted,
         ctx: &ActorContext,
     ) {
+        let session_id = payload.session.session_id().clone();
+        let strategy_id = payload.session.active_strategy().clone();
+
         {
             let mut state = self.state.write();
+            let loaded = payload.session.clone();
+
             // Restore model — fallback to config if not in payload (old session migration).
-            let model = if payload.model == crate::feat::provider_infra::NO_PROVIDER_ID {
+            let model = if loaded.model() == crate::feat::provider_infra::NO_PROVIDER_ID {
                 state
                     .frontend
                     .preferences
@@ -159,31 +169,51 @@ impl SessionPersistenceActor {
                     .clone()
                     .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned())
             } else {
-                payload.model.clone()
+                loaded.model().to_owned()
             };
-            {
-                let session = state.session_mut_or_create(&payload.session_id);
-                session.restore_history(payload.history.clone());
-                session.push_entry(ChatEntry::system(format!(
-                    "Session restored: {}",
-                    payload.title
-                )));
-                session.set_model(model);
-            }
-            state.session.active_session = payload.session_id.clone();
+
+            let title_text = loaded.title().unwrap_or("Untitled Session").to_owned();
+
+            // Insert loaded session into HashMap.
+            state.session.sessions.insert(session_id.clone(), loaded);
+
+            // Add a system message about the restore.
+            let session = state
+                .session
+                .sessions
+                .get_mut(&session_id)
+                .expect("just inserted");
+            session.push_entry(ChatEntry::system(format!(
+                "Session restored: {}",
+                title_text
+            )));
+            session.set_model(model);
+
+            state.session.active_session = session_id.clone();
             state.session.session_loading = false;
             state.session.session_load_started_at = None;
         }
 
+        // Serialize the strategy state for RestoreStrategyState.
+        let blob = {
+            let state = self.state.read();
+            let session = state
+                .session
+                .sessions
+                .get(&session_id)
+                .expect("just inserted");
+            session
+                .strategy_state()
+                .get(&strategy_id)
+                .and_then(|s| serde_json::to_value(s).ok())
+                .unwrap_or(serde_json::json!({}))
+        };
+
         if let Err(e) = ctx.send_command(Command::RestoreStrategyState {
             payload: RestoreStrategyState {
-                session_id: payload.session_id.clone(),
-                strategy_id: payload.active_strategy.clone(),
-                blob: payload
-                    .blobs
-                    .get(&payload.active_strategy.to_string())
-                    .cloned()
-                    .unwrap_or(serde_json::json!({})),
+                session_id: session_id.clone(),
+                strategy_id: strategy_id.clone(),
+                blob,
             },
         }) {
             tracing::warn!(err = ?e, "session-actor failed to emit RestoreStrategyState");
@@ -191,8 +221,8 @@ impl SessionPersistenceActor {
 
         if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy {
             payload: SwitchPromptStrategy {
-                session_id: payload.session_id.clone(),
-                strategy_id: payload.active_strategy.clone(),
+                session_id: session_id.clone(),
+                strategy_id,
             },
         }) {
             tracing::warn!(err = ?e, "session-actor failed to emit SwitchPromptStrategy");

@@ -28,9 +28,7 @@ use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
-use crate::feat::context::protocol::command::{
-    AssemblePrompt, RestoreStrategyState, SwitchPromptStrategy,
-};
+use crate::feat::context::protocol::command::SwitchPromptStrategy;
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
@@ -271,6 +269,7 @@ mod tests {
     use crate::feat::provider::protocol::event::{
         ModelsRefreshed, StreamCompleted, StreamCompletedReason, StreamToken,
     };
+    use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
     use crate::feat::tools_actor::protocol::event::{
         ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -330,16 +329,12 @@ mod tests {
 
         // Save a session directly to the store.
         let session_id = SessionId::new();
-        let persisted = crate::feat::session::PersistedSession {
-            session_id: session_id.clone(),
-            title: "Test Session".to_owned(),
-            updated_at: jiff::Timestamp::now(),
-            history: vec![ChatEntry::user("hello"), ChatEntry::assistant("world")],
-            active_strategy: PromptStrategyId::passthrough(),
-            model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
-            blobs: HashMap::new(),
-        };
-        store_service.save(&persisted).expect("save");
+        let mut session = ChatSessionState::new();
+        session.set_session_id(session_id.clone());
+        session.set_title("Test Session".to_owned());
+        session.push_entry(ChatEntry::user("hello"));
+        session.push_entry(ChatEntry::assistant("world"));
+        store_service.save(&session).expect("save");
 
         // When processing LoadSessionPickerEntries.
         actor
@@ -409,6 +404,7 @@ mod tests {
         {
             let mut guard = actor.state.write();
             let session = guard.session_mut_or_create(&session_id);
+            session.set_title("my question".to_owned());
             session.push_entry(ChatEntry::user("my question"));
             session.begin_streaming();
         }
@@ -485,9 +481,9 @@ mod tests {
         let session_id = SessionId::new();
         {
             let mut guard = actor.state.write();
-            guard
-                .session_mut_or_create(&session_id)
-                .push_entry(ChatEntry::user("do the thing"));
+            let session = guard.session_mut_or_create(&session_id);
+            session.set_title("do the thing".to_owned());
+            session.push_entry(ChatEntry::user("do the thing"));
         }
 
         // When processing ToolExecutionCompleted.
@@ -517,7 +513,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn save_title_derived_from_first_user_message_first_line() {
-        // Given a session with a multi-line user message.
+        // Given a session actor with a store.
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = test_context(sink.clone());
         let (_dir, store_service) = make_store();
@@ -526,25 +522,14 @@ mod tests {
         let mut actor = SessionPersistenceActor::activate(&mut ctx);
 
         let session_id = SessionId::new();
-        {
-            let mut guard = actor.state.write();
-            guard
-                .session_mut_or_create(&session_id)
-                .push_entry(ChatEntry::user("line one\nline two"));
-        }
 
-        // When saving via tool execution completion.
+        // When enqueuing a multi-line user message while idle.
         actor
             .handle(
-                ActorEnvelope::Event(Event::ToolExecutionCompleted {
-                    payload: ToolExecutionCompleted {
+                ActorEnvelope::Command(Command::EnqueueUserMessage {
+                    payload: EnqueueUserMessage {
                         session_id: session_id.clone(),
-                        result: ToolResult {
-                            tool_call_id: "call_1".to_owned(),
-                            name: "bash".to_owned(),
-                            content: "ok".to_owned(),
-                            success: true,
-                        },
+                        text: "line one\nline two".into(),
                     },
                 }),
                 &ctx,
@@ -960,17 +945,18 @@ mod tests {
         let (mut actor, state, sink, ctx) = create_lifecycle_actor();
         let session_id = SessionId::new();
 
+        let mut loaded_session = ChatSessionState::new();
+        loaded_session.set_session_id(session_id.clone());
+        loaded_session.set_title("Test Session".to_owned());
+        loaded_session.push_entry(ChatEntry::user("hello"));
+        loaded_session.push_entry(ChatEntry::assistant("world"));
+
         // When processing SessionLoadCompleted.
         actor
             .handle(
                 ActorEnvelope::Command(Command::SessionLoadCompleted {
                     payload: SessionLoadCompleted {
-                        session_id: session_id.clone(),
-                        title: "Test Session".into(),
-                        history: vec![ChatEntry::user("hello"), ChatEntry::assistant("world")],
-                        active_strategy: PromptStrategyId::passthrough(),
-                        blobs: HashMap::new(),
-                        model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
+                        session: loaded_session,
                     },
                 }),
                 &ctx,
@@ -1016,17 +1002,17 @@ mod tests {
         let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
         let session_id = SessionId::new();
 
+        let mut loaded_session = ChatSessionState::new();
+        loaded_session.set_session_id(session_id.clone());
+        loaded_session.set_title("My Chat".to_owned());
+        loaded_session.push_entry(ChatEntry::user("hello"));
+
         // When processing SessionLoadCompleted with a title.
         actor
             .handle(
                 ActorEnvelope::Command(Command::SessionLoadCompleted {
                     payload: SessionLoadCompleted {
-                        session_id: session_id.clone(),
-                        title: "My Chat".into(),
-                        history: vec![ChatEntry::user("hello")],
-                        active_strategy: PromptStrategyId::passthrough(),
-                        blobs: HashMap::new(),
-                        model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
+                        session: loaded_session,
                     },
                 }),
                 &ctx,

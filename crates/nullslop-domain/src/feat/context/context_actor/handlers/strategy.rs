@@ -3,6 +3,7 @@
 use crate::common::actor::ActorContext;
 use crate::feat::context::protocol::command::{RestoreStrategyState, SwitchPromptStrategy};
 use crate::feat::context::protocol::event::{PromptStrategySwitched, StrategyStateUpdated};
+use crate::feat::context::strategy::types::StrategyState;
 use crate::protocol::{Command, Event};
 
 use super::super::PromptAssemblyActor;
@@ -37,11 +38,10 @@ impl PromptAssemblyActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.switch_strategy(payload.strategy_id.clone());
-            state
-                .context
-                .strategy_state
-                .get(&(payload.session_id.clone(), payload.strategy_id.clone()))
-                .cloned()
+            session
+                .strategy_state()
+                .get(&payload.strategy_id)
+                .and_then(|s| serde_json::to_value(s).ok())
                 .unwrap_or(serde_json::json!({}))
         };
 
@@ -68,7 +68,7 @@ impl PromptAssemblyActor {
         }
     }
 
-    /// RestoreStrategyState: set strategy blob in context state, emit StrategyStateUpdated.
+    /// RestoreStrategyState: deserialize blob into StrategyState, store on session, emit StrategyStateUpdated.
     pub(in crate::feat::context::context_actor) fn handle_restore_strategy_state(
         &self,
         payload: &RestoreStrategyState,
@@ -76,10 +76,12 @@ impl PromptAssemblyActor {
     ) {
         {
             let mut state = self.state.write();
-            state.context.strategy_state.insert(
-                (payload.session_id.clone(), payload.strategy_id.clone()),
-                payload.blob.clone(),
-            );
+            let session = state.session_mut_or_create(&payload.session_id);
+            let strategy_state: StrategyState =
+                serde_json::from_value(payload.blob.clone()).unwrap_or(StrategyState::Passthrough);
+            session
+                .strategy_state_mut()
+                .insert(payload.strategy_id.clone(), strategy_state);
         }
 
         if let Err(e) = ctx.send_event(Event::StrategyStateUpdated {
