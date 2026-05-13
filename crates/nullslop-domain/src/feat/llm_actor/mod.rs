@@ -10,7 +10,7 @@ mod session;
 
 use std::collections::HashMap;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
@@ -27,11 +27,6 @@ use futures::StreamExt as _;
 
 use session::{SessionData, SessionState};
 
-/// Direct message type for the LLM actor.
-///
-/// Currently unused — the actor responds to bus commands and events.
-/// Reserved for future intra-actor communication.
-pub enum LlmDirectMsg {}
 
 /// LLM streaming actor with tool support.
 ///
@@ -49,7 +44,7 @@ pub struct LlmActor {
 }
 
 impl Actor for LlmActor {
-    type Message = LlmDirectMsg;
+    type Message = NoDirectMsg;
 
     #[expect(
         clippy::expect_used,
@@ -74,7 +69,7 @@ impl Actor for LlmActor {
         }
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<LlmDirectMsg>, ctx: &ActorContext) {
+    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx),
             ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
@@ -82,13 +77,10 @@ impl Actor for LlmActor {
                 self.cancel_all();
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Shutdown => {}
         }
     }
 
-    async fn shutdown(self) {
-        self.cancel_all();
-    }
 }
 
 impl LlmActor {

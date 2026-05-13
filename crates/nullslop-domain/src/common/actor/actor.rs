@@ -39,5 +39,13 @@ pub trait Actor {
     ) -> impl Future<Output = ()> + Send;
 
     /// Shuts down the actor. Called after the run loop exits.
-    fn shutdown(self) -> impl Future<Output = ()> + Send;
+    ///
+    /// Default implementation is a no-op. Override for cleanup logic.
+    fn shutdown(self) -> impl Future<Output = ()> + Send
+    where
+        Self: Sized,
+    {
+        let _ = self;
+        std::future::ready(())
+    }
 }

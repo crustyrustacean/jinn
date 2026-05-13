@@ -17,7 +17,7 @@
 //! All handlers follow the same pattern: acquire state lock → mutate → release →
 //! then emit. Never hold the lock during emission.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
@@ -27,8 +27,6 @@ use crate::protocol::{Command, Event};
 use super::loader::load_provider_picker_items;
 use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
 
-/// Direct message type (unused — the provider actor only responds to bus commands).
-pub enum ProviderDirectMsg {}
 
 /// The provider actor.
 ///
@@ -42,7 +40,7 @@ pub struct ProviderActor {
 }
 
 impl Actor for ProviderActor {
-    type Message = ProviderDirectMsg;
+    type Message = NoDirectMsg;
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<ProviderSwitch>();
@@ -80,11 +78,10 @@ impl Actor for ProviderActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Shutdown => {}
         }
     }
 
-    async fn shutdown(self) {}
 }
 
 impl ProviderActor {

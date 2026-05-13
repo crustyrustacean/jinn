@@ -28,7 +28,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::state::State;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
@@ -89,10 +89,6 @@ struct PendingBatch {
     handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
-/// Direct message type for the tool orchestrator actor.
-///
-/// Currently unused — the orchestrator only responds to bus commands and events.
-pub enum ToolOrchestratorDirectMsg {}
 
 /// Tool orchestrator actor.
 ///
@@ -109,7 +105,7 @@ pub struct ToolOrchestratorActor {
 }
 
 impl Actor for ToolOrchestratorActor {
-    type Message = ToolOrchestratorDirectMsg;
+    type Message = NoDirectMsg;
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<RegisterTools>();
@@ -155,18 +151,17 @@ impl Actor for ToolOrchestratorActor {
         actor
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<ToolOrchestratorDirectMsg>, ctx: &ActorContext) {
+    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx),
             ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Shutdown => {}
         }
     }
 
-    async fn shutdown(self) {}
 }
 
 impl ToolOrchestratorActor {

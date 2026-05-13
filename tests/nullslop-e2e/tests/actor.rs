@@ -15,9 +15,8 @@ use nullslop_domain::SendToLlmProvider;
 use nullslop_domain::Services;
 use nullslop_domain::ToolCall;
 use nullslop_domain::feat::llm_actor::LlmActor;
-use nullslop_domain::feat::session::session_actor::{
-    SessionPersistenceActor, SessionPersistenceDirectMsg,
-};
+use nullslop_domain::common::actor::NoDirectMsg;
+use nullslop_domain::feat::session::session_actor::SessionPersistenceActor;
 use nullslop_domain::feat::tools_actor::ToolOrchestratorActor;
 use nullslop_domain::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
 use nullslop_domain::{ActorHostService, InMemoryActorHost, spawn_actor_impl};
@@ -125,7 +124,7 @@ fn create_actor_core(
 
     // Create tool orchestrator actor.
     let (orch_tx, orch_rx) = kanal::unbounded::<
-        ActorEnvelope<nullslop_domain::feat::tools_actor::ToolOrchestratorDirectMsg>,
+        ActorEnvelope<nullslop_domain::common::actor::NoDirectMsg>,
     >();
     let orch_ref = ActorRef::new(orch_tx);
     let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
@@ -144,7 +143,7 @@ fn create_actor_core(
 
     // Create LLM actor with fake factory.
     let (llm_tx, llm_rx) =
-        kanal::unbounded::<ActorEnvelope<nullslop_domain::feat::llm_actor::LlmDirectMsg>>();
+        kanal::unbounded::<ActorEnvelope<nullslop_domain::common::actor::NoDirectMsg>>();
     let llm_ref = ActorRef::new(llm_tx);
     let mut llm_ctx = ActorContext::new("llm-streaming", sink.clone());
     llm_ctx.set_data(llm_service.clone());
@@ -161,7 +160,7 @@ fn create_actor_core(
     // Create session actor to write events into state.
     // State is shared between AppCore and the session actor via Arc clone.
     let state = nullslop_domain::State::new(AppState::default());
-    let (sp_tx, sp_rx) = kanal::unbounded::<ActorEnvelope<SessionPersistenceDirectMsg>>();
+    let (sp_tx, sp_rx) = kanal::unbounded::<ActorEnvelope<NoDirectMsg>>();
     let sp_ref = ActorRef::new(sp_tx);
     let mut sp_ctx = ActorContext::new("session-persistence", sink.clone());
     sp_ctx.set_data(state.clone());
