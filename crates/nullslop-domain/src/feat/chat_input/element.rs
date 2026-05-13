@@ -30,7 +30,7 @@ impl UiElement<AppState> for ChatInputBoxElement {
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-        let input_mode = state.frontend.mode == Mode::Input;
+        let input_mode = state.frontend.scope_stack.current().mode() == Mode::Input;
 
         let prompt_style = if input_mode {
             Style::default()
@@ -134,7 +134,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::common::app_state::FrontendState;
+    use crate::common::app_state::FocusScope;
 
     #[rstest::rstest]
     fn name_returns_chat_input_box() {
@@ -178,13 +178,8 @@ mod tests {
         // Given a ChatInputBoxElement in Input mode with "hi" in buffer.
         let mut element = ChatInputBoxElement;
         let state = {
-            let mut s = AppState {
-                frontend: FrontendState {
-                    mode: Mode::Input,
-                    ..FrontendState::default()
-                },
-                ..Default::default()
-            };
+            let mut s = AppState::default();
+            s.frontend.scope_stack.push(FocusScope::Input);
             s.active_chat_input_mut().insert_text("hi");
             s
         };
@@ -209,13 +204,8 @@ mod tests {
     fn render_input_mode_yellow_border() {
         // Given a ChatInputBoxElement in Input mode.
         let mut element = ChatInputBoxElement;
-        let state = AppState {
-            frontend: FrontendState {
-                mode: Mode::Input,
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Input);
 
         let (mut terminal, area) = setup_term(40, 3);
 
@@ -237,13 +227,8 @@ mod tests {
         // Given a ChatInputBoxElement in Input mode with "abc" in buffer.
         let mut element = ChatInputBoxElement;
         let state = {
-            let mut s = AppState {
-                frontend: FrontendState {
-                    mode: Mode::Input,
-                    ..FrontendState::default()
-                },
-                ..Default::default()
-            };
+            let mut s = AppState::default();
+            s.frontend.scope_stack.push(FocusScope::Input);
             s.active_chat_input_mut().insert_text("abc");
             s
         };
@@ -268,13 +253,8 @@ mod tests {
         // Given a ChatInputBoxElement in Input mode with "abc" and cursor at position 1.
         let mut element = ChatInputBoxElement;
         let state = {
-            let mut s = AppState {
-                frontend: FrontendState {
-                    mode: Mode::Input,
-                    ..FrontendState::default()
-                },
-                ..Default::default()
-            };
+            let mut s = AppState::default();
+            s.frontend.scope_stack.push(FocusScope::Input);
             s.active_chat_input_mut().insert_text("abc");
             s.active_chat_input_mut().move_cursor_to_start();
             s.active_chat_input_mut().move_cursor_right(); // cursor at 1 (between 'a' and 'b')
@@ -301,13 +281,8 @@ mod tests {
         // Given a ChatInputBoxElement in Input mode with "hi" and cursor moved to start.
         let mut element = ChatInputBoxElement;
         let state = {
-            let mut s = AppState {
-                frontend: FrontendState {
-                    mode: Mode::Input,
-                    ..FrontendState::default()
-                },
-                ..Default::default()
-            };
+            let mut s = AppState::default();
+            s.frontend.scope_stack.push(FocusScope::Input);
             s.active_chat_input_mut().insert_text("hi");
             s.active_chat_input_mut().move_cursor_to_start();
             s
@@ -387,13 +362,8 @@ mod tests {
         // Given a ChatInputBoxElement in Input mode with "ab\ncd" and cursor at end.
         let mut element = ChatInputBoxElement;
         let state = {
-            let mut s = AppState {
-                frontend: FrontendState {
-                    mode: Mode::Input,
-                    ..FrontendState::default()
-                },
-                ..Default::default()
-            };
+            let mut s = AppState::default();
+            s.frontend.scope_stack.push(FocusScope::Input);
             s.active_chat_input_mut().insert_text("ab\ncd");
             s
         };
@@ -419,13 +389,8 @@ mod tests {
         // Given a ChatInputBoxElement in Input mode with "a\n\nb" and cursor on the empty middle line.
         let mut element = ChatInputBoxElement;
         let state = {
-            let mut s = AppState {
-                frontend: FrontendState {
-                    mode: Mode::Input,
-                    ..FrontendState::default()
-                },
-                ..Default::default()
-            };
+            let mut s = AppState::default();
+            s.frontend.scope_stack.push(FocusScope::Input);
             s.active_chat_input_mut().insert_text("a\n\nb");
             // Cursor is at end (pos 4). Move back 1 to be on the empty middle line.
             s.active_chat_input_mut().move_cursor_left(); // now at pos 3, which is after the second \n, before 'b'
@@ -487,13 +452,8 @@ mod tests {
         // Given "hello world" in a narrow terminal with cursor on wrapped line.
         let mut element = ChatInputBoxElement;
         let state = {
-            let mut s = AppState {
-                frontend: FrontendState {
-                    mode: Mode::Input,
-                    ..FrontendState::default()
-                },
-                ..Default::default()
-            };
+            let mut s = AppState::default();
+            s.frontend.scope_stack.push(FocusScope::Input);
             s.active_chat_input_mut().insert_text("hello world");
             s.active_chat_input_mut().set_wrap_width(8);
             s

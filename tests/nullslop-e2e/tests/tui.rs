@@ -208,7 +208,15 @@ fn when_routes_toggle_which_key(world: &mut TuiWorld) {
 #[cucumber::then(expr = "the mode should be {word}")]
 fn then_mode_should_be(world: &mut TuiWorld, mode: String) {
     let expected = parse_mode(&mode);
-    let actual = world.app.core.state.read().frontend.mode;
+    let actual = world
+        .app
+        .core
+        .state
+        .read()
+        .frontend
+        .scope_stack
+        .current()
+        .mode();
     assert_eq!(
         actual, expected,
         "expected mode {expected:?}, got {actual:?}"
@@ -358,10 +366,9 @@ fn run_headless_script(world: &mut TuiWorld, content: &str) {
     for keys in lines {
         for key in keys {
             let state_read = world.app.core.state.read();
-            let scope = nullslop_tui::app::scope_for_mode(
-                state_read.frontend.mode,
+            let scope = nullslop_tui::app::scope_for_focus(
+                state_read.frontend.scope_stack.current(),
                 state_read.frontend.active_tab,
-                false,
             );
             drop(state_read);
             world.app.which_key.set_scope(scope);

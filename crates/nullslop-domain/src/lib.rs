@@ -32,8 +32,8 @@ pub use common::actor_host::{
 // Re-export component types (state, UI)
 pub use common::app_state::pin_sort_key;
 pub use common::app_state::{
-    AppState, ContextAssemblyState, FrontendState, ProviderState, SessionState,
-    ShutdownCoordinatorState,
+    AppState, ContextAssemblyState, FocusScope, FrontendState, ProviderState, ScopeStack,
+    SessionState, ShutdownCoordinatorState,
 };
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::tui_signals::TuiSignals;

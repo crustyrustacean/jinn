@@ -17,7 +17,7 @@ pub use section_trait::{
     SidebarIntent, SidebarSection, SidebarSectionConfig, SidebarSectionId, SidebarSectionResult,
 };
 pub use sidebar::Sidebar;
-pub use state::{SidebarOriginScope, SidebarState};
+pub use state::SidebarState;
 
 /// Registers all built-in sidebar sections into the given sidebar.
 pub fn register_sections(sidebar: &mut Sidebar) {

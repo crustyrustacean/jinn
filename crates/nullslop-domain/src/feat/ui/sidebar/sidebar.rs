@@ -95,7 +95,7 @@ impl Sidebar {
     /// Sections receive their computed sub-area based on content height.
     pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         // Clear sidebar area with dark gray background.
-        let background = Block::default().style(Style::default().bg(Color::DarkGray));
+        let background = Block::default().style(Style::default().bg(Color::Rgb(0x19, 0x1b, 0x1e)));
         frame.render_widget(background, area);
 
         // Stack sections vertically within the sidebar area.
@@ -350,7 +350,7 @@ mod tests {
     // --- Rendering ---
 
     #[rstest::rstest]
-    fn render_clears_area_with_dark_gray_background() {
+    fn render_clears_area_with_sidebar_background() {
         // Given a sidebar with no sections.
         let mut sidebar = Sidebar::new();
         let state = AppState::default();
@@ -365,15 +365,15 @@ mod tests {
             })
             .unwrap();
 
-        // Then the entire area has dark gray background.
+        // Then the entire area has the sidebar background (#191b1e).
+        let expected_bg = Color::Rgb(0x19, 0x1b, 0x1e);
         let buf = terminal.backend().buffer();
         for y in 0..10u16 {
             for x in 0..30u16 {
                 let cell = buf.cell((x, y)).expect("cell");
                 assert_eq!(
-                    cell.bg,
-                    Color::DarkGray,
-                    "cell ({x},{y}) should have DarkGray bg"
+                    cell.bg, expected_bg,
+                    "cell ({x},{y}) should have #191b1e bg"
                 );
             }
         }

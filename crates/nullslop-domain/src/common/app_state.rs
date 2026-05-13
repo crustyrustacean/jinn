@@ -132,6 +132,128 @@ impl Default for ShutdownCoordinatorState {
     }
 }
 
+/// A single focus context on the scope stack.
+///
+/// Each layer of the [`ScopeStack`] is a `FocusScope`. The top of the stack
+/// determines the active mode, keymap scope, and which overlays are visible.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FocusScope {
+    /// Browsing chat entries (base scope).
+    Normal,
+    /// Typing into the input buffer.
+    Input,
+    /// Sidebar panel focused.
+    Sidebar,
+    /// Picker overlay active — kind distinguishes Provider/Session/Keymap/etc.
+    Picker { kind: PickerKind },
+}
+
+impl FocusScope {
+    /// Returns the [`Mode`] corresponding to this scope.
+    #[must_use]
+    pub fn mode(&self) -> Mode {
+        match self {
+            Self::Normal | Self::Sidebar => Mode::Normal,
+            Self::Input => Mode::Input,
+            Self::Picker { .. } => Mode::Picker,
+        }
+    }
+}
+
+impl std::fmt::Display for FocusScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Normal => write!(f, "Normal"),
+            Self::Input => write!(f, "Input"),
+            Self::Sidebar => write!(f, "Sidebar"),
+            Self::Picker { kind } => write!(f, "Picker({kind})"),
+        }
+    }
+}
+
+/// A LIFO stack of [`FocusScope`] layers.
+///
+/// Always has at least one entry (the base scope). Entering an overlay
+/// pushes a new scope; escaping pops one level, restoring the previous scope.
+#[derive(Debug, Clone)]
+pub struct ScopeStack {
+    stack: Vec<FocusScope>,
+}
+
+impl Default for ScopeStack {
+    fn default() -> Self {
+        Self {
+            stack: vec![FocusScope::Normal],
+        }
+    }
+}
+
+impl ScopeStack {
+    /// Pushes a new scope onto the stack (entering an overlay).
+    pub fn push(&mut self, scope: FocusScope) {
+        self.stack.push(scope);
+    }
+
+    /// Pops the top scope, returning it. Returns `None` if only the base remains.
+    pub fn pop(&mut self) -> Option<FocusScope> {
+        if self.stack.len() <= 1 {
+            None
+        } else {
+            self.stack.pop()
+        }
+    }
+
+    /// Returns the current (top) scope.
+    #[must_use]
+    pub fn current(&self) -> &FocusScope {
+        self.stack.last().expect("stack always has base")
+    }
+
+    /// Returns the scope one level below the top (the "return target").
+    ///
+    /// Returns `None` if only the base scope is on the stack.
+    #[must_use]
+    pub fn parent(&self) -> Option<&FocusScope> {
+        if self.stack.len() < 2 {
+            None
+        } else {
+            self.stack.get(self.stack.len() - 2)
+        }
+    }
+
+    /// Pops all overlay scopes, returning to the base scope.
+    pub fn clear_overlays(&mut self) {
+        self.stack.truncate(1);
+    }
+
+    /// Returns `true` if the current scope is a Picker.
+    #[must_use]
+    pub fn is_picker(&self) -> bool {
+        matches!(self.current(), FocusScope::Picker { .. })
+    }
+
+    /// Returns the `PickerKind` if the current scope is a Picker.
+    #[must_use]
+    pub fn picker_kind(&self) -> Option<&PickerKind> {
+        match self.current() {
+            FocusScope::Picker { kind } => Some(kind),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the current scope is Sidebar.
+    #[must_use]
+    pub fn is_sidebar(&self) -> bool {
+        matches!(self.current(), FocusScope::Sidebar)
+    }
+
+    /// Returns the number of scopes on the stack.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.stack.len()
+    }
+}
+
 /// A transient status bar notification with auto-expiry.
 ///
 /// Created with a timestamp and lazily checked for expiry during rendering.
@@ -150,10 +272,6 @@ pub struct StatusNotification {
 /// Actors should NOT write to these fields — they are for the frontend only.
 #[derive(Debug)]
 pub struct FrontendState {
-    /// Whether the user is browsing or actively typing.
-    /// OWNER: IntentHandler (all mode transitions).
-    pub mode: Mode,
-
     /// The currently active tab.
     /// OWNER: IntentHandler (tab switching).
     pub active_tab: ActiveTab,
@@ -163,15 +281,11 @@ pub struct FrontendState {
     ///        shutdown-tracker (ProceedWithShutdown command).
     pub should_quit: bool,
 
-    /// Which picker is currently active. `None` when not in picker mode.
-    /// OWNER: IntentHandler (open/close picker).
-    pub active_picker_kind: Option<PickerKind>,
-
     /// Pins sidebar section state — selection index within the pinned entries list.
     /// OWNER: IntentHandler (pins navigation).
     pub pins: PinsState,
 
-    /// Sidebar state — focus tracking and origin scope.
+    /// Sidebar state — focus tracking.
     /// OWNER: IntentHandler (sidebar focus/leave).
     pub sidebar: SidebarState,
 
@@ -199,10 +313,6 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (toggle filter).
     pub keymap_picker_show_all: bool,
 
-    /// The scope the user was in when they opened the keymap picker.
-    /// OWNER: IntentHandler (set on open, cleared on close).
-    pub keymap_picker_origin_scope: Option<String>,
-
     /// Session picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (session picker navigation).
     pub session_picker: nullslop_selection_widget::SelectionState<SessionEntry>,
@@ -217,15 +327,17 @@ pub struct FrontendState {
     /// Transient status bar notification (auto-dismisses after 3 seconds).
     /// OWNER: TUI render loop (sets on clipboard copy), tick handler (clears expired).
     pub status_notification: Option<StatusNotification>,
+
+    /// Focus scope stack — single source of truth for what the user is focused on.
+    /// OWNER: IntentHandler (push/pop on scope transitions).
+    pub scope_stack: ScopeStack,
 }
 
 impl Default for FrontendState {
     fn default() -> Self {
         Self {
-            mode: Mode::Normal,
             active_tab: ActiveTab::Chat,
             should_quit: false,
-            active_picker_kind: None,
             pins: PinsState::default(),
             sidebar: SidebarState::default(),
             dashboard: DashboardState::new(),
@@ -234,11 +346,11 @@ impl Default for FrontendState {
             all_keymap_entries: vec![],
             keymap_picker: nullslop_selection_widget::SelectionState::new(),
             keymap_picker_show_all: false,
-            keymap_picker_origin_scope: None,
             session_picker: nullslop_selection_widget::SelectionState::new(),
             context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
+            scope_stack: ScopeStack::default(),
         }
     }
 }
@@ -490,5 +602,175 @@ mod tests {
 
         // Then the notification is still present.
         assert!(state.status_notification.is_some());
+    }
+
+    // --- ScopeStack tests ---
+
+    #[rstest::rstest]
+    fn default_creates_normal_base() {
+        // Given a default ScopeStack.
+        let stack = ScopeStack::default();
+
+        // Then the current scope is Normal.
+        assert_eq!(stack.current(), &FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn push_and_pop_round_trip() {
+        // Given a default ScopeStack.
+        let mut stack = ScopeStack::default();
+
+        // When pushing Input.
+        stack.push(FocusScope::Input);
+
+        // Then current is Input.
+        assert_eq!(stack.current(), &FocusScope::Input);
+
+        // When popping.
+        let popped = stack.pop();
+
+        // Then we get Input back and current is Normal.
+        assert_eq!(popped, Some(FocusScope::Input));
+        assert_eq!(stack.current(), &FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn pop_on_base_returns_none() {
+        // Given a default ScopeStack (only base).
+        let mut stack = ScopeStack::default();
+
+        // When popping the base.
+        let popped = stack.pop();
+
+        // Then nothing is returned.
+        assert!(popped.is_none());
+        // And the base scope remains.
+        assert_eq!(stack.current(), &FocusScope::Normal);
+    }
+
+    #[rstest::rstest]
+    fn parent_returns_none_on_base() {
+        // Given a default ScopeStack (only base).
+        let stack = ScopeStack::default();
+
+        // Then parent is None.
+        assert!(stack.parent().is_none());
+    }
+
+    #[rstest::rstest]
+    fn parent_returns_previous_after_push() {
+        // Given a ScopeStack with Input pushed.
+        let mut stack = ScopeStack::default();
+        stack.push(FocusScope::Input);
+
+        // Then parent is Normal.
+        assert_eq!(stack.parent(), Some(&FocusScope::Normal));
+    }
+
+    #[rstest::rstest]
+    fn clear_overlays_returns_to_base() {
+        // Given a ScopeStack with multiple overlays.
+        let mut stack = ScopeStack::default();
+        stack.push(FocusScope::Input);
+        stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
+
+        // When clearing overlays.
+        stack.clear_overlays();
+
+        // Then current is Normal.
+        assert_eq!(stack.current(), &FocusScope::Normal);
+        assert_eq!(stack.len(), 1);
+    }
+
+    #[rstest::rstest]
+    fn is_picker_returns_true_when_picker_active() {
+        // Given a ScopeStack with Picker on top.
+        let mut stack = ScopeStack::default();
+        stack.push(FocusScope::Picker {
+            kind: PickerKind::Session,
+        });
+
+        // Then is_picker is true.
+        assert!(stack.is_picker());
+    }
+
+    #[rstest::rstest]
+    fn is_picker_returns_false_when_input_active() {
+        // Given a ScopeStack with Input on top.
+        let mut stack = ScopeStack::default();
+        stack.push(FocusScope::Input);
+
+        // Then is_picker is false.
+        assert!(!stack.is_picker());
+    }
+
+    #[rstest::rstest]
+    fn picker_kind_returns_kind_when_picker_active() {
+        // Given a ScopeStack with Picker(Provider) on top.
+        let mut stack = ScopeStack::default();
+        stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
+
+        // Then picker_kind returns Provider.
+        assert_eq!(stack.picker_kind(), Some(&PickerKind::Provider));
+    }
+
+    #[rstest::rstest]
+    fn picker_kind_returns_none_when_not_picker() {
+        // Given a default ScopeStack.
+        let stack = ScopeStack::default();
+
+        // Then picker_kind is None.
+        assert!(stack.picker_kind().is_none());
+    }
+
+    #[rstest::rstest]
+    fn is_sidebar_returns_true_when_sidebar_active() {
+        // Given a ScopeStack with Sidebar on top.
+        let mut stack = ScopeStack::default();
+        stack.push(FocusScope::Sidebar);
+
+        // Then is_sidebar is true.
+        assert!(stack.is_sidebar());
+    }
+
+    #[rstest::rstest]
+    fn is_sidebar_returns_false_when_normal() {
+        // Given a default ScopeStack.
+        let stack = ScopeStack::default();
+
+        // Then is_sidebar is false.
+        assert!(!stack.is_sidebar());
+    }
+
+    // --- FocusScope::mode() parameterized ---
+
+    #[rstest::rstest]
+    #[case(FocusScope::Normal, Mode::Normal)]
+    #[case(FocusScope::Input, Mode::Input)]
+    #[case(FocusScope::Sidebar, Mode::Normal)]
+    #[case(FocusScope::Picker { kind: PickerKind::Provider }, Mode::Picker)]
+    fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
+        // Given a FocusScope variant.
+        // When calling mode().
+        // Then it returns the expected Mode.
+        assert_eq!(scope.mode(), expected);
+    }
+
+    // --- FocusScope::Display ---
+
+    #[rstest::rstest]
+    #[case(FocusScope::Normal, "Normal")]
+    #[case(FocusScope::Input, "Input")]
+    #[case(FocusScope::Sidebar, "Sidebar")]
+    #[case(FocusScope::Picker { kind: PickerKind::Provider }, "Picker(models)")]
+    fn focus_scope_display(#[case] scope: FocusScope, #[case] expected: &str) {
+        // Given a FocusScope variant.
+        // When formatting as Display.
+        // Then it produces the expected string.
+        assert_eq!(scope.to_string(), expected);
     }
 }

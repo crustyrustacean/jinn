@@ -21,7 +21,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use wherror::Error;
 
 use crate::TuiApp;
-use crate::app::scope_for_mode;
+use crate::app::scope_for_focus;
 
 /// Error type for TUI run operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -131,11 +131,9 @@ fn run_main_loop(
         // Check should_quit from shared state (async forwarding task handles messages).
         let state_read = app.core.state.read();
         let should_quit = state_read.frontend.should_quit;
-        let sidebar_focused = state_read.frontend.sidebar.origin_scope.is_some();
-        let scope = scope_for_mode(
-            state_read.frontend.mode,
+        let scope = scope_for_focus(
+            state_read.frontend.scope_stack.current(),
             state_read.frontend.active_tab,
-            sidebar_focused,
         );
         drop(state_read);
         app.which_key.set_scope(scope);
