@@ -112,21 +112,21 @@ impl ProviderRegistryService {
         self.read().create_factory(id, api_keys)
     }
 
-    /// Creates an `LlmServiceFactory` for a remote (cache-discovered) model.
+    /// Merges runtime-discovered models from the model cache into the registry.
     ///
-    /// Delegates to [`ProviderRegistry::create_factory_for_model`].
+    /// Acquires a write guard. For each cached model not already present,
+    /// creates a `ResolvedProvider` with `is_remote: true`.
+    pub fn merge_cache(&self, cache: &super::ModelCache) {
+        self.inner.write().merge_cache(cache);
+    }
+
+    /// Replaces the entire registry contents.
     ///
-    /// # Errors
-    ///
-    /// Returns an error if the provider is not found or the factory cannot be built.
-    pub fn create_factory_for_model(
-        &self,
-        provider_name: &str,
-        model: &str,
-        api_keys: &ApiKeys,
-    ) -> Result<Box<dyn LlmServiceFactory>, Report<LlmServiceError>> {
-        self.read()
-            .create_factory_for_model(provider_name, model, api_keys)
+    /// Used during startup when the init actor builds the registry
+    /// from `providers.toml` and needs to swap it into the service.
+    pub fn replace(&self, registry: ProviderRegistry) {
+        let mut guard = self.inner.write();
+        *guard = registry;
     }
 
     /// Updates the default provider in the config.
