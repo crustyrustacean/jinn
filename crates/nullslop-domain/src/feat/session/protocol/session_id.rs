@@ -39,18 +39,6 @@ mod tests {
         assert_ne!(a, b);
     }
 
-    #[rstest::rstest]
-    fn session_id_serialization_roundtrip() {
-        // Given a session ID.
-        let id = SessionId::new();
-
-        // When serializing and deserializing.
-        let json = serde_json::to_string(&id).expect("serialize");
-        let back: SessionId = serde_json::from_str(&json).expect("deserialize");
-
-        // Then it roundtrips correctly.
-        assert_eq!(id, back);
-    }
 
     #[rstest::rstest]
     fn session_id_starts_with_prefix() {

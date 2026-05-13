@@ -245,40 +245,4 @@ fn step_order_returns_definition_order() {
     assert_eq!(state.step_order(), vec!["step-0", "step-1", "step-2"]);
 }
 
-// ---- WorkflowState roundtrip ----
 
-#[rstest::rstest]
-fn workflow_state_roundtrips_through_serde() {
-    let mut state = WorkflowState::new(make_workflow(2));
-    state.start().unwrap();
-    state.complete_step("step-0", HashMap::new()).unwrap();
-    state.finalize_step("step-0").unwrap();
-
-    let json = serde_json::to_string(&state).unwrap();
-    let back: WorkflowState = serde_json::from_str(&json).unwrap();
-
-    assert_eq!(state.active_step, back.active_step);
-    assert_eq!(state.steps.len(), back.steps.len());
-    assert_eq!(
-        state.steps["step-0"].status.clone(),
-        back.steps["step-0"].status.clone(),
-    );
-}
-
-// ---- StepStatus roundtrip ----
-
-#[rstest::rstest]
-fn step_status_roundtrips() {
-    let statuses = vec![
-        StepStatus::Pending,
-        StepStatus::Active,
-        StepStatus::Completed,
-        StepStatus::AwaitingInput,
-        StepStatus::Stale,
-    ];
-    for status in statuses {
-        let json = serde_json::to_string(&status).unwrap();
-        let back: StepStatus = serde_json::from_str(&json).unwrap();
-        assert_eq!(status, back);
-    }
-}

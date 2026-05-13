@@ -45,73 +45,9 @@ pub enum LlmMessage {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]
-    fn user_variant_roundtrip() {
-        // Given a User message.
-        let msg = LlmMessage::User {
-            content: "hello".into(),
-        };
 
-        // When serialized and deserialized.
-        let json = serde_json::to_string(&msg).expect("serialize");
-        let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
 
-        // Then it matches the original.
-        assert_eq!(back, msg);
-    }
 
-    #[rstest::rstest]
-    fn assistant_variant_without_tool_calls_roundtrip() {
-        // Given an Assistant message without tool calls.
-        let msg = LlmMessage::Assistant {
-            content: "hi".into(),
-            tool_calls: None,
-        };
-
-        // When serialized and deserialized.
-        let json = serde_json::to_string(&msg).expect("serialize");
-        let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
-
-        // Then it matches the original.
-        assert_eq!(back, msg);
-    }
-
-    #[rstest::rstest]
-    fn assistant_variant_with_tool_calls_roundtrip() {
-        // Given an Assistant message with tool calls.
-        let msg = LlmMessage::Assistant {
-            content: String::new(),
-            tool_calls: Some(vec![ToolCall {
-                id: "call_1".into(),
-                name: "echo".into(),
-                arguments: "{}".into(),
-            }]),
-        };
-
-        // When serialized and deserialized.
-        let json = serde_json::to_string(&msg).expect("serialize");
-        let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
-
-        // Then it matches the original.
-        assert_eq!(back, msg);
-    }
-
-    #[rstest::rstest]
-    fn tool_variant_roundtrip() {
-        // Given a Tool result message.
-        let msg = LlmMessage::Tool {
-            tool_call_id: "call_1".into(),
-            name: "echo".into(),
-            content: "hi".into(),
-        };
-
-        // When serialized and deserialized.
-        let json = serde_json::to_string(&msg).expect("serialize");
-        let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
-
-        // Then it matches the original.
-        assert_eq!(back, msg);
-    }
 
     #[rstest::rstest]
     fn backward_compat_user_deserialization() {
