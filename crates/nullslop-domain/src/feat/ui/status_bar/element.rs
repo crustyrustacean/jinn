@@ -87,15 +87,7 @@ impl UiElement<AppState> for StatusBarElement {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-    use ratatui::layout::Rect;
-    fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
-        let backend = TestBackend::new(width, height);
-        let terminal = Terminal::new(backend).unwrap();
-        let area = Rect::new(0, 0, width, height);
-        (terminal, area)
-    }
+    use nullslop_testutil::{buffer_row, setup_term};
 
     use super::*;
     use crate::common::app_state::{AppState, StatusNotification};
@@ -118,9 +110,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..50)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 50);
         assert!(row.starts_with("(Passthrough)"));
         assert!(row.contains("no model selected"));
     }
@@ -142,9 +132,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..50)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 50);
         assert!(row.starts_with("(Passthrough)"));
         assert!(row.contains("(ollama)/llama3"));
     }
@@ -213,9 +201,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..80)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 80);
         assert!(row.starts_with("(Passthrough)"));
         assert!(row.contains("(openrouter)/anthropic/claude-sonnet-4"));
     }
@@ -240,9 +226,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..50)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 50);
         assert!(row.starts_with("(Sliding Window)"));
         assert!(row.contains("(ollama)/llama3"));
     }
@@ -271,9 +255,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..60)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 60);
         assert!(row.contains("\u{1f4cc}"));
         assert!(row.contains('1'));
     }
@@ -295,9 +277,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..60)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 60);
         assert!(row.starts_with("(Passthrough) "));
         assert!(!row.contains("\u{1f4cc}"));
     }
@@ -323,9 +303,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..80)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 80);
         // Then the notification text appears in the right portion.
         assert!(row.contains("Copied to clipboard"));
         // And the model is still shown.
@@ -378,9 +356,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..80)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 80);
         // Then only the model is shown on the right.
         assert!(row.contains("(ollama)/llama3"));
         assert!(!row.contains("Copied"));
@@ -408,9 +384,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..80)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 80);
         // Then the notification is not shown.
         assert!(!row.contains("old msg"));
         // And the model is still shown normally.
@@ -431,9 +405,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..80)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 80);
         // Then the status bar shows zero token counts.
         assert!(row.contains("\u{2191}0 \u{2193}0"));
     }
@@ -462,9 +434,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..80)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 80);
         // Then the status bar shows token counts.
         assert!(row.contains("1.5k"));
         assert!(row.contains("750"));
@@ -495,9 +465,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..80)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 80);
         // Then the status bar shows ctx:5.0k.
         assert!(row.contains("ctx:5.0k"));
     }
@@ -514,9 +482,7 @@ mod tests {
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        let row: String = (0..80)
-            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
-            .collect();
+        let row = buffer_row(&buffer, 0, 80);
         // Then ctx: is not shown.
         assert!(!row.contains("ctx:"));
         // But token counts are still shown.

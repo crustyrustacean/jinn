@@ -42,6 +42,7 @@ nullslop-cli = { path = "crates/nullslop-cli" }
 nullslop-protocol-derive = { path = "crates/nullslop-protocol-derive" }
 nullslop-selection-widget = { path = "crates/nullslop-selection-widget" }
 nullslop-workflow = { path = "crates/nullslop-workflow" }
+nullslop-testutil = { path = "crates/nullslop-testutil" }
 
 # Error handling
 wherror = "2.3.1"
