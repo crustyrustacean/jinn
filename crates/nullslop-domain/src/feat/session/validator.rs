@@ -48,26 +48,11 @@ pub fn validate_rescan_prompt_templates(
     Ok(())
 }
 
-/// Errors from validating a SessionNew intent.
-#[derive(Debug, Error)]
-#[error(debug)]
-pub enum SessionNewError {
-    /// A picker is currently active.
-    PickerActive,
-}
-
 /// Validates the SessionNew intent.
 ///
-/// Returns an error if a picker is currently active.
-///
-/// # Errors
-///
-/// Returns an error if a picker is currently active.
-pub fn validate_session_new(state: &AppState) -> Result<(), SessionNewError> {
-    if state.frontend.scope_stack.is_picker() {
-        return Err(SessionNewError::PickerActive);
-    }
-    Ok(())
+/// Always succeeds — there are currently no conditions that prevent session creation.
+pub fn validate_session_new(_state: &AppState) {
+    // No validation needed.
 }
 
 #[cfg(test)]
@@ -111,14 +96,13 @@ mod tests {
         let state = AppState::default();
 
         // When validating session new.
-        let result = validate_session_new(&state);
+        validate_session_new(&state);
 
-        // Then it succeeds.
-        assert!(result.is_ok());
+        // Then validation passes (no panic, no rejection).
     }
 
     #[rstest::rstest]
-    fn session_new_fails_when_picker_active() {
+    fn session_new_succeeds_when_picker_active() {
         // Given a state with an active picker.
         let mut state = AppState::default();
         state
@@ -129,9 +113,8 @@ mod tests {
             });
 
         // When validating session new.
-        let result = validate_session_new(&state);
+        validate_session_new(&state);
 
-        // Then it returns PickerActive error.
-        assert!(matches!(result, Err(SessionNewError::PickerActive)));
+        // Then validation passes (picker is allowed).
     }
 }

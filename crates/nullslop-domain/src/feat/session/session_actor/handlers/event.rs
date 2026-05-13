@@ -95,19 +95,27 @@ impl SessionPersistenceActor {
         &self,
         event: &StreamCompleted,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        if event.reason == StreamCompletedReason::Canceled {
-            session.push_entry(ChatEntry::error("Cancelled"));
-        } else if let Some(ref content) = event.assistant_content {
-            let output_tokens = self.counter.count(content) as u32;
-            // Finalize the last record if one exists (i.e., PromptAssembled fired first).
-            // If no record exists (e.g., session restored mid-stream), skip silently.
-            if !session.token_ledger().is_empty() {
-                session.finalize_last_token_record(output_tokens);
+        let should_save = event.reason == StreamCompletedReason::Finished;
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&event.session_id);
+            if event.reason == StreamCompletedReason::Canceled {
+                session.push_entry(ChatEntry::error("Cancelled"));
+            } else if let Some(ref content) = event.assistant_content {
+                let output_tokens = self.counter.count(content) as u32;
+                // Finalize the last record if one exists (i.e., PromptAssembled fired first).
+                // If no record exists (e.g., session restored mid-stream), skip silently.
+                if !session.token_ledger().is_empty() {
+                    session.finalize_last_token_record(output_tokens);
+                }
             }
+            session.finish_streaming();
         }
-        session.finish_streaming();
+
+        // Persist session after stream finishes (not on cancel).
+        if should_save {
+            self.save_active_session(&event.session_id);
+        }
     }
 
     /// Begins tracking a streaming tool call.
@@ -149,14 +157,17 @@ impl SessionPersistenceActor {
         &self,
         event: &ToolExecutionCompleted,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.push_entry(ChatEntry::tool_result(
-            &event.result.tool_call_id,
-            &event.result.name,
-            &event.result.content,
-            event.result.success,
-        ));
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&event.session_id);
+            session.push_entry(ChatEntry::tool_result(
+                &event.result.tool_call_id,
+                &event.result.name,
+                &event.result.content,
+                event.result.success,
+            ));
+        }
+        self.save_active_session(&event.session_id);
     }
 
     /// Pushes a table entry after model refresh.

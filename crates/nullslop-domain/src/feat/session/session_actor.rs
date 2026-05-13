@@ -21,15 +21,14 @@ mod handlers;
 
 use super::SessionStoreService;
 
+use crate::SessionLoadRequested;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
-use crate::feat::context::protocol::command::{
-    AssemblePrompt, RestoreStrategyState, SwitchPromptStrategy,
-};
+use crate::feat::context::protocol::command::SwitchPromptStrategy;
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
@@ -41,7 +40,6 @@ use crate::feat::tools_actor::protocol::event::{
 };
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event, PromptStrategyId};
-use crate::{SessionLoadRequested, SessionSaveRequested};
 
 use super::entries::load_session_picker_items_from_store;
 
@@ -49,7 +47,7 @@ use super::entries::load_session_picker_items_from_store;
 ///
 /// Subscribes to session-related commands and events, mutates [`State`],
 /// and emits new commands and events via the [`ActorContext`] message sink.
-/// Also persists session snapshots to disk on `SessionSaveRequested` events.
+/// Also persists session snapshots to disk when session state changes.
 pub struct SessionPersistenceActor {
     /// Shared application state.
     pub(super) state: State,
@@ -66,7 +64,6 @@ impl Actor for SessionPersistenceActor {
 
     fn activate(ctx: &mut ActorContext) -> Self {
         // Persistence subscriptions.
-        ctx.subscribe_event::<SessionSaveRequested>();
         ctx.subscribe_command::<SessionLoadRequested>();
         ctx.subscribe_command::<LoadSessionPickerEntries>();
 
@@ -124,7 +121,6 @@ impl SessionPersistenceActor {
     /// Dispatches a bus event to the appropriate handler.
     fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
-            Event::SessionSaveRequested { payload } => self.on_save_requested(payload),
             Event::PromptAssembled { payload } => self.handle_prompt_assembled(payload, ctx),
             Event::StreamToken { payload } => self.on_stream_token(payload),
             Event::StreamCompleted { payload } => self.on_stream_completed(payload),
@@ -268,12 +264,12 @@ mod tests {
     };
     // no context imports needed in tests currently
     use super::super::session_store::{JsonlSessionStore, SessionStoreService};
-    use crate::SessionSaveRequested;
     use crate::common::services::Services;
     use crate::feat::provider::protocol::command::SendMessage;
     use crate::feat::provider::protocol::event::{
         ModelsRefreshed, StreamCompleted, StreamCompletedReason, StreamToken,
     };
+    use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
     use crate::feat::tools_actor::protocol::event::{
         ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -303,20 +299,6 @@ mod tests {
         (dir, service)
     }
 
-    /// Creates a save event for testing persistence.
-    fn make_save_event(session_id: &SessionId, title: &str) -> Event {
-        Event::SessionSaveRequested {
-            payload: SessionSaveRequested {
-                session_id: session_id.clone(),
-                title: title.to_owned(),
-                history: vec![ChatEntry::user("hello"), ChatEntry::assistant("world")],
-                active_strategy: PromptStrategyId::passthrough(),
-                blobs: HashMap::new(),
-                model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
-            },
-        }
-    }
-
     /// Creates a lifecycle test actor with a fresh AppState and fake services.
     fn create_lifecycle_actor() -> (
         SessionPersistenceActor,
@@ -333,229 +315,6 @@ mod tests {
         (actor, state, sink, ctx)
     }
 
-    // =========================================================
-    // Persistence tests
-    // =========================================================
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn save_event_creates_summary() {
-        // Given a SessionPersistenceActor with a JsonlSessionStore in a temp directory.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let (_dir, store_service) = make_store();
-        ctx.set_data(store_service.clone());
-        let mut actor = SessionPersistenceActor::activate(&mut ctx);
-
-        // When a SessionSaveRequested event is sent to the actor.
-        let session_id = SessionId::new();
-        let event = make_save_event(&session_id, "Test Session");
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // Then load_summaries returns the session.
-        let summaries = store_service.load_summaries().expect("load_summaries");
-        assert_eq!(summaries.len(), 1);
-        let (id, summary, _offset) = &summaries[0];
-        assert_eq!(id, &session_id);
-        assert_eq!(summary.title, "Test Session");
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn save_event_preserves_full_data() {
-        // Given a SessionPersistenceActor with a JsonlSessionStore in a temp directory.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let (_dir, store_service) = make_store();
-        ctx.set_data(store_service.clone());
-        let mut actor = SessionPersistenceActor::activate(&mut ctx);
-
-        // When a SessionSaveRequested event is sent to the actor.
-        let session_id = SessionId::new();
-        let event = make_save_event(&session_id, "Test Session");
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // And load_full returns matching data.
-        let summaries = store_service.load_summaries().expect("load_summaries");
-        let full = store_service
-            .load_full(summaries[0].2)
-            .expect("load_full")
-            .expect("should have session");
-        assert_eq!(full.session_id, session_id);
-        assert_eq!(full.history.len(), 2);
-        assert_eq!(full.title, "Test Session");
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn session_persistence_actor_saves_with_blobs() {
-        // Given a SessionPersistenceActor with a store.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let (_dir, store_service) = make_store();
-        ctx.set_data(store_service.clone());
-        let mut actor = SessionPersistenceActor::activate(&mut ctx);
-
-        // When a SessionSaveRequested event with blobs is sent.
-        let session_id = SessionId::new();
-        let event = Event::SessionSaveRequested {
-            payload: SessionSaveRequested {
-                session_id: session_id.clone(),
-                title: "Blob Session".to_owned(),
-                history: vec![ChatEntry::user("test")],
-                active_strategy: PromptStrategyId::sliding_window(),
-                blobs: HashMap::from([(
-                    "strategy-state".to_owned(),
-                    serde_json::json!({"compaction_count": 5}),
-                )]),
-                model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
-            },
-        };
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // Then load_full returns the session with blobs preserved.
-        let summaries = store_service.load_summaries().expect("load_summaries");
-        let full = store_service
-            .load_full(summaries[0].2)
-            .expect("load_full")
-            .expect("should have session");
-        assert_eq!(full.active_strategy, PromptStrategyId::sliding_window());
-        assert_eq!(full.blobs["strategy-state"]["compaction_count"], 5);
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn session_persistence_actor_ignores_other_events() {
-        // Given a SessionPersistenceActor with a store.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let (_dir, store_service) = make_store();
-        ctx.set_data(store_service.clone());
-        let mut actor = SessionPersistenceActor::activate(&mut ctx);
-
-        // When a non-SessionSaveRequested event is sent.
-        let event = Event::ActorStarted {
-            payload: crate::common::actor::protocol::event::ActorStarted {
-                name: "test".to_owned(),
-                description: None,
-            },
-        };
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // Then no session is saved.
-        let summaries = store_service.load_summaries().expect("load_summaries");
-        assert!(summaries.is_empty());
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn session_persistence_actor_saves_multiple_sessions() {
-        // Given a SessionPersistenceActor with a store.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let (_dir, store_service) = make_store();
-        ctx.set_data(store_service.clone());
-        let mut actor = SessionPersistenceActor::activate(&mut ctx);
-
-        // When saving two different sessions.
-        let id_a = SessionId::new();
-        let id_b = SessionId::new();
-        actor
-            .handle(ActorEnvelope::Event(make_save_event(&id_a, "A")), &ctx)
-            .await;
-        actor
-            .handle(ActorEnvelope::Event(make_save_event(&id_b, "B")), &ctx)
-            .await;
-
-        // Then both sessions are in the store.
-        let summaries = store_service.load_summaries().expect("load_summaries");
-        assert_eq!(summaries.len(), 2);
-        let titles: Vec<&str> = summaries.iter().map(|(_, s, _)| s.title.as_str()).collect();
-        assert!(titles.contains(&"A"));
-        assert!(titles.contains(&"B"));
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn session_save_creates_summary() {
-        // Given a SessionPersistenceActor with a store.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let (_dir, store_service) = make_store();
-        ctx.set_data(store_service.clone());
-        let mut actor = SessionPersistenceActor::activate(&mut ctx);
-
-        // When saving a session with history and blobs.
-        let session_id = SessionId::new();
-        let event = Event::SessionSaveRequested {
-            payload: SessionSaveRequested {
-                session_id: session_id.clone(),
-                title: "Round Trip".to_owned(),
-                history: vec![
-                    ChatEntry::user("first message"),
-                    ChatEntry::assistant("first response"),
-                    ChatEntry::user("second message"),
-                ],
-                active_strategy: PromptStrategyId::passthrough(),
-                blobs: HashMap::from([(
-                    "test_blob".to_owned(),
-                    serde_json::json!({"key": "value"}),
-                )]),
-                model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
-            },
-        };
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // Then loading summaries shows the saved session.
-        let summaries = store_service.load_summaries().expect("load_summaries");
-        assert_eq!(summaries.len(), 1);
-        assert_eq!(summaries[0].1.title, "Round Trip");
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn session_load_restores_full_data() {
-        // Given a SessionPersistenceActor with a store.
-        let sink = Arc::new(RecordingSink::new());
-        let mut ctx = test_context(sink.clone());
-        let (_dir, store_service) = make_store();
-        ctx.set_data(store_service.clone());
-        let mut actor = SessionPersistenceActor::activate(&mut ctx);
-
-        // When saving a session with history and blobs.
-        let session_id = SessionId::new();
-        let event = Event::SessionSaveRequested {
-            payload: SessionSaveRequested {
-                session_id: session_id.clone(),
-                title: "Round Trip".to_owned(),
-                history: vec![
-                    ChatEntry::user("first message"),
-                    ChatEntry::assistant("first response"),
-                    ChatEntry::user("second message"),
-                ],
-                active_strategy: PromptStrategyId::passthrough(),
-                blobs: HashMap::from([(
-                    "test_blob".to_owned(),
-                    serde_json::json!({"key": "value"}),
-                )]),
-                model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
-            },
-        };
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
-
-        // Then loading the full session restores all data.
-        let summaries = store_service.load_summaries().expect("load_summaries");
-        let full = store_service
-            .load_full(summaries[0].2)
-            .expect("load_full")
-            .expect("should have session");
-
-        assert_eq!(full.session_id, session_id);
-        assert_eq!(full.title, "Round Trip");
-        assert_eq!(full.history.len(), 3);
-        assert_eq!(full.blobs["test_blob"]["key"], "value");
-    }
-
     // --- LoadSessionPickerEntries ---
 
     #[rstest::rstest]
@@ -568,10 +327,14 @@ mod tests {
         ctx.set_data(store_service.clone());
         let mut actor = SessionPersistenceActor::activate(&mut ctx);
 
-        // Save a session to the store.
+        // Save a session directly to the store.
         let session_id = SessionId::new();
-        let event = make_save_event(&session_id, "Test Session");
-        actor.handle(ActorEnvelope::Event(event), &ctx).await;
+        let mut session = ChatSessionState::new();
+        session.set_session_id(session_id.clone());
+        session.set_title("Test Session".to_owned());
+        session.push_entry(ChatEntry::user("hello"));
+        session.push_entry(ChatEntry::assistant("world"));
+        store_service.save(&session).expect("save");
 
         // When processing LoadSessionPickerEntries.
         actor
@@ -588,6 +351,236 @@ mod tests {
         let items = guard.frontend.session_picker.items();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "Test Session");
+    }
+
+    // =========================================================
+    // Save behavior tests
+    // =========================================================
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn enqueue_user_message_saves_session_to_store() {
+        // Given a SessionPersistenceActor with a store.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+
+        // When processing EnqueueUserMessage while idle.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::EnqueueUserMessage {
+                    payload: EnqueueUserMessage {
+                        session_id: session_id.clone(),
+                        text: "hello world".into(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the session is persisted with the title from the first user message.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].1.title, "hello world");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_saves_session_to_store() {
+        // Given a SessionPersistenceActor with a store and a streaming session.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        {
+            let mut guard = actor.state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.set_title("my question".to_owned());
+            session.push_entry(ChatEntry::user("my question"));
+            session.begin_streaming();
+        }
+
+        // When processing StreamCompleted with Finished reason.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::StreamCompleted {
+                    payload: StreamCompleted {
+                        session_id: session_id.clone(),
+                        reason: StreamCompletedReason::Finished,
+                        assistant_content: Some("response".to_owned()),
+                        tool_calls: None,
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the session is persisted.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].1.title, "my question");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_canceled_does_not_save() {
+        // Given a SessionPersistenceActor with a store and a streaming session.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        {
+            let mut guard = actor.state.write();
+            guard.session_mut_or_create(&session_id).begin_streaming();
+        }
+
+        // When processing StreamCompleted with Canceled reason.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::StreamCompleted {
+                    payload: StreamCompleted {
+                        session_id: session_id.clone(),
+                        reason: StreamCompletedReason::Canceled,
+                        assistant_content: None,
+                        tool_calls: None,
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then no session is persisted.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert!(summaries.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_execution_completed_saves_session_to_store() {
+        // Given a SessionPersistenceActor with a store.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        {
+            let mut guard = actor.state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.set_title("do the thing".to_owned());
+            session.push_entry(ChatEntry::user("do the thing"));
+        }
+
+        // When processing ToolExecutionCompleted.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::ToolExecutionCompleted {
+                    payload: ToolExecutionCompleted {
+                        session_id: session_id.clone(),
+                        result: ToolResult {
+                            tool_call_id: "call_1".to_owned(),
+                            name: "bash".to_owned(),
+                            content: "ok".to_owned(),
+                            success: true,
+                        },
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the session is persisted.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].1.title, "do the thing");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn save_title_derived_from_first_user_message_first_line() {
+        // Given a session actor with a store.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+
+        // When enqueuing a multi-line user message while idle.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::EnqueueUserMessage {
+                    payload: EnqueueUserMessage {
+                        session_id: session_id.clone(),
+                        text: "line one\nline two".into(),
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the title is the first line only.
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries[0].1.title, "line one");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn save_title_is_untitled_when_no_user_messages() {
+        // Given a session with no user messages.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(sink.clone());
+        let (_dir, store_service) = make_store();
+        ctx.set_data(store_service.clone());
+        ctx.set_data(Services::new());
+        let mut actor = SessionPersistenceActor::activate(&mut ctx);
+
+        let session_id = SessionId::new();
+        {
+            let mut guard = actor.state.write();
+            guard
+                .session_mut_or_create(&session_id)
+                .push_entry(ChatEntry::system("system msg"));
+        }
+
+        // When saving via tool execution completion.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::ToolExecutionCompleted {
+                    payload: ToolExecutionCompleted {
+                        session_id: session_id.clone(),
+                        result: ToolResult {
+                            tool_call_id: "call_1".to_owned(),
+                            name: "bash".to_owned(),
+                            content: "ok".to_owned(),
+                            success: true,
+                        },
+                    },
+                }),
+                &ctx,
+            )
+            .await;
+
+        // Then the title is "Untitled Session".
+        let summaries = store_service.load_summaries().expect("load_summaries");
+        assert_eq!(summaries[0].1.title, "Untitled Session");
     }
 
     // =========================================================
@@ -952,17 +945,18 @@ mod tests {
         let (mut actor, state, sink, ctx) = create_lifecycle_actor();
         let session_id = SessionId::new();
 
+        let mut loaded_session = ChatSessionState::new();
+        loaded_session.set_session_id(session_id.clone());
+        loaded_session.set_title("Test Session".to_owned());
+        loaded_session.push_entry(ChatEntry::user("hello"));
+        loaded_session.push_entry(ChatEntry::assistant("world"));
+
         // When processing SessionLoadCompleted.
         actor
             .handle(
                 ActorEnvelope::Command(Command::SessionLoadCompleted {
                     payload: SessionLoadCompleted {
-                        session_id: session_id.clone(),
-                        title: "Test Session".into(),
-                        history: vec![ChatEntry::user("hello"), ChatEntry::assistant("world")],
-                        active_strategy: PromptStrategyId::passthrough(),
-                        blobs: HashMap::new(),
-                        model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
+                        session: loaded_session,
                     },
                 }),
                 &ctx,
@@ -1008,17 +1002,17 @@ mod tests {
         let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
         let session_id = SessionId::new();
 
+        let mut loaded_session = ChatSessionState::new();
+        loaded_session.set_session_id(session_id.clone());
+        loaded_session.set_title("My Chat".to_owned());
+        loaded_session.push_entry(ChatEntry::user("hello"));
+
         // When processing SessionLoadCompleted with a title.
         actor
             .handle(
                 ActorEnvelope::Command(Command::SessionLoadCompleted {
                     payload: SessionLoadCompleted {
-                        session_id: session_id.clone(),
-                        title: "My Chat".into(),
-                        history: vec![ChatEntry::user("hello")],
-                        active_strategy: PromptStrategyId::passthrough(),
-                        blobs: HashMap::new(),
-                        model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
+                        session: loaded_session,
                     },
                 }),
                 &ctx,

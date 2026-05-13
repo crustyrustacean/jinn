@@ -12,7 +12,7 @@ use crate::feat::chat_input::AutocompleteMatch;
 ///
 /// Both the text buffer and cursor position are private. All mutation goes through
 /// semantic methods that keep the cursor in sync with the buffer content.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChatInputBoxState {
     /// The text the user has typed so far.
     input_buffer: String,

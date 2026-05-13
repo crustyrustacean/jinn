@@ -125,7 +125,6 @@ pub use feat::session::protocol::session_id::SessionId;
 pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;
 pub use feat::session::protocol::session_load_requested::SessionLoadRequested;
 pub use feat::session::protocol::session_new::SessionNew;
-pub use feat::session::protocol::session_save_requested::SessionSaveRequested;
 pub use feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
 pub use feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
