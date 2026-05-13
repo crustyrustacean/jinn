@@ -21,6 +21,7 @@ use crate::feat::context::protocol::command::{
     AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
     RescanPersonas, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
+use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::provider::protocol::command::{
     CancelStream, LoadProviderPickerEntries, ProviderSwitch, RefreshModels, RescanPromptTemplates,
     SendMessage, SendToLlmProvider,
@@ -28,7 +29,6 @@ use crate::feat::provider::protocol::command::{
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,

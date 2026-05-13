@@ -16,13 +16,16 @@
 use serde::{Deserialize, Serialize};
 
 // Internal imports for enum definition, type_name(), and tests.
-use crate::common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned};
+use crate::common::actor::protocol::event::{
+    ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned,
+};
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::protocol::event::{
     PromptAssembled, PromptStrategySwitched, StrategyStateUpdated,
 };
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::common::actor::event_msg::EventMsg;
+use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
 };
@@ -32,7 +35,6 @@ use crate::feat::tools_actor::protocol::event::{
     ToolUseStarted, ToolsRegistered,
 };
 use crate::init::EnvironmentLoaded;
-use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::protocol::system::{KeyDown, KeyUp, ModeChanged};
 
 /// Every event the host can broadcast.
