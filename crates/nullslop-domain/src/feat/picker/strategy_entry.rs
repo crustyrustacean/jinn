@@ -2,10 +2,10 @@
 
 use std::ops::Range;
 
+use super::style::{active_marker, dim_style, selected_style};
 use crate::protocol::PromptStrategyId;
 use nullslop_selection_widget::PickerItem;
 use nullslop_selection_widget::highlight_text;
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 /// A context assembly strategy entry ready for display in the picker.
@@ -61,28 +61,11 @@ fn render_strategy_row(
     is_selected: bool,
     match_indices: &[Range<usize>],
 ) -> Line<'static> {
-    let active_marker = Span::styled(
-        if is_active { "> " } else { "  " },
-        if is_active {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-        },
-    );
+    let active_marker = active_marker(is_active);
 
-    let name_style = if is_selected {
-        Style::default().fg(Color::White).bg(Color::DarkGray)
-    } else {
-        Style::default()
-    };
+    let name_style = selected_style(is_selected);
 
-    let desc_style = if is_selected {
-        Style::default().fg(Color::DarkGray).bg(Color::DarkGray)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
+    let desc_style = dim_style(is_selected);
 
     let name_spans = if match_indices.is_empty() {
         vec![Span::styled(format!("{name}  "), name_style)]

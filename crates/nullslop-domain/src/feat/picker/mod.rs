@@ -10,6 +10,7 @@ pub mod picker_kind;
 pub mod render;
 pub mod strategy_entries;
 pub mod strategy_entry;
+pub mod style;
 pub mod validator;
 
 pub use picker_kind::PickerKind;

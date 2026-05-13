@@ -6,6 +6,7 @@
 
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
+use crate::feat::picker::style::promote_active_to_top;
 use crate::protocol::{PromptStrategyId, StrategyEntry};
 
 /// Loads strategy entries from the strategy registry, marking the active one.
@@ -33,16 +34,7 @@ pub fn load_strategy_entries(
 pub fn sorted_strategy_entries(entries: &[StrategyEntry], filter: &str) -> Vec<StrategyEntry> {
     let mut result = entries.to_vec();
 
-    if filter.is_empty()
-        && let Some(pos) = result.iter().position(|e| e.is_active)
-        && pos > 0
-    {
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "pos comes from iter().position() on the same vec"
-        )]
-        result[0..=pos].rotate_right(1);
-    }
+    promote_active_to_top(&mut result, |e| e.is_active, filter);
 
     result
 }

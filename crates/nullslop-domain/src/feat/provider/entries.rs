@@ -4,6 +4,7 @@
 //! provider picker overlay. The [`PickerEntry`] struct and [`PickerItem`]
 //! implementation live in `nullslop-protocol`.
 
+use crate::feat::picker::style::promote_active_to_top;
 use crate::protocol::PickerEntry;
 /// Reorders entries so that available entries appear first (sorted by model name),
 /// followed by unavailable entries (sorted by model name). When `filter` is empty,
@@ -29,18 +30,8 @@ pub fn sorted_entries(
     unavailable.sort_by(|a, b| a.model.to_lowercase().cmp(&b.model.to_lowercase()));
 
     // Promote active provider to top when filter is empty.
-    if filter.is_empty()
-        && active_provider != crate::feat::provider_infra::NO_PROVIDER_ID
-        && let Some(pos) = available
-            .iter()
-            .position(|e| e.provider_id == active_provider)
-        && pos > 0
-    {
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "pos comes from iter().position() on the same vec"
-        )]
-        available[0..=pos].rotate_right(1);
+    if filter.is_empty() && active_provider != crate::feat::provider_infra::NO_PROVIDER_ID {
+        promote_active_to_top(&mut available, |e| e.provider_id == active_provider, filter);
     }
 
     // Mark active entries.
