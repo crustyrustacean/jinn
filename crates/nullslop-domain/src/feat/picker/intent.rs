@@ -78,15 +78,8 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
 /// Inserts a character into the active picker's filter.
 pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
     validator::validate_picker_insert_char(state, ch);
-    match state.frontend.scope_stack.picker_kind().copied() {
-        Some(PickerKind::Provider) => state.provider.provider_picker.insert_char(ch),
-        Some(PickerKind::ContextAssembly) => {
-            state.frontend.context_strategy_picker.insert_char(ch);
-        }
-        Some(PickerKind::Keymap) => state.frontend.keymap_picker.insert_char(ch),
-        Some(PickerKind::Session) => state.frontend.session_picker.insert_char(ch),
-        Some(PickerKind::Persona) => state.frontend.persona_picker.insert_char(ch),
-        None => {}
+    if let Some(picker) = state.active_picker_ops() {
+        picker.insert_char(ch);
     }
     IntentResult::empty()
 }
@@ -94,15 +87,8 @@ pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
 /// Removes the last character from the active picker's filter.
 pub fn handle_backspace(state: &mut AppState) -> IntentResult {
     validator::validate_picker_backspace(state);
-    match state.frontend.scope_stack.picker_kind().copied() {
-        Some(PickerKind::Provider) => state.provider.provider_picker.backspace(),
-        Some(PickerKind::ContextAssembly) => {
-            state.frontend.context_strategy_picker.backspace();
-        }
-        Some(PickerKind::Keymap) => state.frontend.keymap_picker.backspace(),
-        Some(PickerKind::Session) => state.frontend.session_picker.backspace(),
-        Some(PickerKind::Persona) => state.frontend.persona_picker.backspace(),
-        None => {}
+    if let Some(picker) = state.active_picker_ops() {
+        picker.backspace();
     }
     IntentResult::empty()
 }
@@ -130,26 +116,8 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
 /// Moves the selection up in the active picker.
 pub fn handle_move_up(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_up(state);
-    match state.frontend.scope_stack.picker_kind().copied() {
-        Some(PickerKind::Provider) => {
-            state.provider.provider_picker.move_up(PICKER_MAX_VISIBLE);
-        }
-        Some(PickerKind::ContextAssembly) => {
-            state
-                .frontend
-                .context_strategy_picker
-                .move_up(PICKER_MAX_VISIBLE);
-        }
-        Some(PickerKind::Keymap) => {
-            state.frontend.keymap_picker.move_up(PICKER_MAX_VISIBLE);
-        }
-        Some(PickerKind::Session) => {
-            state.frontend.session_picker.move_up(PICKER_MAX_VISIBLE);
-        }
-        Some(PickerKind::Persona) => {
-            state.frontend.persona_picker.move_up(PICKER_MAX_VISIBLE);
-        }
-        None => {}
+    if let Some(picker) = state.active_picker_ops() {
+        picker.move_up(PICKER_MAX_VISIBLE);
     }
     IntentResult::empty()
 }
@@ -157,26 +125,8 @@ pub fn handle_move_up(state: &mut AppState) -> IntentResult {
 /// Moves the selection down in the active picker.
 pub fn handle_move_down(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_down(state);
-    match state.frontend.scope_stack.picker_kind().copied() {
-        Some(PickerKind::Provider) => {
-            state.provider.provider_picker.move_down(PICKER_MAX_VISIBLE);
-        }
-        Some(PickerKind::ContextAssembly) => {
-            state
-                .frontend
-                .context_strategy_picker
-                .move_down(PICKER_MAX_VISIBLE);
-        }
-        Some(PickerKind::Keymap) => {
-            state.frontend.keymap_picker.move_down(PICKER_MAX_VISIBLE);
-        }
-        Some(PickerKind::Session) => {
-            state.frontend.session_picker.move_down(PICKER_MAX_VISIBLE);
-        }
-        Some(PickerKind::Persona) => {
-            state.frontend.persona_picker.move_down(PICKER_MAX_VISIBLE);
-        }
-        None => {}
+    if let Some(picker) = state.active_picker_ops() {
+        picker.move_down(PICKER_MAX_VISIBLE);
     }
     IntentResult::empty()
 }
@@ -184,15 +134,8 @@ pub fn handle_move_down(state: &mut AppState) -> IntentResult {
 /// Moves the filter cursor left in the active picker.
 pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_cursor_left(state);
-    match state.frontend.scope_stack.picker_kind().copied() {
-        Some(PickerKind::Provider) => state.provider.provider_picker.move_cursor_left(),
-        Some(PickerKind::ContextAssembly) => {
-            state.frontend.context_strategy_picker.move_cursor_left();
-        }
-        Some(PickerKind::Keymap) => state.frontend.keymap_picker.move_cursor_left(),
-        Some(PickerKind::Session) => state.frontend.session_picker.move_cursor_left(),
-        Some(PickerKind::Persona) => state.frontend.persona_picker.move_cursor_left(),
-        None => {}
+    if let Some(picker) = state.active_picker_ops() {
+        picker.move_cursor_left();
     }
     IntentResult::empty()
 }
@@ -200,17 +143,8 @@ pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
 /// Moves the filter cursor right in the active picker.
 pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
     validator::validate_picker_move_cursor_right(state);
-    match state.frontend.scope_stack.picker_kind().copied() {
-        Some(PickerKind::Provider) => {
-            state.provider.provider_picker.move_cursor_right();
-        }
-        Some(PickerKind::ContextAssembly) => {
-            state.frontend.context_strategy_picker.move_cursor_right();
-        }
-        Some(PickerKind::Keymap) => state.frontend.keymap_picker.move_cursor_right(),
-        Some(PickerKind::Session) => state.frontend.session_picker.move_cursor_right(),
-        Some(PickerKind::Persona) => state.frontend.persona_picker.move_cursor_right(),
-        None => {}
+    if let Some(picker) = state.active_picker_ops() {
+        picker.move_cursor_right();
     }
     IntentResult::empty()
 }
