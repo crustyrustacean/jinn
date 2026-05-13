@@ -31,3 +31,12 @@ pub struct ActorShutdownCompleted {
     /// The actor's name.
     pub name: String,
 }
+
+/// All actors have been spawned.
+///
+/// Emitted after the wiring code finishes spawning every actor.
+/// The system-ready actor waits for this event before checking whether
+/// its running count of `ActorStarted` events matches the total.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("actor")]
+pub struct AllActorsSpawned;

@@ -308,7 +308,7 @@ pub struct FrontendState {
     pub tui_signals: TuiSignals,
 
     /// Cached copy of user preferences from `nullslop.toml`.
-    /// Updated whenever preferences are loaded/saved/reloaded.
+    /// Updated exclusively by `PreferencesStateSyncActor` on `PreferencesUpdated` events.
     /// This is a cache — the file is the authoritative source.
     pub preferences: UserPreferences,
 

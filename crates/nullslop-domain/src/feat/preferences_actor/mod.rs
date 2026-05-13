@@ -5,6 +5,8 @@
 //! actor subscribes to provider switch events and persists the last-used model.
 
 pub mod preferences_actor;
+pub mod preferences_state_sync_actor;
+pub mod protocol;
 pub mod user_preferences;
 pub mod user_preferences_storage;
 

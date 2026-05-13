@@ -21,7 +21,7 @@ pub mod protocol;
 
 // Re-export actor framework types
 pub use common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, ActorSendError, MessageSink, RecordingSink,
+    Actor, ActorContext, ActorCounter, ActorEnvelope, ActorRef, ActorSendError, MessageSink, RecordingSink,
     SendResult, SystemMessage,
 };
 pub use common::actor_host::{
@@ -77,6 +77,8 @@ pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
 pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
 pub use feat::preferences_actor::UserPreferences;
 pub use feat::preferences_actor::UserPreferencesStorageService;
+pub use feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
+pub use feat::preferences_actor::protocol::event::PreferencesUpdated;
 
 // Re-export prompt template utilities
 pub use feat::context::prompt_template::{ensure_prompts_dir_with_example, prompts_dir};
@@ -100,7 +102,7 @@ pub use protocol::{
 
 // Re-export domain types from their canonical locations
 pub use common::actor::protocol::command::ProceedWithShutdown;
-pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting};
+pub use common::actor::protocol::event::{ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned};
 pub use feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
