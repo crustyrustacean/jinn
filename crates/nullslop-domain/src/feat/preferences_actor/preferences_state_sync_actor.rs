@@ -67,8 +67,7 @@ mod tests {
     /// Creates a test actor with shared state.
     fn create_actor() -> (PreferencesStateSyncActor, State, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
-        let mut ctx =
-            ActorContext::new("preferences-sync", sink.clone() as Arc<dyn MessageSink>);
+        let mut ctx = ActorContext::new("preferences-sync", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
         ctx.set_data(state.clone());
         let actor = PreferencesStateSyncActor::activate(&mut ctx);
@@ -89,9 +88,7 @@ mod tests {
         actor
             .handle(
                 ActorEnvelope::Event(Event::PreferencesUpdated {
-                    payload: PreferencesUpdated {
-                        preferences: prefs,
-                    },
+                    payload: PreferencesUpdated { preferences: prefs },
                 }),
                 &ctx,
             )
@@ -121,9 +118,7 @@ mod tests {
         actor
             .handle(
                 ActorEnvelope::Event(Event::PreferencesUpdated {
-                    payload: PreferencesUpdated {
-                        preferences: first,
-                    },
+                    payload: PreferencesUpdated { preferences: first },
                 }),
                 &ctx,
             )
