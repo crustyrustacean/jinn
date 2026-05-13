@@ -176,7 +176,8 @@ impl SessionPersistenceActor {
             | Command::CancelToolBatch { .. }
             | Command::ScanSkills
             | Command::RescanPersonas { .. }
-            | Command::LoadPersonaPickerEntries { .. } => {}
+            | Command::LoadPersonaPickerEntries { .. }
+            | Command::UpdatePreferences { .. } => {}
         }
     }
 
@@ -190,8 +191,9 @@ impl SessionPersistenceActor {
 
     /// Applies config defaults to the default session profile on startup.
     ///
-    /// Loads user preferences, caches them in `AppState.frontend.preferences`,
-    /// and applies `last_model` and `last_strategy` to the default session.
+    /// Loads user preferences and applies `last_model` and `last_strategy`
+    /// to the default session, then sends an `UpdatePreferences` command so
+    /// the preferences pipeline handles persistence and state sync.
     ///
     /// NOTE: Using `active_session_mut()` is acceptable here because this runs
     /// at startup before any user interaction. There is only one session.
@@ -215,8 +217,6 @@ impl SessionPersistenceActor {
         let session_id;
         {
             let mut state = self.state.write();
-            // Cache preferences in AppState.
-            state.frontend.preferences = prefs.clone();
 
             // Apply config defaults to the default session.
             let session = state.active_session_mut();
@@ -228,6 +228,18 @@ impl SessionPersistenceActor {
                 session.switch_strategy(strategy_id.clone());
             }
             session_id = state.session.active_session.clone();
+        }
+
+        // Send UpdatePreferences command so the pipeline handles persistence + state sync.
+        if let Err(e) = ctx.send_command(Command::UpdatePreferences {
+            payload: crate::feat::preferences_actor::protocol::command::UpdatePreferences {
+                updates: vec![
+                    crate::feat::preferences_actor::protocol::command::PreferenceUpdate::SetLastModel(prefs.last_model.clone()),
+                    crate::feat::preferences_actor::protocol::command::PreferenceUpdate::SetLastStrategy(prefs.last_strategy.clone()),
+                ],
+            },
+        }) {
+            tracing::warn!(err = ?e, "session-actor failed to send UpdatePreferences on startup");
         }
 
         // Emit SwitchPromptStrategy so the context actor initializes the strategy.

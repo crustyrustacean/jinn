@@ -32,6 +32,7 @@ use crate::feat::tools_actor::protocol::event::{
     ToolUseStarted, ToolsRegistered,
 };
 use crate::init::EnvironmentLoaded;
+use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::protocol::system::{KeyDown, KeyUp, ModeChanged};
 
 /// Every event the host can broadcast.
@@ -213,6 +214,13 @@ pub enum Event {
         #[serde(flatten)]
         payload: EnvironmentLoaded,
     },
+    /// User preferences have been updated and persisted.
+    #[serde(rename = "preferences_updated")]
+    PreferencesUpdated {
+        /// The updated preferences.
+        #[serde(flatten)]
+        payload: PreferencesUpdated,
+    },
 }
 
 impl Event {
@@ -247,6 +255,7 @@ impl Event {
                 Some(crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME)
             }
             Self::EnvironmentLoaded { .. } => Some(EnvironmentLoaded::TYPE_NAME),
+            Self::PreferencesUpdated { .. } => Some(PreferencesUpdated::TYPE_NAME),
         }
     }
 }
