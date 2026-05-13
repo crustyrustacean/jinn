@@ -51,7 +51,9 @@ fn render_provider_picker_shows_telescope_layout() {
     // Given a terminal area and picker state with filter "ol".
 
     let (mut state, services) = picker_state_with_ollama();
-    state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
+    state.frontend.scope_stack.push(FocusScope::Picker {
+        kind: PickerKind::Provider,
+    });
     load_picker_items(&mut state, &services);
     state.provider.provider_picker.insert_char('o');
     state.provider.provider_picker.insert_char('l');
@@ -108,7 +110,9 @@ fn render_provider_picker_shows_active_model_marker() {
     // Given a state with active_provider set to "ollama/llama3" and items loaded.
 
     let (mut state, services) = picker_state_with_ollama();
-    state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
+    state.frontend.scope_stack.push(FocusScope::Picker {
+        kind: PickerKind::Provider,
+    });
     state.provider.active_provider = "ollama/llama3".to_owned();
     load_picker_items(&mut state, &services);
 

@@ -208,7 +208,15 @@ fn when_routes_toggle_which_key(world: &mut TuiWorld) {
 #[cucumber::then(expr = "the mode should be {word}")]
 fn then_mode_should_be(world: &mut TuiWorld, mode: String) {
     let expected = parse_mode(&mode);
-    let actual = world.app.core.state.read().frontend.scope_stack.current().mode();
+    let actual = world
+        .app
+        .core
+        .state
+        .read()
+        .frontend
+        .scope_stack
+        .current()
+        .mode();
     assert_eq!(
         actual, expected,
         "expected mode {expected:?}, got {actual:?}"

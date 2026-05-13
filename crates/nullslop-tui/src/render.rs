@@ -77,7 +77,10 @@ impl AppLayout {
         // Horizontal split: main column | border(1) | sidebar
         let sidebar_width = (rest.width * 20 / 100).min(30);
         let border_width: u16 = 1;
-        let main_width = rest.width.saturating_sub(sidebar_width).saturating_sub(border_width);
+        let main_width = rest
+            .width
+            .saturating_sub(sidebar_width)
+            .saturating_sub(border_width);
 
         let main = Rect {
             x: rest.x,

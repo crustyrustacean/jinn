@@ -744,7 +744,9 @@ mod tests {
         use crate::protocol::PickerKind;
 
         let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
 
         // When handling EnterNormalMode.
         let result = super::handle_enter_normal_mode(&mut state);
