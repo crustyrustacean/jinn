@@ -26,7 +26,6 @@ pub use crate::common::actor::event_msg::EventMsg;
 use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
 };
-use crate::feat::session::protocol::session_save_requested::SessionSaveRequested;
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -193,13 +192,6 @@ pub enum Event {
         #[serde(flatten)]
         payload: StrategyStateUpdated,
     },
-    /// Session data should be persisted to disk.
-    #[serde(rename = "session_save_requested")]
-    SessionSaveRequested {
-        /// The session save request payload.
-        #[serde(flatten)]
-        payload: SessionSaveRequested,
-    },
     /// Agent skills have been scanned and loaded.
     #[serde(rename = "skills_loaded")]
     SkillsLoaded {
@@ -250,7 +242,6 @@ impl Event {
             Self::PromptStrategySwitched { .. } => Some(PromptStrategySwitched::TYPE_NAME),
             Self::StrategyStateUpdated { .. } => Some(StrategyStateUpdated::TYPE_NAME),
 
-            Self::SessionSaveRequested { .. } => Some(SessionSaveRequested::TYPE_NAME),
             Self::SkillsLoaded { .. } => Some(SkillsLoaded::TYPE_NAME),
             Self::PersonasLoaded { .. } => {
                 Some(crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME)
@@ -264,7 +255,6 @@ impl Event {
 mod tests {
     use super::*;
     use crate::feat::provider::protocol::event::StreamCompletedReason;
-    use crate::feat::session::protocol::session_save_requested::SessionSaveRequested;
     use crate::protocol::{ChatEntry, Key, KeyEvent, Mode, Modifiers, SessionId};
 
     #[rstest::rstest]
