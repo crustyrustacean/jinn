@@ -131,11 +131,10 @@ fn run_main_loop(
         // Check should_quit from shared state (async forwarding task handles messages).
         let state_read = app.core.state.read();
         let should_quit = state_read.frontend.should_quit;
-        let sidebar_focused = state_read.frontend.sidebar.origin_scope.is_some();
         let scope = scope_for_mode(
-            state_read.frontend.mode,
+            state_read.frontend.scope_stack.current().mode(),
             state_read.frontend.active_tab,
-            sidebar_focused,
+            state_read.frontend.scope_stack.is_sidebar(),
         );
         drop(state_read);
         app.which_key.set_scope(scope);

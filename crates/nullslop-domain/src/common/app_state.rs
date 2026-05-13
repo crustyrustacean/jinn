@@ -175,9 +175,17 @@ impl std::fmt::Display for FocusScope {
 ///
 /// Always has at least one entry (the base scope). Entering an overlay
 /// pushes a new scope; escaping pops one level, restoring the previous scope.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ScopeStack {
     stack: Vec<FocusScope>,
+}
+
+impl Default for ScopeStack {
+    fn default() -> Self {
+        Self {
+            stack: vec![FocusScope::Normal],
+        }
+    }
 }
 
 impl ScopeStack {
@@ -237,6 +245,12 @@ impl ScopeStack {
     #[must_use]
     pub fn is_sidebar(&self) -> bool {
         matches!(self.current(), FocusScope::Sidebar)
+    }
+
+    /// Returns the number of scopes on the stack.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.stack.len()
     }
 }
 

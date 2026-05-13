@@ -315,6 +315,9 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         state.frontend.active_picker_kind = None;
     }
 
+    // Pop the scope stack — restores previous scope (Input, Sidebar, or Normal).
+    state.frontend.scope_stack.pop();
+
     state.frontend.mode = Mode::Normal;
 
     IntentResult::with_commands(commands)
@@ -746,23 +749,18 @@ mod tests {
     #[rstest::rstest]
     fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
         // Given a state in Picker mode with active picker kind.
-        use crate::common::app_state::FrontendState;
+        use crate::common::app_state::FocusScope;
         use crate::protocol::PickerKind;
 
-        let mut state = AppState {
-            frontend: FrontendState {
-                mode: Mode::Picker,
-                ..FrontendState::default()
-            },
-            ..Default::default()
-        };
-        state.frontend.active_picker_kind = Some(PickerKind::Provider);
+        let mut state = AppState::default();
+        state.frontend.mode = Mode::Picker;
+        state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Provider });
 
         // When handling EnterNormalMode.
         let result = super::handle_enter_normal_mode(&mut state);
 
-        // Then active_picker_kind is cleared.
-        assert_eq!(state.frontend.active_picker_kind, None);
+        // Then scope_stack is back to Normal (no picker).
+        assert!(!state.frontend.scope_stack.is_picker());
         assert!(result.commands.is_empty());
     }
 

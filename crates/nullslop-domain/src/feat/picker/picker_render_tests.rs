@@ -2,7 +2,8 @@
 
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
-use crate::protocol::{Intent, KeymapEntry, Mode, PickerKind};
+use crate::common::app_state::FocusScope;
+use crate::protocol::{Intent, KeymapEntry, PickerKind};
 use nullslop_selection_widget::compute_popup_rect;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -35,8 +36,7 @@ fn render_context_strategy_picker_shows_telescope_layout() {
     // Given a terminal area and picker state with entries loaded.
 
     let (mut state, _services) = strategy_picker_state();
-    state.frontend.mode = Mode::Picker;
-    state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
+    state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::ContextAssembly });
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -67,8 +67,7 @@ fn render_context_strategy_picker_shows_active_marker() {
     // Given a state with entries (default is passthrough active).
 
     let (mut state, _services) = strategy_picker_state();
-    state.frontend.mode = Mode::Picker;
-    state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
+    state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::ContextAssembly });
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -95,8 +94,7 @@ fn render_context_strategy_picker_shows_footer_with_current_strategy() {
     // Given a state with entries (default is passthrough active).
 
     let (mut state, _services) = strategy_picker_state();
-    state.frontend.mode = Mode::Picker;
-    state.frontend.active_picker_kind = Some(PickerKind::ContextAssembly);
+    state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::ContextAssembly });
 
     let (mut terminal, _area) = setup_term(80, 24);
 
@@ -161,9 +159,7 @@ fn keymap_picker_state() -> AppState {
         },
     ];
     state.frontend.keymap_picker.set_items(entries);
-    state.frontend.mode = Mode::Picker;
-    state.frontend.active_picker_kind = Some(PickerKind::Keymap);
-    state.frontend.keymap_picker_origin_scope = Some("Normal".to_owned());
+    state.frontend.scope_stack.push(FocusScope::Picker { kind: PickerKind::Keymap });
     state
 }
 
