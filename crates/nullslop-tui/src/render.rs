@@ -89,7 +89,7 @@ impl AppLayout {
             height: rest.height,
         };
 
-        let input_height = (2 + input_lines.max(1)).min(max_input_height);
+        let input_height = (1 + input_lines.max(1)).min(max_input_height);
         let [content, input, status_bar] = Layout::vertical([
             Constraint::Min(1),
             Constraint::Length(input_height),
