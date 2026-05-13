@@ -64,6 +64,8 @@ pub struct ProviderSwitched {
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
 #[event_msg("provider")]
 pub struct ModelsRefreshed {
+    /// The session that triggered the refresh (for routing the result back).
+    pub session_id: SessionId,
     /// Provider name to list of discovered models.
     pub results: std::collections::HashMap<String, Vec<String>>,
     /// Provider name to error message for providers that failed.

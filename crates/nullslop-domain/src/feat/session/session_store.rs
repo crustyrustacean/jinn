@@ -112,6 +112,7 @@ mod tests {
             history: vec![ChatEntry::user("hello")],
             active_strategy: PromptStrategyId::passthrough(),
             blobs: std::collections::HashMap::new(),
+            model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
         }
     }
 

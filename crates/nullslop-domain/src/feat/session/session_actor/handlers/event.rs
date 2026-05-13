@@ -59,11 +59,21 @@ impl SessionPersistenceActor {
             session.begin_streaming();
         }
 
+        let provider_id = {
+            let state = self.state.read();
+            let model = state.session(&payload.session_id).profile().model.clone();
+            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                None
+            } else {
+                Some(model)
+            }
+        };
+
         if let Err(e) = ctx.send_command(Command::SendToLlmProvider {
             payload: SendToLlmProvider {
                 session_id: payload.session_id.clone(),
                 messages: payload.messages.clone(),
-                provider_id: None,
+                provider_id,
             },
         }) {
             tracing::warn!(err = ?e, "session-actor failed to emit SendToLlmProvider");
@@ -158,7 +168,7 @@ impl SessionPersistenceActor {
         if event.results.is_empty() && event.errors.is_empty() {
             let mut state = self.state.write();
             state
-                .active_session_mut()
+                .session_mut_or_create(&event.session_id)
                 .push_entry(ChatEntry::system("Models refreshed: no providers found"));
             return;
         }
@@ -199,7 +209,7 @@ impl SessionPersistenceActor {
         let data = TableData { headers, rows };
         let mut state = self.state.write();
         state
-            .active_session_mut()
+            .session_mut_or_create(&event.session_id)
             .push_entry(ChatEntry::table(data));
     }
 }

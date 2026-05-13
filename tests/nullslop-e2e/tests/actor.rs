@@ -122,14 +122,15 @@ fn create_actor_core(
     let (core_notify_tx, core_notify_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
 
+    // Shared state for all actors.
+    let state = nullslop_domain::State::new(AppState::default());
+
     // Create tool orchestrator actor.
     let (orch_tx, orch_rx) =
         kanal::unbounded::<ActorEnvelope<nullslop_domain::common::actor::NoDirectMsg>>();
     let orch_ref = ActorRef::new(orch_tx);
     let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
-    orch_ctx.set_data(nullslop_domain::State::new(
-        nullslop_domain::AppState::default(),
-    ));
+    orch_ctx.set_data(state.clone());
     let orch_actor = ToolOrchestratorActor::activate(&mut orch_ctx);
     let orch_result = spawn_actor_impl(
         "tool-orchestrator",
@@ -146,6 +147,7 @@ fn create_actor_core(
     let llm_ref = ActorRef::new(llm_tx);
     let mut llm_ctx = ActorContext::new("llm-streaming", sink.clone());
     llm_ctx.set_data(llm_service.clone());
+    llm_ctx.set_data(state.clone());
     let llm_actor = LlmActor::activate(&mut llm_ctx);
     let llm_result = spawn_actor_impl(
         "llm-streaming",
@@ -157,8 +159,7 @@ fn create_actor_core(
     );
 
     // Create session actor to write events into state.
-    // State is shared between AppCore and the session actor via Arc clone.
-    let state = nullslop_domain::State::new(AppState::default());
+    // State is shared between AppCore and all actors via Arc clone.
     let (sp_tx, sp_rx) = kanal::unbounded::<ActorEnvelope<NoDirectMsg>>();
     let sp_ref = ActorRef::new(sp_tx);
     let mut sp_ctx = ActorContext::new("session-persistence", sink.clone());

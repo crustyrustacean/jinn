@@ -24,13 +24,17 @@ pub enum UserPreferencesError {
 /// User preferences persisted in `nullslop.toml`.
 ///
 /// This file stores user behavior preferences that should survive
-/// app restarts — e.g., the last model selected from the picker.
+/// app restarts — e.g., the last model and strategy selected from pickers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UserPreferences {
     /// The provider ID of the last model selected from the model picker.
     /// Format: `{provider_name}/{model}` (e.g., `"ollama/llama3"`).
     #[serde(default)]
     pub last_model: Option<String>,
+    /// The strategy ID of the last strategy selected from the strategy picker.
+    /// Format: strategy name (e.g., `"sliding_window"`).
+    #[serde(default)]
+    pub last_strategy: Option<String>,
 }
 
 /// Returns the path to the user preferences file.
@@ -124,8 +128,9 @@ mod tests {
         // Given default preferences.
         let prefs = UserPreferences::default();
 
-        // Then last_model is None.
+        // Then last_model and last_strategy are None.
         assert!(prefs.last_model.is_none());
+        assert!(prefs.last_strategy.is_none());
     }
 
     #[rstest::rstest]
@@ -139,15 +144,17 @@ mod tests {
 
         // Then defaults are returned.
         assert!(prefs.last_model.is_none());
+        assert!(prefs.last_strategy.is_none());
     }
 
     #[rstest::rstest]
     fn save_then_load_round_trips() {
-        // Given preferences with a last_model.
+        // Given preferences with a last_model and last_strategy.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("nullslop.toml");
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
+            last_strategy: Some("sliding_window".to_owned()),
         };
 
         // When saving and reloading.
@@ -156,27 +163,30 @@ mod tests {
 
         // Then the round-tripped data matches.
         assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
+        assert_eq!(reloaded.last_strategy.as_deref(), Some("sliding_window"));
     }
 
     #[rstest::rstest]
     fn load_parses_toml_content() {
-        // Given a TOML file with last_model.
+        // Given a TOML file with last_model and last_strategy.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("nullslop.toml");
         std::fs::write(
             &path,
-            r#"last_model = "openrouter/anthropic/claude-sonnet-4-20250514""#,
+            r#"last_model = "openrouter/anthropic/claude-sonnet-4-20250514"
+last_strategy = "sliding_window""#,
         )
         .expect("write");
 
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
 
-        // Then last_model is parsed.
+        // Then last_model and last_strategy are parsed.
         assert_eq!(
             prefs.last_model.as_deref(),
             Some("openrouter/anthropic/claude-sonnet-4-20250514")
         );
+        assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
     }
 
     #[rstest::rstest]
@@ -189,8 +199,9 @@ mod tests {
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
 
-        // Then defaults are returned.
+        // Then defaults are returned (both fields None).
         assert!(prefs.last_model.is_none());
+        assert!(prefs.last_strategy.is_none());
     }
 
     #[rstest::rstest]
@@ -200,6 +211,7 @@ mod tests {
         let path = dir.path().join("nested").join("dir").join("nullslop.toml");
         let prefs = UserPreferences {
             last_model: Some("test/model".to_owned()),
+            last_strategy: None,
         };
 
         // When saving.

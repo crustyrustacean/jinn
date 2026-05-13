@@ -3,8 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::provider::llm_message::LlmMessage;
-use crate::protocol::CommandMsg;
-use crate::protocol::SessionId;
+use crate::protocol::{CommandMsg, SessionId};
 
 /// Switch the active LLM provider.
 ///
@@ -13,6 +12,8 @@ use crate::protocol::SessionId;
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("provider")]
 pub struct ProviderSwitch {
+    /// The session whose model should be switched.
+    pub session_id: SessionId,
     /// The provider to switch to.
     pub provider_id: String,
 }

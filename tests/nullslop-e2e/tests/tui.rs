@@ -163,7 +163,13 @@ fn given_input_buffer_contains(world: &mut TuiWorld, text: String) {
 /// Sets the active provider to a dummy value so message submission works.
 #[cucumber::given(expr = "the active provider is set")]
 fn given_active_provider_set(world: &mut TuiWorld) {
-    world.app.core.state.write().provider.active_provider = "test".to_owned();
+    world
+        .app
+        .core
+        .state
+        .write()
+        .active_session_mut()
+        .set_model("test".to_owned());
 }
 
 // --- When steps ---

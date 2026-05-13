@@ -41,12 +41,16 @@ impl PromptAssemblyActor {
             .tools
             .iter()
             .cloned()
-            .chain(
-                self.tool_definitions
+            .chain({
+                let guard = self.state.read();
+                guard
+                    .context
+                    .tool_definitions
                     .values()
                     .filter(|td| !cmd.tools.iter().any(|t| t.name == td.name))
-                    .cloned(),
-            )
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
             .collect();
 
         // Pre-processing: split history into TOP/BOTTOM pins and working history.

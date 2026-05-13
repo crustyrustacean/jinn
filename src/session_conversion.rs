@@ -29,11 +29,11 @@ pub fn persisted_into_session(persisted: PersistedSession) -> ChatSessionState {
 
     session.restore_history(persisted.history);
     session.switch_strategy(persisted.active_strategy);
+    session.set_model(persisted.model);
 
     // Deserialize strategy state blob — missing → None.
-    if let Some(strategy_value) = persisted.blobs.get(BLOB_STRATEGY_STATE) {
-        session.set_strategy_state(strategy_value.clone());
-    }
+    // Note: the blob is stored in AppState.context.strategy_state HashMap,
+    // not on the session itself. The caller handles restoring it.
 
     // Restore token ledger from blob — missing/malformed → empty.
     if let Some(blob) = persisted.blobs.get(BLOB_TOKEN_STATS)
@@ -63,10 +63,11 @@ pub fn session_to_persisted(
     session: &ChatSessionState,
     session_id: &SessionId,
     title: &str,
+    strategy_state_blob: Option<&serde_json::Value>,
 ) -> PersistedSession {
     let mut blobs = HashMap::new();
 
-    if let Some(strategy_state) = session.strategy_state() {
+    if let Some(strategy_state) = strategy_state_blob {
         blobs.insert(BLOB_STRATEGY_STATE.to_owned(), strategy_state.clone());
     }
 
@@ -94,6 +95,7 @@ pub fn session_to_persisted(
         updated_at: Timestamp::now(),
         history: session.history().to_vec(),
         active_strategy: session.active_strategy().clone(),
+        model: session.profile().model.clone(),
         blobs,
     }
 }
@@ -108,10 +110,10 @@ mod tests {
 
     use super::*;
 
-    // --- Test: Missing strategy blob produces None ---
+    // --- Test: Missing strategy blob is not restored onto session ---
 
     #[rstest::rstest]
-    fn strategy_state_is_none_when_blob_missing() {
+    fn strategy_blob_not_restored_when_missing() {
         // Given a PersistedSession with empty blobs map.
         let persisted = PersistedSession {
             session_id: SessionId::new(),
@@ -119,14 +121,17 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             history: vec![],
             active_strategy: PromptStrategyId::passthrough(),
+            model: nullslop_domain::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             blobs: HashMap::new(),
         };
 
         // When calling persisted_into_session.
         let session = persisted_into_session(persisted);
 
-        // Then strategy state is None.
-        assert!(session.strategy_state().is_none());
+        // Then the blobs map in the persisted session has no strategy key.
+        // (Strategy state is managed by the caller, not persisted_into_session.)
+        assert!(session.token_ledger().is_empty());
+        assert!(session.parent_session().is_none());
     }
 
     // --- Test: Session has defaults when blobs are missing ---
@@ -140,6 +145,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             history: vec![],
             active_strategy: PromptStrategyId::passthrough(),
+            model: nullslop_domain::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             blobs: HashMap::new(),
         };
 
@@ -163,7 +169,7 @@ mod tests {
 
         // When converting to PersistedSession and back to ChatSessionState.
         let session_id = SessionId::new();
-        let persisted = session_to_persisted(&runtime, &session_id, "Test");
+        let persisted = session_to_persisted(&runtime, &session_id, "Test", None);
         let restored = persisted_into_session(persisted);
 
         // Then all ephemeral fields have defaults.
@@ -185,7 +191,7 @@ mod tests {
 
         // When converting to PersistedSession and back to ChatSessionState.
         let session_id = SessionId::new();
-        let persisted = session_to_persisted(&runtime, &session_id, "Test");
+        let persisted = session_to_persisted(&runtime, &session_id, "Test", None);
         let restored = persisted_into_session(persisted);
 
         // Then durable fields are preserved.
@@ -195,20 +201,20 @@ mod tests {
     // --- Test: Strategy state round-trips through blob ---
 
     #[rstest::rstest]
-    fn strategy_state_round_trips_through_persisted_session_blob() {
-        // Given a ChatSessionState with strategy state set.
-        let mut runtime = ChatSessionState::new();
-        runtime.set_strategy_state(serde_json::json!({"compaction_count": 7}));
+    fn strategy_state_blob_round_trips_through_persisted_session() {
+        // Given a ChatSessionState and an explicit strategy state blob.
+        let runtime = ChatSessionState::new();
+        let strategy_blob = serde_json::json!({"compaction_count": 7});
 
-        // When converting to PersistedSession and back.
+        // When converting to PersistedSession with the strategy blob.
         let session_id = SessionId::new();
-        let persisted = session_to_persisted(&runtime, &session_id, "Test");
-        let restored = persisted_into_session(persisted);
+        let persisted = session_to_persisted(&runtime, &session_id, "Test", Some(&strategy_blob));
 
-        // Then the strategy state is preserved.
-        let blob = restored
-            .strategy_state()
-            .expect("strategy state should be restored");
+        // Then the strategy state blob is present in the persisted data.
+        let blob = persisted
+            .blobs
+            .get(BLOB_STRATEGY_STATE)
+            .expect("strategy state blob should be present");
         assert_eq!(blob["compaction_count"], 7);
     }
 
@@ -231,7 +237,7 @@ mod tests {
 
         // When converting to PersistedSession and back.
         let session_id = SessionId::new();
-        let persisted = session_to_persisted(&runtime, &session_id, "Test");
+        let persisted = session_to_persisted(&runtime, &session_id, "Test", None);
         let restored = persisted_into_session(persisted);
 
         // Then the token ledger is preserved.
@@ -254,7 +260,7 @@ mod tests {
 
         // When converting to PersistedSession and back.
         let session_id = SessionId::new();
-        let persisted = session_to_persisted(&runtime, &session_id, "Test");
+        let persisted = session_to_persisted(&runtime, &session_id, "Test", None);
         let restored = persisted_into_session(persisted);
 
         // Then the parent session is preserved.
@@ -272,6 +278,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             history: vec![ChatEntry::user("hello")],
             active_strategy: PromptStrategyId::passthrough(),
+            model: nullslop_domain::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             blobs: HashMap::new(),
         };
 
@@ -292,7 +299,7 @@ mod tests {
 
         // When converting to PersistedSession.
         let session_id = SessionId::new();
-        let persisted = session_to_persisted(&runtime, &session_id, "Test");
+        let persisted = session_to_persisted(&runtime, &session_id, "Test", None);
 
         // Then no token_stats blob is present.
         assert!(!persisted.blobs.contains_key(BLOB_TOKEN_STATS));

@@ -20,7 +20,6 @@ pub use indicator::StreamingIndicatorElement;
 pub use queue_element::QueueDisplayElement;
 
 use crate::common::AppUiRegistry;
-use crate::feat::provider_infra::NO_PROVIDER_ID;
 
 use crate::PickerEntry;
 
@@ -30,11 +29,6 @@ use crate::PickerEntry;
 /// No other actor should mutate these fields.
 #[derive(Debug)]
 pub struct ProviderState {
-    /// The currently active provider. Always set — starts as `NO_PROVIDER_ID`.
-    /// OWNER: provider-actor (sets on ProviderSwitch),
-    ///        src/app.rs (sets initial value at startup).
-    pub active_provider: String,
-
     /// Last known model cache from discovery.
     /// OWNER: provider-actor (updates from ModelsRefreshed event).
     pub model_cache: Option<crate::feat::provider_infra::ModelCache>,
@@ -52,7 +46,6 @@ pub struct ProviderState {
 impl Default for ProviderState {
     fn default() -> Self {
         Self {
-            active_provider: NO_PROVIDER_ID.to_owned(),
             model_cache: None,
             last_refreshed_at: None,
             provider_picker: nullslop_selection_widget::SelectionState::new(),
