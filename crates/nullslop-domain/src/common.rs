@@ -21,7 +21,6 @@ pub type AppUiRegistry = ui_registry::UiRegistry<app_state::AppState>;
 /// UI elements exposes a `register()` function that adds its elements to the registry.
 pub fn register_all_ui_elements(registry: &mut AppUiRegistry) {
     crate::feat::ui::status_bar::register(registry);
-    crate::feat::ui::char_counter::register(registry);
     crate::feat::dashboard::register(registry);
     crate::feat::ui::chat_log::register(registry);
     crate::feat::provider::register(registry);

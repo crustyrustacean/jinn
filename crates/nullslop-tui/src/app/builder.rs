@@ -60,7 +60,6 @@ impl TuiAppBuilder {
         let mut ui_registry = AppUiRegistry::new();
         nullslop_domain::register_all_ui_elements(&mut ui_registry);
         nullslop_domain::feat::ui::status_bar::register(&mut ui_registry);
-        nullslop_domain::feat::ui::char_counter::register(&mut ui_registry);
         nullslop_domain::feat::dashboard::register(&mut ui_registry);
         nullslop_domain::feat::ui::chat_log::register(&mut ui_registry);
         nullslop_domain::feat::provider::register(&mut ui_registry);
