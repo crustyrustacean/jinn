@@ -141,9 +141,9 @@ pub fn coordinated_shutdown(
 
 /// Blocks the calling thread until the actor system signals readiness.
 ///
-/// Spawns an async task that waits for [`CoreNotification::ActorSystemReady`]
-/// on the core receiver with a [`STARTUP_TIMEOUT`] timeout. Must be called
-/// from outside the tokio runtime (e.g., main thread).
+/// Takes a `tokio::sync::oneshot::Receiver` that the system-ready actor
+/// signals when all actors have started. Waits with a [`STARTUP_TIMEOUT`]
+/// timeout. Must be called from outside the tokio runtime (e.g., main thread).
 ///
 /// # Panics
 ///
@@ -151,18 +151,16 @@ pub fn coordinated_shutdown(
 ///
 /// [`CoreNotification`]: crate::CoreNotification
 pub fn wait_for_system_ready(
-    core_receiver: &kanal::Receiver<crate::CoreNotification>,
+    ready_rx: tokio::sync::oneshot::Receiver<()>,
     handle: &tokio::runtime::Handle,
 ) {
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let cloned = core_receiver.clone();
     handle.spawn(async move {
-        let async_rx = cloned.as_async();
-        let result = tokio::time::timeout(STARTUP_TIMEOUT, async_rx.recv()).await;
+        let result = tokio::time::timeout(STARTUP_TIMEOUT, ready_rx).await;
         let _ = tx.send(result);
     });
     match rx.blocking_recv() {
-        Ok(Ok(Ok(crate::CoreNotification::ActorSystemReady))) => {
+        Ok(Ok(Ok(()))) => {
             tracing::info!("actor system ready");
         }
         _ => {

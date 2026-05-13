@@ -15,7 +15,10 @@ pub mod core_notification;
 
 // Re-export primary types owned by this crate
 pub use actor_sink::ActorMessageSink;
-pub use app_core::{AppCore, SHUTDOWN_TIMEOUT, STARTUP_TIMEOUT, coordinated_shutdown, spawn_forwarding_task, wait_for_system_ready};
+pub use app_core::{
+    AppCore, SHUTDOWN_TIMEOUT, STARTUP_TIMEOUT, coordinated_shutdown, spawn_forwarding_task,
+    wait_for_system_ready,
+};
 pub use app_msg::AppMsg;
 pub use core_notification::CoreNotification;
 // Re-export State from nullslop-component

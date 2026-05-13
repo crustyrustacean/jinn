@@ -6,12 +6,8 @@
 //! `ModelsRefreshed` event.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::feat::provider::protocol::command::RefreshModels;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::provider_infra::{
@@ -184,26 +180,4 @@ impl DiscoverActor {
             payload: ModelsRefreshed { results, errors },
         });
     }
-}
-
-/// Spawns the model discovery actor on the given tokio runtime.
-///
-/// Creates the actor's channel, context, and run loop. Injects the provider
-/// registry and API keys service. Returns the `ActorRef` for sending direct
-/// messages and the `ActorSpawnResult` containing the routing entry and join handle.
-pub fn spawn_discover_actor(
-    registry: crate::feat::provider_infra::ProviderRegistryService,
-    api_keys: crate::feat::provider_infra::ApiKeysService,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<DiscoverDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<DiscoverDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("llm-provider-listing", sink);
-    ctx.set_description("Discovers available models");
-    ctx.set_data(registry);
-    ctx.set_data(api_keys);
-    let actor = DiscoverActor::activate(&mut ctx);
-    let result = spawn_actor_impl("llm-provider-listing", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
 }

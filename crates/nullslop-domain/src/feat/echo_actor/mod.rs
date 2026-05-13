@@ -5,13 +5,9 @@
 //! (`ActorStarted`, `ActorShutdownCompleted`) are sent via the `ActorContext`
 //! helpers, which are automatically triggered by host-broadcast lifecycle events.
 
-use std::sync::Arc;
 use std::time::Duration;
 
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
@@ -44,21 +40,6 @@ impl Actor for EchoActor {
     }
 
     async fn shutdown(self) {}
-}
-
-/// Spawns the echo actor on the given tokio runtime.
-///
-/// Returns the actor reference and spawn result for routing registration.
-pub fn spawn(
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<EchoDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<EchoDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("echo", sink);
-    let actor = EchoActor::activate(&mut ctx);
-    let result = spawn_actor_impl("echo", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
 }
 
 impl EchoActor {

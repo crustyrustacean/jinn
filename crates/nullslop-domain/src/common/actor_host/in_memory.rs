@@ -9,8 +9,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage};
 use crate::common::actor::protocol::event::{ActorStarted, ActorStarting};
+use crate::common::actor::{
+    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
+};
 use crate::protocol::{ActorName, Command, CommandName, Event, EventTypeName};
 use error_stack::Report;
 use kanal::Receiver;
