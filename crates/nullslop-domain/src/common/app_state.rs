@@ -204,6 +204,10 @@ impl ScopeStack {
     }
 
     /// Returns the current (top) scope.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stack is empty (should never happen as the base is always present).
     #[must_use]
     pub fn current(&self) -> &FocusScope {
         self.stack.last().expect("stack always has base")
@@ -245,6 +249,12 @@ impl ScopeStack {
     #[must_use]
     pub fn is_sidebar(&self) -> bool {
         matches!(self.current(), FocusScope::Sidebar)
+    }
+
+    /// Returns `true` if the stack has no scopes.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.stack.is_empty()
     }
 
     /// Returns the number of scopes on the stack.
@@ -577,12 +587,16 @@ mod tests {
     #[rstest::rstest]
     fn clear_expired_notification_removes_when_old() {
         // Given a FrontendState with a manually constructed expired notification.
-        let mut state = FrontendState::default();
-        state.status_notification = Some(StatusNotification {
-            message: "old".to_owned(),
-            // Created 10 seconds ago — expired.
-            created_at: std::time::Instant::now() - std::time::Duration::from_secs(10),
-        });
+        let mut state = FrontendState {
+            status_notification: Some(StatusNotification {
+                message: "old".to_owned(),
+                // Created 10 seconds ago — expired.
+                created_at: std::time::Instant::now()
+                    .checked_sub(std::time::Duration::from_secs(10))
+                    .unwrap(),
+            }),
+            ..Default::default()
+        };
 
         // When clearing expired notifications.
         state.clear_expired_notification();

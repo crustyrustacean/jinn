@@ -85,10 +85,8 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     });
                 }
             }
-            // Table entries are ephemeral display data — not sent to the LLM.
-            ChatEntryKind::Table(_) => {}
-            // Error entries are local status messages — not sent to the LLM.
-            ChatEntryKind::Error(_) => {}
+            // Table and Error entries are ephemeral display / local status — not sent to the LLM.
+            ChatEntryKind::Table(_) | ChatEntryKind::Error(_) => {}
         }
     }
 

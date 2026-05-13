@@ -40,8 +40,7 @@ pub fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
         .frontend
         .scope_stack
         .parent()
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "unknown".to_owned());
+        .map_or_else(|| "unknown".to_owned(), std::string::ToString::to_string);
     let footer = if state.frontend.keymap_picker_show_all {
         Line::from(format!(" All scopes | CTRL+A to show {scope_name} "))
     } else {

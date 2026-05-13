@@ -9,7 +9,10 @@ use crate::feat::provider::protocol::event::{
 use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
-use crate::protocol::{ChatEntry, Command};
+use ratatui::style::{Color, Style};
+use ratatui::text::Span;
+
+use crate::protocol::{ChatEntry, Command, TableData};
 
 use super::super::SessionPersistenceActor;
 
@@ -39,10 +42,8 @@ impl SessionPersistenceActor {
                 .map(|msg| match msg {
                     crate::protocol::LlmMessage::System { content }
                     | crate::protocol::LlmMessage::User { content } => self.counter.count(content),
-                    crate::protocol::LlmMessage::Assistant { content, .. } => {
-                        self.counter.count(content)
-                    }
-                    crate::protocol::LlmMessage::Tool { content, .. } => {
+                    crate::protocol::LlmMessage::Assistant { content, .. }
+                    | crate::protocol::LlmMessage::Tool { content, .. } => {
                         self.counter.count(content)
                     }
                 })
@@ -162,11 +163,6 @@ impl SessionPersistenceActor {
             return;
         }
 
-        use ratatui::style::{Color, Style};
-        use ratatui::text::Span;
-
-        use crate::protocol::TableData;
-
         let headers = vec![
             Span::raw("Provider"),
             Span::raw("Model Count"),
@@ -178,9 +174,9 @@ impl SessionPersistenceActor {
             .results
             .keys()
             .chain(event.errors.keys())
-            .map(|s| s.as_str())
+            .map(std::string::String::as_str)
             .collect();
-        all_providers.sort();
+        all_providers.sort_unstable();
         all_providers.dedup();
 
         let mut rows = Vec::new();
@@ -195,7 +191,7 @@ impl SessionPersistenceActor {
                 rows.push(vec![
                     Span::raw(provider.to_owned()),
                     Span::raw("0".to_owned()),
-                    Span::styled(format!("\u{274c} {}", err), Style::default().fg(Color::Red)),
+                    Span::styled(format!("\u{274c} {err}"), Style::default().fg(Color::Red)),
                 ]);
             }
         }
