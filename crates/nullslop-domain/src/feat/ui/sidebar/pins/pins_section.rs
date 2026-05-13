@@ -294,10 +294,6 @@ fn truncate_str(s: &str, max_len: usize) -> String {
 }
 
 /// Builds the list of lines for the pinned entries panel.
-#[expect(
-    clippy::indexing_slicing,
-    reason = "iterating with enumerate over pinned slice"
-)]
 fn build_entry_list(
     pinned: &[&crate::protocol::ChatEntry],
     selected_index: usize,

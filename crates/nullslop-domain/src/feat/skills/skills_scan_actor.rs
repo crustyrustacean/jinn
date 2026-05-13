@@ -83,7 +83,7 @@ impl SkillsScanActor {
                 // Write skills to shared state.
                 {
                     let mut guard = self.state.write();
-                    guard.context.skills = skills.clone();
+                    guard.context.skills.clone_from(&skills);
                 }
 
                 let _ = ctx.send_event(Event::SkillsLoaded {
