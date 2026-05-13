@@ -6,12 +6,7 @@
 //! cache entries into the registry, loads user preferences, and if `last_model`
 //! is set, sends a `ProviderSwitch` command to apply it.
 
-use std::sync::Arc;
-
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::common::services::Services;
 use crate::feat::provider::protocol::command::ProviderSwitch;
 use crate::feat::provider_infra::{ModelCache, ProviderRegistry, cache_path};
@@ -122,22 +117,6 @@ impl ProviderInitActor {
             }
         }
     }
-}
-
-/// Spawns the provider init actor.
-pub fn spawn_provider_init_actor(
-    services: Services,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<ProviderInitDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<ProviderInitDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("provider-init", sink);
-    ctx.set_description("Loads provider config, merges cache, resolves last_model");
-    ctx.set_data(services);
-    let actor = ProviderInitActor::activate(&mut ctx);
-    let result = spawn_actor_impl("provider-init", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
 }
 
 #[cfg(test)]

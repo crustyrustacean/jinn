@@ -5,12 +5,8 @@
 //! [`PersonasLoaded`] events with the results.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::feat::context::protocol::command::RescanPersonas;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::persona::scan_personas_dir;
@@ -96,21 +92,4 @@ impl PersonaScanActor {
             }
         }
     }
-}
-
-/// Spawns the persona scan actor on the given tokio runtime.
-///
-/// The persona scan actor scans and reloads persona files from the given directory.
-pub fn spawn_persona_scan_actor(
-    personas_dir: PathBuf,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<PersonaScanDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<PersonaScanDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("persona-scan", sink);
-    ctx.set_data(personas_dir);
-    let actor = PersonaScanActor::activate(&mut ctx);
-    let result = spawn_actor_impl("persona-scan", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
 }

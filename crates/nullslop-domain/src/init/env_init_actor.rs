@@ -1,24 +1,21 @@
 //! Environment initialization actor — reads env vars and populates API keys.
 //!
-//! Loads `providers.toml` to discover which environment variables hold API keys,
-//! resolves those keys, populates the shared `ApiKeysService`, and emits
-//! `EnvironmentLoaded` with the parsed config so downstream actors don't need
-//! to reload the file.
+//! Self-schedules an [`EnvInitDirectMsg::Initialize`] message during activation.
+//! On receipt: loads `providers.toml`, resolves API keys from environment
+//! variables, populates the shared `ApiKeysService`, and emits
+//! `EnvironmentLoaded` with the parsed config so downstream actors
+//! (provider_init) can use it without reloading the file.
 
-use std::sync::Arc;
-
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::feat::provider_infra::{ApiKeysService, ConfigStorageService, ProvidersConfig};
-use crate::protocol::EventMsg;
+use crate::protocol::{Event, EventMsg};
 use wherror::Error;
 
 /// Error type for environment initialization failures.
 #[derive(Debug, Error)]
 #[error(debug)]
 pub struct EnvInitError;
+
 /// The environment has been loaded and API keys are available.
 ///
 /// Emitted after the env init actor has populated `ApiKeysService`.
@@ -31,13 +28,17 @@ pub struct EnvironmentLoaded {
     pub config: ProvidersConfig,
 }
 
-/// Direct message type (unused — the env init actor only reacts to system messages).
-pub enum EnvInitDirectMsg {}
+/// Direct messages for the environment initialization actor.
+pub enum EnvInitDirectMsg {
+    /// Trigger initialization: load config and resolve API keys.
+    Initialize,
+}
 
 /// The environment initialization actor.
 ///
-/// Loads `providers.toml`, resolves API keys from environment variables,
-/// populates `ApiKeysService`, and emits `EnvironmentLoaded`.
+/// Self-schedules `Initialize` during activation. On receipt, loads
+/// `providers.toml`, resolves API keys, populates `ApiKeysService`,
+/// and emits `EnvironmentLoaded`.
 pub struct EnvInitActor {
     /// Config storage for loading `providers.toml`.
     config_storage: ConfigStorageService,
@@ -55,6 +56,12 @@ impl Actor for EnvInitActor {
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.set_description("Loads environment variables and API keys");
 
+        // Self-schedule initialization — the message buffers until the run loop starts.
+        let self_ref = ctx
+            .take_actor_ref::<EnvInitDirectMsg>()
+            .expect("EnvInitActor requires self-ref injection");
+        let _ = self_ref.send(EnvInitDirectMsg::Initialize);
+
         let config_storage = ctx
             .take_data::<ConfigStorageService>()
             .expect("EnvInitActor requires ConfigStorageService injection");
@@ -70,37 +77,48 @@ impl Actor for EnvInitActor {
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
+            ActorEnvelope::Direct(EnvInitDirectMsg::Initialize) => {
+                self.on_initialize(ctx);
+            }
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Event(_)
-            | ActorEnvelope::Command(_)
-            | ActorEnvelope::Direct(_)
-            | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Event(_) | ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
         }
     }
 
     async fn shutdown(self) {}
 }
 
+impl EnvInitActor {
+    /// Loads config, resolves API keys, emits `EnvironmentLoaded`.
+    fn on_initialize(&self, ctx: &ActorContext) {
+        let config = match self.config_storage.load() {
+            Ok(config) => config,
+            Err(e) => {
+                tracing::error!(err = ?e, "env-init failed to load provider config");
+                return;
+            }
+        };
 
+        // Resolve API keys from environment variables.
+        for provider in &config.providers {
+            if let Some(ref env_var) = provider.api_key_env
+                && let Ok(value) = std::env::var(env_var)
+                && !value.is_empty()
+            {
+                self.api_keys.insert(env_var.clone(), value);
+            }
+        }
 
-/// Spawns the env init actor.
-pub fn spawn_env_init_actor(
-    config_storage: ConfigStorageService,
-    api_keys: ApiKeysService,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<EnvInitDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<EnvInitDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("env-init", sink);
-    ctx.set_description("Loads environment variables and API keys");
-    ctx.set_data(config_storage);
-    ctx.set_data(api_keys);
-    let actor = EnvInitActor::activate(&mut ctx);
-    let result = spawn_actor_impl("env-init", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
+        tracing::info!("environment loaded, API keys resolved");
+
+        if let Err(e) = ctx.send_event(Event::EnvironmentLoaded {
+            payload: EnvironmentLoaded { config },
+        }) {
+            tracing::error!(err = ?e, "env-init failed to emit EnvironmentLoaded");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -108,11 +126,12 @@ mod tests {
     use std::sync::Arc;
 
     use crate::common::actor::{
-        Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
+        Actor as _, ActorContext, ActorEnvelope, ActorRef, MessageSink, RecordingSink,
     };
     use crate::feat::provider_infra::{
         ApiKeys, ApiKeysService, ConfigStorageService, FilesystemConfigStorage,
     };
+
     use super::EnvInitActor;
 
     /// Creates a test actor with in-memory storage.
@@ -124,6 +143,9 @@ mod tests {
     ) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("env-init", sink.clone() as Arc<dyn MessageSink>);
+        ctx.set_actor_ref(ActorRef::new(
+            kanal::unbounded::<ActorEnvelope<super::EnvInitDirectMsg>>().0,
+        ));
 
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join("providers.toml");
@@ -138,6 +160,25 @@ mod tests {
         (actor, api_keys, sink, ctx)
     }
 
-    // Note: The ApplicationReady → on_application_ready flow has been removed.
-    // Init logic will be replaced with self-scheduling in Phase 2.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn initialize_emits_environment_loaded() {
+        // Given an env init actor.
+        let (mut actor, _api_keys, sink, ctx) = create_actor();
+
+        // When processing Initialize.
+        actor
+            .handle(
+                ActorEnvelope::Direct(super::EnvInitDirectMsg::Initialize),
+                &ctx,
+            )
+            .await;
+
+        // Then an EnvironmentLoaded event was emitted.
+        let events = sink.events();
+        let found = events
+            .iter()
+            .any(|e| matches!(e, crate::protocol::Event::EnvironmentLoaded { .. }));
+        assert!(found, "expected EnvironmentLoaded event");
+    }
 }

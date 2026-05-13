@@ -17,12 +17,7 @@
 //! All handlers follow the same pattern: acquire state lock → mutate → release →
 //! then emit. Never hold the lock during emission.
 
-use std::sync::Arc;
-
-use crate::common::actor::{
-    Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink, SystemMessage,
-};
-use crate::common::actor_host::{ActorSpawnResult, spawn_actor_impl};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
@@ -199,29 +194,6 @@ impl ProviderActor {
         // Also reload provider picker entries from updated model cache.
         load_provider_picker_items(&self.services, &mut state);
     }
-}
-
-/// Spawns the provider actor on the given tokio runtime.
-///
-/// Creates the actor's channel, context, and run loop. Injects shared
-/// [`State`](crate::common::state::State) and [`Services`](crate::common::services::Services).
-/// Returns the `ActorRef` for sending direct messages and the `ActorSpawnResult`
-/// containing the routing entry and join handle.
-pub fn spawn_provider_actor(
-    state: crate::common::state::State,
-    services: crate::common::services::Services,
-    sink: Arc<dyn MessageSink>,
-    handle: &tokio::runtime::Handle,
-) -> (ActorRef<ProviderDirectMsg>, ActorSpawnResult) {
-    let (tx, rx) = kanal::unbounded::<ActorEnvelope<ProviderDirectMsg>>();
-    let actor_ref = ActorRef::new(tx);
-    let mut ctx = ActorContext::new("provider", sink);
-    ctx.set_description("Manages provider selection, LLM factory, and model cache");
-    ctx.set_data(state);
-    ctx.set_data(services);
-    let actor = ProviderActor::activate(&mut ctx);
-    let result = spawn_actor_impl("provider", actor, &actor_ref, rx, ctx, handle);
-    (actor_ref, result)
 }
 
 #[cfg(test)]
