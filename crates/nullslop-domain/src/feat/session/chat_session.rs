@@ -11,9 +11,12 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU16, Ordering};
 
+use jiff::Timestamp;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::feat::chat_input::ChatInputBoxState;
+use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{
@@ -24,51 +27,81 @@ use crate::protocol::{
 ///
 /// IntentHandler is exempt and may read/write any field.
 /// No other actor should mutate these fields.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SessionCore {
+    /// Unique identifier for this session.
+    /// Generated at construction. Matches the HashMap key in `SessionState.sessions`.
+    session_id: SessionId,
+    /// Human-readable title. `None` until the first user message is sent.
+    /// OWNER: session-actor (set on first user message, changeable by user).
+    #[serde(default)]
+    title: Option<String>,
+    /// When this session was last updated. Set at construction, updated on save.
+    updated_at: Timestamp,
     /// All messages in this conversation.
     /// OWNER: session-actor (creates/removes entries, restores history)
     history: Vec<ChatEntry>,
     /// Index into `history` for the entry currently receiving stream tokens.
     /// OWNER: session-actor
+    #[serde(skip)]
     streaming_entry_index: Option<usize>,
     /// Whether an LLM stream is actively producing tokens.
     /// OWNER: session-actor
+    #[serde(skip)]
     is_streaming: bool,
     /// Messages waiting to be sent to the LLM, one at a time.
     /// OWNER: session-actor
+    #[serde(skip)]
     message_queue: VecDeque<String>,
     /// Whether a message has been dispatched to the LLM but no tokens have arrived yet.
     /// OWNER: session-actor
+    #[serde(skip)]
     is_sending: bool,
     /// Whether a prompt assembly request is in progress.
     /// OWNER: session-actor
+    #[serde(skip)]
     is_assembling: bool,
     /// Per-session model and strategy selection.
     /// OWNER: provider-actor (model), context-actor (strategy via SwitchPromptStrategy command)
     profile: SessionProfile,
     /// Maps stream tool call index to history index for in-progress tool calls.
     /// OWNER: session-actor
+    #[serde(skip)]
     streaming_tool_call_indices: HashMap<usize, usize>,
     /// Working directory for tool execution in this session.
     /// OWNER: IntentHandler (set on session creation and cd commands)
+    #[serde(skip)]
     cwd: std::path::PathBuf,
     /// Token usage ledger — one immutable record per request/response pair.
     /// OWNER: session-actor (records tokens on PromptAssembled and StreamCompleted).
+    #[serde(default)]
     token_ledger: Vec<TokenRecord>,
     /// Parent session ID, if this session was forked from another.
     /// `None` means this is a root session.
     /// OWNER: session-actor (set at session creation).
+    #[serde(default)]
     parent_session: Option<SessionId>,
     /// Cached context size in tokens (assembled prompt size).
     /// Updated when PromptAssembled fires.
     /// OWNER: session-actor.
+    #[serde(default)]
     cached_context_size: Option<u32>,
+    /// Per-strategy persistent state. Keyed by strategy ID so switching
+    /// strategies preserves previous state for when the user switches back.
+    /// OWNER: context-actor (reads/writes during RestoreStrategyState, SwitchPromptStrategy).
+    #[serde(default)]
+    strategy_state: HashMap<PromptStrategyId, StrategyState>,
+    /// Generic blob storage for future subsystems.
+    #[serde(default)]
+    blobs: HashMap<String, JsonValue>,
 }
 
 impl Default for SessionCore {
     fn default() -> Self {
         Self {
+            session_id: SessionId::new(),
+            title: None,
+            updated_at: Timestamp::now(),
             history: Vec::new(),
             streaming_entry_index: None,
             is_streaming: false,
@@ -81,6 +114,8 @@ impl Default for SessionCore {
             token_ledger: Vec::new(),
             parent_session: None,
             cached_context_size: None,
+            strategy_state: HashMap::new(),
+            blobs: HashMap::new(),
         }
     }
 }
@@ -131,11 +166,12 @@ impl Default for SessionUi {
 /// Fields are grouped into [`SessionCore`] (session-actor / context-actor)
 /// and [`SessionUi`] (IntentHandler) sub-structs to make cross-boundary
 /// writes visually obvious during code review.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ChatSessionState {
     /// Core domain state managed by session-actor and context-actor.
     core: SessionCore,
     /// UI state managed by IntentHandler.
+    #[serde(skip)]
     ui: SessionUi,
 }
 
@@ -724,6 +760,58 @@ impl ChatSessionState {
     /// Restore the parent session from persisted data.
     pub fn restore_parent_session(&mut self, parent: Option<SessionId>) {
         self.core.parent_session = parent;
+    }
+
+    // --- New durable field accessors ---
+
+    /// This session's unique identifier.
+    pub fn session_id(&self) -> &SessionId {
+        &self.core.session_id
+    }
+
+    /// Set the session ID (used when inserting into a HashMap with an external key).
+    pub(crate) fn set_session_id(&mut self, id: SessionId) {
+        self.core.session_id = id;
+    }
+
+    /// The session title. `None` until the first user message.
+    pub fn title(&self) -> Option<&str> {
+        self.core.title.as_deref()
+    }
+
+    /// Set the session title.
+    pub fn set_title(&mut self, title: String) {
+        self.core.title = Some(title);
+    }
+
+    /// When this session was last updated.
+    pub fn updated_at(&self) -> &Timestamp {
+        &self.core.updated_at
+    }
+
+    /// Update the timestamp to now.
+    pub fn touch(&mut self) {
+        self.core.updated_at = Timestamp::now();
+    }
+
+    /// Per-strategy state for this session.
+    pub fn strategy_state(&self) -> &HashMap<PromptStrategyId, StrategyState> {
+        &self.core.strategy_state
+    }
+
+    /// Mutable access to per-strategy state.
+    pub fn strategy_state_mut(&mut self) -> &mut HashMap<PromptStrategyId, StrategyState> {
+        &mut self.core.strategy_state
+    }
+
+    /// Generic blob storage for future subsystems.
+    pub fn blobs(&self) -> &HashMap<String, JsonValue> {
+        &self.core.blobs
+    }
+
+    /// Mutable access to generic blob storage.
+    pub fn blobs_mut(&mut self) -> &mut HashMap<String, JsonValue> {
+        &mut self.core.blobs
     }
 }
 
