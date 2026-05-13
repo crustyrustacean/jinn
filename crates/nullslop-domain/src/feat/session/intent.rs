@@ -9,9 +9,7 @@ use super::validator;
 
 /// Creates a new chat session, replacing the active one.
 pub fn handle_session_new(state: &mut AppState) -> IntentResult {
-    if validator::validate_session_new(state).is_err() {
-        return IntentResult::empty();
-    }
+    validator::validate_session_new(state);
 
     state.session.sessions.remove(&state.session.active_session);
 
@@ -89,7 +87,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn session_new_noop_when_picker_active() {
+    fn session_new_closes_picker_and_creates_session() {
         // Given a state with an active picker.
         let mut state = AppState::default();
         state
@@ -101,11 +99,12 @@ mod tests {
         let old_id = state.session.active_session.clone();
 
         // When handling SessionNew.
-        let result = handle_session_new(&mut state);
+        let _result = handle_session_new(&mut state);
 
-        // Then nothing changed.
-        assert_eq!(state.session.active_session, old_id);
-        assert!(result.commands.is_empty());
+        // Then a new session is created.
+        assert_ne!(state.session.active_session, old_id);
+        // And the picker is closed.
+        assert!(!state.frontend.scope_stack.is_picker());
     }
 
     #[rstest::rstest]
