@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use crate::protocol::{
     ActiveTab, ChatEntryId, Mode, PickerKind, PinPosition, PromptStrategyId, SessionId,
+    ToolDefinition,
 };
 use serde_json::Value as JsonValue;
 
@@ -95,6 +96,9 @@ pub struct ContextAssemblyState {
     /// The currently active persona (injected into system prompt).
     /// OWNER: context-actor (updated on PersonasLoaded, set on picker confirm).
     pub active_persona: Option<Persona>,
+    /// Registered tool definitions, keyed by tool name.
+    /// OWNER: tools-actor (populated on ToolsRegistered event), read by context-actor and llm-actor.
+    pub tool_definitions: HashMap<String, ToolDefinition>,
 }
 
 impl Default for ContextAssemblyState {
@@ -105,6 +109,7 @@ impl Default for ContextAssemblyState {
             skills: Vec::new(),
             personas: Vec::new(),
             active_persona: None,
+            tool_definitions: HashMap::new(),
         }
     }
 }

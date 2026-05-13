@@ -7,13 +7,17 @@ use crate::feat::tools_actor::protocol::event::ToolsRegistered;
 use super::super::PromptAssemblyActor;
 
 impl PromptAssemblyActor {
-    /// Caches tool definitions from a [`ToolsRegistered`] event.
+    /// Caches tool definitions from a [`ToolsRegistered`] event into shared state.
     pub(in crate::feat::context::context_actor) fn on_tools_registered(
-        &mut self,
+        &self,
         evt: &ToolsRegistered,
     ) {
+        let mut state = self.state.write();
         for def in &evt.definitions {
-            self.tool_definitions.insert(def.name.clone(), def.clone());
+            state
+                .context
+                .tool_definitions
+                .insert(def.name.clone(), def.clone());
         }
     }
 
