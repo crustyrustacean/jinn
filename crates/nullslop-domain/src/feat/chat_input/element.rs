@@ -56,7 +56,7 @@ impl UiElement<AppState> for ChatInputBoxElement {
 
         let lines = build_wrapped_lines(
             state.active_chat_input().text(),
-            state.active_chat_input().wrapped_lines(),
+            &state.active_chat_input().wrapped_lines(),
             state.active_chat_input().scroll_offset(),
             max_visible_lines,
             prompt_style,
@@ -84,7 +84,7 @@ impl UiElement<AppState> for ChatInputBoxElement {
 /// The first visual line gets a `> ` prompt prefix, all others get `  ` indentation.
 fn build_wrapped_lines<'a>(
     text: &str,
-    wrapped: Vec<WrappedLine>,
+    wrapped: &[WrappedLine],
     scroll_offset: usize,
     max_visible_lines: usize,
     prompt_style: Style,
@@ -469,7 +469,7 @@ mod tests {
             .unwrap();
 
         // Then cursor is on row 2 (the continuation line).
-        let buffer = terminal.backend().buffer().clone();
+        let _buffer = terminal.backend().buffer().clone();
         // The cursor should be visible on the second visual line.
         // Cursor at pos 11 (end). Wrapped lines: "> hello " and "  world".
         // Row 0 = "> hello " (8 graphemes), Row 1 = "  world" (5 graphemes).

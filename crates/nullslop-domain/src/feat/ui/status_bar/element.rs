@@ -19,6 +19,7 @@ use ratatui::widgets::Paragraph;
 pub struct StatusBarElement;
 
 /// Format a token count in human-readable form.
+#[allow(clippy::cast_precision_loss)]
 fn format_tokens(count: u64) -> String {
     if count >= 1_000_000 {
         format!("{:.1}M", count as f64 / 1_000_000.0)
@@ -48,7 +49,7 @@ impl UiElement<AppState> for StatusBarElement {
             format_tokens(agg.total_received()),
         );
         if let Some(ctx_size) = state.active_session().context_size() {
-            token_info = format!("{} ctx:{}", token_info, format_tokens(ctx_size as u64));
+            token_info = format!("{} ctx:{}", token_info, format_tokens(u64::from(ctx_size)));
         }
 
         let left = if pinned_count > 0 {
@@ -398,7 +399,7 @@ mod tests {
         };
         state.frontend.status_notification = Some(StatusNotification {
             message: "old msg".to_owned(),
-            created_at: std::time::Instant::now() - std::time::Duration::from_secs(5),
+            created_at: std::time::Instant::now().checked_sub(std::time::Duration::from_secs(5)).unwrap(),
         });
         let (mut terminal, area) = setup_term(80, 1);
         terminal

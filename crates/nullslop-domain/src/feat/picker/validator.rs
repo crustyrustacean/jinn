@@ -54,7 +54,7 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
         .frontend
         .scope_stack
         .picker_kind()
-        .cloned()
+        .copied()
         .ok_or(PickerConfirmError::NoActivePicker)?;
 
     let has_selection = match kind {

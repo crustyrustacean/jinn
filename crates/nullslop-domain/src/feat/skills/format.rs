@@ -24,18 +24,15 @@ pub fn format_skills_for_prompt(skills: &[Skill]) -> String {
         return String::new();
     }
 
-    let mut lines = Vec::new();
-    lines.push(String::new());
-    lines.push(
+    let mut lines = vec![
+        String::new(),
         "The following skills provide specialized instructions for specific tasks.".to_owned(),
-    );
-    lines.push(
         "Use the skill tool to load a skill's file when the task matches its description."
             .to_owned(),
-    );
-    lines.push("When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.".to_owned());
-    lines.push(String::new());
-    lines.push("<available_skills>".to_owned());
+        "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.".to_owned(),
+        String::new(),
+        "<available_skills>".to_owned(),
+    ];
 
     for skill in skills {
         lines.push("  <skill>".to_owned());

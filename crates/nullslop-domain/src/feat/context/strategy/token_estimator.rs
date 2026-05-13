@@ -28,7 +28,7 @@ pub trait TokenEstimator: Send + Sync {
 /// text that `entries_to_messages` would produce for them.
 pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) -> usize {
     match &entry.kind {
-        ChatEntryKind::User(text) | ChatEntryKind::Assistant(text) => estimator.estimate(text),
+        ChatEntryKind::User(text) | ChatEntryKind::Assistant(text) | ChatEntryKind::Error(text) => estimator.estimate(text),
         ChatEntryKind::ToolCall {
             name, arguments, ..
         } => estimator.estimate(name) + estimator.estimate(arguments),
@@ -53,8 +53,6 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         }
         // Table entries are ephemeral display data — estimate based on plain-text content.
         ChatEntryKind::Table(data) => estimator.estimate(&data.to_plain_text()),
-        // Error entries are short status messages — count as their text content.
-        ChatEntryKind::Error(text) => estimator.estimate(text),
     }
 }
 
@@ -107,6 +105,11 @@ impl TiktokenCounter {
     /// Create a counter using the `o200k_base` encoding (GPT-4o, o1, o3).
     ///
     /// This is a reasonable default for most LLM interactions.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `o200k_base` encoding is unavailable, which should never happen
+    /// as it is a built-in tiktoken encoding.
     #[must_use]
     pub fn o200k_base() -> Self {
         let encoder = tiktoken::get_encoding("o200k_base")

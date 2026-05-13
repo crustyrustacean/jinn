@@ -94,8 +94,8 @@ fn parse_args(raw: &str) -> Result<(String, Option<usize>, Option<usize>), serde
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_owned();
-    let offset = v.get("offset").and_then(|v| v.as_u64()).map(|n| n as usize);
-    let limit = v.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize);
+    let offset = v.get("offset").and_then(serde_json::Value::as_u64).map(|n| n as usize);
+    let limit = v.get("limit").and_then(serde_json::Value::as_u64).map(|n| n as usize);
     Ok((path, offset, limit))
 }
 
@@ -108,7 +108,7 @@ fn apply_offset_limit(content: &str, offset: Option<usize>, limit: Option<usize>
     let total_lines = lines.len();
 
     // offset is 1-indexed, convert to 0-indexed
-    let start = offset.map(|o| o.saturating_sub(1)).unwrap_or(0);
+    let start = offset.map_or(0, |o| o.saturating_sub(1));
 
     if start >= total_lines {
         return format!(

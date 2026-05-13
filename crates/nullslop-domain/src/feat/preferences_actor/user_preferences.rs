@@ -25,7 +25,7 @@ pub enum UserPreferencesError {
 ///
 /// This file stores user behavior preferences that should survive
 /// app restarts — e.g., the last model selected from the picker.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UserPreferences {
     /// The provider ID of the last model selected from the model picker.
     /// Format: `{provider_name}/{model}` (e.g., `"ollama/llama3"`).
@@ -33,11 +33,6 @@ pub struct UserPreferences {
     pub last_model: Option<String>,
 }
 
-impl Default for UserPreferences {
-    fn default() -> Self {
-        Self { last_model: None }
-    }
-}
 
 /// Returns the path to the user preferences file.
 ///

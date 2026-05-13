@@ -301,8 +301,7 @@ impl ToolOrchestratorActor {
                 .session
                 .sessions
                 .get(session_id)
-                .map(|s| s.cwd().to_owned())
-                .unwrap_or_else(|| PathBuf::from("/"))
+                .map_or_else(|| PathBuf::from("/"), |s| s.cwd().to_owned())
         };
         ToolContext {
             cwd,
@@ -351,7 +350,7 @@ impl ToolOrchestratorActor {
                                 Err(_) => ToolResult {
                                     tool_call_id: call_id,
                                     name: call_name,
-                                    content: format!("tool execution timed out after {:?}", dur),
+                                    content: format!("tool execution timed out after {dur:?}"),
                                     success: false,
                                 },
                             }
@@ -1453,8 +1452,7 @@ mod tests {
         let handle_count = actor
             .pending
             .get(&session_id)
-            .map(|b| b.handles.len())
-            .unwrap_or(0);
+            .map_or(0, |b| b.handles.len());
         assert_eq!(handle_count, 1, "should have one spawned task handle");
 
         // When cancelling the tool batch.

@@ -21,8 +21,8 @@ pub enum LineEnding {
 /// Returns `(content_without_bom, Some(bom))` if BOM was present,
 /// or `(content, None)` if no BOM.
 pub fn strip_bom(content: &str) -> (&str, Option<&str>) {
-    if content.starts_with('\u{feff}') {
-        (&content[3..], Some(&content[..3]))
+    if let Some(stripped) = content.strip_prefix('\u{feff}') {
+        (stripped, Some(&content[..3]))
     } else {
         (content, None)
     }
