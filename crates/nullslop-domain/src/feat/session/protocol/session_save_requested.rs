@@ -29,6 +29,8 @@ pub struct SessionSaveRequested {
     pub history: Vec<ChatEntry>,
     /// The active prompt strategy for this session.
     pub active_strategy: PromptStrategyId,
+    /// The model/provider used in this session (e.g., "ollama/llama3").
+    pub model: String,
     /// Opaque subsystem state blobs (workflow, strategy, etc.).
     #[serde(default)]
     pub blobs: HashMap<String, JsonValue>,

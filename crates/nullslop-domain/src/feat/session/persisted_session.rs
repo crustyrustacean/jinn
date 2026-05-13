@@ -18,6 +18,11 @@ use crate::protocol::{ChatEntry, PromptStrategyId, SessionId};
 /// Blob key for prompt strategy state.
 pub const BLOB_STRATEGY_STATE: &str = "strategy_state";
 
+/// Default model value for serde deserialization of old session files.
+fn default_model() -> String {
+    crate::feat::provider_infra::NO_PROVIDER_ID.to_owned()
+}
+
 /// A serializable snapshot of a chat session for persistence.
 ///
 /// Contains only durable data — ephemeral runtime state (streaming flags,
@@ -39,6 +44,10 @@ pub struct PersistedSession {
     pub history: Vec<ChatEntry>,
     /// The active prompt strategy for this session.
     pub active_strategy: PromptStrategyId,
+    /// The model/provider used in this session (e.g., "ollama/llama3").
+    /// Defaults to `NO_PROVIDER_ID` for old sessions without this field.
+    #[serde(default = "default_model")]
+    pub model: String,
     /// Opaque subsystem state blobs, keyed by well-known constants.
     #[serde(default)]
     pub blobs: HashMap<String, JsonValue>,
@@ -85,6 +94,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             history: vec![ChatEntry::user("hello"), ChatEntry::assistant("world")],
             active_strategy: PromptStrategyId::sliding_window(),
+            model: "ollama/llama3".to_owned(),
             blobs,
         };
 
@@ -97,6 +107,7 @@ mod tests {
         assert_eq!(back.title, original.title);
         assert_eq!(back.history.len(), 2);
         assert_eq!(back.active_strategy, original.active_strategy);
+        assert_eq!(back.model, "ollama/llama3");
         assert!(back.blobs.contains_key(BLOB_STRATEGY_STATE));
     }
 
@@ -112,6 +123,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             history: vec![ChatEntry::user("hello")],
             active_strategy: PromptStrategyId::passthrough(),
+            model: crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
             blobs: HashMap::new(),
         };
         let json = serde_json::to_string(&full).expect("serialize");
