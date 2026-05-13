@@ -13,7 +13,7 @@ mod handlers;
 
 use std::collections::HashMap;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::context::protocol::command::{
@@ -28,9 +28,6 @@ use crate::feat::tools_actor::protocol::event::ToolsRegistered;
 use crate::protocol::{Command, Event, SessionId, ToolDefinition};
 
 use crate::feat::context::{DefaultStrategyFactory, PromptAssembly, StrategyFactory};
-
-/// Direct message type for the prompt assembly actor (unused for now).
-pub enum ContextDirectMsg {}
 
 /// The context actor — handles prompt assembly, strategy management, pinning, and templates.
 pub struct PromptAssemblyActor {
@@ -47,7 +44,7 @@ pub struct PromptAssemblyActor {
 }
 
 impl Actor for PromptAssemblyActor {
-    type Message = ContextDirectMsg;
+    type Message = NoDirectMsg;
 
     fn activate(ctx: &mut ActorContext) -> Self {
         // Existing subscriptions (prompt assembly).
@@ -98,11 +95,9 @@ impl Actor for PromptAssemblyActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Shutdown => {}
         }
     }
-
-    async fn shutdown(self) {}
 }
 
 impl PromptAssemblyActor {

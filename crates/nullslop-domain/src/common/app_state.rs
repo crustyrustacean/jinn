@@ -408,6 +408,22 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Returns a mutable reference to the active picker's navigation interface.
+    ///
+    /// Returns `None` if no picker is currently active.
+    /// Use for operations that work the same way on all picker types
+    /// (insert char, backspace, move up/down, cursor left/right).
+    pub fn active_picker_ops(&mut self) -> Option<&mut dyn nullslop_selection_widget::PickerOps> {
+        let kind = self.frontend.scope_stack.picker_kind().copied()?;
+        match kind {
+            PickerKind::Provider => Some(&mut self.provider.provider_picker),
+            PickerKind::ContextAssembly => Some(&mut self.frontend.context_strategy_picker),
+            PickerKind::Keymap => Some(&mut self.frontend.keymap_picker),
+            PickerKind::Session => Some(&mut self.frontend.session_picker),
+            PickerKind::Persona => Some(&mut self.frontend.persona_picker),
+        }
+    }
+
     /// Read-only access to the active chat session.
     ///
     /// # Panics

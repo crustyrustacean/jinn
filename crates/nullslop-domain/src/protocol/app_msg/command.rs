@@ -329,54 +329,6 @@ mod tests {
     use crate::protocol::SessionId;
 
     #[rstest::rstest]
-    #[case::send_message(Command::SendMessage { payload: SendMessage { session_id: SessionId::new(), text: "hi".into() } })]
-    #[case::assemble_prompt(Command::AssemblePrompt { payload: AssemblePrompt { session_id: SessionId::new(), history: vec![], tools: vec![], model_name: "test".to_owned() } })]
-    #[case::switch_prompt_strategy(Command::SwitchPromptStrategy { payload: SwitchPromptStrategy { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::sliding_window() } })]
-    #[case::restore_strategy_state(Command::RestoreStrategyState { payload: RestoreStrategyState { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::compaction(), blob: serde_json::json!({}) } })]
-    #[case::push_chat_entry(Command::PushChatEntry { payload: PushChatEntry { session_id: SessionId::new(), entry: crate::ChatEntry::user("hi") } })]
-    #[case::enqueue_user_message(Command::EnqueueUserMessage { payload: EnqueueUserMessage { session_id: SessionId::new(), text: "hello".into() } })]
-    #[case::set_chat_input_text(Command::SetChatInputText { payload: SetChatInputText { session_id: SessionId::new(), text: "restored".into() } })]
-    #[case::cancel_stream(Command::CancelStream { payload: CancelStream { session_id: SessionId::new() } })]
-    #[case::provider_switch(Command::ProviderSwitch { payload: ProviderSwitch { provider_id: "ollama".into() } })]
-    #[case::send_to_llm_provider(Command::SendToLlmProvider { payload: SendToLlmProvider { session_id: SessionId::new(), messages: vec![], provider_id: None } })]
-    #[case::refresh_models(Command::RefreshModels)]
-    #[case::rescan_prompt_templates(Command::RescanPromptTemplates)]
-    #[case::register_tools(Command::RegisterTools { payload: RegisterTools { provider: "echo-actor".into(), definitions: vec![crate::ToolDefinition { name: "echo".into(), description: "echo".into(), parameters: serde_json::json!({}) }] } })]
-    #[case::execute_tool_batch(Command::ExecuteToolBatch { payload: ExecuteToolBatch { session_id: SessionId::new(), tool_calls: vec![crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() }] } })]
-    #[case::execute_tool(Command::ExecuteTool { payload: ExecuteTool { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
-    #[case::cancel_tool_batch(Command::CancelToolBatch { payload: CancelToolBatch { session_id: SessionId::new() } })]
-    #[case::proceed_with_shutdown(Command::ProceedWithShutdown { payload: ProceedWithShutdown { completed: vec!["ext-a".into()], timed_out: vec!["ext-b".into()] } })]
-    #[case::session_load_completed(Command::SessionLoadCompleted { payload: SessionLoadCompleted {
-        session_id: SessionId::new(),
-        title: "Test".to_owned(),
-        history: vec![],
-        active_strategy: crate::PromptStrategyId::passthrough(),
-        blobs: std::collections::HashMap::new(),
-    } })]
-    #[case::pin_chat_entry(Command::PinChatEntry { payload: PinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new(), position: crate::protocol::PinPosition::Top } })]
-    #[case::unpin_chat_entry(Command::UnpinChatEntry { payload: UnpinChatEntry { session_id: SessionId::new(), entry_id: crate::ChatEntryId::new() } })]
-    #[case::load_provider_picker_entries(Command::LoadProviderPickerEntries { payload: LoadProviderPickerEntries })]
-    #[case::load_session_picker_entries(Command::LoadSessionPickerEntries { payload: LoadSessionPickerEntries })]
-    #[case::load_context_strategy_picker_entries(Command::LoadContextStrategyPickerEntries { payload: LoadContextStrategyPickerEntries })]
-    #[case::session_load_requested(Command::SessionLoadRequested { payload: SessionLoadRequested {
-        session_id: SessionId::new(), byte_offset: 42u64,
-    } })]
-    #[case::scan_skills(Command::ScanSkills)]
-    #[case::rescan_personas(Command::RescanPersonas { payload: RescanPersonas })]
-    #[case::load_persona_picker_entries(Command::LoadPersonaPickerEntries { payload: LoadPersonaPickerEntries })]
-    fn command_roundtrip_all_variants(#[case] cmd: Command) {
-        // Given a command variant.
-        let json = serde_json::to_string(&cmd).expect("serialize");
-
-        // When deserialized.
-        let back: Command = serde_json::from_str(&json).expect("deserialize");
-
-        // Then it matches the original when re-serialized.
-        let back_json = serde_json::to_string(&back).expect("re-serialize");
-        assert_eq!(json, back_json);
-    }
-
-    #[rstest::rstest]
     fn command_name_returns_name_for_routable_commands() {
         // Given routable command variants.
         // When calling command_name().

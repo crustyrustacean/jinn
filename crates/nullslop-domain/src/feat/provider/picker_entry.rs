@@ -2,9 +2,10 @@
 
 use std::ops::Range;
 
+use crate::feat::picker::style::{active_marker, selected_style};
 use nullslop_selection_widget::PickerItem;
 use nullslop_selection_widget::highlight_text;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
 /// A provider entry ready for display in the picker.
@@ -62,16 +63,7 @@ fn render_provider_row(
     is_selected: bool,
     match_indices: &[Range<usize>],
 ) -> Line<'static> {
-    let active_marker = Span::styled(
-        if entry.is_active { "> " } else { "  " },
-        if entry.is_active {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-        },
-    );
+    let active_marker = active_marker(entry.is_active);
 
     let status_prefix = if !entry.is_available {
         "\u{2717} " // ✗
@@ -83,12 +75,10 @@ fn render_provider_row(
         "  "
     };
 
-    let label_style = if is_selected {
-        Style::default().fg(Color::White).bg(Color::DarkGray)
-    } else if !entry.is_available {
+    let label_style = if !entry.is_available {
         Style::default().fg(Color::DarkGray)
     } else {
-        Style::default()
+        selected_style(is_selected)
     };
 
     if entry.is_alias {

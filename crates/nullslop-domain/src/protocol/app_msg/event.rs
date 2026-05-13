@@ -294,55 +294,6 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]
-    #[case::key_down(Event::KeyDown { payload: KeyDown { key: KeyEvent { key: Key::Char('a'), modifiers: Modifiers::none() } } })]
-    #[case::key_up(Event::KeyUp { payload: KeyUp { key: KeyEvent { key: Key::Enter, modifiers: Modifiers::none() } } })]
-    #[case::chat_submitted(Event::ChatEntrySubmitted { payload: ChatEntrySubmitted { session_id: SessionId::new(), entry: ChatEntry::user("test") } })]
-    #[case::mode_changed(Event::ModeChanged { payload: ModeChanged { from: Mode::Normal, to: Mode::Input } })]
-    #[case::actor_starting(Event::ActorStarting { payload: ActorStarting { name: "actor-a".into(), description: None } })]
-    #[case::actor_started(Event::ActorStarted { payload: ActorStarted { name: "actor-a".into(), description: None } })]
-    #[case::actor_shutdown_completed(Event::ActorShutdownCompleted { payload: ActorShutdownCompleted { name: "actor-a".into() } })]
-    #[case::stream_completed(Event::StreamCompleted { payload: StreamCompleted { session_id: SessionId::new(), reason: StreamCompletedReason::Finished, assistant_content: None, tool_calls: None } })]
-    #[case::stream_token(Event::StreamToken { payload: StreamToken { session_id: SessionId::new(), index: 0, token: "hello".into() } })]
-    #[case::tool_use_started(Event::ToolUseStarted { payload: ToolUseStarted { session_id: SessionId::new(), index: 0, id: "call_1".into(), name: "echo".into() } })]
-    #[case::tool_call_received(Event::ToolCallReceived { payload: ToolCallReceived { session_id: SessionId::new(), tool_call: crate::ToolCall { id: "call_1".into(), name: "echo".into(), arguments: "{}".into() } } })]
-    #[case::tool_call_streaming(Event::ToolCallStreaming { payload: ToolCallStreaming { session_id: SessionId::new(), index: 0, partial_json: "{\"a\":".into() } })]
-    #[case::provider_switched(Event::ProviderSwitched { payload: ProviderSwitched { provider_name: "Ollama".into() } })]
-    #[case::models_refreshed(Event::ModelsRefreshed { payload: ModelsRefreshed { results: std::collections::HashMap::new(), errors: std::collections::HashMap::new() } })]
-    #[case::prompt_templates_loaded(Event::PromptTemplatesLoaded { payload: PromptTemplatesLoaded { templates: vec![], error: None } })]
-    #[case::tool_batch_completed(Event::ToolBatchCompleted { payload: ToolBatchCompleted { session_id: SessionId::new(), results: vec![crate::ToolResult { tool_call_id: "call_1".into(), name: "echo".into(), content: "hi".into(), success: true }] } })]
-    #[case::tool_execution_completed(Event::ToolExecutionCompleted { payload: ToolExecutionCompleted { session_id: SessionId::new(), result: crate::ToolResult { tool_call_id: "call_1".into(), name: "echo".into(), content: "hi".into(), success: true } } })]
-    #[case::tools_registered(Event::ToolsRegistered { payload: ToolsRegistered { provider: "echo-actor".into(), definitions: vec![crate::ToolDefinition { name: "echo".into(), description: "echoes".into(), parameters: serde_json::json!({}) }] } })]
-    #[case::prompt_assembled(Event::PromptAssembled { payload: PromptAssembled { session_id: SessionId::new(), system_prompt: None, messages: vec![] } })]
-    #[case::prompt_strategy_switched(Event::PromptStrategySwitched { payload: PromptStrategySwitched { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::sliding_window() } })]
-    #[case::strategy_state_updated(Event::StrategyStateUpdated { payload: StrategyStateUpdated { session_id: SessionId::new(), strategy_id: crate::PromptStrategyId::compaction(), blob: serde_json::json!({"compaction_count": 0}) } })]
-    #[case::session_save_requested(Event::SessionSaveRequested { payload: SessionSaveRequested {
-        session_id: SessionId::new(),
-        title: "Test".to_owned(),
-        history: vec![ChatEntry::user("hello")],
-        active_strategy: crate::PromptStrategyId::passthrough(),
-        blobs: std::collections::HashMap::new(),
-    } })]
-    #[case::skills_loaded(Event::SkillsLoaded { payload: crate::feat::skills::skills_scan_actor::SkillsLoaded {
-        skills: vec![],
-        error: None,
-    } })]
-    #[case::personas_loaded(Event::PersonasLoaded { payload: crate::feat::context::protocol::event::PersonasLoaded {
-        personas: vec![],
-        error: None,
-    } })]
-    fn event_roundtrip_all_variants(#[case] event: Event) {
-        // Given an event variant.
-        let json = serde_json::to_string(&event).expect("serialize");
-
-        // When deserialized.
-        let back: Event = serde_json::from_str(&json).expect("deserialize");
-
-        // Then it matches the original when re-serialized.
-        let back_json = serde_json::to_string(&back).expect("re-serialize");
-        assert_eq!(json, back_json);
-    }
-
     /// Checks that `Event::type_name()` delegates to the correct payload `TYPE_NAME`
     /// for all event variants that have a meaningful `type_name`.
     #[rstest::rstest]

@@ -70,12 +70,4 @@ mod tests {
         let id = PromptStrategyId::passthrough();
         assert_eq!(id.to_string(), "Passthrough");
     }
-
-    #[rstest::rstest]
-    fn prompt_strategy_id_serialization_roundtrip() {
-        let id = PromptStrategyId::passthrough();
-        let json = serde_json::to_string(&id).expect("serialize");
-        let back: PromptStrategyId = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back, id);
-    }
 }

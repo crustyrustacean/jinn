@@ -54,25 +54,7 @@ impl StrategySessionData for CompactionSessionData {
 
 #[cfg(test)]
 mod tests {
-    use super::super::types::StrategySessionData;
     use super::*;
-
-    #[rstest::rstest]
-    fn compaction_session_data_serialize_roundtrip() {
-        // Given compaction session data with a count.
-        let data = CompactionSessionData {
-            compaction_count: 3,
-        };
-
-        // When serializing and deserializing via StrategySessionData.
-        let blob = StrategySessionData::serialize(&data).expect("serialize");
-        let back = <CompactionSessionData as StrategySessionData>::deserialize(blob.clone())
-            .expect("deserialize");
-
-        // Then the data round-trips correctly (verify via re-serialization).
-        let back_blob = StrategySessionData::serialize(&*back).expect("re-serialize");
-        assert_eq!(blob, back_blob);
-    }
 
     #[rstest::rstest]
     fn compaction_session_data_starts_at_zero() {

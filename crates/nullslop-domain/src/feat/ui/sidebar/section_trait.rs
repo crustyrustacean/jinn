@@ -21,7 +21,6 @@ impl std::fmt::Display for SidebarSectionId {
     }
 }
 
-
 /// Configuration passed to a section during intent handling.
 ///
 /// Tells the section whether other sections exist above/below it,

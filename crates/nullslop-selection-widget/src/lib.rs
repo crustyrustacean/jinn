@@ -9,11 +9,13 @@
 
 pub mod highlight;
 pub mod item;
+pub mod picker_ops;
 pub mod state;
 pub mod widget;
 
 pub use highlight::{PICKER_HIGHLIGHT_STYLE, highlight_text};
 pub use item::{MatchRanges, PickerItem};
+pub use picker_ops::PickerOps;
 pub use state::SelectionState;
 pub use widget::{
     PICKER_H_PAD_FRAC, PICKER_MAX_HEIGHT_FRAC, PICKER_MIN_WIDTH, SelectionWidget,
