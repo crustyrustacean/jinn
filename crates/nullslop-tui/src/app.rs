@@ -10,7 +10,7 @@ use derive_more::Debug;
 use nullslop_domain::ActorHostService;
 use nullslop_domain::AppUiRegistry;
 use nullslop_domain::IntentHandler;
-use nullslop_domain::{ActiveTab, Intent, Mode, PickerKind};
+use nullslop_domain::{ActiveTab, FocusScope, Intent, PickerKind};
 use nullslop_domain::{AppCore, AppMsg};
 use nullslop_domain::feat::ui::sidebar::sidebar::Sidebar;
 use ratatui::Frame;
@@ -214,7 +214,7 @@ impl TuiApp {
     )]
     pub fn route_intent(&mut self, intent: Intent) {
         // Step 1–3: Handle intent, collect results, release lock.
-        let (commands, signals, mode) = {
+        let (commands, signals) = {
             let mut state = self.core.state.write();
             let result = IntentHandler::handle(&intent, &mut state);
 
@@ -243,12 +243,11 @@ impl TuiApp {
                 self.selection = mem::take(&mut self.selection).cancel();
             }
 
-            // Collect signals and mode before releasing lock.
+            // Collect signals before releasing lock.
             let signals = signals::TuiSignalsSnapshot::from_state(&state);
-            let mode = state.frontend.scope_stack.current().mode();
             let commands = result.commands;
 
-            (commands, signals, mode)
+            (commands, signals)
         };
 
         // Step 4: Send commands to core channel.
@@ -271,10 +270,11 @@ impl TuiApp {
             });
         }
 
-        // Step 6: Update scope based on new mode.
-        let active_tab = self.core.state.read().frontend.active_tab;
-        let sidebar_focused = self.core.state.read().frontend.scope_stack.is_sidebar();
-        let new_scope = scope_for_mode(mode, active_tab, sidebar_focused);
+        // Step 6: Update scope based on new focus.
+        let state_read = self.core.state.read();
+        let active_tab = state_read.frontend.active_tab;
+        let new_scope = scope_for_focus(state_read.frontend.scope_stack.current(), active_tab);
+        drop(state_read);
         self.which_key.set_scope(new_scope);
     }
 
@@ -284,21 +284,16 @@ impl TuiApp {
     }
 }
 
-/// Returns the scope corresponding to the given mode, active tab, and sidebar focus.
-pub fn scope_for_mode(mode: Mode, active_tab: ActiveTab, sidebar_focused: bool) -> Scope {
-    match mode {
-        Mode::Normal => match active_tab {
+/// Returns the keymap scope corresponding to the given focus scope and active tab.
+pub fn scope_for_focus(focus: &nullslop_domain::FocusScope, active_tab: ActiveTab) -> Scope {
+    match focus {
+        FocusScope::Picker { .. } => Scope::Picker,
+        FocusScope::Input => Scope::Input,
+        FocusScope::Sidebar => Scope::Sidebar,
+        FocusScope::Normal => match active_tab {
             ActiveTab::Dashboard => Scope::Dashboard,
-            ActiveTab::Chat => {
-                if sidebar_focused {
-                    Scope::Sidebar
-                } else {
-                    Scope::Normal
-                }
-            }
+            ActiveTab::Chat => Scope::Normal,
         },
-        Mode::Input => Scope::Input,
-        Mode::Picker => Scope::Picker,
     }
 }
 
@@ -354,21 +349,20 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[case::normal_chat(Mode::Normal, ActiveTab::Chat, false, Scope::Normal)]
-    #[case::normal_dashboard(Mode::Normal, ActiveTab::Dashboard, false, Scope::Dashboard)]
-    #[case::sidebar(Mode::Normal, ActiveTab::Chat, true, Scope::Sidebar)]
-    #[case::input(Mode::Input, ActiveTab::Chat, false, Scope::Input)]
-    #[case::picker(Mode::Picker, ActiveTab::Chat, false, Scope::Picker)]
-    fn scope_for_mode_maps_correctly(
-        #[case] mode: Mode,
+    #[case::normal_chat(nullslop_domain::FocusScope::Normal, ActiveTab::Chat, Scope::Normal)]
+    #[case::normal_dashboard(nullslop_domain::FocusScope::Normal, ActiveTab::Dashboard, Scope::Dashboard)]
+    #[case::sidebar(nullslop_domain::FocusScope::Sidebar, ActiveTab::Chat, Scope::Sidebar)]
+    #[case::input(nullslop_domain::FocusScope::Input, ActiveTab::Chat, Scope::Input)]
+    #[case::picker(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, ActiveTab::Chat, Scope::Picker)]
+    fn scope_for_focus_maps_correctly(
+        #[case] focus: nullslop_domain::FocusScope,
         #[case] tab: ActiveTab,
-        #[case] sidebar_focused: bool,
         #[case] expected: Scope,
     ) {
-        // Given a mode, tab, and sidebar focus state.
-        // When mapping to a scope.
+        // Given a focus scope and active tab.
+        // When mapping to a keymap scope.
         // Then the expected scope is returned.
-        assert_eq!(scope_for_mode(mode, tab, sidebar_focused), expected);
+        assert_eq!(scope_for_focus(&focus, tab), expected);
     }
 
     #[rstest::rstest]
