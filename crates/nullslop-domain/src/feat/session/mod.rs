@@ -16,9 +16,14 @@ pub mod picker_entry;
 pub mod protocol;
 pub mod render;
 pub mod session_actor;
+pub mod token_stats;
 pub mod validator;
 
 pub use chat_session::{ChatSessionState, SessionCore, SessionUi};
 
 pub use persisted_session::{BLOB_STRATEGY_STATE, PersistedSession, SessionSummary};
 pub use session_store::{JsonlSessionStore, SessionStore, SessionStoreError, SessionStoreService};
+pub use token_stats::{
+    AggregatedTokenStats, TokenRecord, TokenStats,
+    aggregate_session_stats, BLOB_PARENT_SESSION, BLOB_TOKEN_STATS,
+};
