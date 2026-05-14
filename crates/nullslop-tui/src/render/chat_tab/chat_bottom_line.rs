@@ -31,8 +31,8 @@ pub(super) fn render_chat_bottom_line(
 
 #[cfg(test)]
 mod tests {
-    use nullslop_testutil::setup_term;
     use nullslop_domain::FocusScope;
+    use nullslop_testutil::setup_term;
     use ratatui::layout::Rect;
     use ratatui::style::Color;
 

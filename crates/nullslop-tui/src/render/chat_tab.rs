@@ -37,7 +37,14 @@ pub(super) fn render_chat_tab(
     border::render_border(frame, layout.border, sidebar_focused);
 
     // Sidebar.
-    sidebar::render_sidebar(sidebar, frame, layout.sidebar, sidebar_focused, state, rects);
+    sidebar::render_sidebar(
+        sidebar,
+        frame,
+        layout.sidebar,
+        sidebar_focused,
+        state,
+        rects,
+    );
 
     // Compute sub-areas at the bottom of the content area.
     let content_area = layout.content;
