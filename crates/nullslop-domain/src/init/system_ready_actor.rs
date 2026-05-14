@@ -68,11 +68,11 @@ impl Actor for SystemReadyActor {
 impl SystemReadyActor {
     fn handle_event(&mut self, event: Event) {
         match event {
-            Event::ActorStarted { .. } => {
+            Event::ActorStarted(..) => {
                 self.received += 1;
                 self.maybe_signal_ready();
             }
-            Event::AllActorsSpawned { .. } => {
+            Event::AllActorsSpawned(..) => {
                 self.all_spawned = true;
                 self.maybe_signal_ready();
             }
@@ -131,12 +131,12 @@ mod tests {
         };
 
         // When processing another ActorStarted (count already matches).
-        actor.handle_event(Event::ActorStarted {
-            payload: crate::common::actor::protocol::event::ActorStarted {
+        actor.handle_event(Event::ActorStarted(
+            crate::common::actor::protocol::event::ActorStarted {
                 name: "test".to_owned(),
                 description: None,
             },
-        });
+        ));
 
         // Then the oneshot is NOT consumed (ready_tx still present).
         assert!(
@@ -163,9 +163,9 @@ mod tests {
         };
 
         // When receiving AllActorsSpawned.
-        actor.handle_event(Event::AllActorsSpawned {
-            payload: crate::common::actor::protocol::event::AllActorsSpawned,
-        });
+        actor.handle_event(Event::AllActorsSpawned(
+            crate::common::actor::protocol::event::AllActorsSpawned,
+        ));
 
         // Then the oneshot is NOT consumed (count mismatch: 2 < 3).
         assert!(
@@ -191,9 +191,9 @@ mod tests {
         };
 
         // When receiving AllActorsSpawned (count matches: 2 == 2).
-        actor.handle_event(Event::AllActorsSpawned {
-            payload: crate::common::actor::protocol::event::AllActorsSpawned,
-        });
+        actor.handle_event(Event::AllActorsSpawned(
+            crate::common::actor::protocol::event::AllActorsSpawned,
+        ));
 
         // Then the oneshot is consumed.
         assert!(actor.ready_tx.is_none(), "should have signaled");
@@ -215,18 +215,18 @@ mod tests {
         };
 
         // First: receive AllActorsSpawned (count mismatch: 1 < 2).
-        actor.handle_event(Event::AllActorsSpawned {
-            payload: crate::common::actor::protocol::event::AllActorsSpawned,
-        });
+        actor.handle_event(Event::AllActorsSpawned(
+            crate::common::actor::protocol::event::AllActorsSpawned,
+        ));
         assert!(actor.ready_tx.is_some(), "should not signal yet");
 
         // Then: receive second ActorStarted (now 2 == 2).
-        actor.handle_event(Event::ActorStarted {
-            payload: crate::common::actor::protocol::event::ActorStarted {
+        actor.handle_event(Event::ActorStarted(
+            crate::common::actor::protocol::event::ActorStarted {
                 name: "late-actor".to_owned(),
                 description: None,
             },
-        });
+        ));
 
         // Then the oneshot is consumed.
         assert!(actor.ready_tx.is_none(), "should have signaled");

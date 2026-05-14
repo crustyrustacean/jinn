@@ -25,8 +25,8 @@ pub use common::actor::{
     RecordingSink, SendResult, SystemMessage,
 };
 pub use common::actor_host::{
-    ActorHost, ActorHostService, ActorSpawnResult, FakeActorHost, InMemoryActorHost,
-    RoutingEntry, ShutdownTracker, spawn, spawn_actor_impl, system_spawn,
+    ActorHost, ActorHostService, ActorSpawnResult, FakeActorHost, InMemoryActorHost, RoutingEntry,
+    ShutdownTracker, spawn, spawn_actor_impl, system_spawn,
 };
 
 // Re-export component types (state, UI)
@@ -92,8 +92,8 @@ pub use common::services::strategy_registry;
 pub use protocol::entries_to_messages;
 pub use protocol::{ActiveTab, TabDirection};
 pub use protocol::{
-    ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, Event,
-    Intent, IntentResult, Key, KeyEvent, Mode, Modifiers, PickerKind, PromptTemplate,
+    ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, Event, Intent, IntentResult,
+    Key, KeyEvent, Mode, Modifiers, PickerKind, PromptTemplate,
 };
 pub use protocol::{
     CommandMsg, CommandName, EventMsg, EventTypeName, KeymapEntry, PickerEntry, StrategyEntry,

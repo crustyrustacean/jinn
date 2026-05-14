@@ -130,14 +130,12 @@ mod tests {
         // When sending events, commands, and system messages.
         // Then none of them panic.
         service.send_event(
-            &Event::KeyDown {
-                payload: crate::protocol::system::KeyDown {
-                    key: crate::protocol::KeyEvent {
-                        key: crate::protocol::Key::Enter,
-                        modifiers: crate::protocol::Modifiers::none(),
-                    },
+            &Event::KeyDown(crate::protocol::system::KeyDown {
+                key: crate::protocol::KeyEvent {
+                    key: crate::protocol::Key::Enter,
+                    modifiers: crate::protocol::Modifiers::none(),
                 },
-            },
+            }),
             None,
         );
         service.send_command(&Command::RefreshModels, None);

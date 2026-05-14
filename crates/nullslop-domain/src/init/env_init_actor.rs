@@ -110,9 +110,7 @@ impl EnvInitActor {
 
         tracing::info!("environment loaded, API keys resolved");
 
-        if let Err(e) = ctx.send_event(Event::EnvironmentLoaded {
-            payload: EnvironmentLoaded { config },
-        }) {
+        if let Err(e) = ctx.send_event(Event::EnvironmentLoaded(EnvironmentLoaded { config })) {
             tracing::error!(err = ?e, "env-init failed to emit EnvironmentLoaded");
         }
     }
@@ -175,7 +173,7 @@ mod tests {
         let events = sink.events();
         let found = events
             .iter()
-            .any(|e| matches!(e, crate::protocol::Event::EnvironmentLoaded { .. }));
+            .any(|e| matches!(e, crate::protocol::Event::EnvironmentLoaded(..)));
         assert!(found, "expected EnvironmentLoaded event");
     }
 }

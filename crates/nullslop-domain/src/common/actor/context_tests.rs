@@ -139,20 +139,18 @@ fn send_event_delegates_to_sink() {
     let ctx = ActorContext::new("test", sink.clone());
 
     // When sending a KeyDown event.
-    ctx.send_event(Event::KeyDown {
-        payload: crate::protocol::system::KeyDown {
-            key: crate::protocol::KeyEvent {
-                key: crate::protocol::Key::Enter,
-                modifiers: crate::protocol::Modifiers::none(),
-            },
+    ctx.send_event(Event::KeyDown(crate::protocol::system::KeyDown {
+        key: crate::protocol::KeyEvent {
+            key: crate::protocol::Key::Enter,
+            modifiers: crate::protocol::Modifiers::none(),
         },
-    })
+    }))
     .expect("send should succeed");
 
     // Then the sink recorded the event.
     let events = sink.events();
     assert_eq!(events.len(), 1);
-    assert!(matches!(events[0], Event::KeyDown { .. }));
+    assert!(matches!(events[0], Event::KeyDown(..)));
 }
 
 #[rstest::rstest]
@@ -257,7 +255,7 @@ fn announce_started_includes_description() {
     let events = sink.events();
     assert_eq!(events.len(), 1);
     match &events[0] {
-        Event::ActorStarted { payload } => {
+        Event::ActorStarted(payload) => {
             assert_eq!(payload.name, "my-actor");
             assert_eq!(payload.description.as_deref(), Some("does cool stuff"));
         }
@@ -278,7 +276,7 @@ fn announce_started_sends_actor_started_event() {
     let events = sink.events();
     assert_eq!(events.len(), 1);
     match &events[0] {
-        Event::ActorStarted { payload } => {
+        Event::ActorStarted(payload) => {
             assert_eq!(payload.name, "my-actor");
             assert!(payload.description.is_none());
         }
@@ -299,7 +297,7 @@ fn announce_shutdown_completed_sends_actor_shutdown_completed_event() {
     let events = sink.events();
     assert_eq!(events.len(), 1);
     match &events[0] {
-        Event::ActorShutdownCompleted { payload } => {
+        Event::ActorShutdownCompleted(payload) => {
             assert_eq!(payload.name, "my-actor");
         }
         other => panic!("expected ActorShutdownCompleted, got {other:?}"),
