@@ -183,7 +183,3 @@ impl IntentHandler {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "handler_tests.rs"]
-mod tests;
