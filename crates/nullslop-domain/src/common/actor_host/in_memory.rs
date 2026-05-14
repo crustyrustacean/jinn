@@ -145,11 +145,9 @@ where
     let ref_for_event = actor_ref.clone();
     let ref_for_command = actor_ref.clone();
     let ref_for_system = actor_ref.clone();
-    let ref_for_shutdown = actor_ref.clone();
     let name_for_event_log = name.to_owned();
     let name_for_command_log = name.to_owned();
     let name_for_system_log = name.to_owned();
-    let name_for_shutdown_log = name.to_owned();
 
     let send_event: Box<dyn Fn(Event) + Send + Sync> = Box::new(move |event| {
         if let Err(e) = ref_for_event.send_event(event) {
@@ -169,9 +167,11 @@ where
         }
     });
 
-    let send_shutdown: Box<dyn Fn() + Send + Sync> = Box::new(move || {
-        if let Err(e) = ref_for_shutdown.shutdown() {
-            tracing::error!(name = %name_for_shutdown_log, err = ?e, "failed to send shutdown to actor");
+    let ref_for_close = actor_ref.clone();
+    let name_for_close_log = name.to_owned();
+    let close_channel: Box<dyn Fn() + Send + Sync> = Box::new(move || {
+        if let Err(e) = ref_for_close.close() {
+            tracing::error!(name = %name_for_close_log, err = ?e, "failed to close actor channel");
         }
     });
 
@@ -182,17 +182,14 @@ where
         send_event,
         send_command,
         send_system,
-        send_shutdown,
+        close_channel,
     };
 
     let task = handle.spawn(async move {
         let async_rx = receiver.as_async();
         let mut actor = actor;
         while let Ok(envelope) = async_rx.recv().await {
-            match envelope {
-                ActorEnvelope::Shutdown => break,
-                _ => actor.handle(envelope, &ctx).await,
-            }
+            actor.handle(envelope, &ctx).await;
         }
         actor.shutdown().await;
     });
@@ -297,8 +294,8 @@ impl InMemoryActorHost {
 
     /// Shuts down all actors gracefully with a configurable timeout.
     ///
-    /// Sends shutdown signals to all actors, then joins their tasks
-    /// with a per-task timeout.
+    /// Closes all actor channels (causing their run loops to exit), then
+    /// joins their tasks with a per-task timeout.
     ///
     /// # Errors
     ///
@@ -308,9 +305,9 @@ impl InMemoryActorHost {
     ///
     /// Panics if called from within a tokio runtime context (uses `block_on`).
     pub fn shutdown_with_timeout(&self, timeout: Duration) -> Result<(), Report<ActorHostError>> {
-        // Send shutdown to all actors.
+        // Close all actor channels — run loops exit when recv() returns Err.
         for entry in &self.routing.all_entries {
-            (entry.send_shutdown)();
+            (entry.close_channel)();
         }
 
         // Drain tasks and join.
@@ -320,7 +317,7 @@ impl InMemoryActorHost {
                 .handle
                 .block_on(async { tokio::time::timeout(timeout, task).await });
             if result.is_err() {
-                tracing::warn!("actor task did not exit within {:?}", timeout);
+                tracing::warn!(?timeout, "actor task did not exit within timeout");
             }
         }
 
@@ -433,9 +430,6 @@ mod tests {
                 ActorEnvelope::Command(c) => {
                     let name = format!("{c}");
                     self.received.lock().push(format!("command:{name}"));
-                }
-                ActorEnvelope::Shutdown => {
-                    self.received.lock().push("shutdown".to_owned());
                 }
                 ActorEnvelope::System(msg) => {
                     self.received.lock().push(format!("system:{msg:?}"));

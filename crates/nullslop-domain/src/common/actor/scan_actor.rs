@@ -93,7 +93,7 @@ impl<C: ScanConfig + Sync> Actor for ScanActor<C> {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Event(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Event(_) | ActorEnvelope::Direct(_) => {}
         }
     }
 }

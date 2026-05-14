@@ -2,7 +2,7 @@
 //!
 //! Every message an actor processes arrives inside an [`ActorEnvelope`] —
 //! whether it originated as a bus event, a bus command, a direct typed message
-//! from another actor, a system lifecycle message, or a shutdown signal.
+//! from another actor, or a system lifecycle message.
 //! Actors match on this enum in their `handle` method.
 
 /// System-level lifecycle messages delivered to every actor.
@@ -30,6 +30,4 @@ pub enum ActorEnvelope<M> {
     Direct(M),
     /// A system lifecycle message (delivered to all actors, no subscription needed).
     System(SystemMessage),
-    /// Shutdown signal — the actor should clean up and exit its run loop.
-    Shutdown,
 }

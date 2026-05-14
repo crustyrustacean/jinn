@@ -108,7 +108,6 @@ impl Actor for ShutdownTrackerActor {
             ActorEnvelope::Command(command) => {
                 self.handle_command(&command);
             }
-            ActorEnvelope::Shutdown => {}
         }
     }
 }

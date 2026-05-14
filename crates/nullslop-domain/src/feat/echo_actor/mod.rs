@@ -31,7 +31,7 @@ impl Actor for EchoActor {
                 ctx.announce_shutdown_completed();
             }
             ActorEnvelope::Event(event) => Self::process_event(&event, ctx).await,
-            ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(_) => {}
         }
     }
 }

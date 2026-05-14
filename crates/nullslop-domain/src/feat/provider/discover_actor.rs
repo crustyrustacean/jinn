@@ -69,7 +69,7 @@ impl Actor for DiscoverActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Event(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Event(_) => {}
         }
     }
 }

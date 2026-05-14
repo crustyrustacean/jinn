@@ -44,7 +44,7 @@ impl Actor for PreferencesStateSyncActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Command(_) | ActorEnvelope::Event(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(_) | ActorEnvelope::Event(_) => {}
         }
     }
 }

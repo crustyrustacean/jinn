@@ -86,7 +86,6 @@ impl Actor for LlmActor {
                 self.cancel_all();
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Shutdown => {}
         }
     }
 }

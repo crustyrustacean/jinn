@@ -83,7 +83,7 @@ impl Actor for EnvInitActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Event(_) | ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Event(_) | ActorEnvelope::Command(_) => {}
         }
     }
 
