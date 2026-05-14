@@ -97,7 +97,7 @@ impl PluginActor {
         };
         let _ = tx.send(PluginThreadMsg::ForwardEvent(
             type_name.to_owned(),
-            format!("{event:?}"),
+            serde_json::to_string(event).unwrap_or_default(),
         ));
     }
 
@@ -134,15 +134,14 @@ fn plugin_thread_main(
 
     while let Ok(msg) = rx.recv() {
         match msg {
-            PluginThreadMsg::ForwardEvent(type_name, _debug_repr) => {
+            PluginThreadMsg::ForwardEvent(type_name, event_json) => {
                 let subs = event_subscriptions.lock().unwrap();
                 let Some(subscribed_ids) = subs.get(&type_name) else {
                     continue;
                 };
                 for plugin_id in subscribed_ids {
                     if let Some(runtime) = runtimes.get_mut(plugin_id) {
-                        let mut event_map = rhai::Map::new();
-                        event_map.insert("type".into(), type_name.clone().into());
+                        let event_map = build_event_map(&type_name, &event_json);
                         if let Err(e) = runtime.call_on_event(event_map) {
                             tracing::error!(
                                 plugin = %plugin_id,
@@ -280,4 +279,80 @@ fn push_system_entry(state: &State, message: &str) {
     guard
         .active_session_mut()
         .push_entry(ChatEntry::system(message));
+}
+
+/// Converts a serialized Event JSON into a rhai Map for plugin consumption.
+///
+/// The wire format is `{"VariantName": {fields...}}`. We extract the variant
+/// name and flatten the fields into a single map with a `type` key.
+///
+/// For events containing a `ChatEntry` (inside an `entry` field), the entry's
+/// `kind` is converted from the serde format `{"User": "hello"}` to a simple
+/// string `"user"` and a `text` field is added.
+fn build_event_map(type_name: &str, event_json: &str) -> rhai::Map {
+    let mut map = rhai::Map::new();
+    map.insert("type".into(), type_name.into());
+
+    // Best-effort: parse the outer JSON and extract the inner object fields.
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(event_json) {
+        if let Some(obj) = value.as_object() {
+            // The outer object has one key: the variant name.
+            // The inner value is the payload object.
+            if let Some((_, payload)) = obj.iter().next() {
+                if let Some(payload_obj) = payload.as_object() {
+                    for (key, val) in payload_obj {
+                        if key == "entry" {
+                            // Flatten ChatEntry fields for plugin convenience.
+                            if let Some(entry_obj) = val.as_object() {
+                                // Extract kind as a simple string.
+                                let kind = entry_obj
+                                    .get("kind")
+                                    .and_then(|k| k.as_object())
+                                    .and_then(|k| {
+                                        // ChatEntryKind serializes as {"User": "hello"} etc.
+                                        k.keys().next().map(|k| k.to_lowercase())
+                                    })
+                                    .unwrap_or_else(|| "unknown".to_owned());
+                                map.insert("kind".into(), kind.into());
+
+                                // Extract text from the kind value.
+                                let text = entry_obj
+                                    .get("kind")
+                                    .and_then(|k| k.as_object())
+                                    .and_then(|k| k.values().next())
+                                    .and_then(|v| v.as_str().map(String::from))
+                                    .unwrap_or_default();
+                                map.insert("text".into(), text.into());
+                            }
+                        } else {
+                            let rhai_val = json_to_rhai(val);
+                            map.insert(key.clone().into(), rhai_val);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    map
+}
+
+/// Converts a serde_json Value to a rhai Dynamic value (best-effort).
+fn json_to_rhai(val: &serde_json::Value) -> rhai::Dynamic {
+    match val {
+        serde_json::Value::Null | serde_json::Value::Object(_) => rhai::Dynamic::UNIT,
+        serde_json::Value::Bool(b) => (*b).into(),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                i.into()
+            } else {
+                n.as_f64().unwrap_or(0.0).into()
+            }
+        }
+        serde_json::Value::String(s) => s.clone().into(),
+        serde_json::Value::Array(arr) => {
+            let mapped: Vec<rhai::Dynamic> = arr.iter().map(json_to_rhai).collect();
+            rhai::Dynamic::from(mapped)
+        }
+    }
 }
