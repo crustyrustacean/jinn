@@ -1,6 +1,7 @@
-use super::*;
+use super::registry::*;
 use crate::feat::provider_infra::api_keys::ApiKeys;
-use crate::feat::provider_infra::config::{AliasEntry, ProviderEntry};
+use crate::feat::provider_infra::config::{AliasEntry, ProviderEntry, ProvidersConfig};
+use crate::feat::provider_infra::provider_id::ProviderId;
 
 fn make_config(
     providers: Vec<ProviderEntry>,

@@ -134,7 +134,3 @@ pub fn scroll_window(selected: usize, total: usize, visible: usize) -> (usize, u
     let end = (start + visible).min(total);
     (start, end)
 }
-
-#[cfg(test)]
-#[path = "autocomplete_render_tests.rs"]
-mod autocomplete_render_tests;

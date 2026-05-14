@@ -1,6 +1,7 @@
 use ratatui::text::Line;
 
-use super::*;
+use super::state::*;
+use crate::PickerItem;
 
 /// A minimal item type for testing. Intentionally does **not** derive `Clone`
 /// to verify that `SelectionState` works without it.

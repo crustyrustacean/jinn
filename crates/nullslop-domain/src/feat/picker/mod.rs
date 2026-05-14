@@ -9,6 +9,12 @@ pub mod keymap_entry;
 pub mod picker_kind;
 pub mod render;
 pub mod strategy_entries;
+
+#[cfg(test)]
+mod render_tests;
+
+#[cfg(test)]
+mod entries_tests;
 pub mod strategy_entry;
 pub mod style;
 pub mod validator;

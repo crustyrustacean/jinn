@@ -101,7 +101,3 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     selection_highlight::apply_selection_highlight(app, frame.buffer_mut());
     clipboard::flush_pending_clipboard(app, frame.buffer_mut());
 }
-
-#[cfg(test)]
-#[path = "render_tests.rs"]
-mod render_tests;

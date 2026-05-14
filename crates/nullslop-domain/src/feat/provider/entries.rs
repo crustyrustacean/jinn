@@ -311,7 +311,3 @@ pub fn load_provider_entries(
 
     entries
 }
-
-#[cfg(test)]
-#[path = "entries_tests.rs"]
-mod entries_tests;

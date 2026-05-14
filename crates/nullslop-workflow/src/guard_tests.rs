@@ -1,4 +1,7 @@
-use super::*;
+use super::guard::*;
+use std::collections::HashMap;
+use std::io;
+use std::process::Output;
 
 /// Fake filesystem for testing guard evaluation.
 #[derive(Debug, Clone, Default)]

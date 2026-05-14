@@ -76,7 +76,3 @@ pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
         .footer(footer);
     widget.render(frame, area);
 }
-
-#[cfg(test)]
-#[path = "picker_render_tests.rs"]
-mod render_tests;

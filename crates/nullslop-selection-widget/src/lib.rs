@@ -11,6 +11,8 @@ pub mod highlight;
 pub mod item;
 pub mod picker_ops;
 pub mod state;
+#[cfg(test)]
+mod state_tests;
 pub mod widget;
 
 pub use highlight::{PICKER_HIGHLIGHT_STYLE, highlight_text};
