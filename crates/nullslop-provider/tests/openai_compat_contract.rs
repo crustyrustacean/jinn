@@ -307,3 +307,79 @@ fn factory_rejects_empty_api_key() {
     let result = factory.create();
     assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn chat_stream_yields_text_tokens_only() {
+    let mut server = mockito::Server::new_async().await;
+    let factory = make_factory(&server).await;
+
+    let body = "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" world\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
+
+    server
+        .mock("POST", "/chat/completions")
+        .match_header("authorization", "Bearer test-key")
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body(body)
+        .create_async()
+        .await;
+
+    let service = factory.create().unwrap();
+    let stream = service
+        .chat_stream(vec![LlmMessage::User {
+            content: "hi".into(),
+        }])
+        .await
+        .unwrap();
+
+    let tokens: Vec<String> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    assert_eq!(tokens, vec!["Hello", " world"]);
+}
+
+#[tokio::test]
+async fn custom_headers_from_config_are_sent() {
+    let mut server = mockito::Server::new_async().await;
+
+    let config = ProviderConfig {
+        name: "TestCustom",
+        default_base_url: "https://example.com/v1/",
+        chat_endpoint: "chat/completions",
+        models_endpoint: "models",
+        custom_headers: vec![
+            ("X-Custom-Header".to_owned(), "custom-value".to_owned()),
+        ],
+    };
+
+    let factory = OpenAiCompatibleFactory::new(
+        config,
+        "test-model".to_owned(),
+        Some(server.url()),
+        "test-key".to_owned(),
+        None,
+        "test-custom".to_owned(),
+    );
+
+    server
+        .mock("POST", "/chat/completions")
+        .match_header("x-custom-header", "custom-value")
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body("data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+        .create_async()
+        .await;
+
+    let service = factory.create().unwrap();
+    let stream = service
+        .chat_stream_with_tools(
+            vec![LlmMessage::User {
+                content: "hi".into(),
+            }],
+            vec![],
+        )
+        .await
+        .unwrap();
+
+    let _events: Vec<StreamEvent> =
+        stream.filter_map(|r| async move { r.ok() }).collect().await;
+}

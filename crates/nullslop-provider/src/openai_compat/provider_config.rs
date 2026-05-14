@@ -203,8 +203,15 @@ mod tests {
     #[case(&Backend::Groq, "Groq", "https://api.groq.com/openai/v1/")]
     #[case(&Backend::XAI, "XAI", "https://api.x.ai/v1/")]
     #[case(&Backend::Mistral, "Mistral", "https://api.mistral.ai/v1/")]
-    #[case(&Backend::Ollama, "Ollama", "http://localhost:11434/v1/")]
+    #[case(&Backend::Cohere, "Cohere", "https://api.cohere.ai/v2/")]
+    #[case(&Backend::HuggingFace, "HuggingFace", "https://api-inference.huggingface.co/v1/")]
     #[case(&Backend::LmStudio, "LMStudio", "http://localhost:1234/v1/")]
+    #[case(&Backend::Phind, "Phind", "https://https.api.phind.com/v1/")]
+    #[case(&Backend::Ollama, "Ollama", "http://localhost:11434/v1/")]
+    #[case(&Backend::ElevenLabs, "ElevenLabs", "https://api.elevenlabs.io/v1/")]
+    #[case(&Backend::Anthropic, "OpenAI", "https://api.openai.com/v1/")]
+    #[case(&Backend::Google, "OpenAI", "https://api.openai.com/v1/")]
+    #[case(&Backend::AzureOpenAI, "OpenAI", "https://api.openai.com/v1/")]
     fn backend_maps_to_correct_config(
         #[case] backend: &Backend,
         #[case] expected_name: &str,

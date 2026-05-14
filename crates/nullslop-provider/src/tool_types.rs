@@ -40,3 +40,45 @@ pub struct ToolResult {
     /// Whether execution succeeded.
     pub success: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[rstest::rstest]
+    fn tool_definition_roundtrips_through_serde() {
+        let def = ToolDefinition {
+            name: "file_read".to_owned(),
+            description: "Read a file".to_owned(),
+            parameters: serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}}),
+        };
+        let json = serde_json::to_string(&def).expect("serialize");
+        let back: ToolDefinition = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, def);
+    }
+
+    #[rstest::rstest]
+    fn tool_call_roundtrips_through_serde() {
+        let call = ToolCall {
+            id: "call_123".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let json = serde_json::to_string(&call).expect("serialize");
+        let back: ToolCall = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, call);
+    }
+
+    #[rstest::rstest]
+    fn tool_result_roundtrips_through_serde() {
+        let result = ToolResult {
+            tool_call_id: "call_123".to_owned(),
+            name: "echo".to_owned(),
+            content: "hi".to_owned(),
+            success: true,
+        };
+        let json = serde_json::to_string(&result).expect("serialize");
+        let back: ToolResult = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, result);
+    }
+}
