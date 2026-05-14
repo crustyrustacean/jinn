@@ -13,7 +13,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use super::{Actor, ActorContext, ActorEnvelope};
 
 /// Marker type for actors that don't accept direct messages.
 ///
@@ -90,10 +90,7 @@ impl<C: ScanConfig + Sync> Actor for ScanActor<C> {
             ActorEnvelope::Command(command) => {
                 self.handle_command(&command, ctx).await;
             }
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Event(_) | ActorEnvelope::Direct(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Event(_) | ActorEnvelope::System(_) | ActorEnvelope::Direct(_) => {}
         }
     }
 }

@@ -6,7 +6,7 @@
 //! `EnvironmentLoaded` with the parsed config so downstream actors
 //! (provider_init) can use it without reloading the file.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
 use crate::feat::provider_infra::{ApiKeysService, ConfigStorageService, ProvidersConfig};
 use crate::protocol::{Event, EventMsg};
 use wherror::Error;
@@ -80,10 +80,7 @@ impl Actor for EnvInitActor {
             ActorEnvelope::Direct(EnvInitDirectMsg::Initialize) => {
                 self.on_initialize(ctx);
             }
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Event(_) | ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Event(_) | ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
         }
     }
 

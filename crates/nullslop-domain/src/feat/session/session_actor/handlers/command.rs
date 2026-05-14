@@ -184,8 +184,7 @@ impl SessionPersistenceActor {
                 .get_mut(&session_id)
                 .expect("just inserted");
             session.push_entry(ChatEntry::system(format!(
-                "Session restored: {}",
-                title_text
+                "Session restored: {title_text}"
             )));
             session.set_model(model);
 
