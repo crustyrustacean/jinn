@@ -1,0 +1,61 @@
+//! Contract tests for Google Gemini provider using mockito.
+
+use futures::StreamExt as _;
+use nullslop_provider::{GoogleFactory, LlmMessage, LlmService, LlmServiceFactory, StreamEvent};
+
+fn make_service(server: &mockito::ServerGuard) -> nullslop_provider::google::GoogleService {
+    let client = reqwest::Client::new();
+    nullslop_provider::google::GoogleService::with_base_url(
+        client,
+        "gemini-pro".into(),
+        "test-key".into(),
+        server.url(),
+    )
+}
+
+#[tokio::test]
+async fn text_streaming_yields_text_events() {
+    let mut server = mockito::Server::new_async().await;
+    let service = make_service(&server);
+
+    let body = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello\"}]},\"finishReason\":\"STOP\"}]}\n\n";
+
+    server
+        .mock("POST", mockito::Matcher::Regex(r#"\?key=test-key"#.to_owned()))
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body(body)
+        .create_async()
+        .await;
+
+    let stream = service
+        .chat_stream_with_tools(
+            vec![LlmMessage::User {
+                content: "hi".into(),
+            }],
+            vec![],
+        )
+        .await
+        .unwrap();
+
+    let events: Vec<StreamEvent> = stream
+        .filter_map(|r| async move { r.ok() })
+        .collect()
+        .await;
+
+    assert!(events.iter().any(|e| matches!(e, StreamEvent::Text(t) if t == "Hello")));
+}
+
+#[test]
+fn factory_rejects_empty_api_key() {
+    let client = reqwest::Client::new();
+    let factory = GoogleFactory::new(
+        "gemini-pro".into(),
+        String::new(),
+        client,
+        "test".into(),
+    );
+
+    let result = factory.create();
+    assert!(result.is_err());
+}

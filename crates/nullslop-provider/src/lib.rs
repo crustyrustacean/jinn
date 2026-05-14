@@ -18,6 +18,9 @@ mod tool_types;
 pub mod anthropic;
 pub mod google;
 
+pub use anthropic::AnthropicFactory;
+pub use google::GoogleFactory;
+
 pub use backend::{Backend, BackendError};
 pub use fake::{FakeLlmServiceFactory, TOOL_LOOP_TRIGGER};
 pub use llm_message::LlmMessage;

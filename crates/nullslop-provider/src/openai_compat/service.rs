@@ -89,7 +89,7 @@ impl OpenAiCompatibleService {
         let body =
             request::build_request(&self.model, messages, tools, &self.extra_body);
 
-        let url = format!("{}{}", self.base_url, self.config.chat_endpoint);
+        let url = format!("{}/{}", self.base_url.trim_end_matches('/'), self.config.chat_endpoint);
 
         let mut req = self
             .client
