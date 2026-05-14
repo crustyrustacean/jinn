@@ -149,6 +149,8 @@ pub enum Intent {
     ChatEntrySelectPrev,
     /// Pin the currently selected chat entry.
     ChatEntryPinSelected,
+    /// Toggle expand/collapse of the selected tool result entry.
+    ExpandToolResult,
 
     /// Reload plugin scripts from disk.
     ReloadPlugins,
@@ -212,6 +214,7 @@ impl std::fmt::Display for Intent {
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),
+            Intent::ExpandToolResult => write!(f, "expand tool result"),
             Intent::ReloadPlugins => write!(f, "reload plugins"),
         }
     }

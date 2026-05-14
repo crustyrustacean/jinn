@@ -8,7 +8,7 @@
 //! and [`SessionUi`] (IntentHandler) sub-structs to make cross-boundary
 //! writes visually obvious during code review.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU16, Ordering};
 
 use jiff::Timestamp;
@@ -149,6 +149,11 @@ pub struct SessionUi {
     /// a concrete offset so `scroll_up` / `scroll_down` work correctly.
     /// Uses `AtomicU16` for interior mutability since the element receives `&self`.
     last_max_offset: AtomicU16,
+    /// The set of chat entry IDs whose tool result content is expanded.
+    ///
+    /// When a tool result entry is expanded, its full content is shown
+    /// instead of being truncated. This is ephemeral UI state — not persisted.
+    expanded_entries: HashSet<ChatEntryId>,
 }
 
 impl Clone for SessionUi {
@@ -158,6 +163,7 @@ impl Clone for SessionUi {
             scroll_offset: self.scroll_offset,
             selected_entry_index: self.selected_entry_index,
             last_max_offset: AtomicU16::new(self.last_max_offset.load(Ordering::Relaxed)),
+            expanded_entries: self.expanded_entries.clone(),
         }
     }
 }
@@ -169,6 +175,7 @@ impl Default for SessionUi {
             scroll_offset: None,
             selected_entry_index: None,
             last_max_offset: AtomicU16::new(0),
+            expanded_entries: HashSet::new(),
         }
     }
 }
@@ -772,6 +779,22 @@ impl ChatSessionState {
     /// The ID of the currently selected entry, if any.
     pub fn selected_entry_id(&self) -> Option<&ChatEntryId> {
         self.selected_entry().map(|e| &e.id)
+    }
+
+    /// Toggles the expanded state of a tool result entry.
+    ///
+    /// If the entry is currently expanded, it collapses. Otherwise, it expands.
+    pub fn toggle_expand_entry(&mut self, id: ChatEntryId) {
+        if self.ui.expanded_entries.contains(&id) {
+            self.ui.expanded_entries.remove(&id);
+        } else {
+            self.ui.expanded_entries.insert(id);
+        }
+    }
+
+    /// Whether a tool result entry is currently expanded to show full content.
+    pub fn is_entry_expanded(&self, id: &ChatEntryId) -> bool {
+        self.ui.expanded_entries.contains(id)
     }
 
     /// Returns this session's working directory for tool execution.
