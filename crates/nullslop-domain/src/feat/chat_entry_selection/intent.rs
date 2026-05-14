@@ -158,7 +158,9 @@ mod tests {
             .push_entry(ChatEntry::tool_result("id", "bash", "output", true));
         state.active_session_mut().select_next_entry();
         let entry_id = state.active_session().selected_entry_id().unwrap().clone();
-        state.active_session_mut().toggle_expand_entry(entry_id.clone());
+        state
+            .active_session_mut()
+            .toggle_expand_entry(entry_id.clone());
 
         // When handling expand tool result again.
         handle_expand_tool_result(&mut state);
