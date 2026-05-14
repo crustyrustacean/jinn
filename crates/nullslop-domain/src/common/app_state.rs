@@ -26,6 +26,7 @@ use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::skills::Skill;
 pub use crate::feat::ui::sidebar::pins::state::PinsState;
 use crate::feat::ui::sidebar::state::SidebarState;
+use crate::feat::ui::status_bar::PluginSlotRegistry;
 use crate::protocol::KeymapEntry;
 use crate::protocol::SessionEntry;
 use crate::protocol::StrategyEntry;
@@ -382,6 +383,8 @@ pub struct AppState {
     pub provider: ProviderState,
     /// Frontend / UI state — owned by IntentHandler.
     pub frontend: FrontendState,
+    /// Plugin status bar slots — owned by plugin-actor.
+    pub plugin_slots: PluginSlotRegistry,
 }
 
 impl AppState {

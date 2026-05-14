@@ -25,6 +25,7 @@ use crate::feat::context::protocol::event::{
 };
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::common::actor::event_msg::EventMsg;
+use crate::feat::plugin_actor::protocol::event::PluginEvent;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
@@ -99,6 +100,10 @@ pub enum Event {
     EnvironmentLoaded(EnvironmentLoaded),
     /// User preferences have been updated and persisted.
     PreferencesUpdated(PreferencesUpdated),
+    /// An event emitted by a plugin.
+    Plugin(PluginEvent),
+    /// The active session changed (tab switch or session load).
+    ActiveSessionChanged(crate::protocol::system::ActiveSessionChanged),
 }
 
 impl Event {
@@ -134,6 +139,10 @@ impl Event {
             }
             Self::EnvironmentLoaded(..) => Some(EnvironmentLoaded::TYPE_NAME),
             Self::PreferencesUpdated(..) => Some(PreferencesUpdated::TYPE_NAME),
+            Self::Plugin(..) => Some(PluginEvent::TYPE_NAME),
+            Self::ActiveSessionChanged(..) => {
+                Some(crate::protocol::system::ActiveSessionChanged::TYPE_NAME)
+            }
         }
     }
 }
