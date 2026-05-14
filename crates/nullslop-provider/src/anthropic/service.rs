@@ -16,7 +16,7 @@ use crate::service::{ChatStream, LlmService, LlmServiceError, ToolStream};
 use crate::stream_event::StreamEvent;
 use crate::tool_types::ToolDefinition;
 
-const BASE_URL: &str = "https://api.anthropic.com/v1/messages";
+const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1/messages";
 const PROVIDER_NAME: &str = "Anthropic";
 
 /// An LLM service that talks to Anthropic's Messages API.
@@ -29,6 +29,8 @@ pub struct AnthropicService {
     api_key: String,
     /// Optional system prompt override.
     system_prompt: Option<String>,
+    /// Base URL override (for testing).
+    base_url: String,
 }
 
 impl AnthropicService {
@@ -45,6 +47,25 @@ impl AnthropicService {
             model,
             api_key,
             system_prompt,
+            base_url: DEFAULT_BASE_URL.to_owned(),
+        }
+    }
+
+    /// Create a new Anthropic service instance with a custom base URL (for testing).
+    #[must_use]
+    pub fn with_base_url(
+        client: Client,
+        model: String,
+        api_key: String,
+        system_prompt: Option<String>,
+        base_url: String,
+    ) -> Self {
+        Self {
+            client,
+            model,
+            api_key,
+            system_prompt,
+            base_url,
         }
     }
 
@@ -77,7 +98,7 @@ impl AnthropicService {
 
         let response = self
             .client
-            .post(BASE_URL)
+            .post(&self.base_url)
             .header("x-api-key", &self.api_key)
             .header("content-type", "application/json")
             .header("anthropic-version", "2023-06-01")

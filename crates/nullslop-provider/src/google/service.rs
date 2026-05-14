@@ -23,6 +23,8 @@ pub struct GoogleService {
     model: String,
     /// API key for authentication (passed as query parameter).
     api_key: String,
+    /// Base URL override (for testing).
+    base_url: Option<String>,
 }
 
 impl GoogleService {
@@ -33,6 +35,23 @@ impl GoogleService {
             client,
             model,
             api_key,
+            base_url: None,
+        }
+    }
+
+    /// Create a new Google service with a custom base URL (for testing).
+    #[must_use]
+    pub fn with_base_url(
+        client: Client,
+        model: String,
+        api_key: String,
+        base_url: String,
+    ) -> Self {
+        Self {
+            client,
+            model,
+            api_key,
+            base_url: Some(base_url),
         }
     }
 
@@ -47,10 +66,14 @@ impl GoogleService {
 
     /// Build the streaming URL.
     fn stream_url(&self) -> String {
-        format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
-            self.model, self.api_key
-        )
+        if let Some(ref base) = self.base_url {
+            format!("{base}?key={}", self.api_key)
+        } else {
+            format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
+                self.model, self.api_key
+            )
+        }
     }
 
     /// Send a streaming request to Gemini.
