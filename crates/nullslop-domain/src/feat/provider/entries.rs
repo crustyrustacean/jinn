@@ -199,6 +199,71 @@ fn alias_entry(
     }
 }
 
+/// Builds a [`PickerEntry`] from a remote (cache-discovered) model.
+///
+/// Remote entries are discovered at runtime (e.g., from Ollama's `/api/tags`).
+/// They are marked `is_remote: true` and are unavailable if the provider
+/// requires a key that isn't set.
+fn remote_entry(
+    provider_name: &str,
+    model: &str,
+    backend: &str,
+    is_available: bool,
+) -> PickerEntry {
+    let provider_id = format!("{provider_name}/{model}");
+    PickerEntry {
+        provider_id,
+        name: provider_name.to_owned(),
+        provider_name: provider_name.to_owned(),
+        backend: backend.to_owned(),
+        model: model.to_owned(),
+        is_alias: false,
+        alias_target: None,
+        is_available,
+        is_remote: true,
+        is_active: false,
+    }
+}
+
+/// Merges remote (cache-discovered) models into the entries list.
+///
+/// Static entries win on collision — if a static entry already claims
+/// `{provider_name}/{model}`, the remote version is skipped.
+fn merge_remote_entries(
+    entries: &mut Vec<PickerEntry>,
+    static_ids: &std::collections::HashSet<String>,
+    registry: &crate::feat::provider_infra::ProviderRegistry,
+    api_keys: &crate::feat::provider_infra::ApiKeys,
+    cache: &crate::feat::provider_infra::ModelCache,
+) {
+    let config = registry.config();
+    for (provider_name, models) in &cache.entries {
+        let provider_entry = config.providers.iter().find(|p| &p.name == provider_name);
+
+        let (backend, is_available) = match provider_entry {
+            Some(pe) => {
+                let avail = if pe.requires_key {
+                    pe.api_key_env
+                        .as_ref()
+                        .is_some_and(|env| api_keys.is_set(env))
+                } else {
+                    true
+                };
+                (pe.backend.as_str(), avail)
+            }
+            None => ("unknown", false),
+        };
+
+        for model in models {
+            let provider_id = format!("{provider_name}/{model}");
+            if static_ids.contains(&provider_id) {
+                continue;
+            }
+            entries.push(remote_entry(provider_name, model, backend, is_available));
+        }
+    }
+}
+
 /// Loads all provider and alias entries from the registry, ready for `set_items()`.
 ///
 /// Reads the provider registry, API keys, and optional model cache
@@ -241,48 +306,7 @@ pub fn load_provider_entries(
     // Static entries win on collision — if a static entry already claims
     // `{provider_name}/{model}`, the remote version is skipped.
     if let Some(cache) = model_cache {
-        let config = registry.config();
-        for (provider_name, models) in &cache.entries {
-            let provider_entry = config.providers.iter().find(|p| &p.name == provider_name);
-
-            let (backend, is_available) = match provider_entry {
-                Some(pe) => {
-                    let avail = if pe.requires_key {
-                        pe.api_key_env
-                            .as_ref()
-                            .is_some_and(|env| api_keys.is_set(env))
-                    } else {
-                        true
-                    };
-                    (pe.backend.clone(), avail)
-                }
-                None => ("unknown".to_owned(), false),
-            };
-
-            for model in models {
-                let provider_id = format!("{provider_name}/{model}");
-
-                // Skip if a static entry already uses this ID (static wins on collision).
-                if static_ids.contains(&provider_id) {
-                    continue;
-                }
-
-                let entry = PickerEntry {
-                    provider_id,
-                    name: provider_name.clone(),
-                    provider_name: provider_name.clone(),
-                    backend: backend.clone(),
-                    model: model.clone(),
-                    is_alias: false,
-                    alias_target: None,
-                    is_available,
-                    is_remote: true,
-                    is_active: false,
-                };
-
-                entries.push(entry);
-            }
-        }
+        merge_remote_entries(&mut entries, &static_ids, registry, api_keys, cache);
     }
 
     entries
