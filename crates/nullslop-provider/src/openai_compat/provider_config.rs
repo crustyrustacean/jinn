@@ -1,0 +1,217 @@
+//! Per-backend configuration for OpenAI-compatible providers.
+//!
+//! Each [`Backend`] variant maps to a [`ProviderConfig`] with the correct
+//! default base URL, endpoint paths, and custom headers. Anthropic and Google
+//! are intentionally unsupported here — they have their own implementations.
+
+use crate::Backend;
+
+/// Static configuration for an OpenAI-compatible backend.
+///
+/// Constructed via [`ProviderConfig::from`] or the per-backend constructors.
+#[derive(Debug, Clone)]
+pub struct ProviderConfig {
+    /// Human-readable provider name (for error messages and logging).
+    pub name: &'static str,
+    /// Default base URL for API requests (trailing slash).
+    pub default_base_url: &'static str,
+    /// Chat completions endpoint path relative to base URL.
+    pub chat_endpoint: &'static str,
+    /// Models endpoint path relative to base URL.
+    pub models_endpoint: &'static str,
+    /// Custom HTTP headers to send with every request.
+    pub custom_headers: Vec<(String, String)>,
+}
+
+impl From<&Backend> for ProviderConfig {
+    fn from(backend: &Backend) -> Self {
+        match backend {
+            Backend::OpenAI => Self::openai(),
+            Backend::OpenRouter => Self::openrouter(),
+            Backend::ZAI => Self::zai(),
+            Backend::DeepSeek => Self::deepseek(),
+            Backend::Groq => Self::groq(),
+            Backend::XAI => Self::xai(),
+            Backend::Mistral => Self::mistral(),
+            Backend::Cohere => Self::cohere(),
+            Backend::HuggingFace => Self::huggingface(),
+            Backend::LmStudio => Self::lmstudio(),
+            Backend::Phind => Self::phind(),
+            Backend::Ollama => Self::ollama(),
+            Backend::ElevenLabs => Self::elevenlabs(),
+            // Anthropic, Google, and Azure have their own implementations.
+            // If someone passes them here, they get a reasonable fallback.
+            Backend::Anthropic | Backend::Google | Backend::AzureOpenAI => Self::openai(),
+        }
+    }
+}
+
+impl ProviderConfig {
+    #[must_use]
+    pub fn openai() -> Self {
+        Self {
+            name: "OpenAI",
+            default_base_url: "https://api.openai.com/v1/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn openrouter() -> Self {
+        Self {
+            name: "OpenRouter",
+            default_base_url: "https://openrouter.ai/api/v1/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn zai() -> Self {
+        Self {
+            name: "ZAI",
+            default_base_url: "https://api.z.ai/api/coding/paas/v4/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn deepseek() -> Self {
+        Self {
+            name: "DeepSeek",
+            default_base_url: "https://api.deepseek.com/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn groq() -> Self {
+        Self {
+            name: "Groq",
+            default_base_url: "https://api.groq.com/openai/v1/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn xai() -> Self {
+        Self {
+            name: "XAI",
+            default_base_url: "https://api.x.ai/v1/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn mistral() -> Self {
+        Self {
+            name: "Mistral",
+            default_base_url: "https://api.mistral.ai/v1/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn cohere() -> Self {
+        Self {
+            name: "Cohere",
+            default_base_url: "https://api.cohere.ai/v2/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn huggingface() -> Self {
+        Self {
+            name: "HuggingFace",
+            default_base_url: "https://api-inference.huggingface.co/v1/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn lmstudio() -> Self {
+        Self {
+            name: "LMStudio",
+            default_base_url: "http://localhost:1234/v1/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn phind() -> Self {
+        Self {
+            name: "Phind",
+            default_base_url: "https://https.api.phind.com/v1/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn ollama() -> Self {
+        Self {
+            name: "Ollama",
+            default_base_url: "http://localhost:11434/v1/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+
+    #[must_use]
+    pub fn elevenlabs() -> Self {
+        Self {
+            name: "ElevenLabs",
+            default_base_url: "https://api.elevenlabs.io/v1/",
+            chat_endpoint: "chat/completions",
+            models_endpoint: "models",
+            custom_headers: vec![],
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[rstest::rstest]
+    #[case(&Backend::OpenAI, "OpenAI", "https://api.openai.com/v1/")]
+    #[case(&Backend::OpenRouter, "OpenRouter", "https://openrouter.ai/api/v1/")]
+    #[case(&Backend::ZAI, "ZAI", "https://api.z.ai/api/coding/paas/v4/")]
+    #[case(&Backend::DeepSeek, "DeepSeek", "https://api.deepseek.com/")]
+    #[case(&Backend::Groq, "Groq", "https://api.groq.com/openai/v1/")]
+    #[case(&Backend::XAI, "XAI", "https://api.x.ai/v1/")]
+    #[case(&Backend::Mistral, "Mistral", "https://api.mistral.ai/v1/")]
+    #[case(&Backend::Ollama, "Ollama", "http://localhost:11434/v1/")]
+    #[case(&Backend::LmStudio, "LMStudio", "http://localhost:1234/v1/")]
+    fn backend_maps_to_correct_config(
+        #[case] backend: &Backend,
+        #[case] expected_name: &str,
+        #[case] expected_url: &str,
+    ) {
+        let config = ProviderConfig::from(backend);
+        assert_eq!(config.name, expected_name);
+        assert_eq!(config.default_base_url, expected_url);
+    }
+}
