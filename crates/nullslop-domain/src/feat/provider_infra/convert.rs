@@ -10,6 +10,7 @@ use llm::chat::{ChatMessage, ChatRole, FunctionTool, MessageType, StreamChunk, T
 use llm::{FunctionCall, ToolCall as LlmToolCall};
 
 use super::StreamEvent;
+use super::stream_event::StopReason;
 
 /// Convert protocol messages to llm crate messages.
 ///
@@ -67,7 +68,9 @@ pub(crate) fn stream_chunk_to_event(chunk: StreamChunk) -> StreamEvent {
             index,
             tool_call: llm_tool_call_to_protocol(&tool_call),
         },
-        StreamChunk::Done { stop_reason } => StreamEvent::Done { stop_reason },
+        StreamChunk::Done { stop_reason } => StreamEvent::Done {
+            stop_reason: StopReason::from(stop_reason.as_str()),
+        },
     }
 }
 
@@ -371,7 +374,7 @@ mod tests {
         assert_eq!(
             event,
             StreamEvent::Done {
-                stop_reason: "tool_use".to_owned(),
+                stop_reason: StopReason::ToolUse,
             }
         );
     }

@@ -46,3 +46,4 @@ pub use sample::SampleLlmServiceFactory;
 pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
 pub use service_wrapper::LlmServiceFactoryService;
 pub use stream_event::StreamEvent;
+pub use stream_event::StopReason;
