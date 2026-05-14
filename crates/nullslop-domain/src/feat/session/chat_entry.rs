@@ -552,7 +552,3 @@ impl PartialEq for TableData {
 }
 
 impl Eq for ChatEntryKind {}
-
-#[cfg(test)]
-#[path = "chat_entry_tests.rs"]
-mod chat_tests;

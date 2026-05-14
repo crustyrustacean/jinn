@@ -21,7 +21,3 @@ pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &AppStat
         .footer(footer);
     widget.render(frame, area);
 }
-
-#[cfg(test)]
-#[path = "render_tests.rs"]
-mod render_tests;

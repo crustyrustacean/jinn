@@ -6,7 +6,7 @@ use nullslop_testutil::setup_term;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier};
 
-use super::render_autocomplete_popup;
+use super::autocomplete_render::render_autocomplete_popup;
 
 /// Helper to create an `AppState` with autocomplete active.
 ///

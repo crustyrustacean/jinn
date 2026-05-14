@@ -1,4 +1,4 @@
-use super::*;
+use super::chat_entry::*;
 
 #[rstest::rstest]
 fn chat_entry_id_is_unique() {

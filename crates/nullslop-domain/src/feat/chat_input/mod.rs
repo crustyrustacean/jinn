@@ -11,6 +11,9 @@
 //! - **Autocomplete render** — renders the prompt template autocomplete popup overlay.
 
 pub mod autocomplete_render;
+
+#[cfg(test)]
+mod autocomplete_render_tests;
 pub mod element;
 pub mod intent;
 pub mod protocol;

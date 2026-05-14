@@ -9,8 +9,8 @@ use nullslop_testutil::setup_term;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 
-use super::super::loader::load_provider_picker_items;
-use super::super::render::render_provider_picker;
+use super::loader::load_provider_picker_items;
+use super::render::render_provider_picker;
 
 fn picker_state_with_ollama() -> (AppState, Services) {
     let config = ProvidersConfig {

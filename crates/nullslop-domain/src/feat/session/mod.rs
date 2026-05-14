@@ -9,6 +9,9 @@ pub mod session_store;
 pub mod session_summary;
 
 pub mod chat_entry;
+
+#[cfg(test)]
+mod chat_entry_tests;
 pub mod chat_session;
 pub mod entries;
 pub mod intent;
