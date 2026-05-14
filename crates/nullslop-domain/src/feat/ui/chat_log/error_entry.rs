@@ -1,17 +1,10 @@
-//! Error entry rendering — red text with indentation.
+//! Error entry rendering — red text.
 
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
 
-use super::shared::multiline_styled;
+use super::shared::{multiline_styled, RenderContext};
 
-pub fn to_lines(text: &str, pinned: bool, is_selected: bool) -> Vec<Line<'static>> {
-    let prefix = if pinned { "📌   " } else { "  " };
-    multiline_styled(
-        text,
-        prefix,
-        "  ",
-        Style::default().fg(Color::Red),
-        is_selected,
-    )
+pub fn to_lines(text: &str, _ctx: &RenderContext) -> Vec<Line<'static>> {
+    multiline_styled(text, "", "", Style::default().fg(Color::Red))
 }

@@ -4,7 +4,7 @@ use crate::protocol::TableData;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use super::shared::unicode_segementation_display_width;
+use super::shared::{unicode_segementation_display_width, RenderContext};
 
 /// Render a [`TableData`] as aligned, styled lines.
 ///
@@ -12,13 +12,11 @@ use super::shared::unicode_segementation_display_width;
 /// - A bold header line
 /// - A separator line
 /// - Styled data rows with per-cell coloring
-pub fn to_lines(data: &TableData, pinned: bool, is_selected: bool) -> Vec<Line<'static>> {
-    let prefix = if pinned { "📌 " } else { "  " };
-    let prefix = prefix.to_owned();
+pub fn to_lines(data: &TableData, _ctx: &RenderContext) -> Vec<Line<'static>> {
     let num_cols = data.headers.len();
     if num_cols == 0 {
         return vec![Line::from(Span::styled(
-            format!("{prefix}(empty table)"),
+            "(empty table)",
             Style::default().fg(Color::DarkGray),
         ))];
     }
@@ -47,23 +45,11 @@ pub fn to_lines(data: &TableData, pinned: bool, is_selected: bool) -> Vec<Line<'
         sep,
         Style::default().add_modifier(Modifier::BOLD),
     );
-    let header_line = if is_selected {
-        let mut spans = vec![Span::styled(
-            format!("▶ {prefix}"),
-            Style::default().add_modifier(Modifier::REVERSED),
-        )];
-        spans.extend(header_spans);
-        Line::from(spans)
-    } else {
-        let mut spans = vec![Span::raw(prefix.clone())];
-        spans.extend(header_spans);
-        Line::from(spans)
-    };
-    lines.push(header_line);
+    lines.push(Line::from(header_spans));
 
     // Separator line.
     let sep_parts: Vec<String> = col_widths.iter().map(|&w| "─".repeat(w)).collect();
-    let sep_text = format!("{prefix}{}", sep_parts.join("─┼─"));
+    let sep_text = sep_parts.join("─┼─");
     lines.push(Line::from(Span::styled(
         sep_text,
         Style::default().fg(Color::DarkGray),
@@ -72,9 +58,7 @@ pub fn to_lines(data: &TableData, pinned: bool, is_selected: bool) -> Vec<Line<'
     // Data rows.
     for row in &data.rows {
         let row_spans = build_row_spans(row, &col_widths, sep, Style::default());
-        let mut spans = vec![Span::raw(prefix.clone())];
-        spans.extend(row_spans);
-        lines.push(Line::from(spans));
+        lines.push(Line::from(row_spans));
     }
 
     lines

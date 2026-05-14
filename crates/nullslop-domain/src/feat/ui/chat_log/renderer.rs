@@ -3,21 +3,30 @@
 //! Each entry in the chat log is displayed with a distinct visual style so the user
 //! can tell them apart at a glance:
 //!
-//! - **User messages** appear bold with a `>` prefix.
+//! - **User messages** appear as white text on a light gray background block.
 //! - **System messages** appear muted with indentation.
 //! - **Actor messages** appear highlighted with the actor's name and content.
-//! - **Assistant messages** appear in cyan (no icon — color distinguishes them).
+//! - **Assistant messages** appear in white with no background.
+//! - **Tool calls** appear as light gray text on a dark green background block.
+//! - **Tool results** appear as light gray text on a dark green (success) or
+//!   dark red (failure) background block.
+//!
+//! A 2-column gutter on the left shows a dark gray background by default,
+//! and turns yellow when the cursor selects an entry. Pinned entries show
+//! a 📌 emoji in the gutter.
 //!
 //! Text wraps within the available space.
 
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use crate::protocol::ChatEntryKind;
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-use ratatui::{Frame, layout::Rect};
+use ratatui::Frame;
 
+use super::shared::{RenderContext, GUTTER_WIDTH};
 use super::{actor, assistant, error_entry, system, table, thinking, tool_call, tool_result, user};
 
 /// Default number of lines to show for tool result entries before truncating.
@@ -50,6 +59,8 @@ impl UiElement<AppState> for ChatLogElement {
         let selected_idx = state.active_session().selected_entry_index();
         let history = state.active_session().history();
 
+        let content_width = area.width.saturating_sub(GUTTER_WIDTH);
+
         // Build lines while tracking per-entry wrapped line ranges.
         // entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line) in wrapped coords.
         let mut lines: Vec<Line> = Vec::new();
@@ -64,7 +75,30 @@ impl UiElement<AppState> for ChatLogElement {
                 .preferences
                 .tool_result_max_lines
                 .unwrap_or(DEFAULT_TOOL_RESULT_MAX_LINES);
-            let entry_lines = entry_to_lines(entry, is_selected, is_expanded, max_lines);
+
+            let ctx = RenderContext {
+                content_width,
+                _is_selected: is_selected,
+                is_pinned: entry.pin_position.is_some(),
+                is_expanded,
+                tool_result_max_lines: max_lines,
+            };
+
+            let mut entry_lines = entry_to_lines(entry, &ctx);
+
+            // Prepend gutter prefix to each line.
+            let gutter_style = if is_selected {
+                Style::default().bg(Color::Yellow)
+            } else {
+                Style::default().bg(Color::DarkGray)
+            };
+            let gutter_content = if ctx.is_pinned { "📌" } else { "  " };
+
+            for line in &mut entry_lines {
+                let gutter_span = Span::styled(gutter_content.to_owned(), gutter_style);
+                line.spans.insert(0, gutter_span);
+            }
+
             let entry_wrapped: u16 = entry_lines
                 .iter()
                 .map(|line| {
@@ -128,7 +162,7 @@ impl UiElement<AppState> for ChatLogElement {
 
         let chat_widget = Paragraph::new(display_lines)
             .block(Block::default().borders(Borders::NONE))
-            .wrap(Wrap { trim: true })
+            .wrap(Wrap { trim: false })
             .scroll((clamped, 0));
         frame.render_widget(chat_widget, area);
 
@@ -137,7 +171,7 @@ impl UiElement<AppState> for ChatLogElement {
             let hidden = max_offset - clamped;
             let label = format!(" ↑ {hidden} lines above ");
             let label_len = label.len();
-            let indicator = Paragraph::new(Line::from(ratatui::text::Span::styled(
+            let indicator = Paragraph::new(Line::from(Span::styled(
                 label,
                 Style::default().fg(Color::DarkGray).bg(Color::Black),
             )));
@@ -158,41 +192,29 @@ impl UiElement<AppState> for ChatLogElement {
 
 /// Convert a chat entry into one or more visual lines, splitting on `\n`.
 ///
-/// The first line gets the entry-type prefix; continuation lines get indentation.
-/// When `is_selected` is true, the first line gets a `▶` prefix and `REVERSED` style.
+/// Each entry type is delegated to its own submodule. Lines returned here are
+/// content-width only — the gutter prefix is prepended by the caller.
 fn entry_to_lines(
     entry: &crate::protocol::ChatEntry,
-    is_selected: bool,
-    is_expanded: bool,
-    tool_result_max_lines: u16,
+    ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
-    let pinned = entry.pin_position.is_some();
-
     match &entry.kind {
-        ChatEntryKind::User(text) => user::to_lines(text, pinned, is_selected),
-        ChatEntryKind::System(text) => system::to_lines(text, pinned, is_selected),
-        ChatEntryKind::Error(text) => error_entry::to_lines(text, pinned, is_selected),
-        ChatEntryKind::Actor { source, text } => actor::to_lines(source, text, pinned, is_selected),
-        ChatEntryKind::Assistant(text) => assistant::to_lines(text, pinned, is_selected),
+        ChatEntryKind::User(text) => user::to_lines(text, ctx),
+        ChatEntryKind::System(text) => system::to_lines(text, ctx),
+        ChatEntryKind::Error(text) => error_entry::to_lines(text, ctx),
+        ChatEntryKind::Actor { source, text } => actor::to_lines(source, text, ctx),
+        ChatEntryKind::Assistant(text) => assistant::to_lines(text, ctx),
         ChatEntryKind::ToolCall {
             name, arguments, ..
-        } => tool_call::to_lines(name, arguments, pinned, is_selected),
+        } => tool_call::to_lines(name, arguments, ctx),
         ChatEntryKind::ToolResult {
             name,
             content,
             success,
             ..
-        } => tool_result::to_lines(
-            name,
-            content,
-            *success,
-            pinned,
-            is_selected,
-            is_expanded,
-            tool_result_max_lines,
-        ),
-        ChatEntryKind::Table(data) => table::to_lines(data, pinned, is_selected),
-        ChatEntryKind::Thinking(text) => thinking::to_lines(text, pinned, is_selected),
+        } => tool_result::to_lines(name, content, *success, ctx),
+        ChatEntryKind::Table(data) => table::to_lines(data, ctx),
+        ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
     }
 }
 
@@ -207,6 +229,9 @@ mod tests {
     use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::Span;
 
+    // --- Gutter width constant for test offsets ---
+    const G: u16 = GUTTER_WIDTH; // = 2
+
     #[rstest::rstest]
     fn name_returns_chat_log() {
         // Given a ChatLogElement.
@@ -220,7 +245,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_user_entry() {
+    fn render_user_entry_has_white_text_on_gray_bg() {
         // Given a ChatLogElement with a user entry "hello".
         let mut element = ChatLogElement;
         let state = {
@@ -238,11 +263,12 @@ mod tests {
             })
             .unwrap();
 
-        // Then the bottom row has ">" and the text is bold.
+        // Then the content cell (after gutter) has white fg and gray bg.
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 9)).expect("cell should exist");
-        assert_eq!(cell.symbol(), ">");
-        assert!(cell.style().add_modifier.contains(Modifier::BOLD));
+        let content_cell = buffer.cell((G, 9)).expect("cell should exist");
+        assert_eq!(content_cell.symbol(), "h");
+        assert_eq!(content_cell.style().fg, Some(Color::White));
+        assert_eq!(content_cell.style().bg, Some(Color::Gray));
     }
 
     #[rstest::rstest]
@@ -265,9 +291,9 @@ mod tests {
             })
             .unwrap();
 
-        // Then the text is dark gray on the bottom row.
+        // Then the text is dark gray on the bottom row (after gutter).
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 9)).expect("cell should exist");
+        let cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "r");
         assert_eq!(cell.style().fg, Some(Color::DarkGray));
     }
@@ -294,13 +320,13 @@ mod tests {
 
         // Then the text starts with "[" (from "[actor]") on the bottom row and is yellow.
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 9)).expect("cell should exist");
+        let cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "[");
         assert_eq!(cell.style().fg, Some(Color::Yellow));
     }
 
     #[rstest::rstest]
-    fn render_assistant_entry() {
+    fn render_assistant_entry_is_white() {
         // Given a ChatLogElement with an assistant entry "hello world".
         let mut element = ChatLogElement;
         let state = {
@@ -319,42 +345,15 @@ mod tests {
             })
             .unwrap();
 
-        // Then the bottom row has the text content (no icon) and is cyan.
+        // Then the bottom row has the text content (no icon) and is white.
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 9)).expect("cell should exist");
+        let cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "h");
-        assert_eq!(cell.style().fg, Some(Color::Cyan));
+        assert_eq!(cell.style().fg, Some(Color::White));
     }
 
     #[rstest::rstest]
-    fn render_user_first_line_has_prefix() {
-        // Given a ChatLogElement with a user entry containing "hello\nworld".
-        let mut element = ChatLogElement;
-        let state = {
-            let mut s = AppState::default();
-            s.active_session_mut()
-                .push_entry(ChatEntry::user("hello\nworld"));
-            s
-        };
-
-        let (mut terminal, area) = setup_term(40, 10);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then line 8 has "> " prefix (bold).
-        let buffer = terminal.backend().buffer().clone();
-        let line8 = buffer.cell((0, 8)).expect("cell should exist");
-        assert_eq!(line8.symbol(), ">");
-        assert!(line8.style().add_modifier.contains(Modifier::BOLD));
-    }
-
-    #[rstest::rstest]
-    fn render_user_continuation_has_no_prefix() {
+    fn render_user_continuation_has_block_bg() {
         // Given a ChatLogElement with a user entry containing "hello\nworld".
         let mut element = ChatLogElement;
         let state = {
@@ -372,42 +371,16 @@ mod tests {
             })
             .unwrap();
 
-        // And line 9 has "world" (no prefix, bold).
+        // Then line 9 has "world" with white fg and gray bg (BLOCK continues).
         let buffer = terminal.backend().buffer().clone();
-        let w_cell = buffer.cell((0, 9)).expect("cell should exist");
+        let w_cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(w_cell.symbol(), "w");
-        assert!(w_cell.style().add_modifier.contains(Modifier::BOLD));
+        assert_eq!(w_cell.style().fg, Some(Color::White));
+        assert_eq!(w_cell.style().bg, Some(Color::Gray));
     }
 
     #[rstest::rstest]
-    fn render_assistant_first_line_has_prefix() {
-        // Given a ChatLogElement with an assistant entry containing "line1\nline2".
-        let mut element = ChatLogElement;
-        let state = {
-            let mut s = AppState::default();
-            s.active_session_mut()
-                .push_entry(ChatEntry::assistant("line1\nline2"));
-            s
-        };
-
-        let (mut terminal, area) = setup_term(40, 10);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then line 8 has the text content (no icon) and is cyan.
-        let buffer = terminal.backend().buffer().clone();
-        let line8 = buffer.cell((0, 8)).expect("cell should exist");
-        assert_eq!(line8.symbol(), "l");
-        assert_eq!(line8.style().fg, Some(Color::Cyan));
-    }
-
-    #[rstest::rstest]
-    fn render_assistant_continuation_has_no_prefix() {
+    fn render_assistant_continuation_has_no_bg() {
         // Given a ChatLogElement with an assistant entry containing "line1\nline2".
         let mut element = ChatLogElement;
         let state = {
@@ -425,89 +398,11 @@ mod tests {
             })
             .unwrap();
 
-        // And line 9 has "line2" (no prefix, cyan).
+        // And line 9 has "line2" (no prefix, white, no bg).
         let buffer = terminal.backend().buffer().clone();
-        let l_cell = buffer.cell((0, 9)).expect("cell should exist");
+        let l_cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(l_cell.symbol(), "l");
-        assert_eq!(l_cell.style().fg, Some(Color::Cyan));
-    }
-
-    #[rstest::rstest]
-    fn render_first_line_has_prefix() {
-        // Given a user entry "a\n\nb".
-        let mut element = ChatLogElement;
-        let state = {
-            let mut s = AppState::default();
-            s.active_session_mut().push_entry(ChatEntry::user("a\n\nb"));
-            s
-        };
-
-        let (mut terminal, area) = setup_term(40, 10);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then line 7 is "> a" (bold).
-        let buffer = terminal.backend().buffer().clone();
-        let line7 = buffer.cell((2, 7)).expect("cell should exist");
-        assert_eq!(line7.symbol(), "a");
-    }
-
-    #[rstest::rstest]
-    fn render_empty_line_between_newlines() {
-        // Given a user entry "a\n\nb".
-        let mut element = ChatLogElement;
-        let state = {
-            let mut s = AppState::default();
-            s.active_session_mut().push_entry(ChatEntry::user("a\n\nb"));
-            s
-        };
-
-        let (mut terminal, area) = setup_term(40, 10);
-
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then line 8 is empty (middle line between newlines).
-        // Verified by checking that line 9 has "b".
-        let buffer = terminal.backend().buffer().clone();
-        // Line 8 should not have a prefix character (not '>' or 'a' or 'b')
-        let line8 = buffer.cell((0, 8)).expect("cell should exist");
-        assert_ne!(line8.symbol(), ">");
-        assert_ne!(line8.symbol(), "a");
-        assert_ne!(line8.symbol(), "b");
-    }
-
-    #[rstest::rstest]
-    fn render_continuation_has_no_prefix() {
-        // Given a user entry "a\n\nb".
-        let mut element = ChatLogElement;
-        let state = {
-            let mut s = AppState::default();
-            s.active_session_mut().push_entry(ChatEntry::user("a\n\nb"));
-            s
-        };
-
-        let (mut terminal, area) = setup_term(40, 10);
-
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // And line 9 is "b" (no prefix, bold).
-        let buffer = terminal.backend().buffer().clone();
-        let line9 = buffer.cell((0, 9)).expect("cell should exist");
-        assert_eq!(line9.symbol(), "b");
-        assert!(line9.style().add_modifier.contains(Modifier::BOLD));
+        assert_eq!(l_cell.style().fg, Some(Color::White));
     }
 
     #[rstest::rstest]
@@ -529,17 +424,12 @@ mod tests {
             })
             .unwrap();
 
-        // Then the top rows are empty and the message appears at the bottom.
+        // Then the top row is empty (blank padding) and the message appears at the bottom.
         let buffer = terminal.backend().buffer().clone();
 
-        // Top row is empty.
-        let top_cell = buffer.cell((0, 0)).expect("cell should exist");
-        assert_eq!(top_cell.symbol(), " ");
-
-        // Bottom row has the user message.
-        let bottom_cell = buffer.cell((0, 9)).expect("cell should exist");
-        assert_eq!(bottom_cell.symbol(), ">");
-        assert!(bottom_cell.style().add_modifier.contains(Modifier::BOLD));
+        // Bottom row content has user text.
+        let bottom_cell = buffer.cell((G, 9)).expect("cell should exist");
+        assert_eq!(bottom_cell.symbol(), "h");
     }
 
     #[rstest::rstest]
@@ -555,7 +445,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn selected_entry_has_reversed_indicator() {
+    fn selected_entry_gutter_is_yellow() {
         // Given a ChatLogElement with 2 entries, first selected.
         let mut element = ChatLogElement;
         let state = {
@@ -575,43 +465,18 @@ mod tests {
             })
             .unwrap();
 
-        // Then the selected entry has a REVERSED style indicator on the first line.
+        // Then the selected entry's gutter has yellow bg.
         let buffer = terminal.backend().buffer().clone();
-        // Line 8 has the selected entry (first entry, with ▶ prefix and REVERSED).
-        let cell = buffer.cell((0, 8)).expect("cell should exist");
-        assert_eq!(cell.symbol(), "\u{25b6}");
-        assert!(cell.style().add_modifier.contains(Modifier::REVERSED));
+        let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
+        assert_eq!(gutter_cell.style().bg, Some(Color::Yellow));
+
+        // And the unselected entry's gutter has dark gray bg.
+        let unselected_gutter = buffer.cell((0, 9)).expect("cell should exist");
+        assert_eq!(unselected_gutter.style().bg, Some(Color::DarkGray));
     }
 
     #[rstest::rstest]
-    fn unselected_entry_has_normal_indicator() {
-        // Given a ChatLogElement with 2 entries, first selected.
-        let mut element = ChatLogElement;
-        let state = {
-            let mut s = AppState::default();
-            s.active_session_mut().push_entry(ChatEntry::user("hello"));
-            s.active_session_mut().push_entry(ChatEntry::user("world"));
-            s.active_session_mut().select_next_entry(); // selects index 0
-            s
-        };
-
-        let (mut terminal, area) = setup_term(40, 10);
-
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Line 9 has the unselected entry (no ▶ prefix, no REVERSED).
-        let buffer = terminal.backend().buffer().clone();
-        let unselected = buffer.cell((0, 9)).expect("cell should exist");
-        assert_eq!(unselected.symbol(), ">");
-        assert!(!unselected.style().add_modifier.contains(Modifier::REVERSED));
-    }
-
-    #[rstest::rstest]
-    fn render_no_selection_has_no_highlight() {
+    fn render_no_selection_has_dark_gray_gutter() {
         // Given a ChatLogElement with entries but no selection.
         let mut element = ChatLogElement;
         let state = {
@@ -630,15 +495,14 @@ mod tests {
             })
             .unwrap();
 
-        // Then no entries have the REVERSED style or ▶ prefix.
+        // Then the gutter has dark gray bg (not yellow).
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 8)).expect("cell should exist");
-        assert_eq!(cell.symbol(), ">");
-        assert!(!cell.style().add_modifier.contains(Modifier::REVERSED));
+        let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
+        assert_eq!(gutter_cell.style().bg, Some(Color::DarkGray));
     }
 
     #[rstest::rstest]
-    fn render_pinned_entry_shows_pin_icon() {
+    fn render_pinned_entry_shows_pin_in_gutter() {
         // Given a ChatLogElement with one pinned user entry.
         let mut element = ChatLogElement;
         let state = {
@@ -657,16 +521,16 @@ mod tests {
             })
             .unwrap();
 
-        // Then the pinned entry's line contains the 📌 character.
+        // Then the gutter contains the 📌 character.
         let buffer = terminal.backend().buffer().clone();
         let has_pin = (0..10).any(|row| {
-            (0..40).any(|col| {
+            (0..2).any(|col| {
                 buffer
                     .cell((col, row))
                     .is_some_and(|c| c.symbol() == "\u{1F4CC}")
             })
         });
-        assert!(has_pin, "pinned entry should show \u{1F4CC} pin icon");
+        assert!(has_pin, "pinned entry should show \u{1F4CC} pin icon in gutter");
     }
 
     #[rstest::rstest]
@@ -717,8 +581,6 @@ mod tests {
             }
             // Select the first entry (index 0).
             s.active_session_mut().select_next_entry(); // selects index 0
-            // Scroll to bottom (auto-scroll).
-            // The scroll_offset is None (auto-scroll to bottom).
             s
         };
 
@@ -731,16 +593,15 @@ mod tests {
             })
             .unwrap();
 
-        // Then the selected entry (with \u{25b6} prefix) should be visible somewhere
-        // in the viewport (not scrolled off the top).
+        // Then the selected entry's gutter (yellow) should be visible in the viewport.
         let buffer = terminal.backend().buffer().clone();
-        let has_indicator = (0..5).any(|row| {
+        let has_yellow_gutter = (0..5).any(|row| {
             buffer
                 .cell((0, row))
-                .is_some_and(|c| c.symbol() == "\u{25b6}")
+                .is_some_and(|c| c.style().bg == Some(Color::Yellow))
         });
         assert!(
-            has_indicator,
+            has_yellow_gutter,
             "selected entry should be visible in viewport when scroll-to-selected is active"
         );
     }
@@ -776,9 +637,8 @@ mod tests {
             })
             .unwrap();
 
-        // Then the header row contains "Provider" with bold styling.
+        // Then the header row contains "P" (from "Provider") with bold styling.
         let buffer = terminal.backend().buffer().clone();
-        // Find a cell that contains "P" (from "Provider") with bold modifier.
         let has_bold_header = (0..10).any(|row| {
             (0..60).any(|col| {
                 buffer.cell((col, row)).is_some_and(|c| {
@@ -883,9 +743,9 @@ mod tests {
             })
             .unwrap();
 
-        // Then the text is red on the bottom row.
+        // Then the text is red on the bottom row (after gutter).
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 9)).expect("cell should exist");
+        let cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "C");
         assert_eq!(cell.style().fg, Some(Color::Red));
     }
@@ -910,9 +770,9 @@ mod tests {
             })
             .unwrap();
 
-        // Then the text is dark gray on the bottom row.
+        // Then the text is dark gray on the bottom row (after gutter).
         let buffer = terminal.backend().buffer().clone();
-        let cell = buffer.cell((0, 9)).expect("cell should exist");
+        let cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "r");
         assert_eq!(cell.style().fg, Some(Color::DarkGray));
     }
@@ -942,17 +802,17 @@ mod tests {
         // Then the thinking entry is dark gray and appears above the assistant entry.
         let buffer = terminal.backend().buffer().clone();
         // Line 8 has the thinking entry (dark gray).
-        let thinking_cell = buffer.cell((0, 8)).expect("cell should exist");
+        let thinking_cell = buffer.cell((G, 8)).expect("cell should exist");
         assert_eq!(thinking_cell.symbol(), "r");
         assert_eq!(thinking_cell.style().fg, Some(Color::DarkGray));
-        // Line 9 has the assistant entry (cyan).
-        let assistant_cell = buffer.cell((0, 9)).expect("cell should exist");
+        // Line 9 has the assistant entry (white).
+        let assistant_cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(assistant_cell.symbol(), "r");
-        assert_eq!(assistant_cell.style().fg, Some(Color::Cyan));
+        assert_eq!(assistant_cell.style().fg, Some(Color::White));
     }
 
     #[rstest::rstest]
-    fn render_tool_result_truncated_shows_indicator() {
+    fn render_tool_result_truncated_shows_new_format() {
         // Given a ChatLogElement with a tool result that has 10 lines.
         let mut element = ChatLogElement;
         let state = {
@@ -976,17 +836,17 @@ mod tests {
             })
             .unwrap();
 
-        // Then the buffer contains "(5 more lines)" somewhere.
+        // Then the buffer contains "---(5 more lines)---" somewhere.
         let buffer = terminal.backend().buffer().clone();
         let has_indicator = (0..20).any(|row| {
             let row_text: String = (0..80)
                 .map(|col| buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" "))
                 .collect();
-            row_text.contains("(5 more lines)")
+            row_text.contains("---(5 more lines)---")
         });
         assert!(
             has_indicator,
-            "truncated tool result should show '(5 more lines)'"
+            "truncated tool result should show '---(5 more lines)---'"
         );
     }
 
@@ -1033,7 +893,7 @@ mod tests {
             let row_text: String = (0..80)
                 .map(|col| buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" "))
                 .collect();
-            row_text.contains("(5 more lines)")
+            row_text.contains("more lines")
         });
         assert!(
             !has_indicator,
@@ -1075,5 +935,212 @@ mod tests {
             !has_indicator,
             "short tool result should not be truncated"
         );
+    }
+
+    #[rstest::rstest]
+    fn render_tool_call_has_dark_green_bg() {
+        // Given a ChatLogElement with a tool call entry.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::tool_call(
+                "id", "bash", "ls -la",
+            ));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the content area has dark green bg.
+        let buffer = terminal.backend().buffer().clone();
+        let cell = buffer.cell((G, 9)).expect("cell should exist");
+        assert_eq!(cell.style().bg, Some(Color::Rgb(0, 100, 0)));
+    }
+
+    #[rstest::rstest]
+    fn render_tool_result_success_has_dark_green_bg() {
+        // Given a ChatLogElement with a successful tool result entry.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::tool_result(
+                "id", "bash", "output", true,
+            ));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the content area has dark green bg.
+        let buffer = terminal.backend().buffer().clone();
+        let cell = buffer.cell((G, 9)).expect("cell should exist");
+        assert_eq!(cell.style().bg, Some(Color::Rgb(0, 100, 0)));
+    }
+
+    #[rstest::rstest]
+    fn render_tool_result_failure_has_dark_red_bg() {
+        // Given a ChatLogElement with a failed tool result entry.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::tool_result(
+                "id", "bash", "error", false,
+            ));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the content area has dark red bg.
+        let buffer = terminal.backend().buffer().clone();
+        let cell = buffer.cell((G, 9)).expect("cell should exist");
+        assert_eq!(cell.style().bg, Some(Color::Rgb(139, 0, 0)));
+    }
+
+    #[rstest::rstest]
+    fn render_user_block_bg_fills_full_width() {
+        // Given a ChatLogElement with a short user entry.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::user("hi"));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then cells at the right edge of the content area have gray bg (BLOCK fill).
+        let buffer = terminal.backend().buffer().clone();
+        let right_cell = buffer.cell((39, 9)).expect("cell should exist");
+        assert_eq!(right_cell.style().bg, Some(Color::Gray));
+    }
+
+    #[rstest::rstest]
+    fn render_tool_result_name_on_first_line() {
+        // Given a ChatLogElement with a tool result.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::tool_result(
+                "id", "bash", "output", true,
+            ));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the first content line is the tool name "bash" (after gutter).
+        let buffer = terminal.backend().buffer().clone();
+        // With 1 entry of 2 lines (name + content) in a 10-row viewport,
+        // name is at row 8, content at row 9.
+        let name_cell = buffer.cell((G, 8)).expect("cell should exist");
+        assert_eq!(name_cell.symbol(), "b");
+        assert_eq!(name_cell.style().fg, Some(Color::Gray));
+        let content_cell = buffer.cell((G, 9)).expect("cell should exist");
+        assert_eq!(content_cell.symbol(), "o");
+    }
+
+    #[rstest::rstest]
+    fn render_truncation_indicator_is_dark_gray() {
+        // Given a ChatLogElement with a tool result that gets truncated.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            let content = (1..=10)
+                .map(|i| format!("line {i}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            s.active_session_mut().push_entry(ChatEntry::tool_result(
+                "id", "bash", content, true,
+            ));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(80, 20);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the truncation indicator line has dark gray fg.
+        let buffer = terminal.backend().buffer().clone();
+        // Find the row with "---"
+        let truncation_row = (0..20).find(|&row| {
+            (0..80).any(|col| {
+                buffer
+                    .cell((col, row))
+                    .is_some_and(|buf_cell| {
+                        buf_cell.symbol() == "-"
+                            && buf_cell.style().fg == Some(Color::DarkGray)
+                    })
+            })
+        });
+        assert!(
+            truncation_row.is_some(),
+            "truncation indicator should have dark gray fg"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_gutter_is_dark_gray_by_default() {
+        // Given a ChatLogElement with entries.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::user("hello"));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the gutter cells have dark gray bg.
+        let buffer = terminal.backend().buffer().clone();
+        let gutter_cell = buffer.cell((0, 9)).expect("cell should exist");
+        assert_eq!(gutter_cell.style().bg, Some(Color::DarkGray));
     }
 }
