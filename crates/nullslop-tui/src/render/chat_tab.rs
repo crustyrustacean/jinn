@@ -109,8 +109,8 @@ pub(super) fn render_chat_tab(
             height: 1,
         };
         let prompt = Paragraph::new(Line::from(Span::styled(
-            "Press ESC again to cancel",
-            Style::default().fg(Color::Yellow),
+            " Press ESC again to cancel ",
+            Style::default().fg(Color::Black).bg(Color::Yellow),
         )));
         frame.render_widget(prompt, prompt_area);
     }
