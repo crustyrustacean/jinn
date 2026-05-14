@@ -35,6 +35,9 @@ use super::{actor, assistant, error_entry, system, table, thinking, tool_call, t
 /// Default number of lines to show for tool result entries before truncating.
 const DEFAULT_TOOL_RESULT_MAX_LINES: u16 = 5;
 
+/// Gutter background color.
+const GUTTER_BG: Color = Color::Rgb(0x19, 0x1B, 0x1E);
+
 /// Display element for the full conversation history.
 #[derive(Debug)]
 pub struct ChatLogElement;
@@ -108,7 +111,7 @@ impl UiElement<AppState> for ChatLogElement {
             let gutter_style = if is_selected {
                 Style::default().bg(Color::Yellow)
             } else {
-                Style::default().bg(Color::DarkGray)
+                Style::default().bg(GUTTER_BG)
             };
             let gutter_content = if ctx.is_pinned { "📌" } else { "  " };
 
@@ -181,7 +184,7 @@ impl UiElement<AppState> for ChatLogElement {
             display_content.push(Line::from(""));
             display_gutter.push(Line::from(Span::styled(
                 "  ".to_owned(),
-                Style::default().bg(Color::DarkGray),
+                Style::default().bg(GUTTER_BG),
             )));
         }
         display_content.extend(content_lines);
@@ -539,7 +542,7 @@ mod tests {
 
         // And the unselected entry's gutter has dark gray bg.
         let unselected_gutter = buffer.cell((0, 9)).expect("cell should exist");
-        assert_eq!(unselected_gutter.style().bg, Some(Color::DarkGray));
+        assert_eq!(unselected_gutter.style().bg, Some(GUTTER_BG));
     }
 
     #[rstest::rstest]
@@ -565,7 +568,7 @@ mod tests {
         // Then the gutter has dark gray bg (not yellow).
         let buffer = terminal.backend().buffer().clone();
         let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
-        assert_eq!(gutter_cell.style().bg, Some(Color::DarkGray));
+        assert_eq!(gutter_cell.style().bg, Some(GUTTER_BG));
     }
 
     #[rstest::rstest]
@@ -1209,7 +1212,7 @@ mod tests {
         // Then the gutter cells have dark gray bg.
         let buffer = terminal.backend().buffer().clone();
         let gutter_cell = buffer.cell((0, 9)).expect("cell should exist");
-        assert_eq!(gutter_cell.style().bg, Some(Color::DarkGray));
+        assert_eq!(gutter_cell.style().bg, Some(GUTTER_BG));
     }
 
     #[rstest::rstest]
@@ -1244,8 +1247,8 @@ mod tests {
             let gutter_cell = buffer.cell((0, row)).expect("cell should exist");
             assert_eq!(
                 gutter_cell.style().bg,
-                Some(Color::DarkGray),
-                "gutter at row {row} should have dark gray bg"
+                Some(GUTTER_BG),
+                "gutter at row {row} should have gutter bg"
             );
         }
     }
