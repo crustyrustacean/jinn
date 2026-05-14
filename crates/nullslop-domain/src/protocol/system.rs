@@ -33,3 +33,11 @@ pub struct ModeChanged {
     /// The new mode.
     pub to: Mode,
 }
+
+/// The active session changed.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("system")]
+pub struct ActiveSessionChanged {
+    /// The new active session ID.
+    pub session_id: crate::protocol::SessionId,
+}

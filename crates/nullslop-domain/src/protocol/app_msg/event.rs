@@ -102,6 +102,8 @@ pub enum Event {
     PreferencesUpdated(PreferencesUpdated),
     /// An event emitted by a plugin.
     Plugin(PluginEvent),
+    /// The active session changed (tab switch or session load).
+    ActiveSessionChanged(crate::protocol::system::ActiveSessionChanged),
 }
 
 impl Event {
@@ -138,6 +140,9 @@ impl Event {
             Self::EnvironmentLoaded(..) => Some(EnvironmentLoaded::TYPE_NAME),
             Self::PreferencesUpdated(..) => Some(PreferencesUpdated::TYPE_NAME),
             Self::Plugin(..) => Some(PluginEvent::TYPE_NAME),
+            Self::ActiveSessionChanged(..) => {
+                Some(crate::protocol::system::ActiveSessionChanged::TYPE_NAME)
+            }
         }
     }
 }
