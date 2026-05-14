@@ -147,7 +147,7 @@ fn render_scroll_indicators(
         return;
     }
 
-    let style = Style::default().fg(Color::DarkGray).bg(Color::Black);
+    let style = Style::default().fg(Color::LightGreen).bg(Color::Black);
 
     if lines_above > 0 {
         let label = format!("↑ {lines_above}");
@@ -558,7 +558,7 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let arrow_cell = buffer.cell((37, 0)).expect("cell should exist");
         assert_eq!(arrow_cell.symbol(), "↑");
-        assert_eq!(arrow_cell.style().fg, Some(Color::DarkGray));
+        assert_eq!(arrow_cell.style().fg, Some(Color::LightGreen));
         assert_eq!(arrow_cell.style().bg, Some(Color::Black));
         let num_cell = buffer.cell((39, 0)).expect("cell should exist");
         assert_eq!(num_cell.symbol(), "2");
@@ -592,7 +592,7 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let arrow_cell = buffer.cell((37, 2)).expect("cell should exist");
         assert_eq!(arrow_cell.symbol(), "↓");
-        assert_eq!(arrow_cell.style().fg, Some(Color::DarkGray));
+        assert_eq!(arrow_cell.style().fg, Some(Color::LightGreen));
         assert_eq!(arrow_cell.style().bg, Some(Color::Black));
         let num_cell = buffer.cell((39, 2)).expect("cell should exist");
         assert_eq!(num_cell.symbol(), "2");
@@ -627,12 +627,12 @@ mod tests {
         // Up arrow on top-right (row 0). "↑ 2" = 3 display cols → x = 37.
         let up_cell = buffer.cell((37, 0)).expect("cell should exist");
         assert_eq!(up_cell.symbol(), "↑");
-        assert_eq!(up_cell.style().fg, Some(Color::DarkGray));
+        assert_eq!(up_cell.style().fg, Some(Color::LightGreen));
 
         // Down arrow on bottom-right of inner area (row 2). "↓ 2" = 3 display cols → x = 37.
         let down_cell = buffer.cell((37, 2)).expect("cell should exist");
         assert_eq!(down_cell.symbol(), "↓");
-        assert_eq!(down_cell.style().fg, Some(Color::DarkGray));
+        assert_eq!(down_cell.style().fg, Some(Color::LightGreen));
     }
 
     #[rstest::rstest]
