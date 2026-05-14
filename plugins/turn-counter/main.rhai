@@ -16,14 +16,14 @@ fn init() {
     ]);
 
     // Register a status bar slot.
-    host_status_bar_add_slot("turn-counter", "left", 50, "Turn: 0");
+    host_status_bar_add_slot("turn-counter", "left", 50, "Turns: 0");
 }
 
 fn on_event(event) {
     // Always recompute from the active session's history.
     let entries = host_chat_get_entries();
     let count = compute_turn_count(entries);
-    host_status_bar_update_slot("turn-counter", "Turn: " + count);
+    host_status_bar_update_slot("turn-counter", "Turns: " + count);
 }
 
 fn compute_turn_count(entries) {

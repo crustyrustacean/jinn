@@ -310,6 +310,6 @@ mod tests {
 
         // Then the slot was updated with the correct count (3 entries).
         let text = last_update.lock().unwrap().clone();
-        assert_eq!(text, "Turn: 3");
+        assert_eq!(text, "Turns: 3");
     }
 }
