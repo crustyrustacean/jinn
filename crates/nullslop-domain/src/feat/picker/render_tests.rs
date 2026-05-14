@@ -9,8 +9,8 @@ use nullslop_testutil::setup_term;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 
-use super::super::render::{render_context_strategy_picker, render_keymap_picker};
-use super::super::strategy_entries;
+use super::render::{render_context_strategy_picker, render_keymap_picker};
+use super::strategy_entries;
 
 // --- Context strategy picker rendering tests ---
 

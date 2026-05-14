@@ -1,4 +1,6 @@
-use super::*;
+use super::builder::*;
+use crate::definition::{ModelHint, StepDef, StepOutputDef, WorkflowDef};
+use crate::guard::{GuardExpr, GuardPredicate};
 
 fn make_step(id: &str) -> StepDef {
     StepDef {

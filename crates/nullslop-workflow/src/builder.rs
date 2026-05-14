@@ -432,7 +432,3 @@ fn format_predicate(pred: &GuardPredicate) -> String {
         GuardPredicate::ValueSet { variable } => format!("value_set({variable})"),
     }
 }
-
-#[cfg(test)]
-#[path = "builder_tests.rs"]
-mod builder_tests;

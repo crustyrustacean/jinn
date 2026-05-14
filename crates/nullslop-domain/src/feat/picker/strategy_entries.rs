@@ -58,7 +58,3 @@ pub fn format_strategy_footer(strategy_name: &str) -> ratatui::text::Line<'stati
         Span::styled(strategy_name.to_owned(), Style::default().fg(Color::White)),
     ])
 }
-
-#[cfg(test)]
-#[path = "strategy_entries_tests.rs"]
-mod entries_tests;

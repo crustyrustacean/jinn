@@ -322,7 +322,3 @@ fn resolved_is_available(resolved: &ResolvedProvider, api_keys: &ApiKeys) -> boo
     };
     api_keys.is_set(env_var)
 }
-
-#[cfg(test)]
-#[path = "registry_tests.rs"]
-mod registry_tests;

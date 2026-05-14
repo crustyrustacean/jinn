@@ -3,7 +3,8 @@ use nullslop_selection_widget::PickerItem;
 use ratatui::style::Color;
 use std::ops::Range;
 
-use super::*;
+use super::entries::*;
+use crate::feat::provider::picker_entry::PickerEntry;
 
 fn ollama_entry() -> ProviderEntry {
     ProviderEntry {
