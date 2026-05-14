@@ -42,3 +42,13 @@ Feature: TUI Application
     When the user presses enter with ctrl
     Then the input buffer should be "hello\n"
     And the chat history should contain 0 entry
+
+  Scenario: Cursor navigates back to first line after inserting a newline
+    Given a new app
+    And the app is in Input mode
+    And the input buffer contains "hello"
+    When the user presses enter with shift
+    And the user presses w
+    And the user presses up
+    Then the cursor should be on row 0 col 1
+    And the input buffer should be "hello\nw"
