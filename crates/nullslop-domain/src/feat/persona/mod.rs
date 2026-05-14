@@ -18,12 +18,14 @@ pub use persona_entry::PersonaEntry;
 
 use std::path::PathBuf;
 
+use crate::common::app_info::APP_NAME;
+
 /// Returns the default personas directory: `~/.config/nullslop/personas/`.
 #[must_use]
 pub fn personas_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("nullslop")
+        .join(APP_NAME)
         .join("personas")
 }
 

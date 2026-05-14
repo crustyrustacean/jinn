@@ -4,6 +4,7 @@
 //! The [`PluginRuntime`] wraps a per-plugin rhai `Engine` and [`Scope`],
 //! and the [`loader`] module discovers plugins on disk.
 
+pub mod app_info;
 pub mod command_allowlist;
 pub mod error;
 pub mod loader;

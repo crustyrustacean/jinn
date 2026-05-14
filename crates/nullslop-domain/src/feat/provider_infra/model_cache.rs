@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::common::app_info::APP_NAME;
 use error_stack::{Report, ResultExt as _};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -104,7 +105,7 @@ impl Default for ModelCache {
 pub fn cache_path() -> PathBuf {
     dirs::cache_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("nullslop")
+        .join(APP_NAME)
         .join("model_cache.json")
 }
 

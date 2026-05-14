@@ -20,6 +20,7 @@ pub use store::PromptTemplateStoreError;
 
 use std::path::{Path, PathBuf};
 
+use crate::common::app_info::APP_NAME;
 use crate::protocol::PromptTemplate;
 use error_stack::{Report, ResultExt as _};
 use wherror::Error;
@@ -43,7 +44,7 @@ const EXAMPLE_FILENAME: &str = "example.md";
 pub fn prompts_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("nullslop")
+        .join(APP_NAME)
         .join("prompts")
 }
 

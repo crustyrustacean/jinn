@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::app_info::APP_NAME;
 use crate::PluginId;
 
 /// Returns the default plugins directory (`~/.config/nullslop/plugins/`).
@@ -13,7 +14,7 @@ use crate::PluginId;
 pub fn plugins_dir() -> PathBuf {
     dirs::config_dir()
         .expect("cannot determine config directory")
-        .join("nullslop")
+        .join(APP_NAME)
         .join("plugins")
 }
 

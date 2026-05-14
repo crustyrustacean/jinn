@@ -15,14 +15,12 @@ use std::path::PathBuf;
 
 use error_stack::{Report, ResultExt as _};
 
+use crate::common::app_info::APP_NAME;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::session_summary::SessionSummary;
 use crate::protocol::SessionId;
 
 use super::{SessionStore, SessionStoreError};
-
-/// Directory name under the platform data directory.
-const DIR_NAME: &str = "nullslop";
 
 /// JSONL file name.
 pub const FILE_NAME: &str = "sessions.jsonl";
@@ -67,7 +65,7 @@ impl JsonlSessionStore {
     pub fn new() -> Self {
         let dir = dirs::data_dir()
             .expect("platform data directory should be available")
-            .join(DIR_NAME);
+            .join(APP_NAME);
         Self { dir }
     }
 
