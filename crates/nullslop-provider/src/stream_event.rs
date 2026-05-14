@@ -1,0 +1,101 @@
+//! Stream events from LLM chat with tool support.
+//!
+//! [`StreamEvent`] is the unified streaming output type for LLM responses,
+//! decoupled from any specific provider's stream format.
+
+use crate::tool_types::ToolCall;
+
+/// Why the stream stopped.
+///
+/// Parsed from the provider's raw string at the conversion boundary.
+/// Unknown values are preserved via [`StopReason::Other`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StopReason {
+    /// The model requested tool use.
+    ToolUse,
+    /// The model finished generating normally.
+    EndTurn,
+    /// An unrecognized stop reason from the provider.
+    Other(String),
+}
+
+impl From<&str> for StopReason {
+    fn from(s: &str) -> Self {
+        match s {
+            "tool_use" => Self::ToolUse,
+            "end_turn" => Self::EndTurn,
+            other => Self::Other(other.to_owned()),
+        }
+    }
+}
+
+impl std::fmt::Display for StopReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ToolUse => write!(f, "tool_use"),
+            Self::EndTurn => write!(f, "end_turn"),
+            Self::Other(s) => write!(f, "{s}"),
+        }
+    }
+}
+
+/// A streaming event from an LLM chat response.
+///
+/// Produced by [`LlmService::chat_stream_with_tools`](super::LlmService::chat_stream_with_tools).
+/// The stream always ends with a [`Done`](StreamEvent::Done) event.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StreamEvent {
+    /// A text content delta.
+    Text(String),
+    /// A reasoning/thinking content delta.
+    Reasoning(String),
+    /// A tool use block started (ID and name known, arguments streaming).
+    ToolUseStart {
+        /// The index of this content block in the response.
+        index: usize,
+        /// The unique ID for this tool call (assigned by the LLM provider).
+        id: String,
+        /// The name of the tool being called.
+        name: String,
+    },
+    /// A partial JSON delta for tool call arguments.
+    ToolUseInputDelta {
+        /// The index of this content block.
+        index: usize,
+        /// Partial JSON string for the tool input.
+        partial_json: String,
+    },
+    /// A tool use block completed with an assembled tool call.
+    ToolUseComplete {
+        /// The index of this content block.
+        index: usize,
+        /// The complete tool call.
+        tool_call: ToolCall,
+    },
+    /// The stream ended.
+    Done {
+        /// Why the stream stopped.
+        stop_reason: StopReason,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[rstest::rstest]
+    #[case("tool_use", StopReason::ToolUse)]
+    #[case("end_turn", StopReason::EndTurn)]
+    #[case("something_else", StopReason::Other("something_else".to_owned()))]
+    fn from_str_parses_known_reasons(#[case] input: &str, #[case] expected: StopReason) {
+        assert_eq!(StopReason::from(input), expected);
+    }
+
+    #[rstest::rstest]
+    #[case(StopReason::ToolUse, "tool_use")]
+    #[case(StopReason::EndTurn, "end_turn")]
+    #[case(StopReason::Other("max_tokens".to_owned()), "max_tokens")]
+    fn display_formats_correctly(#[case] reason: StopReason, #[case] expected: &str) {
+        assert_eq!(format!("{reason}"), expected);
+    }
+}

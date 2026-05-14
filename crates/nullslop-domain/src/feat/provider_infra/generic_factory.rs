@@ -1,29 +1,26 @@
-//! Generic LLM service factory — works for any `LLMBackend`.
+//! Generic LLM service factory — works for any [`Backend`].
 //!
 //! [`GenericLlmServiceFactory`] stores a provider configuration and a resolved
-//! API key. It builds the appropriate `LlmService` on each call. The API key
-//! is provided at construction time (resolved from env vars at startup), not
-//! read from the environment.
+//! API key. It delegates to the appropriate provider factory from
+//! `nullslop_provider` based on the backend type. The API key is provided
+//! at construction time (resolved from env vars at startup), not read from
+//! the environment.
 
-use crate::feat::tools_actor::tool_types::ToolDefinition;
-use crate::protocol::LlmMessage;
-use error_stack::{Report, ResultExt as _};
-use futures::StreamExt;
-use llm::builder::{LLMBackend, LLMBuilder};
+use error_stack::Report;
 
-use super::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
+use nullslop_provider::{Backend, LlmService, LlmServiceError, LlmServiceFactory, ProviderConfig};
 
 /// Generic factory that builds an LLM service from a provider config.
 ///
 /// Stores the backend, model, optional base URL, a resolved API key,
 /// and optional extra body parameters. The key is provided at construction
 /// time — environment access belongs at application startup, not in the factory.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GenericLlmServiceFactory {
     /// Display name for this factory.
     name: String,
     /// Which LLM backend to use.
-    backend: LLMBackend,
+    backend: Backend,
     /// Model identifier.
     model: String,
     /// Optional base URL override (for local providers).
@@ -32,7 +29,6 @@ pub struct GenericLlmServiceFactory {
     /// Will cause build failure for backends that require a key.
     api_key: Option<String>,
     /// Extra JSON body parameters for vendor-specific options.
-    /// Passed to `LLMBuilder::extra_body()`.
     extra_body: Option<serde_json::Value>,
 }
 
@@ -41,7 +37,7 @@ impl GenericLlmServiceFactory {
     #[must_use]
     pub fn new(
         name: String,
-        backend: LLMBackend,
+        backend: Backend,
         model: String,
         base_url: Option<String>,
         api_key: Option<String>,
@@ -60,86 +56,43 @@ impl GenericLlmServiceFactory {
 
 impl LlmServiceFactory for GenericLlmServiceFactory {
     fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
-        let mut builder = LLMBuilder::new()
-            .backend(self.backend.clone())
-            .model(&self.model);
+        let api_key = self.api_key.clone().unwrap_or_default();
 
-        if let Some(ref url) = self.base_url {
-            builder = builder.base_url(url);
+        match self.backend {
+            Backend::Anthropic => {
+                let factory = nullslop_provider::AnthropicFactory::new(
+                    self.model.clone(),
+                    api_key,
+                    self.name.clone(),
+                );
+                factory.create()
+            }
+            Backend::Google => {
+                let factory = nullslop_provider::GoogleFactory::new(
+                    self.model.clone(),
+                    api_key,
+                    self.name.clone(),
+                );
+                factory.create()
+            }
+            // All other backends are OpenAI-compatible.
+            _ => {
+                let config = ProviderConfig::from(&self.backend);
+                let factory = nullslop_provider::OpenAiCompatibleFactory::new(
+                    config,
+                    self.model.clone(),
+                    self.base_url.clone(),
+                    api_key,
+                    self.extra_body.clone(),
+                    self.name.clone(),
+                );
+                factory.create()
+            }
         }
-
-        if let Some(ref key) = self.api_key {
-            builder = builder.api_key(key);
-        }
-
-        if let Some(ref extra) = self.extra_body {
-            builder = builder.extra_body(extra);
-        }
-
-        let provider = builder
-            .build()
-            .change_context(LlmServiceError::Config)
-            .attach("failed to build LLM provider")?;
-
-        Ok(Box::new(GenericLlmService { provider }))
     }
 
     fn name(&self) -> &str {
         &self.name
-    }
-}
-
-/// A single generic streaming session.
-struct GenericLlmService {
-    /// The underlying LLM provider for streaming chat.
-    provider: Box<dyn llm::LLMProvider>,
-}
-
-#[async_trait::async_trait]
-impl LlmService for GenericLlmService {
-    async fn chat_stream(
-        &self,
-        messages: Vec<LlmMessage>,
-    ) -> Result<ChatStream, Report<LlmServiceError>> {
-        let chat_messages = super::convert::messages_to_llm(&messages);
-        let stream = self
-            .provider
-            .chat_stream(&chat_messages)
-            .await
-            .change_context(LlmServiceError::Provider)?;
-        let mapped: ChatStream = Box::pin(StreamExt::map(
-            stream,
-            |token_result: Result<String, llm::error::LLMError>| {
-                token_result.change_context(LlmServiceError::Provider)
-            },
-        ));
-        Ok(mapped)
-    }
-
-    async fn chat_stream_with_tools(
-        &self,
-        messages: Vec<LlmMessage>,
-        tools: Vec<ToolDefinition>,
-    ) -> Result<ToolStream, Report<LlmServiceError>> {
-        let chat_messages = super::convert::messages_to_llm(&messages);
-        let llm_tools = super::convert::tool_definitions_to_llm(&tools);
-        let tools_opt = if llm_tools.is_empty() {
-            None
-        } else {
-            Some(llm_tools.as_slice())
-        };
-
-        let stream = self
-            .provider
-            .chat_stream_with_tools(&chat_messages, tools_opt)
-            .await
-            .change_context(LlmServiceError::Provider)?;
-        let mapped: ToolStream = Box::pin(StreamExt::map(stream, |chunk_result| {
-            chunk_result
-                .change_context(LlmServiceError::Provider)
-                .map(super::convert::stream_chunk_to_event)
-        }));
-        Ok(mapped)
     }
 }
 
@@ -152,7 +105,7 @@ mod tests {
         // Given a factory with no API key targeting a key-required backend.
         let factory = GenericLlmServiceFactory::new(
             "openai".to_owned(),
-            LLMBackend::OpenAI,
+            Backend::OpenAI,
             "gpt-4".to_owned(),
             None,
             None,

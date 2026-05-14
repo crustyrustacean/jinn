@@ -38,6 +38,7 @@ rstest = { workspace = true }
 [workspace.dependencies]
 # Internal
 nullslop-domain = { path = "crates/nullslop-domain" }
+nullslop-provider = { path = "crates/nullslop-provider" }
 nullslop-tui = { path = "crates/nullslop-tui" }
 nullslop-cli = { path = "crates/nullslop-cli" }
 nullslop-protocol-derive = { path = "crates/nullslop-protocol-derive" }
@@ -82,25 +83,6 @@ tempfile = "3"
 clap = { version = "4", features = ["derive"] }
 clap-verbosity-flag = "3"
 
-# LLM
-llm = { path = "vendor/llm", default-features = false, features = [
-    "default-tls",
-    "openrouter",
-    "openai",
-    "anthropic",
-    "ollama",
-    "deepseek",
-    "xai",
-    "phind",
-    "google",
-    "groq",
-    "cohere",
-    "mistral",
-    "huggingface",
-    "zai",
-    "elevenlabs",
-] }
-
 # Other
 dirs = "6"
 toml = "0.8"
@@ -114,6 +96,7 @@ arboard = "3"
 sha2 = "0.10"
 glob = "0.3"
 rand = "0.9"
+mockito = "1.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

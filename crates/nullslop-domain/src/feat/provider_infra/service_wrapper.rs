@@ -66,8 +66,8 @@ impl LlmServiceFactoryService {
 mod tests {
     use std::sync::Arc;
 
-    use crate::feat::provider_infra::fake::FakeLlmServiceFactory;
     use crate::feat::provider_infra::service_wrapper::LlmServiceFactoryService;
+    use nullslop_provider::FakeLlmServiceFactory;
 
     #[rstest::rstest]
     fn service_wrapper_delegates_create() {
