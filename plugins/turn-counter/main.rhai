@@ -12,6 +12,7 @@ fn init() {
     host_events_subscribe([
         "chat_input::ChatEntrySubmitted",
         "provider::StreamCompleted",
+        "system::ActiveSessionChanged",
     ]);
 
     // Register a status bar slot.
