@@ -4,7 +4,7 @@ use crate::protocol::TableData;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use super::shared::{unicode_segementation_display_width, RenderContext};
+use super::shared::{RenderContext, unicode_segementation_display_width};
 
 /// Render a [`TableData`] as aligned, styled lines.
 ///
@@ -160,9 +160,9 @@ mod tests {
 
         // Then some line after header+separator contains "ollama".
         let data_lines = &lines[2..]; // skip header + separator
-        let has_ollama = data_lines.iter().any(|line| {
-            line.spans.iter().any(|s| s.content.starts_with("ollama"))
-        });
+        let has_ollama = data_lines
+            .iter()
+            .any(|line| line.spans.iter().any(|s| s.content.starts_with("ollama")));
         assert!(has_ollama, "data row should contain 'ollama'");
     }
 
@@ -181,9 +181,6 @@ mod tests {
             .spans
             .iter()
             .any(|s| s.content.contains('\u{2500}'));
-        assert!(
-            has_box_drawing,
-            "separator line should contain ─ (U+2500)"
-        );
+        assert!(has_box_drawing, "separator line should contain ─ (U+2500)");
     }
 }

@@ -3,7 +3,7 @@
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
-use super::shared::{pad_line_to_width, RenderContext};
+use super::shared::{RenderContext, pad_line_to_width};
 
 /// Foreground color for tool call text.
 const TOOL_CALL_FG: Color = Color::Rgb(0x58, 0x5F, 0x6A);

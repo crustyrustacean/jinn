@@ -38,7 +38,10 @@ pub fn validate_expand_tool_result(state: &AppState) -> Result<(), ExpandToolRes
         .active_session()
         .selected_entry()
         .ok_or(ExpandToolResultError::NoSelection)?;
-    if !matches!(selected.kind, crate::protocol::ChatEntryKind::ToolResult { .. }) {
+    if !matches!(
+        selected.kind,
+        crate::protocol::ChatEntryKind::ToolResult { .. }
+    ) {
         return Err(ExpandToolResultError::NotToolResult);
     }
     Ok(())
@@ -81,12 +84,9 @@ mod tests {
     fn expand_tool_result_succeeds_with_selected_tool_result() {
         // Given a state with a selected tool result entry.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::tool_result(
-            "id",
-            "bash",
-            "output",
-            true,
-        ));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result("id", "bash", "output", true));
         state.active_session_mut().select_next_entry();
 
         // When validating expand tool result.
@@ -100,7 +100,9 @@ mod tests {
     fn expand_tool_result_fails_with_no_selection() {
         // Given a state with entries but no selection.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
 
         // When validating expand tool result.
         let result = validate_expand_tool_result(&state);
@@ -113,7 +115,9 @@ mod tests {
     fn expand_tool_result_fails_with_non_tool_result_entry() {
         // Given a state with a selected user entry (not a tool result).
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
         state.active_session_mut().select_next_entry();
 
         // When validating expand tool result.
