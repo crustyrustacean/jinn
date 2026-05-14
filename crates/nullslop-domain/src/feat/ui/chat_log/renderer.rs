@@ -3,17 +3,20 @@
 //! Each entry in the chat log is displayed with a distinct visual style so the user
 //! can tell them apart at a glance:
 //!
-//! - **User messages** appear as white text on a light gray background block.
-//! - **System messages** appear muted with indentation.
+//! - **User messages** appear as white text on a dark gray background block.
+//! - **System messages** appear muted in dark gray.
 //! - **Actor messages** appear highlighted with the actor's name and content.
 //! - **Assistant messages** appear in white with no background.
-//! - **Tool calls** appear as light gray text on a dark green background block.
-//! - **Tool results** appear as light gray text on a dark green (success) or
-//!   dark red (failure) background block.
+//! - **Tool calls** appear as dark text on a dark green background block.
+//! - **Tool results** appear as dark text on a dark green (success) or dark red
+//!   (failure) background block.
 //!
 //! A 2-column gutter on the left shows a dark gray background by default,
 //! and turns yellow when the cursor selects an entry. Pinned entries show
 //! a 📌 emoji in the gutter.
+//!
+//! The gutter is rendered as a separate column from the content so that
+//! line wrapping does not break the gutter display.
 //!
 //! Text wraps within the available space.
 
@@ -59,11 +62,26 @@ impl UiElement<AppState> for ChatLogElement {
         let selected_idx = state.active_session().selected_entry_index();
         let history = state.active_session().history();
 
-        let content_width = area.width.saturating_sub(GUTTER_WIDTH);
+        // Split area into gutter and content columns.
+        let gutter_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: GUTTER_WIDTH,
+            height: area.height,
+        };
+        let content_area = Rect {
+            x: area.x + GUTTER_WIDTH,
+            y: area.y,
+            width: area.width.saturating_sub(GUTTER_WIDTH),
+            height: area.height,
+        };
+
+        let content_width = content_area.width;
 
         // Build lines while tracking per-entry wrapped line ranges.
         // entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line) in wrapped coords.
-        let mut lines: Vec<Line> = Vec::new();
+        let mut content_lines: Vec<Line> = Vec::new();
+        let mut gutter_lines: Vec<Line> = Vec::new();
         let mut entry_line_ranges: Vec<(u16, u16)> = Vec::with_capacity(history.len());
         let mut wrapped_cursor: u16 = 0;
 
@@ -84,9 +102,9 @@ impl UiElement<AppState> for ChatLogElement {
                 tool_result_max_lines: max_lines,
             };
 
-            let mut entry_lines = entry_to_lines(entry, &ctx);
+            let entry_content_lines = entry_to_lines(entry, &ctx);
 
-            // Prepend gutter prefix to each line.
+            // Build gutter lines for this entry (one gutter line per content line).
             let gutter_style = if is_selected {
                 Style::default().bg(Color::Yellow)
             } else {
@@ -94,27 +112,61 @@ impl UiElement<AppState> for ChatLogElement {
             };
             let gutter_content = if ctx.is_pinned { "📌" } else { "  " };
 
-            for line in &mut entry_lines {
-                let gutter_span = Span::styled(gutter_content.to_owned(), gutter_style);
-                line.spans.insert(0, gutter_span);
-            }
-
-            let entry_wrapped: u16 = entry_lines
+            // Count wrapped lines using content_width (wrapping happens in content area).
+            let entry_wrapped: u16 = entry_content_lines
                 .iter()
                 .map(|line| {
                     let w = line.width() as u16;
-                    if area.width == 0 || w == 0 {
+                    if content_width == 0 || w == 0 {
                         1
                     } else {
-                        w.div_ceil(area.width).max(1)
+                        w.div_ceil(content_width).max(1)
                     }
                 })
                 .sum();
+
             let start = wrapped_cursor;
             let end = wrapped_cursor + entry_wrapped;
             entry_line_ranges.push((start, end));
             wrapped_cursor = end;
-            lines.extend(entry_lines);
+
+            // For each content line, emit one gutter line per visual wrapped line.
+            // We can't know exact wrap points, but we emit `wrapped_count` gutter
+            // lines for this entry so the gutter total matches the content total.
+            // Since we can't predict exact wrap points, we emit gutter lines per
+            // *logical* content line and rely on the fact that the gutter Paragraph
+            // won't wrap (gutter lines are always 2 chars in a 2-wide area).
+            //
+            // Actually, the simplest correct approach: emit one gutter line per
+            // logical content line. When the content Paragraph wraps a line, it
+            // creates extra visual rows, but the gutter Paragraph (with 2-char lines
+            // in a 2-wide area) won't wrap. The scroll offset keeps them in sync
+            // because both use the same scroll value.
+            //
+            // The key insight: we need gutter_lines.len() == total number of visual
+            // (wrapped) content lines. We can compute this by padding gutter_lines
+            // to match the wrapped line count.
+            let mut entry_gutter_lines = Vec::new();
+            for _ in &entry_content_lines {
+                entry_gutter_lines
+                    .push(Line::from(Span::styled(gutter_content.to_owned(), gutter_style)));
+            }
+
+            // If any content line wraps to >1 visual row, the gutter will be short.
+            // Pad gutter lines to match the wrapped count.
+            let logical_count = entry_content_lines.len() as u16;
+            if entry_wrapped > logical_count {
+                let extra = entry_wrapped - logical_count;
+                for _ in 0..extra {
+                    entry_gutter_lines.push(Line::from(Span::styled(
+                        "  ".to_owned(),
+                        gutter_style,
+                    )));
+                }
+            }
+
+            content_lines.extend(entry_content_lines);
+            gutter_lines.extend(entry_gutter_lines);
         }
 
         let total_wrapped = wrapped_cursor;
@@ -122,11 +174,18 @@ impl UiElement<AppState> for ChatLogElement {
         // Bottom-align: when content fits within the viewport, prepend blank lines
         // so messages appear at the bottom with empty space above.
         let blank_count = area.height.saturating_sub(total_wrapped) as usize;
-        let mut display_lines = Vec::with_capacity(blank_count + lines.len());
+
+        let mut display_content = Vec::with_capacity(blank_count + content_lines.len());
+        let mut display_gutter = Vec::with_capacity(blank_count + gutter_lines.len());
         for _ in 0..blank_count {
-            display_lines.push(Line::from(""));
+            display_content.push(Line::from(""));
+            display_gutter.push(Line::from(Span::styled(
+                "  ".to_owned(),
+                Style::default().bg(Color::DarkGray),
+            )));
         }
-        display_lines.extend(lines);
+        display_content.extend(content_lines);
+        display_gutter.extend(gutter_lines);
 
         let scroll_offset = state.active_session().scroll_offset();
 
@@ -160,11 +219,18 @@ impl UiElement<AppState> for ChatLogElement {
             }
         }
 
-        let chat_widget = Paragraph::new(display_lines)
+        // Render gutter column.
+        let gutter_widget = Paragraph::new(display_gutter)
+            .block(Block::default().borders(Borders::NONE))
+            .scroll((clamped, 0));
+        frame.render_widget(gutter_widget, gutter_area);
+
+        // Render content column.
+        let chat_widget = Paragraph::new(display_content)
             .block(Block::default().borders(Borders::NONE))
             .wrap(Wrap { trim: false })
             .scroll((clamped, 0));
-        frame.render_widget(chat_widget, area);
+        frame.render_widget(chat_widget, content_area);
 
         // Render a scroll indicator when the user has scrolled up from the bottom.
         if clamped < max_offset {
@@ -193,7 +259,7 @@ impl UiElement<AppState> for ChatLogElement {
 /// Convert a chat entry into one or more visual lines, splitting on `\n`.
 ///
 /// Each entry type is delegated to its own submodule. Lines returned here are
-/// content-width only — the gutter prefix is prepended by the caller.
+/// content-width only — the gutter is rendered as a separate column.
 fn entry_to_lines(
     entry: &crate::protocol::ChatEntry,
     ctx: &RenderContext,
@@ -263,12 +329,15 @@ mod tests {
             })
             .unwrap();
 
-        // Then the content cell (after gutter) has white fg and gray bg.
+        // Then the content cell (after gutter) has white fg and user bg.
         let buffer = terminal.backend().buffer().clone();
         let content_cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(content_cell.symbol(), "h");
         assert_eq!(content_cell.style().fg, Some(Color::White));
-        assert_eq!(content_cell.style().bg, Some(Color::Gray));
+        assert_eq!(
+            content_cell.style().bg,
+            Some(Color::Rgb(0x34, 0x35, 0x41))
+        );
     }
 
     #[rstest::rstest]
@@ -291,7 +360,7 @@ mod tests {
             })
             .unwrap();
 
-        // Then the text is dark gray on the bottom row (after gutter).
+        // Then the text is dark gray on the bottom row (in content area).
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "r");
@@ -318,7 +387,7 @@ mod tests {
             })
             .unwrap();
 
-        // Then the text starts with "[" (from "[actor]") on the bottom row and is yellow.
+        // Then the text starts with "[" (from "[actor]") in the content area and is yellow.
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "[");
@@ -345,7 +414,7 @@ mod tests {
             })
             .unwrap();
 
-        // Then the bottom row has the text content (no icon) and is white.
+        // Then the content area has the text in white.
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "h");
@@ -371,12 +440,12 @@ mod tests {
             })
             .unwrap();
 
-        // Then line 9 has "world" with white fg and gray bg (BLOCK continues).
+        // Then line 9 has "world" with white fg and user bg (BLOCK continues).
         let buffer = terminal.backend().buffer().clone();
         let w_cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(w_cell.symbol(), "w");
         assert_eq!(w_cell.style().fg, Some(Color::White));
-        assert_eq!(w_cell.style().bg, Some(Color::Gray));
+        assert_eq!(w_cell.style().bg, Some(Color::Rgb(0x34, 0x35, 0x41)));
     }
 
     #[rstest::rstest]
@@ -424,10 +493,8 @@ mod tests {
             })
             .unwrap();
 
-        // Then the top row is empty (blank padding) and the message appears at the bottom.
+        // Then the bottom row content has user text.
         let buffer = terminal.backend().buffer().clone();
-
-        // Bottom row content has user text.
         let bottom_cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(bottom_cell.symbol(), "h");
     }
@@ -530,7 +597,10 @@ mod tests {
                     .is_some_and(|c| c.symbol() == "\u{1F4CC}")
             })
         });
-        assert!(has_pin, "pinned entry should show \u{1F4CC} pin icon in gutter");
+        assert!(
+            has_pin,
+            "pinned entry should show \u{1F4CC} pin icon in gutter"
+        );
     }
 
     #[rstest::rstest]
@@ -640,7 +710,7 @@ mod tests {
         // Then the header row contains "P" (from "Provider") with bold styling.
         let buffer = terminal.backend().buffer().clone();
         let has_bold_header = (0..10).any(|row| {
-            (0..60).any(|col| {
+            (G..60).any(|col| {
                 buffer.cell((col, row)).is_some_and(|c| {
                     c.symbol() == "P" && c.style().add_modifier.contains(Modifier::BOLD)
                 })
@@ -683,7 +753,7 @@ mod tests {
         // Then the buffer contains "ollama" somewhere (a data row cell).
         let buffer = terminal.backend().buffer().clone();
         let has_ollama = (0..10).any(|row| {
-            (0..60).any(|col| buffer.cell((col, row)).is_some_and(|c| c.symbol() == "o"))
+            (G..60).any(|col| buffer.cell((col, row)).is_some_and(|c| c.symbol() == "o"))
         });
         assert!(has_ollama, "table data row should contain 'ollama'");
     }
@@ -714,7 +784,7 @@ mod tests {
         // Then the buffer contains a separator line with \u{2500} (─).
         let buffer = terminal.backend().buffer().clone();
         let has_separator = (0..10).any(|row| {
-            (0..60).any(|col| {
+            (G..60).any(|col| {
                 buffer
                     .cell((col, row))
                     .is_some_and(|c| c.symbol() == "\u{2500}")
@@ -743,7 +813,7 @@ mod tests {
             })
             .unwrap();
 
-        // Then the text is red on the bottom row (after gutter).
+        // Then the text is red in the content area.
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "C");
@@ -770,7 +840,7 @@ mod tests {
             })
             .unwrap();
 
-        // Then the text is dark gray on the bottom row (after gutter).
+        // Then the text is dark gray in the content area.
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "r");
@@ -839,7 +909,7 @@ mod tests {
         // Then the buffer contains "---(5 more lines)---" somewhere.
         let buffer = terminal.backend().buffer().clone();
         let has_indicator = (0..20).any(|row| {
-            let row_text: String = (0..80)
+            let row_text: String = (G..80)
                 .map(|col| buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" "))
                 .collect();
             row_text.contains("---(5 more lines)---")
@@ -881,7 +951,7 @@ mod tests {
         // Then the buffer contains "line 10" (the last line, not truncated).
         let buffer = terminal.backend().buffer().clone();
         let has_last_line = (0..20).any(|row| {
-            let row_text: String = (0..80)
+            let row_text: String = (G..80)
                 .map(|col| buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" "))
                 .collect();
             row_text.contains("line 10")
@@ -890,7 +960,7 @@ mod tests {
 
         // And no truncation indicator.
         let has_indicator = (0..20).any(|row| {
-            let row_text: String = (0..80)
+            let row_text: String = (G..80)
                 .map(|col| buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" "))
                 .collect();
             row_text.contains("more lines")
@@ -926,7 +996,7 @@ mod tests {
         // Then no truncation indicator appears.
         let buffer = terminal.backend().buffer().clone();
         let has_indicator = (0..20).any(|row| {
-            let row_text: String = (0..80)
+            let row_text: String = (G..80)
                 .map(|col| buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" "))
                 .collect();
             row_text.contains("more lines")
@@ -958,10 +1028,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then the content area has dark green bg.
+        // Then the content area has the updated tool call bg.
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((G, 9)).expect("cell should exist");
-        assert_eq!(cell.style().bg, Some(Color::Rgb(0, 100, 0)));
+        assert_eq!(cell.style().bg, Some(Color::Rgb(0x28, 0x32, 0x28)));
     }
 
     #[rstest::rstest]
@@ -985,10 +1055,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then the content area has dark green bg.
+        // Then the content area has the updated tool result success bg.
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((G, 9)).expect("cell should exist");
-        assert_eq!(cell.style().bg, Some(Color::Rgb(0, 100, 0)));
+        assert_eq!(cell.style().bg, Some(Color::Rgb(0x28, 0x32, 0x28)));
     }
 
     #[rstest::rstest]
@@ -1012,10 +1082,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then the content area has dark red bg.
+        // Then the content area has the updated tool result failure bg.
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((G, 9)).expect("cell should exist");
-        assert_eq!(cell.style().bg, Some(Color::Rgb(139, 0, 0)));
+        assert_eq!(cell.style().bg, Some(Color::Rgb(0x3C, 0x28, 0x28)));
     }
 
     #[rstest::rstest]
@@ -1037,10 +1107,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then cells at the right edge of the content area have gray bg (BLOCK fill).
+        // Then cells at the right edge of the content area have user bg (BLOCK fill).
         let buffer = terminal.backend().buffer().clone();
         let right_cell = buffer.cell((39, 9)).expect("cell should exist");
-        assert_eq!(right_cell.style().bg, Some(Color::Gray));
+        assert_eq!(right_cell.style().bg, Some(Color::Rgb(0x34, 0x35, 0x41)));
     }
 
     #[rstest::rstest]
@@ -1064,19 +1134,18 @@ mod tests {
             })
             .unwrap();
 
-        // Then the first content line is the tool name "bash" (after gutter).
-        let buffer = terminal.backend().buffer().clone();
         // With 1 entry of 2 lines (name + content) in a 10-row viewport,
         // name is at row 8, content at row 9.
+        let buffer = terminal.backend().buffer().clone();
         let name_cell = buffer.cell((G, 8)).expect("cell should exist");
         assert_eq!(name_cell.symbol(), "b");
-        assert_eq!(name_cell.style().fg, Some(Color::Gray));
+        assert_eq!(name_cell.style().fg, Some(Color::Rgb(0x3A, 0x3A, 0x3A)));
         let content_cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(content_cell.symbol(), "o");
     }
 
     #[rstest::rstest]
-    fn render_truncation_indicator_is_dark_gray() {
+    fn render_truncation_indicator_is_correct_fg() {
         // Given a ChatLogElement with a tool result that gets truncated.
         let mut element = ChatLogElement;
         let state = {
@@ -1100,22 +1169,21 @@ mod tests {
             })
             .unwrap();
 
-        // Then the truncation indicator line has dark gray fg.
+        // Then the truncation indicator line has the correct fg.
         let buffer = terminal.backend().buffer().clone();
-        // Find the row with "---"
         let truncation_row = (0..20).find(|&row| {
-            (0..80).any(|col| {
+            (G..80).any(|col| {
                 buffer
                     .cell((col, row))
                     .is_some_and(|buf_cell| {
                         buf_cell.symbol() == "-"
-                            && buf_cell.style().fg == Some(Color::DarkGray)
+                            && buf_cell.style().fg == Some(Color::Rgb(0x53, 0x53, 0x53))
                     })
             })
         });
         assert!(
             truncation_row.is_some(),
-            "truncation indicator should have dark gray fg"
+            "truncation indicator should have correct fg"
         );
     }
 
@@ -1142,5 +1210,70 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let gutter_cell = buffer.cell((0, 9)).expect("cell should exist");
         assert_eq!(gutter_cell.style().bg, Some(Color::DarkGray));
+    }
+
+    #[rstest::rstest]
+    fn gutter_persists_across_wrapped_lines() {
+        // Given a ChatLogElement with a long assistant entry that wraps.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            // Create a long line that will wrap in a 20-wide content area.
+            let long_text = "abcdefghijklmnopqrstuvwxyz";
+            s.active_session_mut()
+                .push_entry(ChatEntry::assistant(long_text));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(22, 10); // 22 = 2 gutter + 20 content
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the gutter column has dark gray bg on both the original line
+        // and the wrapped continuation line.
+        let buffer = terminal.backend().buffer().clone();
+
+        // The entry should be at rows 8-9 (bottom-aligned, 2 visual lines).
+        // Both rows should have gutter cells with dark gray bg.
+        for row in [8, 9] {
+            let gutter_cell = buffer.cell((0, row)).expect("cell should exist");
+            assert_eq!(
+                gutter_cell.style().bg,
+                Some(Color::DarkGray),
+                "gutter at row {row} should have dark gray bg"
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    fn tool_call_fg_is_correct() {
+        // Given a ChatLogElement with a tool call entry.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::tool_call(
+                "id", "bash", "ls",
+            ));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the tool call text has the updated fg color.
+        let buffer = terminal.backend().buffer().clone();
+        let cell = buffer.cell((G, 9)).expect("cell should exist");
+        assert_eq!(cell.style().fg, Some(Color::Rgb(0x3A, 0x3A, 0x3A)));
     }
 }
