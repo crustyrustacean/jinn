@@ -120,7 +120,7 @@ impl SessionPersistenceActor {
         match event {
             Event::PromptAssembled(payload) => self.handle_prompt_assembled(payload, ctx),
             Event::StreamToken(payload) => self.on_stream_token(payload),
-            Event::StreamCompleted(payload) => self.on_stream_completed(payload),
+            Event::StreamCompleted(payload) => self.on_stream_completed(payload, ctx),
             Event::ToolUseStarted(payload) => self.on_tool_use_started(payload),
             Event::ToolCallReceived(payload) => self.on_tool_call_received(payload),
             Event::ToolCallStreaming(payload) => self.on_tool_call_streaming(payload),
@@ -785,9 +785,9 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn enqueue_user_message_sets_input_text_when_busy() {
+    async fn enqueue_user_message_queues_when_sending() {
         // Given a session actor with a sending (but not streaming) session.
-        let (mut actor, state, sink, ctx) = create_lifecycle_actor();
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
         let session_id = SessionId::new();
 
         // Set session to sending (dispatched but no tokens yet).
@@ -797,7 +797,7 @@ mod tests {
             session.begin_sending();
         }
 
-        // When processing EnqueueUserMessage while busy.
+        // When processing EnqueueUserMessage while sending.
         actor
             .handle(
                 ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
@@ -808,13 +808,12 @@ mod tests {
             )
             .await;
 
-        // Then a SetChatInputText command was emitted with the text.
-        let cmds = sink.commands();
-        let found = cmds.iter().any(|c| match c {
-            Command::SetChatInputText(payload) => payload.text == "busy msg",
-            _ => false,
-        });
-        assert!(found, "expected SetChatInputText with 'busy msg'");
+        // Then the message is queued.
+        {
+            let guard = state.read();
+            let session = guard.session(&session_id);
+            assert_eq!(session.queue_len(), 1);
+        }
     }
 
     // --- SetChatInputText ---
@@ -1400,6 +1399,241 @@ mod tests {
         assert!(has_cancelled, "expected an Error entry with 'Cancelled'");
         // And the session is no longer streaming.
         assert!(!session.is_streaming());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_drains_queued_messages() {
+        // Given a session actor with a streaming session that has queued messages.
+        let (mut actor, state, sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        // Start streaming.
+        let token = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+            is_thinking: false,
+        });
+        actor.handle(ActorEnvelope::Event(token), &ctx).await;
+
+        // Queue messages.
+        {
+            let mut guard = state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.enqueue_message("queued1".into());
+            session.enqueue_message("queued2".into());
+        }
+
+        sink.clear();
+
+        // When processing StreamCompleted with Finished reason.
+        let completed = Event::StreamCompleted(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: None,
+            tool_calls: None,
+        });
+        actor.handle(ActorEnvelope::Event(completed), &ctx).await;
+
+        // Then the queue is drained.
+        {
+            let guard = state.read();
+            let session = guard.session(&session_id);
+            assert_eq!(session.queue_len(), 0, "queue should be empty after drain");
+        }
+
+        // And an AssemblePrompt command was emitted.
+        let cmds = sink.commands();
+        let found = cmds
+            .iter()
+            .any(|c| matches!(c, Command::AssemblePrompt(..)));
+        assert!(found, "expected AssemblePrompt after queue drain");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_drains_multiple_messages_as_separate_entries() {
+        // Given a streaming session with 3 queued messages.
+        let (mut actor, state, sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        let token = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+            is_thinking: false,
+        });
+        actor.handle(ActorEnvelope::Event(token), &ctx).await;
+
+        {
+            let mut guard = state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.enqueue_message("msg1".into());
+            session.enqueue_message("msg2".into());
+            session.enqueue_message("msg3".into());
+        }
+
+        sink.clear();
+
+        // When processing StreamCompleted with Finished reason.
+        let completed = Event::StreamCompleted(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: None,
+            tool_calls: None,
+        });
+        actor.handle(ActorEnvelope::Event(completed), &ctx).await;
+
+        // Then the AssemblePrompt history contains the 3 new User entries.
+        let cmds = sink.commands();
+        let assemble_cmd = cmds.iter().find_map(|c| match c {
+            Command::AssemblePrompt(payload) => Some(payload.clone()),
+            _ => None,
+        });
+        let prompt = assemble_cmd.expect("expected AssemblePrompt");
+        // 1 assistant entry (from stream) + 3 user entries (from queue drain).
+        let user_entries: Vec<_> = prompt
+            .history
+            .iter()
+            .filter(|e| matches!(&e.kind, ChatEntryKind::User(t) if t == "msg1" || t == "msg2" || t == "msg3"))
+            .collect();
+        assert_eq!(user_entries.len(), 3, "expected 3 separate user entries");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_does_not_drain_on_tool_use() {
+        // Given a streaming session with queued messages.
+        let (mut actor, state, sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        let token = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+            is_thinking: false,
+        });
+        actor.handle(ActorEnvelope::Event(token), &ctx).await;
+
+        {
+            let mut guard = state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.enqueue_message("queued".into());
+        }
+
+        sink.clear();
+
+        // When processing StreamCompleted with ToolUse reason.
+        let completed = Event::StreamCompleted(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("Hello".to_owned()),
+            tool_calls: None,
+        });
+        actor.handle(ActorEnvelope::Event(completed), &ctx).await;
+
+        // Then the queue still has the message.
+        {
+            let guard = state.read();
+            let session = guard.session(&session_id);
+            assert_eq!(session.queue_len(), 1, "queue should NOT be drained on ToolUse");
+        }
+
+        // And no AssemblePrompt was emitted.
+        let cmds = sink.commands();
+        let found = cmds
+            .iter()
+            .any(|c| matches!(c, Command::AssemblePrompt(..)));
+        assert!(!found, "AssemblePrompt should NOT be emitted on ToolUse");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_drain_empty_queue_is_noop() {
+        // Given a streaming session with NO queued messages.
+        let (mut actor, state, sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        let token = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+            is_thinking: false,
+        });
+        actor.handle(ActorEnvelope::Event(token), &ctx).await;
+
+        sink.clear();
+
+        // When processing StreamCompleted with Finished reason.
+        let completed = Event::StreamCompleted(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: None,
+            tool_calls: None,
+        });
+        actor.handle(ActorEnvelope::Event(completed), &ctx).await;
+
+        // Then the session is idle.
+        {
+            let guard = state.read();
+            let session = guard.session(&session_id);
+            assert!(session.is_idle(), "session should be idle after finished with empty queue");
+        }
+
+        // And no AssemblePrompt was emitted.
+        let cmds = sink.commands();
+        let found = cmds
+            .iter()
+            .any(|c| matches!(c, Command::AssemblePrompt(..)));
+        assert!(!found, "AssemblePrompt should not be emitted when queue is empty");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn stream_completed_drain_emits_chat_entry_submitted_for_each() {
+        // Given a streaming session with 2 queued messages.
+        let (mut actor, state, sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        let token = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+            is_thinking: false,
+        });
+        actor.handle(ActorEnvelope::Event(token), &ctx).await;
+
+        {
+            let mut guard = state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.enqueue_message("q1".into());
+            session.enqueue_message("q2".into());
+        }
+
+        sink.clear();
+
+        // When processing StreamCompleted with Finished reason.
+        let completed = Event::StreamCompleted(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: None,
+            tool_calls: None,
+        });
+        actor.handle(ActorEnvelope::Event(completed), &ctx).await;
+
+        // Then ChatEntrySubmitted events were emitted for both queued messages.
+        let events = sink.events();
+        let submitted: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                Event::ChatEntrySubmitted(payload) => Some(payload.entry.kind.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(submitted.len(), 2, "expected 2 ChatEntrySubmitted events");
+        assert!(matches!(&submitted[0], ChatEntryKind::User(t) if t == "q1"));
+        assert!(matches!(&submitted[1], ChatEntryKind::User(t) if t == "q2"));
     }
 
     // --- ToolCallReceived ---
