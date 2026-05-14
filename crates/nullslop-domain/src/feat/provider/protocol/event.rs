@@ -48,6 +48,12 @@ pub struct StreamToken {
     pub index: usize,
     /// The token text.
     pub token: String,
+    /// Whether this token contains reasoning/thinking content.
+    ///
+    /// When `true`, the session actor routes this token to the `Thinking`
+    /// chat entry instead of the `Assistant` entry.
+    #[serde(default)]
+    pub is_thinking: bool,
 }
 
 /// The active provider was switched.

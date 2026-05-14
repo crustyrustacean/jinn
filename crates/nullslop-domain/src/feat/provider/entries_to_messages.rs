@@ -86,7 +86,8 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                 }
             }
             // Table and Error entries are ephemeral display / local status — not sent to the LLM.
-            ChatEntryKind::Table(_) | ChatEntryKind::Error(_) => {}
+            // Thinking entries are display-only — excluded from context assembly.
+            ChatEntryKind::Table(_) | ChatEntryKind::Error(_) | ChatEntryKind::Thinking(_) => {}
         }
     }
 
@@ -421,6 +422,35 @@ mod tests {
             messages[0],
             LlmMessage::User {
                 content: "hello".into(),
+            }
+        );
+        assert_eq!(
+            messages[1],
+            LlmMessage::Assistant {
+                content: "hi".into(),
+                tool_calls: None,
+            }
+        );
+    }
+
+    #[rstest::rstest]
+    fn entries_to_messages_skips_thinking_entries() {
+        // Given a history with thinking, user, and assistant entries.
+        let entries = vec![
+            ChatEntry::thinking("reasoning here"),
+            ChatEntry::user("hello"),
+            ChatEntry::assistant("hi"),
+        ];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then thinking is excluded, producing only user and assistant.
+        assert_eq!(messages.len(), 2);
+        assert_eq!(
+            messages[0],
+            LlmMessage::User {
+                content: "hello".into()
             }
         );
         assert_eq!(

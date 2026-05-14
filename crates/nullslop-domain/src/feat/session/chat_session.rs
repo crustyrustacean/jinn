@@ -69,6 +69,10 @@ pub struct SessionCore {
     /// OWNER: session-actor
     #[serde(skip)]
     streaming_tool_call_indices: HashMap<usize, usize>,
+    /// Index into `history` for the entry currently receiving thinking tokens.
+    /// OWNER: session-actor
+    #[serde(skip)]
+    streaming_thinking_entry_index: Option<usize>,
     /// Working directory for tool execution in this session.
     /// OWNER: IntentHandler (set on session creation and cd commands)
     #[serde(skip)]
@@ -111,6 +115,7 @@ impl Default for SessionCore {
             is_assembling: false,
             profile: SessionProfile::default(),
             streaming_tool_call_indices: HashMap::new(),
+            streaming_thinking_entry_index: None,
             cwd: std::path::PathBuf::new(),
             token_ledger: Vec::new(),
             parent_session: None,
@@ -313,12 +318,70 @@ impl ChatSessionState {
         }
     }
 
+    /// Begin accumulating thinking tokens.
+    ///
+    /// Inserts an empty `Thinking` entry immediately before the streaming
+    /// `Assistant` entry, then adjusts `streaming_entry_index` to account
+    /// for the insertion.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the session is not streaming.
+    #[expect(clippy::indexing_slicing, reason = "index comes from push_entry")]
+    #[expect(clippy::expect_used, reason = "streaming invariant guaranteed by begin_streaming")]
+    pub fn begin_thinking(&mut self) {
+        assert!(
+            self.core.is_streaming,
+            "begin_thinking called while not streaming"
+        );
+        let assistant_index = self
+            .core
+            .streaming_entry_index
+            .expect("streaming_entry_index must be set when is_streaming");
+        let entry = ChatEntry::thinking("");
+        self.core.history.insert(assistant_index, entry);
+        self.core.streaming_thinking_entry_index = Some(assistant_index);
+        self.core.streaming_entry_index = Some(assistant_index + 1);
+        self.reset_scroll();
+        self.clear_selection();
+    }
+
+    /// Append a thinking token to the streaming Thinking entry.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `begin_thinking()` has not been called.
+    #[expect(clippy::indexing_slicing, reason = "index set by begin_thinking")]
+    #[expect(clippy::expect_used, reason = "streaming invariant guaranteed by begin_thinking")]
+    pub fn append_thinking_token<S>(&mut self, token: S)
+    where
+        S: AsRef<str>,
+    {
+        let index = self
+            .core
+            .streaming_thinking_entry_index
+            .expect("streaming_thinking_entry_index must be set");
+        if let ChatEntry {
+            kind: ChatEntryKind::Thinking(ref mut text),
+            ..
+        } = self.core.history[index]
+        {
+            text.push_str(token.as_ref());
+        }
+    }
+
+    /// The index of the streaming thinking entry, if thinking is being accumulated.
+    pub fn streaming_thinking_entry_index(&self) -> Option<usize> {
+        self.core.streaming_thinking_entry_index
+    }
+
     /// Mark streaming as finished (normal completion).
     pub fn finish_streaming(&mut self) {
         self.core.is_streaming = false;
         self.core.is_sending = false; // defensive: clear both on finish
         self.core.streaming_entry_index = None;
         self.core.streaming_tool_call_indices.clear();
+        self.core.streaming_thinking_entry_index = None;
     }
 
     /// Cancel streaming but keep partial text in history.
@@ -327,6 +390,7 @@ impl ChatSessionState {
         self.core.is_sending = false; // defensive: clear both on cancel
         self.core.streaming_entry_index = None;
         self.core.streaming_tool_call_indices.clear();
+        self.core.streaming_thinking_entry_index = None;
     }
 
     /// Cancel streaming and drain queued messages back to the input buffer.
