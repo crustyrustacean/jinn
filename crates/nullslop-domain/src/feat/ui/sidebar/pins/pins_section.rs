@@ -122,9 +122,21 @@ impl SidebarSection for PinsSection {
 // ---------------------------------------------------------------------------
 
 /// Handles `SidebarFocus` — enters sidebar scope.
+///
+/// Auto-selects the first pinned entry when no selection exists
+/// so that action intents (unpin, pin cycle) work immediately.
 pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
     state.frontend.scope_stack.push(FocusScope::Sidebar);
+
+    // Auto-select the first pinned entry if nothing is selected.
+    if state.frontend.pins.selected_id().is_none() {
+        let sorted_ids = state.sorted_pinned_ids();
+        if let Some(first) = sorted_ids.first() {
+            state.frontend.pins.select_by_id(first.clone());
+        }
+    }
+
     IntentResult::empty()
 }
 
@@ -390,6 +402,50 @@ mod tests {
         // Then Sidebar is on top of the scope stack.
         assert!(state.frontend.scope_stack.is_sidebar());
         assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sidebar_focus_selects_first_pinned_entry_when_none_selected() {
+        // Given a state with 3 pinned entries and no selection.
+        let mut state = AppState::default();
+        let ids: Vec<_> = (0..3)
+            .map(|i| {
+                let entry = ChatEntry::user(format!("entry {i}"));
+                let id = entry.id.clone();
+                state.active_session_mut().push_entry(entry);
+                state.active_session_mut().pin_entry(&id, PinPosition::Top);
+                id
+            })
+            .collect();
+        assert!(state.frontend.pins.selected_id().is_none());
+
+        // When handling sidebar focus.
+        handle_sidebar_focus(&mut state);
+
+        // Then the first pinned entry is selected.
+        assert_eq!(state.frontend.pins.selected_id(), Some(&ids[0]));
+    }
+
+    #[rstest::rstest]
+    fn sidebar_focus_preserves_existing_selection() {
+        // Given a state with 3 pinned entries and the second one selected.
+        let mut state = AppState::default();
+        let ids: Vec<_> = (0..3)
+            .map(|i| {
+                let entry = ChatEntry::user(format!("entry {i}"));
+                let id = entry.id.clone();
+                state.active_session_mut().push_entry(entry);
+                state.active_session_mut().pin_entry(&id, PinPosition::Top);
+                id
+            })
+            .collect();
+        state.frontend.pins.select_by_id(ids[1].clone());
+
+        // When handling sidebar focus.
+        handle_sidebar_focus(&mut state);
+
+        // Then the second entry is still selected.
+        assert_eq!(state.frontend.pins.selected_id(), Some(&ids[1]));
     }
 
     #[rstest::rstest]
