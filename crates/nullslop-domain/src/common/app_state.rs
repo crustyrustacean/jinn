@@ -23,7 +23,6 @@ use crate::feat::persona::Persona;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::session::chat_session::ChatSessionState;
-use crate::feat::shutdown_actor::ShutdownTrackerState;
 use crate::feat::skills::Skill;
 pub use crate::feat::ui::sidebar::pins::state::PinsState;
 use crate::feat::ui::sidebar::state::SidebarState;
@@ -111,26 +110,6 @@ impl Default for ContextAssemblyState {
 /// Provider selection state — imported from `nsslice-provider-protocol`.
 pub use crate::feat::provider::ProviderState;
 
-/// Shutdown coordination state — owned by the shutdown-tracker actor.
-///
-/// Written to exclusively by `ShutdownTrackerActor` and `IntentHandler`.
-/// No other actor should mutate these fields.
-#[derive(Debug)]
-pub struct ShutdownCoordinatorState {
-    /// Bookkeeping for which actors are still running during shutdown.
-    /// OWNER: shutdown-tracker (tracks start/complete lifecycle),
-    ///        IntentHandler (sets should_quit),
-    ///        AppCore (calls begin_shutdown).
-    pub shutdown_tracker: ShutdownTrackerState,
-}
-
-impl Default for ShutdownCoordinatorState {
-    fn default() -> Self {
-        Self {
-            shutdown_tracker: ShutdownTrackerState::new(),
-        }
-    }
-}
 
 /// A single focus context on the scope stack.
 ///
@@ -402,8 +381,6 @@ pub struct AppState {
     pub context: ContextAssemblyState,
     /// Provider selection state — owned by provider-actor.
     pub provider: ProviderState,
-    /// Shutdown coordination state — owned by shutdown-tracker.
-    pub shutdown: ShutdownCoordinatorState,
     /// Frontend / UI state — owned by IntentHandler.
     pub frontend: FrontendState,
 }

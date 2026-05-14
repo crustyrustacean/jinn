@@ -26,8 +26,6 @@ pub struct HeadlessApp {
     core: AppCore,
     /// Actor host for coordinated shutdown.
     actor_host: ActorHostService,
-    /// Receiver for core lifecycle notifications (shutdown complete).
-    core_receiver: kanal::Receiver<nullslop_domain::CoreNotification>,
     /// Tokio runtime handle for spawning async shutdown task.
     handle: tokio::runtime::Handle,
 }
@@ -38,13 +36,11 @@ impl HeadlessApp {
     pub fn new(
         core: AppCore,
         actor_host: ActorHostService,
-        core_receiver: kanal::Receiver<nullslop_domain::CoreNotification>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         Self {
             core,
             actor_host,
-            core_receiver,
             handle,
         }
     }
@@ -151,7 +147,6 @@ impl HeadlessApp {
         nullslop_domain::coordinated_shutdown(
             self.actor_host.backend(),
             &self.core.state,
-            &self.core_receiver,
             &self.handle,
             nullslop_domain::SHUTDOWN_TIMEOUT,
         );

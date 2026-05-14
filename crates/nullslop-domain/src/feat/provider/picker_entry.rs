@@ -75,10 +75,10 @@ fn render_provider_row(
         "  "
     };
 
-    let label_style = if !entry.is_available {
-        Style::default().fg(Color::DarkGray)
-    } else {
+    let label_style = if entry.is_available {
         selected_style(is_selected)
+    } else {
+        Style::default().fg(Color::DarkGray)
     };
 
     if entry.is_alias {

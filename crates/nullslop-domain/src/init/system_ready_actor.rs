@@ -8,7 +8,7 @@
 
 use crate::common::actor::actor_counter::ActorCounter;
 use crate::common::actor::protocol::event::{ActorStarted, AllActorsSpawned};
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::protocol::Event;
 
 /// The system-ready actor.
@@ -55,15 +55,12 @@ impl Actor for SystemReadyActor {
         }
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
+    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Event(event) => {
                 self.handle_event(event);
             }
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Command(_) => {}
+            ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
         }
     }
 }

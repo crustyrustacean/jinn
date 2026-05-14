@@ -52,15 +52,13 @@ pub fn promote_active_to_top<T, F>(entries: &mut [T], is_active: F, filter: &str
 where
     F: Fn(&T) -> bool,
 {
-    if filter.is_empty() {
-        if let Some(pos) = entries.iter().position(is_active) {
-            if pos > 0 {
+    if filter.is_empty()
+        && let Some(pos) = entries.iter().position(is_active)
+            && pos > 0 {
                 #[expect(
                     clippy::indexing_slicing,
                     reason = "pos comes from iter().position() on the same slice"
                 )]
                 entries[0..=pos].rotate_right(1);
             }
-        }
-    }
 }

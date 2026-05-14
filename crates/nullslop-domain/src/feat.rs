@@ -15,7 +15,6 @@ pub mod preferences_actor;
 pub mod provider;
 pub mod provider_infra;
 pub mod session;
-pub mod shutdown_actor;
 pub mod skills;
 pub mod tools_actor;
 pub mod ui;

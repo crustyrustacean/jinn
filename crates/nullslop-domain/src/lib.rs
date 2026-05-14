@@ -25,15 +25,15 @@ pub use common::actor::{
     RecordingSink, SendResult, SystemMessage,
 };
 pub use common::actor_host::{
-    ActorHost, ActorHostService, ActorSpawnResult, FakeActorHost, InMemoryActorHost, RoutingEntry,
-    spawn, spawn_actor_impl, system_spawn,
+    ActorHost, ActorHostService, ActorSpawnResult, FakeActorHost, InMemoryActorHost,
+    RoutingEntry, ShutdownTracker, spawn, spawn_actor_impl, system_spawn,
 };
 
 // Re-export component types (state, UI)
 pub use common::app_state::pin_sort_key;
 pub use common::app_state::{
     AppState, ContextAssemblyState, FocusScope, FrontendState, ProviderState, ScopeStack,
-    SessionState, ShutdownCoordinatorState,
+    SessionState,
 };
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::tui_signals::TuiSignals;

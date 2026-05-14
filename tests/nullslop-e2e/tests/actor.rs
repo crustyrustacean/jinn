@@ -19,7 +19,7 @@ use nullslop_domain::feat::llm_actor::LlmActor;
 use nullslop_domain::feat::session::session_actor::SessionPersistenceActor;
 use nullslop_domain::feat::tools_actor::ToolOrchestratorActor;
 use nullslop_domain::{Actor, ActorContext, ActorEnvelope, ActorRef, MessageSink};
-use nullslop_domain::{ActorHostService, InMemoryActorHost, spawn_actor_impl};
+use nullslop_domain::{ActorHostService, InMemoryActorHost, ShutdownTracker, spawn_actor_impl};
 use nullslop_domain::{ActorMessageSink, AppCore, AppMsg};
 use nullslop_domain::{FakeLlmServiceFactory, LlmServiceFactoryService, TOOL_LOOP_TRIGGER};
 
@@ -41,9 +41,6 @@ pub struct ActorWorld {
     /// Tokio runtime handle for spawning async shutdown task.
     #[allow(dead_code)]
     handle: tokio::runtime::Handle,
-    /// Receiver for core lifecycle notifications (shutdown complete).
-    #[allow(dead_code)]
-    core_receiver: kanal::Receiver<nullslop_domain::CoreNotification>,
 }
 
 impl std::fmt::Debug for ActorWorld {
@@ -74,13 +71,12 @@ impl ActorWorld {
         );
         let llm_service = LlmServiceFactoryService::new(Arc::new(fake_factory));
 
-        let (core, services, actor_host, core_receiver) = create_actor_core(&handle, llm_service);
+        let (core, services, actor_host) = create_actor_core(&handle, llm_service);
         Self {
             core,
             services,
             actor_host,
             handle,
-            core_receiver,
         }
     }
 
@@ -95,7 +91,6 @@ impl ActorWorld {
         nullslop_domain::coordinated_shutdown(
             self.actor_host.backend(),
             &self.core.state,
-            &self.core_receiver,
             &self.handle,
             nullslop_domain::SHUTDOWN_TIMEOUT,
         );
@@ -112,14 +107,9 @@ impl ActorWorld {
 fn create_actor_core(
     handle: &tokio::runtime::Handle,
     llm_service: LlmServiceFactoryService,
-) -> (
-    AppCore,
-    Services,
-    ActorHostService,
-    kanal::Receiver<nullslop_domain::CoreNotification>,
-) {
+) -> (AppCore, Services, ActorHostService) {
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
-    let (core_notify_tx, core_notify_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
+    let (core_notify_tx, _core_notify_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
 
     // Shared state for all actors.
@@ -132,6 +122,7 @@ fn create_actor_core(
     let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
     orch_ctx.set_data(state.clone());
     let orch_actor = ToolOrchestratorActor::activate(&mut orch_ctx);
+    let shutdown_tracker = ShutdownTracker::new();
     let orch_result = spawn_actor_impl(
         "tool-orchestrator",
         orch_actor,
@@ -139,6 +130,7 @@ fn create_actor_core(
         orch_rx,
         orch_ctx,
         handle,
+        shutdown_tracker.clone(),
     );
 
     // Create LLM actor with fake factory.
@@ -156,6 +148,7 @@ fn create_actor_core(
         llm_rx,
         llm_ctx,
         handle,
+        shutdown_tracker.clone(),
     );
 
     // Create session actor to write events into state.
@@ -173,11 +166,13 @@ fn create_actor_core(
         sp_rx,
         sp_ctx,
         handle,
+        shutdown_tracker.clone(),
     );
 
     let host = InMemoryActorHost::from_actors_with_handle(
         vec![orch_result, llm_result, sp_result],
         handle.clone(),
+        shutdown_tracker,
     );
     let host_arc: Arc<dyn nullslop_domain::ActorHost> = Arc::new(host);
 
@@ -209,9 +204,8 @@ fn create_actor_core(
         },
     });
 
-    // Core notification sender is wired into services via builder.
     let _ = core_notify_tx; // Not used in actor world — the shutdown tracker isn't running.
-    (core, services, actor_host_service, core_notify_rx)
+    (core, services, actor_host_service)
 }
 
 // ---------------------------------------------------------------------------

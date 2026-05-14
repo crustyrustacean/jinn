@@ -22,7 +22,7 @@ mod handlers;
 use super::SessionStoreService;
 
 use crate::SessionLoadRequested;
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
@@ -109,9 +109,7 @@ impl Actor for SessionPersistenceActor {
         match msg {
             ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
             ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx),
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
+            _ => {}
         }
     }
 }

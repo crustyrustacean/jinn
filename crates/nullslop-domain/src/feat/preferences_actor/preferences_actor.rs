@@ -11,7 +11,7 @@
 //! That is the exclusive responsibility of `PreferencesStateSyncActor`,
 //! which subscribes to the `PreferencesUpdated` events emitted here.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::preferences_actor::user_preferences::UserPreferences;
@@ -51,10 +51,7 @@ impl Actor for PreferencesActor {
             ActorEnvelope::Command(Command::UpdatePreferences { ref payload }) => {
                 self.handle_update_preferences(payload, ctx);
             }
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Event(_) | ActorEnvelope::Command(_) => {}
+            ActorEnvelope::Event(_) | ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
         }
     }
 }

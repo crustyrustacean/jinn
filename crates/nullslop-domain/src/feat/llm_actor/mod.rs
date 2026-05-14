@@ -11,7 +11,7 @@ mod session;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
@@ -82,11 +82,12 @@ impl Actor for LlmActor {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx),
             ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                self.cancel_all();
-                ctx.announce_shutdown_completed();
-            }
+            _ => {}
         }
+    }
+
+    async fn on_shutdown(&mut self, _ctx: &ActorContext) {
+        self.cancel_all();
     }
 }
 
