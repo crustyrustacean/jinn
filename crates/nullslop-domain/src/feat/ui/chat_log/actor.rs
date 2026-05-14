@@ -3,16 +3,14 @@
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
 
-use super::shared::multiline_styled;
+use super::shared::{multiline_styled, RenderContext};
 
-pub fn to_lines(source: &str, text: &str, pinned: bool, is_selected: bool) -> Vec<Line<'static>> {
-    let base = format!("[actor] {source}: ");
-    let prefix = if pinned { format!("📌 {base}") } else { base };
+pub fn to_lines(source: &str, text: &str, _ctx: &RenderContext) -> Vec<Line<'static>> {
+    let prefix = format!("[actor] {source}: ");
     multiline_styled(
         text,
         &prefix,
-        "  ",
+        "",
         Style::default().fg(Color::Yellow),
-        is_selected,
     )
 }

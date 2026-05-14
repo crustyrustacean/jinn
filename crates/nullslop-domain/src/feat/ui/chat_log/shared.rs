@@ -1,18 +1,34 @@
 //! Shared rendering helpers for chat log entries.
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-/// Split text on `\n` and produce styled lines with the given prefix/indent.
+/// Width of the left gutter column (2 cells for emoji support).
+pub const GUTTER_WIDTH: u16 = 2;
+
+/// Context passed to each entry module's `to_lines` function.
+pub struct RenderContext {
+    /// Available content width (area width minus gutter).
+    pub content_width: u16,
+    /// Whether this entry is currently selected by the cursor.
+    pub _is_selected: bool,
+    /// Whether this entry is pinned.
+    pub is_pinned: bool,
+    /// Whether this tool result entry is expanded (show all lines).
+    pub is_expanded: bool,
+    /// Maximum lines before truncating tool result entries.
+    pub tool_result_max_lines: u16,
+}
+
+/// Split text on `\n` and produce styled lines with the given prefix.
 ///
-/// When `is_selected` is true, the first line gets a `▶ ` prefix and
-/// `Modifier::REVERSED` added to its style.
+/// Continuation lines (after the first `\n`) have no prefix — the `indent`
+/// parameter is accepted for API compatibility but currently unused.
 pub fn multiline_styled<T, P, I>(
     text: T,
     prefix: P,
     indent: I,
     style: Style,
-    is_selected: bool,
 ) -> Vec<Line<'static>>
 where
     T: AsRef<str>,
@@ -26,19 +42,28 @@ where
     let segments = text.split('\n');
     let mut lines = Vec::new();
     for (i, segment) in segments.enumerate() {
-        let (content, line_style) = if i == 0 && is_selected {
-            (
-                format!("▶ {prefix}{segment}"),
-                style.add_modifier(Modifier::REVERSED),
-            )
-        } else if i == 0 {
-            (format!("{prefix}{segment}"), style)
+        let content = if i == 0 {
+            format!("{prefix}{segment}")
         } else {
-            (segment.to_owned(), style)
+            segment.to_owned()
         };
-        lines.push(Line::from(Span::styled(content, line_style)));
+        lines.push(Line::from(Span::styled(content, style)));
     }
     lines
+}
+
+/// Pad a line to the given width by appending a trailing-space span with the
+/// given background style. This ensures BLOCK-style entries fill the full row.
+///
+/// **Important:** Must be called *after* the line is fully constructed.
+/// The padding span is appended to the line's spans.
+pub fn pad_line_to_width(line: &mut Line<'static>, width: u16, bg_style: Style) {
+    let current_width = line.width() as u16;
+    let padding = width.saturating_sub(current_width);
+    if padding > 0 {
+        line.spans
+            .push(Span::styled(" ".repeat(padding as usize), bg_style));
+    }
 }
 
 /// Compute the display width of a string using Unicode grapheme clusters.

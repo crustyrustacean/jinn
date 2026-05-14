@@ -1,17 +1,19 @@
-//! User entry rendering — bold with `>` prefix.
+//! User entry rendering — white on light gray background block.
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::Line;
 
-use super::shared::multiline_styled;
+use super::shared::{multiline_styled, pad_line_to_width, RenderContext};
 
-pub fn to_lines(text: &str, pinned: bool, is_selected: bool) -> Vec<Line<'static>> {
-    let prefix = if pinned { "📌 > " } else { "> " };
-    multiline_styled(
-        text,
-        prefix,
-        "  ",
-        Style::default().add_modifier(Modifier::BOLD),
-        is_selected,
-    )
+/// Background color for user entry BLOCK.
+const USER_BG: Color = Color::Gray;
+
+pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
+    let style = Style::default().fg(Color::White).bg(USER_BG);
+    let mut lines = multiline_styled(text, "", "", style);
+    // Pad each line to full content width for BLOCK effect.
+    for line in &mut lines {
+        pad_line_to_width(line, ctx.content_width, Style::default().bg(USER_BG));
+    }
+    lines
 }

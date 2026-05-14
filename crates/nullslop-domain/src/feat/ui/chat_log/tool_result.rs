@@ -1,44 +1,68 @@
-//! Tool result entry rendering — green/red with check/cross icon.
+//! Tool result entry rendering — light gray text on dark green/red background block.
+//!
+//! Format:
+//! ```text
+//! <name>
+//! <content line 1>
+//! <content line 2>
+//! ---(N more lines)---
+//! ```
 
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
-use super::shared::multiline_styled;
+use super::shared::{pad_line_to_width, RenderContext};
+
+/// Background color for successful tool result BLOCK.
+const TOOL_RESULT_SUCCESS_BG: Color = Color::Rgb(0, 100, 0);
+/// Background color for failed tool result BLOCK.
+const TOOL_RESULT_FAILURE_BG: Color = Color::Rgb(139, 0, 0);
 
 pub fn to_lines(
     name: &str,
     content: &str,
     success: bool,
-    pinned: bool,
-    is_selected: bool,
-    is_expanded: bool,
-    tool_result_max_lines: u16,
+    ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
-    let icon = if success { "✅" } else { "❌" };
-    let prefix = if pinned { "📌 " } else { "  " };
-    let style = if success {
-        Style::default().fg(Color::Green)
+    let bg = if success {
+        TOOL_RESULT_SUCCESS_BG
     } else {
-        Style::default().fg(Color::Red)
+        TOOL_RESULT_FAILURE_BG
     };
+    let style = Style::default().fg(Color::Gray).bg(bg);
 
-    let full_text = format!("{icon} {name}: {content}");
-    let text = full_text.trim_start_matches('\n');
+    // Name line.
+    let mut lines = Vec::new();
+    lines.push(Line::from(Span::styled(name.to_owned(), style)));
+
+    // Content lines.
+    let text = content.trim_start_matches('\n').to_owned();
     let all_lines: Vec<&str> = text.split('\n').collect();
 
-    if is_expanded
-        || u16::try_from(all_lines.len()).unwrap_or(u16::MAX) <= tool_result_max_lines
-    {
-        multiline_styled(full_text, prefix, "  ", style, is_selected)
+    let show_all = ctx.is_expanded
+        || u16::try_from(all_lines.len()).unwrap_or(u16::MAX) <= ctx.tool_result_max_lines;
+
+    if show_all {
+        for line_text in &all_lines {
+            lines.push(Line::from(Span::styled((*line_text).to_owned(), style)));
+        }
     } else {
-        let max = tool_result_max_lines as usize;
+        let max = ctx.tool_result_max_lines as usize;
         let remaining = all_lines.len() - max;
-        let truncated_text: String = all_lines[..max].join("\n");
-        let mut lines = multiline_styled(truncated_text, prefix, "  ", style, is_selected);
+        for line_text in &all_lines[..max] {
+            lines.push(Line::from(Span::styled((*line_text).to_owned(), style)));
+        }
+        // Truncation indicator line.
+        let truncation_style = Style::default().fg(Color::DarkGray).bg(bg);
         lines.push(Line::from(Span::styled(
-            format!("  ({remaining} more lines)"),
-            Style::default().fg(Color::DarkGray),
+            format!("---({remaining} more lines)---"),
+            truncation_style,
         )));
-        lines
     }
+
+    // Pad each line to full content width for BLOCK effect.
+    for line in &mut lines {
+        pad_line_to_width(line, ctx.content_width, Style::default().bg(bg));
+    }
+    lines
 }
