@@ -49,7 +49,7 @@ pub(super) fn render_chat_tab(
     // Compute sub-areas at the bottom of the content area.
     let content_area = layout.content;
     let queue_len = state.active_session().queue_len() as u16;
-    let bottom_lines = 1 + queue_len + 1; // indicator + queue + chat bottom line
+    let bottom_lines = 2; // indicator + chat bottom line (queue overlays chat log)
 
     let chat_log_area = if content_area.height > bottom_lines {
         Rect {
@@ -83,13 +83,14 @@ pub(super) fn render_chat_tab(
     };
     streaming_indicator::render_streaming_indicator(ui_registry, frame, indicator_area, state);
 
-    // Queue display.
+    // Queue display — rendered as overlay anchored at bottom of chat log area.
+    // This paints over the last N lines of the chat log instead of pushing
+    // the chat log up.
     if queue_len > 0 {
-        let queue_y = content_area.y + content_area.height.saturating_sub(bottom_lines) + 1;
         let queue_area = Rect {
-            x: content_area.x,
-            y: queue_y,
-            width: content_area.width,
+            x: chat_log_area.x,
+            y: chat_log_area.y + chat_log_area.height.saturating_sub(queue_len),
+            width: chat_log_area.width,
             height: queue_len,
         };
         queue_display::render_queue_display(ui_registry, frame, queue_area, state);
