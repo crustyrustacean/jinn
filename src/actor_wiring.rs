@@ -9,7 +9,6 @@
 //!
 //! 1. Infrastructure actors via [`system_spawn`] (no lifecycle events):
 //!    - `system-ready` — counts `ActorStarted`, signals main thread
-//!    - `shutdown-tracker` — tracks actors for shutdown coordination
 //! 2. Lifecycle events emitted for both infrastructure actors
 //! 3. Init actors via [`spawn`] (self-schedule on startup):
 //!    - `env-init` — loads config, resolves API keys
@@ -34,7 +33,6 @@ use nullslop_domain::actor_channel::ActorChannelService;
 use nullslop_domain::common::actor::protocol::event::{
     ActorStarted, ActorStarting, AllActorsSpawned,
 };
-use nullslop_domain::core_channel::CoreChannelService;
 use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use nullslop_domain::feat::session::JsonlSessionStore as DomainJsonlSessionStore;
@@ -45,7 +43,8 @@ use nullslop_domain::init::system_ready_actor::SystemReadyActor;
 use nullslop_domain::strategy_registry::StrategyRegistryService;
 use nullslop_domain::{
     ActorCounter, ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost,
-    MessageSink, State, spawn, spawn_forwarding_task, system_spawn, wait_for_system_ready,
+    MessageSink, ShutdownTracker, State, spawn, spawn_forwarding_task, system_spawn,
+    wait_for_system_ready,
 };
 
 /// Creates an `AppCore` with all actors registered and the async forwarding task started.
@@ -59,25 +58,20 @@ pub fn create_core_with_actor_host(
     api_keys: ApiKeysService,
     config_storage: ConfigStorageService,
     user_preferences_storage: UserPreferencesStorageService,
-) -> (
-    AppCore,
-    Services,
-    ActorHostService,
-    kanal::Receiver<nullslop_domain::CoreNotification>,
-) {
+) -> (AppCore, Services, ActorHostService) {
     // Create channel first — actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
     // the channel independently.
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
-
-    // Create the actor→core notification channel.
-    let (core_notify_tx, core_notify_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
 
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink: Arc<dyn MessageSink> = Arc::new(ActorMessageSink::new(sender.clone()));
 
     // Create the actor counter — incremented by every spawn/system_spawn call.
     let counter = ActorCounter::new();
+
+    // Create the shutdown tracker — shared across all actors for coordinated shutdown.
+    let shutdown_tracker = ShutdownTracker::new();
 
     // Create shared State FIRST — injected into multiple actors.
     let state = State::new(AppState::default());
@@ -98,7 +92,6 @@ pub fn create_core_with_actor_host(
     let services = Services {
         handle: handle.clone(),
         actor_channel: ActorChannelService::new(sender.clone()),
-        core_channel: CoreChannelService::new(core_notify_tx),
         llm_service: llm_service.clone(),
         provider_registry: provider_registry.clone(),
         api_keys: api_keys.clone(),
@@ -115,24 +108,12 @@ pub fn create_core_with_actor_host(
     // System-ready actor: counts ActorStarted, signals main thread when done.
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
     let system_ready_result =
-        system_spawn::<SystemReadyActor>("system-ready", sink.clone(), handle, &counter, |ctx| {
+        system_spawn::<SystemReadyActor>("system-ready", sink.clone(), handle, &counter, &shutdown_tracker, |ctx| {
             ctx.set_data(ready_tx);
             ctx.set_data(counter.clone());
         });
 
-    // Shutdown tracker: tracks actor lifecycle for coordinated shutdown.
-    let shutdown_result = system_spawn::<nullslop_domain::feat::shutdown_actor::ShutdownTrackerActor>(
-        "shutdown-tracker",
-        sink.clone(),
-        handle,
-        &counter,
-        |ctx| {
-            ctx.set_data(state.clone());
-            ctx.set_data(services.clone());
-        },
-    );
-
-    // Emit lifecycle events for both infrastructure actors manually.
+    // Emit lifecycle events for the infrastructure actor manually.
     let _ = sink.send_event(Event::ActorStarting {
         payload: ActorStarting {
             name: "system-ready".to_owned(),
@@ -143,25 +124,13 @@ pub fn create_core_with_actor_host(
         payload: ActorStarted {
             name: "system-ready".to_owned(),
             description: Some("Counts ActorStarted events and signals system ready".to_owned()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "shutdown-tracker".to_owned(),
-            description: Some("Tracks actor lifecycle for shutdown coordination".to_owned()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "shutdown-tracker".to_owned(),
-            description: Some("Tracks actor lifecycle for shutdown coordination".to_owned()),
         },
     });
 
     // ── Init actors (self-schedule Initialize during activate) ────────────
 
     // Env init: loads providers.toml, resolves API keys, emits EnvironmentLoaded.
-    let env_init_result = spawn::<EnvInitActor>("env-init", &sink, handle, &counter, |ctx| {
+    let env_init_result = spawn::<EnvInitActor>("env-init", &sink, handle, &counter, &shutdown_tracker, |ctx| {
         ctx.set_description("Loads environment variables and API keys");
         ctx.set_data(config_storage.clone());
         ctx.set_data(api_keys.clone());
@@ -169,7 +138,7 @@ pub fn create_core_with_actor_host(
 
     // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
     let provider_init_result =
-        spawn::<ProviderInitActor>("provider-init", &sink, handle, &counter, |ctx| {
+        spawn::<ProviderInitActor>("provider-init", &sink, handle, &counter, &shutdown_tracker, |ctx| {
             ctx.set_description("Loads provider config, merges cache, resolves last_model");
             ctx.set_data(services.clone());
             ctx.set_data(state.clone());
@@ -178,7 +147,7 @@ pub fn create_core_with_actor_host(
     // Preferences: loads and persists user preferences.
     let prefs_result = spawn::<
         nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActor,
-    >("preferences", &sink, handle, &counter, |ctx| {
+    >("preferences", &sink, handle, &counter, &shutdown_tracker, |ctx| {
         ctx.set_description("Persists user preferences to nullslop.toml");
         ctx.set_data(user_preferences_storage.clone());
     });
@@ -186,7 +155,7 @@ pub fn create_core_with_actor_host(
     // Preferences state sync: updates AppState from PreferencesUpdated events.
     let prefs_sync_result = spawn::<
         nullslop_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor,
-    >("preferences-sync", &sink, handle, &counter, |ctx| {
+    >("preferences-sync", &sink, handle, &counter, &shutdown_tracker, |ctx| {
         ctx.set_description("Syncs AppState.frontend.preferences from PreferencesUpdated events");
         ctx.set_data(state.clone());
     });
@@ -199,6 +168,7 @@ pub fn create_core_with_actor_host(
         &sink,
         handle,
         &counter,
+        &shutdown_tracker,
         |ctx| {
             ctx.set_description("Echoes messages back");
         },
@@ -210,6 +180,7 @@ pub fn create_core_with_actor_host(
         &sink,
         handle,
         &counter,
+        &shutdown_tracker,
         |ctx| {
             ctx.set_description("LLM streaming with tool support");
             ctx.set_data(llm_service.clone());
@@ -224,6 +195,7 @@ pub fn create_core_with_actor_host(
         &sink,
         handle,
         &counter,
+        &shutdown_tracker,
         |ctx| {
             ctx.set_description("Discovers available models");
             ctx.set_data(provider_registry.clone());
@@ -238,6 +210,7 @@ pub fn create_core_with_actor_host(
         &sink,
         handle,
         &counter,
+        &shutdown_tracker,
         |ctx| {
             ctx.set_description("Dispatches and manages tool execution");
             ctx.set_data(state.clone());
@@ -250,6 +223,7 @@ pub fn create_core_with_actor_host(
         &sink,
         handle,
         &counter,
+        &shutdown_tracker,
         |ctx| {
             ctx.set_description("Context assembly, strategy management, pinning, and templates");
             ctx.set_data(state.clone());
@@ -271,6 +245,7 @@ pub fn create_core_with_actor_host(
         &sink,
         handle,
         &counter,
+        &shutdown_tracker,
         |ctx| {
             ctx.set_description("Persists session data to disk");
             ctx.set_data(state.clone());
@@ -286,6 +261,7 @@ pub fn create_core_with_actor_host(
         &sink,
         handle,
         &counter,
+        &shutdown_tracker,
         |ctx| {
             ctx.set_description("Scans and reloads prompt templates");
             ctx.set_data(nullslop_domain::prompts_dir());
@@ -298,6 +274,7 @@ pub fn create_core_with_actor_host(
         &sink,
         handle,
         &counter,
+        &shutdown_tracker,
         |ctx| {
             ctx.set_description("Scans and loads agent skills from ~/.agents/skills");
             ctx.set_data(nullslop_domain::feat::skills::skills_dir());
@@ -308,7 +285,7 @@ pub fn create_core_with_actor_host(
     // Persona scan actor.
     let persona_scan_result = spawn::<
         nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActor,
-    >("persona-scan", &sink, handle, &counter, |ctx| {
+    >("persona-scan", &sink, handle, &counter, &shutdown_tracker, |ctx| {
         ctx.set_description("Scans and loads persona files from ~/.config/nullslop/personas");
         ctx.set_data(nullslop_domain::personas_dir());
     });
@@ -319,6 +296,7 @@ pub fn create_core_with_actor_host(
         &sink,
         handle,
         &counter,
+        &shutdown_tracker,
         |ctx| {
             ctx.set_description("Manages provider selection, LLM factory, and model cache");
             ctx.set_data(state.clone());
@@ -331,7 +309,6 @@ pub fn create_core_with_actor_host(
     let host = InMemoryActorHost::from_actors_with_handle(
         vec![
             system_ready_result,
-            shutdown_result,
             env_init_result,
             provider_init_result,
             prefs_result,
@@ -348,6 +325,7 @@ pub fn create_core_with_actor_host(
             prov_result,
         ],
         handle.clone(),
+        shutdown_tracker,
     );
     let host_arc: Arc<dyn nullslop_domain::ActorHost> = Arc::new(host);
 
@@ -378,5 +356,5 @@ pub fn create_core_with_actor_host(
         payload: nullslop_domain::feat::context::protocol::command::RescanPersonas,
     });
 
-    (core, services, actor_host_service, core_notify_rx)
+    (core, services, actor_host_service)
 }

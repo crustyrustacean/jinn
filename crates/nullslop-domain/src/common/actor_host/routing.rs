@@ -25,8 +25,8 @@ pub struct RoutingEntry {
     pub send_command: Box<dyn Fn(Command) + Send + Sync>,
     /// Sends a system message to this actor (wraps in `ActorEnvelope::System`).
     pub send_system: Box<dyn Fn(crate::common::actor::SystemMessage) + Send + Sync>,
-    /// Sends a shutdown signal to this actor.
-    pub send_shutdown: Box<dyn Fn() + Send + Sync>,
+    /// Closes the actor's channel, causing its run loop to exit.
+    pub close_channel: Box<dyn Fn() + Send + Sync>,
 }
 
 #[cfg(test)]
@@ -53,7 +53,7 @@ mod tests {
             }),
             send_command: Box::new(|_| {}),
             send_system: Box::new(|_| {}),
-            send_shutdown: Box::new(|| {}),
+            close_channel: Box::new(|| {}),
         };
 
         // When calling send_event with a ModeChanged event.
@@ -89,7 +89,7 @@ mod tests {
                 let _ = ref_clone.send_command(command);
             }),
             send_system: Box::new(|_| {}),
-            send_shutdown: Box::new(|| {}),
+            close_channel: Box::new(|| {}),
         };
 
         // When calling send_command.
@@ -107,34 +107,6 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn send_shutdown_closure_sends_shutdown() {
-        // Given a RoutingEntry built from an ActorRef<String>.
-        let (actor_ref, rx) = make_actor_ref_and_rx();
-        let ref_clone = actor_ref.clone();
-        let entry = super::RoutingEntry {
-            name: "test".to_owned(),
-            subscriptions: vec![],
-            commands: vec![],
-            send_event: Box::new(|_| {}),
-            send_command: Box::new(|_| {}),
-            send_system: Box::new(|_| {}),
-            send_shutdown: Box::new(move || {
-                let _ = ref_clone.shutdown();
-            }),
-        };
-
-        // When calling send_shutdown.
-        (entry.send_shutdown)();
-
-        // Then a Shutdown envelope is received.
-        let msg = rx
-            .try_recv()
-            .expect("recv should succeed")
-            .expect("should have value");
-        assert!(matches!(msg, ActorEnvelope::Shutdown));
-    }
-
-    #[rstest::rstest]
     fn send_system_closure_wraps_and_delivers() {
         // Given a RoutingEntry built from an ActorRef<String>.
         let (actor_ref, rx) = make_actor_ref_and_rx();
@@ -148,7 +120,7 @@ mod tests {
             send_system: Box::new(move |msg| {
                 let _ = ref_clone.send_system(msg);
             }),
-            send_shutdown: Box::new(|| {}),
+            close_channel: Box::new(|| {}),
         };
 
         // When calling send_system with ApplicationShuttingDown.

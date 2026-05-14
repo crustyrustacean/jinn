@@ -6,7 +6,7 @@
 //! cache entries into the registry, loads user preferences, and if `last_model`
 //! is set, sends a `ProviderSwitch` command to apply it.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
@@ -55,10 +55,7 @@ impl Actor for ProviderInitActor {
                     self.on_environment_loaded(&payload.config, ctx);
                 }
             }
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
         }
     }
 }

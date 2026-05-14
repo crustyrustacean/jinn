@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::RefreshModels;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
@@ -66,10 +66,7 @@ impl Actor for DiscoverActor {
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx).await,
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Event(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Event(_) | ActorEnvelope::System(_) => {}
         }
     }
 }

@@ -4,7 +4,7 @@
 //! On each event, replaces `state.frontend.preferences` with the full payload.
 //! This is the ONLY actor that writes to `frontend.preferences`.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::protocol::Event;
 
@@ -35,16 +35,13 @@ impl Actor for PreferencesStateSyncActor {
         Self { state }
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
+    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Event(Event::PreferencesUpdated { ref payload }) => {
                 let mut state = self.state.write();
                 state.frontend.preferences = payload.preferences.clone();
             }
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Command(_) | ActorEnvelope::Event(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(_) | ActorEnvelope::Event(_) | ActorEnvelope::System(_) => {}
         }
     }
 }
