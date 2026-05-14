@@ -5,9 +5,19 @@
 //! actor yellow, assistant cyan). Supports scrolling, selection highlighting,
 //! and pinned entry indicators.
 
-pub mod element;
+pub(crate) mod actor;
+pub(crate) mod assistant;
+pub(crate) mod error_entry;
+pub(crate) mod renderer;
+pub(crate) mod shared;
+pub(crate) mod system;
+pub(crate) mod table;
+pub(crate) mod thinking;
+pub(crate) mod tool_call;
+pub(crate) mod tool_result;
+pub(crate) mod user;
 
-pub use element::ChatLogElement;
+pub use renderer::ChatLogElement;
 
 use crate::common::AppUiRegistry;
 
