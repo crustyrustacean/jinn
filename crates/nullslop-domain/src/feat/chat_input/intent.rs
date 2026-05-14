@@ -17,7 +17,7 @@ use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::context::prompt_template::PromptTemplateStore;
-use crate::protocol::{Command, IntentResult, Mode};
+use crate::protocol::{Command, IntentResult};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::validator;
@@ -277,12 +277,19 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
 
 // --- Normal Escape ---
 
-/// Handles `NormalEscape` — clears chat entry selection if present.
+/// Handles `NormalEscape` — clears chat entry selection, or shows cancel prompt.
+///
+/// If a chat entry is selected, clears the selection. Otherwise, if the
+/// session is busy (streaming/sending), activates the cancel stream confirmation
+/// prompt. If idle with no selection, does nothing.
 pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     super::validator::validate_normal_escape(state);
 
     if state.active_session().selected_entry_index().is_some() {
         state.active_session_mut().clear_selection();
+    } else if !state.active_session().is_idle() {
+        // Session is busy — show cancel confirmation prompt.
+        state.frontend.cancel_stream_prompt = true;
     }
 
     IntentResult::empty()
@@ -299,30 +306,12 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
 
 /// Handles `EnterNormalMode` — pops the scope stack (restores previous scope).
 ///
-/// If currently in Input mode and the session is busy (streaming/sending),
-/// cancels the stream and drains queued messages back to the input buffer.
+/// Simply switches out of the current mode. Does NOT cancel streams or drain
+/// queues — the cancel confirmation prompt handles that via `NormalEscape`.
 pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
-    let mut commands = vec![];
-
-    if state.frontend.scope_stack.current().mode() == Mode::Input {
-        if !state.active_session().is_idle() {
-            // Session is actively streaming — cancel and drain.
-            state.active_session_mut().cancel_stream_and_drain();
-        }
-        // Always emit CancelStream when leaving input mode. This ensures tool
-        // execution is cancelled even when the session appears idle (tools running
-        // after stream completion with ToolUse reason). The LLM actor handles
-        // the no-op case (no active session) gracefully.
-        let session_id = state.session.active_session.clone();
-        commands.push(Command::CancelStream(
-            crate::feat::provider::protocol::command::CancelStream { session_id },
-        ));
-    }
-
     // Pop the scope stack — restores previous scope.
     state.frontend.scope_stack.pop();
-
-    IntentResult::with_commands(commands)
+    IntentResult::empty()
 }
 
 // --- Helpers ---
@@ -723,12 +712,12 @@ mod tests {
         let result = super::handle_enter_insert_mode(&mut state);
 
         // Then scope_stack has Input on top.
-        assert_eq!(state.frontend.scope_stack.current().mode(), Mode::Input);
+        assert_eq!(state.frontend.scope_stack.current().mode(), crate::protocol::Mode::Input);
         assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
-    fn enter_normal_mode_emits_cancel_stream() {
+    fn enter_normal_mode_pops_scope_stack() {
         // Given a state in Input mode.
         use crate::common::app_state::FocusScope;
 
@@ -740,14 +729,8 @@ mod tests {
 
         // Then scope_stack is back to Normal.
         assert!(!state.frontend.scope_stack.is_picker());
-        // And a CancelStream is always emitted when leaving input mode.
-        assert!(
-            result
-                .commands
-                .iter()
-                .any(|c| matches!(c, Command::CancelStream(..))),
-            "expected CancelStream command"
-        );
+        // And no commands are emitted.
+        assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
@@ -770,10 +753,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn enter_normal_mode_cancels_stream_when_in_input_mode() {
+    fn enter_normal_mode_does_not_cancel_stream() {
         // Given a state in Input mode with active stream.
         use crate::common::app_state::FocusScope;
-        use crate::protocol::Command;
 
         let mut state = AppState::default();
         state.frontend.scope_stack.push(FocusScope::Input);
@@ -782,22 +764,21 @@ mod tests {
         // When handling EnterNormalMode.
         let result = super::handle_enter_normal_mode(&mut state);
 
-        // Then a CancelStream command is returned.
+        // Then no CancelStream command is emitted.
         assert!(
-            result
+            !result
                 .commands
                 .iter()
                 .any(|c| matches!(c, Command::CancelStream(..)))
         );
-        // And the session is idle (streaming was cancelled).
-        assert!(state.active_session().is_idle());
+        // And the session is still streaming (not cancelled).
+        assert!(state.active_session().is_streaming());
     }
 
     #[rstest::rstest]
-    fn enter_normal_mode_drains_queue_when_cancelling_stream() {
+    fn enter_normal_mode_does_not_drain_queue() {
         // Given a state in Input mode with active stream and queued messages.
         use crate::common::app_state::FocusScope;
-        use crate::protocol::Command;
 
         let mut state = AppState::default();
         state.frontend.scope_stack.push(FocusScope::Input);
@@ -808,13 +789,13 @@ mod tests {
         // When handling EnterNormalMode.
         let result = super::handle_enter_normal_mode(&mut state);
 
-        // Then the queued messages are drained to the input buffer.
-        assert_eq!(state.active_chat_input().text(), "msg1\nmsg2");
-        // And the session is idle.
-        assert!(state.active_session().is_idle());
-        // And a CancelStream command is returned.
+        // Then the queued messages are NOT drained.
+        assert_eq!(state.active_session().queue_len(), 2);
+        // And the input buffer is empty.
+        assert!(state.active_chat_input().is_empty());
+        // And no CancelStream command is emitted.
         assert!(
-            result
+            !result
                 .commands
                 .iter()
                 .any(|c| matches!(c, Command::CancelStream(..)))
@@ -837,6 +818,35 @@ mod tests {
 
         // Then the selection is cleared.
         assert!(state.active_session().selected_entry_index().is_none());
+        assert!(result.commands.is_empty());
+        // And cancel prompt is NOT set (selection takes priority).
+        assert!(!state.frontend.cancel_stream_prompt);
+    }
+
+    #[rstest::rstest]
+    fn normal_escape_sets_cancel_prompt_when_streaming() {
+        // Given a state in Normal mode with an active stream.
+        let mut state = AppState::default();
+        state.active_session_mut().begin_streaming();
+
+        // When handling NormalEscape.
+        let result = super::handle_normal_escape(&mut state);
+
+        // Then the cancel prompt is set.
+        assert!(state.frontend.cancel_stream_prompt);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn normal_escape_noop_when_idle_and_no_selection() {
+        // Given a state that is idle with no selection.
+        let mut state = AppState::default();
+
+        // When handling NormalEscape.
+        let result = super::handle_normal_escape(&mut state);
+
+        // Then nothing happens.
+        assert!(!state.frontend.cancel_stream_prompt);
         assert!(result.commands.is_empty());
     }
 }

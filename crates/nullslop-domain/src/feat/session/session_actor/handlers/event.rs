@@ -1,5 +1,8 @@
 //! Event handlers — process streaming and tool call events.
 
+use crate::common::actor::ActorContext;
+use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
+use crate::feat::context::protocol::command::AssemblePrompt;
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
@@ -12,7 +15,7 @@ use crate::feat::tools_actor::protocol::event::{
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 
-use crate::protocol::{ChatEntry, Command, TableData};
+use crate::protocol::{ChatEntry, Command, Event, SessionId, TableData};
 
 use super::super::SessionPersistenceActor;
 
@@ -96,16 +99,22 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Marks the session's stream as finished and records output tokens.
+    /// Marks the session's stream as finished, records output tokens, and
+    /// drains any queued messages into a new turn.
+    ///
+    /// For `Finished` reason, drains the message queue. If messages were queued,
+    /// pushes each as a separate user entry and starts a new `AssemblePrompt`.
     ///
     /// For `ToolUse` reason, transitions to sending state instead of fully idle,
     /// so the streaming indicator remains visible while the followup response
-    /// is awaited.
+    /// is awaited. The queue is NOT drained — the turn hasn't ended.
     pub(in crate::feat::session::session_actor) fn on_stream_completed(
         &self,
         event: &StreamCompleted,
+        ctx: &ActorContext,
     ) {
         let should_save = event.reason == StreamCompletedReason::Finished;
+        let drained_messages: Vec<String>;
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
@@ -126,6 +135,18 @@ impl SessionPersistenceActor {
             if event.reason == StreamCompletedReason::ToolUse {
                 session.begin_sending();
             }
+
+            // Drain queue on Finished — the turn has ended.
+            drained_messages = if event.reason == StreamCompletedReason::Finished {
+                session.drain_queue().into_iter().collect()
+            } else {
+                vec![]
+            };
+        }
+
+        // If messages were drained, start a new turn.
+        if !drained_messages.is_empty() {
+            self.start_turn_from_queued(&event.session_id, &drained_messages, ctx);
         }
 
         // Persist session after stream finishes (not on cancel).
@@ -241,5 +262,48 @@ impl SessionPersistenceActor {
         state
             .session_mut_or_create(&event.session_id)
             .push_entry(ChatEntry::table(data));
+    }
+
+    /// Drain queued messages into a new turn: push each as a separate User
+    /// entry, then emit `AssemblePrompt` with the full session history.
+    pub(in crate::feat::session::session_actor) fn start_turn_from_queued(
+        &self,
+        session_id: &SessionId,
+        messages: &[String],
+        ctx: &ActorContext,
+    ) {
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(session_id);
+            for text in messages {
+                session.push_entry(ChatEntry::user(text));
+            }
+            session.begin_sending();
+        }
+
+        let (history, model_name) = {
+            let state = self.state.read();
+            let session = state.session(session_id);
+            (session.history().to_vec(), session.profile().model.clone())
+        };
+
+        if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
+            session_id: session_id.clone(),
+            history,
+            tools: vec![],
+            model_name,
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit AssemblePrompt from queue drain");
+        }
+
+        // Emit ChatEntrySubmitted for each queued message.
+        for text in messages {
+            if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user(text),
+            })) {
+                tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted for queued message");
+            }
+        }
     }
 }
