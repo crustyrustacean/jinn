@@ -1,9 +1,9 @@
 //! Picker overlay rendering — dispatches to domain-specific picker renderers.
 
-use ratatui::Frame;
-use ratatui::layout::Rect;
 use nullslop_domain::AppState;
 use nullslop_domain::PickerKind;
+use ratatui::Frame;
+use ratatui::layout::Rect;
 
 /// Renders the active picker overlay, dispatching on [`PickerKind`].
 pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {

@@ -16,7 +16,10 @@ use crate::plugin_id::PluginId;
 /// Callbacks that bridge rhai host API calls to Rust state.
 ///
 /// Created by the PluginActor's plugin thread and injected into each PluginRuntime.
-#[expect(clippy::type_complexity, reason = "callback signatures are inherently complex")]
+#[expect(
+    clippy::type_complexity,
+    reason = "callback signatures are inherently complex"
+)]
 pub struct HostCallbacks {
     /// Subscribe to event types.
     pub subscribe_events: Arc<dyn Fn(&PluginId, &[String]) + Send + Sync>,
