@@ -24,6 +24,12 @@ pub mod guard;
 pub mod hash;
 pub mod state;
 #[cfg(test)]
+mod builder_tests;
+
+#[cfg(test)]
+mod guard_tests;
+
+#[cfg(test)]
 mod state_tests;
 pub mod template;
 
