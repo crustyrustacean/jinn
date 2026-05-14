@@ -55,6 +55,8 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         }
         // Table entries are ephemeral display data — estimate based on plain-text content.
         ChatEntryKind::Table(data) => estimator.estimate(&data.to_plain_text()),
+        // Thinking entries are excluded from context assembly — contribute 0 tokens.
+        ChatEntryKind::Thinking(_) => 0,
     }
 }
 
@@ -315,5 +317,18 @@ mod tests {
 
         // Then it returns a nonzero count.
         assert!(count > 0);
+    }
+
+    #[rstest::rstest]
+    fn estimate_entry_tokens_for_thinking_is_zero() {
+        // Given a char ratio estimator and a thinking entry.
+        let estimator = CharRatioEstimator;
+        let entry = ChatEntry::thinking("a long reasoning text that would normally cost tokens");
+
+        // When estimating entry tokens.
+        let tokens = estimate_entry_tokens(&estimator, &entry);
+
+        // Then thinking entries contribute 0 tokens.
+        assert_eq!(tokens, 0);
     }
 }

@@ -54,6 +54,7 @@ pub(crate) fn llm_tool_call_to_protocol(tc: &LlmToolCall) -> ToolCall {
 pub(crate) fn stream_chunk_to_event(chunk: StreamChunk) -> StreamEvent {
     match chunk {
         StreamChunk::Text(text) => StreamEvent::Text(text),
+        StreamChunk::Reasoning(text) => StreamEvent::Reasoning(text),
         StreamChunk::ToolUseStart { index, id, name } => {
             StreamEvent::ToolUseStart { index, id, name }
         }

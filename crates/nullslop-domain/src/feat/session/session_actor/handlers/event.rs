@@ -78,14 +78,22 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Appends a streaming token to the session's assistant entry.
+    /// Appends a streaming token to the session's assistant entry,
+    /// or to the thinking entry if the token is flagged as reasoning.
     pub(in crate::feat::session::session_actor) fn on_stream_token(&self, event: &StreamToken) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         if !session.is_streaming() {
             session.begin_streaming();
         }
-        session.append_stream_token(&event.token);
+        if event.is_thinking {
+            if session.streaming_thinking_entry_index().is_none() {
+                session.begin_thinking();
+            }
+            session.append_thinking_token(&event.token);
+        } else {
+            session.append_stream_token(&event.token);
+        }
     }
 
     /// Marks the session's stream as finished and records output tokens.

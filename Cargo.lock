@@ -2901,6 +2901,7 @@ dependencies = [
  "rand 0.9.4",
  "ratatui",
  "ratatui-which-key",
+ "reasoning-parser",
  "rhai",
  "rstest",
  "serde",
@@ -3794,6 +3795,17 @@ dependencies = [
  "time",
  "unicode-segmentation",
  "unicode-width",
+]
+
+[[package]]
+name = "reasoning-parser"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fe8123bad128776fa83c2d62e3e4eb8f381b713e2fd518e3cc1e7c53d29fb8a"
+dependencies = [
+ "parking_lot",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

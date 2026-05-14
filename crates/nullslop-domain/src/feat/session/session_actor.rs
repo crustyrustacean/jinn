@@ -1255,6 +1255,7 @@ mod tests {
             session_id: session_id.clone(),
             index: 0,
             token: "Hello".to_owned(),
+            is_thinking: false,
         });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
@@ -1280,6 +1281,7 @@ mod tests {
             session_id: session_id.clone(),
             index: 0,
             token: "Hello".to_owned(),
+            is_thinking: false,
         });
         actor.handle(ActorEnvelope::Event(first), &ctx).await;
 
@@ -1288,6 +1290,7 @@ mod tests {
             session_id: session_id.clone(),
             index: 1,
             token: " world".to_owned(),
+            is_thinking: false,
         });
         actor.handle(ActorEnvelope::Event(second), &ctx).await;
 
@@ -1313,6 +1316,7 @@ mod tests {
             session_id: session_id.clone(),
             index: 0,
             token: "Hello".to_owned(),
+            is_thinking: false,
         });
         actor.handle(ActorEnvelope::Event(token), &ctx).await;
 
@@ -1342,6 +1346,7 @@ mod tests {
             session_id: session_id.clone(),
             index: 0,
             token: "Let me check".to_owned(),
+            is_thinking: false,
         });
         actor.handle(ActorEnvelope::Event(token), &ctx).await;
 
@@ -1372,6 +1377,7 @@ mod tests {
             session_id: session_id.clone(),
             index: 0,
             token: "Hello".to_owned(),
+            is_thinking: false,
         });
         actor.handle(ActorEnvelope::Event(token), &ctx).await;
 

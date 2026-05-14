@@ -1081,3 +1081,95 @@ fn restore_history_clears_selection() {
     // Then the selection is cleared.
     assert_eq!(session.selected_entry_index(), None);
 }
+
+// --- Thinking streaming tests ---
+
+#[rstest::rstest]
+fn begin_thinking_inserts_before_assistant_entry() {
+    // Given a session with a streaming Assistant entry.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("hello")
+        .begin_streaming()
+        .build();
+
+    // When beginning thinking.
+    session.begin_thinking();
+
+    // Then the Thinking entry is at the streaming entry's original index.
+    // The Assistant entry shifted to index 2.
+    assert_eq!(session.history().len(), 3);
+    assert!(matches!(
+        session.history()[1].kind,
+        ChatEntryKind::Thinking(_)
+    ));
+    assert!(matches!(
+        session.history()[2].kind,
+        ChatEntryKind::Assistant(_)
+    ));
+    assert_eq!(session.streaming_thinking_entry_index(), Some(1));
+}
+
+#[rstest::rstest]
+fn append_thinking_token_appends_to_thinking_entry() {
+    // Given a session with a streaming Assistant entry that has begun thinking.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("hello")
+        .begin_streaming()
+        .build();
+    session.begin_thinking();
+
+    // When appending thinking tokens.
+    session.append_thinking_token("reasoning");
+    session.append_thinking_token(" more");
+
+    // Then the Thinking entry has the accumulated text.
+    match &session.history()[1].kind {
+        ChatEntryKind::Thinking(text) => assert_eq!(text, "reasoning more"),
+        other => panic!("expected Thinking, got {other:?}"),
+    }
+}
+
+#[rstest::rstest]
+fn finish_streaming_clears_thinking_entry_index() {
+    // Given a session with a thinking entry and assistant entry.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("hello")
+        .begin_streaming()
+        .build();
+    session.begin_thinking();
+    session.append_thinking_token("reasoning");
+    session.append_stream_token("response");
+
+    // When finishing streaming.
+    session.finish_streaming();
+
+    // Then the thinking entry index is cleared.
+    assert_eq!(session.streaming_thinking_entry_index(), None);
+    // And the thinking text is preserved in history.
+    assert!(
+        matches!(session.history()[1].kind, ChatEntryKind::Thinking(ref t) if t == "reasoning")
+    );
+    assert!(
+        matches!(session.history()[2].kind, ChatEntryKind::Assistant(ref t) if t == "response")
+    );
+}
+
+#[rstest::rstest]
+fn cancel_streaming_preserves_partial_thinking() {
+    // Given a session with partial thinking text.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("hello")
+        .begin_streaming()
+        .build();
+    session.begin_thinking();
+    session.append_thinking_token("partial reasoning");
+
+    // When cancelling streaming.
+    session.cancel_streaming();
+
+    // Then the partial thinking text is preserved.
+    assert_eq!(session.streaming_thinking_entry_index(), None);
+    assert!(
+        matches!(session.history()[1].kind, ChatEntryKind::Thinking(ref t) if t == "partial reasoning")
+    );
+}

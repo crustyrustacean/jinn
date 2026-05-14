@@ -204,6 +204,7 @@ impl LlmActor {
         } else {
             self.factory.clone()
         };
+        let model_id = provider_id.map(|p| p.to_owned()).unwrap_or_default();
         let sink = ctx.sink();
         let sid = session_id.clone();
 
@@ -251,6 +252,7 @@ impl LlmActor {
             let mut accumulated_text = String::new();
             let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
             let mut token_index = 0usize;
+            let mut parser = reasoning_parser::ParserFactory::new().create(&model_id);
 
             let mut stream = std::pin::pin!(stream);
             while let Some(result) = stream.next().await {
@@ -258,10 +260,42 @@ impl LlmActor {
                     Ok(event) => match event {
                         StreamEvent::Text(token) => {
                             accumulated_text.push_str(&token);
+                            let parsed = match parser.parse_reasoning_streaming_incremental(&token)
+                            {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    tracing::warn!(
+                                        err = ?e,
+                                        "reasoning parser error, treating as normal text"
+                                    );
+                                    reasoning_parser::ParserResult::normal(token.clone())
+                                }
+                            };
+                            if !parsed.reasoning_text.is_empty() {
+                                let _ = sink.send_event(Event::StreamToken(StreamToken {
+                                    session_id: sid.clone(),
+                                    index: token_index,
+                                    token: parsed.reasoning_text,
+                                    is_thinking: true,
+                                }));
+                                token_index += 1;
+                            }
+                            if !parsed.normal_text.is_empty() {
+                                let _ = sink.send_event(Event::StreamToken(StreamToken {
+                                    session_id: sid.clone(),
+                                    index: token_index,
+                                    token: parsed.normal_text,
+                                    is_thinking: false,
+                                }));
+                                token_index += 1;
+                            }
+                        }
+                        StreamEvent::Reasoning(token) => {
                             let _ = sink.send_event(Event::StreamToken(StreamToken {
                                 session_id: sid.clone(),
                                 index: token_index,
                                 token,
+                                is_thinking: true,
                             }));
                             token_index += 1;
                         }

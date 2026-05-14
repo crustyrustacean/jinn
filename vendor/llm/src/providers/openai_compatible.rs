@@ -232,6 +232,8 @@ pub struct OpenAIStreamDelta {
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<StreamToolCall>>,
+    #[serde(default)]
+    pub reasoning_content: Option<String>,
 }
 
 /// Tool call represents a function call that an LLM wants to make.
@@ -1022,6 +1024,13 @@ fn parse_openai_sse_chunk_with_tools(
                         }
                     }
 
+                    // Handle reasoning/thinking content
+                    if let Some(reasoning) = &choice.delta.reasoning_content {
+                        if !reasoning.is_empty() {
+                            results.push(ChatStreamChunk::Reasoning(reasoning.clone()));
+                        }
+                    }
+
                     // Handle tool calls
                     if let Some(tool_calls) = &choice.delta.tool_calls {
                         for tc in tool_calls {
@@ -1109,6 +1118,8 @@ struct OpenAIToolStreamChoice {
 #[derive(Debug, Deserialize)]
 struct OpenAIToolStreamDelta {
     content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
     tool_calls: Option<Vec<OpenAIToolStreamToolCall>>,
 }
 
