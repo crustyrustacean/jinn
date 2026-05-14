@@ -33,7 +33,6 @@ use nullslop_domain::actor_channel::ActorChannelService;
 use nullslop_domain::common::actor::protocol::event::{
     ActorStarted, ActorStarting, AllActorsSpawned,
 };
-use nullslop_domain::core_channel::CoreChannelService;
 use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use nullslop_domain::feat::session::JsonlSessionStore as DomainJsonlSessionStore;
@@ -65,9 +64,6 @@ pub fn create_core_with_actor_host(
     // the channel independently.
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
 
-    // Create the actor→core notification channel (unused by host after shutdown actor removal).
-    let (core_notify_tx, _core_notify_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
-
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink: Arc<dyn MessageSink> = Arc::new(ActorMessageSink::new(sender.clone()));
 
@@ -96,7 +92,6 @@ pub fn create_core_with_actor_host(
     let services = Services {
         handle: handle.clone(),
         actor_channel: ActorChannelService::new(sender.clone()),
-        core_channel: CoreChannelService::new(core_notify_tx),
         llm_service: llm_service.clone(),
         provider_registry: provider_registry.clone(),
         api_keys: api_keys.clone(),

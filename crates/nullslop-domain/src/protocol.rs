@@ -35,7 +35,6 @@ pub use tab::TabDirection;
 
 // Re-export domain types that are widely used as cross-cutting protocol concerns
 pub use crate::common::actor::actor_name::ActorName;
-pub use crate::common::core::core_notification::CoreNotification;
 pub use crate::feat::context::protocol::command::SwitchPromptStrategy;
 pub use crate::feat::context::protocol::prompt_template::PromptTemplate;
 pub use crate::feat::context::protocol::strategy_id::PromptStrategyId;
