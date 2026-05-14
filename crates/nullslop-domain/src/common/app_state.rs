@@ -55,6 +55,10 @@ pub struct SessionState {
     /// Set by IntentHandler (on confirm_session), cleared by session-actor (on load completed)
     /// and TUI tick (on timeout).
     pub session_load_started_at: Option<std::time::Instant>,
+
+    /// The default CWD for new sessions, set once at startup from the process CWD.
+    /// Used by `session_mut_or_create` to ensure every session has a valid CWD.
+    pub default_cwd: std::path::PathBuf,
 }
 
 impl Default for SessionState {
@@ -68,6 +72,7 @@ impl Default for SessionState {
             active_session,
             session_loading: false,
             session_load_started_at: None,
+            default_cwd: std::path::PathBuf::from("/"),
         }
     }
 }
@@ -473,9 +478,11 @@ impl AppState {
     /// (e.g. workflow executor) which may create new session IDs
     /// not yet present in the sessions map.
     pub fn session_mut_or_create(&mut self, id: &SessionId) -> &mut ChatSessionState {
+        let default_cwd = self.session.default_cwd.clone();
         self.session.sessions.entry(id.clone()).or_insert_with(|| {
             let mut s = ChatSessionState::new();
             s.set_session_id(id.clone());
+            s.set_cwd(default_cwd.clone());
             s
         })
     }
@@ -776,5 +783,41 @@ mod tests {
         // When formatting as Display.
         // Then it produces the expected string.
         assert_eq!(scope.to_string(), expected);
+    }
+
+    // --- session_mut_or_create CWD ---
+
+    #[rstest::rstest]
+    fn session_mut_or_create_sets_cwd_from_default_cwd() {
+        // Given an AppState with a custom default CWD.
+        let mut state = AppState::default();
+        state.session.default_cwd = std::path::PathBuf::from("/custom/cwd");
+
+        let session_id = SessionId::new();
+
+        // When creating a session via session_mut_or_create.
+        let session = state.session_mut_or_create(&session_id);
+
+        // Then the session's CWD is the default CWD.
+        assert_eq!(session.cwd(), std::path::Path::new("/custom/cwd"));
+    }
+
+    #[rstest::rstest]
+    fn session_mut_or_create_does_not_overwrite_existing_session_cwd() {
+        // Given an AppState with a session that has a specific CWD.
+        let mut state = AppState::default();
+        state.session.default_cwd = std::path::PathBuf::from("/new/default");
+
+        let session_id = SessionId::new();
+        {
+            let session = state.session_mut_or_create(&session_id);
+            session.set_cwd(std::path::PathBuf::from("/existing/cwd"));
+        }
+
+        // When accessing the same session via session_mut_or_create.
+        let session = state.session_mut_or_create(&session_id);
+
+        // Then the CWD is unchanged.
+        assert_eq!(session.cwd(), std::path::Path::new("/existing/cwd"));
     }
 }
