@@ -106,20 +106,18 @@ mod tests {
 
         // When sending a KeyDown event.
         host.send_event(
-            &Event::KeyDown {
-                payload: crate::protocol::system::KeyDown {
-                    key: crate::protocol::KeyEvent {
-                        key: crate::protocol::Key::Enter,
-                        modifiers: crate::protocol::Modifiers::none(),
-                    },
+            &Event::KeyDown(crate::protocol::system::KeyDown {
+                key: crate::protocol::KeyEvent {
+                    key: crate::protocol::Key::Enter,
+                    modifiers: crate::protocol::Modifiers::none(),
                 },
-            },
+            }),
             None,
         );
 
         // Then the event is recorded.
         assert_eq!(host.events_sent().len(), 1);
-        assert!(matches!(host.events_sent()[0], Event::KeyDown { .. }));
+        assert!(matches!(host.events_sent()[0], Event::KeyDown(..)));
     }
 
     #[rstest::rstest]

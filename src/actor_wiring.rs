@@ -107,50 +107,71 @@ pub fn create_core_with_actor_host(
 
     // System-ready actor: counts ActorStarted, signals main thread when done.
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-    let system_ready_result =
-        system_spawn::<SystemReadyActor>("system-ready", sink.clone(), handle, &counter, &shutdown_tracker, |ctx| {
+    let system_ready_result = system_spawn::<SystemReadyActor>(
+        "system-ready",
+        sink.clone(),
+        handle,
+        &counter,
+        &shutdown_tracker,
+        |ctx| {
             ctx.set_data(ready_tx);
             ctx.set_data(counter.clone());
-        });
+        },
+    );
 
     // Emit lifecycle events for the infrastructure actor manually.
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: "system-ready".to_owned(),
-            description: Some("Counts ActorStarted events and signals system ready".to_owned()),
-        },
-    });
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: "system-ready".to_owned(),
-            description: Some("Counts ActorStarted events and signals system ready".to_owned()),
-        },
-    });
+    let _ = sink.send_event(Event::ActorStarting(ActorStarting {
+        name: "system-ready".to_owned(),
+        description: Some("Counts ActorStarted events and signals system ready".to_owned()),
+    }));
+    let _ = sink.send_event(Event::ActorStarted(ActorStarted {
+        name: "system-ready".to_owned(),
+        description: Some("Counts ActorStarted events and signals system ready".to_owned()),
+    }));
 
     // ── Init actors (self-schedule Initialize during activate) ────────────
 
     // Env init: loads providers.toml, resolves API keys, emits EnvironmentLoaded.
-    let env_init_result = spawn::<EnvInitActor>("env-init", &sink, handle, &counter, &shutdown_tracker, |ctx| {
-        ctx.set_description("Loads environment variables and API keys");
-        ctx.set_data(config_storage.clone());
-        ctx.set_data(api_keys.clone());
-    });
+    let env_init_result = spawn::<EnvInitActor>(
+        "env-init",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        |ctx| {
+            ctx.set_description("Loads environment variables and API keys");
+            ctx.set_data(config_storage.clone());
+            ctx.set_data(api_keys.clone());
+        },
+    );
 
     // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
-    let provider_init_result =
-        spawn::<ProviderInitActor>("provider-init", &sink, handle, &counter, &shutdown_tracker, |ctx| {
+    let provider_init_result = spawn::<ProviderInitActor>(
+        "provider-init",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        |ctx| {
             ctx.set_description("Loads provider config, merges cache, resolves last_model");
             ctx.set_data(services.clone());
             ctx.set_data(state.clone());
-        });
+        },
+    );
 
     // Preferences: loads and persists user preferences.
-    let prefs_result = spawn::<
-        nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActor,
-    >("preferences", &sink, handle, &counter, &shutdown_tracker, |ctx| {
-        ctx.set_description("Persists user preferences to nullslop.toml");
-        ctx.set_data(user_preferences_storage.clone());
-    });
+    let prefs_result =
+        spawn::<nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActor>(
+            "preferences",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            |ctx| {
+                ctx.set_description("Persists user preferences to nullslop.toml");
+                ctx.set_data(user_preferences_storage.clone());
+            },
+        );
 
     // Preferences state sync: updates AppState from PreferencesUpdated events.
     let prefs_sync_result = spawn::<
@@ -285,10 +306,17 @@ pub fn create_core_with_actor_host(
     // Persona scan actor.
     let persona_scan_result = spawn::<
         nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActor,
-    >("persona-scan", &sink, handle, &counter, &shutdown_tracker, |ctx| {
-        ctx.set_description("Scans and loads persona files from ~/.config/nullslop/personas");
-        ctx.set_data(nullslop_domain::personas_dir());
-    });
+    >(
+        "persona-scan",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        |ctx| {
+            ctx.set_description("Scans and loads persona files from ~/.config/nullslop/personas");
+            ctx.set_data(nullslop_domain::personas_dir());
+        },
+    );
 
     // Provider actor.
     let prov_result = spawn::<nullslop_domain::feat::provider::provider_actor::ProviderActor>(
@@ -335,9 +363,7 @@ pub fn create_core_with_actor_host(
 
     // Signal that all actors have been spawned.
     // SystemReadyActor waits for this before checking its count.
-    let _ = sink.send_event(Event::AllActorsSpawned {
-        payload: AllActorsSpawned,
-    });
+    let _ = sink.send_event(Event::AllActorsSpawned(AllActorsSpawned));
 
     // Wait for the actor system to become ready (3-second timeout).
     wait_for_system_ready(ready_rx, handle);
@@ -352,9 +378,9 @@ pub fn create_core_with_actor_host(
     let _ = sink.send_command(nullslop_domain::Command::ScanSkills);
 
     // Trigger initial persona scan.
-    let _ = sink.send_command(nullslop_domain::Command::RescanPersonas {
-        payload: nullslop_domain::feat::context::protocol::command::RescanPersonas,
-    });
+    let _ = sink.send_command(nullslop_domain::Command::RescanPersonas(
+        nullslop_domain::feat::context::protocol::command::RescanPersonas,
+    ));
 
     (core, services, actor_host_service)
 }

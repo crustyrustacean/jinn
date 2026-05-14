@@ -52,33 +52,27 @@ impl ScanConfig for PromptScanConfig {
         match result {
             Ok(store) => {
                 tracing::info!(count = store.len(), "rescanned prompt templates");
-                let _ = ctx.send_event(Event::PromptTemplatesLoaded {
-                    payload: PromptTemplatesLoaded {
-                        templates: store.templates().to_vec(),
-                        error: None,
-                    },
-                });
+                let _ = ctx.send_event(Event::PromptTemplatesLoaded(PromptTemplatesLoaded {
+                    templates: store.templates().to_vec(),
+                    error: None,
+                }));
             }
             Err(e) => {
                 tracing::warn!("failed to rescan prompt templates: {e:?}");
-                let _ = ctx.send_event(Event::PromptTemplatesLoaded {
-                    payload: PromptTemplatesLoaded {
-                        templates: vec![],
-                        error: Some(format!("{e:?}")),
-                    },
-                });
+                let _ = ctx.send_event(Event::PromptTemplatesLoaded(PromptTemplatesLoaded {
+                    templates: vec![],
+                    error: Some(format!("{e:?}")),
+                }));
             }
         }
     }
 
     fn on_panic(join_error: tokio::task::JoinError, _config: &Self, ctx: &ActorContext) {
         tracing::error!("rescan task panicked: {join_error}");
-        let _ = ctx.send_event(Event::PromptTemplatesLoaded {
-            payload: PromptTemplatesLoaded {
-                templates: vec![],
-                error: Some(format!("rescan task failed: {join_error}")),
-            },
-        });
+        let _ = ctx.send_event(Event::PromptTemplatesLoaded(PromptTemplatesLoaded {
+            templates: vec![],
+            error: Some(format!("rescan task failed: {join_error}")),
+        }));
     }
 }
 

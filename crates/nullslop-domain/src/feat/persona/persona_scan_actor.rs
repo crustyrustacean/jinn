@@ -28,7 +28,7 @@ impl ScanConfig for PersonaScanConfig {
     }
 
     fn is_rescan_command(command: &Command) -> bool {
-        matches!(command, Command::RescanPersonas { .. })
+        matches!(command, Command::RescanPersonas(..))
     }
 
     fn scan(path: &Path) -> Vec<crate::feat::persona::Persona> {
@@ -41,22 +41,18 @@ impl ScanConfig for PersonaScanConfig {
         ctx: &ActorContext,
     ) {
         tracing::info!(count = personas.len(), "rescanned personas");
-        let _ = ctx.send_event(Event::PersonasLoaded {
-            payload: PersonasLoaded {
-                personas,
-                error: None,
-            },
-        });
+        let _ = ctx.send_event(Event::PersonasLoaded(PersonasLoaded {
+            personas,
+            error: None,
+        }));
     }
 
     fn on_panic(join_error: tokio::task::JoinError, _config: &Self, ctx: &ActorContext) {
         tracing::error!("persona rescan task panicked: {join_error}");
-        let _ = ctx.send_event(Event::PersonasLoaded {
-            payload: PersonasLoaded {
-                personas: vec![],
-                error: Some(format!("rescan task failed: {join_error}")),
-            },
-        });
+        let _ = ctx.send_event(Event::PersonasLoaded(PersonasLoaded {
+            personas: vec![],
+            error: Some(format!("rescan task failed: {join_error}")),
+        }));
     }
 }
 
@@ -81,7 +77,7 @@ mod tests {
 
     fn find_personas_loaded(events: &[Event]) -> Option<&PersonasLoaded> {
         for evt in events {
-            if let Event::PersonasLoaded { payload } = evt {
+            if let Event::PersonasLoaded(payload) = evt {
                 return Some(payload);
             }
         }
@@ -102,9 +98,7 @@ mod tests {
         // When processing RescanPersonas command.
         actor
             .handle(
-                ActorEnvelope::Command(Command::RescanPersonas {
-                    payload: RescanPersonas,
-                }),
+                ActorEnvelope::Command(Command::RescanPersonas(RescanPersonas)),
                 &ctx,
             )
             .await;
@@ -131,9 +125,7 @@ mod tests {
         // When processing RescanPersonas command.
         actor
             .handle(
-                ActorEnvelope::Command(Command::RescanPersonas {
-                    payload: RescanPersonas,
-                }),
+                ActorEnvelope::Command(Command::RescanPersonas(RescanPersonas)),
                 &ctx,
             )
             .await;
@@ -157,9 +149,7 @@ mod tests {
         // When processing RescanPersonas command.
         actor
             .handle(
-                ActorEnvelope::Command(Command::RescanPersonas {
-                    payload: RescanPersonas,
-                }),
+                ActorEnvelope::Command(Command::RescanPersonas(RescanPersonas)),
                 &ctx,
             )
             .await;

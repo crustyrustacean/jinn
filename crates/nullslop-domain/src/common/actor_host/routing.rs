@@ -57,12 +57,12 @@ mod tests {
         };
 
         // When calling send_event with a ModeChanged event.
-        (entry.send_event)(crate::protocol::Event::ModeChanged {
-            payload: crate::protocol::system::ModeChanged {
+        (entry.send_event)(crate::protocol::Event::ModeChanged(
+            crate::protocol::system::ModeChanged {
                 from: crate::protocol::Mode::Normal,
                 to: crate::protocol::Mode::Input,
             },
-        });
+        ));
 
         // Then it is received as an Event envelope.
         let msg = rx
@@ -71,7 +71,7 @@ mod tests {
             .expect("should have value");
         assert!(matches!(
             msg,
-            ActorEnvelope::Event(crate::protocol::Event::ModeChanged { .. })
+            ActorEnvelope::Event(crate::protocol::Event::ModeChanged(..))
         ));
     }
 

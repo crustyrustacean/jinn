@@ -152,17 +152,12 @@ where
     ///
     /// Returns an error if the channel is already closed.
     pub fn close(&self) -> SendResult {
-        self.cell
-            .sender
-            .read()
-            .close()
-            .map_err(|err| {
-                Report::new(ActorSendError)
-                    .attach("failed to close actor channel")
-                    .attach(err.to_string())
-            })
+        self.cell.sender.read().close().map_err(|err| {
+            Report::new(ActorSendError)
+                .attach("failed to close actor channel")
+                .attach(err.to_string())
+        })
     }
-
 }
 
 impl<M> Clone for ActorRef<M>
@@ -218,14 +213,12 @@ mod tests {
 
         // When sending an event.
         actor_ref
-            .send_event(Event::KeyDown {
-                payload: crate::protocol::system::KeyDown {
-                    key: crate::protocol::KeyEvent {
-                        key: crate::protocol::Key::Enter,
-                        modifiers: crate::protocol::Modifiers::none(),
-                    },
+            .send_event(Event::KeyDown(crate::protocol::system::KeyDown {
+                key: crate::protocol::KeyEvent {
+                    key: crate::protocol::Key::Enter,
+                    modifiers: crate::protocol::Modifiers::none(),
                 },
-            })
+            }))
             .expect("send should succeed");
 
         // Then it is received as an Event envelope.
@@ -233,7 +226,7 @@ mod tests {
             .try_recv()
             .expect("recv should succeed")
             .expect("should have value");
-        assert!(matches!(msg, ActorEnvelope::Event(Event::KeyDown { .. })));
+        assert!(matches!(msg, ActorEnvelope::Event(Event::KeyDown(..))));
     }
 
     #[rstest::rstest]

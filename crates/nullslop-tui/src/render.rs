@@ -211,7 +211,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
                 }
             }
             // Streaming indicator (1 row at bottom of content area)
-            if queue_len > 0 || true {
+            {
                 // Always reserve indicator row position
                 let indicator_y = content_area.y + content_area.height.saturating_sub(bottom_lines);
                 let indicator_area = Rect {
@@ -239,11 +239,12 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             }
             // Chat bottom line — horizontal separator at the bottom of content area
             let line_y = content_area.y + content_area.height.saturating_sub(1);
-            let chat_line_color = if matches!(state.frontend.scope_stack.current(), FocusScope::Normal) {
-                Color::Yellow
-            } else {
-                Color::DarkGray
-            };
+            let chat_line_color =
+                if matches!(state.frontend.scope_stack.current(), FocusScope::Normal) {
+                    Color::Yellow
+                } else {
+                    Color::DarkGray
+                };
             let chat_line_style = Style::default().fg(chat_line_color);
             for x in content_area.x..(content_area.x + content_area.width) {
                 if let Some(cell) = frame.buffer_mut().cell_mut((x, line_y)) {

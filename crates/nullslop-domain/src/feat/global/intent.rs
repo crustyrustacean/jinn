@@ -37,11 +37,9 @@ pub fn handle_toggle_whichkey(state: &mut AppState) -> IntentResult {
 pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> IntentResult {
     if let Some(id) = target {
         state.session_mut(id).cancel_streaming();
-        return IntentResult::with_commands(vec![Command::CancelStream {
-            payload: CancelStream {
-                session_id: id.clone(),
-            },
-        }]);
+        return IntentResult::with_commands(vec![Command::CancelStream(CancelStream {
+            session_id: id.clone(),
+        })]);
     }
 
     // None path: smart interrupt on active session
@@ -54,9 +52,7 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
     if state.active_chat_input().is_empty() {
         let session_id = state.session.active_session.clone();
         state.active_session_mut().cancel_stream_and_drain();
-        IntentResult::with_commands(vec![Command::CancelStream {
-            payload: CancelStream { session_id },
-        }])
+        IntentResult::with_commands(vec![Command::CancelStream(CancelStream { session_id })])
     } else {
         state.active_chat_input_mut().reset();
         IntentResult::empty()
@@ -130,7 +126,7 @@ mod tests {
 
         // Then a CancelStream command is returned.
         assert_eq!(result.commands.len(), 1);
-        assert!(matches!(&result.commands[0], Command::CancelStream { .. }));
+        assert!(matches!(&result.commands[0], Command::CancelStream(..)));
         // And the session is idle (streaming was cancelled).
         assert!(state.active_session().is_idle());
     }
@@ -167,7 +163,7 @@ mod tests {
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::CancelStream { .. }))
+                .any(|c| matches!(c, Command::CancelStream(..)))
         );
     }
 
@@ -192,7 +188,7 @@ mod tests {
         // And a CancelStream command is returned for that session.
         assert_eq!(result.commands.len(), 1);
         assert!(
-            matches!(&result.commands[0], Command::CancelStream { payload } if payload.session_id == second_id)
+            matches!(&result.commands[0], Command::CancelStream (payload) if payload.session_id == second_id)
         );
     }
 }

@@ -57,22 +57,18 @@ impl ScanConfig for SkillsScanConfig {
             guard.context.skills = skills.clone();
         }
 
-        let _ = ctx.send_event(Event::SkillsLoaded {
-            payload: SkillsLoaded {
-                skills,
-                error: None,
-            },
-        });
+        let _ = ctx.send_event(Event::SkillsLoaded(SkillsLoaded {
+            skills,
+            error: None,
+        }));
     }
 
     fn on_panic(join_error: tokio::task::JoinError, _config: &Self, ctx: &ActorContext) {
         tracing::error!("skills scan task panicked: {join_error}");
-        let _ = ctx.send_event(Event::SkillsLoaded {
-            payload: SkillsLoaded {
-                skills: vec![],
-                error: Some(format!("skills scan task failed: {join_error}")),
-            },
-        });
+        let _ = ctx.send_event(Event::SkillsLoaded(SkillsLoaded {
+            skills: vec![],
+            error: Some(format!("skills scan task failed: {join_error}")),
+        }));
     }
 }
 
@@ -115,7 +111,7 @@ mod tests {
 
     fn find_skills_loaded(events: &[Event]) -> Option<&SkillsLoaded> {
         for evt in events {
-            if let Event::SkillsLoaded { payload } = evt {
+            if let Event::SkillsLoaded(payload) = evt {
                 return Some(payload);
             }
         }

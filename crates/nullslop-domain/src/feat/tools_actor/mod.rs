@@ -138,12 +138,10 @@ impl Actor for ToolOrchestratorActor {
         }
 
         // Announce built-in tools so the LLM actor can cache them.
-        if let Err(e) = ctx.send_event(Event::ToolsRegistered {
-            payload: ToolsRegistered {
-                provider: "builtin".to_owned(),
-                definitions: builtin_definitions,
-            },
-        }) {
+        if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
+            provider: "builtin".to_owned(),
+            definitions: builtin_definitions,
+        })) {
             tracing::warn!(err = ?e, "failed to emit ToolsRegistered for built-in tools");
         }
 
@@ -163,17 +161,17 @@ impl ToolOrchestratorActor {
     /// Dispatches incoming commands to the appropriate handler.
     fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
         match command {
-            Command::RegisterTools { payload } => {
+            Command::RegisterTools(payload) => {
                 self.handle_register_tools(&payload.provider, &payload.definitions, ctx);
             }
-            Command::ExecuteToolBatch { payload } => {
+            Command::ExecuteToolBatch(payload) => {
                 self.handle_execute_tool_batch(
                     payload.session_id.clone(),
                     payload.tool_calls.clone(),
                     ctx,
                 );
             }
-            Command::CancelToolBatch { payload } => {
+            Command::CancelToolBatch(payload) => {
                 self.handle_cancel_tool_batch(&payload.session_id);
             }
             _ => {}
@@ -183,7 +181,7 @@ impl ToolOrchestratorActor {
     /// Dispatches incoming events to the appropriate handler.
     fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
-            Event::ToolExecutionCompleted { payload } => {
+            Event::ToolExecutionCompleted(payload) => {
                 self.handle_tool_execution_completed(
                     payload.session_id.clone(),
                     payload.result.clone(),
@@ -212,12 +210,10 @@ impl ToolOrchestratorActor {
             );
         }
 
-        if let Err(e) = ctx.send_event(Event::ToolsRegistered {
-            payload: ToolsRegistered {
-                provider: provider.to_owned(),
-                definitions: definitions.to_vec(),
-            },
-        }) {
+        if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {
+            provider: provider.to_owned(),
+            definitions: definitions.to_vec(),
+        })) {
             tracing::warn!(err = ?e, "failed to emit ToolsRegistered event");
         }
     }
@@ -236,12 +232,10 @@ impl ToolOrchestratorActor {
         );
 
         if tool_calls.is_empty() {
-            if let Err(e) = ctx.send_event(Event::ToolBatchCompleted {
-                payload: ToolBatchCompleted {
-                    session_id,
-                    results: vec![],
-                },
-            }) {
+            if let Err(e) = ctx.send_event(Event::ToolBatchCompleted(ToolBatchCompleted {
+                session_id,
+                results: vec![],
+            })) {
                 tracing::warn!(err = ?e, "failed to emit empty ToolBatchCompleted");
             }
             return;
@@ -347,9 +341,12 @@ impl ToolOrchestratorActor {
                         }
                         None => execute_fn(tool_call, tool_ctx).await,
                     };
-                    if let Err(e) = sink.send_event(Event::ToolExecutionCompleted {
-                        payload: ToolExecutionCompleted { session_id, result },
-                    }) {
+                    if let Err(e) =
+                        sink.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                            session_id,
+                            result,
+                        }))
+                    {
                         tracing::warn!(
                             err = ?e,
                             "builtin tool failed to send ToolExecutionCompleted"
@@ -359,12 +356,10 @@ impl ToolOrchestratorActor {
                 Some(handle)
             }
             Some(ToolRegistration::Actor { provider, .. }) => {
-                if let Err(e) = ctx.send_command(Command::ExecuteTool {
-                    payload: ExecuteTool {
-                        session_id,
-                        tool_call,
-                    },
-                }) {
+                if let Err(e) = ctx.send_command(Command::ExecuteTool(ExecuteTool {
+                    session_id,
+                    tool_call,
+                })) {
                     tracing::warn!(
                         err = ?e,
                         provider = %provider,
@@ -383,9 +378,12 @@ impl ToolOrchestratorActor {
                     success: false,
                 };
 
-                if let Err(e) = ctx.send_event(Event::ToolExecutionCompleted {
-                    payload: ToolExecutionCompleted { session_id, result },
-                }) {
+                if let Err(e) =
+                    ctx.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                        session_id,
+                        result,
+                    }))
+                {
                     tracing::warn!(
                         err = ?e,
                         "failed to send unknown-tool ToolExecutionCompleted"
@@ -436,12 +434,10 @@ impl ToolOrchestratorActor {
                 "emitting ToolBatchCompleted"
             );
 
-            if let Err(e) = ctx.send_event(Event::ToolBatchCompleted {
-                payload: ToolBatchCompleted {
-                    session_id,
-                    results,
-                },
-            }) {
+            if let Err(e) = ctx.send_event(Event::ToolBatchCompleted(ToolBatchCompleted {
+                session_id,
+                results,
+            })) {
                 tracing::warn!(err = ?e, "failed to emit ToolBatchCompleted");
             }
         }
@@ -487,7 +483,7 @@ mod tests {
         events
             .iter()
             .filter_map(|e| match e {
-                Event::ToolBatchCompleted { payload } => Some(payload),
+                Event::ToolBatchCompleted(payload) => Some(payload),
                 _ => None,
             })
             .collect()
@@ -498,7 +494,7 @@ mod tests {
         events
             .iter()
             .filter_map(|e| match e {
-                Event::ToolExecutionCompleted { payload } => Some(payload),
+                Event::ToolExecutionCompleted(payload) => Some(payload),
                 _ => None,
             })
             .collect()
@@ -572,7 +568,7 @@ mod tests {
         let tools_registered: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                Event::ToolsRegistered { payload } => Some(payload.clone()),
+                Event::ToolsRegistered(payload) => Some(payload.clone()),
                 _ => None,
             })
             .collect();
@@ -601,12 +597,10 @@ mod tests {
         };
 
         // When registering an actor-provided tool.
-        let cmd = Command::RegisterTools {
-            payload: RegisterTools {
-                provider: "web-actor".to_owned(),
-                definitions: vec![definition],
-            },
-        };
+        let cmd = Command::RegisterTools(RegisterTools {
+            provider: "web-actor".to_owned(),
+            definitions: vec![definition],
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Then the tool is stored in the registry.
@@ -638,19 +632,17 @@ mod tests {
         };
 
         // When registering tools.
-        let cmd = Command::RegisterTools {
-            payload: RegisterTools {
-                provider: "web-actor".to_owned(),
-                definitions: vec![definition.clone()],
-            },
-        };
+        let cmd = Command::RegisterTools(RegisterTools {
+            provider: "web-actor".to_owned(),
+            definitions: vec![definition.clone()],
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Then a ToolsRegistered event is emitted.
         let events = sink.events();
         assert_eq!(events.len(), 1);
         match &events[0] {
-            Event::ToolsRegistered { payload } => {
+            Event::ToolsRegistered(payload) => {
                 assert_eq!(payload.provider, "web-actor");
             }
             other => panic!("expected ToolsRegistered, got {other:?}"),
@@ -672,19 +664,17 @@ mod tests {
         };
 
         // When registering tools.
-        let cmd = Command::RegisterTools {
-            payload: RegisterTools {
-                provider: "web-actor".to_owned(),
-                definitions: vec![definition.clone()],
-            },
-        };
+        let cmd = Command::RegisterTools(RegisterTools {
+            provider: "web-actor".to_owned(),
+            definitions: vec![definition.clone()],
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Then the event contains the correct definitions.
         let events = sink.events();
         assert_eq!(events.len(), 1);
         match &events[0] {
-            Event::ToolsRegistered { payload } => {
+            Event::ToolsRegistered(payload) => {
                 assert_eq!(payload.definitions.len(), 1);
                 assert_eq!(payload.definitions[0].name, "web_search");
             }
@@ -836,16 +826,14 @@ mod tests {
         let session_id = SessionId::new();
 
         // When executing a batch with one echo call.
-        let cmd = Command::ExecuteToolBatch {
-            payload: ExecuteToolBatch {
-                session_id: session_id.clone(),
-                tool_calls: vec![ToolCall {
-                    id: "call_1".to_owned(),
-                    name: "echo".to_owned(),
-                    arguments: r#"{"input":"hello"}"#.to_owned(),
-                }],
-            },
-        };
+        let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+            session_id: session_id.clone(),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_owned(),
+                name: "echo".to_owned(),
+                arguments: r#"{"input":"hello"}"#.to_owned(),
+            }],
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Then a ToolExecutionCompleted event arrives from the spawned task.
@@ -867,16 +855,14 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::ExecuteToolBatch {
-            payload: ExecuteToolBatch {
-                session_id: session_id.clone(),
-                tool_calls: vec![ToolCall {
-                    id: "call_1".to_owned(),
-                    name: "echo".to_owned(),
-                    arguments: r#"{"input":"hello"}"#.to_owned(),
-                }],
-            },
-        };
+        let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+            session_id: session_id.clone(),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_owned(),
+                name: "echo".to_owned(),
+                arguments: r#"{"input":"hello"}"#.to_owned(),
+            }],
+        });
         actor.handle_command(&cmd, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -884,12 +870,10 @@ mod tests {
         let completed = find_execution_completed(&events);
 
         // When feeding the completion event back to the actor.
-        let completion_event = Event::ToolExecutionCompleted {
-            payload: ToolExecutionCompleted {
-                session_id: session_id.clone(),
-                result: completed[0].result.clone(),
-            },
-        };
+        let completion_event = Event::ToolExecutionCompleted(ToolExecutionCompleted {
+            session_id: session_id.clone(),
+            result: completed[0].result.clone(),
+        });
         actor.handle_event(&completion_event, &ctx);
 
         // Then a ToolBatchCompleted event is emitted.
@@ -911,23 +895,21 @@ mod tests {
         let session_id = SessionId::new();
 
         // When executing a batch with two echo calls.
-        let cmd = Command::ExecuteToolBatch {
-            payload: ExecuteToolBatch {
-                session_id: session_id.clone(),
-                tool_calls: vec![
-                    ToolCall {
-                        id: "call_a".to_owned(),
-                        name: "echo".to_owned(),
-                        arguments: r#"{"input":"first"}"#.to_owned(),
-                    },
-                    ToolCall {
-                        id: "call_b".to_owned(),
-                        name: "echo".to_owned(),
-                        arguments: r#"{"input":"second"}"#.to_owned(),
-                    },
-                ],
-            },
-        };
+        let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+            session_id: session_id.clone(),
+            tool_calls: vec![
+                ToolCall {
+                    id: "call_a".to_owned(),
+                    name: "echo".to_owned(),
+                    arguments: r#"{"input":"first"}"#.to_owned(),
+                },
+                ToolCall {
+                    id: "call_b".to_owned(),
+                    name: "echo".to_owned(),
+                    arguments: r#"{"input":"second"}"#.to_owned(),
+                },
+            ],
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Then two ToolExecutionCompleted events arrive.
@@ -947,23 +929,21 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::ExecuteToolBatch {
-            payload: ExecuteToolBatch {
-                session_id: session_id.clone(),
-                tool_calls: vec![
-                    ToolCall {
-                        id: "call_a".to_owned(),
-                        name: "echo".to_owned(),
-                        arguments: r#"{"input":"first"}"#.to_owned(),
-                    },
-                    ToolCall {
-                        id: "call_b".to_owned(),
-                        name: "echo".to_owned(),
-                        arguments: r#"{"input":"second"}"#.to_owned(),
-                    },
-                ],
-            },
-        };
+        let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+            session_id: session_id.clone(),
+            tool_calls: vec![
+                ToolCall {
+                    id: "call_a".to_owned(),
+                    name: "echo".to_owned(),
+                    arguments: r#"{"input":"first"}"#.to_owned(),
+                },
+                ToolCall {
+                    id: "call_b".to_owned(),
+                    name: "echo".to_owned(),
+                    arguments: r#"{"input":"second"}"#.to_owned(),
+                },
+            ],
+        });
         actor.handle_command(&cmd, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -972,12 +952,10 @@ mod tests {
 
         // When feeding the first completion back.
         actor.handle_event(
-            &Event::ToolExecutionCompleted {
-                payload: ToolExecutionCompleted {
-                    session_id: session_id.clone(),
-                    result: completed[0].result.clone(),
-                },
-            },
+            &Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                session_id: session_id.clone(),
+                result: completed[0].result.clone(),
+            }),
             &ctx,
         );
 
@@ -996,23 +974,21 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::ExecuteToolBatch {
-            payload: ExecuteToolBatch {
-                session_id: session_id.clone(),
-                tool_calls: vec![
-                    ToolCall {
-                        id: "call_a".to_owned(),
-                        name: "echo".to_owned(),
-                        arguments: r#"{"input":"first"}"#.to_owned(),
-                    },
-                    ToolCall {
-                        id: "call_b".to_owned(),
-                        name: "echo".to_owned(),
-                        arguments: r#"{"input":"second"}"#.to_owned(),
-                    },
-                ],
-            },
-        };
+        let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+            session_id: session_id.clone(),
+            tool_calls: vec![
+                ToolCall {
+                    id: "call_a".to_owned(),
+                    name: "echo".to_owned(),
+                    arguments: r#"{"input":"first"}"#.to_owned(),
+                },
+                ToolCall {
+                    id: "call_b".to_owned(),
+                    name: "echo".to_owned(),
+                    arguments: r#"{"input":"second"}"#.to_owned(),
+                },
+            ],
+        });
         actor.handle_command(&cmd, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -1020,24 +996,20 @@ mod tests {
         let completed = find_execution_completed(&events);
 
         actor.handle_event(
-            &Event::ToolExecutionCompleted {
-                payload: ToolExecutionCompleted {
-                    session_id: session_id.clone(),
-                    result: completed[0].result.clone(),
-                },
-            },
+            &Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                session_id: session_id.clone(),
+                result: completed[0].result.clone(),
+            }),
             &ctx,
         );
         sink.take_events();
 
         // When feeding the second completion back.
         actor.handle_event(
-            &Event::ToolExecutionCompleted {
-                payload: ToolExecutionCompleted {
-                    session_id: session_id.clone(),
-                    result: completed[1].result.clone(),
-                },
-            },
+            &Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                session_id: session_id.clone(),
+                result: completed[1].result.clone(),
+            }),
             &ctx,
         );
 
@@ -1059,16 +1031,14 @@ mod tests {
         let session_id = SessionId::new();
 
         // When executing a batch with an unknown tool name.
-        let cmd = Command::ExecuteToolBatch {
-            payload: ExecuteToolBatch {
-                session_id: session_id.clone(),
-                tool_calls: vec![ToolCall {
-                    id: "call_x".to_owned(),
-                    name: "nonexistent_tool".to_owned(),
-                    arguments: "{}".to_owned(),
-                }],
-            },
-        };
+        let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+            session_id: session_id.clone(),
+            tool_calls: vec![ToolCall {
+                id: "call_x".to_owned(),
+                name: "nonexistent_tool".to_owned(),
+                arguments: "{}".to_owned(),
+            }],
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Then a ToolExecutionCompleted event with an error is emitted synchronously.
@@ -1089,16 +1059,14 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::ExecuteToolBatch {
-            payload: ExecuteToolBatch {
-                session_id: session_id.clone(),
-                tool_calls: vec![ToolCall {
-                    id: "call_x".to_owned(),
-                    name: "nonexistent_tool".to_owned(),
-                    arguments: "{}".to_owned(),
-                }],
-            },
-        };
+        let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+            session_id: session_id.clone(),
+            tool_calls: vec![ToolCall {
+                id: "call_x".to_owned(),
+                name: "nonexistent_tool".to_owned(),
+                arguments: "{}".to_owned(),
+            }],
+        });
         actor.handle_command(&cmd, &ctx);
 
         let events = sink.events();
@@ -1106,12 +1074,10 @@ mod tests {
 
         // When feeding the error result back.
         actor.handle_event(
-            &Event::ToolExecutionCompleted {
-                payload: ToolExecutionCompleted {
-                    session_id: session_id.clone(),
-                    result: completed[0].result.clone(),
-                },
-            },
+            &Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                session_id: session_id.clone(),
+                result: completed[0].result.clone(),
+            }),
             &ctx,
         );
 
@@ -1134,12 +1100,10 @@ mod tests {
         let session_id = SessionId::new();
 
         // When executing a batch with no tool calls.
-        let cmd = Command::ExecuteToolBatch {
-            payload: ExecuteToolBatch {
-                session_id: session_id.clone(),
-                tool_calls: vec![],
-            },
-        };
+        let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+            session_id: session_id.clone(),
+            tool_calls: vec![],
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Then an empty ToolBatchCompleted is emitted immediately.
@@ -1315,17 +1279,15 @@ mod tests {
         let unknown_session = SessionId::new();
 
         // When receiving a ToolExecutionCompleted for an unknown session.
-        let event = Event::ToolExecutionCompleted {
-            payload: ToolExecutionCompleted {
-                session_id: unknown_session,
-                result: ToolResult {
-                    tool_call_id: "call_0".to_owned(),
-                    name: "echo".to_owned(),
-                    content: "orphan".to_owned(),
-                    success: true,
-                },
+        let event = Event::ToolExecutionCompleted(ToolExecutionCompleted {
+            session_id: unknown_session,
+            result: ToolResult {
+                tool_call_id: "call_0".to_owned(),
+                name: "echo".to_owned(),
+                content: "orphan".to_owned(),
+                success: true,
             },
-        };
+        });
         actor.handle_event(&event, &ctx);
 
         // Then no batch completed event is emitted.
@@ -1382,34 +1344,30 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::ExecuteToolBatch {
-            payload: ExecuteToolBatch {
-                session_id: session_id.clone(),
-                tool_calls: vec![
-                    ToolCall {
-                        id: "call_a".to_owned(),
-                        name: "echo".to_owned(),
-                        arguments: r#"{"input":"first"}"#.to_owned(),
-                    },
-                    ToolCall {
-                        id: "call_b".to_owned(),
-                        name: "echo".to_owned(),
-                        arguments: r#"{"input":"second"}"#.to_owned(),
-                    },
-                ],
-            },
-        };
+        let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+            session_id: session_id.clone(),
+            tool_calls: vec![
+                ToolCall {
+                    id: "call_a".to_owned(),
+                    name: "echo".to_owned(),
+                    arguments: r#"{"input":"first"}"#.to_owned(),
+                },
+                ToolCall {
+                    id: "call_b".to_owned(),
+                    name: "echo".to_owned(),
+                    arguments: r#"{"input":"second"}"#.to_owned(),
+                },
+            ],
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Then the pending batch exists.
         assert!(actor.pending.contains_key(&session_id));
 
         // When cancelling the tool batch.
-        let cancel_cmd = Command::CancelToolBatch {
-            payload: CancelToolBatch {
-                session_id: session_id.clone(),
-            },
-        };
+        let cancel_cmd = Command::CancelToolBatch(CancelToolBatch {
+            session_id: session_id.clone(),
+        });
         actor.handle_command(&cancel_cmd, &ctx);
 
         // Then the pending batch is removed.
@@ -1426,16 +1384,14 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::ExecuteToolBatch {
-            payload: ExecuteToolBatch {
-                session_id: session_id.clone(),
-                tool_calls: vec![ToolCall {
-                    id: "call_1".to_owned(),
-                    name: "echo".to_owned(),
-                    arguments: r#"{"input":"hello"}"#.to_owned(),
-                }],
-            },
-        };
+        let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+            session_id: session_id.clone(),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_owned(),
+                name: "echo".to_owned(),
+                arguments: r#"{"input":"hello"}"#.to_owned(),
+            }],
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Verify the batch has a spawned handle.
@@ -1446,11 +1402,9 @@ mod tests {
         assert_eq!(handle_count, 1, "should have one spawned task handle");
 
         // When cancelling the tool batch.
-        let cancel_cmd = Command::CancelToolBatch {
-            payload: CancelToolBatch {
-                session_id: session_id.clone(),
-            },
-        };
+        let cancel_cmd = Command::CancelToolBatch(CancelToolBatch {
+            session_id: session_id.clone(),
+        });
         actor.handle_command(&cancel_cmd, &ctx);
 
         // Then the pending batch is removed (handles were aborted).
@@ -1472,11 +1426,9 @@ mod tests {
         let unknown_session = SessionId::new();
 
         // When cancelling a tool batch for an unknown session.
-        let cancel_cmd = Command::CancelToolBatch {
-            payload: CancelToolBatch {
-                session_id: unknown_session,
-            },
-        };
+        let cancel_cmd = Command::CancelToolBatch(CancelToolBatch {
+            session_id: unknown_session,
+        });
         actor.handle_command(&cancel_cmd, &ctx);
 
         // Then no events are emitted and no panic.

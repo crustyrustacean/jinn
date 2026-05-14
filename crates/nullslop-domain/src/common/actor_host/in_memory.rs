@@ -66,7 +66,11 @@ impl ShutdownTracker {
 
     /// Configures the tracker for shutdown: populates the pending set
     /// from the given actor names and stores the oneshot sender.
-    pub fn begin(&self, names: impl Iterator<Item = String>, completion_tx: tokio::sync::oneshot::Sender<()>) {
+    pub fn begin(
+        &self,
+        names: impl Iterator<Item = String>,
+        completion_tx: tokio::sync::oneshot::Sender<()>,
+    ) {
         let mut inner = self.inner.lock();
         inner.active = true;
         inner.pending = names.collect();
@@ -79,10 +83,12 @@ impl ShutdownTracker {
     pub(crate) fn complete(&self, name: &str) {
         let mut inner = self.inner.lock();
         inner.pending.remove(name);
-        if inner.active && inner.pending.is_empty()
-            && let Some(tx) = inner.completion_tx.take() {
-                let _ = tx.send(());
-            }
+        if inner.active
+            && inner.pending.is_empty()
+            && let Some(tx) = inner.completion_tx.take()
+        {
+            let _ = tx.send(());
+        }
     }
 }
 
@@ -124,12 +130,10 @@ where
 {
     counter.increment();
 
-    let _ = sink.send_event(Event::ActorStarting {
-        payload: ActorStarting {
-            name: name.to_owned(),
-            description: None,
-        },
-    });
+    let _ = sink.send_event(Event::ActorStarting(ActorStarting {
+        name: name.to_owned(),
+        description: None,
+    }));
 
     let (tx, rx) = kanal::unbounded::<ActorEnvelope<A::Message>>();
     let actor_ref = ActorRef::new(tx);
@@ -138,14 +142,20 @@ where
     configure(&mut ctx);
     let description = ctx.description().map(str::to_owned);
     let actor = A::activate(&mut ctx);
-    let result = spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle, shutdown_tracker.clone());
+    let result = spawn_actor_impl(
+        name,
+        actor,
+        &actor_ref,
+        rx,
+        ctx,
+        handle,
+        shutdown_tracker.clone(),
+    );
 
-    let _ = sink.send_event(Event::ActorStarted {
-        payload: ActorStarted {
-            name: name.to_owned(),
-            description,
-        },
-    });
+    let _ = sink.send_event(Event::ActorStarted(ActorStarted {
+        name: name.to_owned(),
+        description,
+    }));
 
     result
 }
@@ -179,7 +189,15 @@ where
     ctx.set_actor_ref(actor_ref.clone());
     configure(&mut ctx);
     let actor = A::activate(&mut ctx);
-    spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle, shutdown_tracker.clone())
+    spawn_actor_impl(
+        name,
+        actor,
+        &actor_ref,
+        rx,
+        ctx,
+        handle,
+        shutdown_tracker.clone(),
+    )
 }
 
 /// Internal: spawns a single actor's run loop as a tokio task.
@@ -591,16 +609,17 @@ mod tests {
             runtime.handle(),
             &tracker,
         );
-        let host =
-            InMemoryActorHost::from_actors_with_handle(vec![result], runtime.handle().clone(), tracker.clone());
+        let host = InMemoryActorHost::from_actors_with_handle(
+            vec![result],
+            runtime.handle().clone(),
+            tracker.clone(),
+        );
 
         // When sending a subscribed event.
-        let event = Event::ChatEntrySubmitted {
-            payload: ChatEntrySubmitted {
-                session_id: crate::protocol::SessionId::new(),
-                entry: crate::protocol::ChatEntry::user("hello"),
-            },
-        };
+        let event = Event::ChatEntrySubmitted(ChatEntrySubmitted {
+            session_id: crate::protocol::SessionId::new(),
+            entry: crate::protocol::ChatEntry::user("hello"),
+        });
         host.send_event(&event, None);
         std::thread::sleep(Duration::from_millis(50));
 
@@ -642,8 +661,11 @@ mod tests {
             runtime.handle(),
             &tracker,
         );
-        let host =
-            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone(), tracker.clone());
+        let host = InMemoryActorHost::from_actors_with_handle(
+            vec![r1, r2],
+            runtime.handle().clone(),
+            tracker.clone(),
+        );
 
         // When sending SystemMessage::ApplicationShuttingDown.
         host.send_system(SystemMessage::ApplicationShuttingDown);
@@ -669,17 +691,18 @@ mod tests {
             runtime.handle(),
             &tracker,
         );
-        let host =
-            InMemoryActorHost::from_actors_with_handle(vec![result], runtime.handle().clone(), tracker.clone());
+        let host = InMemoryActorHost::from_actors_with_handle(
+            vec![result],
+            runtime.handle().clone(),
+            tracker.clone(),
+        );
 
         // When sending a registered command.
         host.send_command(
-            &Command::PushChatEntry {
-                payload: crate::feat::chat_input::protocol::command::PushChatEntry {
-                    session_id: crate::protocol::SessionId::new(),
-                    entry: crate::protocol::ChatEntry::user("test"),
-                },
-            },
+            &Command::PushChatEntry(crate::feat::chat_input::protocol::command::PushChatEntry {
+                session_id: crate::protocol::SessionId::new(),
+                entry: crate::protocol::ChatEntry::user("test"),
+            }),
             None,
         );
         std::thread::sleep(Duration::from_millis(50));
@@ -714,8 +737,11 @@ mod tests {
             runtime.handle(),
             &tracker,
         );
-        let host =
-            InMemoryActorHost::from_actors_with_handle(vec![result], runtime.handle().clone(), tracker.clone());
+        let host = InMemoryActorHost::from_actors_with_handle(
+            vec![result],
+            runtime.handle().clone(),
+            tracker.clone(),
+        );
 
         // When sending an unregistered command (RefreshModels is not subscribed by the actor).
         host.send_command(&Command::RefreshModels, None);
@@ -741,15 +767,30 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let cmd_name = crate::feat::chat_input::protocol::command::PushChatEntry::NAME;
         let tracker = test_tracker();
-        let (r1, _received1) =
-            spawn_recording_actor("actor-a", sink.clone(), &[], &[cmd_name], runtime.handle(), &tracker);
-        let (r2, _received2) =
-            spawn_recording_actor("actor-b", sink.clone(), &[], &[cmd_name], runtime.handle(), &tracker);
+        let (r1, _received1) = spawn_recording_actor(
+            "actor-a",
+            sink.clone(),
+            &[],
+            &[cmd_name],
+            runtime.handle(),
+            &tracker,
+        );
+        let (r2, _received2) = spawn_recording_actor(
+            "actor-b",
+            sink.clone(),
+            &[],
+            &[cmd_name],
+            runtime.handle(),
+            &tracker,
+        );
 
         // When building the host.
         // Then it panics because both actors subscribe to PushChatEntry.
-        let _host =
-            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone(), tracker.clone());
+        let _host = InMemoryActorHost::from_actors_with_handle(
+            vec![r1, r2],
+            runtime.handle().clone(),
+            tracker.clone(),
+        );
     }
 
     #[rstest::rstest]
@@ -761,8 +802,11 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let r1 = spawn_noop_actor("a", sink.clone(), runtime.handle(), &tracker);
         let r2 = spawn_noop_actor("b", sink.clone(), runtime.handle(), &tracker);
-        let host =
-            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone(), tracker.clone());
+        let host = InMemoryActorHost::from_actors_with_handle(
+            vec![r1, r2],
+            runtime.handle().clone(),
+            tracker.clone(),
+        );
 
         // When shutdown is called.
         host.shutdown_with_timeout(Duration::from_millis(200))
@@ -796,16 +840,17 @@ mod tests {
             runtime.handle(),
             &tracker,
         );
-        let host =
-            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone(), tracker.clone());
+        let host = InMemoryActorHost::from_actors_with_handle(
+            vec![r1, r2],
+            runtime.handle().clone(),
+            tracker.clone(),
+        );
 
         // When sending an event with source of actor-a.
-        let event = Event::ChatEntrySubmitted {
-            payload: ChatEntrySubmitted {
-                session_id: crate::protocol::SessionId::new(),
-                entry: crate::protocol::ChatEntry::user("hello"),
-            },
-        };
+        let event = Event::ChatEntrySubmitted(ChatEntrySubmitted {
+            session_id: crate::protocol::SessionId::new(),
+            entry: crate::protocol::ChatEntry::user("hello"),
+        });
         host.send_event(&event, Some(&ActorName::new("actor-a")));
         std::thread::sleep(Duration::from_millis(50));
 
@@ -845,8 +890,11 @@ mod tests {
             runtime.handle(),
             &tracker,
         );
-        let host =
-            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone(), tracker.clone());
+        let host = InMemoryActorHost::from_actors_with_handle(
+            vec![r1, r2],
+            runtime.handle().clone(),
+            tracker.clone(),
+        );
 
         // When sending SystemMessage::ApplicationShuttingDown.
         host.send_system(SystemMessage::ApplicationShuttingDown);
@@ -881,7 +929,15 @@ mod tests {
         let (tx_b, rx_b) = kanal::unbounded::<ActorEnvelope<String>>();
         let ref_b = ActorRef::new(tx_b);
         let ctx_b = ActorContext::new("actor-b", sink.clone());
-        let result_b = spawn_actor_impl("actor-b", actor_b, &ref_b, rx_b, ctx_b, runtime.handle(), tracker.clone());
+        let result_b = spawn_actor_impl(
+            "actor-b",
+            actor_b,
+            &ref_b,
+            rx_b,
+            ctx_b,
+            runtime.handle(),
+            tracker.clone(),
+        );
 
         // Create actor-a with ref_b injected.
         let (tx_a, rx_a) = kanal::unbounded::<ActorEnvelope<String>>();

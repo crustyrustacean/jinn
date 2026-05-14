@@ -118,19 +118,19 @@ impl SessionPersistenceActor {
     /// Dispatches a bus event to the appropriate handler.
     fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
-            Event::PromptAssembled { payload } => self.handle_prompt_assembled(payload, ctx),
-            Event::StreamToken { payload } => self.on_stream_token(payload),
-            Event::StreamCompleted { payload } => self.on_stream_completed(payload),
-            Event::ToolUseStarted { payload } => self.on_tool_use_started(payload),
-            Event::ToolCallReceived { payload } => self.on_tool_call_received(payload),
-            Event::ToolCallStreaming { payload } => self.on_tool_call_streaming(payload),
-            Event::ToolExecutionCompleted { payload } => {
+            Event::PromptAssembled(payload) => self.handle_prompt_assembled(payload, ctx),
+            Event::StreamToken(payload) => self.on_stream_token(payload),
+            Event::StreamCompleted(payload) => self.on_stream_completed(payload),
+            Event::ToolUseStarted(payload) => self.on_tool_use_started(payload),
+            Event::ToolCallReceived(payload) => self.on_tool_call_received(payload),
+            Event::ToolCallStreaming(payload) => self.on_tool_call_streaming(payload),
+            Event::ToolExecutionCompleted(payload) => {
                 self.on_tool_execution_completed(payload);
             }
-            Event::ModelsRefreshed { payload } => {
+            Event::ModelsRefreshed(payload) => {
                 self.on_models_refreshed(payload);
             }
-            Event::EnvironmentLoaded { payload } => {
+            Event::EnvironmentLoaded(payload) => {
                 self.on_environment_loaded(&payload.config, ctx);
             }
             _ => {}
@@ -140,41 +140,41 @@ impl SessionPersistenceActor {
     /// Dispatches a command to the appropriate handler.
     fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
         match cmd {
-            Command::SessionLoadRequested { payload } => self.on_load_requested(payload, ctx),
-            Command::LoadSessionPickerEntries { payload } => {
+            Command::SessionLoadRequested(payload) => self.on_load_requested(payload, ctx),
+            Command::LoadSessionPickerEntries(payload) => {
                 self.handle_load_session_picker_entries(payload);
             }
-            Command::EnqueueUserMessage { payload } => {
+            Command::EnqueueUserMessage(payload) => {
                 self.handle_enqueue_user_message(payload, ctx);
             }
-            Command::SetChatInputText { payload } => self.handle_set_chat_input_text(payload),
-            Command::PushChatEntry { payload } => self.handle_push_chat_entry(payload, ctx),
-            Command::SendMessage { payload } => Self::handle_send_message(payload, ctx),
-            Command::SessionLoadCompleted { payload } => {
+            Command::SetChatInputText(payload) => self.handle_set_chat_input_text(payload),
+            Command::PushChatEntry(payload) => self.handle_push_chat_entry(payload, ctx),
+            Command::SendMessage(payload) => Self::handle_send_message(payload, ctx),
+            Command::SessionLoadCompleted(payload) => {
                 self.handle_session_load_completed(payload, ctx);
             }
             // Commands NOT subscribed to — these should not arrive.
-            Command::AssemblePrompt { .. }
-            | Command::SendToLlmProvider { .. }
-            | Command::ExecuteTool { .. }
-            | Command::ProceedWithShutdown { .. }
-            | Command::CancelStream { .. }
+            Command::AssemblePrompt(..)
+            | Command::SendToLlmProvider(..)
+            | Command::ExecuteTool(..)
+            | Command::ProceedWithShutdown(..)
+            | Command::CancelStream(..)
             | Command::RefreshModels
             | Command::RescanPromptTemplates
-            | Command::ExecuteToolBatch { .. }
-            | Command::RegisterTools { .. }
-            | Command::ProviderSwitch { .. }
-            | Command::LoadProviderPickerEntries { .. }
-            | Command::LoadContextStrategyPickerEntries { .. }
-            | Command::PinChatEntry { .. }
-            | Command::UnpinChatEntry { .. }
-            | Command::SwitchPromptStrategy { .. }
-            | Command::RestoreStrategyState { .. }
-            | Command::CancelToolBatch { .. }
+            | Command::ExecuteToolBatch(..)
+            | Command::RegisterTools(..)
+            | Command::ProviderSwitch(..)
+            | Command::LoadProviderPickerEntries(..)
+            | Command::LoadContextStrategyPickerEntries(..)
+            | Command::PinChatEntry(..)
+            | Command::UnpinChatEntry(..)
+            | Command::SwitchPromptStrategy(..)
+            | Command::RestoreStrategyState(..)
+            | Command::CancelToolBatch(..)
             | Command::ScanSkills
-            | Command::RescanPersonas { .. }
-            | Command::LoadPersonaPickerEntries { .. }
-            | Command::UpdatePreferences { .. } => {}
+            | Command::RescanPersonas(..)
+            | Command::LoadPersonaPickerEntries(..)
+            | Command::UpdatePreferences(..) => {}
         }
     }
 
@@ -228,26 +228,22 @@ impl SessionPersistenceActor {
         }
 
         // Send UpdatePreferences command so the pipeline handles persistence + state sync.
-        if let Err(e) = ctx.send_command(Command::UpdatePreferences {
-            payload: crate::feat::preferences_actor::protocol::command::UpdatePreferences {
+        if let Err(e) = ctx.send_command(Command::UpdatePreferences(crate::feat::preferences_actor::protocol::command::UpdatePreferences {
                 updates: vec![
                     crate::feat::preferences_actor::protocol::command::PreferenceUpdate::SetLastModel(prefs.last_model.clone()),
                     crate::feat::preferences_actor::protocol::command::PreferenceUpdate::SetLastStrategy(prefs.last_strategy.clone()),
                 ],
-            },
-        }) {
+            })) {
             tracing::warn!(err = ?e, "session-actor failed to send UpdatePreferences on startup");
         }
 
         // Emit SwitchPromptStrategy so the context actor initializes the strategy.
         if let Some(ref strategy_str) = prefs.last_strategy {
             let strategy_id = PromptStrategyId::new(strategy_str.clone());
-            if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy {
-                payload: SwitchPromptStrategy {
-                    session_id,
-                    strategy_id,
-                },
-            }) {
+            if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
+                session_id,
+                strategy_id,
+            })) {
                 tracing::warn!(err = ?e, "session-actor failed to emit SwitchPromptStrategy on startup");
             }
         }
@@ -348,9 +344,7 @@ mod tests {
         // When processing LoadSessionPickerEntries.
         actor
             .handle(
-                ActorEnvelope::Command(Command::LoadSessionPickerEntries {
-                    payload: LoadSessionPickerEntries,
-                }),
+                ActorEnvelope::Command(Command::LoadSessionPickerEntries(LoadSessionPickerEntries)),
                 &ctx,
             )
             .await;
@@ -382,12 +376,10 @@ mod tests {
         // When processing EnqueueUserMessage while idle.
         actor
             .handle(
-                ActorEnvelope::Command(Command::EnqueueUserMessage {
-                    payload: EnqueueUserMessage {
-                        session_id: session_id.clone(),
-                        text: "hello world".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    text: "hello world".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -421,14 +413,12 @@ mod tests {
         // When processing StreamCompleted with Finished reason.
         actor
             .handle(
-                ActorEnvelope::Event(Event::StreamCompleted {
-                    payload: StreamCompleted {
-                        session_id: session_id.clone(),
-                        reason: StreamCompletedReason::Finished,
-                        assistant_content: Some("response".to_owned()),
-                        tool_calls: None,
-                    },
-                }),
+                ActorEnvelope::Event(Event::StreamCompleted(StreamCompleted {
+                    session_id: session_id.clone(),
+                    reason: StreamCompletedReason::Finished,
+                    assistant_content: Some("response".to_owned()),
+                    tool_calls: None,
+                })),
                 &ctx,
             )
             .await;
@@ -459,14 +449,12 @@ mod tests {
         // When processing StreamCompleted with Canceled reason.
         actor
             .handle(
-                ActorEnvelope::Event(Event::StreamCompleted {
-                    payload: StreamCompleted {
-                        session_id: session_id.clone(),
-                        reason: StreamCompletedReason::Canceled,
-                        assistant_content: None,
-                        tool_calls: None,
-                    },
-                }),
+                ActorEnvelope::Event(Event::StreamCompleted(StreamCompleted {
+                    session_id: session_id.clone(),
+                    reason: StreamCompletedReason::Canceled,
+                    assistant_content: None,
+                    tool_calls: None,
+                })),
                 &ctx,
             )
             .await;
@@ -498,17 +486,15 @@ mod tests {
         // When processing ToolExecutionCompleted.
         actor
             .handle(
-                ActorEnvelope::Event(Event::ToolExecutionCompleted {
-                    payload: ToolExecutionCompleted {
-                        session_id: session_id.clone(),
-                        result: ToolResult {
-                            tool_call_id: "call_1".to_owned(),
-                            name: "bash".to_owned(),
-                            content: "ok".to_owned(),
-                            success: true,
-                        },
+                ActorEnvelope::Event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                    session_id: session_id.clone(),
+                    result: ToolResult {
+                        tool_call_id: "call_1".to_owned(),
+                        name: "bash".to_owned(),
+                        content: "ok".to_owned(),
+                        success: true,
                     },
-                }),
+                })),
                 &ctx,
             )
             .await;
@@ -535,12 +521,10 @@ mod tests {
         // When enqueuing a multi-line user message while idle.
         actor
             .handle(
-                ActorEnvelope::Command(Command::EnqueueUserMessage {
-                    payload: EnqueueUserMessage {
-                        session_id: session_id.clone(),
-                        text: "line one\nline two".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    text: "line one\nline two".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -572,17 +556,15 @@ mod tests {
         // When saving via tool execution completion.
         actor
             .handle(
-                ActorEnvelope::Event(Event::ToolExecutionCompleted {
-                    payload: ToolExecutionCompleted {
-                        session_id: session_id.clone(),
-                        result: ToolResult {
-                            tool_call_id: "call_1".to_owned(),
-                            name: "bash".to_owned(),
-                            content: "ok".to_owned(),
-                            success: true,
-                        },
+                ActorEnvelope::Event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
+                    session_id: session_id.clone(),
+                    result: ToolResult {
+                        tool_call_id: "call_1".to_owned(),
+                        name: "bash".to_owned(),
+                        content: "ok".to_owned(),
+                        success: true,
                     },
-                }),
+                })),
                 &ctx,
             )
             .await;
@@ -608,12 +590,10 @@ mod tests {
         // When processing EnqueueUserMessage while idle.
         actor
             .handle(
-                ActorEnvelope::Command(Command::EnqueueUserMessage {
-                    payload: EnqueueUserMessage {
-                        session_id: session_id.clone(),
-                        text: "hello".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    text: "hello".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -629,7 +609,7 @@ mod tests {
         let cmds = sink.commands();
         assert!(
             cmds.iter()
-                .any(|c| matches!(c, Command::AssemblePrompt { .. }))
+                .any(|c| matches!(c, Command::AssemblePrompt(..)))
         );
     }
 
@@ -649,12 +629,10 @@ mod tests {
         // When processing EnqueueUserMessage while idle.
         actor
             .handle(
-                ActorEnvelope::Command(Command::EnqueueUserMessage {
-                    payload: EnqueueUserMessage {
-                        session_id: session_id.clone(),
-                        text: "new message".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    text: "new message".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -663,7 +641,7 @@ mod tests {
         // (2 pre-existing + the user's own message).
         let cmds = sink.commands();
         let cmd = cmds.iter().find_map(|c| match c {
-            Command::AssemblePrompt { payload } => Some(payload.clone()),
+            Command::AssemblePrompt(payload) => Some(payload.clone()),
             _ => None,
         });
         let prompt = cmd.expect("expected AssemblePrompt command");
@@ -686,12 +664,10 @@ mod tests {
         // When processing EnqueueUserMessage while idle.
         actor
             .handle(
-                ActorEnvelope::Command(Command::EnqueueUserMessage {
-                    payload: EnqueueUserMessage {
-                        session_id: session_id.clone(),
-                        text: "hello".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    text: "hello".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -699,7 +675,7 @@ mod tests {
         // Then the emitted AssemblePrompt has the active provider as model_name.
         let cmds = sink.commands();
         let cmd = cmds.iter().find_map(|c| match c {
-            Command::AssemblePrompt { payload } => Some(payload.clone()),
+            Command::AssemblePrompt(payload) => Some(payload.clone()),
             _ => None,
         });
         let prompt = cmd.expect("expected AssemblePrompt command");
@@ -716,12 +692,10 @@ mod tests {
         // When processing EnqueueUserMessage while idle.
         actor
             .handle(
-                ActorEnvelope::Command(Command::EnqueueUserMessage {
-                    payload: EnqueueUserMessage {
-                        session_id: session_id.clone(),
-                        text: "hello".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    text: "hello".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -729,7 +703,7 @@ mod tests {
         // Then the emitted AssemblePrompt contains the user's message in history.
         let cmds = sink.commands();
         let cmd = cmds.iter().find_map(|c| match c {
-            Command::AssemblePrompt { payload } => Some(payload.clone()),
+            Command::AssemblePrompt(payload) => Some(payload.clone()),
             _ => None,
         });
         let prompt = cmd.expect("expected AssemblePrompt command");
@@ -754,12 +728,10 @@ mod tests {
         // When processing EnqueueUserMessage while idle.
         actor
             .handle(
-                ActorEnvelope::Command(Command::EnqueueUserMessage {
-                    payload: EnqueueUserMessage {
-                        session_id: session_id.clone(),
-                        text: "hello".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    text: "hello".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -767,7 +739,7 @@ mod tests {
         // Then a ChatEntrySubmitted event was emitted.
         let events = sink.events();
         let found = events.iter().any(|e| match e {
-            Event::ChatEntrySubmitted { payload } => {
+            Event::ChatEntrySubmitted(payload) => {
                 payload.session_id == session_id
                     && matches!(&payload.entry.kind, ChatEntryKind::User(t) if t == "hello")
             }
@@ -794,12 +766,10 @@ mod tests {
         // When processing EnqueueUserMessage while streaming.
         actor
             .handle(
-                ActorEnvelope::Command(Command::EnqueueUserMessage {
-                    payload: EnqueueUserMessage {
-                        session_id: session_id.clone(),
-                        text: "queued msg".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    text: "queued msg".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -829,12 +799,10 @@ mod tests {
         // When processing EnqueueUserMessage while busy.
         actor
             .handle(
-                ActorEnvelope::Command(Command::EnqueueUserMessage {
-                    payload: EnqueueUserMessage {
-                        session_id: session_id.clone(),
-                        text: "busy msg".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    text: "busy msg".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -842,7 +810,7 @@ mod tests {
         // Then a SetChatInputText command was emitted with the text.
         let cmds = sink.commands();
         let found = cmds.iter().any(|c| match c {
-            Command::SetChatInputText { payload } => payload.text == "busy msg",
+            Command::SetChatInputText(payload) => payload.text == "busy msg",
             _ => false,
         });
         assert!(found, "expected SetChatInputText with 'busy msg'");
@@ -860,12 +828,10 @@ mod tests {
         // When processing SetChatInputText.
         actor
             .handle(
-                ActorEnvelope::Command(Command::SetChatInputText {
-                    payload: SetChatInputText {
-                        session_id: session_id.clone(),
-                        text: "new text".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::SetChatInputText(SetChatInputText {
+                    session_id: session_id.clone(),
+                    text: "new text".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -889,12 +855,10 @@ mod tests {
         let entry = ChatEntry::user("hello");
         actor
             .handle(
-                ActorEnvelope::Command(Command::PushChatEntry {
-                    payload: PushChatEntry {
-                        session_id: session_id.clone(),
-                        entry: entry.clone(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::PushChatEntry(PushChatEntry {
+                    session_id: session_id.clone(),
+                    entry: entry.clone(),
+                })),
                 &ctx,
             )
             .await;
@@ -910,7 +874,7 @@ mod tests {
         let events = sink.events();
         let found = events
             .iter()
-            .any(|e| matches!(e, Event::ChatEntrySubmitted { .. }));
+            .any(|e| matches!(e, Event::ChatEntrySubmitted(..)));
         assert!(found, "expected ChatEntrySubmitted event");
     }
 
@@ -926,12 +890,10 @@ mod tests {
         // When processing SendMessage.
         actor
             .handle(
-                ActorEnvelope::Command(Command::SendMessage {
-                    payload: SendMessage {
-                        session_id: session_id.clone(),
-                        text: "hello".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::SendMessage(SendMessage {
+                    session_id: session_id.clone(),
+                    text: "hello".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -939,7 +901,7 @@ mod tests {
         // Then an EnqueueUserMessage command was emitted.
         let cmds = sink.commands();
         let found = cmds.iter().any(|c| match c {
-            Command::EnqueueUserMessage { payload } => payload.text == "hello",
+            Command::EnqueueUserMessage(payload) => payload.text == "hello",
             _ => false,
         });
         assert!(found, "expected EnqueueUserMessage command");
@@ -963,11 +925,9 @@ mod tests {
         // When processing SessionLoadCompleted.
         actor
             .handle(
-                ActorEnvelope::Command(Command::SessionLoadCompleted {
-                    payload: SessionLoadCompleted {
-                        session: loaded_session,
-                    },
-                }),
+                ActorEnvelope::Command(Command::SessionLoadCompleted(SessionLoadCompleted {
+                    session: loaded_session,
+                })),
                 &ctx,
             )
             .await;
@@ -996,11 +956,11 @@ mod tests {
         let cmds = sink.commands();
         assert!(
             cmds.iter()
-                .any(|c| matches!(c, Command::RestoreStrategyState { .. }))
+                .any(|c| matches!(c, Command::RestoreStrategyState(..)))
         );
         assert!(
             cmds.iter()
-                .any(|c| matches!(c, Command::SwitchPromptStrategy { .. }))
+                .any(|c| matches!(c, Command::SwitchPromptStrategy(..)))
         );
     }
 
@@ -1019,11 +979,9 @@ mod tests {
         // When processing SessionLoadCompleted with a title.
         actor
             .handle(
-                ActorEnvelope::Command(Command::SessionLoadCompleted {
-                    payload: SessionLoadCompleted {
-                        session: loaded_session,
-                    },
-                }),
+                ActorEnvelope::Command(Command::SessionLoadCompleted(SessionLoadCompleted {
+                    session: loaded_session,
+                })),
                 &ctx,
             )
             .await;
@@ -1058,15 +1016,15 @@ mod tests {
         // When processing PromptAssembled event.
         actor
             .handle(
-                ActorEnvelope::Event(Event::PromptAssembled {
-                    payload: crate::feat::context::protocol::event::PromptAssembled {
+                ActorEnvelope::Event(Event::PromptAssembled(
+                    crate::feat::context::protocol::event::PromptAssembled {
                         session_id: session_id.clone(),
                         system_prompt: None,
                         messages: vec![crate::protocol::LlmMessage::User {
                             content: "hello".into(),
                         }],
                     },
-                }),
+                )),
                 &ctx,
             )
             .await;
@@ -1082,7 +1040,7 @@ mod tests {
         let cmds = sink.commands();
         assert!(
             cmds.iter()
-                .any(|c| matches!(c, Command::SendToLlmProvider { .. }))
+                .any(|c| matches!(c, Command::SendToLlmProvider(..)))
         );
     }
 
@@ -1105,15 +1063,15 @@ mod tests {
         // When processing PromptAssembled with a user message.
         actor
             .handle(
-                ActorEnvelope::Event(Event::PromptAssembled {
-                    payload: crate::feat::context::protocol::event::PromptAssembled {
+                ActorEnvelope::Event(Event::PromptAssembled(
+                    crate::feat::context::protocol::event::PromptAssembled {
                         session_id: session_id.clone(),
                         system_prompt: None,
                         messages: vec![crate::protocol::LlmMessage::User {
                             content: "hello world".into(),
                         }],
                     },
-                }),
+                )),
                 &ctx,
             )
             .await;
@@ -1142,15 +1100,15 @@ mod tests {
         // When processing PromptAssembled.
         actor
             .handle(
-                ActorEnvelope::Event(Event::PromptAssembled {
-                    payload: crate::feat::context::protocol::event::PromptAssembled {
+                ActorEnvelope::Event(Event::PromptAssembled(
+                    crate::feat::context::protocol::event::PromptAssembled {
                         session_id: session_id.clone(),
                         system_prompt: None,
                         messages: vec![crate::protocol::LlmMessage::User {
                             content: "hello world".into(),
                         }],
                     },
-                }),
+                )),
                 &ctx,
             )
             .await;
@@ -1188,14 +1146,12 @@ mod tests {
         // When processing StreamCompleted with assistant content.
         actor
             .handle(
-                ActorEnvelope::Event(Event::StreamCompleted {
-                    payload: StreamCompleted {
-                        session_id: session_id.clone(),
-                        reason: StreamCompletedReason::Finished,
-                        assistant_content: Some("Hello world response".to_owned()),
-                        tool_calls: None,
-                    },
-                }),
+                ActorEnvelope::Event(Event::StreamCompleted(StreamCompleted {
+                    session_id: session_id.clone(),
+                    reason: StreamCompletedReason::Finished,
+                    assistant_content: Some("Hello world response".to_owned()),
+                    tool_calls: None,
+                })),
                 &ctx,
             )
             .await;
@@ -1233,14 +1189,12 @@ mod tests {
         // When processing StreamCompleted with Canceled reason.
         actor
             .handle(
-                ActorEnvelope::Event(Event::StreamCompleted {
-                    payload: StreamCompleted {
-                        session_id: session_id.clone(),
-                        reason: StreamCompletedReason::Canceled,
-                        assistant_content: None,
-                        tool_calls: None,
-                    },
-                }),
+                ActorEnvelope::Event(Event::StreamCompleted(StreamCompleted {
+                    session_id: session_id.clone(),
+                    reason: StreamCompletedReason::Canceled,
+                    assistant_content: None,
+                    tool_calls: None,
+                })),
                 &ctx,
             )
             .await;
@@ -1266,14 +1220,12 @@ mod tests {
         // When processing StreamCompleted with content (but no prior PromptAssembled).
         actor
             .handle(
-                ActorEnvelope::Event(Event::StreamCompleted {
-                    payload: StreamCompleted {
-                        session_id: session_id.clone(),
-                        reason: StreamCompletedReason::Finished,
-                        assistant_content: Some("response".to_owned()),
-                        tool_calls: None,
-                    },
-                }),
+                ActorEnvelope::Event(Event::StreamCompleted(StreamCompleted {
+                    session_id: session_id.clone(),
+                    reason: StreamCompletedReason::Finished,
+                    assistant_content: Some("response".to_owned()),
+                    tool_calls: None,
+                })),
                 &ctx,
             )
             .await;
@@ -1298,13 +1250,11 @@ mod tests {
         let session_id = SessionId::new();
 
         // When processing a StreamToken event.
-        let event = Event::StreamToken {
-            payload: StreamToken {
-                session_id: session_id.clone(),
-                index: 0,
-                token: "Hello".to_owned(),
-            },
-        };
+        let event = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+        });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then the session has an Assistant entry with "Hello".
@@ -1325,23 +1275,19 @@ mod tests {
         let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
         let session_id = SessionId::new();
 
-        let first = Event::StreamToken {
-            payload: StreamToken {
-                session_id: session_id.clone(),
-                index: 0,
-                token: "Hello".to_owned(),
-            },
-        };
+        let first = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+        });
         actor.handle(ActorEnvelope::Event(first), &ctx).await;
 
         // When processing a second StreamToken.
-        let second = Event::StreamToken {
-            payload: StreamToken {
-                session_id: session_id.clone(),
-                index: 1,
-                token: " world".to_owned(),
-            },
-        };
+        let second = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 1,
+            token: " world".to_owned(),
+        });
         actor.handle(ActorEnvelope::Event(second), &ctx).await;
 
         // Then the text is "Hello world".
@@ -1362,24 +1308,20 @@ mod tests {
         let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
         let session_id = SessionId::new();
 
-        let token = Event::StreamToken {
-            payload: StreamToken {
-                session_id: session_id.clone(),
-                index: 0,
-                token: "Hello".to_owned(),
-            },
-        };
+        let token = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+        });
         actor.handle(ActorEnvelope::Event(token), &ctx).await;
 
         // When processing StreamCompleted.
-        let completed = Event::StreamCompleted {
-            payload: StreamCompleted {
-                session_id: session_id.clone(),
-                reason: StreamCompletedReason::Finished,
-                assistant_content: None,
-                tool_calls: None,
-            },
-        };
+        let completed = Event::StreamCompleted(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: None,
+            tool_calls: None,
+        });
         actor.handle(ActorEnvelope::Event(completed), &ctx).await;
 
         // Then the session is no longer streaming.
@@ -1395,24 +1337,20 @@ mod tests {
         let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
         let session_id = SessionId::new();
 
-        let token = Event::StreamToken {
-            payload: StreamToken {
-                session_id: session_id.clone(),
-                index: 0,
-                token: "Hello".to_owned(),
-            },
-        };
+        let token = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+        });
         actor.handle(ActorEnvelope::Event(token), &ctx).await;
 
         // When processing StreamCompleted with Canceled reason.
-        let completed = Event::StreamCompleted {
-            payload: StreamCompleted {
-                session_id: session_id.clone(),
-                reason: StreamCompletedReason::Canceled,
-                assistant_content: None,
-                tool_calls: None,
-            },
-        };
+        let completed = Event::StreamCompleted(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+        });
         actor.handle(ActorEnvelope::Event(completed), &ctx).await;
 
         // Then the session has an error entry with "Cancelled".
@@ -1437,16 +1375,14 @@ mod tests {
         let session_id = SessionId::new();
 
         // When processing a ToolCallReceived event.
-        let event = Event::ToolCallReceived {
-            payload: ToolCallReceived {
-                session_id: session_id.clone(),
-                tool_call: ToolCall {
-                    id: "call_1".to_owned(),
-                    name: "read_file".to_owned(),
-                    arguments: r#"{"path":"/tmp"}"#.to_owned(),
-                },
+        let event = Event::ToolCallReceived(ToolCallReceived {
+            session_id: session_id.clone(),
+            tool_call: ToolCall {
+                id: "call_1".to_owned(),
+                name: "read_file".to_owned(),
+                arguments: r#"{"path":"/tmp"}"#.to_owned(),
             },
-        };
+        });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then the session has a ToolCall entry.
@@ -1484,13 +1420,11 @@ mod tests {
         }
 
         // When processing a ToolCallStreaming event.
-        let event = Event::ToolCallStreaming {
-            payload: ToolCallStreaming {
-                session_id: session_id.clone(),
-                index: 0,
-                partial_json: r#"{"path":"#.to_owned(),
-            },
-        };
+        let event = Event::ToolCallStreaming(ToolCallStreaming {
+            session_id: session_id.clone(),
+            index: 0,
+            partial_json: r#"{"path":"#.to_owned(),
+        });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then the tool call arguments have the delta appended.
@@ -1514,17 +1448,15 @@ mod tests {
         let session_id = SessionId::new();
 
         // When processing a ToolExecutionCompleted event.
-        let event = Event::ToolExecutionCompleted {
-            payload: ToolExecutionCompleted {
-                session_id: session_id.clone(),
-                result: ToolResult {
-                    tool_call_id: "call_1".to_owned(),
-                    name: "read_file".to_owned(),
-                    content: "file contents here".to_owned(),
-                    success: true,
-                },
+        let event = Event::ToolExecutionCompleted(ToolExecutionCompleted {
+            session_id: session_id.clone(),
+            result: ToolResult {
+                tool_call_id: "call_1".to_owned(),
+                name: "read_file".to_owned(),
+                content: "file contents here".to_owned(),
+                success: true,
             },
-        };
+        });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then the session has a ToolResult entry.
@@ -1565,13 +1497,11 @@ mod tests {
         let session_id = state.read().session.active_session.clone();
         actor
             .handle(
-                ActorEnvelope::Event(Event::ModelsRefreshed {
-                    payload: ModelsRefreshed {
-                        session_id,
-                        results,
-                        errors: HashMap::new(),
-                    },
-                }),
+                ActorEnvelope::Event(Event::ModelsRefreshed(ModelsRefreshed {
+                    session_id,
+                    results,
+                    errors: HashMap::new(),
+                })),
                 &ctx,
             )
             .await;
@@ -1612,13 +1542,11 @@ mod tests {
         let session_id = state.read().session.active_session.clone();
         actor
             .handle(
-                ActorEnvelope::Event(Event::ModelsRefreshed {
-                    payload: ModelsRefreshed {
-                        session_id,
-                        results: HashMap::new(),
-                        errors,
-                    },
-                }),
+                ActorEnvelope::Event(Event::ModelsRefreshed(ModelsRefreshed {
+                    session_id,
+                    results: HashMap::new(),
+                    errors,
+                })),
                 &ctx,
             )
             .await;
@@ -1661,13 +1589,11 @@ mod tests {
         let session_id = state.read().session.active_session.clone();
         actor
             .handle(
-                ActorEnvelope::Event(Event::ModelsRefreshed {
-                    payload: ModelsRefreshed {
-                        session_id,
-                        results,
-                        errors,
-                    },
-                }),
+                ActorEnvelope::Event(Event::ModelsRefreshed(ModelsRefreshed {
+                    session_id,
+                    results,
+                    errors,
+                })),
                 &ctx,
             )
             .await;

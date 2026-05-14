@@ -95,7 +95,7 @@ impl LlmActor {
     /// Dispatches incoming commands to the appropriate handler.
     fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
         match command {
-            Command::SendToLlmProvider { payload } => {
+            Command::SendToLlmProvider(payload) => {
                 self.start_stream(
                     payload.session_id.clone(),
                     payload.messages.clone(),
@@ -103,7 +103,7 @@ impl LlmActor {
                     ctx,
                 );
             }
-            Command::CancelStream { payload } => {
+            Command::CancelStream(payload) => {
                 self.cancel_stream(&payload.session_id, ctx);
             }
             _ => {}
@@ -113,13 +113,13 @@ impl LlmActor {
     /// Dispatches incoming events to the appropriate handler.
     fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
-            Event::ToolsRegistered { payload } => {
+            Event::ToolsRegistered(payload) => {
                 self.handle_tools_registered(&payload.definitions);
             }
-            Event::ToolBatchCompleted { payload } => {
+            Event::ToolBatchCompleted(payload) => {
                 self.handle_tool_batch_completed(payload.session_id.clone(), &payload.results, ctx);
             }
-            Event::StreamCompleted { payload } => {
+            Event::StreamCompleted(payload) => {
                 self.handle_stream_completed(payload);
             }
             _ => {}
@@ -178,22 +178,18 @@ impl LlmActor {
                         tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
                         let sink = ctx.sink();
                         let sid = session_id.clone();
-                        let _ = sink.send_command(Command::PushChatEntry {
-                            payload: PushChatEntry {
-                                session_id: sid.clone(),
-                                entry: ChatEntry::system(format!(
-                                    "LLM factory creation failed for {pid}"
-                                )),
-                            },
-                        });
-                        let _ = sink.send_event(Event::StreamCompleted {
-                            payload: StreamCompleted {
-                                session_id: sid,
-                                reason: StreamCompletedReason::Finished,
-                                assistant_content: None,
-                                tool_calls: None,
-                            },
-                        });
+                        let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                            session_id: sid.clone(),
+                            entry: ChatEntry::system(format!(
+                                "LLM factory creation failed for {pid}"
+                            )),
+                        }));
+                        let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                            session_id: sid,
+                            reason: StreamCompletedReason::Finished,
+                            assistant_content: None,
+                            tool_calls: None,
+                        }));
                         return;
                     }
                 }
@@ -212,20 +208,16 @@ impl LlmActor {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to create LLM service");
-                    let _ = sink.send_command(Command::PushChatEntry {
-                        payload: PushChatEntry {
-                            session_id: sid.clone(),
-                            entry: ChatEntry::system("LLM service creation failed"),
-                        },
-                    });
-                    let _ = sink.send_event(Event::StreamCompleted {
-                        payload: StreamCompleted {
-                            session_id: sid,
-                            reason: StreamCompletedReason::Finished,
-                            assistant_content: None,
-                            tool_calls: None,
-                        },
-                    });
+                    let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                        session_id: sid.clone(),
+                        entry: ChatEntry::system("LLM service creation failed"),
+                    }));
+                    let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                        session_id: sid,
+                        reason: StreamCompletedReason::Finished,
+                        assistant_content: None,
+                        tool_calls: None,
+                    }));
                     return;
                 }
             };
@@ -237,20 +229,16 @@ impl LlmActor {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to start LLM stream");
-                    let _ = sink.send_command(Command::PushChatEntry {
-                        payload: PushChatEntry {
-                            session_id: sid.clone(),
-                            entry: ChatEntry::system(format!("LLM stream error: {e:?}")),
-                        },
-                    });
-                    let _ = sink.send_event(Event::StreamCompleted {
-                        payload: StreamCompleted {
-                            session_id: sid,
-                            reason: StreamCompletedReason::Finished,
-                            assistant_content: None,
-                            tool_calls: None,
-                        },
-                    });
+                    let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                        session_id: sid.clone(),
+                        entry: ChatEntry::system(format!("LLM stream error: {e:?}")),
+                    }));
+                    let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                        session_id: sid,
+                        reason: StreamCompletedReason::Finished,
+                        assistant_content: None,
+                        tool_calls: None,
+                    }));
                     return;
                 }
             };
@@ -266,45 +254,37 @@ impl LlmActor {
                     Ok(event) => match event {
                         StreamEvent::Text(token) => {
                             accumulated_text.push_str(&token);
-                            let _ = sink.send_event(Event::StreamToken {
-                                payload: StreamToken {
-                                    session_id: sid.clone(),
-                                    index: token_index,
-                                    token,
-                                },
-                            });
+                            let _ = sink.send_event(Event::StreamToken(StreamToken {
+                                session_id: sid.clone(),
+                                index: token_index,
+                                token,
+                            }));
                             token_index += 1;
                         }
                         StreamEvent::ToolUseStart { index, id, name } => {
-                            let _ = sink.send_event(Event::ToolUseStarted {
-                                payload: ToolUseStarted {
-                                    session_id: sid.clone(),
-                                    index,
-                                    id,
-                                    name,
-                                },
-                            });
+                            let _ = sink.send_event(Event::ToolUseStarted(ToolUseStarted {
+                                session_id: sid.clone(),
+                                index,
+                                id,
+                                name,
+                            }));
                         }
                         StreamEvent::ToolUseInputDelta {
                             index,
                             partial_json,
                         } => {
-                            let _ = sink.send_event(Event::ToolCallStreaming {
-                                payload: ToolCallStreaming {
-                                    session_id: sid.clone(),
-                                    index,
-                                    partial_json,
-                                },
-                            });
+                            let _ = sink.send_event(Event::ToolCallStreaming(ToolCallStreaming {
+                                session_id: sid.clone(),
+                                index,
+                                partial_json,
+                            }));
                         }
                         StreamEvent::ToolUseComplete { tool_call, .. } => {
                             accumulated_tool_calls.push(tool_call.clone());
-                            let _ = sink.send_event(Event::ToolCallReceived {
-                                payload: ToolCallReceived {
-                                    session_id: sid.clone(),
-                                    tool_call,
-                                },
-                            });
+                            let _ = sink.send_event(Event::ToolCallReceived(ToolCallReceived {
+                                session_id: sid.clone(),
+                                tool_call,
+                            }));
                         }
                         StreamEvent::Done { stop_reason } => {
                             tracing::trace!(
@@ -315,33 +295,29 @@ impl LlmActor {
                             );
                             if stop_reason == "tool_use" {
                                 // Emit ExecuteToolBatch for the orchestrator.
-                                let _ = sink.send_command(Command::ExecuteToolBatch {
-                                    payload: ExecuteToolBatch {
+                                let _ = sink.send_command(Command::ExecuteToolBatch(
+                                    ExecuteToolBatch {
                                         session_id: sid.clone(),
                                         tool_calls: accumulated_tool_calls.clone(),
                                     },
-                                });
+                                ));
 
                                 // Emit StreamCompleted with ToolUse reason so the actor
                                 // can transition state.
-                                let _ = sink.send_event(Event::StreamCompleted {
-                                    payload: StreamCompleted {
-                                        session_id: sid.clone(),
-                                        reason: StreamCompletedReason::ToolUse,
-                                        assistant_content: Some(accumulated_text.clone()),
-                                        tool_calls: Some(accumulated_tool_calls.clone()),
-                                    },
-                                });
+                                let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                                    session_id: sid.clone(),
+                                    reason: StreamCompletedReason::ToolUse,
+                                    assistant_content: Some(accumulated_text.clone()),
+                                    tool_calls: Some(accumulated_tool_calls.clone()),
+                                }));
                             } else {
                                 // Normal end_turn — emit StreamCompleted.
-                                let _ = sink.send_event(Event::StreamCompleted {
-                                    payload: StreamCompleted {
-                                        session_id: sid.clone(),
-                                        reason: StreamCompletedReason::Finished,
-                                        assistant_content: Some(accumulated_text.clone()),
-                                        tool_calls: None,
-                                    },
-                                });
+                                let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                                    session_id: sid.clone(),
+                                    reason: StreamCompletedReason::Finished,
+                                    assistant_content: Some(accumulated_text.clone()),
+                                    tool_calls: None,
+                                }));
                             }
                         }
                     },
@@ -486,11 +462,9 @@ impl LlmActor {
             .is_some_and(|s| s.state == SessionState::AwaitingToolResults);
 
         if awaiting_tools
-            && let Err(e) = ctx.send_command(Command::CancelToolBatch {
-                payload: CancelToolBatch {
-                    session_id: session_id.clone(),
-                },
-            })
+            && let Err(e) = ctx.send_command(Command::CancelToolBatch(CancelToolBatch {
+                session_id: session_id.clone(),
+            }))
         {
             tracing::warn!(
                 err = ?e,
@@ -502,14 +476,12 @@ impl LlmActor {
             handle.abort();
         }
         self.sessions.remove(session_id);
-        let _ = ctx.send_event(Event::StreamCompleted {
-            payload: StreamCompleted {
-                session_id: session_id.clone(),
-                reason: StreamCompletedReason::Canceled,
-                assistant_content: None,
-                tool_calls: None,
-            },
-        });
+        let _ = ctx.send_event(Event::StreamCompleted(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+        }));
     }
 
     /// Cancels all active streams across all sessions.
@@ -572,7 +544,7 @@ mod tests {
         events
             .iter()
             .filter_map(|e| match e {
-                Event::StreamCompleted { payload } => Some(payload),
+                Event::StreamCompleted(payload) => Some(payload),
                 _ => None,
             })
             .collect()
@@ -583,7 +555,7 @@ mod tests {
         events
             .iter()
             .filter_map(|e| match e {
-                Event::StreamToken { payload } => Some(payload),
+                Event::StreamToken(payload) => Some(payload),
                 _ => None,
             })
             .collect()
@@ -625,15 +597,13 @@ mod tests {
         let session_id = SessionId::new();
 
         // When sending SendToLlmProvider.
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![LlmMessage::User {
-                    content: "hi".to_owned(),
-                }],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![LlmMessage::User {
+                content: "hi".to_owned(),
+            }],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Wait for the stream task to complete.
@@ -663,15 +633,13 @@ mod tests {
         let session_id = SessionId::new();
 
         // When sending SendToLlmProvider.
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![LlmMessage::User {
-                    content: "hi".to_owned(),
-                }],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![LlmMessage::User {
+                content: "hi".to_owned(),
+            }],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Wait for the stream task to complete.
@@ -713,15 +681,13 @@ mod tests {
         let session_id = SessionId::new();
 
         // When sending SendToLlmProvider.
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![LlmMessage::User {
-                    content: "hi".to_owned(),
-                }],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![LlmMessage::User {
+                content: "hi".to_owned(),
+            }],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Wait for the stream task to complete.
@@ -732,17 +698,17 @@ mod tests {
         let has_tool_use_started = events.iter().any(|e| {
             matches!(
                 e,
-                Event::ToolUseStarted { payload }
+                Event::ToolUseStarted (payload)
                 if payload.id == "call_1" && payload.name == "echo"
             )
         });
         let has_tool_call_streaming = events
             .iter()
-            .any(|e| matches!(e, Event::ToolCallStreaming { .. }));
+            .any(|e| matches!(e, Event::ToolCallStreaming(..)));
         let has_tool_call_received = events.iter().any(|e| {
             matches!(
                 e,
-                Event::ToolCallReceived { payload }
+                Event::ToolCallReceived (payload)
                 if payload.tool_call == tool_call
             )
         });
@@ -773,15 +739,13 @@ mod tests {
         let session_id = SessionId::new();
 
         // When sending SendToLlmProvider.
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![LlmMessage::User {
-                    content: "hi".to_owned(),
-                }],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![LlmMessage::User {
+                content: "hi".to_owned(),
+            }],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Wait for the stream task to complete.
@@ -792,7 +756,7 @@ mod tests {
         let has_execute_batch = commands.iter().any(|c| {
             matches!(
                 c,
-                Command::ExecuteToolBatch { payload }
+                Command::ExecuteToolBatch (payload)
                 if payload.tool_calls.len() == 1 && payload.tool_calls[0] == tool_call
             )
         });
@@ -821,15 +785,13 @@ mod tests {
         let session_id = SessionId::new();
 
         // When sending SendToLlmProvider.
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![LlmMessage::User {
-                    content: "hi".to_owned(),
-                }],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![LlmMessage::User {
+                content: "hi".to_owned(),
+            }],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Wait for the stream task to complete.
@@ -874,15 +836,13 @@ mod tests {
         let session_id = SessionId::new();
 
         // When sending SendToLlmProvider and routing stream events back.
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![LlmMessage::User {
-                    content: "hi".to_owned(),
-                }],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![LlmMessage::User {
+                content: "hi".to_owned(),
+            }],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -924,15 +884,13 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![LlmMessage::User {
-                    content: "hi".to_owned(),
-                }],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![LlmMessage::User {
+                content: "hi".to_owned(),
+            }],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -950,12 +908,10 @@ mod tests {
             content: "hi".to_owned(),
             success: true,
         };
-        let batch_event = Event::ToolBatchCompleted {
-            payload: ToolBatchCompleted {
-                session_id: session_id.clone(),
-                results: vec![tool_result],
-            },
-        };
+        let batch_event = Event::ToolBatchCompleted(ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![tool_result],
+        });
         actor.handle_event(&batch_event, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -982,21 +938,17 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         // When cancelling the stream.
-        let cancel_cmd = Command::CancelStream {
-            payload: CancelStream {
-                session_id: session_id.clone(),
-            },
-        };
+        let cancel_cmd = Command::CancelStream(CancelStream {
+            session_id: session_id.clone(),
+        });
         actor.handle_command(&cancel_cmd, &ctx);
 
         // Then a StreamCompleted event with Canceled reason was emitted.
@@ -1017,21 +969,17 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         // When cancelling the stream.
-        let cancel_cmd = Command::CancelStream {
-            payload: CancelStream {
-                session_id: session_id.clone(),
-            },
-        };
+        let cancel_cmd = Command::CancelStream(CancelStream {
+            session_id: session_id.clone(),
+        });
         actor.handle_command(&cancel_cmd, &ctx);
 
         // Then the task was removed.
@@ -1063,13 +1011,11 @@ mod tests {
         let session_id = SessionId::new();
 
         // Send and route stream events back to transition to AwaitingToolResults.
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1089,11 +1035,9 @@ mod tests {
         sink.clear();
 
         // When cancelling the stream.
-        let cancel_cmd = Command::CancelStream {
-            payload: CancelStream {
-                session_id: session_id.clone(),
-            },
-        };
+        let cancel_cmd = Command::CancelStream(CancelStream {
+            session_id: session_id.clone(),
+        });
         actor.handle_command(&cancel_cmd, &ctx);
 
         // Then a CancelToolBatch command was emitted.
@@ -1101,7 +1045,7 @@ mod tests {
         let has_cancel_batch = commands.iter().any(|c| {
             matches!(
                 c,
-                Command::CancelToolBatch { payload }
+                Command::CancelToolBatch (payload)
                 if payload.session_id == session_id
             )
         });
@@ -1122,30 +1066,26 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         sink.clear();
 
         // When cancelling the stream.
-        let cancel_cmd = Command::CancelStream {
-            payload: CancelStream {
-                session_id: session_id.clone(),
-            },
-        };
+        let cancel_cmd = Command::CancelStream(CancelStream {
+            session_id: session_id.clone(),
+        });
         actor.handle_command(&cancel_cmd, &ctx);
 
         // Then no CancelToolBatch command was emitted.
         let commands = sink.commands();
         let has_cancel_batch = commands
             .iter()
-            .any(|c| matches!(c, Command::CancelToolBatch { .. }));
+            .any(|c| matches!(c, Command::CancelToolBatch(..)));
         assert!(
             !has_cancel_batch,
             "CancelToolBatch should not be emitted when stream is active (not awaiting tools)"
@@ -1171,12 +1111,10 @@ mod tests {
         };
 
         // When receiving a ToolsRegistered event.
-        let event = Event::ToolsRegistered {
-            payload: ToolsRegistered {
-                provider: "web-actor".to_owned(),
-                definitions: vec![definition.clone()],
-            },
-        };
+        let event = Event::ToolsRegistered(ToolsRegistered {
+            provider: "web-actor".to_owned(),
+            definitions: vec![definition.clone()],
+        });
         actor.handle_event(&event, &ctx);
 
         // Then the tool definition is cached in shared state.
@@ -1207,13 +1145,11 @@ mod tests {
         let session_id = SessionId::new();
 
         // When sending SendToLlmProvider.
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         // Then the session state is Streaming.
@@ -1245,13 +1181,11 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1291,13 +1225,11 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1328,13 +1260,11 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1375,13 +1305,11 @@ mod tests {
 
         let session_id = SessionId::new();
 
-        let cmd = Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: vec![],
-                provider_id: None,
-            },
-        };
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            provider_id: None,
+        });
         actor.handle_command(&cmd, &ctx);
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1392,14 +1320,12 @@ mod tests {
         }
 
         // When receiving a duplicate StreamCompleted(Finished) — simulates OpenRouter bug.
-        let duplicate_finished = Event::StreamCompleted {
-            payload: StreamCompleted {
-                session_id: session_id.clone(),
-                reason: StreamCompletedReason::Finished,
-                assistant_content: None,
-                tool_calls: None,
-            },
-        };
+        let duplicate_finished = Event::StreamCompleted(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: None,
+            tool_calls: None,
+        });
         actor.handle_event(&duplicate_finished, &ctx);
 
         // Then the session still exists and is still AwaitingToolResults.
