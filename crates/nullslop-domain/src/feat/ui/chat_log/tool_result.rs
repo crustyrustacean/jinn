@@ -14,7 +14,7 @@ use ratatui::text::{Line, Span};
 use super::shared::{pad_line_to_width, RenderContext};
 
 /// Foreground color for tool result text.
-const TOOL_RESULT_FG: Color = Color::Rgb(0x3A, 0x3A, 0x3A);
+const TOOL_RESULT_FG: Color = Color::Rgb(0x58, 0x5F, 0x6A);
 /// Foreground color for truncation indicator.
 const TRUNCATION_FG: Color = Color::Rgb(0x53, 0x53, 0x53);
 /// Background color for successful tool result BLOCK.

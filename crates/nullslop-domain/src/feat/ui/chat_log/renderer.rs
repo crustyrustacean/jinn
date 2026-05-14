@@ -1142,7 +1142,7 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let name_cell = buffer.cell((G, 8)).expect("cell should exist");
         assert_eq!(name_cell.symbol(), "b");
-        assert_eq!(name_cell.style().fg, Some(Color::Rgb(0x3A, 0x3A, 0x3A)));
+        assert_eq!(name_cell.style().fg, Some(Color::Rgb(0x58, 0x5F, 0x6A)));
         let content_cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(content_cell.symbol(), "o");
     }
@@ -1277,6 +1277,6 @@ mod tests {
         // Then the tool call text has the updated fg color.
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((G, 9)).expect("cell should exist");
-        assert_eq!(cell.style().fg, Some(Color::Rgb(0x3A, 0x3A, 0x3A)));
+        assert_eq!(cell.style().fg, Some(Color::Rgb(0x58, 0x5F, 0x6A)));
     }
 }
