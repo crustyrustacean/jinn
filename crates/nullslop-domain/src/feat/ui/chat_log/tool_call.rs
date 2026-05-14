@@ -5,11 +5,13 @@ use ratatui::text::{Line, Span};
 
 use super::shared::{pad_line_to_width, RenderContext};
 
+/// Foreground color for tool call text.
+const TOOL_CALL_FG: Color = Color::Rgb(0x3A, 0x3A, 0x3A);
 /// Background color for tool call BLOCK.
-const TOOL_CALL_BG: Color = Color::Rgb(0, 100, 0);
+const TOOL_CALL_BG: Color = Color::Rgb(0x28, 0x32, 0x28);
 
 pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
-    let style = Style::default().fg(Color::Gray).bg(TOOL_CALL_BG);
+    let style = Style::default().fg(TOOL_CALL_FG).bg(TOOL_CALL_BG);
     let content = format!("{name}({arguments})");
     let text = content.trim_start_matches('\n');
     let segments = text.split('\n');
