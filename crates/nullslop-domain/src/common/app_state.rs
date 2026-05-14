@@ -326,6 +326,11 @@ pub struct FrontendState {
     /// Focus scope stack — single source of truth for what the user is focused on.
     /// OWNER: IntentHandler (push/pop on scope transitions).
     pub scope_stack: ScopeStack,
+
+    /// Whether the "Press ESC again to cancel" prompt is showing.
+    /// OWNER: IntentHandler (set on first ESC in Normal/Sidebar with active stream,
+    ///         consumed on second ESC or dismissed on any other key).
+    pub cancel_stream_prompt: bool,
 }
 
 impl Default for FrontendState {
@@ -346,6 +351,7 @@ impl Default for FrontendState {
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
             scope_stack: ScopeStack::default(),
+            cancel_stream_prompt: false,
         }
     }
 }
