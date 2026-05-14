@@ -481,13 +481,21 @@ impl LlmActor {
         if let Some(handle) = self.tasks.remove(session_id) {
             handle.abort();
         }
-        self.sessions.remove(session_id);
-        let _ = ctx.send_event(Event::StreamCompleted(StreamCompleted {
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Canceled,
-            assistant_content: None,
-            tool_calls: None,
-        }));
+        let had_session = self.sessions.remove(session_id).is_some();
+        if let Some(handle) = self.tasks.remove(session_id) {
+            handle.abort();
+        }
+        // Only emit StreamCompleted if there was actually an active session
+        // to cancel. Avoids pushing a spurious "Cancelled" error entry when
+        // the user presses ESC with nothing streaming.
+        if had_session {
+            let _ = ctx.send_event(Event::StreamCompleted(StreamCompleted {
+                session_id: session_id.clone(),
+                reason: StreamCompletedReason::Canceled,
+                assistant_content: None,
+                tool_calls: None,
+            }));
+        }
     }
 
     /// Cancels all active streams across all sessions.

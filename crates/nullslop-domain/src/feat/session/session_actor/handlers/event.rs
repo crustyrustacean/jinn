@@ -89,6 +89,10 @@ impl SessionPersistenceActor {
     }
 
     /// Marks the session's stream as finished and records output tokens.
+    ///
+    /// For `ToolUse` reason, transitions to sending state instead of fully idle,
+    /// so the streaming indicator remains visible while the followup response
+    /// is awaited.
     pub(in crate::feat::session::session_actor) fn on_stream_completed(
         &self,
         event: &StreamCompleted,
@@ -108,6 +112,12 @@ impl SessionPersistenceActor {
                 }
             }
             session.finish_streaming();
+
+            // Tool use means the conversation continues — transition to sending
+            // so the indicator shows activity while awaiting the followup.
+            if event.reason == StreamCompletedReason::ToolUse {
+                session.begin_sending();
+            }
         }
 
         // Persist session after stream finishes (not on cancel).
