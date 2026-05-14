@@ -161,7 +161,10 @@ impl LlmActor {
         // Clone messages before inserting into the session so the stream task
         // can take ownership of its copy.
         let messages_for_stream = messages.clone();
-        let session = SessionData::new(messages);
+        let mut session = SessionData::new(messages);
+        if provider_id.is_some() {
+            session.provider_id = provider_id.map(|p| p.to_owned());
+        }
         self.sessions.insert(session_id.clone(), session);
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
@@ -438,8 +441,11 @@ impl LlmActor {
         }
 
         // Take the accumulated messages and start a new stream.
+        // Preserve the provider_id from the initial stream so the continuation
+        // uses the same provider instead of falling back to the global factory.
+        let provider_id = session.provider_id.clone();
         let messages = std::mem::take(&mut session.messages);
-        self.start_stream(session_id, messages, None, ctx);
+        self.start_stream(session_id, messages, provider_id.as_deref(), ctx);
     }
 
     /// Caches tool definitions from a [`ToolsRegistered`] event into shared state.
@@ -922,6 +928,88 @@ mod tests {
         assert!(
             !tokens.is_empty(),
             "expected StreamToken events from new stream"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_batch_completed_preserves_provider_id() {
+        // Given an actor configured with tool calls.
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = test_context(&sink);
+
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let factory = FakeLlmServiceFactory::with_tool_calls(
+            vec!["Let me check".to_owned()],
+            vec![tool_call.clone()],
+        );
+        let factory_service =
+            crate::feat::provider_infra::LlmServiceFactoryService::new(Arc::new(factory));
+        ctx.set_data(factory_service);
+        let mut actor = LlmActor::activate(&mut ctx);
+        sink.clear();
+
+        let session_id = SessionId::new();
+
+        // When sending with a provider_id.
+        let cmd = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![LlmMessage::User {
+                content: "hi".to_owned(),
+            }],
+            provider_id: Some("openrouter/gpt-4".to_owned()),
+        });
+        actor.handle_command(&cmd, &ctx);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Route stream events back to transition to AwaitingToolResults.
+        let events_from_stream = sink.take_events();
+        for event in events_from_stream {
+            actor.handle_event(&event, &ctx);
+        }
+
+        // Then the session stored the provider_id.
+        let session = actor
+            .sessions
+            .get(&session_id)
+            .expect("session should exist");
+        assert_eq!(
+            session.provider_id,
+            Some("openrouter/gpt-4".to_owned()),
+            "provider_id should be stored in session data"
+        );
+
+        sink.clear();
+
+        // When feeding ToolBatchCompleted.
+        let tool_result = ToolResult {
+            tool_call_id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            content: "hi".to_owned(),
+            success: true,
+        };
+        let batch_event = Event::ToolBatchCompleted(ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![tool_result],
+        });
+        actor.handle_event(&batch_event, &ctx);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Then the session still has the provider_id preserved.
+        let session = actor
+            .sessions
+            .get(&session_id)
+            .expect("session should still exist after tool batch");
+        assert_eq!(
+            session.provider_id,
+            Some("openrouter/gpt-4".to_owned()),
+            "provider_id should be preserved across tool loop"
         );
     }
 

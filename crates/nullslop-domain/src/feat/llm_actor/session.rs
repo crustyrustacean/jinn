@@ -27,6 +27,10 @@ pub(crate) struct SessionData {
     pub(crate) accumulated_text: String,
     /// Accumulated tool calls from the current stream.
     pub(crate) accumulated_tool_calls: Vec<ToolCall>,
+    /// The provider ID used for the initial stream. Preserved across tool loops
+    /// so continuation streams use the same provider instead of falling back
+    /// to the global factory.
+    pub(crate) provider_id: Option<String>,
 }
 
 impl SessionData {
@@ -37,6 +41,7 @@ impl SessionData {
             messages,
             accumulated_text: String::new(),
             accumulated_tool_calls: Vec::new(),
+            provider_id: None,
         }
     }
 }
