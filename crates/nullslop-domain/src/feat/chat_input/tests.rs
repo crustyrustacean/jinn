@@ -606,3 +606,25 @@ fn reset_clears_scroll_offset() {
     // Then scroll_offset is 0.
     assert_eq!(state.scroll_offset(), 0);
 }
+
+#[rstest::rstest]
+fn scroll_to_cursor_does_not_scroll_away_first_line_on_multiline() {
+    // Given "hello\nworld" with wrap_width large (no word-wrapping).
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("hello\nworld");
+    state.set_wrap_width(80);
+
+    // Cursor is at end (row 1, col 5).
+    // The element renders with Borders::BOTTOM, so inner.height = input_height - 1.
+    // input_height = 1 + 2 = 3, inner.height = 2, so max_visible_lines = 2.
+    // When scrolling with 2 visible lines.
+
+    // When scrolling to cursor with correct visible-line count (2).
+    state.scroll_to_cursor(2);
+
+    // Then scroll_offset stays at 0 (both lines fit).
+    assert_eq!(state.scroll_offset(), 0);
+    // And cursor is on row 1, visible within the window.
+    let (row, _) = state.cursor_row_col();
+    assert_eq!(row, 1);
+}

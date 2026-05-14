@@ -43,7 +43,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         let text_width = pre_layout.main.width.saturating_sub(2) as usize;
         wstate.active_chat_input_mut().set_wrap_width(text_width);
         if wstate.frontend.scope_stack.current().mode() == Mode::Input {
-            let inner_height = pre_layout.input.height.saturating_sub(2) as usize;
+            let inner_height = pre_layout.input.height.saturating_sub(1) as usize;
             wstate
                 .active_chat_input_mut()
                 .scroll_to_cursor(inner_height);
