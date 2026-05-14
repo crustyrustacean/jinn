@@ -304,11 +304,16 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
 pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
     let mut commands = vec![];
 
-    if state.frontend.scope_stack.current().mode() == Mode::Input
-        && !state.active_session().is_idle()
-    {
+    if state.frontend.scope_stack.current().mode() == Mode::Input {
+        if !state.active_session().is_idle() {
+            // Session is actively streaming — cancel and drain.
+            state.active_session_mut().cancel_stream_and_drain();
+        }
+        // Always emit CancelStream when leaving input mode. This ensures tool
+        // execution is cancelled even when the session appears idle (tools running
+        // after stream completion with ToolUse reason). The LLM actor handles
+        // the no-op case (no active session) gracefully.
         let session_id = state.session.active_session.clone();
-        state.active_session_mut().cancel_stream_and_drain();
         commands.push(Command::CancelStream(
             crate::feat::provider::protocol::command::CancelStream { session_id },
         ));
@@ -723,7 +728,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn enter_normal_mode_sets_mode_to_normal() {
+    fn enter_normal_mode_emits_cancel_stream() {
         // Given a state in Input mode.
         use crate::common::app_state::FocusScope;
 
@@ -735,7 +740,14 @@ mod tests {
 
         // Then scope_stack is back to Normal.
         assert!(!state.frontend.scope_stack.is_picker());
-        assert!(result.commands.is_empty());
+        // And a CancelStream is always emitted when leaving input mode.
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::CancelStream(..))),
+            "expected CancelStream command"
+        );
     }
 
     #[rstest::rstest]
