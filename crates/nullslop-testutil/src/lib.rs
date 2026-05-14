@@ -5,6 +5,10 @@ use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 
 /// Creates a test terminal and full-area rect for the given dimensions.
+///
+/// # Panics
+///
+/// Panics if `Terminal::new` fails, which should only happen with zero-sized dimensions.
 pub fn setup_term(width: u16, height: u16) -> (Terminal<TestBackend>, Rect) {
     let backend = TestBackend::new(width, height);
     let terminal = Terminal::new(backend).unwrap();

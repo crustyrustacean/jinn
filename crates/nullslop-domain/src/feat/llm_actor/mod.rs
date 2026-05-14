@@ -99,7 +99,7 @@ impl LlmActor {
                 self.start_stream(
                     payload.session_id.clone(),
                     payload.messages.clone(),
-                    payload.provider_id.clone(),
+                    payload.provider_id.as_deref(),
                     ctx,
                 );
             }
@@ -135,7 +135,7 @@ impl LlmActor {
         &mut self,
         session_id: SessionId,
         messages: Vec<LlmMessage>,
-        provider_id: Option<String>,
+        provider_id: Option<&str>,
         ctx: &ActorContext,
     ) {
         // Collect current tool definitions from shared state.
@@ -165,9 +165,9 @@ impl LlmActor {
         self.sessions.insert(session_id.clone(), session);
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
-        let factory = if let Some(ref pid) = provider_id {
+        let factory = if let Some(pid) = provider_id {
             if let Some(ref services) = self.services {
-                let id = crate::feat::provider_infra::ProviderId::new(pid.clone());
+                let id = crate::feat::provider_infra::ProviderId::new(pid.to_owned());
                 let api_keys = services.api_keys.read();
                 match services.provider_registry.create_factory(&id, &api_keys) {
                     Ok(f) => {

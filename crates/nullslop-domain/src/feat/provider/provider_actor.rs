@@ -69,10 +69,8 @@ impl Actor for ProviderActor {
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx),
-            ActorEnvelope::Event(event) => {
-                if let Event::ModelsRefreshed(ref payload) = event {
-                    self.handle_models_refreshed(payload);
-                }
+            ActorEnvelope::Event(Event::ModelsRefreshed(ref payload)) => {
+                self.handle_models_refreshed(payload);
             }
             _ => {}
         }

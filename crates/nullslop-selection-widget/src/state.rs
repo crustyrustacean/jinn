@@ -55,6 +55,7 @@ where
     }
 }
 
+#[expect(clippy::same_name_method, reason = "public API mirrors PickerOps trait methods for ergonomics")]
 impl<T> SelectionState<T>
 where
     T: PickerItem,

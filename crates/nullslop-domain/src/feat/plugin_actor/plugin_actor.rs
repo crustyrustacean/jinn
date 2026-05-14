@@ -4,7 +4,7 @@
 //! loads plugins from disk, forwards events, and handles plugin lifecycle.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use nullslop_plugin::runtime::{HostCallbacks, PluginSlotInfo};
@@ -56,7 +56,7 @@ impl Actor for PluginActor {
 
         let (tx, rx) = std::sync::mpsc::channel::<PluginThreadMsg>();
         let handle = std::thread::spawn(move || {
-            plugin_thread_main(rx, state, sink, plugins_dir);
+            plugin_thread_main(&rx, &state, &sink, &plugins_dir);
         });
 
         Self {
@@ -73,8 +73,7 @@ impl Actor for PluginActor {
             ActorEnvelope::Command(cmd) => {
                 self.handle_command(&cmd);
             }
-            ActorEnvelope::System(_) => {}
-            ActorEnvelope::Direct(_) => {}
+            ActorEnvelope::System(_) | ActorEnvelope::Direct(_) => {}
         }
     }
 
@@ -118,19 +117,19 @@ impl PluginActor {
 /// Manages a `HashMap<PluginId, PluginRuntime>`, loads plugins from disk,
 /// and forwards events to plugins that have subscribed to them.
 fn plugin_thread_main(
-    rx: std::sync::mpsc::Receiver<PluginThreadMsg>,
-    state: State,
-    sink: Arc<dyn crate::common::actor::MessageSink>,
-    plugins_dir: PathBuf,
+    rx: &std::sync::mpsc::Receiver<PluginThreadMsg>,
+    state: &State,
+    sink: &Arc<dyn crate::common::actor::MessageSink>,
+    plugins_dir: &Path,
 ) {
     let mut runtimes: HashMap<PluginId, PluginRuntime> = HashMap::new();
     let event_subscriptions: Arc<Mutex<HashMap<String, Vec<PluginId>>>> =
         Arc::new(Mutex::new(HashMap::new()));
 
-    let callbacks = build_host_callbacks(&state, &sink, &event_subscriptions);
+    let callbacks = build_host_callbacks(state, sink, &event_subscriptions);
 
     // Initial load.
-    load_all_plugins(&plugins_dir, &callbacks, &mut runtimes);
+    load_all_plugins(plugins_dir, &callbacks, &mut runtimes);
 
     while let Ok(msg) = rx.recv() {
         match msg {
@@ -150,9 +149,9 @@ fn plugin_thread_main(
                                 "plugin on_event failed, disabling"
                             );
                             runtime.disable();
-                            clear_slots_for_plugin(&state, plugin_id);
+                            clear_slots_for_plugin(state, plugin_id);
                             push_system_entry(
-                                &state,
+                                state,
                                 &format!("Plugin '{plugin_id}' disabled due to error"),
                             );
                         }
@@ -162,7 +161,7 @@ fn plugin_thread_main(
             PluginThreadMsg::ReloadAll => {
                 runtimes.clear();
                 state.write().plugin_slots.clear();
-                load_all_plugins(&plugins_dir, &callbacks, &mut runtimes);
+                load_all_plugins(plugins_dir, &callbacks, &mut runtimes);
             }
             PluginThreadMsg::Shutdown => {
                 break;
@@ -173,7 +172,7 @@ fn plugin_thread_main(
 
 /// Discovers and loads all plugins from the plugins directory.
 fn load_all_plugins(
-    plugins_dir: &PathBuf,
+    plugins_dir: &Path,
     callbacks: &Arc<HostCallbacks>,
     runtimes: &mut HashMap<PluginId, PluginRuntime>,
 ) {
@@ -302,7 +301,7 @@ fn event_to_rhai_map(type_name: &str, event: &Event) -> rhai::Map {
         }
         Event::StreamCompleted(payload) => {
             map.insert("session_id".into(), payload.session_id.to_string().into());
-            map.insert("reason".into(), stream_reason_str(&payload.reason).into());
+            map.insert("reason".into(), stream_reason_str(payload.reason).into());
         }
         Event::ActiveSessionChanged(payload) => {
             map.insert("session_id".into(), payload.session_id.to_string().into());
@@ -316,7 +315,7 @@ fn event_to_rhai_map(type_name: &str, event: &Event) -> rhai::Map {
 
 /// Returns a lowercase string for `StreamCompletedReason`.
 fn stream_reason_str(
-    reason: &crate::feat::provider::protocol::event::StreamCompletedReason,
+    reason: crate::feat::provider::protocol::event::StreamCompletedReason,
 ) -> &'static str {
     match reason {
         crate::feat::provider::protocol::event::StreamCompletedReason::Finished => "finished",

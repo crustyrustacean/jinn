@@ -101,7 +101,7 @@ impl PluginSlotRegistry {
             .iter_mut()
             .find(|s| s.plugin_id == *plugin_id && s.stable_id == stable_id)
         {
-            slot.text = text.to_owned();
+            text.clone_into(&mut slot.text);
             true
         } else {
             false

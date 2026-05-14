@@ -68,7 +68,6 @@ mod tests {
     use std::sync::Arc;
 
     use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
-    use crate::common::app_state::AppState;
     use crate::feat::context::protocol::command::RescanPersonas;
     use crate::feat::context::protocol::event::PersonasLoaded;
     use crate::protocol::{Command, Event};

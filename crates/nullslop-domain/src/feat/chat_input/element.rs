@@ -124,9 +124,7 @@ fn build_wrapped_lines<'a>(
 #[cfg(test)]
 mod tests {
     use nullslop_testutil::setup_term;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-    use ratatui::layout::{Position, Rect};
+    use ratatui::layout::Position;
 
     use super::*;
     use crate::common::app_state::FocusScope;

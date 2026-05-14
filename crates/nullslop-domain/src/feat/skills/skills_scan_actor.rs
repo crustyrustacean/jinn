@@ -54,7 +54,7 @@ impl ScanConfig for SkillsScanConfig {
         // Write skills to shared state.
         {
             let mut guard = config.state.write();
-            guard.context.skills = skills.clone();
+            guard.context.skills.clone_from(&skills);
         }
 
         let _ = ctx.send_event(Event::SkillsLoaded(SkillsLoaded {
@@ -101,7 +101,6 @@ pub struct ScanSkills;
 mod tests {
     use std::sync::Arc;
 
-    use crate::common::actor::scan_actor::ScanActor;
     use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::state::State;

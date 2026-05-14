@@ -462,10 +462,10 @@ impl ActorHost for InMemoryActorHost {
         // Also route to actors that subscribe to ALL events.
         for entry in &self.routing.all_event_subscribers {
             // Skip if already routed via specific subscription.
-            if let Some(entries) = self.routing.event_routes.get(event_type) {
-                if entries.iter().any(|e| e.name == entry.name) {
-                    continue;
-                }
+            if let Some(entries) = self.routing.event_routes.get(event_type)
+                && entries.iter().any(|e| e.name == entry.name)
+            {
+                continue;
             }
             if source.is_some_and(|s| &**s == entry.name.as_str()) {
                 continue;

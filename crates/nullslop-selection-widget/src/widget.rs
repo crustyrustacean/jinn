@@ -208,8 +208,6 @@ where
 #[cfg(test)]
 mod tests {
     use nullslop_testutil::setup_term;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
 
     use super::*;
 
