@@ -20,6 +20,10 @@ use ratatui::Frame;
 use crate::TuiApp;
 
 /// Renders the full application frame.
+#[expect(
+    clippy::too_many_lines,
+    reason = "render dispatches to sub-functions but the match itself is long"
+)]
 pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     let area = frame.area();
     if !AppLayout::meets_min_size(area) {

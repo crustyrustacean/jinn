@@ -4,7 +4,8 @@ use crate::common::actor::ActorContext;
 use crate::feat::context::protocol::command::AssemblePrompt;
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::protocol::{
-    ChatEntry, Event, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
+    ChatEntry, ChatEntryKind, Event, LlmMessage, PinPosition, SessionId, ToolDefinition,
+    entries_to_messages,
 };
 
 use crate::feat::context::{
@@ -57,14 +58,20 @@ impl PromptAssemblyActor {
         let top_pins: Vec<ChatEntry> = cmd
             .history
             .iter()
-            .filter(|e| e.pin_position() == Some(PinPosition::Top))
+            .filter(|e| {
+                e.pin_position() == Some(PinPosition::Top)
+                    && !matches!(e.kind, ChatEntryKind::Thinking(_))
+            })
             .cloned()
             .collect();
 
         let bottom_pins: Vec<ChatEntry> = cmd
             .history
             .iter()
-            .filter(|e| e.pin_position() == Some(PinPosition::Bottom))
+            .filter(|e| {
+                e.pin_position() == Some(PinPosition::Bottom)
+                    && !matches!(e.kind, ChatEntryKind::Thinking(_))
+            })
             .cloned()
             .collect();
 
@@ -72,7 +79,8 @@ impl PromptAssemblyActor {
             .history
             .iter()
             .filter(|e| {
-                e.pin_position().is_none() || e.pin_position() == Some(PinPosition::Relative)
+                (e.pin_position().is_none() || e.pin_position() == Some(PinPosition::Relative))
+                    && !matches!(e.kind, ChatEntryKind::Thinking(_))
             })
             .cloned()
             .collect();
