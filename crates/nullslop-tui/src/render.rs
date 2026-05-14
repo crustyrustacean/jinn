@@ -1,6 +1,7 @@
 //! Layout computation and rendering for the application.
 
 pub mod app_layout;
+pub mod chat_tab;
 pub mod clipboard;
 pub mod picker;
 pub mod selection_highlight;
@@ -11,10 +12,8 @@ pub mod which_key;
 pub use app_layout::{AppLayout, MIN_HEIGHT, MIN_WIDTH};
 pub use tab_bar::init_tab_manager;
 
-use nullslop_domain::{FocusScope, Mode};
+use nullslop_domain::Mode;
 use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
 
 use crate::TuiApp;
 
@@ -65,108 +64,14 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
     match state.frontend.active_tab {
         nullslop_domain::ActiveTab::Chat => {
-            // Draw vertical border line between main and sidebar.
-            let border_color = if state.frontend.scope_stack.is_sidebar() {
-                Color::Yellow
-            } else {
-                Color::DarkGray
-            };
-            let border_style = Style::default().fg(border_color);
-            for y in layout.border.y..(layout.border.y + layout.border.height) {
-                if let Some(cell) = frame.buffer_mut().cell_mut((layout.border.x, y)) {
-                    cell.set_symbol("\u{2502}");
-                    cell.set_style(border_style);
-                }
-            }
-
-            // Render sidebar sections.
-            let sidebar_focused = state.frontend.scope_stack.is_sidebar();
-            app.sidebar.render(frame, layout.sidebar, &state);
-            if sidebar_focused {
-                rects.push(layout.sidebar);
-            }
-
-            // Use layout.content (main column sub-area) for the chat log.
-            let content_area = layout.content;
-
-            // Compute sub-areas at the bottom of the content area for
-            // the streaming indicator, queue, and bottom line.
-            let queue_len = state.active_session().queue_len() as u16;
-            let bottom_lines = 1 + queue_len + 1; // indicator + queue + chat bottom line
-            let chat_log_area = if content_area.height > bottom_lines {
-                Rect {
-                    x: content_area.x,
-                    y: content_area.y,
-                    width: content_area.width,
-                    height: content_area.height - bottom_lines,
-                }
-            } else {
-                // Not enough space — give everything to chat log.
-                content_area
-            };
-
-            // Chat log
-            if let Some(element) = app.ui_registry.get_mut("chat-log") {
-                element.render(frame, chat_log_area, &state);
-                if element.is_selectable() && !sidebar_focused {
-                    rects.push(content_area);
-                }
-            }
-            // Streaming indicator (1 row at bottom of content area)
-            {
-                // Always reserve indicator row position
-                let indicator_y = content_area.y + content_area.height.saturating_sub(bottom_lines);
-                let indicator_area = Rect {
-                    x: content_area.x,
-                    y: indicator_y,
-                    width: content_area.width,
-                    height: 1,
-                };
-                if let Some(element) = app.ui_registry.get_mut("streaming-indicator") {
-                    element.render(frame, indicator_area, &state);
-                }
-            }
-            // Queue display (dynamic rows)
-            if queue_len > 0 {
-                let queue_y = content_area.y + content_area.height.saturating_sub(bottom_lines) + 1;
-                let queue_area = Rect {
-                    x: content_area.x,
-                    y: queue_y,
-                    width: content_area.width,
-                    height: queue_len,
-                };
-                if let Some(element) = app.ui_registry.get_mut("queue-display") {
-                    element.render(frame, queue_area, &state);
-                }
-            }
-            // Chat bottom line — horizontal separator at the bottom of content area
-            let line_y = content_area.y + content_area.height.saturating_sub(1);
-            let chat_line_color =
-                if matches!(state.frontend.scope_stack.current(), FocusScope::Normal) {
-                    Color::Yellow
-                } else {
-                    Color::DarkGray
-                };
-            let chat_line_style = Style::default().fg(chat_line_color);
-            for x in content_area.x..(content_area.x + content_area.width) {
-                if let Some(cell) = frame.buffer_mut().cell_mut((x, line_y)) {
-                    cell.set_symbol("\u{2500}");
-                    cell.set_style(chat_line_style);
-                }
-            }
-            // Input box
-            if let Some(element) = app.ui_registry.get_mut("chat-input-box") {
-                element.render(frame, layout.input, &state);
-            }
-
-            // Autocomplete popup overlay (transient, not a UiElement).
-            if state.active_chat_input().autocomplete().is_some() {
-                nullslop_domain::feat::chat_input::autocomplete_render::render_autocomplete_popup(
-                    frame,
-                    layout.input,
-                    &state,
-                );
-            }
+            chat_tab::render_chat_tab(
+                &mut app.ui_registry,
+                &mut app.sidebar,
+                frame,
+                &layout,
+                &state,
+                &mut rects,
+            );
         }
         nullslop_domain::ActiveTab::Dashboard => {
             // Dashboard fills the entire content area
