@@ -3,8 +3,10 @@
 // A "turn" is when a participant gives up control:
 // - User sends a message -> 1 turn
 // - Model finishes a response (not tool-use) -> 1 turn
+//
+// Always recomputes from the current session's chat history so the count
+// is correct after session switches, reloads, etc.
 
-let count = 0;
 let slot_id = "";
 
 fn init() {
@@ -17,18 +19,18 @@ fn init() {
     // Register a status bar slot.
     slot_id = host_status_bar_add_slot("turn-counter", "left", 50, "Turn: 0");
 
-    // Recompute from chat history (handles reload).
-    let entries = host_chat_get_entries();
-    count = compute_turn_count(entries);
-    host_status_bar_update_slot(slot_id, "Turn: " + count);
+    // Initial display.
+    update_display();
 }
 
 fn on_event(event) {
-    if event.type == "chat_input::ChatEntrySubmitted" && event.kind == "user" {
-        count += 1;
-    } else if event.type == "provider::StreamCompleted" && event.reason == "finished" {
-        count += 1;
-    }
+    // Always recompute — the active session may have changed.
+    update_display();
+}
+
+fn update_display() {
+    let entries = host_chat_get_entries();
+    let count = compute_turn_count(entries);
     host_status_bar_update_slot(slot_id, "Turn: " + count);
 }
 
