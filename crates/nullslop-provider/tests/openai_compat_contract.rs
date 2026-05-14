@@ -291,3 +291,19 @@ async fn base_url_override_routes_to_correct_host() {
 
     assert!(!events.is_empty());
 }
+
+#[test]
+fn factory_rejects_empty_api_key() {
+    let config = ProviderConfig::openai();
+    let factory = OpenAiCompatibleFactory::new(
+        config,
+        "gpt-4".to_owned(),
+        None,
+        String::new(),
+        None,
+        "test-openai".to_owned(),
+    );
+
+    let result = factory.create();
+    assert!(result.is_err());
+}
