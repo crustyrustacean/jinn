@@ -242,6 +242,16 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, is_selected: bool) -> Vec<
             let prefix = if pinned { "📌 " } else { "  " };
             table_to_lines(data, prefix, is_selected)
         }
+        ChatEntryKind::Thinking(text) => {
+            let prefix = if pinned { "📌   " } else { "  " };
+            multiline_styled(
+                text,
+                prefix,
+                "  ",
+                Style::default().fg(Color::DarkGray),
+                is_selected,
+            )
+        }
     }
 }
 
@@ -1095,5 +1105,66 @@ mod tests {
         let cell = buffer.cell((0, 9)).expect("cell should exist");
         assert_eq!(cell.symbol(), "C");
         assert_eq!(cell.style().fg, Some(Color::Red));
+    }
+
+    #[rstest::rstest]
+    fn render_thinking_entry_is_dark_gray() {
+        // Given a ChatLogElement with a thinking entry "reasoning here".
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::thinking("reasoning here"));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the text is dark gray on the bottom row.
+        let buffer = terminal.backend().buffer().clone();
+        let cell = buffer.cell((0, 9)).expect("cell should exist");
+        assert_eq!(cell.symbol(), "r");
+        assert_eq!(cell.style().fg, Some(Color::DarkGray));
+    }
+
+    #[rstest::rstest]
+    fn render_thinking_entry_appears_above_assistant() {
+        // Given a ChatLogElement with thinking then assistant entries.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::thinking("reasoning"));
+            s.active_session_mut()
+                .push_entry(ChatEntry::assistant("response"));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the thinking entry is dark gray and appears above the assistant entry.
+        let buffer = terminal.backend().buffer().clone();
+        // Line 8 has the thinking entry (dark gray).
+        let thinking_cell = buffer.cell((0, 8)).expect("cell should exist");
+        assert_eq!(thinking_cell.symbol(), "r");
+        assert_eq!(thinking_cell.style().fg, Some(Color::DarkGray));
+        // Line 9 has the assistant entry (cyan).
+        let assistant_cell = buffer.cell((0, 9)).expect("cell should exist");
+        assert_eq!(assistant_cell.symbol(), "r");
+        assert_eq!(assistant_cell.style().fg, Some(Color::Cyan));
     }
 }
