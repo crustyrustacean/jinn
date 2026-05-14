@@ -1333,6 +1333,36 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn stream_completed_tool_use_transitions_to_sending() {
+        // Given a session actor with a streaming session.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        let token = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Let me check".to_owned(),
+        });
+        actor.handle(ActorEnvelope::Event(token), &ctx).await;
+
+        // When processing StreamCompleted with ToolUse reason.
+        let completed = Event::StreamCompleted(StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("Let me check".to_owned()),
+            tool_calls: None,
+        });
+        actor.handle(ActorEnvelope::Event(completed), &ctx).await;
+
+        // Then the session is no longer streaming but is still sending.
+        let guard = state.read();
+        let session = guard.session(&session_id);
+        assert!(!session.is_streaming());
+        assert!(session.is_sending());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn stream_completed_cancelled_pushes_error_entry() {
         // Given a session actor with a streaming session.
         let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
