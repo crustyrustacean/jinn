@@ -83,25 +83,6 @@ tempfile = "3"
 clap = { version = "4", features = ["derive"] }
 clap-verbosity-flag = "3"
 
-# LLM
-llm = { path = "vendor/llm", default-features = false, features = [
-    "default-tls",
-    "openrouter",
-    "openai",
-    "anthropic",
-    "ollama",
-    "deepseek",
-    "xai",
-    "phind",
-    "google",
-    "groq",
-    "cohere",
-    "mistral",
-    "huggingface",
-    "zai",
-    "elevenlabs",
-] }
-
 # Other
 dirs = "6"
 toml = "0.8"

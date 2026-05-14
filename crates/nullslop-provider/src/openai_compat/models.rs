@@ -36,9 +36,7 @@ pub async fn list_models(
 ) -> Result<Vec<String>, Report<LlmServiceError>> {
     let url = format!("{}/{}", base_url.trim_end_matches('/'), models_endpoint);
 
-    let mut request = client
-        .get(&url)
-        .bearer_auth(api_key);
+    let mut request = client.get(&url).bearer_auth(api_key);
 
     for (key, value) in custom_headers {
         request = request.header(key.as_str(), value.as_str());

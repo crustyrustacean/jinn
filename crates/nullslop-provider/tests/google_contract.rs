@@ -4,9 +4,7 @@ use futures::StreamExt as _;
 use nullslop_provider::{GoogleFactory, LlmMessage, LlmService, LlmServiceFactory, StreamEvent};
 
 fn make_service(server: &mockito::ServerGuard) -> nullslop_provider::google::GoogleService {
-    let client = reqwest::Client::new();
     nullslop_provider::google::GoogleService::with_base_url(
-        client,
         "gemini-pro".into(),
         "test-key".into(),
         server.url(),
@@ -21,7 +19,10 @@ async fn text_streaming_yields_text_events() {
     let body = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello\"}]},\"finishReason\":\"STOP\"}]}\n\n";
 
     server
-        .mock("POST", mockito::Matcher::Regex(r#"\?key=test-key"#.to_owned()))
+        .mock(
+            "POST",
+            mockito::Matcher::Regex(r#"\?key=test-key"#.to_owned()),
+        )
         .with_status(200)
         .with_header("content-type", "text/event-stream")
         .with_body(body)
@@ -38,23 +39,18 @@ async fn text_streaming_yields_text_events() {
         .await
         .unwrap();
 
-    let events: Vec<StreamEvent> = stream
-        .filter_map(|r| async move { r.ok() })
-        .collect()
-        .await;
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::Text(t) if t == "Hello")));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::Text(t) if t == "Hello"))
+    );
 }
 
 #[test]
 fn factory_rejects_empty_api_key() {
-    let client = reqwest::Client::new();
-    let factory = GoogleFactory::new(
-        "gemini-pro".into(),
-        String::new(),
-        client,
-        "test".into(),
-    );
+    let factory = GoogleFactory::new("gemini-pro".into(), String::new(), "test".into());
 
     let result = factory.create();
     assert!(result.is_err());

@@ -28,9 +28,7 @@ pub async fn list_models(
     client: &Client,
     api_key: &str,
 ) -> Result<Vec<String>, Report<LlmServiceError>> {
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-    );
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models?key={api_key}");
 
     let response = client
         .get(&url)

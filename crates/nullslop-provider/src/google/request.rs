@@ -5,8 +5,8 @@
 
 use serde::Serialize;
 
-use crate::tool_types::ToolDefinition;
 use crate::LlmMessage;
+use crate::tool_types::ToolDefinition;
 
 /// Top-level request body for Google Gemini API.
 #[derive(Debug, Serialize)]
@@ -23,10 +23,7 @@ pub struct GeminiRequest {
 }
 
 /// Builds a [`GeminiRequest`] from protocol types.
-pub fn build_request(
-    messages: &[LlmMessage],
-    tools: &[ToolDefinition],
-) -> GeminiRequest {
+pub fn build_request(messages: &[LlmMessage], tools: &[ToolDefinition]) -> GeminiRequest {
     // Extract system prompt separately.
     let system_instruction = messages.iter().find_map(|m| match m {
         LlmMessage::System { content } => Some(serde_json::json!({

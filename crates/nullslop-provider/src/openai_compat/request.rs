@@ -5,8 +5,8 @@
 
 use serde::Serialize;
 
-use crate::tool_types::ToolDefinition;
 use crate::LlmMessage;
+use crate::tool_types::ToolDefinition;
 
 /// Top-level request body for OpenAI-compatible chat completions.
 #[derive(Debug, Serialize)]
@@ -42,8 +42,7 @@ pub fn build_request(
     tools: &[ToolDefinition],
     extra_body: &serde_json::Map<String, serde_json::Value>,
 ) -> ChatCompletionRequest {
-    let openai_messages: Vec<serde_json::Value> =
-        messages.iter().map(message_to_json).collect();
+    let openai_messages: Vec<serde_json::Value> = messages.iter().map(message_to_json).collect();
 
     let openai_tools = if tools.is_empty() {
         None
@@ -89,8 +88,7 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
             content,
             tool_calls: Some(calls),
         } => {
-            let json_calls: Vec<serde_json::Value> =
-                calls.iter().map(tool_call_to_json).collect();
+            let json_calls: Vec<serde_json::Value> = calls.iter().map(tool_call_to_json).collect();
             serde_json::json!({
                 "role": "assistant",
                 "content": content,

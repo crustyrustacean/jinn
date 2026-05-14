@@ -4,8 +4,7 @@ use error_stack::Report;
 use reqwest::Client;
 
 use crate::anthropic::service::AnthropicService;
-use crate::service::{LlmService, LlmServiceFactory, LlmServiceError};
-
+use crate::service::{LlmService, LlmServiceError, LlmServiceFactory};
 /// Factory for Anthropic LLM services.
 #[derive(Debug)]
 pub struct AnthropicFactory {
@@ -20,9 +19,20 @@ pub struct AnthropicFactory {
 }
 
 impl AnthropicFactory {
-    /// Create a new factory.
+    /// Create a new factory with an internally created HTTP client.
     #[must_use]
-    pub fn new(model: String, api_key: String, client: Client, name: String) -> Self {
+    pub fn new(model: String, api_key: String, name: String) -> Self {
+        Self {
+            model,
+            api_key,
+            client: Client::new(),
+            name,
+        }
+    }
+
+    /// Create a new factory with a shared HTTP client.
+    #[must_use]
+    pub fn with_client(client: Client, model: String, api_key: String, name: String) -> Self {
         Self {
             model,
             api_key,
@@ -35,12 +45,15 @@ impl AnthropicFactory {
 impl LlmServiceFactory for AnthropicFactory {
     fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
         if self.api_key.is_empty() {
-            return Err(Report::new(LlmServiceError::ApiKey)
-                .attach("Missing Anthropic API key"));
+            return Err(Report::new(LlmServiceError::ApiKey).attach("Missing Anthropic API key"));
         }
 
-        let service =
-            AnthropicService::new(self.client.clone(), self.model.clone(), self.api_key.clone(), None);
+        let service = AnthropicService::with_client(
+            self.client.clone(),
+            self.model.clone(),
+            self.api_key.clone(),
+            None,
+        );
 
         Ok(Box::new(service))
     }

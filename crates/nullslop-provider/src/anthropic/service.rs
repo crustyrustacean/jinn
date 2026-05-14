@@ -36,8 +36,20 @@ pub struct AnthropicService {
 impl AnthropicService {
     /// Create a new Anthropic service instance.
     #[must_use]
-    pub fn new(
-        client: Client,
+    pub fn new(model: String, api_key: String, system_prompt: Option<String>) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            model,
+            api_key,
+            system_prompt,
+            base_url: DEFAULT_BASE_URL.to_owned(),
+        }
+    }
+
+    /// Create a new Anthropic service with a custom client.
+    #[must_use]
+    pub fn with_client(
+        client: reqwest::Client,
         model: String,
         api_key: String,
         system_prompt: Option<String>,
@@ -54,14 +66,13 @@ impl AnthropicService {
     /// Create a new Anthropic service instance with a custom base URL (for testing).
     #[must_use]
     pub fn with_base_url(
-        client: Client,
         model: String,
         api_key: String,
         system_prompt: Option<String>,
         base_url: String,
     ) -> Self {
         Self {
-            client,
+            client: reqwest::Client::new(),
             model,
             api_key,
             system_prompt,
@@ -89,12 +100,8 @@ impl AnthropicService {
                 .attach(format!("Missing {PROVIDER_NAME} API key")));
         }
 
-        let body = request::build_request(
-            &self.model,
-            messages,
-            tools,
-            self.system_prompt.as_deref(),
-        );
+        let body =
+            request::build_request(&self.model, messages, tools, self.system_prompt.as_deref());
 
         let response = self
             .client

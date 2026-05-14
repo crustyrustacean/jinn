@@ -30,7 +30,18 @@ pub struct GoogleService {
 impl GoogleService {
     /// Create a new Google service instance.
     #[must_use]
-    pub fn new(client: Client, model: String, api_key: String) -> Self {
+    pub fn new(model: String, api_key: String) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            model,
+            api_key,
+            base_url: None,
+        }
+    }
+
+    /// Create a new Google service with a custom client.
+    #[must_use]
+    pub fn with_client(client: Client, model: String, api_key: String) -> Self {
         Self {
             client,
             model,
@@ -41,14 +52,9 @@ impl GoogleService {
 
     /// Create a new Google service with a custom base URL (for testing).
     #[must_use]
-    pub fn with_base_url(
-        client: Client,
-        model: String,
-        api_key: String,
-        base_url: String,
-    ) -> Self {
+    pub fn with_base_url(model: String, api_key: String, base_url: String) -> Self {
         Self {
-            client,
+            client: reqwest::Client::new(),
             model,
             api_key,
             base_url: Some(base_url),

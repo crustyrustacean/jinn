@@ -11,9 +11,9 @@
 
 use std::collections::HashMap;
 
+use crate::StreamEvent;
 use crate::stream_event::StopReason;
 use crate::tool_types::ToolCall;
-use crate::StreamEvent;
 
 /// State tracked per content block index for tool use.
 #[derive(Debug, Default)]
@@ -47,7 +47,10 @@ impl AnthropicStreamParser {
         match response_type {
             "content_block_start" => {
                 let content_block = response.get("content_block")?;
-                let block_type = content_block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                let block_type = content_block
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("");
 
                 if block_type == "tool_use" {
                     let id = content_block
@@ -206,9 +209,7 @@ mod tests {
             r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"x\":1}"}}"#,
         );
 
-        let event = parser.parse_data(
-            r#"{"type":"content_block_stop","index":1}"#,
-        );
+        let event = parser.parse_data(r#"{"type":"content_block_stop","index":1}"#);
 
         match event {
             Some(StreamEvent::ToolUseComplete { tool_call, .. }) => {

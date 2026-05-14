@@ -5,8 +5,8 @@
 
 use serde::Serialize;
 
-use crate::tool_types::ToolDefinition;
 use crate::LlmMessage;
+use crate::tool_types::ToolDefinition;
 
 /// Top-level request body for Anthropic Messages API.
 #[derive(Debug, Serialize)]
@@ -32,14 +32,12 @@ pub fn build_request(
 ) -> MessagesRequest {
     // Separate system messages from conversation messages.
     // Anthropic uses a top-level `system` field.
-    let system_text = system_prompt
-        .map(|s| s.to_owned())
-        .or_else(|| {
-            messages.iter().find_map(|m| match m {
-                LlmMessage::System { content } => Some(content.clone()),
-                _ => None,
-            })
-        });
+    let system_text = system_prompt.map(|s| s.to_owned()).or_else(|| {
+        messages.iter().find_map(|m| match m {
+            LlmMessage::System { content } => Some(content.clone()),
+            _ => None,
+        })
+    });
 
     // Non-system messages go into the messages array.
     let anthropic_messages: Vec<serde_json::Value> = messages

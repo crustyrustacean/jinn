@@ -34,9 +34,28 @@ pub struct OpenAiCompatibleService {
 }
 
 impl OpenAiCompatibleService {
-    /// Create a new service instance.
+    /// Create a new service instance with an internally created HTTP client.
     #[must_use]
     pub fn new(
+        config: ProviderConfig,
+        model: String,
+        base_url: Option<String>,
+        api_key: String,
+        extra_body: Option<serde_json::Value>,
+    ) -> Self {
+        Self::with_client(
+            reqwest::Client::new(),
+            config,
+            model,
+            base_url,
+            api_key,
+            extra_body,
+        )
+    }
+
+    /// Create a new service instance with a shared HTTP client.
+    #[must_use]
+    pub fn with_client(
         client: Client,
         config: ProviderConfig,
         model: String,
@@ -86,10 +105,13 @@ impl OpenAiCompatibleService {
                 .attach(format!("Missing {} API key", self.config.name)));
         }
 
-        let body =
-            request::build_request(&self.model, messages, tools, &self.extra_body);
+        let body = request::build_request(&self.model, messages, tools, &self.extra_body);
 
-        let url = format!("{}/{}", self.base_url.trim_end_matches('/'), self.config.chat_endpoint);
+        let url = format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            self.config.chat_endpoint
+        );
 
         let mut req = self
             .client
@@ -124,48 +146,41 @@ impl OpenAiCompatibleService {
     }
 }
 
-fn create_tool_stream(
-    response: reqwest::Response,
-    provider_name: &str,
-) -> ToolStream {
+fn create_tool_stream(response: reqwest::Response, provider_name: &str) -> ToolStream {
     let parser = StreamResponseParser::new();
     let sse = SseParser::new();
 
     let stream = response
         .bytes_stream()
-        .scan((parser, sse, provider_name.to_owned()), |(parser, sse, name), chunk| {
-            let results = match chunk {
-                Ok(bytes) => {
-                    let events = sse.feed(&bytes);
-                    let mut stream_events = Vec::new();
-                    for event in events {
-                        match event {
-                            SseEvent::Data(json) => {
-                                stream_events.extend(
-                                    parser.parse_data(&json)
-                                        .into_iter()
-                                        .map(Ok),
-                                );
-                            }
-                            SseEvent::Done => {
-                                stream_events.extend(
-                                    parser.handle_done()
-                                        .into_iter()
-                                        .map(Ok),
-                                );
+        .scan(
+            (parser, sse, provider_name.to_owned()),
+            |(parser, sse, name), chunk| {
+                let results = match chunk {
+                    Ok(bytes) => {
+                        let events = sse.feed(&bytes);
+                        let mut stream_events = Vec::new();
+                        for event in events {
+                            match event {
+                                SseEvent::Data(json) => {
+                                    stream_events
+                                        .extend(parser.parse_data(&json).into_iter().map(Ok));
+                                }
+                                SseEvent::Done => {
+                                    stream_events.extend(parser.handle_done().into_iter().map(Ok));
+                                }
                             }
                         }
+                        stream_events
                     }
-                    stream_events
-                }
-                Err(e) => {
-                    vec![Err(Report::new(LlmServiceError::Provider)
-                        .attach(format!("{name} stream error"))
-                        .attach(e.to_string()))]
-                }
-            };
-            async move { Some(results) }
-        })
+                    Err(e) => {
+                        vec![Err(Report::new(LlmServiceError::Provider)
+                            .attach(format!("{name} stream error"))
+                            .attach(e.to_string()))]
+                    }
+                };
+                async move { Some(results) }
+            },
+        )
         .flat_map(futures::stream::iter);
 
     Box::pin(stream)
