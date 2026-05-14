@@ -88,4 +88,10 @@ mod tests {
         let output: String = tokens.into_iter().collect();
         assert_eq!(output, HELP_MESSAGE);
     }
+
+    #[rstest::rstest]
+    fn factory_name_returns_no_providers_available() {
+        let factory = NoProvidersAvailableFactory;
+        assert_eq!(factory.name(), "NoProvidersAvailable");
+    }
 }

@@ -308,4 +308,10 @@ mod tests {
         // Then the output matches the canned response (case-insensitive match).
         assert_eq!(output, RESPONSE_TEXT);
     }
+
+    #[rstest::rstest]
+    fn factory_name_returns_sample_llm() {
+        let factory = SampleLlmServiceFactory;
+        assert_eq!(factory.name(), "Sample");
+    }
 }

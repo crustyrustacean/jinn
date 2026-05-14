@@ -787,4 +787,10 @@ mod tests {
             .collect();
         assert_eq!(completes.len(), 2);
     }
+
+    #[rstest::rstest]
+    fn factory_name_returns_fake_llm() {
+        let factory = FakeLlmServiceFactory::new(vec![]);
+        assert_eq!(factory.name(), "FakeLlm");
+    }
 }
