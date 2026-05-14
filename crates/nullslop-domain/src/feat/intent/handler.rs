@@ -60,6 +60,22 @@ impl IntentHandler {
     pub fn handle(intent: &Intent, state: &mut AppState) -> IntentResult {
         state.frontend.tui_signals.clear();
 
+        // Cancel stream prompt intercept: if the prompt is showing,
+        // ESC (NormalEscape or SidebarLeave) confirms the cancel;
+        // any other intent dismisses the prompt and continues processing.
+        if state.frontend.cancel_stream_prompt {
+            state.frontend.cancel_stream_prompt = false;
+            if matches!(intent, Intent::NormalEscape | Intent::SidebarLeave) {
+                // Second ESC — cancel the stream.
+                let session_id = state.session.active_session.clone();
+                state.active_session_mut().cancel_stream_and_drain();
+                return IntentResult::with_commands(vec![Command::CancelStream(
+                    crate::feat::provider::protocol::command::CancelStream { session_id },
+                )]);
+            }
+            // Any other key — dismiss prompt, fall through to normal processing.
+        }
+
         match intent {
             // --- Chat Input ---
             Intent::InsertChar { ch } => feat::chat_input::intent::handle_insert_char(*ch, state),

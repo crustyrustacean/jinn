@@ -182,3 +182,96 @@ fn pop_on_base_is_noop() {
     assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
     assert_eq!(state.frontend.scope_stack.len(), 1);
 }
+
+// ============================================================
+// Cancel stream prompt intercept
+// ============================================================
+
+#[rstest::rstest]
+fn cancel_prompt_second_esc_cancels_stream() {
+    // Given a state with cancel prompt active and a streaming session.
+    let mut state = AppState::default();
+    state.active_session_mut().begin_streaming();
+    state.frontend.cancel_stream_prompt = true;
+
+    // When handling NormalEscape (second ESC).
+    let result = handle(&Intent::NormalEscape, &mut state);
+
+    // Then the prompt is dismissed.
+    assert!(!state.frontend.cancel_stream_prompt);
+    // And the session is idle (cancelled).
+    assert!(state.active_session().is_idle());
+    // And a CancelStream command was emitted.
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, crate::protocol::Command::CancelStream(..))),
+        "expected CancelStream command"
+    );
+}
+
+#[rstest::rstest]
+fn cancel_prompt_sidebar_leave_also_cancels() {
+    // Given a state with cancel prompt active and a streaming session.
+    let mut state = AppState::default();
+    state.active_session_mut().begin_streaming();
+    state.frontend.cancel_stream_prompt = true;
+
+    // When handling SidebarLeave.
+    let result = handle(&Intent::SidebarLeave, &mut state);
+
+    // Then the prompt is dismissed.
+    assert!(!state.frontend.cancel_stream_prompt);
+    // And the session is idle.
+    assert!(state.active_session().is_idle());
+    // And a CancelStream command was emitted.
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, crate::protocol::Command::CancelStream(..))),
+        "expected CancelStream command"
+    );
+}
+
+#[rstest::rstest]
+fn cancel_prompt_other_key_dismisses_and_processes() {
+    // Given a state with cancel prompt active.
+    let mut state = AppState::default();
+    state.frontend.cancel_stream_prompt = true;
+
+    // When handling ScrollUp (any non-ESC intent).
+    let result = handle(&Intent::ScrollUp, &mut state);
+
+    // Then the prompt is dismissed.
+    assert!(!state.frontend.cancel_stream_prompt);
+    // And the intent was processed normally (scroll offset is set).
+    assert!(state.active_session().scroll_offset().is_some());
+    assert!(result.commands.is_empty());
+}
+
+#[rstest::rstest]
+fn cancel_prompt_drains_queue_on_cancel() {
+    // Given a state with cancel prompt active, streaming session, and queued messages.
+    let mut state = AppState::default();
+    state.active_session_mut().begin_streaming();
+    state.active_session_mut().enqueue_message("queued1".into());
+    state.active_session_mut().enqueue_message("queued2".into());
+    state.frontend.cancel_stream_prompt = true;
+
+    // When handling NormalEscape (second ESC).
+    let result = handle(&Intent::NormalEscape, &mut state);
+
+    // Then the queued messages are drained to the input buffer.
+    assert_eq!(state.active_chat_input().text(), "queued1\nqueued2");
+    // And the session is idle.
+    assert!(state.active_session().is_idle());
+    // And a CancelStream command was emitted.
+    assert!(
+        result
+            .commands
+            .iter()
+            .any(|c| matches!(c, crate::protocol::Command::CancelStream(..)))
+    );
+}

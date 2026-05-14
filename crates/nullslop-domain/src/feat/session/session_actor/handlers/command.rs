@@ -1,9 +1,7 @@
 //! Command handlers — process session lifecycle commands.
 
 use crate::common::actor::ActorContext;
-use crate::feat::chat_input::protocol::command::{
-    EnqueueUserMessage, PushChatEntry, SetChatInputText,
-};
+use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::protocol::command::{
     AssemblePrompt, RestoreStrategyState, SwitchPromptStrategy,
@@ -18,15 +16,12 @@ use super::super::SessionPersistenceActor;
 enum EnqueueAction {
     /// Session is idle — dispatch prompt assembly.
     AssemblePrompt,
-    /// Session is streaming — message was queued.
+    /// Session is busy — message was queued.
     Queued,
-    /// Session is busy (sending or assembling) — put text back in the input box.
-    SetInputText(String),
 }
 
 impl SessionPersistenceActor {
-    /// EnqueueUserMessage: if idle → assemble prompt; if streaming → queue;
-    /// otherwise → set input text.
+    /// EnqueueUserMessage: if idle → assemble prompt; if busy → queue.
     pub(in crate::feat::session::session_actor) fn handle_enqueue_user_message(
         &self,
         payload: &EnqueueUserMessage,
@@ -44,11 +39,10 @@ impl SessionPersistenceActor {
                 session.push_entry(ChatEntry::user(&payload.text));
                 session.begin_sending();
                 EnqueueAction::AssemblePrompt
-            } else if session.is_streaming() {
+            } else {
+                // All busy states (sending, streaming, assembling) → queue.
                 session.enqueue_message(payload.text.clone());
                 EnqueueAction::Queued
-            } else {
-                EnqueueAction::SetInputText(payload.text.clone())
             }
         };
 
@@ -59,7 +53,7 @@ impl SessionPersistenceActor {
                 let model_name = state.session(&payload.session_id).profile().model.clone();
                 (history, model_name)
             }
-            EnqueueAction::Queued | EnqueueAction::SetInputText(_) => (vec![], String::new()),
+            EnqueueAction::Queued => (vec![], String::new()),
         };
 
         match action {
@@ -83,14 +77,6 @@ impl SessionPersistenceActor {
                 self.save_active_session(&payload.session_id);
             }
             EnqueueAction::Queued => {}
-            EnqueueAction::SetInputText(text) => {
-                if let Err(e) = ctx.send_command(Command::SetChatInputText(SetChatInputText {
-                    session_id: payload.session_id.clone(),
-                    text,
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SetChatInputText");
-                }
-            }
         }
     }
 

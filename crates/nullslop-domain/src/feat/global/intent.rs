@@ -27,13 +27,9 @@ pub fn handle_toggle_whichkey(state: &mut AppState) -> IntentResult {
 
 /// Handles the Interrupt intent.
 ///
-/// When `target` is `None`, applies to the active session (smart behavior):
-/// validates, deactivates autocomplete, and either clears the input buffer
-/// or cancels the stream and drains queued messages.
-///
-/// When `target` is `Some(id)`, targets a specific session: just cancels
-/// streaming and emits a CancelStream command. No validation, no autocomplete,
-/// no drain.
+/// When `target` is `None`, clears the input buffer.
+/// When `target` is `Some(id)`, cancels the targeted session's stream
+/// (for headless/scripted use).
 pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> IntentResult {
     if let Some(id) = target {
         state.session_mut(id).cancel_streaming();
@@ -42,21 +38,9 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
         })]);
     }
 
-    // None path: smart interrupt on active session
-    if validator::validate_interrupt(state).is_err() {
-        return IntentResult::empty();
-    }
-
-    state.active_chat_input_mut().deactivate_autocomplete();
-
-    if state.active_chat_input().is_empty() {
-        let session_id = state.session.active_session.clone();
-        state.active_session_mut().cancel_stream_and_drain();
-        IntentResult::with_commands(vec![Command::CancelStream(CancelStream { session_id })])
-    } else {
-        state.active_chat_input_mut().reset();
-        IntentResult::empty()
-    }
+    // None path: just clear the input buffer.
+    state.active_chat_input_mut().reset();
+    IntentResult::empty()
 }
 
 #[cfg(test)]
@@ -102,7 +86,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn interrupt_resets_non_empty_buffer() {
+    fn interrupt_clears_buffer_when_non_empty() {
         // Given a state with text in the buffer.
         let mut state = AppState::default();
         state.active_chat_input_mut().insert_grapheme_at_cursor('h');
@@ -116,7 +100,20 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn interrupt_cancels_stream_when_buffer_empty() {
+    fn interrupt_clears_empty_buffer_is_noop() {
+        // Given a state with empty buffer.
+        let mut state = AppState::default();
+
+        // When handling Interrupt.
+        let result = handle_interrupt(&mut state);
+
+        // Then no commands and buffer is still empty.
+        assert!(state.active_chat_input().is_empty());
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn interrupt_does_not_cancel_stream() {
         // Given a state with empty buffer and active stream.
         let mut state = AppState::default();
         state.active_session_mut().begin_streaming();
@@ -124,47 +121,10 @@ mod tests {
         // When handling Interrupt.
         let result = handle_interrupt(&mut state);
 
-        // Then a CancelStream command is returned.
-        assert_eq!(result.commands.len(), 1);
-        assert!(matches!(&result.commands[0], Command::CancelStream(..)));
-        // And the session is idle (streaming was cancelled).
-        assert!(state.active_session().is_idle());
-    }
-
-    #[rstest::rstest]
-    fn interrupt_noop_when_idle_and_empty() {
-        // Given a state with empty buffer and idle session.
-        let mut state = AppState::default();
-
-        // When handling Interrupt.
-        let result = handle_interrupt(&mut state);
-
-        // Then no commands.
+        // Then no CancelStream command is emitted.
         assert!(result.commands.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn interrupt_drains_queued_messages_to_input_buffer() {
-        // Given a streaming session with queued messages and empty input buffer.
-        let mut state = AppState::default();
-        state.active_session_mut().begin_streaming();
-        state.active_session_mut().enqueue_message("queued1".into());
-        state.active_session_mut().enqueue_message("queued2".into());
-
-        // When handling Interrupt.
-        let result = handle_interrupt(&mut state);
-
-        // Then the queued messages are drained to the input buffer.
-        assert_eq!(state.active_chat_input().text(), "queued1\nqueued2");
-        // And the session is idle.
-        assert!(state.active_session().is_idle());
-        // And a CancelStream command is returned.
-        assert!(
-            result
-                .commands
-                .iter()
-                .any(|c| matches!(c, Command::CancelStream(..)))
-        );
+        // And the session is still streaming.
+        assert!(state.active_session().is_streaming());
     }
 
     #[rstest::rstest]
