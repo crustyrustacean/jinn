@@ -24,12 +24,7 @@ pub struct RenderContext {
 ///
 /// Continuation lines (after the first `\n`) have no prefix — the `indent`
 /// parameter is accepted for API compatibility but currently unused.
-pub fn multiline_styled<T, P, I>(
-    text: T,
-    prefix: P,
-    indent: I,
-    style: Style,
-) -> Vec<Line<'static>>
+pub fn multiline_styled<T, P, I>(text: T, prefix: P, indent: I, style: Style) -> Vec<Line<'static>>
 where
     T: AsRef<str>,
     P: AsRef<str>,

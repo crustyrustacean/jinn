@@ -11,7 +11,7 @@
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
-use super::shared::{pad_line_to_width, RenderContext};
+use super::shared::{RenderContext, pad_line_to_width};
 
 /// Foreground color for tool result text.
 const TOOL_RESULT_FG: Color = Color::Rgb(0x58, 0x5F, 0x6A);
@@ -123,15 +123,18 @@ mod tests {
         let lines = to_lines("bash", &content, true, &ctx);
 
         // Then some line contains "line 10".
-        let has_last_line = lines.iter().any(|line| {
-            line.spans.iter().any(|s| s.content.contains("line 10"))
-        });
-        assert!(has_last_line, "expanded tool result should contain 'line 10'");
+        let has_last_line = lines
+            .iter()
+            .any(|line| line.spans.iter().any(|s| s.content.contains("line 10")));
+        assert!(
+            has_last_line,
+            "expanded tool result should contain 'line 10'"
+        );
 
         // And no line contains "more lines".
-        let has_indicator = lines.iter().any(|line| {
-            line.spans.iter().any(|s| s.content.contains("more lines"))
-        });
+        let has_indicator = lines
+            .iter()
+            .any(|line| line.spans.iter().any(|s| s.content.contains("more lines")));
         assert!(
             !has_indicator,
             "expanded tool result should not show truncation indicator"
@@ -148,13 +151,10 @@ mod tests {
         let lines = to_lines("bash", &content, true, &ctx);
 
         // Then no line contains "more lines".
-        let has_indicator = lines.iter().any(|line| {
-            line.spans.iter().any(|s| s.content.contains("more lines"))
-        });
-        assert!(
-            !has_indicator,
-            "short tool result should not be truncated"
-        );
+        let has_indicator = lines
+            .iter()
+            .any(|line| line.spans.iter().any(|s| s.content.contains("more lines")));
+        assert!(!has_indicator, "short tool result should not be truncated");
     }
 
     #[rstest::rstest]
@@ -166,22 +166,14 @@ mod tests {
         let lines = to_lines("bash", "output", true, &ctx);
 
         // Then the first line contains "bash".
-        let name_content: String = lines[0]
-            .spans
-            .iter()
-            .map(|s| s.content.clone())
-            .collect();
+        let name_content: String = lines[0].spans.iter().map(|s| s.content.clone()).collect();
         assert!(
             name_content.starts_with("bash"),
             "first line should start with tool name"
         );
 
         // And the second line contains "output".
-        let content_line: String = lines[1]
-            .spans
-            .iter()
-            .map(|s| s.content.clone())
-            .collect();
+        let content_line: String = lines[1].spans.iter().map(|s| s.content.clone()).collect();
         assert!(
             content_line.starts_with("output"),
             "second line should start with content"

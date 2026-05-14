@@ -3,7 +3,7 @@
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
 
-use super::shared::{multiline_styled, pad_line_to_width, RenderContext};
+use super::shared::{RenderContext, multiline_styled, pad_line_to_width};
 
 /// Background color for user entry BLOCK.
 const USER_BG: Color = Color::Rgb(0x34, 0x35, 0x41);

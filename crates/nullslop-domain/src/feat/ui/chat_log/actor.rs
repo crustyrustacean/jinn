@@ -3,14 +3,9 @@
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
 
-use super::shared::{multiline_styled, RenderContext};
+use super::shared::{RenderContext, multiline_styled};
 
 pub fn to_lines(source: &str, text: &str, _ctx: &RenderContext) -> Vec<Line<'static>> {
     let prefix = format!("[actor] {source}: ");
-    multiline_styled(
-        text,
-        &prefix,
-        "",
-        Style::default().fg(Color::Yellow),
-    )
+    multiline_styled(text, &prefix, "", Style::default().fg(Color::Yellow))
 }
