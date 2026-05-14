@@ -16,6 +16,7 @@ mod tool_types;
 
 // Custom provider implementations (not OpenAI-compatible).
 pub mod anthropic;
+pub mod google;
 
 pub use backend::{Backend, BackendError};
 pub use fake::{FakeLlmServiceFactory, TOOL_LOOP_TRIGGER};
