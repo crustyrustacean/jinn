@@ -9,7 +9,7 @@ use reqwest::Client;
 
 use crate::openai_compat::provider_config::ProviderConfig;
 use crate::openai_compat::service::OpenAiCompatibleService;
-use crate::service::{LlmService, LlmServiceFactory, LlmServiceError};
+use crate::service::{LlmService, LlmServiceError, LlmServiceFactory};
 
 /// Factory for OpenAI-compatible LLM services.
 ///
@@ -35,9 +35,7 @@ pub struct OpenAiCompatibleFactory {
 }
 
 impl OpenAiCompatibleFactory {
-    /// Create a new factory.
-    ///
-    /// The `client` is shared across all service instances created by this factory.
+    /// Create a new factory with an internally created HTTP client.
     #[must_use]
     pub fn new(
         config: ProviderConfig,
@@ -45,7 +43,28 @@ impl OpenAiCompatibleFactory {
         base_url: Option<String>,
         api_key: String,
         extra_body: Option<serde_json::Value>,
+        name: String,
+    ) -> Self {
+        Self {
+            config,
+            model,
+            base_url,
+            api_key,
+            extra_body,
+            client: Client::new(),
+            name,
+        }
+    }
+
+    /// Create a new factory with a shared HTTP client.
+    #[must_use]
+    pub fn with_client(
         client: Client,
+        config: ProviderConfig,
+        model: String,
+        base_url: Option<String>,
+        api_key: String,
+        extra_body: Option<serde_json::Value>,
         name: String,
     ) -> Self {
         Self {
@@ -67,7 +86,7 @@ impl LlmServiceFactory for OpenAiCompatibleFactory {
                 .attach(format!("Missing {} API key", self.config.name)));
         }
 
-        let service = OpenAiCompatibleService::new(
+        let service = OpenAiCompatibleService::with_client(
             self.client.clone(),
             self.config.clone(),
             self.model.clone(),

@@ -8,9 +8,7 @@ use nullslop_provider::{
 };
 
 fn make_service(server: &mockito::ServerGuard) -> nullslop_provider::anthropic::AnthropicService {
-    let client = reqwest::Client::new();
     nullslop_provider::anthropic::AnthropicService::with_base_url(
-        client,
         "claude-3".into(),
         "test-key".into(),
         None,
@@ -49,13 +47,18 @@ async fn text_streaming_yields_text_events() {
         .await
         .unwrap();
 
-    let events: Vec<StreamEvent> = stream
-        .filter_map(|r| async move { r.ok() })
-        .collect()
-        .await;
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::Text(t) if t == "Hello")));
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::Text(t) if t == " world")));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::Text(t) if t == "Hello"))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::Text(t) if t == " world"))
+    );
     assert!(events.iter().any(|e| matches!(e, StreamEvent::Done { .. })));
 }
 
@@ -93,26 +96,29 @@ async fn tool_call_streaming_yields_start_delta_complete_done() {
         .await
         .unwrap();
 
-    let events: Vec<StreamEvent> = stream
-        .filter_map(|r| async move { r.ok() })
-        .collect()
-        .await;
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::ToolUseStart { name, .. } if name == "echo")));
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::ToolUseInputDelta { .. })));
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::ToolUseComplete { .. })));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::ToolUseStart { name, .. } if name == "echo"))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::ToolUseInputDelta { .. }))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::ToolUseComplete { .. }))
+    );
     assert!(events.iter().any(|e| matches!(e, StreamEvent::Done { .. })));
 }
 
 #[test]
 fn factory_rejects_empty_api_key() {
-    let client = reqwest::Client::new();
-    let factory = AnthropicFactory::new(
-        "claude-3".into(),
-        String::new(),
-        client,
-        "test".into(),
-    );
+    let factory = AnthropicFactory::new("claude-3".into(), String::new(), "test".into());
 
     let result = factory.create();
     assert!(result.is_err());

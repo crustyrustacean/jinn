@@ -9,14 +9,14 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::tool_types::ToolCall;
 use crate::llm_message::LlmMessage;
+use crate::tool_types::ToolCall;
 use error_stack::Report;
 use futures::stream;
 
-use crate::stream_event::StreamEvent;
-use crate::stream_event::StopReason;
 use crate::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
+use crate::stream_event::StopReason;
+use crate::stream_event::StreamEvent;
 
 /// Special prompt that triggers multi-turn tool loop behavior.
 ///

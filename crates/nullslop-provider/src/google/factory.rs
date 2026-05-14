@@ -4,7 +4,7 @@ use error_stack::Report;
 use reqwest::Client;
 
 use crate::google::service::GoogleService;
-use crate::service::{LlmService, LlmServiceFactory, LlmServiceError};
+use crate::service::{LlmService, LlmServiceError, LlmServiceFactory};
 
 /// Factory for Google Gemini LLM services.
 #[derive(Debug)]
@@ -20,9 +20,20 @@ pub struct GoogleFactory {
 }
 
 impl GoogleFactory {
-    /// Create a new factory.
+    /// Create a new factory with an internally created HTTP client.
     #[must_use]
-    pub fn new(model: String, api_key: String, client: Client, name: String) -> Self {
+    pub fn new(model: String, api_key: String, name: String) -> Self {
+        Self {
+            model,
+            api_key,
+            client: Client::new(),
+            name,
+        }
+    }
+
+    /// Create a new factory with a shared HTTP client.
+    #[must_use]
+    pub fn with_client(client: Client, model: String, api_key: String, name: String) -> Self {
         Self {
             model,
             api_key,
@@ -35,12 +46,14 @@ impl GoogleFactory {
 impl LlmServiceFactory for GoogleFactory {
     fn create(&self) -> Result<Box<dyn LlmService>, Report<LlmServiceError>> {
         if self.api_key.is_empty() {
-            return Err(Report::new(LlmServiceError::ApiKey)
-                .attach("Missing Google API key"));
+            return Err(Report::new(LlmServiceError::ApiKey).attach("Missing Google API key"));
         }
 
-        let service =
-            GoogleService::new(self.client.clone(), self.model.clone(), self.api_key.clone());
+        let service = GoogleService::with_client(
+            self.client.clone(),
+            self.model.clone(),
+            self.api_key.clone(),
+        );
 
         Ok(Box::new(service))
     }

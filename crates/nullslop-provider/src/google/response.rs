@@ -7,9 +7,9 @@
 //! Text content: `candidates[0].content.parts[0].text`
 //! Function calls: `candidates[0].content.parts[0].functionCall`
 
+use crate::StreamEvent;
 use crate::stream_event::StopReason;
 use crate::tool_types::ToolCall;
-use crate::StreamEvent;
 
 /// Stateful parser for Google Gemini streaming responses.
 #[derive(Debug, Default)]
@@ -133,10 +133,15 @@ mod tests {
 
     #[rstest::rstest]
     fn text_delta_produces_text_event() {
-        let json = r#"{"candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":"STOP"}]}"#;
+        let json =
+            r#"{"candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":"STOP"}]}"#;
         let events = parse_single(json);
 
-        assert!(events.iter().any(|e| matches!(e, StreamEvent::Text(t) if t == "Hello")));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::Text(t) if t == "Hello"))
+        );
     }
 
     #[rstest::rstest]
@@ -145,8 +150,16 @@ mod tests {
         let events = parse_single(json);
 
         // Should produce ToolUseStart + ToolUseInputDelta + ToolUseComplete + Done.
-        assert!(events.iter().any(|e| matches!(e, StreamEvent::ToolUseStart { name, .. } if name == "get_weather")));
-        assert!(events.iter().any(|e| matches!(e, StreamEvent::ToolUseComplete { .. })));
+        assert!(
+            events.iter().any(
+                |e| matches!(e, StreamEvent::ToolUseStart { name, .. } if name == "get_weather")
+            )
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::ToolUseComplete { .. }))
+        );
         assert!(events.iter().any(|e| matches!(e, StreamEvent::Done { .. })));
     }
 
@@ -166,7 +179,8 @@ mod tests {
     #[rstest::rstest]
     fn done_sentinel_after_finish_is_noop() {
         let mut parser = GeminiStreamParser::new();
-        let json = r#"{"candidates":[{"content":{"parts":[{"text":"hi"}]},"finishReason":"STOP"}]}"#;
+        let json =
+            r#"{"candidates":[{"content":{"parts":[{"text":"hi"}]},"finishReason":"STOP"}]}"#;
         parser.parse_data(json);
 
         let events = parser.handle_done();
@@ -178,6 +192,11 @@ mod tests {
         let mut parser = GeminiStreamParser::new();
         let events = parser.handle_done();
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0], StreamEvent::Done { stop_reason: StopReason::EndTurn }));
+        assert!(matches!(
+            &events[0],
+            StreamEvent::Done {
+                stop_reason: StopReason::EndTurn
+            }
+        ));
     }
 }

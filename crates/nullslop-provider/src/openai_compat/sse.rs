@@ -118,9 +118,7 @@ mod tests {
     #[rstest::rstest]
     fn multiple_events_in_one_chunk() {
         let mut parser = SseParser::new();
-        let events = parser.feed(
-            b"data: {\"a\":1}\n\ndata: {\"b\":2}\n\ndata: [DONE]\n\n",
-        );
+        let events = parser.feed(b"data: {\"a\":1}\n\ndata: {\"b\":2}\n\ndata: [DONE]\n\n");
 
         assert_eq!(events.len(), 3);
         assert_eq!(events[0], SseEvent::Data("{\"a\":1}".to_owned()));

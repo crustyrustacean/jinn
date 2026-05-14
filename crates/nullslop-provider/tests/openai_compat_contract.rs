@@ -5,20 +5,18 @@
 
 use futures::StreamExt as _;
 use nullslop_provider::{
-    LlmMessage, LlmServiceFactory, OpenAiCompatibleFactory, ProviderConfig,
-    StreamEvent, ToolDefinition,
+    LlmMessage, LlmServiceFactory, OpenAiCompatibleFactory, ProviderConfig, StreamEvent,
+    ToolDefinition,
 };
 
 async fn make_factory(server: &mockito::ServerGuard) -> OpenAiCompatibleFactory {
     let config = ProviderConfig::openai();
-    let client = reqwest::Client::new();
     OpenAiCompatibleFactory::new(
         config,
         "gpt-4".to_owned(),
         Some(server.url()),
         "test-key".to_owned(),
         None,
-        client,
         "test-openai".to_owned(),
     )
 }
@@ -28,14 +26,12 @@ async fn make_factory_with_extra(
     extra: serde_json::Value,
 ) -> OpenAiCompatibleFactory {
     let config = ProviderConfig::openai();
-    let client = reqwest::Client::new();
     OpenAiCompatibleFactory::new(
         config,
         "gpt-4".to_owned(),
         Some(server.url()),
         "test-key".to_owned(),
         Some(extra),
-        client,
         "test-openai".to_owned(),
     )
 }
@@ -67,13 +63,18 @@ async fn text_streaming_yields_text_tokens_then_done() {
         .await
         .unwrap();
 
-    let events: Vec<StreamEvent> = stream
-        .filter_map(|r| async move { r.ok() })
-        .collect()
-        .await;
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::Text(t) if t == "Hello")));
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::Text(t) if t == " world")));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::Text(t) if t == "Hello"))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::Text(t) if t == " world"))
+    );
     assert!(events.iter().any(|e| matches!(e, StreamEvent::Done { .. })));
 }
 
@@ -111,14 +112,23 @@ async fn tool_call_streaming_yields_start_delta_complete_done() {
         .await
         .unwrap();
 
-    let events: Vec<StreamEvent> = stream
-        .filter_map(|r| async move { r.ok() })
-        .collect()
-        .await;
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::ToolUseStart { name, .. } if name == "echo")));
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::ToolUseInputDelta { .. })));
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::ToolUseComplete { .. })));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::ToolUseStart { name, .. } if name == "echo"))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::ToolUseInputDelta { .. }))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::ToolUseComplete { .. }))
+    );
     assert!(events.iter().any(|e| matches!(e, StreamEvent::Done { .. })));
 }
 
@@ -136,9 +146,7 @@ async fn list_models_returns_model_ids() {
         .await;
 
     let config = ProviderConfig::openai();
-    let client = reqwest::Client::new();
     let svc = nullslop_provider::OpenAiCompatibleService::new(
-        client,
         config,
         "gpt-4".into(),
         Some(server.url()),
@@ -182,10 +190,7 @@ async fn extra_body_fields_included_in_request() {
         .await
         .unwrap();
 
-    let _events: Vec<StreamEvent> = stream
-        .filter_map(|r| async move { r.ok() })
-        .collect()
-        .await;
+    let _events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
     mock.assert_async().await;
 }
@@ -241,26 +246,25 @@ async fn reasoning_content_produces_reasoning_event() {
         .await
         .unwrap();
 
-    let events: Vec<StreamEvent> = stream
-        .filter_map(|r| async move { r.ok() })
-        .collect()
-        .await;
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
-    assert!(events.iter().any(|e| matches!(e, StreamEvent::Reasoning(t) if t == "thinking...")));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::Reasoning(t) if t == "thinking..."))
+    );
 }
 
 #[tokio::test]
 async fn base_url_override_routes_to_correct_host() {
     let mut server = mockito::Server::new_async().await;
     let config = ProviderConfig::openrouter();
-    let client = reqwest::Client::new();
     let factory = OpenAiCompatibleFactory::new(
         config,
         "moonshotai/kimi-k2:free".to_owned(),
         Some(server.url()),
         "test-key".to_owned(),
         None,
-        client,
         "test-openrouter".to_owned(),
     );
 
@@ -283,10 +287,7 @@ async fn base_url_override_routes_to_correct_host() {
         .await
         .unwrap();
 
-    let events: Vec<StreamEvent> = stream
-        .filter_map(|r| async move { r.ok() })
-        .collect()
-        .await;
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
     assert!(!events.is_empty());
 }

@@ -6,9 +6,9 @@
 
 use std::collections::HashMap;
 
+use crate::StreamEvent;
 use crate::stream_event::StopReason;
 use crate::tool_types::ToolCall;
-use crate::StreamEvent;
 
 /// State tracked per tool call index during streaming.
 #[derive(Debug, Default)]
@@ -82,10 +82,7 @@ impl StreamResponseParser {
             // Tool call deltas.
             if let Some(tool_calls) = delta.get("tool_calls").and_then(|t| t.as_array()) {
                 for tc in tool_calls {
-                    let index = tc
-                        .get("index")
-                        .and_then(|i| i.as_u64())
-                        .unwrap_or(0) as usize;
+                    let index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
 
                     let state = self.tool_states.entry(index).or_default();
 
@@ -96,7 +93,9 @@ impl StreamResponseParser {
 
                     let function = tc.get("function");
 
-                    if let Some(name) = function.and_then(|f| f.get("name")).and_then(|n| n.as_str())
+                    if let Some(name) = function
+                        .and_then(|f| f.get("name"))
+                        .and_then(|n| n.as_str())
                     {
                         state.name = name.to_owned();
 
@@ -127,9 +126,7 @@ impl StreamResponseParser {
             }
 
             // Finish reason.
-            if let Some(finish_reason) =
-                choice.get("finish_reason").and_then(|f| f.as_str())
-            {
+            if let Some(finish_reason) = choice.get("finish_reason").and_then(|f| f.as_str()) {
                 if !finish_reason.is_empty() && !self.done_emitted {
                     // Drain all pending tool calls.
                     let mut pending_indices: Vec<usize> =
@@ -230,7 +227,8 @@ mod tests {
 
     #[rstest::rstest]
     fn empty_content_produces_no_event() {
-        let json = r#"{"id":"x","choices":[{"index":0,"delta":{"content":""},"finish_reason":null}]}"#;
+        let json =
+            r#"{"id":"x","choices":[{"index":0,"delta":{"content":""},"finish_reason":null}]}"#;
         let events = parse_single(json);
         assert!(events.is_empty());
     }
@@ -307,12 +305,20 @@ mod tests {
         parser.parse_data(args_json);
 
         // Finish.
-        let finish_json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
+        let finish_json =
+            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
         let events = parser.parse_data(finish_json);
 
         assert_eq!(events.len(), 2);
-        assert!(matches!(&events[0], StreamEvent::ToolUseComplete { index: 0, tool_call } if tool_call.name == "echo" && tool_call.arguments == "{\"x\":1}"));
-        assert!(matches!(&events[1], StreamEvent::Done { stop_reason: StopReason::ToolUse }));
+        assert!(
+            matches!(&events[0], StreamEvent::ToolUseComplete { index: 0, tool_call } if tool_call.name == "echo" && tool_call.arguments == "{\"x\":1}")
+        );
+        assert!(matches!(
+            &events[1],
+            StreamEvent::Done {
+                stop_reason: StopReason::ToolUse
+            }
+        ));
     }
 
     #[rstest::rstest]
@@ -399,13 +405,17 @@ mod tests {
         let e2 = parser.parse_data(
             r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]},"finish_reason":null}]}"#,
         );
-        assert!(matches!(&e2[0], StreamEvent::ToolUseInputDelta { partial_json, .. } if partial_json == "{\"city\":"));
+        assert!(
+            matches!(&e2[0], StreamEvent::ToolUseInputDelta { partial_json, .. } if partial_json == "{\"city\":")
+        );
 
         // 3. More arguments.
         let e3 = parser.parse_data(
             r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Paris\"}"}}]},"finish_reason":null}]}"#,
         );
-        assert!(matches!(&e3[0], StreamEvent::ToolUseInputDelta { partial_json, .. } if partial_json == "\"Paris\"}"));
+        assert!(
+            matches!(&e3[0], StreamEvent::ToolUseInputDelta { partial_json, .. } if partial_json == "\"Paris\"}")
+        );
 
         // 4. Finish.
         let e4 = parser.parse_data(
