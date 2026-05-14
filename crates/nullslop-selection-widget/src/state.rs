@@ -30,13 +30,13 @@ where
     T: PickerItem,
 {
     /// Current filter text typed by the user.
-    filter: String,
+    pub(crate) filter: String,
     /// Cursor position as a grapheme-cluster index within `filter` (0 = before first grapheme).
-    cursor_pos: usize,
+    pub(crate) cursor_pos: usize,
     /// Index of the currently highlighted item in the filtered list.
-    selection: usize,
+    pub(crate) selection: usize,
     /// Index of the first visible result row (scroll window top).
-    scroll_offset: usize,
+    pub(crate) scroll_offset: usize,
     /// The full item list provided by the consumer (pre-sorted).
     items: Vec<T>,
     /// Cached indices into `items` for matching entries, recomputed on filter change.
@@ -354,7 +354,3 @@ fn match_all_terms<T: PickerItem>(
     all_byte_indices.dedup();
     Some((total_score, all_byte_indices))
 }
-
-#[cfg(test)]
-#[path = "state_tests.rs"]
-mod state_tests;
