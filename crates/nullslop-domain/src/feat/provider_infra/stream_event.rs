@@ -14,6 +14,8 @@ use crate::feat::tools_actor::tool_types::ToolCall;
 pub enum StreamEvent {
     /// A text content delta.
     Text(String),
+    /// A reasoning/thinking content delta.
+    Reasoning(String),
     /// A tool use block started (ID and name known, arguments streaming).
     ToolUseStart {
         /// The index of this content block in the response.

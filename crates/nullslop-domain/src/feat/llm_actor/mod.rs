@@ -289,6 +289,15 @@ impl LlmActor {
                                 token_index += 1;
                             }
                         }
+                        StreamEvent::Reasoning(token) => {
+                            let _ = sink.send_event(Event::StreamToken(StreamToken {
+                                session_id: sid.clone(),
+                                index: token_index,
+                                token,
+                                is_thinking: true,
+                            }));
+                            token_index += 1;
+                        }
                         StreamEvent::ToolUseStart { index, id, name } => {
                             let _ = sink.send_event(Event::ToolUseStarted(ToolUseStarted {
                                 session_id: sid.clone(),
