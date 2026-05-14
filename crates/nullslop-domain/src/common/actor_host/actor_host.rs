@@ -30,6 +30,13 @@ pub trait ActorHost: Send + Sync + 'static {
     /// Sends a system message to all actors (no subscription needed).
     fn send_system(&self, msg: SystemMessage);
 
+    /// Initiates coordinated shutdown tracking.
+    ///
+    /// Populates the shutdown tracker with all known actor names and stores
+    /// the oneshot sender. When all actors complete their shutdown, the
+    /// sender fires. Callers should call this before `send_system(ApplicationShuttingDown)`.
+    fn begin_shutdown(&self, completion_tx: tokio::sync::oneshot::Sender<()>);
+
     /// Shuts down all actors gracefully.
     ///
     /// # Errors
@@ -82,6 +89,11 @@ impl ActorHostService {
     /// Sends a system message to all actors via the backend.
     pub fn send_system(&self, msg: SystemMessage) {
         self.svc.send_system(msg);
+    }
+
+    /// Initiates coordinated shutdown tracking via the backend.
+    pub fn begin_shutdown(&self, completion_tx: tokio::sync::oneshot::Sender<()>) {
+        self.svc.begin_shutdown(completion_tx);
     }
 
     /// Shuts down all actors via the backend.

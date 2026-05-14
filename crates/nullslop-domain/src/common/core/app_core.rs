@@ -87,53 +87,51 @@ pub fn spawn_forwarding_task(
 
 /// Runs coordinated shutdown of the actor system.
 ///
-/// 1. Marks shutdown active on the tracker in `state`.
+/// 1. Initiates shutdown tracking on the host.
 /// 2. Sends `SystemMessage::ApplicationShuttingDown` to all actors.
-/// 3. Blocks until `CoreNotification::ShutdownComplete` is received on
-///    `core_receiver` (or the channel closes), with the given `timeout`.
-/// 4. Joins actor tasks via `actor_host.shutdown()`.
+/// 3. Blocks until the host signals all actors have completed (or timeout).
+/// 4. Sets `should_quit` on state.
+/// 5. Joins actor tasks via `actor_host.shutdown()`.
 ///
-/// # FIXME: Race condition with async forwarding task
-///
-/// The async forwarding task may not have drained all pending `AppMsg` values
-/// from the sender channel before `send_system(ApplicationShuttingDown)` reaches
-/// actor mailboxes. Commands still in the `AppMsg` channel could arrive at actors
-/// *after* `ApplicationShuttingDown`, violating ordering.
-///
-/// Fix: close the sender (`sender.close()`), then loop `receiver.try_recv()` until
-/// empty before sending `ApplicationShuttingDown`. Low priority — the race window
-/// is tiny and the current code has the same race (masked by `tick()` being dead).
+/// The main thread owns the timeout — if the actor system doesn't signal
+/// back within `timeout`, we force quit.
 pub fn coordinated_shutdown(
     actor_host: &dyn crate::ActorHost,
     state: &State,
-    core_receiver: &kanal::Receiver<crate::CoreNotification>,
     handle: &tokio::runtime::Handle,
     timeout: Duration,
 ) {
-    // 1. Mark shutdown active.
-    state.write().shutdown.shutdown_tracker.begin_shutdown();
+    // 1. Initiate shutdown tracking.
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+    actor_host.begin_shutdown(completion_tx);
 
     // 2. Send ApplicationShuttingDown to all actors.
+    //    Run loops intercept this, call on_shutdown(), auto-announce,
+    //    and signal the host's tracker.
     actor_host.send_system(SystemMessage::ApplicationShuttingDown);
 
-    // 3. Block until shutdown complete notification (with timeout).
+    // 3. Block until all actors complete (with timeout).
     //    Spawns an async task that does proper async recv + timeout,
     //    communicates the result via a oneshot channel, and blocks
-    //    the calling thread on blocking_recv(). Must be called from
-    //    outside the tokio runtime (e.g., main thread or spawn_blocking).
+    //    the calling thread on blocking_recv().
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let cloned = core_receiver.clone();
     handle.spawn(async move {
-        let async_rx = cloned.as_async();
-        let result = tokio::time::timeout(timeout, async_rx.recv()).await;
+        let result = tokio::time::timeout(timeout, completion_rx).await;
         let _ = tx.send(result);
     });
-    if let Ok(Ok(Ok(_))) = rx.blocking_recv() {
-    } else {
-        tracing::warn!(?timeout, "coordinated shutdown timed out");
+    match rx.blocking_recv() {
+        Ok(Ok(Ok(()))) => {
+            tracing::info!("all actors shut down gracefully");
+        }
+        _ => {
+            tracing::warn!(?timeout, "coordinated shutdown timed out, forcing quit");
+        }
     }
 
-    // 4. Join actor tasks.
+    // 4. Set should_quit.
+    state.write().frontend.should_quit = true;
+
+    // 5. Join actor tasks (close channels + join).
     if let Err(e) = actor_host.shutdown() {
         tracing::error!(err = ?e, "actor host shutdown error");
     }
@@ -149,7 +147,6 @@ pub fn coordinated_shutdown(
 ///
 /// Panics if called from within the tokio runtime context.
 ///
-/// [`CoreNotification`]: crate::CoreNotification
 pub fn wait_for_system_ready(
     ready_rx: tokio::sync::oneshot::Receiver<()>,
     handle: &tokio::runtime::Handle,
