@@ -29,3 +29,6 @@ pub use scope::Scope;
 
 #[cfg(test)]
 mod keymap_tests;
+
+#[cfg(test)]
+mod render_tests;
