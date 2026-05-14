@@ -45,22 +45,18 @@ impl PromptAssemblyActor {
                 .unwrap_or(serde_json::json!({}))
         };
 
-        if let Err(e) = ctx.send_command(Command::RestoreStrategyState {
-            payload: RestoreStrategyState {
-                session_id: payload.session_id.clone(),
-                strategy_id: payload.strategy_id.clone(),
-                blob,
-            },
-        }) {
+        if let Err(e) = ctx.send_command(Command::RestoreStrategyState(RestoreStrategyState {
+            session_id: payload.session_id.clone(),
+            strategy_id: payload.strategy_id.clone(),
+            blob,
+        })) {
             tracing::warn!(err = ?e, "context-actor failed to emit RestoreStrategyState");
         }
 
-        if let Err(e) = ctx.send_event(Event::PromptStrategySwitched {
-            payload: PromptStrategySwitched {
-                session_id: payload.session_id.clone(),
-                strategy_id: payload.strategy_id.clone(),
-            },
-        }) {
+        if let Err(e) = ctx.send_event(Event::PromptStrategySwitched(PromptStrategySwitched {
+            session_id: payload.session_id.clone(),
+            strategy_id: payload.strategy_id.clone(),
+        })) {
             tracing::warn!(
                 err = ?e,
                 "context-actor failed to emit PromptStrategySwitched"
@@ -84,13 +80,11 @@ impl PromptAssemblyActor {
                 .insert(payload.strategy_id.clone(), strategy_state);
         }
 
-        if let Err(e) = ctx.send_event(Event::StrategyStateUpdated {
-            payload: StrategyStateUpdated {
-                session_id: payload.session_id.clone(),
-                strategy_id: payload.strategy_id.clone(),
-                blob: payload.blob.clone(),
-            },
-        }) {
+        if let Err(e) = ctx.send_event(Event::StrategyStateUpdated(StrategyStateUpdated {
+            session_id: payload.session_id.clone(),
+            strategy_id: payload.strategy_id.clone(),
+            blob: payload.blob.clone(),
+        })) {
             tracing::warn!(err = ?e, "context-actor failed to emit StrategyStateUpdated");
         }
     }

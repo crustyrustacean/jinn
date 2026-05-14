@@ -53,24 +53,24 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
 
     match kind {
         PickerKind::Provider => {
-            IntentResult::with_commands(vec![Command::LoadProviderPickerEntries {
-                payload: LoadProviderPickerEntries,
-            }])
+            IntentResult::with_commands(vec![Command::LoadProviderPickerEntries(
+                LoadProviderPickerEntries,
+            )])
         }
         PickerKind::Session => {
-            IntentResult::with_commands(vec![Command::LoadSessionPickerEntries {
-                payload: LoadSessionPickerEntries,
-            }])
+            IntentResult::with_commands(vec![Command::LoadSessionPickerEntries(
+                LoadSessionPickerEntries,
+            )])
         }
         PickerKind::ContextAssembly => {
-            IntentResult::with_commands(vec![Command::LoadContextStrategyPickerEntries {
-                payload: LoadContextStrategyPickerEntries,
-            }])
+            IntentResult::with_commands(vec![Command::LoadContextStrategyPickerEntries(
+                LoadContextStrategyPickerEntries,
+            )])
         }
         PickerKind::Persona => {
-            IntentResult::with_commands(vec![Command::LoadPersonaPickerEntries {
-                payload: LoadPersonaPickerEntries,
-            }])
+            IntentResult::with_commands(vec![Command::LoadPersonaPickerEntries(
+                LoadPersonaPickerEntries,
+            )])
         }
         PickerKind::Keymap => IntentResult::empty(),
     }
@@ -195,17 +195,13 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
 
     state.frontend.scope_stack.pop();
     IntentResult::with_commands(vec![
-        Command::ProviderSwitch {
-            payload: ProviderSwitch {
-                session_id,
-                provider_id: provider_id.clone(),
-            },
-        },
-        Command::UpdatePreferences {
-            payload: UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastModel(Some(provider_id))],
-            },
-        },
+        Command::ProviderSwitch(ProviderSwitch {
+            session_id,
+            provider_id: provider_id.clone(),
+        }),
+        Command::UpdatePreferences(UpdatePreferences {
+            updates: vec![PreferenceUpdate::SetLastModel(Some(provider_id))],
+        }),
     ])
 }
 
@@ -219,19 +215,15 @@ fn confirm_strategy(state: &mut AppState) -> IntentResult {
 
     state.frontend.scope_stack.pop();
     IntentResult::with_commands(vec![
-        Command::SwitchPromptStrategy {
-            payload: SwitchPromptStrategy {
-                session_id,
-                strategy_id: strategy_id.clone(),
-            },
-        },
-        Command::UpdatePreferences {
-            payload: UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                    strategy_id.as_str().to_owned(),
-                ))],
-            },
-        },
+        Command::SwitchPromptStrategy(SwitchPromptStrategy {
+            session_id,
+            strategy_id: strategy_id.clone(),
+        }),
+        Command::UpdatePreferences(UpdatePreferences {
+            updates: vec![PreferenceUpdate::SetLastStrategy(Some(
+                strategy_id.as_str().to_owned(),
+            ))],
+        }),
     ])
 }
 
@@ -281,12 +273,10 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
     state.session.session_load_started_at = Some(std::time::Instant::now());
     state.frontend.scope_stack.pop();
 
-    IntentResult::with_commands(vec![Command::SessionLoadRequested {
-        payload: SessionLoadRequested {
-            session_id,
-            byte_offset,
-        },
-    }])
+    IntentResult::with_commands(vec![Command::SessionLoadRequested(SessionLoadRequested {
+        session_id,
+        byte_offset,
+    })])
 }
 
 #[cfg(test)]
@@ -317,7 +307,7 @@ mod tests {
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::LoadProviderPickerEntries { .. }))
+                .any(|c| matches!(c, Command::LoadProviderPickerEntries(..)))
         );
     }
 
@@ -448,7 +438,7 @@ mod tests {
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::ProviderSwitch { .. }))
+                .any(|c| matches!(c, Command::ProviderSwitch(..)))
         );
         assert!(!state.frontend.scope_stack.is_picker());
         assert!(maybe_intent.is_none());
@@ -480,7 +470,7 @@ mod tests {
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::SessionLoadRequested { .. }))
+                .any(|c| matches!(c, Command::SessionLoadRequested(..)))
         );
         // And picker is closed.
         assert!(!state.frontend.scope_stack.is_picker());
@@ -557,7 +547,7 @@ mod tests {
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::SwitchPromptStrategy { .. }))
+                .any(|c| matches!(c, Command::SwitchPromptStrategy(..)))
         );
         // And picker is closed.
         assert!(!state.frontend.scope_stack.is_picker());

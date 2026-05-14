@@ -177,12 +177,10 @@ impl DiscoverActor {
 
         // Emit ModelsRefreshed event.
         let session_id = self.state.read().session.active_session.clone();
-        let _ = ctx.send_event(Event::ModelsRefreshed {
-            payload: ModelsRefreshed {
-                session_id,
-                results,
-                errors,
-            },
-        });
+        let _ = ctx.send_event(Event::ModelsRefreshed(ModelsRefreshed {
+            session_id,
+            results,
+            errors,
+        }));
     }
 }

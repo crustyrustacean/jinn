@@ -58,12 +58,10 @@ impl HeadlessApp {
         self.core
             .sender()
             .send(AppMsg::Command {
-                command: Command::EnqueueUserMessage {
-                    payload: EnqueueUserMessage {
-                        session_id,
-                        text: message.to_string(),
-                    },
-                },
+                command: Command::EnqueueUserMessage(EnqueueUserMessage {
+                    session_id,
+                    text: message.to_string(),
+                }),
                 source: None,
             })
             .change_context(HeadlessError)

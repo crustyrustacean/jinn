@@ -88,7 +88,12 @@ impl SidebarSection for PinsSection {
                     .add_modifier(Modifier::BOLD),
             )])]
         } else {
-            build_entry_list(&pinned, selected_index, area.width, state.frontend.scope_stack.is_sidebar())
+            build_entry_list(
+                &pinned,
+                selected_index,
+                area.width,
+                state.frontend.scope_stack.is_sidebar(),
+            )
         };
 
         let total_lines = lines.len() as u16;
@@ -149,12 +154,10 @@ pub fn handle_pins_unpin(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
     if let Some((session_id, entry_id)) = resolve_selected_entry_id(state) {
-        IntentResult::with_commands(vec![Command::UnpinChatEntry {
-            payload: UnpinChatEntry {
-                session_id,
-                entry_id,
-            },
-        }])
+        IntentResult::with_commands(vec![Command::UnpinChatEntry(UnpinChatEntry {
+            session_id,
+            entry_id,
+        })])
     } else {
         IntentResult::empty()
     }
@@ -166,13 +169,11 @@ pub fn handle_pins_pin(state: &mut AppState, position: PinPosition) -> IntentRes
         return IntentResult::empty();
     }
     if let Some((session_id, entry_id)) = resolve_selected_entry_id(state) {
-        IntentResult::with_commands(vec![Command::PinChatEntry {
-            payload: PinChatEntry {
-                session_id,
-                entry_id,
-                position,
-            },
-        }])
+        IntentResult::with_commands(vec![Command::PinChatEntry(PinChatEntry {
+            session_id,
+            entry_id,
+            position,
+        })])
     } else {
         IntentResult::empty()
     }
@@ -194,13 +195,11 @@ pub fn handle_pins_pin_cycle(state: &mut AppState) -> IntentResult {
     let next = cycle_position(current);
     let session_id = state.session.active_session.clone();
     let entry_id = entry.id.clone();
-    IntentResult::with_commands(vec![Command::PinChatEntry {
-        payload: PinChatEntry {
-            session_id,
-            entry_id,
-            position: next,
-        },
-    }])
+    IntentResult::with_commands(vec![Command::PinChatEntry(PinChatEntry {
+        session_id,
+        entry_id,
+        position: next,
+    })])
 }
 
 // ---------------------------------------------------------------------------
@@ -475,7 +474,7 @@ mod tests {
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::UnpinChatEntry { .. }))
+                .any(|c| matches!(c, Command::UnpinChatEntry(..)))
         );
     }
 
@@ -501,7 +500,7 @@ mod tests {
 
         // Then a PinChatEntry command with Top is returned.
         let pin_cmd = result.commands.iter().find_map(|c| match c {
-            Command::PinChatEntry { payload } => Some(payload.position),
+            Command::PinChatEntry(payload) => Some(payload.position),
             _ => None,
         });
         assert_eq!(pin_cmd, Some(PinPosition::Top));
@@ -517,7 +516,7 @@ mod tests {
 
         // Then a PinChatEntry command with Bottom is returned.
         let pin_cmd = result.commands.iter().find_map(|c| match c {
-            Command::PinChatEntry { payload } => Some(payload.position),
+            Command::PinChatEntry(payload) => Some(payload.position),
             _ => None,
         });
         assert_eq!(pin_cmd, Some(PinPosition::Bottom));
@@ -533,7 +532,7 @@ mod tests {
 
         // Then a PinChatEntry command with Relative is returned.
         let pin_cmd = result.commands.iter().find_map(|c| match c {
-            Command::PinChatEntry { payload } => Some(payload.position),
+            Command::PinChatEntry(payload) => Some(payload.position),
             _ => None,
         });
         assert_eq!(pin_cmd, Some(PinPosition::Relative));
@@ -557,7 +556,7 @@ mod tests {
 
         // Then a PinChatEntry command with Bottom is returned.
         let pin_cmd = result.commands.iter().find_map(|c| match c {
-            Command::PinChatEntry { payload } => Some(payload.position),
+            Command::PinChatEntry(payload) => Some(payload.position),
             _ => None,
         });
         assert_eq!(pin_cmd, Some(PinPosition::Bottom));

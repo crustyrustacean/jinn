@@ -76,14 +76,12 @@ mod tests {
         let sink = ActorMessageSink::new(tx);
 
         // When sending a KeyDown event.
-        sink.send_event(Event::KeyDown {
-            payload: crate::protocol::system::KeyDown {
-                key: crate::KeyEvent {
-                    key: crate::Key::Enter,
-                    modifiers: crate::Modifiers::none(),
-                },
+        sink.send_event(Event::KeyDown(crate::protocol::system::KeyDown {
+            key: crate::KeyEvent {
+                key: crate::Key::Enter,
+                modifiers: crate::Modifiers::none(),
             },
-        })
+        }))
         .expect("send should succeed");
 
         // Then the message is received as AppMsg::Event.
@@ -91,9 +89,7 @@ mod tests {
             .try_recv()
             .expect("recv should succeed")
             .expect("should have value");
-        assert!(
-            matches!(msg, AppMsg::Event { event, .. } if matches!(event, Event::KeyDown { .. }))
-        );
+        assert!(matches!(msg, AppMsg::Event { event, .. } if matches!(event, Event::KeyDown(..))));
     }
 
     #[rstest::rstest]

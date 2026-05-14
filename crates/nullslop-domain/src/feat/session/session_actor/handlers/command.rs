@@ -64,23 +64,19 @@ impl SessionPersistenceActor {
 
         match action {
             EnqueueAction::AssemblePrompt => {
-                if let Err(e) = ctx.send_command(Command::AssemblePrompt {
-                    payload: AssemblePrompt {
-                        session_id: payload.session_id.clone(),
-                        history,
-                        tools: vec![],
-                        model_name,
-                    },
-                }) {
+                if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
+                    session_id: payload.session_id.clone(),
+                    history,
+                    tools: vec![],
+                    model_name,
+                })) {
                     tracing::warn!(err = ?e, "session-actor failed to emit AssemblePrompt");
                 }
 
-                if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted {
-                    payload: ChatEntrySubmitted {
-                        session_id: payload.session_id.clone(),
-                        entry: ChatEntry::user(&payload.text),
-                    },
-                }) {
+                if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+                    session_id: payload.session_id.clone(),
+                    entry: ChatEntry::user(&payload.text),
+                })) {
                     tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
                 }
 
@@ -88,12 +84,10 @@ impl SessionPersistenceActor {
             }
             EnqueueAction::Queued => {}
             EnqueueAction::SetInputText(text) => {
-                if let Err(e) = ctx.send_command(Command::SetChatInputText {
-                    payload: SetChatInputText {
-                        session_id: payload.session_id.clone(),
-                        text,
-                    },
-                }) {
+                if let Err(e) = ctx.send_command(Command::SetChatInputText(SetChatInputText {
+                    session_id: payload.session_id.clone(),
+                    text,
+                })) {
                     tracing::warn!(err = ?e, "session-actor failed to emit SetChatInputText");
                 }
             }
@@ -122,12 +116,10 @@ impl SessionPersistenceActor {
             session.push_entry(payload.entry.clone());
         }
 
-        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted {
-            payload: ChatEntrySubmitted {
-                session_id: payload.session_id.clone(),
-                entry: payload.entry.clone(),
-            },
-        }) {
+        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+            session_id: payload.session_id.clone(),
+            entry: payload.entry.clone(),
+        })) {
             tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
         }
     }
@@ -137,12 +129,10 @@ impl SessionPersistenceActor {
         payload: &SendMessage,
         ctx: &ActorContext,
     ) {
-        if let Err(e) = ctx.send_command(Command::EnqueueUserMessage {
-            payload: EnqueueUserMessage {
-                session_id: payload.session_id.clone(),
-                text: payload.text.clone(),
-            },
-        }) {
+        if let Err(e) = ctx.send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
+            session_id: payload.session_id.clone(),
+            text: payload.text.clone(),
+        })) {
             tracing::warn!(err = ?e, "session-actor failed to emit EnqueueUserMessage");
         }
     }
@@ -183,9 +173,7 @@ impl SessionPersistenceActor {
                 .sessions
                 .get_mut(&session_id)
                 .expect("just inserted");
-            session.push_entry(ChatEntry::system(format!(
-                "Session restored: {title_text}"
-            )));
+            session.push_entry(ChatEntry::system(format!("Session restored: {title_text}")));
             session.set_model(model);
 
             state.session.active_session = session_id.clone();
@@ -208,22 +196,18 @@ impl SessionPersistenceActor {
                 .unwrap_or(serde_json::json!({}))
         };
 
-        if let Err(e) = ctx.send_command(Command::RestoreStrategyState {
-            payload: RestoreStrategyState {
-                session_id: session_id.clone(),
-                strategy_id: strategy_id.clone(),
-                blob,
-            },
-        }) {
+        if let Err(e) = ctx.send_command(Command::RestoreStrategyState(RestoreStrategyState {
+            session_id: session_id.clone(),
+            strategy_id: strategy_id.clone(),
+            blob,
+        })) {
             tracing::warn!(err = ?e, "session-actor failed to emit RestoreStrategyState");
         }
 
-        if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy {
-            payload: SwitchPromptStrategy {
-                session_id: session_id.clone(),
-                strategy_id,
-            },
-        }) {
+        if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
+            session_id: session_id.clone(),
+            strategy_id,
+        })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SwitchPromptStrategy");
         }
     }

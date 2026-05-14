@@ -110,7 +110,6 @@ impl Default for ContextAssemblyState {
 /// Provider selection state — imported from `nsslice-provider-protocol`.
 pub use crate::feat::provider::ProviderState;
 
-
 /// A single focus context on the scope stack.
 ///
 /// Each layer of the [`ScopeStack`] is a `FocusScope`. The top of the stack

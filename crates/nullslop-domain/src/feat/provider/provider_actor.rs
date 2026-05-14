@@ -70,7 +70,7 @@ impl Actor for ProviderActor {
         match msg {
             ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx),
             ActorEnvelope::Event(event) => {
-                if let Event::ModelsRefreshed { ref payload } = event {
+                if let Event::ModelsRefreshed(ref payload) = event {
                     self.handle_models_refreshed(payload);
                 }
             }
@@ -83,39 +83,39 @@ impl ProviderActor {
     /// Dispatches a command to the appropriate handler.
     fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
         match cmd {
-            Command::ProviderSwitch { payload } => {
+            Command::ProviderSwitch(payload) => {
                 self.handle_provider_switch(payload, ctx);
             }
-            Command::LoadProviderPickerEntries { payload } => {
+            Command::LoadProviderPickerEntries(payload) => {
                 self.handle_load_provider_picker_entries(payload);
             }
             // Commands NOT subscribed to — these should not arrive.
-            Command::SendMessage { .. }
-            | Command::SwitchPromptStrategy { .. }
-            | Command::RestoreStrategyState { .. }
-            | Command::PinChatEntry { .. }
-            | Command::UnpinChatEntry { .. }
-            | Command::EnqueueUserMessage { .. }
-            | Command::SetChatInputText { .. }
-            | Command::PushChatEntry { .. }
-            | Command::CancelStream { .. }
-            | Command::AssemblePrompt { .. }
-            | Command::SendToLlmProvider { .. }
+            Command::SendMessage(..)
+            | Command::SwitchPromptStrategy(..)
+            | Command::RestoreStrategyState(..)
+            | Command::PinChatEntry(..)
+            | Command::UnpinChatEntry(..)
+            | Command::EnqueueUserMessage(..)
+            | Command::SetChatInputText(..)
+            | Command::PushChatEntry(..)
+            | Command::CancelStream(..)
+            | Command::AssemblePrompt(..)
+            | Command::SendToLlmProvider(..)
             | Command::RefreshModels
             | Command::RescanPromptTemplates
-            | Command::RegisterTools { .. }
-            | Command::ExecuteToolBatch { .. }
-            | Command::ExecuteTool { .. }
-            | Command::CancelToolBatch { .. }
-            | Command::ProceedWithShutdown { .. }
-            | Command::SessionLoadCompleted { .. }
-            | Command::SessionLoadRequested { .. }
-            | Command::LoadSessionPickerEntries { .. }
-            | Command::LoadContextStrategyPickerEntries { .. }
+            | Command::RegisterTools(..)
+            | Command::ExecuteToolBatch(..)
+            | Command::ExecuteTool(..)
+            | Command::CancelToolBatch(..)
+            | Command::ProceedWithShutdown(..)
+            | Command::SessionLoadCompleted(..)
+            | Command::SessionLoadRequested(..)
+            | Command::LoadSessionPickerEntries(..)
+            | Command::LoadContextStrategyPickerEntries(..)
             | Command::ScanSkills
-            | Command::RescanPersonas { .. }
-            | Command::LoadPersonaPickerEntries { .. }
-            | Command::UpdatePreferences { .. } => {}
+            | Command::RescanPersonas(..)
+            | Command::LoadPersonaPickerEntries(..)
+            | Command::UpdatePreferences(..) => {}
         }
     }
 
@@ -130,11 +130,9 @@ impl ProviderActor {
                 .set_model(payload.provider_id.clone());
         }
 
-        if let Err(e) = ctx.send_event(Event::ProviderSwitched {
-            payload: ProviderSwitched {
-                provider_name: payload.provider_id.clone(),
-            },
-        }) {
+        if let Err(e) = ctx.send_event(Event::ProviderSwitched(ProviderSwitched {
+            provider_name: payload.provider_id.clone(),
+        })) {
             tracing::warn!(err = ?e, "provider-actor failed to emit ProviderSwitched");
         }
     }
@@ -207,12 +205,10 @@ mod tests {
         // When processing ProviderSwitch.
         actor
             .handle(
-                ActorEnvelope::Command(Command::ProviderSwitch {
-                    payload: ProviderSwitch {
-                        session_id: session_id.clone(),
-                        provider_id: "ollama".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::ProviderSwitch(ProviderSwitch {
+                    session_id: session_id.clone(),
+                    provider_id: "ollama".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -227,7 +223,7 @@ mod tests {
         let events = sink.events();
         let found = events
             .iter()
-            .any(|e| matches!(e, Event::ProviderSwitched { .. }));
+            .any(|e| matches!(e, Event::ProviderSwitched(..)));
         assert!(found, "expected ProviderSwitched event");
     }
 
@@ -241,12 +237,10 @@ mod tests {
         // When switching to an unknown provider.
         actor
             .handle(
-                ActorEnvelope::Command(Command::ProviderSwitch {
-                    payload: ProviderSwitch {
-                        session_id: SessionId::new(),
-                        provider_id: "nonexistent/unknown".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::ProviderSwitch(ProviderSwitch {
+                    session_id: SessionId::new(),
+                    provider_id: "nonexistent/unknown".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -284,12 +278,10 @@ mod tests {
         // When switching to a known provider.
         actor
             .handle(
-                ActorEnvelope::Command(Command::ProviderSwitch {
-                    payload: ProviderSwitch {
-                        session_id: session_id.clone(),
-                        provider_id: "sample/sample".into(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::ProviderSwitch(ProviderSwitch {
+                    session_id: session_id.clone(),
+                    provider_id: "sample/sample".into(),
+                })),
                 &ctx,
             )
             .await;
@@ -317,13 +309,11 @@ mod tests {
         // When processing ModelsRefreshed event.
         actor
             .handle(
-                ActorEnvelope::Event(Event::ModelsRefreshed {
-                    payload: ModelsRefreshed {
-                        session_id: SessionId::new(),
-                        results: results.clone(),
-                        errors: std::collections::HashMap::new(),
-                    },
-                }),
+                ActorEnvelope::Event(Event::ModelsRefreshed(ModelsRefreshed {
+                    session_id: SessionId::new(),
+                    results: results.clone(),
+                    errors: std::collections::HashMap::new(),
+                })),
                 &ctx,
             )
             .await;

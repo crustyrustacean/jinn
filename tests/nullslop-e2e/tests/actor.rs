@@ -190,18 +190,18 @@ fn create_actor_core(
     };
 
     // Emit lifecycle events for the session actor.
-    let _ = sink.send_event(nullslop_domain::Event::ActorStarting {
-        payload: nullslop_domain::ActorStarting {
+    let _ = sink.send_event(nullslop_domain::Event::ActorStarting(
+        nullslop_domain::ActorStarting {
             name: "session-persistence".to_string(),
             description: Some("Session lifecycle and persistence".to_string()),
         },
-    });
-    let _ = sink.send_event(nullslop_domain::Event::ActorStarted {
-        payload: nullslop_domain::ActorStarted {
+    ));
+    let _ = sink.send_event(nullslop_domain::Event::ActorStarted(
+        nullslop_domain::ActorStarted {
             name: "session-persistence".to_string(),
             description: Some("Session lifecycle and persistence".to_string()),
         },
-    });
+    ));
 
     (core, services, actor_host_service)
 }
@@ -216,15 +216,15 @@ fn given_fresh_actor_world(_world: &mut ActorWorld) {}
 #[cucumber::when(expr = "I submit SendToLlmProvider with the tool loop trigger")]
 async fn when_submit_tool_loop_trigger(world: &mut ActorWorld) {
     let session_id = world.state().session.active_session.clone();
-    world.submit_command(nullslop_domain::Command::SendToLlmProvider {
-        payload: SendToLlmProvider {
+    world.submit_command(nullslop_domain::Command::SendToLlmProvider(
+        SendToLlmProvider {
             session_id,
             messages: vec![nullslop_domain::LlmMessage::User {
                 content: TOOL_LOOP_TRIGGER.to_string(),
             }],
             provider_id: None,
         },
-    });
+    ));
 
     // Async poll until the multi-turn tool loop completes.
     // The session starts idle, so we first wait for it to become

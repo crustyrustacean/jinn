@@ -34,16 +34,14 @@ mod tests {
     #[rstest::rstest]
     fn command_message_carries_command() {
         // Given a Command message with a PushChatEntry.
-        let msg = Msg::Command(npr::Command::PushChatEntry {
-            payload: PushChatEntry {
-                session_id: npr::SessionId::new(),
-                entry: npr::ChatEntry::user("hello"),
-            },
-        });
+        let msg = Msg::Command(npr::Command::PushChatEntry(PushChatEntry {
+            session_id: npr::SessionId::new(),
+            entry: npr::ChatEntry::user("hello"),
+        }));
 
         // When matching on the message.
         match msg {
-            Msg::Command(npr::Command::PushChatEntry { payload }) => {
+            Msg::Command(npr::Command::PushChatEntry(payload)) => {
                 assert_eq!(
                     payload.entry.kind,
                     npr::ChatEntryKind::User("hello".to_owned())

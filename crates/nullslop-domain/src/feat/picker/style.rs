@@ -54,11 +54,12 @@ where
 {
     if filter.is_empty()
         && let Some(pos) = entries.iter().position(is_active)
-            && pos > 0 {
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "pos comes from iter().position() on the same slice"
-                )]
-                entries[0..=pos].rotate_right(1);
-            }
+        && pos > 0
+    {
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "pos comes from iter().position() on the same slice"
+        )]
+        entries[0..=pos].rotate_right(1);
+    }
 }

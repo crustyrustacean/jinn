@@ -226,12 +226,10 @@ impl ActorContext {
     /// Sends `Event::ActorStarted` with the actor's name. Fire-and-forget —
     /// logs a warning on send failure but does not propagate the error.
     pub fn announce_started(&self) {
-        if let Err(e) = self.send_event(Event::ActorStarted {
-            payload: ActorStarted {
-                name: self.name.clone(),
-                description: self.description.clone(),
-            },
-        }) {
+        if let Err(e) = self.send_event(Event::ActorStarted(ActorStarted {
+            name: self.name.clone(),
+            description: self.description.clone(),
+        })) {
             tracing::warn!(name = %self.name, err = ?e, "failed to announce ActorStarted");
         }
     }
@@ -241,11 +239,9 @@ impl ActorContext {
     /// Sends `Event::ActorShutdownCompleted` with the actor's name. Fire-and-forget —
     /// logs a warning on send failure but does not propagate the error.
     pub fn announce_shutdown_completed(&self) {
-        if let Err(e) = self.send_event(Event::ActorShutdownCompleted {
-            payload: ActorShutdownCompleted {
-                name: self.name.clone(),
-            },
-        }) {
+        if let Err(e) = self.send_event(Event::ActorShutdownCompleted(ActorShutdownCompleted {
+            name: self.name.clone(),
+        })) {
             tracing::warn!(name = %self.name, err = ?e, "failed to announce ActorShutdownCompleted");
         }
     }

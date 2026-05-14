@@ -37,25 +37,20 @@ impl EchoActor {
     /// Processes an incoming event, echoing user messages as ALL CAPS actor entries.
     async fn process_event(event: &Event, ctx: &ActorContext) {
         match event {
-            Event::ChatEntrySubmitted {
-                payload:
-                    ChatEntrySubmitted {
-                        session_id,
-                        entry:
-                            ChatEntry {
-                                kind: ChatEntryKind::User(text),
-                                ..
-                            },
+            Event::ChatEntrySubmitted(ChatEntrySubmitted {
+                session_id,
+                entry:
+                    ChatEntry {
+                        kind: ChatEntryKind::User(text),
                         ..
                     },
-            } => {
+                ..
+            }) => {
                 tokio::time::sleep(Duration::from_secs(1)).await;
-                if let Err(e) = ctx.send_command(Command::PushChatEntry {
-                    payload: PushChatEntry {
-                        session_id: session_id.clone(),
-                        entry: ChatEntry::actor("echo", text.to_uppercase()),
-                    },
-                }) {
+                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: session_id.clone(),
+                    entry: ChatEntry::actor("echo", text.to_uppercase()),
+                })) {
                     tracing::error!(err = ?e, "echo actor failed to send command");
                 }
             }
