@@ -290,7 +290,3 @@ impl WorkflowState {
             .unwrap_or_default()
     }
 }
-
-#[cfg(test)]
-#[path = "state_tests.rs"]
-mod state_tests;
