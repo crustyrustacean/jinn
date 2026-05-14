@@ -135,12 +135,20 @@ fn parse_mode(name: &str) -> nullslop_domain::Mode {
 #[cucumber::given(expr = "a new app")]
 fn given_a_new_app(_world: &mut TuiWorld) {}
 
-/// Sets the app's which-key scope to match the given mode.
+/// Sets the app's mode by pushing the appropriate scope onto the scope stack.
 #[cucumber::given(expr = "the app is in {word} mode")]
 fn given_app_in_mode(world: &mut TuiWorld, mode: String) {
     let scope = match parse_mode(&mode) {
         nullslop_domain::Mode::Normal => Scope::Normal,
-        nullslop_domain::Mode::Input => Scope::Input,
+        nullslop_domain::Mode::Input => {
+            let mut state = world.app.core.state.write();
+            state
+                .frontend
+                .scope_stack
+                .push(nullslop_domain::common::app_state::FocusScope::Input);
+            drop(state);
+            Scope::Input
+        }
         nullslop_domain::Mode::Picker => Scope::Picker,
     };
     world.app.which_key.set_scope(scope);
@@ -268,6 +276,23 @@ fn then_input_buffer_should_be(world: &mut TuiWorld, expected: String) {
     // Cucumber {string} captures literal text, so handle common escape sequences.
     let expected = expected.replace("\\n", "\n").replace("\\t", "\t");
     assert_eq!(actual, expected, "input buffer mismatch");
+}
+
+/// Asserts the cursor position within the wrapped visual lines of the input buffer.
+#[cucumber::then(expr = "the cursor should be on row {int} col {int}")]
+fn then_cursor_row_col(world: &mut TuiWorld, expected_row: u64, expected_col: u64) {
+    let (actual_row, actual_col) = world
+        .app
+        .core
+        .state
+        .read()
+        .active_chat_input()
+        .cursor_row_col();
+    assert_eq!(
+        (actual_row, actual_col),
+        (expected_row as usize, expected_col as usize),
+        "cursor position mismatch"
+    );
 }
 
 /// Asserts the active session's chat history contains the expected number of entries.
