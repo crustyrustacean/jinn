@@ -9,12 +9,9 @@ mod api_keys;
 mod api_keys_service;
 mod config;
 mod config_storage;
-mod convert;
-mod fake;
 mod generic_factory;
 mod model_cache;
 mod no_providers;
-mod openrouter;
 mod provider_id;
 mod registry;
 
@@ -36,11 +33,10 @@ pub use config::{
 pub use config_storage::{
     ConfigStorage, ConfigStorageService, FilesystemConfigStorage, InMemoryConfigStorage,
 };
-pub use fake::{FakeLlmServiceFactory, TOOL_LOOP_TRIGGER};
 pub use generic_factory::GenericLlmServiceFactory;
 pub use model_cache::{ModelCache, ModelCacheError, cache_path};
 pub use no_providers::{NO_PROVIDER_ID, NoProvidersAvailableFactory};
-pub use openrouter::{ApiKey, OpenRouterLlmServiceFactory};
+pub use nullslop_provider::{FakeLlmServiceFactory, TOOL_LOOP_TRIGGER};
 pub use provider_id::ProviderId;
 pub use registry::ProviderRegistry;
 pub use registry_service::ProviderRegistryService;

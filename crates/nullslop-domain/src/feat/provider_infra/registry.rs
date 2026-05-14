@@ -13,7 +13,7 @@
 use std::collections::{HashMap, HashSet};
 
 use error_stack::{Report, ResultExt as _};
-use llm::builder::LLMBackend;
+use nullslop_provider::Backend;
 
 use super::SampleLlmServiceFactory;
 use super::api_keys::ApiKeys;
@@ -46,7 +46,7 @@ impl ProviderRegistry {
     /// - No duplicate provider block names.
     /// - No empty models lists.
     /// - No duplicate expanded IDs (`{name}/{model}`).
-    /// - All backend strings parse via `LLMBackend::from_str` (or are `"sample"`).
+    /// - All backend strings parse via `Backend::from_str` (or are `"sample"`).
     /// - All alias targets refer to existing expanded IDs.
     ///
     /// # Errors
@@ -75,7 +75,7 @@ impl ProviderRegistry {
         // Check backend strings parse.
         for provider in &config.providers {
             if provider.backend != "sample" {
-                let _: LLMBackend = provider
+                let _: Backend = provider
                     .backend
                     .parse()
                     .change_context(ConfigError::Validation)
@@ -282,7 +282,7 @@ impl ProviderRegistry {
             return Ok(factory);
         }
 
-        let backend: LLMBackend = resolved
+        let backend: Backend = resolved
             .backend
             .parse()
             .change_context(LlmServiceError::Config)

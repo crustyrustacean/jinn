@@ -1,7 +1,7 @@
 //! Model discovery actor — discovers available models from configured providers.
 //!
 //! Subscribes to `RefreshModels` commands and iterates over all configured
-//! providers, calling the `llm` crate's `list_models()` endpoint for each.
+//! providers, calling each provider's `list_models()` endpoint for each.
 //! Results are saved to disk as a [`ModelCache`] and emitted as a
 //! `ModelsRefreshed` event.
 
@@ -15,7 +15,11 @@ use crate::feat::provider_infra::{
     ApiKeysService, ModelCache, ProviderRegistryService, cache_path,
 };
 use crate::protocol::{Command, Event};
-use llm::builder::LLMBuilder;
+use error_stack::Report;
+use nullslop_provider::{
+    Backend, LlmServiceError, OpenAiCompatibleService, ProviderConfig, anthropic::AnthropicService,
+    google::GoogleService,
+};
 
 /// Error type for model discovery failures.
 #[derive(Debug, wherror::Error)]
@@ -102,7 +106,7 @@ impl DiscoverActor {
                 continue;
             };
 
-            let backend = match entry.backend.parse::<llm::builder::LLMBackend>() {
+            let backend = match entry.backend.parse::<Backend>() {
                 Ok(b) => b,
                 Err(e) => {
                     errors.insert(entry.name.clone(), format!("invalid backend: {e}"));
@@ -129,28 +133,37 @@ impl DiscoverActor {
                 Some("dummy-key".to_owned())
             };
 
-            // Build provider.
-            let mut builder = LLMBuilder::new().backend(backend).model(placeholder_model);
+            // Build provider and call list_models.
+            let api_key_str = api_key.as_deref().unwrap_or("");
 
-            if let Some(ref url) = entry.base_url {
-                builder = builder.base_url(url);
-            }
-            if let Some(key) = &api_key {
-                builder = builder.api_key(key);
-            }
-
-            let provider = match builder.build() {
-                Ok(p) => p,
-                Err(e) => {
-                    errors.insert(entry.name.clone(), format!("build failed: {e}"));
-                    continue;
+            let result: Result<Vec<String>, Report<LlmServiceError>> = match backend {
+                Backend::Anthropic => {
+                    let svc = AnthropicService::new(
+                        placeholder_model.clone(),
+                        api_key_str.to_owned(),
+                        None,
+                    );
+                    svc.list_models().await
+                }
+                Backend::Google => {
+                    let svc = GoogleService::new(placeholder_model.clone(), api_key_str.to_owned());
+                    svc.list_models().await
+                }
+                _ => {
+                    let config = ProviderConfig::from(&backend);
+                    let svc = OpenAiCompatibleService::new(
+                        config,
+                        placeholder_model.clone(),
+                        entry.base_url.clone(),
+                        api_key_str.to_owned(),
+                        entry.extra_body.clone(),
+                    );
+                    svc.list_models().await
                 }
             };
 
-            // Call list_models.
-            match provider.list_models(None).await {
-                Ok(response) => {
-                    let models = response.get_models();
+            match result {
+                Ok(models) => {
                     tracing::info!(
                         provider = %entry.name,
                         count = models.len(),
