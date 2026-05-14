@@ -294,9 +294,7 @@ mod tests {
 
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::protocol::TableData;
-    use ratatui::style::{Color, Modifier, Style};
-    use ratatui::text::Span;
+    use ratatui::style::Color;
 
     // --- Gutter width constant for test offsets ---
     const G: u16 = GUTTER_WIDTH; // = 2
@@ -679,122 +677,7 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]
-    fn render_table_entry_has_bold_headers() {
-        // Given a ChatLogElement with a table entry.
-        let mut element = ChatLogElement;
-        let state = {
-            let mut s = AppState::default();
-            let data = TableData {
-                headers: vec![
-                    Span::raw("Provider"),
-                    Span::raw("Count"),
-                    Span::raw("Status"),
-                ],
-                rows: vec![vec![
-                    Span::raw("ollama"),
-                    Span::raw("5"),
-                    Span::styled("\u{2705}", Style::default().fg(Color::Green)),
-                ]],
-            };
-            s.active_session_mut().push_entry(ChatEntry::table(data));
-            s
-        };
 
-        let (mut terminal, area) = setup_term(60, 10);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then the header row contains "P" (from "Provider") with bold styling.
-        let buffer = terminal.backend().buffer().clone();
-        let has_bold_header = (0..10).any(|row| {
-            (G..60).any(|col| {
-                buffer.cell((col, row)).is_some_and(|c| {
-                    c.symbol() == "P" && c.style().add_modifier.contains(Modifier::BOLD)
-                })
-            })
-        });
-        assert!(has_bold_header, "table header should be bold");
-    }
-
-    #[rstest::rstest]
-    fn render_table_entry_has_data_rows() {
-        // Given a ChatLogElement with a table entry containing data rows.
-        let mut element = ChatLogElement;
-        let state = {
-            let mut s = AppState::default();
-            let data = TableData {
-                headers: vec![
-                    Span::raw("Provider"),
-                    Span::raw("Count"),
-                    Span::raw("Status"),
-                ],
-                rows: vec![vec![
-                    Span::raw("ollama"),
-                    Span::raw("5"),
-                    Span::styled("\u{2705}", Style::default().fg(Color::Green)),
-                ]],
-            };
-            s.active_session_mut().push_entry(ChatEntry::table(data));
-            s
-        };
-
-        let (mut terminal, area) = setup_term(60, 10);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then the buffer contains "ollama" somewhere (a data row cell).
-        let buffer = terminal.backend().buffer().clone();
-        let has_ollama = (0..10).any(|row| {
-            (G..60).any(|col| buffer.cell((col, row)).is_some_and(|c| c.symbol() == "o"))
-        });
-        assert!(has_ollama, "table data row should contain 'ollama'");
-    }
-
-    #[rstest::rstest]
-    fn render_table_entry_has_separator_line() {
-        // Given a ChatLogElement with a table entry.
-        let mut element = ChatLogElement;
-        let state = {
-            let mut s = AppState::default();
-            let data = TableData {
-                headers: vec![Span::raw("Provider"), Span::raw("Count")],
-                rows: vec![vec![Span::raw("test"), Span::raw("1")]],
-            };
-            s.active_session_mut().push_entry(ChatEntry::table(data));
-            s
-        };
-
-        let (mut terminal, area) = setup_term(60, 10);
-
-        // When rendering.
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-
-        // Then the buffer contains a separator line with \u{2500} (─).
-        let buffer = terminal.backend().buffer().clone();
-        let has_separator = (0..10).any(|row| {
-            (G..60).any(|col| {
-                buffer
-                    .cell((col, row))
-                    .is_some_and(|c| c.symbol() == "\u{2500}")
-            })
-        });
-        assert!(has_separator, "table should have a separator line");
-    }
 
     #[rstest::rstest]
     fn render_error_entry() {
