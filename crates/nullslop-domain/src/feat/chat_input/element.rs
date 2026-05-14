@@ -66,6 +66,11 @@ impl UiElement<AppState> for ChatInputBoxElement {
         let input_widget = Paragraph::new(lines).block(block);
         frame.render_widget(input_widget, area);
 
+        // Render scroll position indicators if content overflows.
+        let total_lines = state.active_chat_input().wrapped_lines().len();
+        let scroll_offset = state.active_chat_input().scroll_offset();
+        render_scroll_indicators(frame, inner, total_lines, scroll_offset, max_visible_lines);
+
         // Position cursor when in input mode.
         if input_mode {
             let (row, col) = state.active_chat_input().cursor_row_col();
@@ -119,6 +124,57 @@ fn build_wrapped_lines<'a>(
     }
 
     lines
+}
+
+/// Render scroll position indicators when content exceeds the visible area.
+///
+/// Shows `↑ N` on the top-right when lines are hidden above, and `↓ N` on the
+/// bottom-right when lines are hidden below. Styled like the chat log indicator
+/// (dark gray on black).
+fn render_scroll_indicators(
+    frame: &mut Frame<'_>,
+    inner: Rect,
+    total_lines: usize,
+    scroll_offset: usize,
+    max_visible_lines: usize,
+) {
+    let lines_above = scroll_offset;
+    let lines_below = total_lines
+        .saturating_sub(scroll_offset)
+        .saturating_sub(max_visible_lines);
+
+    if lines_above == 0 && lines_below == 0 {
+        return;
+    }
+
+    let style = Style::default().fg(Color::LightGreen).bg(Color::Black);
+
+    if lines_above > 0 {
+        let label = format!("↑ {lines_above}");
+        render_indicator_overlay(frame, &label, inner, inner.y, style);
+    }
+
+    if lines_below > 0 {
+        let label = format!("↓ {lines_below}");
+        let bottom_y = inner.y + inner.height.saturating_sub(1);
+        render_indicator_overlay(frame, &label, inner, bottom_y, style);
+    }
+}
+
+/// Render a single indicator label as a right-aligned overlay on the given row.
+fn render_indicator_overlay(frame: &mut Frame<'_>, label: &str, inner: Rect, y: u16, style: Style) {
+    let indicator_line = Line::from(Span::styled(label, style));
+    let indicator_width = u16::try_from(indicator_line.width())
+        .unwrap_or(inner.width)
+        .min(inner.width);
+    let indicator = Paragraph::new(indicator_line);
+    let indicator_area = Rect {
+        x: inner.x + inner.width.saturating_sub(indicator_width),
+        y,
+        width: indicator_width,
+        height: 1,
+    };
+    frame.render_widget(indicator, indicator_area);
 }
 
 #[cfg(test)]
@@ -472,5 +528,138 @@ mod tests {
         terminal
             .backend_mut()
             .assert_cursor_position(Position { x: 7, y: 1 });
+    }
+
+    #[rstest::rstest]
+    fn indicator_shows_up_arrow_when_lines_hidden_above() {
+        // Given a narrow terminal with 3 visible rows and 5 total lines, scrolled to offset 2.
+        let mut element = ChatInputBoxElement;
+        let state = {
+            let mut s = AppState::default();
+            // 5 logical lines, narrow width so each wraps to 1 visual line.
+            s.active_chat_input_mut()
+                .insert_text("line1\nline2\nline3\nline4\nline5");
+            s.active_chat_input_mut().set_wrap_width(38);
+            s.active_chat_input_mut().set_scroll_offset(2);
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 4);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the up arrow indicator appears on the top-right.
+        // "↑ 2" = 3 display cols, right-aligned on row 0 at x = 40 - 3 = 37.
+        let buffer = terminal.backend().buffer().clone();
+        let arrow_cell = buffer.cell((37, 0)).expect("cell should exist");
+        assert_eq!(arrow_cell.symbol(), "↑");
+        assert_eq!(arrow_cell.style().fg, Some(Color::LightGreen));
+        assert_eq!(arrow_cell.style().bg, Some(Color::Black));
+        let num_cell = buffer.cell((39, 0)).expect("cell should exist");
+        assert_eq!(num_cell.symbol(), "2");
+    }
+
+    #[rstest::rstest]
+    fn indicator_shows_down_arrow_when_lines_hidden_below() {
+        // Given a narrow terminal with 3 visible rows and 5 total lines, scrolled to offset 0.
+        let mut element = ChatInputBoxElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_chat_input_mut()
+                .insert_text("line1\nline2\nline3\nline4\nline5");
+            s.active_chat_input_mut().set_wrap_width(38);
+            // scroll_offset = 0, so lines_above = 0, lines_below = 5 - 0 - 3 = 2.
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 4);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the down arrow indicator appears on the bottom-right of the inner area.
+        // inner area: rows 0..2 (3 rows), bottom row is y=2.
+        // "↓ 2" = 3 display cols, right-aligned at x = 40 - 3 = 37, y = 2.
+        let buffer = terminal.backend().buffer().clone();
+        let arrow_cell = buffer.cell((37, 2)).expect("cell should exist");
+        assert_eq!(arrow_cell.symbol(), "↓");
+        assert_eq!(arrow_cell.style().fg, Some(Color::LightGreen));
+        assert_eq!(arrow_cell.style().bg, Some(Color::Black));
+        let num_cell = buffer.cell((39, 2)).expect("cell should exist");
+        assert_eq!(num_cell.symbol(), "2");
+    }
+
+    #[rstest::rstest]
+    fn indicator_shows_both_arrows_when_viewport_in_middle() {
+        // Given a narrow terminal with 3 visible rows and 7 total lines, scrolled to offset 2.
+        let mut element = ChatInputBoxElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_chat_input_mut()
+                .insert_text("line1\nline2\nline3\nline4\nline5\nline6\nline7");
+            s.active_chat_input_mut().set_wrap_width(38);
+            s.active_chat_input_mut().set_scroll_offset(2);
+            // lines_above = 2, lines_below = 7 - 2 - 3 = 2.
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 4);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then both indicators appear.
+        let buffer = terminal.backend().buffer().clone();
+
+        // Up arrow on top-right (row 0). "↑ 2" = 3 display cols → x = 37.
+        let up_cell = buffer.cell((37, 0)).expect("cell should exist");
+        assert_eq!(up_cell.symbol(), "↑");
+        assert_eq!(up_cell.style().fg, Some(Color::LightGreen));
+
+        // Down arrow on bottom-right of inner area (row 2). "↓ 2" = 3 display cols → x = 37.
+        let down_cell = buffer.cell((37, 2)).expect("cell should exist");
+        assert_eq!(down_cell.symbol(), "↓");
+        assert_eq!(down_cell.style().fg, Some(Color::LightGreen));
+    }
+
+    #[rstest::rstest]
+    fn no_indicators_when_content_fits() {
+        // Given a terminal where all content fits without scrolling.
+        let mut element = ChatInputBoxElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_chat_input_mut().insert_text("hello");
+            s.active_chat_input_mut().set_wrap_width(38);
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 3);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then no arrow indicators appear on the right edge.
+        let buffer = terminal.backend().buffer().clone();
+        // Check that the rightmost cell on row 0 is NOT an arrow.
+        let right_cell = buffer.cell((39, 0)).expect("cell should exist");
+        assert_ne!(right_cell.symbol(), "↑");
+        assert_ne!(right_cell.symbol(), "↓");
     }
 }
