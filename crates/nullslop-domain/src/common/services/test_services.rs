@@ -23,7 +23,6 @@ use tokio::runtime::Handle;
 
 use super::Services;
 use super::actor_channel::ActorChannelService;
-use super::core_channel::{CoreChannelService, CoreNotification};
 use super::strategy_registry::StrategyRegistryService;
 
 /// A no-op session store for tests.
@@ -80,8 +79,6 @@ pub struct TestServices {
     handle: Option<Handle>,
     /// Custom actor channel sender (if provided).
     actor_channel_sender: Option<Sender<AppMsg>>,
-    /// Custom core channel sender (if provided).
-    core_channel_sender: Option<Sender<CoreNotification>>,
     /// Custom LLM service factory (if provided).
     llm_service: Option<LlmServiceFactoryService>,
     /// Custom session store service (if provided).
@@ -100,7 +97,6 @@ impl Default for TestServices {
             },
             handle: None,
             actor_channel_sender: None,
-            core_channel_sender: None,
             llm_service: None,
             session_store: None,
             strategy_discovery: None,
@@ -133,13 +129,6 @@ impl TestServices {
     #[must_use]
     pub fn actor_channel(mut self, sender: Sender<AppMsg>) -> Self {
         self.actor_channel_sender = Some(sender);
-        self
-    }
-
-    /// Set a custom core channel sender.
-    #[must_use]
-    pub fn core_channel(mut self, sender: Sender<CoreNotification>) -> Self {
-        self.core_channel_sender = Some(sender);
         self
     }
 
@@ -182,12 +171,9 @@ impl TestServices {
         });
 
         let (actor_tx, _actor_rx) = kanal::unbounded::<AppMsg>();
-        let (core_tx, _core_rx) = kanal::unbounded::<CoreNotification>();
-
         Services {
             handle,
             actor_channel: ActorChannelService::new(self.actor_channel_sender.unwrap_or(actor_tx)),
-            core_channel: CoreChannelService::new(self.core_channel_sender.unwrap_or(core_tx)),
             llm_service: self.llm_service.unwrap_or_else(|| {
                 LlmServiceFactoryService::new(Arc::new(
                     crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),

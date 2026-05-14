@@ -147,7 +147,6 @@ pub fn coordinated_shutdown(
 ///
 /// Panics if called from within the tokio runtime context.
 ///
-/// [`CoreNotification`]: crate::CoreNotification
 pub fn wait_for_system_ready(
     ready_rx: tokio::sync::oneshot::Receiver<()>,
     handle: &tokio::runtime::Handle,

@@ -109,7 +109,6 @@ fn create_actor_core(
     llm_service: LlmServiceFactoryService,
 ) -> (AppCore, Services, ActorHostService) {
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
-    let (core_notify_tx, _core_notify_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
     let sink = Arc::new(ActorMessageSink::new(sender.clone()));
 
     // Shared state for all actors.
@@ -204,7 +203,6 @@ fn create_actor_core(
         },
     });
 
-    let _ = core_notify_tx; // Not used in actor world — the shutdown tracker isn't running.
     (core, services, actor_host_service)
 }
 

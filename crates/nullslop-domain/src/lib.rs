@@ -52,7 +52,7 @@ pub use common::core::{
 };
 
 // Re-export intent types
-pub use common::services::{ActorChannelService, CoreChannelService};
+pub use common::services::ActorChannelService;
 pub use feat::intent::IntentHandler;
 
 // Re-export providers types
@@ -86,14 +86,13 @@ pub use feat::persona::{Persona, PersonaEntry, ensure_personas_dir_with_seed, pe
 
 // Re-export services submodules
 pub use common::services::actor_channel;
-pub use common::services::core_channel;
 pub use common::services::strategy_registry;
 
 // Re-export protocol types at crate root
 pub use protocol::entries_to_messages;
 pub use protocol::{ActiveTab, TabDirection};
 pub use protocol::{
-    ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, CoreNotification, Event,
+    ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, Event,
     Intent, IntentResult, Key, KeyEvent, Mode, Modifiers, PickerKind, PromptTemplate,
 };
 pub use protocol::{
