@@ -328,7 +328,10 @@ impl ChatSessionState {
     ///
     /// Panics if the session is not streaming.
     #[expect(clippy::indexing_slicing, reason = "index comes from push_entry")]
-    #[expect(clippy::expect_used, reason = "streaming invariant guaranteed by begin_streaming")]
+    #[expect(
+        clippy::expect_used,
+        reason = "streaming invariant guaranteed by begin_streaming"
+    )]
     pub fn begin_thinking(&mut self) {
         assert!(
             self.core.is_streaming,
@@ -352,7 +355,10 @@ impl ChatSessionState {
     ///
     /// Panics if `begin_thinking()` has not been called.
     #[expect(clippy::indexing_slicing, reason = "index set by begin_thinking")]
-    #[expect(clippy::expect_used, reason = "streaming invariant guaranteed by begin_thinking")]
+    #[expect(
+        clippy::expect_used,
+        reason = "streaming invariant guaranteed by begin_thinking"
+    )]
     pub fn append_thinking_token<S>(&mut self, token: S)
     where
         S: AsRef<str>,

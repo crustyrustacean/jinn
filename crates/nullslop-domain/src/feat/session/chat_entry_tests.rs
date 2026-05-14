@@ -211,7 +211,10 @@ fn thinking_entry_has_thinking_kind() {
     let entry = ChatEntry::thinking(text);
 
     // Then kind is Thinking("reasoning here").
-    assert_eq!(entry.kind, ChatEntryKind::Thinking("reasoning here".to_owned()));
+    assert_eq!(
+        entry.kind,
+        ChatEntryKind::Thinking("reasoning here".to_owned())
+    );
 }
 
 #[rstest::rstest]
@@ -242,7 +245,10 @@ fn thinking_entry_serializes_roundtrip() {
     let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
 
     // Then the roundtrip preserves the kind.
-    assert_eq!(back.kind, ChatEntryKind::Thinking("I need to think about this".to_owned()));
+    assert_eq!(
+        back.kind,
+        ChatEntryKind::Thinking("I need to think about this".to_owned())
+    );
 }
 
 #[rstest::rstest]
