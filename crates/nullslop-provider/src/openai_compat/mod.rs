@@ -11,7 +11,7 @@ mod provider_config;
 mod request;
 mod response;
 mod service;
-mod sse;
+pub mod sse;
 
 pub use factory::OpenAiCompatibleFactory;
 pub use provider_config::ProviderConfig;
