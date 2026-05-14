@@ -7,8 +7,6 @@
 // Always recomputes from the current session's chat history so the count
 // is correct after session switches, reloads, etc.
 
-let slot_id = "";
-
 fn init() {
     // Subscribe to events that mark turn boundaries.
     host_events_subscribe([
@@ -17,21 +15,14 @@ fn init() {
     ]);
 
     // Register a status bar slot.
-    slot_id = host_status_bar_add_slot("turn-counter", "left", 50, "Turn: 0");
-
-    // Initial display.
-    update_display();
+    host_status_bar_add_slot("turn-counter", "left", 50, "Turn: 0");
 }
 
 fn on_event(event) {
-    // Always recompute — the active session may have changed.
-    update_display();
-}
-
-fn update_display() {
+    // Always recompute from the active session's history.
     let entries = host_chat_get_entries();
     let count = compute_turn_count(entries);
-    host_status_bar_update_slot(slot_id, "Turn: " + count);
+    host_status_bar_update_slot("turn-counter", "Turn: " + count);
 }
 
 fn compute_turn_count(entries) {
