@@ -1,0 +1,187 @@
+//! Clipboard flush — extracts selected text from the buffer and copies to system clipboard.
+
+use ratatui::buffer::Buffer;
+
+use crate::TuiApp;
+use crate::selection::SelectionState;
+
+/// If a clipboard copy is pending, extracts the selected text from the buffer
+/// and copies it to the system clipboard. Clears the pending flag regardless
+/// of success or failure.
+///
+/// The clipboard write runs on a spawned thread that holds the
+/// [`arboard::Clipboard`] open for a few seconds after writing. On X11,
+/// clipboard data is only available while the `Clipboard` instance is alive —
+/// dropping it immediately prevents clipboard managers from syncing.
+pub(super) fn flush_pending_clipboard(app: &mut TuiApp, buf: &Buffer) {
+    if !app.pending_clipboard {
+        return;
+    }
+    app.pending_clipboard = false;
+
+    let text = match app.selection.extract_text(buf) {
+        Some(text) if !text.is_empty() => text,
+        _ => {
+            // Empty selection — clear highlight silently.
+            app.selection = SelectionState::Idle;
+            return;
+        }
+    };
+
+    // Clear selection highlight immediately.
+    app.selection = SelectionState::Idle;
+
+    // Set status notification.
+    app.core
+        .state
+        .write()
+        .frontend
+        .set_status_notification("Copied to clipboard");
+
+    // Spawn a thread to hold the clipboard open for clipboard managers.
+    std::thread::spawn(move || {
+        let mut cb = match arboard::Clipboard::new() {
+            Ok(cb) => cb,
+            Err(e) => {
+                tracing::warn!(err = %e, "failed to create clipboard");
+                return;
+            }
+        };
+        if let Err(e) = cb.set_text(&text) {
+            tracing::warn!(err = %e, "failed to copy selection to clipboard");
+            return;
+        }
+        tracing::debug!(len = text.len(), "copied selection to clipboard");
+        // Hold clipboard open so clipboard managers can sync.
+        // cb must live through the sleep — X11 clipboard data is only
+        // available while the Clipboard instance is alive.
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::selection::SelectionState;
+    use ratatui::layout::Rect;
+
+    /// Creates a minimal `TuiApp` for render testing.
+    fn render_test_app() -> crate::TuiApp {
+        crate::TuiApp::test_builder().build()
+    }
+
+    #[rstest::rstest]
+    fn clipboard_copy_clears_pending_flag_on_idle_selection() {
+        // Given an app with pending_clipboard set but Idle selection.
+        let mut app = render_test_app();
+        app.selection = SelectionState::Idle;
+        app.pending_clipboard = true;
+
+        let area = Rect::new(0, 0, 20, 5);
+        let buf = ratatui::buffer::Buffer::empty(area);
+
+        // When flushing the pending clipboard.
+        flush_pending_clipboard(&mut app, &buf);
+
+        // Then the pending flag is cleared (even though there was nothing to copy).
+        assert!(!app.pending_clipboard);
+    }
+
+    #[rstest::rstest]
+    fn clipboard_copy_skips_empty_selection() {
+        // Given an app with pending_clipboard and an Active selection over empty cells.
+        let area = Rect::new(0, 0, 20, 5);
+        let buf = ratatui::buffer::Buffer::empty(area);
+
+        let mut app = render_test_app();
+        app.selection = SelectionState::Active {
+            anchor: (0, 0),
+            focus: (3, 0),
+            bounds: area,
+        };
+        app.pending_clipboard = true;
+
+        // When flushing the pending clipboard.
+        flush_pending_clipboard(&mut app, &buf);
+
+        // Then the pending flag is cleared.
+        assert!(!app.pending_clipboard);
+        // And the selection is cleared to Idle (no highlight persists).
+        assert_eq!(app.selection, SelectionState::Idle);
+        // And no notification is set.
+        assert!(
+            app.core
+                .state
+                .read()
+                .frontend
+                .active_status_notification()
+                .is_none()
+        );
+    }
+
+    #[rstest::rstest]
+    fn clipboard_clears_pending_flag_immediately() {
+        // Given a buffer with known text and an active selection.
+        let area = Rect::new(0, 0, 20, 5);
+        let mut buf = ratatui::buffer::Buffer::empty(area);
+        // Write "Hello" on row 2.
+        for (i, ch) in "Hello".chars().enumerate() {
+            buf.cell_mut((2 + i as u16, 2))
+                .unwrap()
+                .set_symbol(&ch.to_string());
+        }
+
+        let mut app = render_test_app();
+        app.selection = SelectionState::Active {
+            anchor: (2, 2),
+            focus: (6, 2),
+            bounds: area,
+        };
+        app.pending_clipboard = true;
+
+        // When flushing the pending clipboard.
+        flush_pending_clipboard(&mut app, &buf);
+
+        // Then the pending flag is cleared immediately.
+        assert!(!app.pending_clipboard);
+        // And the selection is cleared to Idle.
+        assert_eq!(app.selection, SelectionState::Idle);
+        // And a notification is set.
+        assert_eq!(
+            app.core.state.read().frontend.active_status_notification(),
+            Some("Copied to clipboard")
+        );
+    }
+
+    #[rstest::rstest]
+    #[ignore = "requires clipboard access (run with --ignored)"]
+    fn clipboard_contains_selected_text() {
+        // Given a buffer with known text and an active selection.
+        let area = Rect::new(0, 0, 20, 5);
+        let mut buf = ratatui::buffer::Buffer::empty(area);
+        // Write "Hello" on row 2.
+        for (i, ch) in "Hello".chars().enumerate() {
+            buf.cell_mut((2 + i as u16, 2))
+                .unwrap()
+                .set_symbol(&ch.to_string());
+        }
+
+        let mut app = render_test_app();
+        app.selection = SelectionState::Active {
+            anchor: (2, 2),
+            focus: (6, 2),
+            bounds: area,
+        };
+        app.pending_clipboard = true;
+
+        // When flushing the pending clipboard.
+        flush_pending_clipboard(&mut app, &buf);
+
+        // Then after the clipboard thread completes, the clipboard contains
+        // the selected text.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let mut clipboard = arboard::Clipboard::new().expect("clipboard access");
+        let content = clipboard.get_text().expect("read clipboard");
+        assert_eq!(content, "Hello");
+    }
+}
