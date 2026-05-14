@@ -10,15 +10,15 @@
 //!
 //! Text wraps within the available space.
 
-use crate::common::ui_element::UiElement;
-use crate::protocol::{ChatEntryKind, TableData};
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-
 use crate::common::app_state::AppState;
+use crate::common::ui_element::UiElement;
+use crate::protocol::ChatEntryKind;
+use ratatui::style::{Color, Style};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::{Frame, layout::Rect};
+
+use super::{actor, assistant, error_entry, system, table, thinking, tool_call, tool_result, user};
 
 /// Default number of lines to show for tool result entries before truncating.
 const DEFAULT_TOOL_RESULT_MAX_LINES: u16 = 5;
@@ -137,7 +137,7 @@ impl UiElement<AppState> for ChatLogElement {
             let hidden = max_offset - clamped;
             let label = format!(" ↑ {hidden} lines above ");
             let label_len = label.len();
-            let indicator = Paragraph::new(Line::from(Span::styled(
+            let indicator = Paragraph::new(Line::from(ratatui::text::Span::styled(
                 label,
                 Style::default().fg(Color::DarkGray).bg(Color::Black),
             )));
@@ -169,280 +169,31 @@ fn entry_to_lines(
     let pinned = entry.pin_position.is_some();
 
     match &entry.kind {
-        ChatEntryKind::User(text) => {
-            let prefix = if pinned { "📌 > " } else { "> " };
-            multiline_styled(
-                text,
-                prefix,
-                "  ",
-                Style::default().add_modifier(Modifier::BOLD),
-                is_selected,
-            )
-        }
-        ChatEntryKind::System(text) => {
-            let prefix = if pinned { "📌   " } else { "  " };
-            multiline_styled(
-                text,
-                prefix,
-                "  ",
-                Style::default().fg(Color::DarkGray),
-                is_selected,
-            )
-        }
-        ChatEntryKind::Error(text) => {
-            let prefix = if pinned { "📌   " } else { "  " };
-            multiline_styled(
-                text,
-                prefix,
-                "  ",
-                Style::default().fg(Color::Red),
-                is_selected,
-            )
-        }
-        ChatEntryKind::Actor { source, text } => {
-            let base = format!("[actor] {source}: ");
-            let prefix = if pinned { format!("📌 {base}") } else { base };
-            multiline_styled(
-                text,
-                &prefix,
-                "  ",
-                Style::default().fg(Color::Yellow),
-                is_selected,
-            )
-        }
-        ChatEntryKind::Assistant(text) => {
-            let prefix = if pinned { "📌 " } else { "" };
-            multiline_styled(
-                text,
-                prefix,
-                "  ",
-                Style::default().fg(Color::Cyan),
-                is_selected,
-            )
-        }
+        ChatEntryKind::User(text) => user::to_lines(text, pinned, is_selected),
+        ChatEntryKind::System(text) => system::to_lines(text, pinned, is_selected),
+        ChatEntryKind::Error(text) => error_entry::to_lines(text, pinned, is_selected),
+        ChatEntryKind::Actor { source, text } => actor::to_lines(source, text, pinned, is_selected),
+        ChatEntryKind::Assistant(text) => assistant::to_lines(text, pinned, is_selected),
         ChatEntryKind::ToolCall {
             name, arguments, ..
-        } => {
-            let prefix = if pinned { "📌 " } else { "  " };
-            multiline_styled(
-                format!("🔧 {name}({arguments})"),
-                prefix,
-                "  ",
-                Style::default().fg(Color::Magenta),
-                is_selected,
-            )
-        }
+        } => tool_call::to_lines(name, arguments, pinned, is_selected),
         ChatEntryKind::ToolResult {
             name,
             content,
             success,
             ..
-        } => {
-            let icon = if *success { "✅" } else { "❌" };
-            let prefix = if pinned { "📌 " } else { "  " };
-            let style = if *success {
-                Style::default().fg(Color::Green)
-            } else {
-                Style::default().fg(Color::Red)
-            };
-
-            let full_text = format!("{icon} {name}: {content}");
-            let text = full_text.trim_start_matches('\n');
-            let all_lines: Vec<&str> = text.split('\n').collect();
-
-            if is_expanded
-                || u16::try_from(all_lines.len()).unwrap_or(u16::MAX) <= tool_result_max_lines
-            {
-                multiline_styled(full_text, prefix, "  ", style, is_selected)
-            } else {
-                let max = tool_result_max_lines as usize;
-                let remaining = all_lines.len() - max;
-                let truncated_text: String = all_lines[..max].join("
-");
-                let mut lines = multiline_styled(truncated_text, prefix, "  ", style, is_selected);
-                lines.push(Line::from(Span::styled(
-                    format!("  ({remaining} more lines)"),
-                    Style::default().fg(Color::DarkGray),
-                )));
-                lines
-            }
-        }
-        ChatEntryKind::Table(data) => {
-            let prefix = if pinned { "📌 " } else { "  " };
-            table_to_lines(data, prefix, is_selected)
-        }
-        ChatEntryKind::Thinking(text) => {
-            let prefix = if pinned { "📌   " } else { "  " };
-            multiline_styled(
-                text,
-                prefix,
-                "  ",
-                Style::default().fg(Color::DarkGray),
-                is_selected,
-            )
-        }
+        } => tool_result::to_lines(
+            name,
+            content,
+            *success,
+            pinned,
+            is_selected,
+            is_expanded,
+            tool_result_max_lines,
+        ),
+        ChatEntryKind::Table(data) => table::to_lines(data, pinned, is_selected),
+        ChatEntryKind::Thinking(text) => thinking::to_lines(text, pinned, is_selected),
     }
-}
-
-/// Split text on `\n` and produce styled lines with the given prefix/indent.
-///
-/// Render a [`TableData`] as aligned, styled lines.
-///
-/// Builds column widths from headers and rows, then produces:
-/// - A bold header line
-/// - A separator line
-/// - Styled data rows with per-cell coloring
-fn table_to_lines(data: &TableData, prefix: &str, is_selected: bool) -> Vec<Line<'static>> {
-    let prefix = prefix.to_owned();
-    let num_cols = data.headers.len();
-    if num_cols == 0 {
-        return vec![Line::from(Span::styled(
-            format!("{prefix}(empty table)"),
-            Style::default().fg(Color::DarkGray),
-        ))];
-    }
-
-    // Compute column widths: max of header and all row cells.
-    let mut col_widths = vec![0usize; num_cols];
-    for (i, h) in data.headers.iter().enumerate() {
-        col_widths[i] = col_widths[i].max(unicode_segementation_display_width(&h.content));
-    }
-    for row in &data.rows {
-        for (i, cell) in row.iter().enumerate() {
-            if i < num_cols {
-                col_widths[i] =
-                    col_widths[i].max(unicode_segementation_display_width(&cell.content));
-            }
-        }
-    }
-
-    let sep = " │ ";
-    let mut lines = Vec::new();
-
-    // Header line.
-    let header_spans = build_row_spans(
-        &data.headers,
-        &col_widths,
-        sep,
-        Style::default().add_modifier(Modifier::BOLD),
-    );
-    let header_line = if is_selected {
-        let mut spans = vec![Span::styled(
-            format!("▶ {prefix}"),
-            Style::default().add_modifier(Modifier::REVERSED),
-        )];
-        spans.extend(header_spans);
-        Line::from(spans)
-    } else {
-        let mut spans = vec![Span::raw(prefix.clone())];
-        spans.extend(header_spans);
-        Line::from(spans)
-    };
-    lines.push(header_line);
-
-    // Separator line.
-    let sep_parts: Vec<String> = col_widths.iter().map(|&w| "─".repeat(w)).collect();
-    let sep_text = format!("{prefix}{}", sep_parts.join("─┼─"));
-    lines.push(Line::from(Span::styled(
-        sep_text,
-        Style::default().fg(Color::DarkGray),
-    )));
-
-    // Data rows.
-    for row in &data.rows {
-        let row_spans = build_row_spans(row, &col_widths, sep, Style::default());
-        let mut spans = vec![Span::raw(prefix.clone())];
-        spans.extend(row_spans);
-        lines.push(Line::from(spans));
-    }
-
-    lines
-}
-
-/// Build styled spans for a single table row, padding cells to column width.
-fn build_row_spans(
-    cells: &[Span<'static>],
-    col_widths: &[usize],
-    separator: &str,
-    default_style: Style,
-) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-    for (i, cell) in cells.iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::raw(separator.to_owned()));
-        }
-        let width = unicode_segementation_display_width(&cell.content);
-        let padding = col_widths
-            .get(i)
-            .copied()
-            .unwrap_or(0)
-            .saturating_sub(width);
-        // Merge the cell's style with the default style.
-        let style = if cell.style == Style::default() {
-            default_style
-        } else {
-            cell.style.patch(default_style)
-        };
-        spans.push(Span::styled(
-            format!("{}{}", cell.content, " ".repeat(padding)),
-            style,
-        ));
-    }
-    spans
-}
-
-/// Compute the display width of a string using Unicode grapheme clusters.
-fn unicode_segementation_display_width(s: &str) -> usize {
-    use unicode_segmentation::UnicodeSegmentation;
-    s.graphemes(true)
-        .map(|g| {
-            // Emoji and wide characters take 2 columns; everything else takes 1.
-            // This is a simplified heuristic — full-width detection would need
-            // unicode-width, but for our use case (provider names, counts, status)
-            // this is sufficient.
-            if g.chars().any(|c| c as u32 > 0x2000) {
-                2
-            } else {
-                1
-            }
-        })
-        .sum()
-}
-
-/// When `is_selected` is true, the first line gets a `▶ ` prefix and
-/// `Modifier::REVERSED` added to its style.
-fn multiline_styled<T, P, I>(
-    text: T,
-    prefix: P,
-    indent: I,
-    style: Style,
-    is_selected: bool,
-) -> Vec<Line<'static>>
-where
-    T: AsRef<str>,
-    P: AsRef<str>,
-    I: AsRef<str>,
-{
-    let text = text.as_ref();
-    let text = text.trim_start_matches('\n');
-    let prefix = prefix.as_ref();
-    let _ = indent.as_ref();
-    let segments = text.split('\n');
-    let mut lines = Vec::new();
-    for (i, segment) in segments.enumerate() {
-        let (content, line_style) = if i == 0 && is_selected {
-            (
-                format!("▶ {prefix}{segment}"),
-                style.add_modifier(Modifier::REVERSED),
-            )
-        } else if i == 0 {
-            (format!("{prefix}{segment}"), style)
-        } else {
-            (segment.to_owned(), style)
-        };
-        lines.push(Line::from(Span::styled(content, line_style)));
-    }
-    lines
 }
 
 #[cfg(test)]
@@ -452,6 +203,9 @@ mod tests {
 
     use super::*;
     use crate::common::app_state::AppState;
+    use crate::protocol::TableData;
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::Span;
 
     #[rstest::rstest]
     fn name_returns_chat_log() {
@@ -1203,12 +957,12 @@ mod tests {
         let mut element = ChatLogElement;
         let state = {
             let mut s = AppState::default();
-            let content = (1..=10).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+            let content = (1..=10)
+                .map(|i| format!("line {i}"))
+                .collect::<Vec<_>>()
+                .join("\n");
             s.active_session_mut().push_entry(ChatEntry::tool_result(
-                "id",
-                "bash",
-                content,
-                true,
+                "id", "bash", content, true,
             ));
             s
         };
@@ -1226,13 +980,14 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let has_indicator = (0..20).any(|row| {
             let row_text: String = (0..80)
-                .map(|col| {
-                    buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" ")
-                })
+                .map(|col| buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" "))
                 .collect();
             row_text.contains("(5 more lines)")
         });
-        assert!(has_indicator, "truncated tool result should show '(5 more lines)'");
+        assert!(
+            has_indicator,
+            "truncated tool result should show '(5 more lines)'"
+        );
     }
 
     #[rstest::rstest]
@@ -1241,12 +996,12 @@ mod tests {
         let mut element = ChatLogElement;
         let state = {
             let mut s = AppState::default();
-            let content = (1..=10).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+            let content = (1..=10)
+                .map(|i| format!("line {i}"))
+                .collect::<Vec<_>>()
+                .join("\n");
             s.active_session_mut().push_entry(ChatEntry::tool_result(
-                "id",
-                "bash",
-                content,
-                true,
+                "id", "bash", content, true,
             ));
             // Expand the entry.
             let entry_id = s.active_session().history()[0].id.clone();
@@ -1267,9 +1022,7 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let has_last_line = (0..20).any(|row| {
             let row_text: String = (0..80)
-                .map(|col| {
-                    buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" ")
-                })
+                .map(|col| buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" "))
                 .collect();
             row_text.contains("line 10")
         });
@@ -1278,13 +1031,14 @@ mod tests {
         // And no truncation indicator.
         let has_indicator = (0..20).any(|row| {
             let row_text: String = (0..80)
-                .map(|col| {
-                    buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" ")
-                })
+                .map(|col| buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" "))
                 .collect();
             row_text.contains("(5 more lines)")
         });
-        assert!(!has_indicator, "expanded tool result should not show truncation indicator");
+        assert!(
+            !has_indicator,
+            "expanded tool result should not show truncation indicator"
+        );
     }
 
     #[rstest::rstest]
@@ -1295,10 +1049,7 @@ mod tests {
             let mut s = AppState::default();
             let content = "line 1\nline 2\nline 3".to_owned();
             s.active_session_mut().push_entry(ChatEntry::tool_result(
-                "id",
-                "bash",
-                content,
-                true,
+                "id", "bash", content, true,
             ));
             s
         };
@@ -1316,12 +1067,13 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let has_indicator = (0..20).any(|row| {
             let row_text: String = (0..80)
-                .map(|col| {
-                    buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" ")
-                })
+                .map(|col| buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" "))
                 .collect();
             row_text.contains("more lines")
         });
-        assert!(!has_indicator, "short tool result should not be truncated");
+        assert!(
+            !has_indicator,
+            "short tool result should not be truncated"
+        );
     }
 }
