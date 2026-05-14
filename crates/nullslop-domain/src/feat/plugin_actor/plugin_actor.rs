@@ -142,6 +142,7 @@ fn plugin_thread_main(
                 for plugin_id in subscribed_ids {
                     if let Some(runtime) = runtimes.get_mut(plugin_id) {
                         let event_map = build_event_map(&type_name, &event_json);
+                        tracing::debug!(plugin = %plugin_id, event_type = %type_name, "forwarding event to plugin");
                         if let Err(e) = runtime.call_on_event(event_map) {
                             tracing::error!(
                                 plugin = %plugin_id,
@@ -177,13 +178,16 @@ fn load_all_plugins(
     runtimes: &mut HashMap<PluginId, PluginRuntime>,
 ) {
     let discovered = nullslop_plugin::loader::discover(plugins_dir);
+    tracing::info!(count = discovered.len(), dir = %plugins_dir.display(), "discovered plugins");
     for plugin in discovered {
         match PluginRuntime::load(plugin.id.clone(), &plugin.path, callbacks.clone()) {
             Ok(mut runtime) => {
+                tracing::info!(plugin = %plugin.id, "loaded plugin, calling init");
                 if let Err(e) = runtime.call_init() {
                     tracing::error!(plugin = %plugin.id, err = ?e, "plugin init failed");
                     continue;
                 }
+                tracing::info!(plugin = %plugin.id, "plugin initialized successfully");
                 runtimes.insert(plugin.id.clone(), runtime);
             }
             Err(e) => {
