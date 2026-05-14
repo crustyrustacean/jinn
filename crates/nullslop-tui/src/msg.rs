@@ -15,6 +15,7 @@ pub use sender::MsgSender;
 /// Merges crossterm terminal events, periodic tick messages,
 /// and commands (from key handling or actors) into a single stream
 /// consumed by the main event loop.
+#[expect(clippy::large_enum_variant, reason = "boxing would cascade through all match arms")]
 #[derive(Debug)]
 pub enum Msg {
     /// Periodic tick for render refresh.

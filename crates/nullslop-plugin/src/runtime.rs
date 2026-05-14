@@ -16,6 +16,7 @@ use crate::plugin_id::PluginId;
 /// Callbacks that bridge rhai host API calls to Rust state.
 ///
 /// Created by the PluginActor's plugin thread and injected into each PluginRuntime.
+#[expect(clippy::type_complexity, reason = "callback signatures are inherently complex")]
 pub struct HostCallbacks {
     /// Subscribe to event types.
     pub subscribe_events: Arc<dyn Fn(&PluginId, &[String]) + Send + Sync>,
@@ -222,7 +223,7 @@ mod tests {
 
         let subscriptions: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let subs_clone = subscriptions.clone();
-        let subs_for_cb = subscriptions.clone();
+        let _subs_for_cb = subscriptions.clone();
 
         let callbacks = Arc::new(HostCallbacks {
             subscribe_events: Arc::new(move |_, types: &[String]| {
@@ -254,7 +255,7 @@ mod tests {
         if let Err(ref e) = init_result {
             eprintln!("init rhai error: {:?}", e);
         }
-        init_result.expect("init should succeed");
+        let _ = init_result.expect("init should succeed");
         runtime.enabled = true; // call_fn doesn't disable
 
         // Then subscriptions include the expected event types.

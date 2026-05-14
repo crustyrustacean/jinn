@@ -58,7 +58,7 @@ impl Actor for SystemReadyActor {
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Event(event) => {
-                self.handle_event(event);
+                self.handle_event(&event);
             }
             ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
         }
@@ -66,7 +66,7 @@ impl Actor for SystemReadyActor {
 }
 
 impl SystemReadyActor {
-    fn handle_event(&mut self, event: Event) {
+    fn handle_event(&mut self, event: &Event) {
         match event {
             Event::ActorStarted(..) => {
                 self.received += 1;
@@ -112,6 +112,7 @@ mod tests {
         }
     }
 
+    #[expect(dead_code, reason = "test utility for future tests")]
     fn create_ctx() -> ActorContext {
         ActorContext::new("test", std::sync::Arc::new(TestSink))
     }
@@ -131,7 +132,7 @@ mod tests {
         };
 
         // When processing another ActorStarted (count already matches).
-        actor.handle_event(Event::ActorStarted(
+        actor.handle_event(&Event::ActorStarted(
             crate::common::actor::protocol::event::ActorStarted {
                 name: "test".to_owned(),
                 description: None,
@@ -163,7 +164,7 @@ mod tests {
         };
 
         // When receiving AllActorsSpawned.
-        actor.handle_event(Event::AllActorsSpawned(
+        actor.handle_event(&Event::AllActorsSpawned(
             crate::common::actor::protocol::event::AllActorsSpawned,
         ));
 
@@ -191,7 +192,7 @@ mod tests {
         };
 
         // When receiving AllActorsSpawned (count matches: 2 == 2).
-        actor.handle_event(Event::AllActorsSpawned(
+        actor.handle_event(&Event::AllActorsSpawned(
             crate::common::actor::protocol::event::AllActorsSpawned,
         ));
 
@@ -215,13 +216,13 @@ mod tests {
         };
 
         // First: receive AllActorsSpawned (count mismatch: 1 < 2).
-        actor.handle_event(Event::AllActorsSpawned(
+        actor.handle_event(&Event::AllActorsSpawned(
             crate::common::actor::protocol::event::AllActorsSpawned,
         ));
         assert!(actor.ready_tx.is_some(), "should not signal yet");
 
         // Then: receive second ActorStarted (now 2 == 2).
-        actor.handle_event(Event::ActorStarted(
+        actor.handle_event(&Event::ActorStarted(
             crate::common::actor::protocol::event::ActorStarted {
                 name: "late-actor".to_owned(),
                 description: None,

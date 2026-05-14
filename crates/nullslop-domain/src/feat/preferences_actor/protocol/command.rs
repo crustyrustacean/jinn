@@ -22,8 +22,8 @@ impl PreferenceUpdate {
     /// Applies this diff to the given preferences in place.
     pub fn apply(&self, prefs: &mut UserPreferences) {
         match self {
-            Self::SetLastModel(v) => prefs.last_model = v.clone(),
-            Self::SetLastStrategy(v) => prefs.last_strategy = v.clone(),
+            Self::SetLastModel(v) => prefs.last_model.clone_from(v),
+            Self::SetLastStrategy(v) => prefs.last_strategy.clone_from(v),
         }
     }
 }

@@ -6,8 +6,6 @@ use crate::common::services::Services;
 use crate::protocol::{Intent, KeymapEntry, PickerKind};
 use nullslop_selection_widget::compute_popup_rect;
 use nullslop_testutil::setup_term;
-use ratatui::Terminal;
-use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 

@@ -150,7 +150,6 @@ impl Event {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::feat::provider::protocol::event::StreamCompletedReason;
     use crate::protocol::{ChatEntry, Key, KeyEvent, Mode, Modifiers, SessionId};
 
     #[rstest::rstest]

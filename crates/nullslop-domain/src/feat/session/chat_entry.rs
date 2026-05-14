@@ -332,10 +332,10 @@ impl ChatEntry {
     #[must_use]
     pub fn text(&self) -> String {
         match &self.kind {
-            ChatEntryKind::User(t) => t.clone(),
-            ChatEntryKind::System(t) => t.clone(),
-            ChatEntryKind::Error(t) => t.clone(),
-            ChatEntryKind::Assistant(t) => t.clone(),
+            ChatEntryKind::User(t)
+            | ChatEntryKind::System(t)
+            | ChatEntryKind::Error(t)
+            | ChatEntryKind::Assistant(t) => t.clone(),
             ChatEntryKind::Actor { text, .. } => text.clone(),
             ChatEntryKind::Table(data) => data.to_plain_text(),
             ChatEntryKind::ToolCall {

@@ -96,7 +96,6 @@ mod tests {
     use std::fs;
     use std::io::{Seek as _, Write as _};
 
-    use jiff::Timestamp;
     use tempfile::TempDir;
 
     use crate::protocol::SessionId;

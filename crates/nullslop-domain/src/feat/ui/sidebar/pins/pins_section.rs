@@ -707,7 +707,7 @@ mod tests {
     #[rstest::rstest]
     fn render_selected_entry_has_darkgray_marker_when_not_focused() {
         let mut section = PinsSection;
-        let mut state = state_with_pinned(2);
+        let state = state_with_pinned(2);
         // Sidebar is NOT focused (Normal scope is the default).
 
         let (mut terminal, area) = setup_term(60, 20);

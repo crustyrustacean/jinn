@@ -281,7 +281,7 @@ mod tests {
         ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     };
     use crate::protocol::{
-        ChatEntry, ChatEntryKind, Command, Event, PromptStrategyId, SessionId, ToolCall, ToolResult,
+        ChatEntry, ChatEntryKind, Command, Event, SessionId, ToolCall, ToolResult,
     };
     use tempfile::TempDir;
 
