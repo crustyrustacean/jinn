@@ -13,7 +13,7 @@ mod handlers;
 
 use std::collections::HashMap;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::context::protocol::command::{
@@ -89,10 +89,7 @@ impl Actor for PromptAssemblyActor {
             ActorEnvelope::Event(evt) => {
                 self.handle_event(&evt);
             }
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
-            ActorEnvelope::Shutdown => {}
+            _ => {}
         }
     }
 }

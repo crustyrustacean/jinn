@@ -2,14 +2,20 @@
 //!
 //! Every message an actor processes arrives inside an [`ActorEnvelope`] —
 //! whether it originated as a bus event, a bus command, a direct typed message
-//! from another actor, a system lifecycle message, or a shutdown signal.
-//! Actors match on this enum in their `handle` method.
+//! from another actor, or a system lifecycle message.
+//!
+//! Note: [`SystemMessage::ApplicationShuttingDown`] is intercepted by the
+//! actor run loop — actors never see it in their `handle()` method.
+//! See [`Actor::on_shutdown`](crate::Actor::on_shutdown) for the shutdown hook.
 
 /// System-level lifecycle messages delivered to every actor.
 ///
 /// These messages bypass the event bus — the actor host sends them directly
-/// to all actors regardless of subscriptions. Actors match on these in their
-/// `handle` method via [`ActorEnvelope::System`].
+/// to all actors regardless of subscriptions.
+///
+/// Note: `ApplicationShuttingDown` is intercepted by the run loop and never
+/// reaches the actor's `handle()` method. The run loop calls
+/// [`Actor::on_shutdown()`](crate::Actor::on_shutdown) instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemMessage {
     /// The application is shutting down.
@@ -30,6 +36,4 @@ pub enum ActorEnvelope<M> {
     Direct(M),
     /// A system lifecycle message (delivered to all actors, no subscription needed).
     System(SystemMessage),
-    /// Shutdown signal — the actor should clean up and exit its run loop.
-    Shutdown,
 }
