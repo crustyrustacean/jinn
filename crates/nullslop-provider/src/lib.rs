@@ -14,6 +14,9 @@ mod service;
 mod stream_event;
 mod tool_types;
 
+// Custom provider implementations (not OpenAI-compatible).
+pub mod anthropic;
+
 pub use backend::{Backend, BackendError};
 pub use fake::{FakeLlmServiceFactory, TOOL_LOOP_TRIGGER};
 pub use llm_message::LlmMessage;
