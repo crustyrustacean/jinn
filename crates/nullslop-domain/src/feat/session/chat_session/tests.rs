@@ -1098,8 +1098,14 @@ fn begin_thinking_inserts_before_assistant_entry() {
     // Then the Thinking entry is at the streaming entry's original index.
     // The Assistant entry shifted to index 2.
     assert_eq!(session.history().len(), 3);
-    assert!(matches!(session.history()[1].kind, ChatEntryKind::Thinking(_)));
-    assert!(matches!(session.history()[2].kind, ChatEntryKind::Assistant(_)));
+    assert!(matches!(
+        session.history()[1].kind,
+        ChatEntryKind::Thinking(_)
+    ));
+    assert!(matches!(
+        session.history()[2].kind,
+        ChatEntryKind::Assistant(_)
+    ));
     assert_eq!(session.streaming_thinking_entry_index(), Some(1));
 }
 
@@ -1140,8 +1146,12 @@ fn finish_streaming_clears_thinking_entry_index() {
     // Then the thinking entry index is cleared.
     assert_eq!(session.streaming_thinking_entry_index(), None);
     // And the thinking text is preserved in history.
-    assert!(matches!(session.history()[1].kind, ChatEntryKind::Thinking(ref t) if t == "reasoning"));
-    assert!(matches!(session.history()[2].kind, ChatEntryKind::Assistant(ref t) if t == "response"));
+    assert!(
+        matches!(session.history()[1].kind, ChatEntryKind::Thinking(ref t) if t == "reasoning")
+    );
+    assert!(
+        matches!(session.history()[2].kind, ChatEntryKind::Assistant(ref t) if t == "response")
+    );
 }
 
 #[rstest::rstest]
@@ -1159,5 +1169,7 @@ fn cancel_streaming_preserves_partial_thinking() {
 
     // Then the partial thinking text is preserved.
     assert_eq!(session.streaming_thinking_entry_index(), None);
-    assert!(matches!(session.history()[1].kind, ChatEntryKind::Thinking(ref t) if t == "partial reasoning"));
+    assert!(
+        matches!(session.history()[1].kind, ChatEntryKind::Thinking(ref t) if t == "partial reasoning")
+    );
 }
