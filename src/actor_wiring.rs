@@ -77,15 +77,11 @@ pub fn create_core_with_actor_host(
     // Create shared State FIRST — injected into multiple actors.
     let state = State::new(AppState::default());
 
-    // Set default CWD on all sessions (inherited from shell).
+    // Set default CWD for sessions (inherited from shell).
     {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
         let mut guard = state.write();
-        guard
-            .session
-            .sessions
-            .values_mut()
-            .for_each(|s| s.set_cwd(cwd.clone()));
+        guard.session.default_cwd = cwd;
     }
 
     // Build services (needed early for infrastructure actors).
