@@ -148,6 +148,57 @@ pub fn truncate_line(
     Line::from(spans)
 }
 
+/// Builds a [`PickerEntry`] from a resolved provider.
+///
+/// Checks availability against the registry and API keys.
+/// The entry is marked `is_remote: false` and `is_alias: false`.
+fn static_provider_entry(
+    provider: &crate::feat::provider_infra::ResolvedProvider,
+    registry: &crate::feat::provider_infra::ProviderRegistry,
+    api_keys: &crate::feat::provider_infra::ApiKeys,
+) -> PickerEntry {
+    PickerEntry {
+        provider_id: provider.id.to_string(),
+        name: provider.name.clone(),
+        provider_name: provider.name.clone(),
+        backend: provider.backend.clone(),
+        model: provider.model.clone(),
+        is_alias: false,
+        alias_target: None,
+        is_available: registry.is_available(&provider.id, api_keys),
+        is_remote: false,
+        is_active: false,
+    }
+}
+
+/// Builds a [`PickerEntry`] from an alias definition.
+///
+/// Resolves the alias through the registry. If the alias resolves, the entry
+/// inherits the target provider's metadata. Availability depends on whether
+/// the resolved target is available. Unresolvable aliases get empty defaults
+/// and are marked unavailable.
+fn alias_entry(
+    alias: &crate::feat::provider_infra::AliasEntry,
+    registry: &crate::feat::provider_infra::ProviderRegistry,
+    api_keys: &crate::feat::provider_infra::ApiKeys,
+) -> PickerEntry {
+    let resolved = registry.resolve_alias(&alias.name);
+    let is_available = resolved.is_some_and(|r| registry.is_available(&r.id.clone(), api_keys));
+
+    PickerEntry {
+        provider_id: resolved.map(|r| r.id.to_string()).unwrap_or_default(),
+        name: alias.name.clone(),
+        provider_name: resolved.map(|r| r.name.clone()).unwrap_or_default(),
+        backend: resolved.map(|r| r.backend.clone()).unwrap_or_default(),
+        model: resolved.map(|r| r.model.clone()).unwrap_or_default(),
+        is_alias: true,
+        alias_target: resolved.map(|r| r.id.to_string()),
+        is_available,
+        is_remote: false,
+        is_active: false,
+    }
+}
+
 /// Loads all provider and alias entries from the registry, ready for `set_items()`.
 ///
 /// Reads the provider registry, API keys, and optional model cache
@@ -166,47 +217,29 @@ pub fn load_provider_entries(
     model_cache: Option<&crate::feat::provider_infra::ModelCache>,
 ) -> Vec<PickerEntry> {
     let mut entries = Vec::new();
-
     let mut static_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
+    // Phase 1: Load static providers from config.
+    // These are the providers defined in the user's config file.
+    // We track their IDs to prevent duplicates when merging remote models later.
     for provider in registry.providers() {
-        let entry = PickerEntry {
-            provider_id: provider.id.to_string(),
-            name: provider.name.clone(),
-            provider_name: provider.name.clone(),
-            backend: provider.backend.clone(),
-            model: provider.model.clone(),
-            is_alias: false,
-            alias_target: None,
-            is_available: registry.is_available(&provider.id.clone(), api_keys),
-            is_remote: false,
-            is_active: false,
-        };
-
+        let entry = static_provider_entry(&provider, registry, api_keys);
         static_ids.insert(entry.provider_id.clone());
         entries.push(entry);
     }
 
+    // Phase 2: Load aliases.
+    // Each alias resolves to a target provider and inherits its metadata.
+    // Unresolvable aliases still appear as entries (unavailable, empty defaults).
     for alias in registry.aliases() {
-        let resolved = registry.resolve_alias(&alias.name);
-        let is_available = resolved.is_some_and(|r| registry.is_available(&r.id.clone(), api_keys));
-
-        let entry = PickerEntry {
-            provider_id: resolved.map(|r| r.id.to_string()).unwrap_or_default(),
-            name: alias.name.clone(),
-            provider_name: resolved.map(|r| r.name.clone()).unwrap_or_default(),
-            backend: resolved.map(|r| r.backend.clone()).unwrap_or_default(),
-            model: resolved.map(|r| r.model.clone()).unwrap_or_default(),
-            is_alias: true,
-            alias_target: resolved.map(|r| r.id.to_string()),
-            is_available,
-            is_remote: false,
-            is_active: false,
-        };
-
+        let entry = alias_entry(&alias, registry, api_keys);
         entries.push(entry);
     }
 
+    // Phase 3: Merge remote models from cache.
+    // Remote models are discovered at runtime (e.g., from Ollama's /api/tags).
+    // Static entries win on collision — if a static entry already claims
+    // `{provider_name}/{model}`, the remote version is skipped.
     if let Some(cache) = model_cache {
         let config = registry.config();
         for (provider_name, models) in &cache.entries {
@@ -229,6 +262,7 @@ pub fn load_provider_entries(
             for model in models {
                 let provider_id = format!("{provider_name}/{model}");
 
+                // Skip if a static entry already uses this ID (static wins on collision).
                 if static_ids.contains(&provider_id) {
                     continue;
                 }
