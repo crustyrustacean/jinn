@@ -95,3 +95,95 @@ fn build_row_spans(
     }
     spans
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::feat::ui::chat_log::shared::RenderContext;
+    use ratatui::style::Modifier;
+
+    fn render_context() -> RenderContext {
+        RenderContext {
+            content_width: 60,
+            _is_selected: false,
+            is_pinned: false,
+            is_expanded: false,
+            tool_result_max_lines: 5,
+        }
+    }
+
+    fn sample_table() -> TableData {
+        TableData {
+            headers: vec![
+                Span::raw("Provider"),
+                Span::raw("Count"),
+                Span::raw("Status"),
+            ],
+            rows: vec![vec![
+                Span::raw("ollama"),
+                Span::raw("5"),
+                Span::styled("\u{2705}", Style::default().fg(Color::Green)),
+            ]],
+        }
+    }
+
+    #[rstest::rstest]
+    fn table_header_spans_are_bold() {
+        // Given a table with headers.
+        let data = sample_table();
+        let ctx = render_context();
+
+        // When converting to lines.
+        let lines = to_lines(&data, &ctx);
+
+        // Then the first line contains a span with "Provider" that has bold modifier.
+        let header_line = &lines[0];
+        let provider_span = header_line
+            .spans
+            .iter()
+            .find(|s| s.content == "Provider")
+            .expect("should find Provider span");
+        assert!(
+            provider_span.style.add_modifier.contains(Modifier::BOLD),
+            "header span should be bold"
+        );
+    }
+
+    #[rstest::rstest]
+    fn table_data_rows_contain_cell_content() {
+        // Given a table with a data row containing "ollama".
+        let data = sample_table();
+        let ctx = render_context();
+
+        // When converting to lines.
+        let lines = to_lines(&data, &ctx);
+
+        // Then some line after header+separator contains "ollama".
+        let data_lines = &lines[2..]; // skip header + separator
+        let has_ollama = data_lines.iter().any(|line| {
+            line.spans.iter().any(|s| s.content.starts_with("ollama"))
+        });
+        assert!(has_ollama, "data row should contain 'ollama'");
+    }
+
+    #[rstest::rstest]
+    fn table_separator_line_contains_box_drawing_chars() {
+        // Given a table with headers and rows.
+        let data = sample_table();
+        let ctx = render_context();
+
+        // When converting to lines.
+        let lines = to_lines(&data, &ctx);
+
+        // Then the second line (index 1) contains the ─ (U+2500) character.
+        let separator_line = &lines[1];
+        let has_box_drawing = separator_line
+            .spans
+            .iter()
+            .any(|s| s.content.contains('\u{2500}'));
+        assert!(
+            has_box_drawing,
+            "separator line should contain ─ (U+2500)"
+        );
+    }
+}
