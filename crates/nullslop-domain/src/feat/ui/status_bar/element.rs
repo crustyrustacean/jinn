@@ -8,6 +8,7 @@ use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::aggregate_session_stats;
+use crate::feat::ui::status_bar::SlotSection;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
@@ -69,18 +70,34 @@ impl UiElement<AppState> for StatusBarElement {
 
         let style = Style::default().fg(Color::DarkGray);
 
-        let strategy_widget = Paragraph::new(left).style(style).alignment(Alignment::Left);
+        // Build left side: strategy info + plugin left slots.
+        let mut left_spans: Vec<Span> = vec![Span::styled(left, style)];
+        for slot in state.plugin_slots.slots_for_section(SlotSection::Left) {
+            left_spans.push(Span::styled(format!(" {}", slot.text), style));
+        }
+
+        let strategy_widget = Paragraph::new(Line::from(left_spans))
+            .style(style)
+            .alignment(Alignment::Left);
         frame.render_widget(strategy_widget, area);
 
         let notification = state.frontend.active_status_notification();
-        let right_line = if let Some(msg) = notification {
-            Line::from(vec![
-                Span::styled(msg, Style::default().fg(Color::Green)),
-                Span::styled(format!("  {model}"), style),
-            ])
+        let right_spans = if let Some(msg) = notification {
+            let mut spans = vec![Span::styled(msg, Style::default().fg(Color::Green))];
+            for slot in state.plugin_slots.slots_for_section(SlotSection::Right) {
+                spans.push(Span::styled(format!(" {}", slot.text), style));
+            }
+            spans.push(Span::styled(format!("  {model}"), style));
+            spans
         } else {
-            Line::from(Span::styled(model, style))
+            let mut spans = vec![];
+            for slot in state.plugin_slots.slots_for_section(SlotSection::Right) {
+                spans.push(Span::styled(format!("{} ", slot.text), style));
+            }
+            spans.push(Span::styled(model, style));
+            spans
         };
+        let right_line = Line::from(right_spans);
         let model_widget = Paragraph::new(right_line).alignment(Alignment::Right);
         frame.render_widget(model_widget, area);
     }
@@ -450,5 +467,90 @@ mod tests {
         assert!(!row.contains("ctx:"));
         // But token counts are still shown.
         assert!(row.contains("0 0") || row.contains("\u{2191}0 \u{2193}0"));
+    }
+
+    // --- Plugin slot tests ---
+
+    #[rstest::rstest]
+    fn render_shows_left_plugin_slot() {
+        // Given a state with a left plugin slot.
+        let mut element = StatusBarElement;
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
+        state
+            .plugin_slots
+            .upsert(crate::feat::ui::status_bar::PluginSlot {
+                plugin_id: nullslop_plugin::PluginId::new("test"),
+                slot_id: uuid::Uuid::new_v4(),
+                stable_id: "counter".to_owned(),
+                section: crate::feat::ui::status_bar::SlotSection::Left,
+                priority: 0,
+                text: "turns:5".to_owned(),
+            });
+        let (mut terminal, area) = setup_term(80, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row = buffer_row(&buffer, 0, 80);
+        // Then the plugin slot text appears on the left.
+        assert!(row.contains("turns:5"));
+    }
+
+    #[rstest::rstest]
+    fn render_shows_right_plugin_slot() {
+        // Given a state with a right plugin slot.
+        let mut element = StatusBarElement;
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
+        state
+            .plugin_slots
+            .upsert(crate::feat::ui::status_bar::PluginSlot {
+                plugin_id: nullslop_plugin::PluginId::new("test"),
+                slot_id: uuid::Uuid::new_v4(),
+                stable_id: "clock".to_owned(),
+                section: crate::feat::ui::status_bar::SlotSection::Right,
+                priority: 0,
+                text: "12:00".to_owned(),
+            });
+        let (mut terminal, area) = setup_term(80, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row = buffer_row(&buffer, 0, 80);
+        // Then the plugin slot text appears.
+        assert!(row.contains("12:00"));
+        // And the model is still shown.
+        assert!(row.contains("(ollama)/llama3"));
+    }
+
+    #[rstest::rstest]
+    fn render_no_plugin_slots_when_empty() {
+        // Given a state with no plugin slots.
+        let mut element = StatusBarElement;
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_model("ollama/llama3".to_owned());
+        let (mut terminal, area) = setup_term(80, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row = buffer_row(&buffer, 0, 80);
+        // Then only the standard status bar content is shown.
+        assert!(row.starts_with("(Passthrough)"));
+        assert!(row.contains("(ollama)/llama3"));
     }
 }

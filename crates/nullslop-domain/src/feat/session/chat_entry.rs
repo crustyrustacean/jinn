@@ -306,6 +306,48 @@ impl ChatEntry {
     pub fn pin_position(&self) -> Option<PinPosition> {
         self.pin_position
     }
+
+    /// Returns a static string identifying the entry kind.
+    ///
+    /// Used by plugins to identify entry types without matching on the enum.
+    #[must_use]
+    pub fn kind_str(&self) -> &'static str {
+        match self.kind {
+            ChatEntryKind::User(..) => "user",
+            ChatEntryKind::System(..) => "system",
+            ChatEntryKind::Error(..) => "error",
+            ChatEntryKind::Assistant(..) => "assistant",
+            ChatEntryKind::Actor { .. } => "actor",
+            ChatEntryKind::Table(..) => "table",
+            ChatEntryKind::ToolCall { .. } => "tool_call",
+            ChatEntryKind::ToolResult { .. } => "tool_result",
+        }
+    }
+
+    /// Returns the text content of this entry.
+    ///
+    /// Returns the primary text for each variant. For `Table`, returns
+    /// the plain-text representation. For `ToolCall` and `ToolResult`,
+    /// returns a formatted summary.
+    #[must_use]
+    pub fn text(&self) -> String {
+        match &self.kind {
+            ChatEntryKind::User(t) => t.clone(),
+            ChatEntryKind::System(t) => t.clone(),
+            ChatEntryKind::Error(t) => t.clone(),
+            ChatEntryKind::Assistant(t) => t.clone(),
+            ChatEntryKind::Actor { text, .. } => text.clone(),
+            ChatEntryKind::Table(data) => data.to_plain_text(),
+            ChatEntryKind::ToolCall {
+                name, arguments, ..
+            } => {
+                format!("{name}: {arguments}")
+            }
+            ChatEntryKind::ToolResult { name, content, .. } => {
+                format!("{name}: {content}")
+            }
+        }
+    }
 }
 
 impl Serialize for ChatEntryKind {

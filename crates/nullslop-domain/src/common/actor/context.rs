@@ -33,6 +33,8 @@ pub struct ActorContext {
     subscriptions: Vec<EventTypeName>,
     /// Accumulated command registrations (by name).
     commands: Vec<CommandName>,
+    /// Whether this actor subscribes to ALL events (wildcard).
+    subscribes_all_events: bool,
     /// Type-keyed actor ref storage, keyed by `TypeId::of::<M>()`.
     actor_refs: HashMap<TypeId, Box<dyn Any + Send + Sync>>, // Actually Box<ActorRef<M>>
     /// Message sink for sending commands/events to the application.
@@ -58,6 +60,7 @@ impl ActorContext {
             description: None,
             subscriptions: Vec::new(),
             commands: Vec::new(),
+            subscribes_all_events: false,
             actor_refs: HashMap::new(),
             sink,
             data: HashMap::new(),
@@ -210,15 +213,24 @@ impl ActorContext {
         self.sink.clone()
     }
 
+    /// Marks this actor as subscribing to ALL events (wildcard).
+    ///
+    /// Actors that call this will receive every event broadcast on the bus,
+    /// regardless of individual event type subscriptions.
+    pub fn subscribe_all_events(&mut self) {
+        self.subscribes_all_events = true;
+    }
+
     /// Returns the accumulated event subscriptions and command registrations,
     /// clearing them from the context.
     ///
-    /// Returns `(event_subscriptions, command_registrations)`.
+    /// Returns `(event_subscriptions, command_registrations, subscribes_all_events)`.
     /// The host calls this after activation to set up bus routing.
-    pub fn take_registrations(&mut self) -> (Vec<EventTypeName>, Vec<CommandName>) {
+    pub fn take_registrations(&mut self) -> (Vec<EventTypeName>, Vec<CommandName>, bool) {
         let subscriptions = std::mem::take(&mut self.subscriptions);
         let commands = std::mem::take(&mut self.commands);
-        (subscriptions, commands)
+        let all = self.subscribes_all_events;
+        (subscriptions, commands, all)
     }
 
     /// Announces that this actor has finished starting up.
