@@ -14,6 +14,9 @@ use nullslop_domain::AppUiRegistry;
 use nullslop_domain::feat::ui::sidebar::Sidebar;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::Paragraph;
 
 use super::app_layout::AppLayout;
 
@@ -94,6 +97,22 @@ pub(super) fn render_chat_tab(
             height: queue_len,
         };
         queue_display::render_queue_display(ui_registry, frame, queue_area, state);
+    }
+
+    // Cancel stream prompt — overlay at bottom of chat log area.
+    // Paints over whatever is behind it (including the queue display).
+    if state.frontend.cancel_stream_prompt {
+        let prompt_area = Rect {
+            x: chat_log_area.x,
+            y: chat_log_area.y + chat_log_area.height.saturating_sub(1),
+            width: chat_log_area.width,
+            height: 1,
+        };
+        let prompt = Paragraph::new(Line::from(Span::styled(
+            "Press ESC again to cancel",
+            Style::default().fg(Color::Yellow),
+        )));
+        frame.render_widget(prompt, prompt_area);
     }
 
     // Chat bottom line.

@@ -141,7 +141,14 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
 }
 
 /// Handles `SidebarLeave` — pops back to previous scope.
+///
+/// If the session is busy, activates the cancel stream confirmation prompt
+/// instead of immediately leaving.
 pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
+    if !state.active_session().is_idle() {
+        // Session is busy — show cancel confirmation prompt.
+        state.frontend.cancel_stream_prompt = true;
+    }
     state.frontend.scope_stack.pop();
     IntentResult::empty()
 }
@@ -487,6 +494,35 @@ mod tests {
 
         // Then the scope stack is back to Input.
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+    }
+
+    #[rstest::rstest]
+    fn sidebar_leave_sets_cancel_prompt_when_streaming() {
+        // Given a state in Sidebar with an active stream.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Sidebar);
+        state.active_session_mut().begin_streaming();
+
+        // When handling sidebar leave.
+        let result = handle_sidebar_leave(&mut state);
+
+        // Then the cancel prompt is set.
+        assert!(state.frontend.cancel_stream_prompt);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sidebar_leave_no_prompt_when_idle() {
+        // Given a state in Sidebar with idle session.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Sidebar);
+
+        // When handling sidebar leave.
+        let result = handle_sidebar_leave(&mut state);
+
+        // Then no cancel prompt.
+        assert!(!state.frontend.cancel_stream_prompt);
+        assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
