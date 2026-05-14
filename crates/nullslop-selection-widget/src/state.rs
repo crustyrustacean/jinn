@@ -309,29 +309,15 @@ where
             let matcher = SkimMatcherV2::default();
             let terms: Vec<&str> = self.filter.split_whitespace().collect();
 
-            let mut scored: Vec<(i64, usize, Vec<usize>)> = Vec::new();
-            for (i, item) in self.items.iter().enumerate() {
-                let label = item.display_label();
-                let mut total_score: i64 = 0;
-                let mut all_byte_indices: Vec<usize> = Vec::new();
-                let mut all_match = true;
-
-                for term in &terms {
-                    if let Some((score, byte_indices)) = matcher.fuzzy_indices(label, term) {
-                        total_score += score;
-                        all_byte_indices.extend_from_slice(&byte_indices);
-                    } else {
-                        all_match = false;
-                        break;
-                    }
-                }
-
-                if all_match {
-                    all_byte_indices.sort_unstable();
-                    all_byte_indices.dedup();
-                    scored.push((total_score, i, all_byte_indices));
-                }
-            }
+            let mut scored: Vec<(i64, usize, Vec<usize>)> = self
+                .items
+                .iter()
+                .enumerate()
+                .filter_map(|(i, item)| {
+                    match_all_terms(&matcher, item, &terms)
+                        .map(|(score, indices)| (score, i, indices))
+                })
+                .collect();
 
             // Sort by score descending, then by original index ascending for stable ordering.
             scored.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
@@ -340,6 +326,30 @@ where
             self.filtered_match_indices = scored.into_iter().map(|(_, _, idx)| idx).collect();
         }
     }
+}
+
+/// Attempts to fuzzy-match all `terms` against an item's display label.
+///
+/// Returns `Some((cumulative_score, unioned_byte_indices))` when every term matches,
+/// or `None` if any term fails to match (short-circuits on first miss).
+fn match_all_terms<T: PickerItem>(
+    matcher: &SkimMatcherV2,
+    item: &T,
+    terms: &[&str],
+) -> Option<(i64, Vec<usize>)> {
+    let label = item.display_label();
+    let mut total_score: i64 = 0;
+    let mut all_byte_indices: Vec<usize> = Vec::new();
+
+    for term in terms {
+        let (score, byte_indices) = matcher.fuzzy_indices(label, term)?;
+        total_score += score;
+        all_byte_indices.extend_from_slice(&byte_indices);
+    }
+
+    all_byte_indices.sort_unstable();
+    all_byte_indices.dedup();
+    Some((total_score, all_byte_indices))
 }
 
 #[cfg(test)]
