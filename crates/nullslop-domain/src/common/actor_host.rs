@@ -17,5 +17,5 @@ pub mod routing;
 pub use actor_host::ActorHostError;
 pub use actor_host::{ActorHost, ActorHostService};
 pub use fake::FakeActorHost;
-pub use in_memory::{ActorSpawnResult, InMemoryActorHost, spawn, spawn_actor_impl, system_spawn};
+pub use in_memory::{ActorSpawnResult, InMemoryActorHost, ShutdownTracker, spawn, spawn_actor_impl, system_spawn};
 pub use routing::RoutingEntry;

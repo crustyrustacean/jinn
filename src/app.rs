@@ -92,7 +92,7 @@ impl App {
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Tui => {
                 ensure_persona_seed();
-                let (core, services, actor_host, core_receiver) =
+                let (core, services, actor_host) =
                     actor_wiring::create_core_with_actor_host(
                         &self.handle(),
                         llm_service.clone(),
@@ -121,7 +121,6 @@ impl App {
                     core,
                     services,
                     actor_host,
-                    core_receiver,
                     ui_registry,
                     events: nullslop_tui::MsgHandler::new(),
                     which_key,
@@ -143,7 +142,7 @@ impl App {
             }
             Commands::Headless { command, .. } => {
                 ensure_persona_seed();
-                let (core, _services, actor_host, core_receiver) =
+                let (core, _services, actor_host) =
                     actor_wiring::create_core_with_actor_host(
                         &self.handle(),
                         llm_service.clone(),
@@ -156,7 +155,7 @@ impl App {
                     );
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
-                let mut headless = HeadlessApp::new(core, actor_host, core_receiver, self.handle());
+                let mut headless = HeadlessApp::new(core, actor_host, self.handle());
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
                         headless.send_chat(&message).change_context(AppError)?;

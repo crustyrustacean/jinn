@@ -54,7 +54,6 @@ impl TuiAppBuilder {
             state: nullslop_domain::State::new(state),
             sender,
         };
-        let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
         let fake_host =
             ActorHostService::new(std::sync::Arc::new(nullslop_domain::FakeActorHost::new()));
         let mut ui_registry = AppUiRegistry::new();
@@ -69,7 +68,6 @@ impl TuiAppBuilder {
             core,
             services,
             actor_host: fake_host,
-            core_receiver: core_rx,
             ui_registry,
             events: MsgHandler::new(),
             which_key: WhichKeyInstance::new(crate::keymap::init(), Scope::Normal),

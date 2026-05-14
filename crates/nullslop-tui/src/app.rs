@@ -41,8 +41,6 @@ pub struct TuiApp {
     pub services: nullslop_domain::Services,
     /// Actor host for coordinated shutdown.
     pub actor_host: ActorHostService,
-    /// Receiver for core lifecycle notifications (shutdown complete).
-    pub core_receiver: kanal::Receiver<nullslop_domain::CoreNotification>,
     /// UI element registry.
     pub ui_registry: AppUiRegistry,
     /// Message channel for the event loop.
@@ -312,7 +310,6 @@ mod tests {
             state: nullslop_domain::State::new(nullslop_domain::AppState::default()),
             sender,
         };
-        let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
         let fake_host = nullslop_domain::ActorHostService::new(std::sync::Arc::new(
             nullslop_domain::FakeActorHost::new(),
         ));
@@ -323,7 +320,6 @@ mod tests {
             core,
             services,
             actor_host: fake_host,
-            core_receiver: core_rx,
             ui_registry,
             events: MsgHandler::new(),
             which_key: WhichKeyInstance::new(keymap::init(), Scope::Normal),
@@ -513,7 +509,6 @@ mod tests {
             state: nullslop_domain::State::new(nullslop_domain::AppState::default()),
             sender,
         };
-        let (_, core_rx) = kanal::unbounded::<nullslop_domain::CoreNotification>();
         let fake_host = nullslop_domain::ActorHostService::new(std::sync::Arc::new(
             nullslop_domain::FakeActorHost::new(),
         ));
@@ -524,7 +519,6 @@ mod tests {
             core,
             services,
             actor_host: fake_host,
-            core_receiver: core_rx,
             ui_registry,
             events: MsgHandler::new(),
             which_key: WhichKeyInstance::new(keymap::init(), Scope::Normal),

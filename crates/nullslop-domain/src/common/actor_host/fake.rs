@@ -84,6 +84,11 @@ impl ActorHost for FakeActorHost {
         self.system_sent.lock().push(msg);
     }
 
+    fn begin_shutdown(&self, completion_tx: tokio::sync::oneshot::Sender<()>) {
+        // Fake host has no real actors — immediately signal completion.
+        let _ = completion_tx.send(());
+    }
+
     fn shutdown(&self) -> Result<(), Report<ActorHostError>> {
         self.shutdown_called.store(true, Ordering::SeqCst);
         Ok(())

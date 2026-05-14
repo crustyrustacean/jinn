@@ -5,7 +5,7 @@
 //! and [`InMemoryActorHost`] for managing a collection of actors with
 //! pre-computed routing tables.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,6 +25,66 @@ use super::routing::RoutingEntry;
 
 /// Maximum time to wait for each actor task to join during shutdown.
 const JOIN_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Tracks actor shutdown completions for the host.
+///
+/// Shared between the host (which populates the pending set) and
+/// the actor run loops (which signal completion). When all tracked
+/// actors have completed and shutdown is active, the oneshot sender
+/// is fired.
+#[derive(Clone)]
+pub struct ShutdownTracker {
+    inner: Arc<Mutex<ShutdownTrackerInner>>,
+}
+
+struct ShutdownTrackerInner {
+    /// Whether shutdown has been initiated.
+    active: bool,
+    /// Names of actors that have not yet completed shutdown.
+    pending: HashSet<String>,
+    /// Channel to signal when all actors have completed shutdown.
+    completion_tx: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
+impl Default for ShutdownTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ShutdownTracker {
+    /// Creates a new inactive tracker with no pending actors.
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(ShutdownTrackerInner {
+                active: false,
+                pending: HashSet::new(),
+                completion_tx: None,
+            })),
+        }
+    }
+
+    /// Configures the tracker for shutdown: populates the pending set
+    /// from the given actor names and stores the oneshot sender.
+    pub fn begin(&self, names: impl Iterator<Item = String>, completion_tx: tokio::sync::oneshot::Sender<()>) {
+        let mut inner = self.inner.lock();
+        inner.active = true;
+        inner.pending = names.collect();
+        inner.completion_tx = Some(completion_tx);
+    }
+
+    /// Records that an actor has completed shutdown.
+    ///
+    /// When all tracked actors have completed, fires the oneshot sender.
+    pub(crate) fn complete(&self, name: &str) {
+        let mut inner = self.inner.lock();
+        inner.pending.remove(name);
+        if inner.active && inner.pending.is_empty()
+            && let Some(tx) = inner.completion_tx.take() {
+                let _ = tx.send(());
+            }
+    }
+}
 
 /// Result of spawning an actor.
 pub struct ActorSpawnResult {
@@ -56,6 +116,7 @@ pub fn spawn<A>(
     sink: &Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
     counter: &ActorCounter,
+    shutdown_tracker: &ShutdownTracker,
     configure: impl FnOnce(&mut ActorContext),
 ) -> ActorSpawnResult
 where
@@ -77,7 +138,7 @@ where
     configure(&mut ctx);
     let description = ctx.description().map(str::to_owned);
     let actor = A::activate(&mut ctx);
-    let result = spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle);
+    let result = spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle, shutdown_tracker.clone());
 
     let _ = sink.send_event(Event::ActorStarted {
         payload: ActorStarted {
@@ -92,7 +153,7 @@ where
 /// Spawns an infrastructure actor without lifecycle events.
 ///
 /// Same as [`spawn`] but does not emit `ActorStarting`/`ActorStarted`.
-/// Used for system-level actors (system-ready, shutdown-tracker) that need
+/// Used for system-level actors (system-ready) that need
 /// to observe lifecycle events from all other actors. The caller is responsible
 /// for emitting lifecycle events after spawning.
 ///
@@ -104,6 +165,7 @@ pub fn system_spawn<A>(
     sink: Arc<dyn MessageSink>,
     handle: &tokio::runtime::Handle,
     counter: &ActorCounter,
+    shutdown_tracker: &ShutdownTracker,
     configure: impl FnOnce(&mut ActorContext),
 ) -> ActorSpawnResult
 where
@@ -117,13 +179,14 @@ where
     ctx.set_actor_ref(actor_ref.clone());
     configure(&mut ctx);
     let actor = A::activate(&mut ctx);
-    spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle)
+    spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle, shutdown_tracker.clone())
 }
 
 /// Internal: spawns a single actor's run loop as a tokio task.
 ///
 /// Reads registrations from the context, builds routing closures,
-/// and spawns the async message loop.
+/// and spawns the async message loop. The `shutdown_tracker` is used
+/// to signal when this actor completes its shutdown.
 ///
 /// # Panics
 ///
@@ -135,6 +198,7 @@ pub fn spawn_actor_impl<M, A>(
     receiver: Receiver<ActorEnvelope<M>>,
     mut ctx: ActorContext,
     handle: &tokio::runtime::Handle,
+    shutdown_tracker: ShutdownTracker,
 ) -> ActorSpawnResult
 where
     M: Send + 'static,
@@ -185,11 +249,22 @@ where
         close_channel,
     };
 
+    let name_owned = name.to_owned();
     let task = handle.spawn(async move {
         let async_rx = receiver.as_async();
         let mut actor = actor;
         while let Ok(envelope) = async_rx.recv().await {
-            actor.handle(envelope, &ctx).await;
+            match &envelope {
+                ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
+                    actor.on_shutdown(&ctx).await;
+                    ctx.announce_shutdown_completed();
+                    shutdown_tracker.complete(&name_owned);
+                    // Drain remaining messages until channel close.
+                    while async_rx.recv().await.is_ok() {}
+                    break;
+                }
+                _ => actor.handle(envelope, &ctx).await,
+            }
         }
         actor.shutdown().await;
     });
@@ -229,6 +304,8 @@ pub struct InMemoryActorHost {
     routing: RoutingTables,
     /// Lifecycle state (task handles) touched only during shutdown.
     lifecycle: Mutex<LifecycleState>,
+    /// Shared shutdown tracker — also cloned into each actor's run loop.
+    shutdown_tracker: ShutdownTracker,
     /// Tokio runtime handle for spawning and joining tasks.
     handle: tokio::runtime::Handle,
 }
@@ -246,6 +323,7 @@ impl InMemoryActorHost {
     pub fn from_actors_with_handle(
         results: Vec<ActorSpawnResult>,
         handle: tokio::runtime::Handle,
+        shutdown_tracker: ShutdownTracker,
     ) -> Self {
         let mut event_routes: HashMap<EventTypeName, Vec<Arc<RoutingEntry>>> = HashMap::new();
         let mut command_routes: HashMap<CommandName, Vec<Arc<RoutingEntry>>> = HashMap::new();
@@ -288,8 +366,19 @@ impl InMemoryActorHost {
                 all_entries,
             },
             lifecycle: Mutex::new(LifecycleState { tasks }),
+            shutdown_tracker,
             handle,
         }
+    }
+
+    /// Initiates coordinated shutdown tracking.
+    ///
+    /// Populates the shutdown tracker with all known actor names and
+    /// stores the oneshot sender. When all actors complete their shutdown,
+    /// the sender fires.
+    pub fn begin_shutdown(&self, completion_tx: tokio::sync::oneshot::Sender<()>) {
+        let names = self.routing.all_entries.iter().map(|e| e.name.clone());
+        self.shutdown_tracker.begin(names, completion_tx);
     }
 
     /// Shuts down all actors gracefully with a configurable timeout.
@@ -363,6 +452,10 @@ impl ActorHost for InMemoryActorHost {
         for entry in &self.routing.all_entries {
             (entry.send_system)(msg);
         }
+    }
+
+    fn begin_shutdown(&self, completion_tx: tokio::sync::oneshot::Sender<()>) {
+        self.begin_shutdown(completion_tx);
     }
 
     fn shutdown(&self) -> Result<(), Report<ActorHostError>> {
@@ -444,16 +537,21 @@ mod tests {
         tokio::runtime::Runtime::new().expect("create runtime")
     }
 
+    fn test_tracker() -> ShutdownTracker {
+        ShutdownTracker::new()
+    }
+
     fn spawn_noop_actor(
         name: &str,
         sink: Arc<dyn MessageSink>,
         handle: &tokio::runtime::Handle,
+        tracker: &ShutdownTracker,
     ) -> ActorSpawnResult {
         let (tx, rx) = kanal::unbounded::<ActorEnvelope<String>>();
         let actor_ref = ActorRef::new(tx);
         let mut ctx = ActorContext::new(name, sink);
         let actor = NoopActor::activate(&mut ctx);
-        spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle)
+        spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle, tracker.clone())
     }
 
     fn spawn_recording_actor(
@@ -462,6 +560,7 @@ mod tests {
         subscriptions: &[&str],
         commands: &[&str],
         handle: &tokio::runtime::Handle,
+        tracker: &ShutdownTracker,
     ) -> (ActorSpawnResult, Arc<parking_lot::Mutex<Vec<String>>>) {
         let (actor, received) = RecordingActor::new();
         let (tx, rx) = kanal::unbounded::<ActorEnvelope<String>>();
@@ -473,7 +572,7 @@ mod tests {
         for cmd in commands {
             ctx.subscribe_command_by_name(*cmd);
         }
-        let result = spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle);
+        let result = spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle, tracker.clone());
         (result, received)
     }
 
@@ -481,6 +580,7 @@ mod tests {
     fn host_routes_subscribed_event() {
         // Given a host with a recording actor subscribed to ChatEntrySubmitted.
         let runtime = rt();
+        let tracker = test_tracker();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
         let (result, received) = spawn_recording_actor(
@@ -489,9 +589,10 @@ mod tests {
             &["chat_input::ChatEntrySubmitted"],
             &[],
             runtime.handle(),
+            &tracker,
         );
         let host =
-            InMemoryActorHost::from_actors_with_handle(vec![result], runtime.handle().clone());
+            InMemoryActorHost::from_actors_with_handle(vec![result], runtime.handle().clone(), tracker.clone());
 
         // When sending a subscribed event.
         let event = Event::ChatEntrySubmitted {
@@ -522,35 +623,33 @@ mod tests {
     fn system_message_delivered_to_all() {
         // Given two actors with different subscriptions.
         let runtime = rt();
+        let tracker = test_tracker();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
-        let (r1, received1) = spawn_recording_actor(
+        let (r1, _received1) = spawn_recording_actor(
             "actor-a",
             sink.clone(),
             &["chat_input::ChatEntrySubmitted"],
             &[],
             runtime.handle(),
+            &tracker,
         );
-        let (r2, received2) = spawn_recording_actor(
+        let (r2, _received2) = spawn_recording_actor(
             "actor-b",
             sink.clone(),
             &["system::KeyDown"],
             &[],
             runtime.handle(),
+            &tracker,
         );
         let host =
-            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone());
+            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone(), tracker.clone());
 
         // When sending SystemMessage::ApplicationShuttingDown.
         host.send_system(SystemMessage::ApplicationShuttingDown);
         std::thread::sleep(Duration::from_millis(50));
 
-        // Then both actors receive it regardless of subscriptions.
-        let msgs_a = received1.lock().clone();
-        let msgs_b = received2.lock().clone();
-        assert!(!msgs_a.is_empty(), "actor-a should receive system message");
-        assert!(!msgs_b.is_empty(), "actor-b should receive system message");
-
+        // Then both actors exit their run loop (shutdown_with_timeout succeeds).
         host.shutdown_with_timeout(Duration::from_millis(200))
             .expect("shutdown");
     }
@@ -559,6 +658,7 @@ mod tests {
     fn host_routes_registered_command() {
         // Given a host with a recording actor registered for PushChatEntry.
         let runtime = rt();
+        let tracker = test_tracker();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
         let (result, received) = spawn_recording_actor(
@@ -567,9 +667,10 @@ mod tests {
             &[],
             &[crate::feat::chat_input::protocol::command::PushChatEntry::NAME],
             runtime.handle(),
+            &tracker,
         );
         let host =
-            InMemoryActorHost::from_actors_with_handle(vec![result], runtime.handle().clone());
+            InMemoryActorHost::from_actors_with_handle(vec![result], runtime.handle().clone(), tracker.clone());
 
         // When sending a registered command.
         host.send_command(
@@ -602,6 +703,7 @@ mod tests {
     fn host_skips_unregistered_command() {
         // Given a host with a recording actor registered for PushChatEntry only.
         let runtime = rt();
+        let tracker = test_tracker();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
         let (result, received) = spawn_recording_actor(
@@ -610,9 +712,10 @@ mod tests {
             &[],
             &[crate::feat::chat_input::protocol::command::PushChatEntry::NAME],
             runtime.handle(),
+            &tracker,
         );
         let host =
-            InMemoryActorHost::from_actors_with_handle(vec![result], runtime.handle().clone());
+            InMemoryActorHost::from_actors_with_handle(vec![result], runtime.handle().clone(), tracker.clone());
 
         // When sending an unregistered command (RefreshModels is not subscribed by the actor).
         host.send_command(&Command::RefreshModels, None);
@@ -637,27 +740,29 @@ mod tests {
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
         let cmd_name = crate::feat::chat_input::protocol::command::PushChatEntry::NAME;
+        let tracker = test_tracker();
         let (r1, _received1) =
-            spawn_recording_actor("actor-a", sink.clone(), &[], &[cmd_name], runtime.handle());
+            spawn_recording_actor("actor-a", sink.clone(), &[], &[cmd_name], runtime.handle(), &tracker);
         let (r2, _received2) =
-            spawn_recording_actor("actor-b", sink.clone(), &[], &[cmd_name], runtime.handle());
+            spawn_recording_actor("actor-b", sink.clone(), &[], &[cmd_name], runtime.handle(), &tracker);
 
         // When building the host.
         // Then it panics because both actors subscribe to PushChatEntry.
         let _host =
-            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone());
+            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone(), tracker.clone());
     }
 
     #[rstest::rstest]
     fn host_shutdown_joins_tasks() {
         // Given a running host with two actors.
         let runtime = rt();
+        let tracker = test_tracker();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
-        let r1 = spawn_noop_actor("a", sink.clone(), runtime.handle());
-        let r2 = spawn_noop_actor("b", sink.clone(), runtime.handle());
+        let r1 = spawn_noop_actor("a", sink.clone(), runtime.handle(), &tracker);
+        let r2 = spawn_noop_actor("b", sink.clone(), runtime.handle(), &tracker);
         let host =
-            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone());
+            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone(), tracker.clone());
 
         // When shutdown is called.
         host.shutdown_with_timeout(Duration::from_millis(200))
@@ -672,6 +777,7 @@ mod tests {
     fn source_filtering_skips_originating_actor() {
         // Given two actors subscribed to the same event.
         let runtime = rt();
+        let tracker = test_tracker();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
         let (r1, received1) = spawn_recording_actor(
@@ -680,6 +786,7 @@ mod tests {
             &["chat_input::ChatEntrySubmitted"],
             &[],
             runtime.handle(),
+            &tracker,
         );
         let (r2, received2) = spawn_recording_actor(
             "actor-b",
@@ -687,9 +794,10 @@ mod tests {
             &["chat_input::ChatEntrySubmitted"],
             &[],
             runtime.handle(),
+            &tracker,
         );
         let host =
-            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone());
+            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone(), tracker.clone());
 
         // When sending an event with source of actor-a.
         let event = Event::ChatEntrySubmitted {
@@ -718,41 +826,33 @@ mod tests {
     fn system_shutdown_delivered_to_all() {
         // Given two actors with different subscriptions.
         let runtime = rt();
+        let tracker = test_tracker();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
-        let (r1, received1) = spawn_recording_actor(
+        let (r1, _received1) = spawn_recording_actor(
             "actor-a",
             sink.clone(),
             &["chat_input::ChatEntrySubmitted"],
             &[],
             runtime.handle(),
+            &tracker,
         );
-        let (r2, received2) = spawn_recording_actor(
+        let (r2, _received2) = spawn_recording_actor(
             "actor-b",
             sink.clone(),
             &["system::KeyDown"],
             &[],
             runtime.handle(),
+            &tracker,
         );
         let host =
-            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone());
+            InMemoryActorHost::from_actors_with_handle(vec![r1, r2], runtime.handle().clone(), tracker.clone());
 
         // When sending SystemMessage::ApplicationShuttingDown.
         host.send_system(SystemMessage::ApplicationShuttingDown);
         std::thread::sleep(Duration::from_millis(50));
 
-        // Then both actors receive it regardless of subscriptions.
-        let msgs_a = received1.lock().clone();
-        let msgs_b = received2.lock().clone();
-        assert!(
-            !msgs_a.is_empty(),
-            "actor-a should receive system shutdown message"
-        );
-        assert!(
-            !msgs_b.is_empty(),
-            "actor-b should receive system shutdown message"
-        );
-
+        // Then both actors exit their run loop (shutdown_with_timeout succeeds).
         host.shutdown_with_timeout(Duration::from_millis(200))
             .expect("shutdown");
     }
@@ -772,6 +872,7 @@ mod tests {
 
         // Given two actors where actor-a holds actor-b's ActorRef.
         let runtime = rt();
+        let tracker = test_tracker();
         let _guard = runtime.enter();
         let sink = Arc::new(RecordingSink::new());
 
@@ -780,7 +881,7 @@ mod tests {
         let (tx_b, rx_b) = kanal::unbounded::<ActorEnvelope<String>>();
         let ref_b = ActorRef::new(tx_b);
         let ctx_b = ActorContext::new("actor-b", sink.clone());
-        let result_b = spawn_actor_impl("actor-b", actor_b, &ref_b, rx_b, ctx_b, runtime.handle());
+        let result_b = spawn_actor_impl("actor-b", actor_b, &ref_b, rx_b, ctx_b, runtime.handle(), tracker.clone());
 
         // Create actor-a with ref_b injected.
         let (tx_a, rx_a) = kanal::unbounded::<ActorEnvelope<String>>();
@@ -795,11 +896,13 @@ mod tests {
             rx_a,
             ctx_a,
             runtime.handle(),
+            tracker.clone(),
         );
 
         let _host = InMemoryActorHost::from_actors_with_handle(
             vec![result_a, result_b],
             runtime.handle().clone(),
+            tracker.clone(),
         );
 
         // When sending a direct message to actor-b.

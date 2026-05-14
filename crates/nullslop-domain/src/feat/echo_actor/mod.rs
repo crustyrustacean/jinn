@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 
 use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
@@ -27,11 +27,8 @@ impl Actor for EchoActor {
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
             ActorEnvelope::Event(event) => Self::process_event(&event, ctx).await,
-            ActorEnvelope::Command(_) => {}
+            ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
         }
     }
 }

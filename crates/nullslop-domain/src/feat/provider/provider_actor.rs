@@ -17,7 +17,7 @@
 //! All handlers follow the same pattern: acquire state lock → mutate → release →
 //! then emit. Never hold the lock during emission.
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, SystemMessage};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
@@ -74,9 +74,7 @@ impl Actor for ProviderActor {
                     self.handle_models_refreshed(payload);
                 }
             }
-            ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
-                ctx.announce_shutdown_completed();
-            }
+            _ => {}
         }
     }
 }
