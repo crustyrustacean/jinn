@@ -20,6 +20,9 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::common::app_state::AppState;
 
+/// Default number of lines to show for tool result entries before truncating.
+const DEFAULT_TOOL_RESULT_MAX_LINES: u16 = 5;
+
 /// Display element for the full conversation history.
 #[derive(Debug)]
 pub struct ChatLogElement;
@@ -55,7 +58,13 @@ impl UiElement<AppState> for ChatLogElement {
 
         for (i, entry) in history.iter().enumerate() {
             let is_selected = selected_idx == Some(i);
-            let entry_lines = entry_to_lines(entry, is_selected);
+            let is_expanded = state.active_session().is_entry_expanded(&entry.id);
+            let max_lines = state
+                .frontend
+                .preferences
+                .tool_result_max_lines
+                .unwrap_or(DEFAULT_TOOL_RESULT_MAX_LINES);
+            let entry_lines = entry_to_lines(entry, is_selected, is_expanded, max_lines);
             let entry_wrapped: u16 = entry_lines
                 .iter()
                 .map(|line| {
@@ -151,7 +160,12 @@ impl UiElement<AppState> for ChatLogElement {
 ///
 /// The first line gets the entry-type prefix; continuation lines get indentation.
 /// When `is_selected` is true, the first line gets a `▶` prefix and `REVERSED` style.
-fn entry_to_lines(entry: &crate::protocol::ChatEntry, is_selected: bool) -> Vec<Line<'static>> {
+fn entry_to_lines(
+    entry: &crate::protocol::ChatEntry,
+    is_selected: bool,
+    is_expanded: bool,
+    tool_result_max_lines: u16,
+) -> Vec<Line<'static>> {
     let pinned = entry.pin_position.is_some();
 
     match &entry.kind {
@@ -226,17 +240,32 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, is_selected: bool) -> Vec<
         } => {
             let icon = if *success { "✅" } else { "❌" };
             let prefix = if pinned { "📌 " } else { "  " };
-            multiline_styled(
-                format!("{icon} {name}: {content}"),
-                prefix,
-                "  ",
-                if *success {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default().fg(Color::Red)
-                },
-                is_selected,
-            )
+            let style = if *success {
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default().fg(Color::Red)
+            };
+
+            let full_text = format!("{icon} {name}: {content}");
+            let text = full_text.trim_start_matches('\n');
+            let all_lines: Vec<&str> = text.split('\n').collect();
+
+            if is_expanded
+                || u16::try_from(all_lines.len()).unwrap_or(u16::MAX) <= tool_result_max_lines
+            {
+                multiline_styled(full_text, prefix, "  ", style, is_selected)
+            } else {
+                let max = tool_result_max_lines as usize;
+                let remaining = all_lines.len() - max;
+                let truncated_text: String = all_lines[..max].join("
+");
+                let mut lines = multiline_styled(truncated_text, prefix, "  ", style, is_selected);
+                lines.push(Line::from(Span::styled(
+                    format!("  ({remaining} more lines)"),
+                    Style::default().fg(Color::DarkGray),
+                )));
+                lines
+            }
         }
         ChatEntryKind::Table(data) => {
             let prefix = if pinned { "📌 " } else { "  " };
@@ -1166,5 +1195,133 @@ mod tests {
         let assistant_cell = buffer.cell((0, 9)).expect("cell should exist");
         assert_eq!(assistant_cell.symbol(), "r");
         assert_eq!(assistant_cell.style().fg, Some(Color::Cyan));
+    }
+
+    #[rstest::rstest]
+    fn render_tool_result_truncated_shows_indicator() {
+        // Given a ChatLogElement with a tool result that has 10 lines.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            let content = (1..=10).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+            s.active_session_mut().push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                content,
+                true,
+            ));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(80, 20);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the buffer contains "(5 more lines)" somewhere.
+        let buffer = terminal.backend().buffer().clone();
+        let has_indicator = (0..20).any(|row| {
+            let row_text: String = (0..80)
+                .map(|col| {
+                    buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" ")
+                })
+                .collect();
+            row_text.contains("(5 more lines)")
+        });
+        assert!(has_indicator, "truncated tool result should show '(5 more lines)'");
+    }
+
+    #[rstest::rstest]
+    fn render_tool_result_expanded_shows_full_content() {
+        // Given a ChatLogElement with an expanded tool result that has 10 lines.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            let content = (1..=10).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+            s.active_session_mut().push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                content,
+                true,
+            ));
+            // Expand the entry.
+            let entry_id = s.active_session().history()[0].id.clone();
+            s.active_session_mut().toggle_expand_entry(entry_id);
+            s
+        };
+
+        let (mut terminal, area) = setup_term(80, 20);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the buffer contains "line 10" (the last line, not truncated).
+        let buffer = terminal.backend().buffer().clone();
+        let has_last_line = (0..20).any(|row| {
+            let row_text: String = (0..80)
+                .map(|col| {
+                    buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" ")
+                })
+                .collect();
+            row_text.contains("line 10")
+        });
+        assert!(has_last_line, "expanded tool result should show 'line 10'");
+
+        // And no truncation indicator.
+        let has_indicator = (0..20).any(|row| {
+            let row_text: String = (0..80)
+                .map(|col| {
+                    buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" ")
+                })
+                .collect();
+            row_text.contains("(5 more lines)")
+        });
+        assert!(!has_indicator, "expanded tool result should not show truncation indicator");
+    }
+
+    #[rstest::rstest]
+    fn render_tool_result_short_not_truncated() {
+        // Given a ChatLogElement with a tool result that has only 3 lines.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            let content = "line 1\nline 2\nline 3".to_owned();
+            s.active_session_mut().push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                content,
+                true,
+            ));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(80, 20);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then no truncation indicator appears.
+        let buffer = terminal.backend().buffer().clone();
+        let has_indicator = (0..20).any(|row| {
+            let row_text: String = (0..80)
+                .map(|col| {
+                    buffer.cell((col, row)).map(|c| c.symbol()).unwrap_or(" ")
+                })
+                .collect();
+            row_text.contains("more lines")
+        });
+        assert!(!has_indicator, "short tool result should not be truncated");
     }
 }

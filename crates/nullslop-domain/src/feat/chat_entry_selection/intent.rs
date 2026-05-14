@@ -5,7 +5,6 @@ use crate::feat::context::protocol::command::PinChatEntry;
 use crate::protocol::{Command, IntentResult, PinPosition};
 
 use super::validator;
-
 /// Selects the next chat entry in the active session.
 pub fn handle_select_next(state: &mut AppState) -> IntentResult {
     validator::validate_chat_entry_select_next(state);
@@ -38,6 +37,20 @@ pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
         entry_id,
         position: PinPosition::Relative,
     })])
+}
+
+/// Toggles expand/collapse of the selected tool result entry.
+pub fn handle_expand_tool_result(state: &mut AppState) -> IntentResult {
+    if validator::validate_expand_tool_result(state).is_err() {
+        return IntentResult::empty();
+    }
+
+    let Some(entry_id) = state.active_session().selected_entry_id().cloned() else {
+        return IntentResult::empty();
+    };
+
+    state.active_session_mut().toggle_expand_entry(entry_id);
+    IntentResult::empty()
 }
 
 #[cfg(test)]
@@ -115,6 +128,73 @@ mod tests {
         let result = handle_pin_selected(&mut state);
 
         // Then no commands.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn expand_tool_result_toggles_expanded_state() {
+        // Given a state with a selected tool result.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result("id", "bash", "output", true));
+        state.active_session_mut().select_next_entry();
+        let entry_id = state.active_session().selected_entry_id().unwrap().clone();
+
+        // When handling expand tool result.
+        let result = handle_expand_tool_result(&mut state);
+
+        // Then the entry is expanded.
+        assert!(state.active_session().is_entry_expanded(&entry_id));
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn expand_tool_result_toggles_back_to_collapsed() {
+        // Given a state with an expanded tool result.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result("id", "bash", "output", true));
+        state.active_session_mut().select_next_entry();
+        let entry_id = state.active_session().selected_entry_id().unwrap().clone();
+        state.active_session_mut().toggle_expand_entry(entry_id.clone());
+
+        // When handling expand tool result again.
+        handle_expand_tool_result(&mut state);
+
+        // Then the entry is collapsed.
+        assert!(!state.active_session().is_entry_expanded(&entry_id));
+    }
+
+    #[rstest::rstest]
+    fn expand_tool_result_noop_with_no_selection() {
+        // Given a state with entries but no selection.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result("id", "bash", "output", true));
+
+        // When handling expand tool result.
+        let result = handle_expand_tool_result(&mut state);
+
+        // Then no change.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn expand_tool_result_noop_with_non_tool_result() {
+        // Given a state with a selected user entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling expand tool result.
+        let result = handle_expand_tool_result(&mut state);
+
+        // Then no change.
         assert!(result.commands.is_empty());
     }
 }
