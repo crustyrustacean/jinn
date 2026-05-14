@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use super::shared::{pad_line_to_width, RenderContext};
 
 /// Foreground color for tool call text.
-const TOOL_CALL_FG: Color = Color::Rgb(0x3A, 0x3A, 0x3A);
+const TOOL_CALL_FG: Color = Color::Rgb(0x58, 0x5F, 0x6A);
 /// Background color for tool call BLOCK.
 const TOOL_CALL_BG: Color = Color::Rgb(0x28, 0x32, 0x28);
 
