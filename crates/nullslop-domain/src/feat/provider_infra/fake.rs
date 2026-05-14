@@ -15,8 +15,8 @@ use error_stack::Report;
 use futures::stream;
 
 use super::StreamEvent;
-use super::stream_event::StopReason;
 use super::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
+use super::stream_event::StopReason;
 
 /// Special prompt that triggers multi-turn tool loop behavior.
 ///
