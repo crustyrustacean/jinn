@@ -19,12 +19,12 @@
 //! - [`hash`] — SHA-256 content hashing for file outputs
 
 pub mod builder;
+#[cfg(test)]
+mod builder_tests;
 pub mod definition;
 pub mod guard;
 pub mod hash;
 pub mod state;
-#[cfg(test)]
-mod builder_tests;
 
 #[cfg(test)]
 mod guard_tests;

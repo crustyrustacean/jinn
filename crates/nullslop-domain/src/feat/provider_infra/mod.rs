@@ -18,9 +18,9 @@ mod openrouter;
 mod provider_id;
 mod registry;
 
+mod registry_service;
 #[cfg(test)]
 mod registry_tests;
-mod registry_service;
 mod resolved_provider;
 mod sample;
 mod service;
