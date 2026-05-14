@@ -126,18 +126,21 @@ impl SessionPersistenceActor {
         session.begin_tool_call(event.index, &event.id, &event.name);
     }
 
-    /// Pushes a tool call entry into the session history.
+    /// Finalizes the tool call entry with complete arguments.
+    ///
+    /// The placeholder entry was created by `on_tool_use_started`. This updates
+    /// it in place with the full arguments string, avoiding a duplicate entry.
     pub(in crate::feat::session::session_actor) fn on_tool_call_received(
         &self,
         event: &ToolCallReceived,
     ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
-        session.push_entry(ChatEntry::tool_call(
+        session.finalize_tool_call(
             &event.tool_call.id,
             &event.tool_call.name,
             &event.tool_call.arguments,
-        ));
+        );
     }
 
     /// Appends a partial JSON delta to a streaming tool call.

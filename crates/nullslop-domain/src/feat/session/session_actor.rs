@@ -278,7 +278,7 @@ mod tests {
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
     use crate::feat::tools_actor::protocol::event::{
-        ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
+        ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
     };
     use crate::protocol::{
         ChatEntry, ChatEntryKind, Command, Event, SessionId, ToolCall, ToolResult,
@@ -1370,12 +1370,12 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn tool_call_received_pushes_tool_call_entry() {
-        // Given a session actor.
+    async fn tool_call_received_pushes_entry_when_no_prior_start() {
+        // Given a session actor with no prior ToolUseStarted.
         let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
         let session_id = SessionId::new();
 
-        // When processing a ToolCallReceived event.
+        // When processing a ToolCallReceived event without a prior ToolUseStarted.
         let event = Event::ToolCallReceived(ToolCallReceived {
             session_id: session_id.clone(),
             tool_call: ToolCall {
@@ -1386,7 +1386,53 @@ mod tests {
         });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
-        // Then the session has a ToolCall entry.
+        // Then the session has a ToolCall entry (finalize falls back to push).
+        let guard = state.read();
+        let session = guard.session(&session_id);
+        assert_eq!(session.history().len(), 1);
+        match &session.history()[0].kind {
+            ChatEntryKind::ToolCall {
+                id,
+                name,
+                arguments,
+            } => {
+                assert_eq!(id, "call_1");
+                assert_eq!(name, "read_file");
+                assert_eq!(arguments, r#"{"path":"/tmp"}"#);
+            }
+            other => panic!("expected ToolCall, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_call_received_finalizes_existing_entry() {
+        // Given a session actor with a prior ToolUseStarted.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        let start_event = Event::ToolUseStarted(ToolUseStarted {
+            session_id: session_id.clone(),
+            index: 0,
+            id: "call_1".to_owned(),
+            name: "read_file".to_owned(),
+        });
+        actor.handle(ActorEnvelope::Event(start_event), &ctx).await;
+
+        // When processing a ToolCallReceived event for the same tool call.
+        let received_event = Event::ToolCallReceived(ToolCallReceived {
+            session_id: session_id.clone(),
+            tool_call: ToolCall {
+                id: "call_1".to_owned(),
+                name: "read_file".to_owned(),
+                arguments: r#"{"path":"/tmp"}"#.to_owned(),
+            },
+        });
+        actor
+            .handle(ActorEnvelope::Event(received_event), &ctx)
+            .await;
+
+        // Then there is exactly one ToolCall entry (not duplicated).
         let guard = state.read();
         let session = guard.session(&session_id);
         assert_eq!(session.history().len(), 1);
