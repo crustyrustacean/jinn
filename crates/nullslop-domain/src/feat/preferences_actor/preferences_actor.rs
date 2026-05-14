@@ -48,7 +48,7 @@ impl Actor for PreferencesActor {
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::Command(Command::UpdatePreferences { ref payload }) => {
+            ActorEnvelope::Command(Command::UpdatePreferences(ref payload)) => {
                 self.handle_update_preferences(payload, ctx);
             }
             ActorEnvelope::Event(_) | ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
@@ -67,9 +67,9 @@ impl PreferencesActor {
             tracing::warn!(err = ?e, "preferences-actor failed to save user preferences");
             return;
         }
-        if let Err(e) = ctx.send_event(Event::PreferencesUpdated {
-            payload: PreferencesUpdated { preferences: prefs },
-        }) {
+        if let Err(e) = ctx.send_event(Event::PreferencesUpdated(PreferencesUpdated {
+            preferences: prefs,
+        })) {
             tracing::warn!(err = ?e, "preferences-actor failed to emit PreferencesUpdated");
         }
     }
@@ -121,11 +121,9 @@ mod tests {
         // When sending UpdatePreferences with SetLastModel.
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
+                })),
                 &ctx,
             )
             .await;
@@ -142,11 +140,9 @@ mod tests {
         let (mut actor, _sink, ctx) = create_actor();
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
+                })),
                 &ctx,
             )
             .await;
@@ -154,13 +150,11 @@ mod tests {
         // When sending a second UpdatePreferences with a different model.
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some(
-                            "openrouter/gpt-4".into(),
-                        ))],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![PreferenceUpdate::SetLastModel(Some(
+                        "openrouter/gpt-4".into(),
+                    ))],
+                })),
                 &ctx,
             )
             .await;
@@ -177,13 +171,11 @@ mod tests {
         let (mut actor, _sink, ctx) = create_actor();
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                            "sliding_window".into(),
-                        ))],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![PreferenceUpdate::SetLastStrategy(Some(
+                        "sliding_window".into(),
+                    ))],
+                })),
                 &ctx,
             )
             .await;
@@ -191,11 +183,9 @@ mod tests {
         // When sending UpdatePreferences with SetLastModel.
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
+                })),
                 &ctx,
             )
             .await;
@@ -215,13 +205,11 @@ mod tests {
         // When sending UpdatePreferences with SetLastStrategy.
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                            "sliding_window".into(),
-                        ))],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![PreferenceUpdate::SetLastStrategy(Some(
+                        "sliding_window".into(),
+                    ))],
+                })),
                 &ctx,
             )
             .await;
@@ -238,11 +226,9 @@ mod tests {
         let (mut actor, _sink, ctx) = create_actor();
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
+                })),
                 &ctx,
             )
             .await;
@@ -250,13 +236,11 @@ mod tests {
         // When sending UpdatePreferences with SetLastStrategy.
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                            "sliding_window".into(),
-                        ))],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![PreferenceUpdate::SetLastStrategy(Some(
+                        "sliding_window".into(),
+                    ))],
+                })),
                 &ctx,
             )
             .await;
@@ -276,14 +260,12 @@ mod tests {
         // When sending UpdatePreferences with both diffs in one batch.
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![
-                            PreferenceUpdate::SetLastModel(Some("ollama/llama3".into())),
-                            PreferenceUpdate::SetLastStrategy(Some("sliding_window".into())),
-                        ],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![
+                        PreferenceUpdate::SetLastModel(Some("ollama/llama3".into())),
+                        PreferenceUpdate::SetLastStrategy(Some("sliding_window".into())),
+                    ],
+                })),
                 &ctx,
             )
             .await;
@@ -303,11 +285,9 @@ mod tests {
         // When sending UpdatePreferences.
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
+                })),
                 &ctx,
             )
             .await;
@@ -317,11 +297,9 @@ mod tests {
         let found = events.iter().any(|e| {
             matches!(
                 e,
-                Event::PreferencesUpdated {
-                    payload: PreferencesUpdated {
+                Event::PreferencesUpdated(PreferencesUpdated {
                         preferences
-                    }
-                } if preferences.last_model.as_deref() == Some("ollama/llama3")
+                    }) if preferences.last_model.as_deref() == Some("ollama/llama3")
             )
         });
         assert!(
@@ -337,11 +315,9 @@ mod tests {
         let (mut actor, _sink, ctx) = create_actor();
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
-                    },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
+                })),
                 &ctx,
             )
             .await;
@@ -349,9 +325,9 @@ mod tests {
         // When sending UpdatePreferences with empty diffs.
         actor
             .handle(
-                ActorEnvelope::Command(Command::UpdatePreferences {
-                    payload: UpdatePreferences { updates: vec![] },
-                }),
+                ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
+                    updates: vec![],
+                })),
                 &ctx,
             )
             .await;

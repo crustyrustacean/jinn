@@ -23,7 +23,8 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
         .frontend
         .preferences
         .last_strategy
-        .as_deref().map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
+        .as_deref()
+        .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
     let new_session = crate::feat::session::chat_session::ChatSessionState::new_with_profile(
         SessionProfile::from_config(model, strategy),
     );

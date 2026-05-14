@@ -544,7 +544,9 @@ fn chat_bottom_line_is_yellow_when_normal_scope() {
     let layout = AppLayout::new(frame_area(80, 24), 1, 12);
     let line_y = layout.content.y + layout.content.height - 1;
     let buffer = terminal.backend().buffer();
-    let cell = buffer.cell((layout.content.x, line_y)).expect("chat bottom line cell");
+    let cell = buffer
+        .cell((layout.content.x, line_y))
+        .expect("chat bottom line cell");
     assert_eq!(cell.symbol(), "\u{2500}");
     assert_eq!(cell.fg, Color::Yellow);
 }
@@ -572,7 +574,9 @@ fn chat_bottom_line_is_darkgray_when_input_scope() {
     let layout = AppLayout::new(frame_area(80, 24), 1, 12);
     let line_y = layout.content.y + layout.content.height - 1;
     let buffer = terminal.backend().buffer();
-    let cell = buffer.cell((layout.content.x, line_y)).expect("chat bottom line cell");
+    let cell = buffer
+        .cell((layout.content.x, line_y))
+        .expect("chat bottom line cell");
     assert_eq!(cell.fg, Color::DarkGray);
 }
 
@@ -599,7 +603,9 @@ fn chat_bottom_line_is_darkgray_when_sidebar_scope() {
     let layout = AppLayout::new(frame_area(80, 24), 1, 12);
     let line_y = layout.content.y + layout.content.height - 1;
     let buffer = terminal.backend().buffer();
-    let cell = buffer.cell((layout.content.x, line_y)).expect("chat bottom line cell");
+    let cell = buffer
+        .cell((layout.content.x, line_y))
+        .expect("chat bottom line cell");
     assert_eq!(cell.fg, Color::DarkGray);
 }
 

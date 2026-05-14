@@ -37,7 +37,7 @@ impl Actor for PreferencesStateSyncActor {
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::Event(Event::PreferencesUpdated { ref payload }) => {
+            ActorEnvelope::Event(Event::PreferencesUpdated(ref payload)) => {
                 let mut state = self.state.write();
                 state.frontend.preferences = payload.preferences.clone();
             }
@@ -84,9 +84,9 @@ mod tests {
         };
         actor
             .handle(
-                ActorEnvelope::Event(Event::PreferencesUpdated {
-                    payload: PreferencesUpdated { preferences: prefs },
-                }),
+                ActorEnvelope::Event(Event::PreferencesUpdated(PreferencesUpdated {
+                    preferences: prefs,
+                })),
                 &ctx,
             )
             .await;
@@ -114,9 +114,9 @@ mod tests {
         };
         actor
             .handle(
-                ActorEnvelope::Event(Event::PreferencesUpdated {
-                    payload: PreferencesUpdated { preferences: first },
-                }),
+                ActorEnvelope::Event(Event::PreferencesUpdated(PreferencesUpdated {
+                    preferences: first,
+                })),
                 &ctx,
             )
             .await;
@@ -128,11 +128,9 @@ mod tests {
         };
         actor
             .handle(
-                ActorEnvelope::Event(Event::PreferencesUpdated {
-                    payload: PreferencesUpdated {
-                        preferences: second,
-                    },
-                }),
+                ActorEnvelope::Event(Event::PreferencesUpdated(PreferencesUpdated {
+                    preferences: second,
+                })),
                 &ctx,
             )
             .await;
@@ -158,12 +156,10 @@ mod tests {
         // When receiving an unrelated event (ModeChanged).
         actor
             .handle(
-                ActorEnvelope::Event(Event::ModeChanged {
-                    payload: crate::protocol::system::ModeChanged {
-                        from: crate::protocol::Mode::Normal,
-                        to: crate::protocol::Mode::Input,
-                    },
-                }),
+                ActorEnvelope::Event(Event::ModeChanged(crate::protocol::system::ModeChanged {
+                    from: crate::protocol::Mode::Normal,
+                    to: crate::protocol::Mode::Input,
+                })),
                 &ctx,
             )
             .await;

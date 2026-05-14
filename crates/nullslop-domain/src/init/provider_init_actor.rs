@@ -51,7 +51,7 @@ impl Actor for ProviderInitActor {
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Event(event) => {
-                if let Event::EnvironmentLoaded { ref payload } = event {
+                if let Event::EnvironmentLoaded(ref payload) = event {
                     self.on_environment_loaded(&payload.config, ctx);
                 }
             }
@@ -103,12 +103,10 @@ impl ProviderInitActor {
             let api_keys = self.services.api_keys.read();
             if self.services.provider_registry.is_available(&id, &api_keys) {
                 tracing::info!(last_model = %model, "provider-init resolving last_model");
-                if let Err(e) = ctx.send_command(Command::ProviderSwitch {
-                    payload: ProviderSwitch {
-                        session_id: self.state.read().session.active_session.clone(),
-                        provider_id: model.clone(),
-                    },
-                }) {
+                if let Err(e) = ctx.send_command(Command::ProviderSwitch(ProviderSwitch {
+                    session_id: self.state.read().session.active_session.clone(),
+                    provider_id: model.clone(),
+                })) {
                     tracing::warn!(err = ?e, "provider-init failed to send ProviderSwitch");
                 }
             } else {
@@ -186,9 +184,7 @@ mod tests {
         // When processing EnvironmentLoaded.
         actor
             .handle(
-                ActorEnvelope::Event(Event::EnvironmentLoaded {
-                    payload: EnvironmentLoaded { config },
-                }),
+                ActorEnvelope::Event(Event::EnvironmentLoaded(EnvironmentLoaded { config })),
                 &ctx,
             )
             .await;
@@ -196,7 +192,7 @@ mod tests {
         // Then a ProviderSwitch command was sent.
         let commands = sink.commands();
         let found = commands.iter().any(|c| {
-            matches!(c, Command::ProviderSwitch { payload } if payload.provider_id == "sample/sample")
+            matches!(c, Command::ProviderSwitch (payload) if payload.provider_id == "sample/sample")
         });
         assert!(found, "expected ProviderSwitch command for sample/sample");
     }
@@ -224,9 +220,7 @@ mod tests {
         // When processing EnvironmentLoaded.
         actor
             .handle(
-                ActorEnvelope::Event(Event::EnvironmentLoaded {
-                    payload: EnvironmentLoaded { config },
-                }),
+                ActorEnvelope::Event(Event::EnvironmentLoaded(EnvironmentLoaded { config })),
                 &ctx,
             )
             .await;
@@ -235,7 +229,7 @@ mod tests {
         let commands = sink.commands();
         let found = commands
             .iter()
-            .any(|c| matches!(c, Command::ProviderSwitch { .. }));
+            .any(|c| matches!(c, Command::ProviderSwitch(..)));
         assert!(!found, "expected no ProviderSwitch command");
     }
 }

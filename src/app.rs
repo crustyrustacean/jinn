@@ -92,17 +92,16 @@ impl App {
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Tui => {
                 ensure_persona_seed();
-                let (core, services, actor_host) =
-                    actor_wiring::create_core_with_actor_host(
-                        &self.handle(),
-                        llm_service.clone(),
-                        provider_registry.clone(),
-                        resolved_api_keys.clone(),
-                        config_storage.clone(),
-                        UserPreferencesStorageService::new(Arc::new(
-                            FilesystemUserPreferencesStorage::default_path(),
-                        )),
-                    );
+                let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
+                    &self.handle(),
+                    llm_service.clone(),
+                    provider_registry.clone(),
+                    resolved_api_keys.clone(),
+                    config_storage.clone(),
+                    UserPreferencesStorageService::new(Arc::new(
+                        FilesystemUserPreferencesStorage::default_path(),
+                    )),
+                );
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
 
@@ -142,17 +141,16 @@ impl App {
             }
             Commands::Headless { command, .. } => {
                 ensure_persona_seed();
-                let (core, _services, actor_host) =
-                    actor_wiring::create_core_with_actor_host(
-                        &self.handle(),
-                        llm_service.clone(),
-                        provider_registry,
-                        resolved_api_keys,
-                        config_storage,
-                        UserPreferencesStorageService::new(Arc::new(
-                            FilesystemUserPreferencesStorage::default_path(),
-                        )),
-                    );
+                let (core, _services, actor_host) = actor_wiring::create_core_with_actor_host(
+                    &self.handle(),
+                    llm_service.clone(),
+                    provider_registry,
+                    resolved_api_keys,
+                    config_storage,
+                    UserPreferencesStorageService::new(Arc::new(
+                        FilesystemUserPreferencesStorage::default_path(),
+                    )),
+                );
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
                 let mut headless = HeadlessApp::new(core, actor_host, self.handle());

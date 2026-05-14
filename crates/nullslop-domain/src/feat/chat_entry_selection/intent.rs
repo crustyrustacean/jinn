@@ -33,13 +33,11 @@ pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
 
-    IntentResult::with_commands(vec![Command::PinChatEntry {
-        payload: PinChatEntry {
-            session_id,
-            entry_id,
-            position: PinPosition::Relative,
-        },
-    }])
+    IntentResult::with_commands(vec![Command::PinChatEntry(PinChatEntry {
+        session_id,
+        entry_id,
+        position: PinPosition::Relative,
+    })])
 }
 
 #[cfg(test)]
@@ -97,12 +95,10 @@ mod tests {
         assert!(result.commands.iter().any(|c| {
             matches!(
                 c,
-                Command::PinChatEntry {
-                    payload: PinChatEntry {
-                        position: PinPosition::Relative,
-                        ..
-                    }
-                }
+                Command::PinChatEntry(PinChatEntry {
+                    position: PinPosition::Relative,
+                    ..
+                })
             )
         }));
     }

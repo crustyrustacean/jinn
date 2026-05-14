@@ -166,12 +166,10 @@ impl PromptAssemblyActor {
             );
         }
 
-        let _ = ctx.send_event(Event::PromptAssembled {
-            payload: PromptAssembled {
-                session_id,
-                system_prompt: result.system_prompt,
-                messages: final_messages,
-            },
-        });
+        let _ = ctx.send_event(Event::PromptAssembled(PromptAssembled {
+            session_id,
+            system_prompt: result.system_prompt,
+            messages: final_messages,
+        }));
     }
 }

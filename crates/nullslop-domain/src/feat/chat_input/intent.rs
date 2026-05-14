@@ -172,9 +172,10 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
     let session_id = state.session.active_session.clone();
     state.active_chat_input_mut().reset();
 
-    IntentResult::with_commands(vec![Command::EnqueueUserMessage {
-        payload: EnqueueUserMessage { session_id, text },
-    }])
+    IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
+        session_id,
+        text,
+    })])
 }
 
 // --- Autocomplete ---
@@ -308,9 +309,9 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
     {
         let session_id = state.session.active_session.clone();
         state.active_session_mut().cancel_stream_and_drain();
-        commands.push(Command::CancelStream {
-            payload: crate::feat::provider::protocol::command::CancelStream { session_id },
-        });
+        commands.push(Command::CancelStream(
+            crate::feat::provider::protocol::command::CancelStream { session_id },
+        ));
     }
 
     // Pop the scope stack — restores previous scope.
@@ -477,7 +478,7 @@ mod tests {
         assert_eq!(result.commands.len(), 1);
         assert!(matches!(
             &result.commands[0],
-            Command::EnqueueUserMessage { .. }
+            Command::EnqueueUserMessage(..)
         ));
         // And the input buffer is reset.
         assert!(state.active_chat_input().is_empty());
@@ -774,7 +775,7 @@ mod tests {
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::CancelStream { .. }))
+                .any(|c| matches!(c, Command::CancelStream(..)))
         );
         // And the session is idle (streaming was cancelled).
         assert!(state.active_session().is_idle());
@@ -804,7 +805,7 @@ mod tests {
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::CancelStream { .. }))
+                .any(|c| matches!(c, Command::CancelStream(..)))
         );
     }
 

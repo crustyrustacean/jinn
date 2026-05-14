@@ -98,25 +98,25 @@ impl PromptAssemblyActor {
     /// Dispatches incoming commands to the appropriate handler.
     async fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
         match cmd {
-            Command::AssemblePrompt { payload } => {
+            Command::AssemblePrompt(payload) => {
                 self.on_assemble_prompt(payload, ctx).await;
             }
-            Command::PinChatEntry { payload } => {
+            Command::PinChatEntry(payload) => {
                 self.handle_pin_chat_entry(payload);
             }
-            Command::UnpinChatEntry { payload } => {
+            Command::UnpinChatEntry(payload) => {
                 self.handle_unpin_chat_entry(payload);
             }
-            Command::SwitchPromptStrategy { payload } => {
+            Command::SwitchPromptStrategy(payload) => {
                 self.handle_switch_prompt_strategy(payload, ctx);
             }
-            Command::RestoreStrategyState { payload } => {
+            Command::RestoreStrategyState(payload) => {
                 self.handle_restore_strategy_state(payload, ctx);
             }
-            Command::LoadContextStrategyPickerEntries { payload } => {
+            Command::LoadContextStrategyPickerEntries(payload) => {
                 self.handle_load_context_strategy_picker_entries(payload);
             }
-            Command::LoadPersonaPickerEntries { payload } => {
+            Command::LoadPersonaPickerEntries(payload) => {
                 self.handle_load_persona_picker_entries(payload);
             }
             // RescanPersonas is handled by persona-scan actor.
@@ -127,16 +127,16 @@ impl PromptAssemblyActor {
     /// Dispatches incoming events to the appropriate handler.
     fn handle_event(&mut self, evt: &Event) {
         match evt {
-            Event::ToolsRegistered { payload } => {
+            Event::ToolsRegistered(payload) => {
                 self.on_tools_registered(payload);
             }
-            Event::PromptStrategySwitched { payload } => {
+            Event::PromptStrategySwitched(payload) => {
                 self.on_prompt_strategy_switched(payload);
             }
-            Event::PromptTemplatesLoaded { payload } => {
+            Event::PromptTemplatesLoaded(payload) => {
                 self.on_prompt_templates_loaded(payload);
             }
-            Event::PersonasLoaded { payload } => {
+            Event::PersonasLoaded(payload) => {
                 self.on_personas_loaded(payload);
             }
             _ => {}
@@ -230,7 +230,7 @@ mod tests {
 
     fn find_prompt_assembled(events: &[Event]) -> Option<PromptAssembled> {
         for evt in events {
-            if let Event::PromptAssembled { payload } = evt {
+            if let Event::PromptAssembled(payload) = evt {
                 return Some(payload.clone());
             }
         }
@@ -248,14 +248,12 @@ mod tests {
         // When sending an AssemblePrompt with history.
         let session_id = SessionId::new();
         let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id: session_id.clone(),
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id: session_id.clone(),
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then a PromptAssembled event is emitted.
@@ -278,14 +276,12 @@ mod tests {
         // When sending an AssemblePrompt with history.
         let session_id = SessionId::new();
         let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id: session_id.clone(),
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id: session_id.clone(),
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then the assembled event contains the expected messages.
@@ -304,14 +300,12 @@ mod tests {
 
         // When sending an AssemblePrompt for a new session.
         let session_id = SessionId::new();
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id: session_id.clone(),
-                history: vec![ChatEntry::user("test")],
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id: session_id.clone(),
+            history: vec![ChatEntry::user("test")],
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then assembly succeeds (auto-initialized with passthrough).
@@ -331,16 +325,14 @@ mod tests {
         let mut actor = PromptAssemblyActor::activate(&mut ctx);
 
         // When receiving a ToolsRegistered event.
-        let evt = Event::ToolsRegistered {
-            payload: ToolsRegistered {
-                provider: "echo-actor".to_owned(),
-                definitions: vec![ToolDefinition {
-                    name: "echo".to_owned(),
-                    description: "echo tool".to_owned(),
-                    parameters: serde_json::json!({}),
-                }],
-            },
-        };
+        let evt = Event::ToolsRegistered(ToolsRegistered {
+            provider: "echo-actor".to_owned(),
+            definitions: vec![ToolDefinition {
+                name: "echo".to_owned(),
+                description: "echo tool".to_owned(),
+                parameters: serde_json::json!({}),
+            }],
+        });
         actor.handle(ActorEnvelope::Event(evt), &ctx).await;
 
         // Then the tool definition is cached in shared state.
@@ -357,24 +349,20 @@ mod tests {
 
         let session_id = SessionId::new();
         // Initialize the session with an assemble.
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id: session_id.clone(),
-                history: vec![ChatEntry::user("hello")],
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id: session_id.clone(),
+            history: vec![ChatEntry::user("hello")],
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
         sink.clear();
 
         // When receiving a PromptStrategySwitched event.
-        let event = Event::PromptStrategySwitched {
-            payload: PromptStrategySwitched {
-                session_id: session_id.clone(),
-                strategy_id: PromptStrategyId::sliding_window(),
-            },
-        };
+        let event = Event::PromptStrategySwitched(PromptStrategySwitched {
+            session_id: session_id.clone(),
+            strategy_id: PromptStrategyId::sliding_window(),
+        });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then the strategy was created.
@@ -392,12 +380,10 @@ mod tests {
 
         // When receiving a PromptStrategySwitched event with an unknown strategy.
         let session_id = SessionId::new();
-        let event = Event::PromptStrategySwitched {
-            payload: PromptStrategySwitched {
-                session_id: session_id.clone(),
-                strategy_id: PromptStrategyId::new("nonexistent"),
-            },
-        };
+        let event = Event::PromptStrategySwitched(PromptStrategySwitched {
+            session_id: session_id.clone(),
+            strategy_id: PromptStrategyId::new("nonexistent"),
+        });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then no strategy is stored.
@@ -415,12 +401,10 @@ mod tests {
         let session_id = SessionId::new();
 
         // Switch to sliding window.
-        let event = Event::PromptStrategySwitched {
-            payload: PromptStrategySwitched {
-                session_id: session_id.clone(),
-                strategy_id: PromptStrategyId::sliding_window(),
-            },
-        };
+        let event = Event::PromptStrategySwitched(PromptStrategySwitched {
+            session_id: session_id.clone(),
+            strategy_id: PromptStrategyId::sliding_window(),
+        });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
         sink.clear();
 
@@ -429,14 +413,12 @@ mod tests {
         for i in 0..10 {
             history.push(ChatEntry::user(format!("msg {i}")));
         }
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id: session_id.clone(),
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id: session_id.clone(),
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then only the last 5 entries are in the output.
@@ -456,12 +438,10 @@ mod tests {
         let session_id = SessionId::new();
 
         // Switch to token_budget.
-        let event = Event::PromptStrategySwitched {
-            payload: PromptStrategySwitched {
-                session_id: session_id.clone(),
-                strategy_id: PromptStrategyId::token_budget(),
-            },
-        };
+        let event = Event::PromptStrategySwitched(PromptStrategySwitched {
+            session_id: session_id.clone(),
+            strategy_id: PromptStrategyId::token_budget(),
+        });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
         sink.clear();
 
@@ -471,14 +451,12 @@ mod tests {
             // Each entry: 400 chars / 4 + 1 = 101 tokens. 100 entries = 10,100 tokens.
             history.push(ChatEntry::user("a".repeat(400)));
         }
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id: session_id.clone(),
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id: session_id.clone(),
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then the output is trimmed and a system prompt is set.
@@ -499,12 +477,10 @@ mod tests {
         let session_id = SessionId::new();
 
         // Switch to compaction.
-        let event = Event::PromptStrategySwitched {
-            payload: PromptStrategySwitched {
-                session_id: session_id.clone(),
-                strategy_id: PromptStrategyId::compaction(),
-            },
-        };
+        let event = Event::PromptStrategySwitched(PromptStrategySwitched {
+            session_id: session_id.clone(),
+            strategy_id: PromptStrategyId::compaction(),
+        });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
         sink.clear();
 
@@ -513,14 +489,12 @@ mod tests {
         for _ in 0..100 {
             history.push(ChatEntry::user("a".repeat(400)));
         }
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id: session_id.clone(),
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id: session_id.clone(),
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then the output is trimmed with a compaction system prompt.
@@ -549,14 +523,12 @@ mod tests {
             ChatEntry::user("hello"),
             ChatEntry::assistant("hi"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -587,14 +559,12 @@ mod tests {
             ChatEntry::system("remember this").with_pin(PinPosition::Bottom),
             ChatEntry::user("what is 2+2?"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -619,14 +589,12 @@ mod tests {
             ChatEntry::system("remember this").with_pin(PinPosition::Bottom),
             ChatEntry::user("what is 2+2?"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -668,14 +636,12 @@ mod tests {
             ChatEntry::system("keep me").with_pin(PinPosition::Relative),
             ChatEntry::user("goodbye"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -700,14 +666,12 @@ mod tests {
             ChatEntry::system("keep me").with_pin(PinPosition::Relative),
             ChatEntry::user("goodbye"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -748,14 +712,12 @@ mod tests {
             ChatEntry::system("top instruction").with_pin(PinPosition::Top),
             ChatEntry::system("bottom reminder").with_pin(PinPosition::Bottom),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -791,14 +753,12 @@ mod tests {
             ChatEntry::system("reminder").with_pin(PinPosition::Bottom),
             ChatEntry::user("hello"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -838,14 +798,12 @@ mod tests {
             ChatEntry::system("bottom reminder").with_pin(PinPosition::Bottom),
             ChatEntry::user("latest question"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -879,14 +837,12 @@ mod tests {
             ChatEntry::system("bottom reminder").with_pin(PinPosition::Bottom),
             ChatEntry::user("latest question"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -919,14 +875,12 @@ mod tests {
             ChatEntry::system("bottom reminder").with_pin(PinPosition::Bottom),
             ChatEntry::user("latest question"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -962,14 +916,12 @@ mod tests {
             ChatEntry::assistant("hi"),
             ChatEntry::user("how are you?"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -995,14 +947,12 @@ mod tests {
             ChatEntry::assistant("hi"),
             ChatEntry::user("how are you?"),
         ];
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history,
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -1049,13 +999,11 @@ mod tests {
         // When processing PinChatEntry.
         actor
             .handle(
-                ActorEnvelope::Command(Command::PinChatEntry {
-                    payload: PinChatEntry {
-                        session_id: session_id.clone(),
-                        entry_id: entry_id.clone(),
-                        position: PinPosition::Top,
-                    },
-                }),
+                ActorEnvelope::Command(Command::PinChatEntry(PinChatEntry {
+                    session_id: session_id.clone(),
+                    entry_id: entry_id.clone(),
+                    position: PinPosition::Top,
+                })),
                 &ctx,
             )
             .await;
@@ -1085,12 +1033,10 @@ mod tests {
         // When processing UnpinChatEntry.
         actor
             .handle(
-                ActorEnvelope::Command(Command::UnpinChatEntry {
-                    payload: UnpinChatEntry {
-                        session_id: session_id.clone(),
-                        entry_id: entry_id.clone(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::UnpinChatEntry(UnpinChatEntry {
+                    session_id: session_id.clone(),
+                    entry_id: entry_id.clone(),
+                })),
                 &ctx,
             )
             .await;
@@ -1116,12 +1062,10 @@ mod tests {
         // When processing SwitchPromptStrategy.
         actor
             .handle(
-                ActorEnvelope::Command(Command::SwitchPromptStrategy {
-                    payload: SwitchPromptStrategy {
-                        session_id: session_id.clone(),
-                        strategy_id: new_strategy.clone(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
+                    session_id: session_id.clone(),
+                    strategy_id: new_strategy.clone(),
+                })),
                 &ctx,
             )
             .await;
@@ -1137,13 +1081,13 @@ mod tests {
         let cmds = sink.commands();
         assert!(
             cmds.iter()
-                .any(|c| matches!(c, Command::RestoreStrategyState { .. }))
+                .any(|c| matches!(c, Command::RestoreStrategyState(..)))
         );
         let events = sink.events();
         assert!(
             events
                 .iter()
-                .any(|e| matches!(e, Event::PromptStrategySwitched { .. }))
+                .any(|e| matches!(e, Event::PromptStrategySwitched(..)))
         );
     }
 
@@ -1162,13 +1106,11 @@ mod tests {
         // When processing RestoreStrategyState.
         actor
             .handle(
-                ActorEnvelope::Command(Command::RestoreStrategyState {
-                    payload: RestoreStrategyState {
-                        session_id: session_id.clone(),
-                        strategy_id: strategy_id.clone(),
-                        blob: blob.clone(),
-                    },
-                }),
+                ActorEnvelope::Command(Command::RestoreStrategyState(RestoreStrategyState {
+                    session_id: session_id.clone(),
+                    strategy_id: strategy_id.clone(),
+                    blob: blob.clone(),
+                })),
                 &ctx,
             )
             .await;
@@ -1187,7 +1129,7 @@ mod tests {
         let events = sink.events();
         let found = events
             .iter()
-            .any(|e| matches!(e, Event::StrategyStateUpdated { .. }));
+            .any(|e| matches!(e, Event::StrategyStateUpdated(..)));
         assert!(found, "expected StrategyStateUpdated event");
     }
 
@@ -1206,12 +1148,10 @@ mod tests {
         }];
 
         // When processing a PromptTemplatesLoaded event.
-        let event = Event::PromptTemplatesLoaded {
-            payload: PromptTemplatesLoaded {
-                templates: templates.clone(),
-                error: None,
-            },
-        };
+        let event = Event::PromptTemplatesLoaded(PromptTemplatesLoaded {
+            templates: templates.clone(),
+            error: None,
+        });
         actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then the prompt template store contains the templates.
@@ -1247,14 +1187,12 @@ mod tests {
         let mut actor = PromptAssemblyActor::activate(&mut ctx);
 
         let session_id = SessionId::new();
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id: session_id.clone(),
-                history: vec![ChatEntry::user("hello")],
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id: session_id.clone(),
+            history: vec![ChatEntry::user("hello")],
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -1281,14 +1219,12 @@ mod tests {
         let mut actor = PromptAssemblyActor::activate(&mut ctx);
 
         let session_id = SessionId::new();
-        let cmd = crate::protocol::Command::AssemblePrompt {
-            payload: AssemblePrompt {
-                session_id,
-                history: vec![ChatEntry::user("hello")],
-                tools: vec![],
-                model_name: "test".to_owned(),
-            },
-        };
+        let cmd = crate::protocol::Command::AssemblePrompt(AssemblePrompt {
+            session_id,
+            history: vec![ChatEntry::user("hello")],
+            tools: vec![],
+            model_name: "test".to_owned(),
+        });
 
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
@@ -1314,9 +1250,9 @@ mod tests {
         // When processing LoadContextStrategyPickerEntries.
         actor
             .handle(
-                ActorEnvelope::Command(Command::LoadContextStrategyPickerEntries {
-                    payload: LoadContextStrategyPickerEntries,
-                }),
+                ActorEnvelope::Command(Command::LoadContextStrategyPickerEntries(
+                    LoadContextStrategyPickerEntries,
+                )),
                 &ctx,
             )
             .await;

@@ -69,13 +69,11 @@ impl SessionPersistenceActor {
             }
         };
 
-        if let Err(e) = ctx.send_command(Command::SendToLlmProvider {
-            payload: SendToLlmProvider {
-                session_id: payload.session_id.clone(),
-                messages: payload.messages.clone(),
-                provider_id,
-            },
-        }) {
+        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: payload.session_id.clone(),
+            messages: payload.messages.clone(),
+            provider_id,
+        })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SendToLlmProvider");
         }
     }
