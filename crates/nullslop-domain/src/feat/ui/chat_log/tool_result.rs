@@ -70,3 +70,121 @@ pub fn to_lines(
     }
     lines
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::feat::ui::chat_log::shared::RenderContext;
+
+    fn render_context(max_lines: u16, is_expanded: bool) -> RenderContext {
+        RenderContext {
+            content_width: 80,
+            _is_selected: false,
+            is_pinned: false,
+            is_expanded,
+            tool_result_max_lines: max_lines,
+        }
+    }
+
+    #[rstest::rstest]
+    fn truncated_tool_result_shows_indicator() {
+        // Given a 10-line tool result with max_lines=5, not expanded.
+        let ctx = render_context(5, false);
+        let content = (1..=10)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // When converting to lines.
+        let lines = to_lines("bash", &content, true, &ctx);
+
+        // Then some line contains the truncation indicator.
+        let has_indicator = lines.iter().any(|line| {
+            line.spans
+                .iter()
+                .any(|s| s.content.contains("---(5 more lines)---"))
+        });
+        assert!(
+            has_indicator,
+            "truncated tool result should contain '---(5 more lines)---'"
+        );
+    }
+
+    #[rstest::rstest]
+    fn expanded_tool_result_shows_all_lines() {
+        // Given a 10-line tool result with max_lines=5, expanded.
+        let ctx = render_context(5, true);
+        let content = (1..=10)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // When converting to lines.
+        let lines = to_lines("bash", &content, true, &ctx);
+
+        // Then some line contains "line 10".
+        let has_last_line = lines.iter().any(|line| {
+            line.spans.iter().any(|s| s.content.contains("line 10"))
+        });
+        assert!(has_last_line, "expanded tool result should contain 'line 10'");
+
+        // And no line contains "more lines".
+        let has_indicator = lines.iter().any(|line| {
+            line.spans.iter().any(|s| s.content.contains("more lines"))
+        });
+        assert!(
+            !has_indicator,
+            "expanded tool result should not show truncation indicator"
+        );
+    }
+
+    #[rstest::rstest]
+    fn short_tool_result_not_truncated() {
+        // Given a 3-line tool result with max_lines=5, not expanded.
+        let ctx = render_context(5, false);
+        let content = "line 1\nline 2\nline 3".to_owned();
+
+        // When converting to lines.
+        let lines = to_lines("bash", &content, true, &ctx);
+
+        // Then no line contains "more lines".
+        let has_indicator = lines.iter().any(|line| {
+            line.spans.iter().any(|s| s.content.contains("more lines"))
+        });
+        assert!(
+            !has_indicator,
+            "short tool result should not be truncated"
+        );
+    }
+
+    #[rstest::rstest]
+    fn tool_result_name_on_first_line() {
+        // Given a tool result with name "bash" and content "output".
+        let ctx = render_context(5, false);
+
+        // When converting to lines.
+        let lines = to_lines("bash", "output", true, &ctx);
+
+        // Then the first line contains "bash".
+        let name_content: String = lines[0]
+            .spans
+            .iter()
+            .map(|s| s.content.clone())
+            .collect();
+        assert!(
+            name_content.starts_with("bash"),
+            "first line should start with tool name"
+        );
+
+        // And the second line contains "output".
+        let content_line: String = lines[1]
+            .spans
+            .iter()
+            .map(|s| s.content.clone())
+            .collect();
+        assert!(
+            content_line.starts_with("output"),
+            "second line should start with content"
+        );
+    }
+}
