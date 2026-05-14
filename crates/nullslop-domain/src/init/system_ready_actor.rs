@@ -63,7 +63,7 @@ impl Actor for SystemReadyActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Command(_) | ActorEnvelope::Shutdown => {}
+            ActorEnvelope::Command(_) => {}
         }
     }
 }

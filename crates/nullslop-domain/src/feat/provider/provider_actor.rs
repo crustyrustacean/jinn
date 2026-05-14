@@ -77,7 +77,6 @@ impl Actor for ProviderActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Shutdown => {}
         }
     }
 }

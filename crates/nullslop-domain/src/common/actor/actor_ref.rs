@@ -142,19 +142,27 @@ where
         std::mem::replace(&mut *guard, new_sender)
     }
 
-    /// Sends a shutdown signal to the actor.
+    /// Closes the actor's channel, causing its run loop to exit.
     ///
-    /// Sends [`ActorEnvelope::Shutdown`].
+    /// After calling this, all send operations on this `ActorRef` (and any
+    /// clones) will fail. The actor's receive loop will get an error and
+    /// break, then `shutdown()` is called.
     ///
     /// # Errors
     ///
-    /// Returns an error if the channel is closed.
-    pub fn shutdown(&self) -> SendResult {
-        from_kanal_send(
-            self.cell.sender.read().send(ActorEnvelope::Shutdown),
-            "failed to send shutdown signal to actor",
-        )
+    /// Returns an error if the channel is already closed.
+    pub fn close(&self) -> SendResult {
+        self.cell
+            .sender
+            .read()
+            .close()
+            .map_err(|err| {
+                Report::new(ActorSendError)
+                    .attach("failed to close actor channel")
+                    .attach(err.to_string())
+            })
     }
+
 }
 
 impl<M> Clone for ActorRef<M>
@@ -270,23 +278,6 @@ mod tests {
             msg,
             ActorEnvelope::System(crate::SystemMessage::ApplicationShuttingDown)
         ));
-    }
-
-    #[rstest::rstest]
-    fn shutdown_sends_shutdown_envelope() {
-        // Given an ActorRef with an unbounded channel.
-        let (tx, rx) = kanal::unbounded::<ActorEnvelope<()>>();
-        let actor_ref = ActorRef::new(tx);
-
-        // When calling shutdown.
-        actor_ref.shutdown().expect("shutdown should succeed");
-
-        // Then a Shutdown envelope is received.
-        let msg = rx
-            .try_recv()
-            .expect("recv should succeed")
-            .expect("should have value");
-        assert!(matches!(msg, ActorEnvelope::Shutdown));
     }
 
     #[rstest::rstest]

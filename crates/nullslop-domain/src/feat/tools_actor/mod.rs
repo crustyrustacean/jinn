@@ -157,7 +157,6 @@ impl Actor for ToolOrchestratorActor {
             ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                 ctx.announce_shutdown_completed();
             }
-            ActorEnvelope::Shutdown => {}
         }
     }
 }
