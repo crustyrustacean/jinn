@@ -23,6 +23,8 @@ pub mod definition;
 pub mod guard;
 pub mod hash;
 pub mod state;
+#[cfg(test)]
+mod state_tests;
 pub mod template;
 
 pub use builder::WorkflowBuilder;
