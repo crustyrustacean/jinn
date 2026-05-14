@@ -30,7 +30,7 @@
 )]
 
 use crate::AppState;
-use crate::protocol::PinPosition;
+use crate::protocol::{Command, PinPosition};
 
 use crate::Intent;
 
@@ -218,6 +218,9 @@ impl IntentHandler {
             Intent::ChatEntryPinSelected => {
                 crate::feat::chat_entry_selection::intent::handle_pin_selected(state)
             }
+            Intent::ReloadPlugins => IntentResult::with_commands(vec![Command::ReloadScripts(
+                crate::feat::plugin_actor::protocol::command::ReloadScripts,
+            )]),
         }
     }
 }

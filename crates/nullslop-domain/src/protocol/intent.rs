@@ -149,6 +149,9 @@ pub enum Intent {
     ChatEntrySelectPrev,
     /// Pin the currently selected chat entry.
     ChatEntryPinSelected,
+
+    /// Reload plugin scripts from disk.
+    ReloadPlugins,
 }
 
 impl std::fmt::Display for Intent {
@@ -209,6 +212,7 @@ impl std::fmt::Display for Intent {
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),
+            Intent::ReloadPlugins => write!(f, "reload plugins"),
         }
     }
 }
