@@ -215,6 +215,7 @@ impl std::fmt::Debug for dyn UserPreferencesStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::app_info::PREFS_FILE_NAME;
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
@@ -249,7 +250,7 @@ mod tests {
     fn filesystem_load_returns_default_when_missing() {
         // Given a temp directory with no file.
         let dir = tempfile::tempdir().expect("temp dir");
-        let path = dir.path().join("nullslop.toml");
+        let path = dir.path().join(PREFS_FILE_NAME);
         let storage = FilesystemUserPreferencesStorage::new(path.clone());
 
         assert!(!path.exists());
@@ -266,7 +267,7 @@ mod tests {
     fn filesystem_save_then_load_round_trips() {
         // Given a FilesystemUserPreferencesStorage in a temp dir.
         let dir = tempfile::tempdir().expect("temp dir");
-        let path = dir.path().join("nullslop.toml");
+        let path = dir.path().join(PREFS_FILE_NAME);
         let storage = FilesystemUserPreferencesStorage::new(path);
 
         let prefs = UserPreferences {

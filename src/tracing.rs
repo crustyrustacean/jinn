@@ -9,6 +9,7 @@ use std::{env, fs::File, path::PathBuf, sync::Arc};
 
 use clap_verbosity_flag::{Verbosity, WarnLevel};
 use error_stack::{Report, ResultExt};
+use nullslop_plugin::app_info::APP_NAME;
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use wherror::Error;
 
@@ -16,9 +17,6 @@ use wherror::Error;
 #[derive(Debug, Error)]
 #[error(debug)]
 pub struct TracingInitError;
-
-/// Log file name used in TUI mode.
-const LOG_FILE_NAME: &str = "nullslop.log";
 
 /// Decides how the tracing subscriber is configured based on run mode.
 #[derive(Debug)]
@@ -58,13 +56,13 @@ pub fn init(
 ) -> Result<(), Report<TracingInitError>> {
     let filter = match env::var("RUST_LOG") {
         Ok(filter_str) => filter_str,
-        Err(_) => format!("nullslop={verbosity}"),
+        Err(_) => format!("{APP_NAME}={verbosity}"),
     };
 
     match mode {
         TracingMode::Tui { log_dir } => {
             let dir = log_dir.unwrap_or_else(|| PathBuf::from("."));
-            let path = dir.join(LOG_FILE_NAME);
+            let path = dir.join(format!("{APP_NAME}.log"));
 
             let logfile = File::options()
                 .create(true)

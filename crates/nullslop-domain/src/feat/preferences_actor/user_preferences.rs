@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::common::app_info::{APP_NAME, PREFS_FILE_NAME};
 use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
@@ -44,8 +45,8 @@ pub struct UserPreferences {
 pub fn preferences_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("nullslop")
-        .join("nullslop.toml")
+        .join(APP_NAME)
+        .join(PREFS_FILE_NAME)
 }
 
 /// Loads user preferences from the default path.
@@ -137,7 +138,7 @@ mod tests {
     fn load_returns_default_when_file_missing() {
         // Given a path to a nonexistent file.
         let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("nullslop.toml");
+        let path = dir.path().join(PREFS_FILE_NAME);
 
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
@@ -151,7 +152,7 @@ mod tests {
     fn save_then_load_round_trips() {
         // Given preferences with a last_model and last_strategy.
         let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("nullslop.toml");
+        let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: Some("sliding_window".to_owned()),
@@ -170,7 +171,7 @@ mod tests {
     fn load_parses_toml_content() {
         // Given a TOML file with last_model and last_strategy.
         let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("nullslop.toml");
+        let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
             r#"last_model = "openrouter/anthropic/claude-sonnet-4-20250514"
@@ -193,7 +194,7 @@ last_strategy = "sliding_window""#,
     fn load_handles_empty_file() {
         // Given an empty TOML file.
         let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("nullslop.toml");
+        let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(&path, "").expect("write");
 
         // When loading.
@@ -208,7 +209,7 @@ last_strategy = "sliding_window""#,
     fn save_creates_parent_directories() {
         // Given a nested path that doesn't exist.
         let dir = TempDir::new().expect("temp dir");
-        let path = dir.path().join("nested").join("dir").join("nullslop.toml");
+        let path = dir.path().join("nested").join("dir").join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             last_model: Some("test/model".to_owned()),
             last_strategy: None,
