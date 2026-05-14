@@ -2,8 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::app_info::APP_NAME;
 use crate::PluginId;
+use crate::app_info::APP_NAME;
 
 /// Returns the default plugins directory (`~/.config/nullslop/plugins/`).
 ///

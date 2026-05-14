@@ -19,8 +19,8 @@ use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::provider_infra::LlmServiceFactoryService;
-use crate::feat::provider_infra::StreamEvent;
 use crate::feat::provider_infra::StopReason;
+use crate::feat::provider_infra::StreamEvent;
 use crate::feat::tools_actor::protocol::command::{CancelToolBatch, ExecuteToolBatch};
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolUseStarted, ToolsRegistered,
