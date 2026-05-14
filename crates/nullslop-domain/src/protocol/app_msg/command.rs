@@ -21,6 +21,7 @@ use crate::feat::context::protocol::command::{
     AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
     RescanPersonas, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
 };
+use crate::feat::plugin_actor::protocol::command::ReloadScripts;
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::provider::protocol::command::{
     CancelStream, LoadProviderPickerEntries, ProviderSwitch, RefreshModels, RescanPromptTemplates,
@@ -97,6 +98,8 @@ pub enum Command {
     LoadPersonaPickerEntries(LoadPersonaPickerEntries),
     /// Update one or more user preferences (persisted to nullslop.toml).
     UpdatePreferences(UpdatePreferences),
+    /// Reload plugin scripts from disk.
+    ReloadScripts(ReloadScripts),
 }
 
 impl Command {
@@ -134,6 +137,7 @@ impl Command {
             Self::RescanPersonas(..) => Some(RescanPersonas::NAME),
             Self::LoadPersonaPickerEntries(..) => Some(LoadPersonaPickerEntries::NAME),
             Self::UpdatePreferences(..) => Some(UpdatePreferences::NAME),
+            Self::ReloadScripts(..) => Some(ReloadScripts::NAME),
         }
     }
 }
@@ -207,6 +211,7 @@ impl std::fmt::Display for Command {
             Command::UpdatePreferences(payload) => {
                 write!(f, "update preferences ({} diff(s))", payload.updates.len())
             }
+            Command::ReloadScripts(..) => write!(f, "reload scripts"),
         }
     }
 }

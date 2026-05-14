@@ -19,6 +19,8 @@ pub struct RoutingEntry {
     pub subscriptions: Vec<EventTypeName>,
     /// Command names this actor registered for during activation.
     pub commands: Vec<CommandName>,
+    /// Whether this actor subscribes to ALL events (wildcard).
+    pub subscribes_all_events: bool,
     /// Sends an event to this actor (wraps in `ActorEnvelope::Event`).
     pub send_event: Box<dyn Fn(Event) + Send + Sync>,
     /// Sends a command to this actor (wraps in `ActorEnvelope::Command`).
@@ -48,6 +50,7 @@ mod tests {
             name: "test".to_owned(),
             subscriptions: vec![],
             commands: vec![],
+            subscribes_all_events: false,
             send_event: Box::new(move |event| {
                 let _ = ref_clone.send_event(event);
             }),
@@ -84,6 +87,7 @@ mod tests {
             name: "test".to_owned(),
             subscriptions: vec![],
             commands: vec![],
+            subscribes_all_events: false,
             send_event: Box::new(|_| {}),
             send_command: Box::new(move |command| {
                 let _ = ref_clone.send_command(command);
@@ -115,6 +119,7 @@ mod tests {
             name: "test".to_owned(),
             subscriptions: vec![],
             commands: vec![],
+            subscribes_all_events: false,
             send_event: Box::new(|_| {}),
             send_command: Box::new(|_| {}),
             send_system: Box::new(move |msg| {

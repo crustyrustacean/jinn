@@ -115,7 +115,8 @@ impl ProviderActor {
             | Command::ScanSkills
             | Command::RescanPersonas(..)
             | Command::LoadPersonaPickerEntries(..)
-            | Command::UpdatePreferences(..) => {}
+            | Command::UpdatePreferences(..)
+            | Command::ReloadScripts(..) => {}
         }
     }
 

@@ -573,7 +573,7 @@ mod tests {
         let _actor = actor_with_tokens(&sink, &mut ctx, vec![]);
 
         // Then the context accumulated subscriptions.
-        let (events, _commands) = ctx.take_registrations();
+        let (events, _commands, _) = ctx.take_registrations();
         assert!(events.contains(&ToolBatchCompleted::TYPE_NAME.to_owned()));
         assert!(events.contains(&ToolsRegistered::TYPE_NAME.to_owned()));
         assert!(events.contains(&StreamCompleted::TYPE_NAME.to_owned()));

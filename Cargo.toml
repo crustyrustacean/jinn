@@ -14,6 +14,7 @@ path = "src/lib.rs"
 [dependencies]
 nullslop-cli = { workspace = true }
 nullslop-tui = { workspace = true }
+nullslop-plugin = { path = "crates/nullslop-plugin" }
 nullslop-domain = { workspace = true, features = ["which-key"] }
 tokio = { workspace = true }
 kanal = { workspace = true }
