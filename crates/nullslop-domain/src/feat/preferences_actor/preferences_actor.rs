@@ -71,9 +71,7 @@ impl PreferencesActor {
             return;
         }
         if let Err(e) = ctx.send_event(Event::PreferencesUpdated {
-            payload: PreferencesUpdated {
-                preferences: prefs,
-            },
+            payload: PreferencesUpdated { preferences: prefs },
         }) {
             tracing::warn!(err = ?e, "preferences-actor failed to emit PreferencesUpdated");
         }
@@ -128,9 +126,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::UpdatePreferences {
                     payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some(
-                            "ollama/llama3".into(),
-                        ))],
+                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
                     },
                 }),
                 &ctx,
@@ -151,9 +147,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::UpdatePreferences {
                     payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some(
-                            "ollama/llama3".into(),
-                        ))],
+                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
                     },
                 }),
                 &ctx,
@@ -202,9 +196,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::UpdatePreferences {
                     payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some(
-                            "ollama/llama3".into(),
-                        ))],
+                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
                     },
                 }),
                 &ctx,
@@ -251,9 +243,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::UpdatePreferences {
                     payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some(
-                            "ollama/llama3".into(),
-                        ))],
+                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
                     },
                 }),
                 &ctx,
@@ -318,9 +308,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::UpdatePreferences {
                     payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some(
-                            "ollama/llama3".into(),
-                        ))],
+                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
                     },
                 }),
                 &ctx,
@@ -339,7 +327,10 @@ mod tests {
                 } if preferences.last_model.as_deref() == Some("ollama/llama3")
             )
         });
-        assert!(found, "expected PreferencesUpdated event with last_model=ollama/llama3");
+        assert!(
+            found,
+            "expected PreferencesUpdated event with last_model=ollama/llama3"
+        );
     }
 
     #[rstest::rstest]
@@ -351,9 +342,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::UpdatePreferences {
                     payload: UpdatePreferences {
-                        updates: vec![PreferenceUpdate::SetLastModel(Some(
-                            "ollama/llama3".into(),
-                        ))],
+                        updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
                     },
                 }),
                 &ctx,
@@ -383,10 +372,7 @@ mod tests {
 
         // When sending an unrelated command (RefreshModels).
         actor
-            .handle(
-                ActorEnvelope::Command(Command::RefreshModels),
-                &ctx,
-            )
+            .handle(ActorEnvelope::Command(Command::RefreshModels), &ctx)
             .await;
 
         // Then no preferences were saved (still defaults).
