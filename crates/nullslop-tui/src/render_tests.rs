@@ -1,4 +1,4 @@
-use super::*;
+use super::render::*;
 use nullslop_selection_widget::compute_popup_rect;
 use nullslop_testutil::setup_term;
 use ratatui::layout::Rect;
