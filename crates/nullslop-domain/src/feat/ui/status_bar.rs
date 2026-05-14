@@ -4,8 +4,10 @@
 //! provider/model is active for the current session.
 
 pub mod element;
+pub mod plugin;
 
 pub use element::StatusBarElement;
+pub use plugin::{PluginSlot, PluginSlotRegistry, SlotSection};
 
 use crate::common::AppUiRegistry;
 

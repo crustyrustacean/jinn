@@ -35,6 +35,7 @@ use nullslop_domain::common::actor::protocol::event::{
 };
 use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+use nullslop_domain::feat::plugin_actor::plugin_actor::PluginActor;
 use nullslop_domain::feat::session::JsonlSessionStore as DomainJsonlSessionStore;
 use nullslop_domain::feat::session::SessionStoreService as DomainSessionStoreService;
 use nullslop_domain::init::env_init_actor::EnvInitActor;
@@ -332,6 +333,20 @@ pub fn create_core_with_actor_host(
         },
     );
 
+    // Plugin actor.
+    let plugin_result = spawn::<PluginActor>(
+        "plugin",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        |ctx| {
+            ctx.set_description("Loads and manages rhai plugins");
+            ctx.set_data(state.clone());
+            ctx.set_data(nullslop_plugin::loader::plugins_dir());
+        },
+    );
+
     // ── Build actor host ─────────────────────────────────────────────────
 
     let host = InMemoryActorHost::from_actors_with_handle(
@@ -351,6 +366,7 @@ pub fn create_core_with_actor_host(
             skills_result,
             persona_scan_result,
             prov_result,
+            plugin_result,
         ],
         handle.clone(),
         shutdown_tracker,

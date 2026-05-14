@@ -19,7 +19,7 @@ fn subscribe_event_accumulates() {
     ctx.subscribe_event_by_name("chat_input::ChatEntrySubmitted");
 
     // Then take_registrations returns both subscriptions.
-    let (subscriptions, _) = ctx.take_registrations();
+    let (subscriptions, _, _) = ctx.take_registrations();
     assert_eq!(
         subscriptions,
         vec!["system::KeyDown", "chat_input::ChatEntrySubmitted"]
@@ -36,7 +36,7 @@ fn subscribe_command_accumulates() {
     ctx.subscribe_command_by_name("reverse");
 
     // Then take_registrations returns both commands.
-    let (_, commands) = ctx.take_registrations();
+    let (_, commands, _) = ctx.take_registrations();
     assert_eq!(commands, vec!["echo", "reverse"]);
 }
 

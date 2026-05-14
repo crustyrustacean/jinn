@@ -222,7 +222,7 @@ where
     M: Send + 'static,
     A: Actor<Message = M> + Send + 'static,
 {
-    let (subscriptions, commands) = ctx.take_registrations();
+    let (subscriptions, commands, subscribes_all_events) = ctx.take_registrations();
 
     let ref_for_event = actor_ref.clone();
     let ref_for_command = actor_ref.clone();
@@ -261,6 +261,7 @@ where
         name: name.to_owned(),
         subscriptions,
         commands,
+        subscribes_all_events,
         send_event,
         send_command,
         send_system,
@@ -303,6 +304,8 @@ struct RoutingTables {
 
     /// All routing entries — used for broadcasting system messages.
     all_entries: Vec<Arc<RoutingEntry>>,
+    /// Actors that subscribe to ALL events (wildcard).
+    all_event_subscribers: Vec<Arc<RoutingEntry>>,
 }
 
 /// Lifecycle state that is only touched during shutdown.
@@ -346,6 +349,7 @@ impl InMemoryActorHost {
         let mut event_routes: HashMap<EventTypeName, Vec<Arc<RoutingEntry>>> = HashMap::new();
         let mut command_routes: HashMap<CommandName, Vec<Arc<RoutingEntry>>> = HashMap::new();
         let mut all_entries: Vec<Arc<RoutingEntry>> = Vec::new();
+        let mut all_event_subscribers: Vec<Arc<RoutingEntry>> = Vec::new();
         let mut tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
         for result in results {
@@ -373,6 +377,10 @@ impl InMemoryActorHost {
                     .push(entry.clone());
             }
 
+            if entry.subscribes_all_events {
+                all_event_subscribers.push(entry.clone());
+            }
+
             all_entries.push(entry);
             tasks.push(result.task);
         }
@@ -382,6 +390,7 @@ impl InMemoryActorHost {
                 event_routes,
                 command_routes,
                 all_entries,
+                all_event_subscribers,
             },
             lifecycle: Mutex::new(LifecycleState { tasks }),
             shutdown_tracker,
@@ -449,6 +458,19 @@ impl ActorHost for InMemoryActorHost {
                 }
                 (entry.send_event)(event.clone());
             }
+        }
+        // Also route to actors that subscribe to ALL events.
+        for entry in &self.routing.all_event_subscribers {
+            // Skip if already routed via specific subscription.
+            if let Some(entries) = self.routing.event_routes.get(event_type) {
+                if entries.iter().any(|e| e.name == entry.name) {
+                    continue;
+                }
+            }
+            if source.is_some_and(|s| &**s == entry.name.as_str()) {
+                continue;
+            }
+            (entry.send_event)(event.clone());
         }
     }
 

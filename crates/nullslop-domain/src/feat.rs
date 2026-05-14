@@ -11,6 +11,7 @@ pub mod llm_actor;
 pub mod navigation;
 pub mod persona;
 pub mod picker;
+pub mod plugin_actor;
 pub mod preferences_actor;
 pub mod provider;
 pub mod provider_infra;

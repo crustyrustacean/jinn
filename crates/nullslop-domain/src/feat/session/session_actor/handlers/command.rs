@@ -179,6 +179,13 @@ impl SessionPersistenceActor {
             state.session.active_session = session_id.clone();
             state.session.session_loading = false;
             state.session.session_load_started_at = None;
+
+            // Notify other actors that the active session changed.
+            let _ = ctx.send_event(Event::ActiveSessionChanged(
+                crate::protocol::system::ActiveSessionChanged {
+                    session_id: session_id.clone(),
+                },
+            ));
         }
 
         // Serialize the strategy state for RestoreStrategyState.
