@@ -57,7 +57,6 @@ impl IntentHandler {
         clippy::too_many_lines,
         reason = "exhaustive match on all Intent variants"
     )]
-    // debtmap:ignore-start
     pub fn handle(intent: &Intent, state: &mut AppState) -> IntentResult {
         state.frontend.tui_signals.clear();
 
@@ -183,5 +182,4 @@ impl IntentHandler {
             )]),
         }
     }
-    // debtmap:ignore-end
 }
