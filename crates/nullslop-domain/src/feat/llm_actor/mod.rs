@@ -203,6 +203,7 @@ impl LlmActor {
         } else {
             self.factory.clone()
         };
+        let model_id = provider_id.map(|p| p.to_owned()).unwrap_or_default();
         let sink = ctx.sink();
         let sid = session_id.clone();
 
@@ -250,7 +251,7 @@ impl LlmActor {
             let mut accumulated_text = String::new();
             let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
             let mut token_index = 0usize;
-            let mut parser = reasoning_parser::ParserFactory::new().create("deepseek-r1");
+            let mut parser = reasoning_parser::ParserFactory::new().create(&model_id);
 
             let mut stream = std::pin::pin!(stream);
             while let Some(result) = stream.next().await {
