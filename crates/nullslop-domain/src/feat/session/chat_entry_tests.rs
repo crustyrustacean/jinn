@@ -199,3 +199,57 @@ fn pin_position_deserializes_old_format() {
     // Then pin_position is None (backward compat via #[serde(default)]).
     assert_eq!(entry.pin_position, None);
 }
+
+// --- Thinking entry tests ---
+
+#[rstest::rstest]
+fn thinking_entry_has_thinking_kind() {
+    // Given text "reasoning here".
+    let text = "reasoning here";
+
+    // When creating a thinking entry.
+    let entry = ChatEntry::thinking(text);
+
+    // Then kind is Thinking("reasoning here").
+    assert_eq!(entry.kind, ChatEntryKind::Thinking("reasoning here".to_owned()));
+}
+
+#[rstest::rstest]
+fn thinking_kind_str_returns_thinking() {
+    // Given a thinking entry.
+    let entry = ChatEntry::thinking("test");
+
+    // Then kind_str returns "thinking".
+    assert_eq!(entry.kind_str(), "thinking");
+}
+
+#[rstest::rstest]
+fn thinking_text_returns_content() {
+    // Given a thinking entry.
+    let entry = ChatEntry::thinking("some reasoning");
+
+    // Then text() returns the reasoning text.
+    assert_eq!(entry.text(), "some reasoning");
+}
+
+#[rstest::rstest]
+fn thinking_entry_serializes_roundtrip() {
+    // Given a thinking entry.
+    let entry = ChatEntry::thinking("I need to think about this");
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the roundtrip preserves the kind.
+    assert_eq!(back.kind, ChatEntryKind::Thinking("I need to think about this".to_owned()));
+}
+
+#[rstest::rstest]
+fn thinking_entry_pin_position_defaults_to_none() {
+    // Given a thinking entry.
+    let entry = ChatEntry::thinking("test");
+
+    // Then pin_position is None.
+    assert_eq!(entry.pin_position, None);
+}

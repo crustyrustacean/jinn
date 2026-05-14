@@ -250,6 +250,8 @@ impl LlmActor {
             let mut accumulated_text = String::new();
             let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
             let mut token_index = 0usize;
+            let mut parser = reasoning_parser::ParserFactory::new()
+                .create("deepseek-r1");
 
             let mut stream = std::pin::pin!(stream);
             while let Some(result) = stream.next().await {
@@ -257,12 +259,40 @@ impl LlmActor {
                     Ok(event) => match event {
                         StreamEvent::Text(token) => {
                             accumulated_text.push_str(&token);
-                            let _ = sink.send_event(Event::StreamToken(StreamToken {
-                                session_id: sid.clone(),
-                                index: token_index,
-                                token,
-                            }));
-                            token_index += 1;
+                            let parsed = match parser
+                                .parse_reasoning_streaming_incremental(&token)
+                            {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    tracing::warn!(
+                                        err = ?e,
+                                        "reasoning parser error, treating as normal text"
+                                    );
+                                    reasoning_parser::ParserResult::normal(token.clone())
+                                }
+                            };
+                            if !parsed.reasoning_text.is_empty() {
+                                let _ = sink.send_event(Event::StreamToken(
+                                    StreamToken {
+                                        session_id: sid.clone(),
+                                        index: token_index,
+                                        token: parsed.reasoning_text,
+                                        is_thinking: true,
+                                    },
+                                ));
+                                token_index += 1;
+                            }
+                            if !parsed.normal_text.is_empty() {
+                                let _ = sink.send_event(Event::StreamToken(
+                                    StreamToken {
+                                        session_id: sid.clone(),
+                                        index: token_index,
+                                        token: parsed.normal_text,
+                                        is_thinking: false,
+                                    },
+                                ));
+                                token_index += 1;
+                            }
                         }
                         StreamEvent::ToolUseStart { index, id, name } => {
                             let _ = sink.send_event(Event::ToolUseStarted(ToolUseStarted {

@@ -242,6 +242,16 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, is_selected: bool) -> Vec<
             let prefix = if pinned { "📌 " } else { "  " };
             table_to_lines(data, prefix, is_selected)
         }
+        ChatEntryKind::Thinking(text) => {
+            let prefix = if pinned { "📌   " } else { "  " };
+            multiline_styled(
+                text,
+                prefix,
+                "  ",
+                Style::default().fg(Color::DarkGray),
+                is_selected,
+            )
+        }
     }
 }
 

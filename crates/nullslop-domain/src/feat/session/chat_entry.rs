@@ -139,6 +139,12 @@ pub enum ChatEntryKind {
     },
     /// A structured table with styled headers and rows.
     Table(TableData),
+    /// Reasoning/thinking content extracted from the LLM response.
+    ///
+    /// Displayed in the chat log but excluded from context assembly.
+    /// Models like DeepSeek-R1 and Qwen3 embed reasoning in `<think>` tags;
+    /// the `reasoning-parser` crate extracts it during streaming.
+    Thinking(String),
     /// A tool call requested by the LLM.
     ToolCall {
         /// Unique ID assigned by the LLM provider.
@@ -236,6 +242,20 @@ impl ChatEntry {
         }
     }
 
+    /// Create a new thinking entry with the current timestamp.
+    #[must_use]
+    pub fn thinking<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Thinking(text.into()),
+            pin_position: None,
+        }
+    }
+
     /// Create a new table entry with the current timestamp.
     #[must_use]
     pub fn table(data: TableData) -> Self {
@@ -319,6 +339,7 @@ impl ChatEntry {
             ChatEntryKind::Assistant(..) => "assistant",
             ChatEntryKind::Actor { .. } => "actor",
             ChatEntryKind::Table(..) => "table",
+            ChatEntryKind::Thinking(..) => "thinking",
             ChatEntryKind::ToolCall { .. } => "tool_call",
             ChatEntryKind::ToolResult { .. } => "tool_result",
         }
@@ -335,7 +356,8 @@ impl ChatEntry {
             ChatEntryKind::User(t)
             | ChatEntryKind::System(t)
             | ChatEntryKind::Error(t)
-            | ChatEntryKind::Assistant(t) => t.clone(),
+            | ChatEntryKind::Assistant(t)
+            | ChatEntryKind::Thinking(t) => t.clone(),
             ChatEntryKind::Actor { text, .. } => text.clone(),
             ChatEntryKind::Table(data) => data.to_plain_text(),
             ChatEntryKind::ToolCall {
@@ -443,6 +465,11 @@ impl Serialize for ChatEntryKind {
                 )?;
                 map.end()
             }
+            ChatEntryKind::Thinking(t) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("Thinking", t)?;
+                map.end()
+            }
         }
     }
 }
@@ -524,6 +551,10 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             success: data.success,
                         })
                     }
+                    "Thinking" => {
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::Thinking(text))
+                    }
                     // "Table" is never deserialized — it's ephemeral.
                     other => Err(de::Error::unknown_variant(
                         other,
@@ -535,6 +566,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             "Actor",
                             "ToolCall",
                             "ToolResult",
+                            "Thinking",
                         ],
                     )),
                 }
