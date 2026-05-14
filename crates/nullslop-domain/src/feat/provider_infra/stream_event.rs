@@ -6,6 +6,40 @@
 
 use crate::feat::tools_actor::tool_types::ToolCall;
 
+/// Why the stream stopped.
+///
+/// Parsed from the vendor `llm` crate's raw string at the conversion boundary.
+/// Unknown values are preserved via [`StopReason::Other`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StopReason {
+    /// The model requested tool use.
+    ToolUse,
+    /// The model finished generating normally.
+    EndTurn,
+    /// An unrecognized stop reason from the provider.
+    Other(String),
+}
+
+impl From<&str> for StopReason {
+    fn from(s: &str) -> Self {
+        match s {
+            "tool_use" => Self::ToolUse,
+            "end_turn" => Self::EndTurn,
+            other => Self::Other(other.to_owned()),
+        }
+    }
+}
+
+impl std::fmt::Display for StopReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ToolUse => write!(f, "tool_use"),
+            Self::EndTurn => write!(f, "end_turn"),
+            Self::Other(s) => write!(f, "{s}"),
+        }
+    }
+}
+
 /// A streaming event from an LLM chat response.
 ///
 /// Produced by [`LlmService::chat_stream_with_tools`](super::LlmService::chat_stream_with_tools).
@@ -39,7 +73,7 @@ pub enum StreamEvent {
     },
     /// The stream ended.
     Done {
-        /// Why the stream stopped (e.g., "`end_turn`", "`tool_use`").
-        stop_reason: String,
+        /// Why the stream stopped.
+        stop_reason: StopReason,
     },
 }

@@ -11,6 +11,7 @@ use futures::stream::Stream;
 use wherror::Error;
 
 use super::StreamEvent;
+use super::stream_event::StopReason;
 
 /// Error type for LLM service operations.
 ///
@@ -67,7 +68,7 @@ pub trait LlmService: Send + Sync {
         let events = text_stream.map(|result| result.map(StreamEvent::Text));
         let done = stream::once(async {
             Ok(StreamEvent::Done {
-                stop_reason: "end_turn".to_owned(),
+                stop_reason: StopReason::EndTurn,
             })
         });
         Ok(Box::pin(events.chain(done)))

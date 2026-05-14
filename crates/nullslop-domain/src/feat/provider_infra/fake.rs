@@ -15,6 +15,7 @@ use error_stack::Report;
 use futures::stream;
 
 use super::StreamEvent;
+use super::stream_event::StopReason;
 use super::service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
 
 /// Special prompt that triggers multi-turn tool loop behavior.
@@ -180,7 +181,7 @@ impl FakeLlmService {
         }
 
         events.push(Ok(StreamEvent::Done {
-            stop_reason: "tool_use".to_owned(),
+            stop_reason: StopReason::ToolUse,
         }));
 
         events
@@ -197,7 +198,7 @@ impl FakeLlmService {
         }
 
         events.push(Ok(StreamEvent::Done {
-            stop_reason: "end_turn".to_owned(),
+            stop_reason: StopReason::EndTurn,
         }));
 
         events
@@ -243,7 +244,7 @@ impl LlmService for FakeLlmService {
         if self.tool_calls.is_empty() {
             // No tool calls — just text and Done(end_turn).
             events.push(Ok(StreamEvent::Done {
-                stop_reason: "end_turn".to_owned(),
+                stop_reason: StopReason::EndTurn,
             }));
         } else {
             // Emit tool call events.
@@ -265,7 +266,7 @@ impl LlmService for FakeLlmService {
 
             // Terminal event.
             events.push(Ok(StreamEvent::Done {
-                stop_reason: "tool_use".to_owned(),
+                stop_reason: StopReason::ToolUse,
             }));
         }
 
@@ -335,7 +336,7 @@ mod tests {
         assert_eq!(
             events[1],
             StreamEvent::Done {
-                stop_reason: "end_turn".to_owned(),
+                stop_reason: StopReason::EndTurn,
             }
         );
     }
@@ -429,7 +430,7 @@ mod tests {
         assert_eq!(
             events[4],
             StreamEvent::Done {
-                stop_reason: "tool_use".to_owned(),
+                stop_reason: StopReason::ToolUse,
             }
         );
     }
@@ -595,7 +596,7 @@ mod tests {
         assert_eq!(
             events[4],
             StreamEvent::Done {
-                stop_reason: "tool_use".to_owned(),
+                stop_reason: StopReason::ToolUse,
             }
         );
     }
@@ -644,7 +645,7 @@ mod tests {
         assert_eq!(
             events[1],
             StreamEvent::Done {
-                stop_reason: "end_turn".to_owned(),
+                stop_reason: StopReason::EndTurn,
             }
         );
     }
@@ -676,7 +677,7 @@ mod tests {
         assert_eq!(
             events[1],
             StreamEvent::Done {
-                stop_reason: "end_turn".to_owned(),
+                stop_reason: StopReason::EndTurn,
             }
         );
     }

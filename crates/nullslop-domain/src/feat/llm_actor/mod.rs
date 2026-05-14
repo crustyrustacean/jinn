@@ -20,6 +20,7 @@ use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::provider_infra::LlmServiceFactoryService;
 use crate::feat::provider_infra::StreamEvent;
+use crate::feat::provider_infra::StopReason;
 use crate::feat::tools_actor::protocol::command::{CancelToolBatch, ExecuteToolBatch};
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolUseStarted, ToolsRegistered,
@@ -296,7 +297,7 @@ impl LlmActor {
                                 tool_call_count = accumulated_tool_calls.len(),
                                 "stream Done"
                             );
-                            if stop_reason == "tool_use" {
+                            if stop_reason == StopReason::ToolUse {
                                 // Emit ExecuteToolBatch for the orchestrator.
                                 let _ = sink.send_command(Command::ExecuteToolBatch(
                                     ExecuteToolBatch {
