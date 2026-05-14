@@ -81,6 +81,7 @@ mod tests {
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: Some("sliding_window".to_owned()),
+            tool_result_max_lines: None,
         };
         actor
             .handle(
@@ -111,6 +112,7 @@ mod tests {
         let first = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: None,
+            tool_result_max_lines: None,
         };
         actor
             .handle(
@@ -125,6 +127,7 @@ mod tests {
         let second = UserPreferences {
             last_model: Some("openrouter/gpt-4".to_owned()),
             last_strategy: Some("sliding_window".to_owned()),
+            tool_result_max_lines: None,
         };
         actor
             .handle(

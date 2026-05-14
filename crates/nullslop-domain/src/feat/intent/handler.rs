@@ -177,6 +177,9 @@ impl IntentHandler {
             Intent::ChatEntryPinSelected => {
                 feat::chat_entry_selection::intent::handle_pin_selected(state)
             }
+            Intent::ExpandToolResult => {
+                feat::chat_entry_selection::intent::handle_expand_tool_result(state)
+            }
             Intent::ReloadPlugins => IntentResult::with_commands(vec![Command::ReloadScripts(
                 feat::plugin_actor::protocol::command::ReloadScripts,
             )]),
