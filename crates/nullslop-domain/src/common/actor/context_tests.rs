@@ -1,5 +1,9 @@
-use super::*;
+use super::context::*;
+use std::sync::Arc;
 use crate::common::actor::envelope::ActorEnvelope;
+use crate::protocol::{Command, Event};
+use crate::common::actor::message_sink::MessageSink;
+use crate::ActorRef;
 
 fn test_sink() -> Arc<dyn MessageSink> {
     Arc::new(crate::common::actor::message_sink::RecordingSink::new())

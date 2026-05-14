@@ -258,7 +258,3 @@ impl ActorContext {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "context_tests.rs"]
-mod context_tests;

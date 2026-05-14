@@ -2,7 +2,7 @@ use crate::protocol::{PromptStrategyId, StrategyEntry};
 use nullslop_selection_widget::PickerItem as _;
 use std::ops::Range;
 
-use super::*;
+use super::strategy_entries::*;
 fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> StrategyEntry {
     StrategyEntry {
         strategy_id: PromptStrategyId::new(id),

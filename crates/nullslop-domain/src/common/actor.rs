@@ -17,6 +17,9 @@ pub mod actor_name;
 pub mod actor_ref;
 pub mod command_msg;
 pub mod context;
+
+#[cfg(test)]
+mod context_tests;
 pub mod envelope;
 pub mod event_msg;
 pub mod message_sink;
