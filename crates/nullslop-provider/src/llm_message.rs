@@ -78,4 +78,39 @@ mod tests {
             }
         );
     }
+
+    #[rstest::rstest]
+    fn system_message_roundtrips() {
+        let msg = LlmMessage::System { content: "You are helpful.".to_owned() };
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, msg);
+    }
+
+    #[rstest::rstest]
+    fn tool_message_roundtrips() {
+        let msg = LlmMessage::Tool {
+            tool_call_id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            content: "result text".to_owned(),
+        };
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, msg);
+    }
+
+    #[rstest::rstest]
+    fn assistant_with_tool_calls_roundtrips() {
+        let msg = LlmMessage::Assistant {
+            content: "Let me check.".to_owned(),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_1".to_owned(),
+                name: "echo".to_owned(),
+                arguments: r#"{\"input\":\"hi\"}"#.to_owned(),
+            }]),
+        };
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, msg);
+    }
 }

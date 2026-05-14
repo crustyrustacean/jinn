@@ -136,3 +136,33 @@ async fn error_response_401_returns_error() {
 
     assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn chat_stream_yields_text_tokens_only() {
+    let mut server = mockito::Server::new_async().await;
+    let service = make_service(&server);
+
+    let body = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello\"}]},\"finishReason\":\"STOP\"}]}\n\n";
+
+    server
+        .mock(
+            "POST",
+            mockito::Matcher::Regex(r#"\?key=test-key"#.to_owned()),
+        )
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body(body)
+        .create_async()
+        .await;
+
+    let stream = service
+        .chat_stream(vec![LlmMessage::User {
+            content: "hi".into(),
+        }])
+        .await
+        .unwrap();
+
+    let tokens: Vec<String> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    assert_eq!(tokens, vec!["Hello"]);
+}

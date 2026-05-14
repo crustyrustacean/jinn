@@ -78,3 +78,24 @@ pub enum StreamEvent {
         stop_reason: StopReason,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[rstest::rstest]
+    #[case("tool_use", StopReason::ToolUse)]
+    #[case("end_turn", StopReason::EndTurn)]
+    #[case("something_else", StopReason::Other("something_else".to_owned()))]
+    fn from_str_parses_known_reasons(#[case] input: &str, #[case] expected: StopReason) {
+        assert_eq!(StopReason::from(input), expected);
+    }
+
+    #[rstest::rstest]
+    #[case(StopReason::ToolUse, "tool_use")]
+    #[case(StopReason::EndTurn, "end_turn")]
+    #[case(StopReason::Other("max_tokens".to_owned()), "max_tokens")]
+    fn display_formats_correctly(#[case] reason: StopReason, #[case] expected: &str) {
+        assert_eq!(format!("{reason}"), expected);
+    }
+}

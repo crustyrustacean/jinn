@@ -125,6 +125,38 @@ fn factory_rejects_empty_api_key() {
 }
 
 #[tokio::test]
+async fn chat_stream_yields_text_tokens_only() {
+    let mut server = mockito::Server::new_async().await;
+    let service = make_service(&server);
+
+    let body = [
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" world\"}}\n\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
+    ]
+    .join("");
+
+    server
+        .mock("POST", "/v1/messages")
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body(&body)
+        .create_async()
+        .await;
+
+    let stream = service
+        .chat_stream(vec![LlmMessage::User {
+            content: "hi".into(),
+        }])
+        .await
+        .unwrap();
+
+    let tokens: Vec<String> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    assert_eq!(tokens, vec!["Hello", " world"]);
+}
+
+#[tokio::test]
 async fn error_response_401_returns_error() {
     let mut server = mockito::Server::new_async().await;
     let service = make_service(&server);

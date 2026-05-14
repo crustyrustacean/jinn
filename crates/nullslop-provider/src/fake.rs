@@ -706,4 +706,85 @@ mod tests {
         // Then the tool loop call count is zero.
         assert_eq!(factory.tool_loop_call_count(), 0);
     }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn with_tool_calls_and_empty_tokens_yields_tool_events_only() {
+        // Given a factory with tool calls but no text tokens.
+        let tool_call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "echo".to_owned(),
+            arguments: r#"{"input":"hi"}"#.to_owned(),
+        };
+        let factory = FakeLlmServiceFactory::with_tool_calls(vec![], vec![tool_call]);
+
+        // When streaming with tools.
+        let service = factory.create().expect("create service");
+        let stream = service
+            .chat_stream_with_tools(vec![], vec![])
+            .await
+            .expect("chat_stream_with_tools");
+        let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
+
+        // Then the stream has no Text events, only tool events and Done(tool_use).
+        assert!(!events.iter().any(|e| matches!(e, StreamEvent::Text(_))));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::ToolUseStart { .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::ToolUseComplete { .. })));
+        assert_eq!(
+            events.last(),
+            Some(&StreamEvent::Done {
+                stop_reason: StopReason::ToolUse,
+            })
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn tool_loop_with_multiple_tool_calls_on_first_response() {
+        // Given a tool loop factory with multiple tool calls.
+        let tc1 = ToolCall {
+            id: "call_1".to_owned(),
+            name: "read_file".to_owned(),
+            arguments: r#"{"path":"a.rs"}"#.to_owned(),
+        };
+        let tc2 = ToolCall {
+            id: "call_2".to_owned(),
+            name: "read_file".to_owned(),
+            arguments: r#"{"path":"b.rs"}"#.to_owned(),
+        };
+        let factory = FakeLlmServiceFactory::with_tool_loop(
+            vec![],
+            vec![tc1, tc2],
+            vec!["Done.".to_owned()],
+        );
+
+        // When creating a service and streaming with the trigger prompt.
+        let service = factory.create().expect("create service");
+        let messages = vec![LlmMessage::User {
+            content: "__tool_loop_test__".to_owned(),
+        }];
+        let stream = service
+            .chat_stream_with_tools(messages, vec![])
+            .await
+            .expect("chat_stream_with_tools");
+        let events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
+
+        // Then the stream emits two ToolUseStart events (one per tool call).
+        let starts: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::ToolUseStart { .. }))
+            .collect();
+        assert_eq!(starts.len(), 2);
+
+        // And two ToolUseComplete events.
+        let completes: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::ToolUseComplete { .. }))
+            .collect();
+        assert_eq!(completes.len(), 2);
+    }
 }
