@@ -9,7 +9,9 @@
 //! writes visually obvious during code review.
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::ops::Range;
 use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::RwLock;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -149,6 +151,16 @@ pub struct SessionUi {
     /// a concrete offset so `scroll_up` / `scroll_down` work correctly.
     /// Uses `AtomicU16` for interior mutability since the element receives `&self`.
     last_max_offset: AtomicU16,
+    /// Per-entry wrapped line ranges computed by the renderer each frame.
+    ///
+    /// `entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line)` in wrapped
+    /// coordinate space. Used by intent handlers to determine which entries are
+    /// visible in the viewport.
+    entry_line_ranges: RwLock<Vec<(u16, u16)>>,
+    /// The viewport height (render area height) set by the renderer each frame.
+    viewport_height: AtomicU16,
+    /// Number of blank lines prepended by the renderer for bottom-alignment.
+    blank_count: AtomicU16,
     /// The set of chat entry IDs whose tool result content is expanded.
     ///
     /// When a tool result entry is expanded, its full content is shown
@@ -163,6 +175,14 @@ impl Clone for SessionUi {
             scroll_offset: self.scroll_offset,
             selected_entry_index: self.selected_entry_index,
             last_max_offset: AtomicU16::new(self.last_max_offset.load(Ordering::Relaxed)),
+            entry_line_ranges: RwLock::new(
+                self.entry_line_ranges
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+            ),
+            viewport_height: AtomicU16::new(self.viewport_height.load(Ordering::Relaxed)),
+            blank_count: AtomicU16::new(self.blank_count.load(Ordering::Relaxed)),
             expanded_entries: self.expanded_entries.clone(),
         }
     }
@@ -175,6 +195,9 @@ impl Default for SessionUi {
             scroll_offset: None,
             selected_entry_index: None,
             last_max_offset: AtomicU16::new(0),
+            entry_line_ranges: RwLock::new(Vec::new()),
+            viewport_height: AtomicU16::new(0),
+            blank_count: AtomicU16::new(0),
             expanded_entries: HashSet::new(),
         }
     }
@@ -254,12 +277,31 @@ impl ChatSessionState {
 
     /// Append an entry to the history and return its index.
     ///
-    /// Resets scroll to the bottom so new messages are visible.
+    /// Implements smart auto-scroll: only resets scroll and advances cursor
+    /// to the new entry if the cursor was on the previous last entry (or history
+    /// was empty). Otherwise, appends silently — preserving the user's scroll
+    /// position and selection.
     pub fn push_entry(&mut self, entry: ChatEntry) -> usize {
+        let prev_last = self.core.history.len().saturating_sub(1);
+        let was_at_last = self
+            .ui
+            .selected_entry_index
+            .map_or(true, |i| i == prev_last);
         let index = self.core.history.len();
         self.core.history.push(entry);
-        self.reset_scroll();
-        self.clear_selection();
+        tracing::info!(
+            cursor = ?self.ui.selected_entry_index,
+            prev_last,
+            history_len = self.core.history.len(),
+            was_at_last,
+            is_streaming = self.core.is_streaming,
+            "push_entry"
+        );
+        if was_at_last {
+            self.reset_scroll();
+            let new_last = self.core.history.len() - 1;
+            self.ui.selected_entry_index = Some(new_last);
+        }
         index
     }
 
@@ -282,6 +324,12 @@ impl ChatSessionState {
         let index = self.push_entry(entry);
         self.core.streaming_entry_index = Some(index);
         self.core.is_streaming = true;
+        tracing::info!(
+            cursor = ?self.ui.selected_entry_index,
+            streaming_index = index,
+            history_len = self.core.history.len(),
+            "begin_streaming"
+        );
         index
     }
 
@@ -348,12 +396,37 @@ impl ChatSessionState {
             .core
             .streaming_entry_index
             .expect("streaming_entry_index must be set when is_streaming");
+        let prev_last = self.core.history.len() - 1;
+        let was_at_last = self
+            .ui
+            .selected_entry_index
+            .map_or(true, |i| i == prev_last);
         let entry = ChatEntry::thinking("");
         self.core.history.insert(assistant_index, entry);
         self.core.streaming_thinking_entry_index = Some(assistant_index);
         self.core.streaming_entry_index = Some(assistant_index + 1);
-        self.reset_scroll();
-        self.clear_selection();
+
+        // After insertion, any cursor at or past the insertion point shifts by +1.
+        if let Some(i) = self.ui.selected_entry_index {
+            if i >= assistant_index {
+                self.ui.selected_entry_index = Some(i + 1);
+            }
+        }
+
+        tracing::info!(
+            cursor = ?self.ui.selected_entry_index,
+            assistant_index,
+            prev_last,
+            was_at_last,
+            history_len = self.core.history.len(),
+            "begin_thinking"
+        );
+
+        if was_at_last {
+            self.reset_scroll();
+            // After insertion, the new last entry is at prev_last + 1.
+            self.ui.selected_entry_index = Some(prev_last + 1);
+        }
     }
 
     /// Append a thinking token to the streaming Thinking entry.
@@ -395,6 +468,11 @@ impl ChatSessionState {
         self.core.streaming_entry_index = None;
         self.core.streaming_tool_call_indices.clear();
         self.core.streaming_thinking_entry_index = None;
+        tracing::info!(
+            cursor = ?self.ui.selected_entry_index,
+            history_len = self.core.history.len(),
+            "finish_streaming"
+        );
     }
 
     /// Cancel streaming but keep partial text in history.
@@ -689,6 +767,98 @@ impl ChatSessionState {
         self.ui.last_max_offset.store(max_offset, Ordering::Relaxed);
     }
 
+    // --- Renderer viewport state ---
+
+    /// Store per-entry wrapped line ranges computed by the renderer.
+    ///
+    /// `entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line)` in the
+    /// wrapped coordinate space. Called each frame by the chat log renderer.
+    pub fn set_entry_line_ranges(&self, ranges: Vec<(u16, u16)>) {
+        if let Ok(mut guard) = self.ui.entry_line_ranges.write() {
+            *guard = ranges;
+        }
+    }
+
+    /// Store the viewport height (render area height) from the renderer.
+    pub fn set_viewport_height(&self, height: u16) {
+        self.ui.viewport_height.store(height, Ordering::Relaxed);
+    }
+
+    /// Read the cached viewport height.
+    pub fn viewport_height_value(&self) -> u16 {
+        self.ui.viewport_height.load(Ordering::Relaxed)
+    }
+
+    /// Store the blank line count prepended for bottom-alignment.
+    pub fn set_blank_count(&self, count: u16) {
+        self.ui.blank_count.store(count, Ordering::Relaxed);
+    }
+
+    /// Returns the range of entry indices visible in the current viewport.
+    ///
+    /// Uses `entry_line_ranges`, `blank_count`, `scroll_offset`, and
+    /// `viewport_height` to determine which entries have at least one line
+    /// visible. Returns an empty range if no entries are visible or viewport
+    /// data is unavailable.
+    pub fn visible_entry_range(&self) -> Range<usize> {
+        let ranges = match self.ui.entry_line_ranges.read() {
+            Ok(guard) => guard.clone(),
+            Err(_) => return 0..0,
+        };
+        if ranges.is_empty() {
+            return 0..0;
+        }
+
+        let viewport_height = self.ui.viewport_height.load(Ordering::Relaxed);
+        let blank_count = self.ui.blank_count.load(Ordering::Relaxed);
+        let scroll_offset = self
+            .ui
+            .scroll_offset
+            .unwrap_or(self.ui.last_max_offset.load(Ordering::Relaxed));
+
+        let viewport_top = scroll_offset;
+        let viewport_bottom = scroll_offset.saturating_add(viewport_height);
+
+        let mut first_visible = None;
+        let mut last_visible = None;
+
+        for (i, &(start, end)) in ranges.iter().enumerate() {
+            let abs_start = start.saturating_add(blank_count);
+            let abs_end = end.saturating_add(blank_count);
+            if abs_end > viewport_top && abs_start < viewport_bottom {
+                if first_visible.is_none() {
+                    first_visible = Some(i);
+                }
+                last_visible = Some(i);
+            }
+        }
+
+        match (first_visible, last_visible) {
+            (Some(first), Some(last)) => first..last + 1,
+            _ => 0..0,
+        }
+    }
+
+    /// Move the cursor to the first entry visible in the viewport.
+    ///
+    /// No-op if no entries are visible.
+    pub fn move_cursor_to_first_visible(&mut self) {
+        let range = self.visible_entry_range();
+        if !range.is_empty() {
+            self.ui.selected_entry_index = Some(range.start);
+        }
+    }
+
+    /// Move the cursor to the last entry visible in the viewport.
+    ///
+    /// No-op if no entries are visible.
+    pub fn move_cursor_to_last_visible(&mut self) {
+        let range = self.visible_entry_range();
+        if !range.is_empty() {
+            self.ui.selected_entry_index = Some(range.end - 1);
+        }
+    }
+
     // --- History restoration ---
 
     /// Restore conversation history from a persisted snapshot.
@@ -697,7 +867,12 @@ impl ChatSessionState {
     /// persistence to rehydrate a session from disk.
     pub fn restore_history(&mut self, entries: Vec<ChatEntry>) {
         self.core.history = entries;
-        self.clear_selection();
+        if self.core.history.is_empty() {
+            self.ui.selected_entry_index = None;
+        } else {
+            self.ui.selected_entry_index = Some(self.core.history.len() - 1);
+        }
+        self.reset_scroll();
     }
 
     // --- Pinning ---
@@ -763,6 +938,14 @@ impl ChatSessionState {
     /// Clear the entry selection.
     pub fn clear_selection(&mut self) {
         self.ui.selected_entry_index = None;
+    }
+
+    /// Set the selected entry index directly.
+    ///
+    /// Use for programmatic selection (e.g., sidebar pin sync).
+    /// Does not validate bounds — caller must ensure index is valid.
+    pub fn set_selected_entry_index(&mut self, index: usize) {
+        self.ui.selected_entry_index = Some(index);
     }
 
     /// The index of the currently selected entry, if any.

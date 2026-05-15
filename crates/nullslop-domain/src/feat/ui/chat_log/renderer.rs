@@ -85,6 +85,13 @@ impl UiElement<AppState> for ChatLogElement {
         let mut entry_line_ranges: Vec<(u16, u16)> = Vec::with_capacity(history.len());
         let mut wrapped_cursor: u16 = 0;
 
+        // Determine gutter focus state — yellow when chat log has focus.
+        let chat_log_focused = matches!(
+            state.frontend.scope_stack.current(),
+            crate::common::app_state::FocusScope::Normal
+                | crate::common::app_state::FocusScope::Input
+        );
+
         for (i, entry) in history.iter().enumerate() {
             let is_selected = selected_idx == Some(i);
             let is_expanded = state.active_session().is_entry_expanded(&entry.id);
@@ -106,7 +113,7 @@ impl UiElement<AppState> for ChatLogElement {
             let entry_content_lines = entry_to_lines(entry, &ctx);
 
             // Build gutter lines for this entry (one gutter line per content line).
-            let gutter_style = if is_selected {
+            let gutter_style = if is_selected && chat_log_focused {
                 Style::default().bg(ctx.theme.focus_accent)
             } else {
                 Style::default().bg(ctx.theme.gutter_bg)
@@ -197,6 +204,11 @@ impl UiElement<AppState> for ChatLogElement {
 
         // Feed max_offset back to state so scroll handlers can resolve "at bottom".
         state.active_session().set_last_max_offset(max_offset);
+
+        // Store viewport state for intent handlers (cursor-aware navigation).
+        state.active_session().set_entry_line_ranges(entry_line_ranges.clone());
+        state.active_session().set_viewport_height(area.height);
+        state.active_session().set_blank_count(blank_count as u16);
 
         // Resolve scroll offset: None means "show bottom" → use max_offset.
         let resolved = scroll_offset.unwrap_or(max_offset);
@@ -353,7 +365,8 @@ mod tests {
             let mut s = AppState::default();
             s.active_session_mut().push_entry(ChatEntry::user("hello"));
             s.active_session_mut().push_entry(ChatEntry::user("world"));
-            s.active_session_mut().select_next_entry(); // selects index 0
+            // push_entry auto-selects last (index 1). Move to index 0.
+            s.active_session_mut().select_prev_entry();
             s
         };
 
@@ -377,6 +390,63 @@ mod tests {
             unselected_gutter.style().bg,
             Some(crate::feat::theme::default_theme().gutter_bg)
         );
+    }
+
+    #[rstest::rstest]
+    fn selected_entry_gutter_is_dark_gray_when_unfocused() {
+        // Given a ChatLogElement with a selected entry, sidebar focused.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::user("hello"));
+            s.active_session_mut().push_entry(ChatEntry::user("world"));
+            s.active_session_mut().select_prev_entry(); // index 0
+            use crate::common::app_state::FocusScope;
+            s.frontend.scope_stack.push(FocusScope::Sidebar);
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the selected entry's gutter has dark gray bg (not yellow).
+        let buffer = terminal.backend().buffer().clone();
+        let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
+        assert_eq!(
+            gutter_cell.style().bg,
+            Some(crate::feat::theme::default_theme().gutter_bg)
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_stores_viewport_state() {
+        // Given a ChatLogElement with entries.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::user("hello"));
+            s.active_session_mut().push_entry(ChatEntry::user("world"));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then viewport state is stored in the session.
+        let range = state.active_session().visible_entry_range();
+        assert!(!range.is_empty(), "entry_line_ranges should be populated after render");
     }
 
     #[rstest::rstest]

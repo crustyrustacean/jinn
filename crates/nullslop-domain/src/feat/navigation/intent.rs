@@ -4,44 +4,57 @@ use crate::common::app_state::AppState;
 use crate::protocol::IntentResult;
 use crate::protocol::tab::TabDirection;
 
-/// Number of lines to scroll per keyboard step.
-const SCROLL_STEP: u16 = 10;
 /// Number of lines to scroll per mouse wheel tick.
 const MOUSE_SCROLL_STEP: u16 = 3;
 
-/// Scrolls the chat log up by one keyboard step.
+/// Scrolls the chat log up by one viewport page and moves cursor to first visible entry.
 pub fn handle_scroll_up(state: &mut AppState) -> IntentResult {
-    state.active_session_mut().scroll_up(SCROLL_STEP);
+    let viewport_height = state.active_session().viewport_height_value().max(1);
+    state.active_session_mut().scroll_up(viewport_height);
+    state.active_session_mut().move_cursor_to_first_visible();
     IntentResult::empty()
 }
 
-/// Scrolls the chat log down by one keyboard step.
+/// Scrolls the chat log down by one viewport page and moves cursor to last visible entry.
 pub fn handle_scroll_down(state: &mut AppState) -> IntentResult {
-    state.active_session_mut().scroll_down(SCROLL_STEP);
+    let viewport_height = state.active_session().viewport_height_value().max(1);
+    state.active_session_mut().scroll_down(viewport_height);
+    state.active_session_mut().move_cursor_to_last_visible();
     IntentResult::empty()
 }
 
-/// Scrolls the chat log up by one mouse wheel tick.
+/// Scrolls the chat log up by one mouse wheel tick and moves cursor to first visible.
 pub fn handle_mouse_scroll_up(state: &mut AppState) -> IntentResult {
     state.active_session_mut().scroll_up(MOUSE_SCROLL_STEP);
+    state.active_session_mut().move_cursor_to_first_visible();
     IntentResult::empty()
 }
 
-/// Scrolls the chat log down by one mouse wheel tick.
+/// Scrolls the chat log down by one mouse wheel tick and moves cursor to last visible.
 pub fn handle_mouse_scroll_down(state: &mut AppState) -> IntentResult {
     state.active_session_mut().scroll_down(MOUSE_SCROLL_STEP);
+    state.active_session_mut().move_cursor_to_last_visible();
     IntentResult::empty()
 }
 
-/// Scrolls the chat log to the very top.
+/// Scrolls the chat log to the very top and moves cursor to the first entry.
 pub fn handle_scroll_to_top(state: &mut AppState) -> IntentResult {
     state.active_session_mut().scroll_to_top();
+    // Set cursor to first entry.
+    if !state.active_session().history().is_empty() {
+        state.active_session_mut().set_selected_entry_index(0);
+    }
     IntentResult::empty()
 }
 
-/// Scrolls the chat log to the very bottom.
+/// Scrolls the chat log to the very bottom and moves cursor to the last entry.
 pub fn handle_scroll_to_bottom(state: &mut AppState) -> IntentResult {
     state.active_session_mut().scroll_to_bottom();
+    // Set cursor to last entry.
+    let max = state.active_session().history().len().saturating_sub(1);
+    if !state.active_session().history().is_empty() {
+        state.active_session_mut().set_selected_entry_index(max);
+    }
     IntentResult::empty()
 }
 

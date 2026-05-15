@@ -889,6 +889,8 @@ fn select_next_entry_starts_at_first_when_no_selection() {
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
+    // push_entry auto-selects, so clear to test the "no selection" case.
+    session.clear_selection();
     assert_eq!(session.selected_entry_index(), None);
 
     // When selecting next.
@@ -940,6 +942,8 @@ fn select_prev_entry_starts_at_last_when_no_selection() {
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
+    // push_entry auto-selects last, so clear to test the "no selection" case.
+    session.clear_selection();
 
     // When selecting prev.
     session.select_prev_entry();
@@ -955,7 +959,8 @@ fn select_prev_entry_decrements_from_current() {
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
-    session.select_prev_entry(); // 2
+    // push_entry auto-selects last (index 2).
+    assert_eq!(session.selected_entry_index(), Some(2));
 
     // When selecting prev again.
     session.select_prev_entry();
@@ -971,7 +976,8 @@ fn select_prev_entry_clamps_at_zero() {
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
-    session.select_next_entry(); // 0
+    // push_entry auto-selects last (2). Move to index 0.
+    session.ui.selected_entry_index = Some(0);
 
     // When selecting prev.
     session.select_prev_entry();
@@ -1009,7 +1015,7 @@ fn clear_selection_resets_to_none() {
     // Given a session with a selection.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
-    session.select_next_entry();
+    // push_entry auto-selects index 0.
     assert_eq!(session.selected_entry_index(), Some(0));
 
     // When clearing selection.
@@ -1026,8 +1032,8 @@ fn selected_entry_returns_entry_at_index() {
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
-    session.select_next_entry(); // 0
-    session.select_next_entry(); // 1
+    // push_entry auto-selects last (2). Move to index 1.
+    session.ui.selected_entry_index = Some(1);
 
     // When getting the selected entry.
     let entry = session.selected_entry();
@@ -1043,7 +1049,7 @@ fn selected_entry_id_returns_id_at_index() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
     let expected_id = session.history()[0].id.clone();
-    session.select_next_entry();
+    // push_entry auto-selects index 0.
 
     // When getting the selected entry ID.
     let id = session.selected_entry_id();
@@ -1053,33 +1059,31 @@ fn selected_entry_id_returns_id_at_index() {
 }
 
 #[rstest::rstest]
-fn push_entry_clears_selection() {
-    // Given a session with a selected entry.
+fn push_entry_auto_selects_new_entry_when_at_last() {
+    // Given a session with a selected last entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
-    session.select_next_entry();
     assert_eq!(session.selected_entry_index(), Some(0));
 
     // When pushing a new entry.
     session.push_entry(ChatEntry::user("b"));
 
-    // Then the selection is cleared.
-    assert_eq!(session.selected_entry_index(), None);
+    // Then the cursor advances to the new entry.
+    assert_eq!(session.selected_entry_index(), Some(1));
 }
 
 #[rstest::rstest]
-fn restore_history_clears_selection() {
+fn restore_history_auto_selects_last_entry() {
     // Given a session with a selected entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
-    session.select_next_entry();
     assert_eq!(session.selected_entry_index(), Some(0));
 
     // When restoring history.
     session.restore_history(vec![ChatEntry::user("new")]);
 
-    // Then the selection is cleared.
-    assert_eq!(session.selected_entry_index(), None);
+    // Then the last entry is auto-selected.
+    assert_eq!(session.selected_entry_index(), Some(0));
 }
 
 // --- Thinking streaming tests ---
@@ -1172,4 +1176,220 @@ fn cancel_streaming_preserves_partial_thinking() {
     assert!(
         matches!(session.history()[1].kind, ChatEntryKind::Thinking(ref t) if t == "partial reasoning")
     );
+}
+
+// --- Smart auto-scroll (was_at_last) tests ---
+
+#[rstest::rstest]
+fn push_entry_auto_selects_first_entry() {
+    // Given an empty session.
+    let mut session = ChatSessionState::new();
+
+    // When pushing the first entry.
+    session.push_entry(ChatEntry::user("hello"));
+
+    // Then the new entry is auto-selected.
+    assert_eq!(session.selected_entry_index(), Some(0));
+    // And scroll is reset to bottom.
+    assert!(session.is_at_bottom());
+}
+
+#[rstest::rstest]
+fn push_entry_preserves_selection_when_not_at_last() {
+    // Given a session with 3 entries, cursor on first.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    // Move cursor to first entry (not last).
+    session.ui.selected_entry_index = Some(0);
+
+    // When pushing a new entry.
+    session.push_entry(ChatEntry::user("d"));
+
+    // Then the cursor stays on index 0.
+    assert_eq!(session.selected_entry_index(), Some(0));
+}
+
+#[rstest::rstest]
+fn push_entry_resets_scroll_only_when_at_last() {
+    // Given a session with entries, scrolled up.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    // Scroll up and move cursor away from last.
+    session.ui.scroll_offset = Some(0);
+    session.ui.selected_entry_index = Some(0);
+
+    // When pushing a new entry.
+    session.push_entry(ChatEntry::user("d"));
+
+    // Then the scroll is NOT reset (cursor was not at last).
+    assert_eq!(session.scroll_offset(), Some(0));
+}
+
+#[rstest::rstest]
+fn push_entry_resets_scroll_when_at_last() {
+    // Given a session with entries, scrolled up, cursor on last.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    // push auto-selects last (1).
+    session.ui.scroll_offset = Some(0);
+    assert_eq!(session.selected_entry_index(), Some(1));
+
+    // When pushing a new entry.
+    session.push_entry(ChatEntry::user("c"));
+
+    // Then scroll is reset to bottom.
+    assert!(session.is_at_bottom());
+    assert_eq!(session.selected_entry_index(), Some(2));
+}
+
+#[rstest::rstest]
+fn restore_history_auto_selects_last() {
+    // Given history entries to restore.
+    let mut session = ChatSessionState::new();
+
+    // When restoring history with 3 entries.
+    session.restore_history(vec![
+        ChatEntry::user("a"),
+        ChatEntry::user("b"),
+        ChatEntry::user("c"),
+    ]);
+
+    // Then the last entry is auto-selected.
+    assert_eq!(session.selected_entry_index(), Some(2));
+    // And scroll is at bottom.
+    assert!(session.is_at_bottom());
+}
+
+#[rstest::rstest]
+fn restore_history_empty_clears_selection() {
+    // Given a session with entries.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+
+    // When restoring empty history.
+    session.restore_history(vec![]);
+
+    // Then selection is None.
+    assert_eq!(session.selected_entry_index(), None);
+}
+
+#[rstest::rstest]
+fn begin_thinking_auto_selects_new_last_when_at_last() {
+    // Given a streaming session with cursor on assistant (last entry).
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("hello")
+        .begin_streaming()
+        .build();
+    // begin_streaming auto-selects the assistant entry (index 1).
+    assert_eq!(session.selected_entry_index(), Some(1));
+
+    // When beginning thinking.
+    session.begin_thinking();
+
+    // Then cursor is on the new last entry (assistant shifted to index 2).
+    // history: [user(0), thinking(1), assistant(2)]
+    assert_eq!(session.selected_entry_index(), Some(2));
+    assert!(matches!(session.history()[2].kind, ChatEntryKind::Assistant(_)));
+}
+
+#[rstest::rstest]
+fn begin_thinking_preserves_selection_when_not_at_last() {
+    // Given a streaming session with cursor NOT on assistant.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("hello")
+        .with_user_entry("other")
+        .begin_streaming()
+        .build();
+    // Move cursor to user entry (not the assistant).
+    session.ui.selected_entry_index = Some(0);
+
+    // When beginning thinking.
+    session.begin_thinking();
+
+    // Then cursor stays on the user entry.
+    assert_eq!(session.selected_entry_index(), Some(0));
+}
+
+// --- Viewport state tests ---
+
+#[rstest::rstest]
+fn visible_entry_range_returns_visible_entries() {
+    // Given a session with viewport state.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    session.push_entry(ChatEntry::user("d"));
+    session.push_entry(ChatEntry::user("e"));
+
+    // Entry ranges: [0..2), [2..4), [4..6), [6..8), [8..10)
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6), (6, 8), (8, 10)]);
+    session.set_viewport_height(5);
+    session.set_blank_count(0);
+    session.ui.scroll_offset = Some(2);
+
+    // When computing visible range.
+    // viewport_top=2, viewport_bottom=7
+    // Entry 1 (lines 2..4), Entry 2 (lines 4..6), Entry 3 (lines 6..8) are visible.
+    let range = session.visible_entry_range();
+
+    // Then entries 1..4 are visible.
+    assert_eq!(range, 1..4);
+}
+
+#[rstest::rstest]
+fn visible_entry_range_empty_when_no_ranges() {
+    // Given a session with no viewport state.
+    let session = ChatSessionState::new();
+
+    // When computing visible range.
+    let range = session.visible_entry_range();
+
+    // Then it returns an empty range.
+    assert!(range.is_empty());
+}
+
+#[rstest::rstest]
+fn move_cursor_to_first_visible_sets_index() {
+    // Given a session with viewport state.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
+    session.set_viewport_height(4);
+    session.set_blank_count(0);
+    session.ui.scroll_offset = Some(2);
+
+    // When moving cursor to first visible.
+    session.move_cursor_to_first_visible();
+
+    // Then cursor is on the first visible entry.
+    assert_eq!(session.selected_entry_index(), Some(1));
+}
+
+#[rstest::rstest]
+fn move_cursor_to_last_visible_sets_index() {
+    // Given a session with viewport state.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
+    session.set_viewport_height(4);
+    session.set_blank_count(0);
+    session.ui.scroll_offset = Some(2);
+
+    // When moving cursor to last visible.
+    session.move_cursor_to_last_visible();
+
+    // Then cursor is on the last visible entry.
+    assert_eq!(session.selected_entry_index(), Some(2));
 }
