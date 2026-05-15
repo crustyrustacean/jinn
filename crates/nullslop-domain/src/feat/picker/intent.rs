@@ -351,6 +351,7 @@ mod tests {
     use crate::protocol::{KeymapEntry, PickerEntry, SessionEntry, StrategyEntry};
 
     use super::*;
+    use ratatui::style::Color;
 
     // --- Open picker ---
 
@@ -783,6 +784,86 @@ mod tests {
 
         // Then show_all is toggled to true.
         assert!(state.frontend.keymap_picker_show_all);
+        assert!(result.commands.is_empty());
+    }
+
+    // --- Theme picker tests ---
+
+    #[rstest::rstest]
+    fn open_theme_picker_saves_original_theme() {
+        // Given a state with a custom theme.
+        let mut state = AppState::default();
+        state.frontend.theme.focus_accent = Color::Red;
+
+        // When opening the theme picker.
+        let result = handle_open_picker(&mut state, PickerKind::Theme);
+
+        // Then the original theme is saved.
+        assert_eq!(
+            state
+                .frontend
+                .theme_preview_original
+                .as_ref()
+                .unwrap()
+                .focus_accent,
+            Color::Red
+        );
+        // And the picker has items (at least default).
+        assert!(!state.frontend.theme_picker.items().is_empty());
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn confirm_theme_persists_selection() {
+        // Given a state with theme picker open and default selected.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Theme,
+        });
+        use crate::feat::theme::{ThemeEntry, default_theme};
+        state.frontend.theme_picker.set_items(vec![ThemeEntry {
+            name: "default".to_owned(),
+            theme: default_theme(),
+        }]);
+
+        // When confirming the theme picker.
+        let (result, _maybe_intent) = handle_picker_confirm(&mut state);
+
+        // Then a SetTheme command is returned.
+        assert!(result.commands.iter().any(|c| matches!(
+            c,
+            Command::UpdatePreferences(UpdatePreferences {
+                updates
+            }) if updates.iter().any(|u| matches!(
+                u,
+                PreferenceUpdate::SetTheme(Some(name)) if name == "default"
+            ))
+        )));
+        // And the scope is popped.
+        assert!(!state.frontend.scope_stack.is_picker());
+    }
+
+    #[rstest::rstest]
+    fn escape_theme_picker_restores_original() {
+        // Given a state with theme picker open and a different theme previewed.
+        let mut state = AppState::default();
+        state.frontend.theme.focus_accent = Color::Red;
+        state.frontend.theme_preview_original = Some({
+            let mut original = default_theme();
+            original.focus_accent = Color::Yellow;
+            original
+        });
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Theme,
+        });
+
+        // When handling enter normal mode (ESC).
+        let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+        // Then the theme is restored to the original.
+        assert_eq!(state.frontend.theme.focus_accent, Color::Yellow);
+        // And preview original is cleared.
+        assert!(state.frontend.theme_preview_original.is_none());
         assert!(result.commands.is_empty());
     }
 }
