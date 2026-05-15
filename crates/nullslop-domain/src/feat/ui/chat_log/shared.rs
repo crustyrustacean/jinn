@@ -64,6 +64,15 @@ pub fn pad_line_to_width(line: &mut Line<'static>, width: u16, bg_style: Style) 
     }
 }
 
+/// Replace literal `\n` (backslash + n) sequences with actual newline characters.
+///
+/// Tool call arguments and tool result content may contain JSON-encoded
+/// newline escapes that arrive as two-character sequences in the Rust string.
+/// This helper converts them so the renderer can split on real `\n`.
+pub fn unescape_newlines(s: &str) -> String {
+    s.replace("\\n", "\n")
+}
+
 /// Compute the display width of a string using Unicode grapheme clusters.
 pub fn unicode_segementation_display_width(s: &str) -> usize {
     use unicode_segmentation::UnicodeSegmentation;
