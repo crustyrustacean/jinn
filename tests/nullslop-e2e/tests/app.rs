@@ -205,6 +205,7 @@ impl AppWorld {
 
 /// Parses a human-readable key name into a [`KeyCode`].
 fn parse_key_code(name: &str) -> KeyCode {
+    // Match special key names case-insensitively.
     match name.to_lowercase().as_str() {
         "enter" => KeyCode::Enter,
         "esc" | "escape" => KeyCode::Esc,
@@ -218,8 +219,14 @@ fn parse_key_code(name: &str) -> KeyCode {
         "end" => KeyCode::End,
         "delete" => KeyCode::Delete,
         "space" => KeyCode::Char(' '),
-        s if s.len() == 1 => KeyCode::Char(s.chars().next().expect("single char")),
-        _ => panic!("unknown key: {name}"),
+        _ => {
+            // Single characters preserve case (G vs g are different keys).
+            if name.len() == 1 {
+                KeyCode::Char(name.chars().next().expect("single char"))
+            } else {
+                panic!("unknown key: {name}")
+            }
+        }
     }
 }
 
@@ -424,11 +431,16 @@ fn then_input_buffer_should_be(world: &mut AppWorld, expected: String) {
 }
 
 /// Asserts the active session's chat history contains the expected number of entries.
+/// Waits up to 5 seconds for the count to match.
 #[cucumber::then(expr = "the chat history should contain {int} entry")]
-fn then_chat_history_count(world: &mut AppWorld, count: u64) {
-    let actual = world.app.core.state.read().active_session().history().len();
+async fn then_chat_history_count(world: &mut AppWorld, count: u64) {
+    let expected = count as usize;
+    world.wait_until(|state| {
+        state.active_session().history().len() >= expected
+    }).await;
+    let actual = world.state().active_session().history().len();
     assert_eq!(
-        actual, count as usize,
+        actual, expected,
         "expected {count} history entries, got {actual}"
     );
 }
@@ -448,5 +460,50 @@ fn then_which_key_inactive(world: &mut AppWorld) {
     assert!(
         !world.app.which_key.active,
         "expected which-key to be inactive"
+    );
+}
+
+// --- Chat scroll step definitions ---
+
+/// Asserts the cursor is on the last entry in the chat history.
+/// Waits up to 5 seconds for the history to have at least one entry.
+#[cucumber::then(expr = "the cursor should be on the last entry")]
+async fn then_cursor_on_last_entry(world: &mut AppWorld) {
+    world.wait_until(|state| {
+        let history_len = state.active_session().history().len();
+        history_len > 0
+            && state.active_session().selected_entry_index() == Some(history_len - 1)
+    }).await;
+    let state = world.state();
+    let history_len = state.active_session().history().len();
+    let cursor = state.active_session().selected_entry_index();
+    assert_eq!(
+        cursor,
+        Some(history_len - 1),
+        "expected cursor on last entry ({})",
+        history_len - 1
+    );
+}
+
+/// Asserts the cursor is on a specific entry by index.
+#[cucumber::then(expr = "the cursor should be on entry {int}")]
+fn then_cursor_on_entry(world: &mut AppWorld, index: u64) {
+    let state = world.state();
+    let cursor = state.active_session().selected_entry_index();
+    assert_eq!(
+        cursor,
+        Some(index as usize),
+        "expected cursor on entry {index}, got {:?}",
+        cursor
+    );
+}
+
+/// Asserts the scroll is at the bottom (auto-scroll position).
+#[cucumber::then(expr = "the scroll should be at the bottom")]
+fn then_scroll_at_bottom(world: &mut AppWorld) {
+    let state = world.state();
+    assert!(
+        state.active_session().is_at_bottom(),
+        "expected scroll at bottom"
     );
 }
