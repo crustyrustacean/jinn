@@ -61,8 +61,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
     // Tab bar — always visible.
     {
-        let state_read = app.core.state.read();
-        let theme = &state_read.frontend.theme;
+        let theme = &state.frontend.theme;
         tab_bar::render_tab_bar(
             frame,
             layout.tabs,
@@ -102,7 +101,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
     // Which-key popup overlay.
     {
-        let theme = &app.core.state.read().frontend.theme;
+        let theme = &state.frontend.theme;
         which_key::render_which_key(frame, &mut app.which_key, theme.focus_accent);
     }
 

@@ -1,0 +1,47 @@
+# Sonokai — vivid dark theme for nullslop
+# Inspired by sainnhe/sonokai for Vim
+# Place in ~/.config/nullslop/themes/sonokai.toml
+
+# Borders & focus
+focus_accent = "#c4a7e7"       # Purple
+border_unfocused = "#44474e"   # dark gray
+
+# Text
+primary_text = "#e2e2e3"       # foreground
+muted_text = "#636575"         # comment gray
+error_text = "#ed8796"         # red
+
+# Status
+success = "#a9d89d"            # green
+warning = "#ebdca0"            # yellow
+streaming = "#a6d6d6"          # cyan
+
+# Chat log backgrounds
+gutter_bg = [37, 39, 46]       # ~#25272e (dark bg)
+user_block_bg = [48, 50, 58]   # slightly lighter bg
+tool_block_fg = [99, 101, 117] # comment
+tool_success_bg = [36, 50, 36]
+tool_failure_bg = [50, 30, 38]
+truncation_fg = [75, 78, 88]
+
+# Picker
+picker_active_marker = "#a9d89d"   # green
+picker_selected_bg = "#3b3e47"
+picker_highlight_bg = "#44474e"
+
+# Tab bar
+tab_active_fg = "#2c2e34"      # dark bg text on purple
+tab_active_bg = "#c4a7e7"      # purple
+tab_inactive_fg = "#636575"    # comment
+
+# Selection highlight fallback
+selection_fg = "#2c2e34"       # bg
+selection_bg = "#c4a7e7"       # purple
+
+# Provider picker
+accent_action = "#f5a56e"      # orange
+age_fresh = "#a9d89d"          # green
+age_stale = "#ed8796"          # red
+
+# Scroll indicator
+scroll_indicator_bg = [30, 32, 38]

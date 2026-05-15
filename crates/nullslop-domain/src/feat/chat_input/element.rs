@@ -15,7 +15,7 @@ use crate::feat::chat_input::state::wrap::WrappedLine;
 use crate::protocol::Mode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use unicode_segmentation::UnicodeSegmentation;
@@ -31,19 +31,20 @@ impl UiElement<AppState> for ChatInputBoxElement {
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         let input_mode = state.frontend.scope_stack.current().mode() == Mode::Input;
+        let theme = &state.frontend.theme;
 
         let prompt_style = if input_mode {
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme.focus_accent)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default().add_modifier(Modifier::BOLD)
         };
 
         let border_style = if input_mode {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(theme.focus_accent)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(theme.border_unfocused)
         };
 
         let text_style = Style::default();
@@ -69,7 +70,15 @@ impl UiElement<AppState> for ChatInputBoxElement {
         // Render scroll position indicators if content overflows.
         let total_lines = state.active_chat_input().wrapped_lines().len();
         let scroll_offset = state.active_chat_input().scroll_offset();
-        render_scroll_indicators(frame, inner, total_lines, scroll_offset, max_visible_lines);
+        render_scroll_indicators(
+            frame,
+            inner,
+            total_lines,
+            scroll_offset,
+            max_visible_lines,
+            theme.age_fresh,
+            theme.scroll_indicator_bg,
+        );
 
         // Position cursor when in input mode.
         if input_mode {
@@ -137,6 +146,8 @@ fn render_scroll_indicators(
     total_lines: usize,
     scroll_offset: usize,
     max_visible_lines: usize,
+    indicator_fg: ratatui::style::Color,
+    indicator_bg: ratatui::style::Color,
 ) {
     let lines_above = scroll_offset;
     let lines_below = total_lines
@@ -147,7 +158,7 @@ fn render_scroll_indicators(
         return;
     }
 
-    let style = Style::default().fg(Color::LightGreen).bg(Color::Black);
+    let style = Style::default().fg(indicator_fg).bg(indicator_bg);
 
     if lines_above > 0 {
         let label = format!("↑ {lines_above}");
@@ -181,9 +192,11 @@ fn render_indicator_overlay(frame: &mut Frame<'_>, label: &str, inner: Rect, y: 
 mod tests {
     use nullslop_testutil::setup_term;
     use ratatui::layout::Position;
+    use ratatui::style::Color;
 
     use super::*;
     use crate::common::app_state::FocusScope;
+    use crate::feat::theme::default_theme;
 
     #[rstest::rstest]
     fn name_returns_chat_input_box() {
@@ -246,7 +259,7 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((0, 0)).expect("cell should exist");
         assert_eq!(cell.symbol(), ">");
-        assert_eq!(cell.style().fg, Some(Color::Yellow));
+        assert_eq!(cell.style().fg, Some(default_theme().focus_accent));
     }
 
     #[rstest::rstest]
@@ -268,7 +281,7 @@ mod tests {
         // Then the bottom border is yellow.
         let buffer = terminal.backend().buffer().clone();
         let cell = buffer.cell((0, 2)).expect("cell should exist");
-        assert_eq!(cell.style().fg, Some(Color::Yellow));
+        assert_eq!(cell.style().fg, Some(default_theme().focus_accent));
     }
 
     #[rstest::rstest]
@@ -558,8 +571,8 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let arrow_cell = buffer.cell((37, 0)).expect("cell should exist");
         assert_eq!(arrow_cell.symbol(), "↑");
-        assert_eq!(arrow_cell.style().fg, Some(Color::LightGreen));
-        assert_eq!(arrow_cell.style().bg, Some(Color::Black));
+        assert_eq!(arrow_cell.style().fg, Some(default_theme().age_fresh));
+        assert_eq!(arrow_cell.style().bg, Some(default_theme().scroll_indicator_bg));
         let num_cell = buffer.cell((39, 0)).expect("cell should exist");
         assert_eq!(num_cell.symbol(), "2");
     }
@@ -592,8 +605,8 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let arrow_cell = buffer.cell((37, 2)).expect("cell should exist");
         assert_eq!(arrow_cell.symbol(), "↓");
-        assert_eq!(arrow_cell.style().fg, Some(Color::LightGreen));
-        assert_eq!(arrow_cell.style().bg, Some(Color::Black));
+        assert_eq!(arrow_cell.style().fg, Some(default_theme().age_fresh));
+        assert_eq!(arrow_cell.style().bg, Some(default_theme().scroll_indicator_bg));
         let num_cell = buffer.cell((39, 2)).expect("cell should exist");
         assert_eq!(num_cell.symbol(), "2");
     }
@@ -627,12 +640,12 @@ mod tests {
         // Up arrow on top-right (row 0). "↑ 2" = 3 display cols → x = 37.
         let up_cell = buffer.cell((37, 0)).expect("cell should exist");
         assert_eq!(up_cell.symbol(), "↑");
-        assert_eq!(up_cell.style().fg, Some(Color::LightGreen));
+        assert_eq!(up_cell.style().fg, Some(default_theme().age_fresh));
 
         // Down arrow on bottom-right of inner area (row 2). "↓ 2" = 3 display cols → x = 37.
         let down_cell = buffer.cell((37, 2)).expect("cell should exist");
         assert_eq!(down_cell.symbol(), "↓");
-        assert_eq!(down_cell.style().fg, Some(Color::LightGreen));
+        assert_eq!(down_cell.style().fg, Some(default_theme().age_fresh));
     }
 
     #[rstest::rstest]
