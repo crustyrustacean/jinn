@@ -25,7 +25,6 @@ pub mod tool_types;
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
@@ -285,7 +284,17 @@ impl ToolOrchestratorActor {
                 .session
                 .sessions
                 .get(session_id)
-                .map_or_else(|| PathBuf::from("/"), |s| s.cwd().to_owned())
+                .map_or_else(
+                    || guard.session.default_cwd.clone(),
+                    |s| {
+                        let c = s.cwd().to_owned();
+                        if c.as_os_str().is_empty() {
+                            guard.session.default_cwd.clone()
+                        } else {
+                            c
+                        }
+                    },
+                )
         };
         ToolContext {
             cwd,
@@ -458,6 +467,7 @@ mod tests {
     use crate::feat::tools_actor::protocol::command::{ExecuteToolBatch, RegisterTools};
 
     use super::*;
+    use std::path::PathBuf;
 
     /// Creates a test context backed by a recording sink.
     fn _test_context(sink: &std::sync::Arc<RecordingSink>) -> ActorContext {
@@ -1319,7 +1329,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn build_tool_context_returns_root_for_unknown_session() {
+    async fn build_tool_context_returns_default_cwd_for_unknown_session() {
         // Given an activated actor.
         let (_sink, mut ctx) = default_test_ctx();
         let actor = ToolOrchestratorActor::activate(&mut ctx);
@@ -1328,7 +1338,7 @@ mod tests {
         let unknown_session = SessionId::new();
         let tool_ctx = actor.build_tool_context(&unknown_session);
 
-        // Then the CWD falls back to "/".
+        // Then the CWD falls back to default_cwd (which is "/" by default).
         assert_eq!(tool_ctx.cwd, PathBuf::from("/"));
     }
 
@@ -1435,5 +1445,28 @@ mod tests {
         let events = sink.events();
         let batch_completed = find_batch_completed(&events);
         assert!(batch_completed.is_empty());
+    }
+
+    // --- build_tool_context CWD fallback tests ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn build_tool_context_returns_default_cwd_for_session_with_empty_cwd() {
+        // Given an activated actor with a session that has an empty CWD.
+        let (_sink, mut ctx) = default_test_ctx();
+        let actor = ToolOrchestratorActor::activate(&mut ctx);
+
+        let session_id = {
+            let mut guard = actor.state.write();
+            let session = guard.active_session_mut();
+            // Don't set cwd — it defaults to empty.
+            guard.session.active_session.clone()
+        };
+
+        // When building tool context for that session.
+        let tool_ctx = actor.build_tool_context(&session_id);
+
+        // Then the CWD falls back to default_cwd ("/").
+        assert_eq!(tool_ctx.cwd, PathBuf::from("/"));
     }
 }

@@ -25,10 +25,51 @@ use crate::protocol::{
     ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId, SessionId,
 };
 
+/// Ephemeral session state — lost on application restart.
+///
+/// Groups runtime-only fields that are specific to the current running instance
+/// and have no meaning across restarts (stream indices, queues, in-progress flags).
+/// The entire struct is skipped during serialization so individual fields cannot
+/// be accidentally excluded from persistence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCoreEphemeral {
+    /// Index into `history` for the entry currently receiving stream tokens.
+    streaming_entry_index: Option<usize>,
+    /// Whether an LLM stream is actively producing tokens.
+    is_streaming: bool,
+    /// Messages waiting to be sent to the LLM, one at a time.
+    message_queue: VecDeque<String>,
+    /// Whether a message has been dispatched to the LLM but no tokens have arrived yet.
+    is_sending: bool,
+    /// Whether a prompt assembly request is in progress.
+    is_assembling: bool,
+    /// Maps stream tool call index to history index for in-progress tool calls.
+    streaming_tool_call_indices: HashMap<usize, usize>,
+    /// Index into `history` for the entry currently receiving thinking tokens.
+    streaming_thinking_entry_index: Option<usize>,
+}
+
+impl Default for SessionCoreEphemeral {
+    fn default() -> Self {
+        Self {
+            streaming_entry_index: None,
+            is_streaming: false,
+            message_queue: VecDeque::new(),
+            is_sending: false,
+            is_assembling: false,
+            streaming_tool_call_indices: HashMap::new(),
+            streaming_thinking_entry_index: None,
+        }
+    }
+}
+
 /// Core session state — owned by session-actor and context-actor.
 ///
 /// IntentHandler is exempt and may read/write any field.
 /// No other actor should mutate these fields.
+///
+/// Fields without `#[serde(skip)]` are persisted across restarts.
+/// All ephemeral (non-persisted) state lives in [`SessionCoreEphemeral`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCore {
     /// Unique identifier for this session.
@@ -44,40 +85,12 @@ pub struct SessionCore {
     /// All messages in this conversation.
     /// OWNER: session-actor (creates/removes entries, restores history)
     history: Vec<ChatEntry>,
-    /// Index into `history` for the entry currently receiving stream tokens.
-    /// OWNER: session-actor
-    #[serde(skip)]
-    streaming_entry_index: Option<usize>,
-    /// Whether an LLM stream is actively producing tokens.
-    /// OWNER: session-actor
-    #[serde(skip)]
-    is_streaming: bool,
-    /// Messages waiting to be sent to the LLM, one at a time.
-    /// OWNER: session-actor
-    #[serde(skip)]
-    message_queue: VecDeque<String>,
-    /// Whether a message has been dispatched to the LLM but no tokens have arrived yet.
-    /// OWNER: session-actor
-    #[serde(skip)]
-    is_sending: bool,
-    /// Whether a prompt assembly request is in progress.
-    /// OWNER: session-actor
-    #[serde(skip)]
-    is_assembling: bool,
     /// Per-session model and strategy selection.
     /// OWNER: provider-actor (model), context-actor (strategy via SwitchPromptStrategy command)
     profile: SessionProfile,
-    /// Maps stream tool call index to history index for in-progress tool calls.
-    /// OWNER: session-actor
-    #[serde(skip)]
-    streaming_tool_call_indices: HashMap<usize, usize>,
-    /// Index into `history` for the entry currently receiving thinking tokens.
-    /// OWNER: session-actor
-    #[serde(skip)]
-    streaming_thinking_entry_index: Option<usize>,
     /// Working directory for tool execution in this session.
     /// OWNER: IntentHandler (set on session creation and cd commands)
-    #[serde(skip)]
+    #[serde(default)]
     cwd: std::path::PathBuf,
     /// Token usage ledger — one immutable record per request/response pair.
     /// OWNER: session-actor (records tokens on PromptAssembled and StreamCompleted).
@@ -101,6 +114,9 @@ pub struct SessionCore {
     /// Generic blob storage for future subsystems.
     #[serde(default)]
     blobs: HashMap<String, JsonValue>,
+    /// Runtime-only state — not persisted across restarts.
+    #[serde(skip)]
+    ephemeral: SessionCoreEphemeral,
 }
 
 impl Default for SessionCore {
@@ -110,20 +126,14 @@ impl Default for SessionCore {
             title: None,
             updated_at: Timestamp::now(),
             history: Vec::new(),
-            streaming_entry_index: None,
-            is_streaming: false,
-            message_queue: VecDeque::new(),
-            is_sending: false,
-            is_assembling: false,
             profile: SessionProfile::default(),
-            streaming_tool_call_indices: HashMap::new(),
-            streaming_thinking_entry_index: None,
             cwd: std::path::PathBuf::new(),
             token_ledger: Vec::new(),
             parent_session: None,
             cached_context_size: None,
             strategy_state: HashMap::new(),
             blobs: HashMap::new(),
+            ephemeral: SessionCoreEphemeral::default(),
         }
     }
 }
@@ -303,12 +313,12 @@ impl ChatSessionState {
     /// `begin_tool_call`, or `cancel_streaming`. No-op if the entry
     /// already exists or the session is not streaming.
     fn ensure_assistant_entry(&mut self) {
-        if self.core.streaming_entry_index.is_some() || !self.core.is_streaming {
+        if self.core.ephemeral.streaming_entry_index.is_some() || !self.core.ephemeral.is_streaming {
             return;
         }
         let entry = ChatEntry::assistant("");
         let index = self.push_entry(entry);
-        self.core.streaming_entry_index = Some(index);
+        self.core.ephemeral.streaming_entry_index = Some(index);
     }
 
     /// Begin a new streaming response.
@@ -326,10 +336,10 @@ impl ChatSessionState {
     /// before starting a new one.
     pub fn begin_streaming(&mut self) {
         assert!(
-            !self.core.is_streaming,
+            !self.core.ephemeral.is_streaming,
             "begin_streaming called while already streaming"
         );
-        self.core.is_streaming = true;
+        self.core.ephemeral.is_streaming = true;
     }
 
     /// Append a token to the streaming assistant entry.
@@ -356,12 +366,13 @@ impl ChatSessionState {
         S: AsRef<str>,
     {
         assert!(
-            self.core.is_streaming,
+            self.core.ephemeral.is_streaming,
             "append_stream_token called while not streaming"
         );
         self.ensure_assistant_entry();
         let index = self
             .core
+            .ephemeral
             .streaming_entry_index
             .expect("streaming_entry_index must be set after ensure_assistant_entry");
         if let ChatEntry {
@@ -386,16 +397,16 @@ impl ChatSessionState {
     /// Panics if the session is not streaming, or if thinking has already begun.
     pub fn begin_thinking(&mut self) {
         assert!(
-            self.core.is_streaming,
+            self.core.ephemeral.is_streaming,
             "begin_thinking called while not streaming"
         );
         assert!(
-            self.core.streaming_thinking_entry_index.is_none(),
+            self.core.ephemeral.streaming_thinking_entry_index.is_none(),
             "begin_thinking called while already thinking"
         );
         let entry = ChatEntry::thinking("");
         let index = self.push_entry(entry);
-        self.core.streaming_thinking_entry_index = Some(index);
+        self.core.ephemeral.streaming_thinking_entry_index = Some(index);
     }
 
     /// Append a thinking token to the streaming Thinking entry.
@@ -414,6 +425,7 @@ impl ChatSessionState {
     {
         let index = self
             .core
+            .ephemeral
             .streaming_thinking_entry_index
             .expect("streaming_thinking_entry_index must be set");
         if let ChatEntry {
@@ -427,7 +439,7 @@ impl ChatSessionState {
 
     /// The index of the streaming thinking entry, if thinking is being accumulated.
     pub fn streaming_thinking_entry_index(&self) -> Option<usize> {
-        self.core.streaming_thinking_entry_index
+        self.core.ephemeral.streaming_thinking_entry_index
     }
 
     /// Mark streaming as finished (normal completion).
@@ -436,11 +448,11 @@ impl ChatSessionState {
     /// (e.g., a stream that ended immediately).
     pub fn finish_streaming(&mut self) {
         self.ensure_assistant_entry();
-        self.core.is_streaming = false;
-        self.core.is_sending = false; // defensive: clear both on finish
-        self.core.streaming_entry_index = None;
-        self.core.streaming_tool_call_indices.clear();
-        self.core.streaming_thinking_entry_index = None;
+        self.core.ephemeral.is_streaming = false;
+        self.core.ephemeral.is_sending = false; // defensive: clear both on finish
+        self.core.ephemeral.streaming_entry_index = None;
+        self.core.ephemeral.streaming_tool_call_indices.clear();
+        self.core.ephemeral.streaming_thinking_entry_index = None;
     }
 
     /// Cancel streaming but keep partial text in history.
@@ -449,11 +461,11 @@ impl ChatSessionState {
     /// If no entry was created (stream cancelled before any tokens), just clears flags.
     pub fn cancel_streaming(&mut self) {
         self.ensure_assistant_entry();
-        self.core.is_streaming = false;
-        self.core.is_sending = false; // defensive: clear both on cancel
-        self.core.streaming_entry_index = None;
-        self.core.streaming_tool_call_indices.clear();
-        self.core.streaming_thinking_entry_index = None;
+        self.core.ephemeral.is_streaming = false;
+        self.core.ephemeral.is_sending = false; // defensive: clear both on cancel
+        self.core.ephemeral.streaming_entry_index = None;
+        self.core.ephemeral.streaming_tool_call_indices.clear();
+        self.core.ephemeral.streaming_thinking_entry_index = None;
     }
 
     /// Cancel streaming and drain queued messages back to the input buffer.
@@ -472,7 +484,7 @@ impl ChatSessionState {
 
     /// Whether an LLM stream is actively producing tokens.
     pub fn is_streaming(&self) -> bool {
-        self.core.is_streaming
+        self.core.ephemeral.is_streaming
     }
 
     // --- Tool call streaming ---
@@ -486,6 +498,7 @@ impl ChatSessionState {
         let entry = ChatEntry::tool_call(id, name, "");
         let history_index = self.push_entry(entry);
         self.core
+            .ephemeral
             .streaming_tool_call_indices
             .insert(index, history_index);
     }
@@ -509,6 +522,7 @@ impl ChatSessionState {
     pub fn append_tool_call_delta(&mut self, index: usize, partial_json: &str) {
         let history_index = self
             .core
+            .ephemeral
             .streaming_tool_call_indices
             .get(&index)
             .copied()
@@ -548,27 +562,27 @@ impl ChatSessionState {
 
     /// Read-only access to the message queue.
     pub fn queue(&self) -> &VecDeque<String> {
-        &self.core.message_queue
+        &self.core.ephemeral.message_queue
     }
 
     /// Number of messages waiting in the queue.
     pub fn queue_len(&self) -> usize {
-        self.core.message_queue.len()
+        self.core.ephemeral.message_queue.len()
     }
 
     /// Push a message onto the back of the queue.
     pub fn enqueue_message(&mut self, text: String) {
-        self.core.message_queue.push_back(text);
+        self.core.ephemeral.message_queue.push_back(text);
     }
 
     /// Pop the front message from the queue, if any.
     pub fn dequeue_message(&mut self) -> Option<String> {
-        self.core.message_queue.pop_front()
+        self.core.ephemeral.message_queue.pop_front()
     }
 
     /// Drain all queued messages, returning them in order.
     pub fn drain_queue(&mut self) -> VecDeque<String> {
-        std::mem::take(&mut self.core.message_queue)
+        std::mem::take(&mut self.core.ephemeral.message_queue)
     }
 
     // --- Assembling ---
@@ -580,10 +594,10 @@ impl ChatSessionState {
     /// Panics if already sending, streaming, or assembling.
     pub fn begin_assembling(&mut self) {
         assert!(
-            !self.core.is_sending && !self.core.is_streaming && !self.core.is_assembling,
+            !self.core.ephemeral.is_sending && !self.core.ephemeral.is_streaming && !self.core.ephemeral.is_assembling,
             "begin_assembling called while already busy"
         );
-        self.core.is_assembling = true;
+        self.core.ephemeral.is_assembling = true;
     }
 
     /// Clear the assembling flag (called when prompt assembly completes).
@@ -593,15 +607,15 @@ impl ChatSessionState {
     /// Panics if called while not in the assembling state.
     pub fn finish_assembling(&mut self) {
         assert!(
-            self.core.is_assembling,
+            self.core.ephemeral.is_assembling,
             "finish_assembling called while not assembling"
         );
-        self.core.is_assembling = false;
+        self.core.ephemeral.is_assembling = false;
     }
 
     /// Whether a prompt assembly is in progress.
     pub fn is_assembling(&self) -> bool {
-        self.core.is_assembling
+        self.core.ephemeral.is_assembling
     }
 
     /// Switch the active prompt strategy for this session.
@@ -644,10 +658,10 @@ impl ChatSessionState {
     /// the caller must ensure the session is idle before dispatching.
     pub fn begin_sending(&mut self) {
         assert!(
-            !self.core.is_sending && !self.core.is_streaming,
+            !self.core.ephemeral.is_sending && !self.core.ephemeral.is_streaming,
             "begin_sending called while already sending or streaming"
         );
-        self.core.is_sending = true;
+        self.core.ephemeral.is_sending = true;
     }
 
     /// Clear the sending flag (called when the first stream token arrives).
@@ -657,22 +671,22 @@ impl ChatSessionState {
     /// Panics if not currently sending.
     pub fn finish_sending(&mut self) {
         assert!(
-            self.core.is_sending,
+            self.core.ephemeral.is_sending,
             "finish_sending called while not sending"
         );
-        self.core.is_sending = false;
+        self.core.ephemeral.is_sending = false;
     }
 
     /// Whether a message has been dispatched but no tokens have arrived yet.
     pub fn is_sending(&self) -> bool {
-        self.core.is_sending
+        self.core.ephemeral.is_sending
     }
 
     // --- Combined status ---
 
     /// Whether the session is completely idle (not sending, not streaming, not assembling).
     pub fn is_idle(&self) -> bool {
-        !self.core.is_sending && !self.core.is_streaming && !self.core.is_assembling
+        !self.core.ephemeral.is_sending && !self.core.ephemeral.is_streaming && !self.core.ephemeral.is_assembling
     }
 
     /// The current scroll offset (lines to skip from top).

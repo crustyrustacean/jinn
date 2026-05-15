@@ -919,6 +919,7 @@ mod tests {
         let mut loaded_session = ChatSessionState::new();
         loaded_session.set_session_id(session_id.clone());
         loaded_session.set_title("Test Session".to_owned());
+        loaded_session.set_cwd(std::path::PathBuf::from("/tmp"));
         loaded_session.push_entry(ChatEntry::user("hello"));
         loaded_session.push_entry(ChatEntry::assistant("world"));
 
@@ -974,6 +975,7 @@ mod tests {
         let mut loaded_session = ChatSessionState::new();
         loaded_session.set_session_id(session_id.clone());
         loaded_session.set_title("My Chat".to_owned());
+        loaded_session.set_cwd(std::path::PathBuf::from("/tmp"));
         loaded_session.push_entry(ChatEntry::user("hello"));
 
         // When processing SessionLoadCompleted with a title.
@@ -1947,4 +1949,103 @@ mod tests {
             other => panic!("expected Table, got {other:?}"),
         }
     }
+
+    // --- CWD validation on session load ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_load_completed_falls_back_to_default_cwd_when_restored_cwd_is_empty() {
+        // Given a session actor.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        let mut loaded_session = ChatSessionState::new();
+        loaded_session.set_session_id(session_id.clone());
+        loaded_session.set_title("Old Session".to_owned());
+        // cwd is empty by default (simulates old snapshot without cwd field).
+        loaded_session.push_entry(ChatEntry::user("hello"));
+
+        // When processing SessionLoadCompleted with empty cwd.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::SessionLoadCompleted(SessionLoadCompleted {
+                    session: loaded_session,
+                })),
+                &ctx,
+            )
+            .await;
+
+        // Then a warning entry is pushed about the missing CWD.
+        {
+            let guard = state.read();
+            let session = guard.session(&session_id);
+            let warning_entries: Vec<_> = session
+                .history()
+                .iter()
+                .filter(|e| {
+                    matches!(&e.kind, ChatEntryKind::System(t) if t.contains("Warning: working directory"))
+                })
+                .collect();
+            assert_eq!(warning_entries.len(), 1, "expected exactly one warning entry");
+            let warning_text = match &warning_entries[0].kind {
+                ChatEntryKind::System(t) => t.clone(),
+                other => panic!("expected System, got {other:?}"),
+            };
+            assert!(
+                warning_text.contains("(empty)"),
+                "warning should mention empty cwd: {warning_text}"
+            );
+            // And the CWD is set to default_cwd (which is "/" in test defaults).
+            assert_eq!(session.cwd(), std::path::PathBuf::from("/"));
+        }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_load_completed_falls_back_to_default_cwd_when_restored_cwd_does_not_exist() {
+        // Given a session actor.
+        let (mut actor, state, _sink, ctx) = create_lifecycle_actor();
+        let session_id = SessionId::new();
+
+        let mut loaded_session = ChatSessionState::new();
+        loaded_session.set_session_id(session_id.clone());
+        loaded_session.set_title("Missing Dir".to_owned());
+        loaded_session.set_cwd(std::path::PathBuf::from("/nonexistent/path/xyz/abc"));
+        loaded_session.push_entry(ChatEntry::user("hello"));
+
+        // When processing SessionLoadCompleted with a non-existent CWD.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::SessionLoadCompleted(SessionLoadCompleted {
+                    session: loaded_session,
+                })),
+                &ctx,
+            )
+            .await;
+
+        // Then a warning entry is pushed about the non-existent directory.
+        {
+            let guard = state.read();
+            let session = guard.session(&session_id);
+            let warning_entries: Vec<_> = session
+                .history()
+                .iter()
+                .filter(|e| {
+                    matches!(&e.kind, ChatEntryKind::System(t) if t.contains("Warning: working directory"))
+                })
+                .collect();
+            assert_eq!(warning_entries.len(), 1, "expected exactly one warning entry");
+            let warning_text = match &warning_entries[0].kind {
+                ChatEntryKind::System(t) => t.clone(),
+                other => panic!("expected System, got {other:?}"),
+            };
+            assert!(
+                warning_text.contains("/nonexistent/path/xyz/abc"),
+                "warning should mention original cwd: {warning_text}"
+            );
+            // And the CWD is set to default_cwd.
+            assert_eq!(session.cwd(), std::path::PathBuf::from("/"));
+        }
+    }
 }
+
