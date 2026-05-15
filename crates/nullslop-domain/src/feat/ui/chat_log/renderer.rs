@@ -13,7 +13,9 @@
 //!
 //! A 2-column gutter on the left shows a dark gray background by default,
 //! and turns yellow when the cursor selects an entry. Pinned entries show
-//! a 📌 emoji in the gutter.
+//! a 📌 emoji in the gutter. When a pinned entry is selected, the gutter
+//! background changes to the focus accent color (yellow by default) so the
+//! pin highlight is unmistakable.
 //!
 //! The gutter is rendered as a separate column from the content so that
 //! line wrapping does not break the gutter display.
@@ -119,6 +121,17 @@ impl UiElement<AppState> for ChatLogElement {
             let entry_content_lines = entry_to_lines(entry, &ctx);
 
             // Build gutter lines for this entry (one gutter line per content line).
+            // Pin highlight style — only used on the first gutter line (the pin icon).
+            let pin_highlight_style = if is_selected && ctx.is_pinned && chat_log_active {
+                Style::default().fg(ctx.theme.gutter_bg).bg(gutter_active_color)
+            } else if is_selected && ctx.is_pinned {
+                Style::default().fg(ctx.theme.gutter_bg).bg(gutter_inactive_color)
+            } else {
+                // Non-pinned or unselected — pin highlight not applicable.
+                Style::default()
+            };
+
+            // Base gutter style for all lines (including continuations of pinned entries).
             let gutter_style = if is_selected && chat_log_active {
                 Style::default().fg(gutter_active_color)
             } else if is_selected {
@@ -165,7 +178,9 @@ impl UiElement<AppState> for ChatLogElement {
             let mut entry_gutter_lines = Vec::new();
             let blank_gutter = Span::styled(format!("{GUTTER_STR}"), gutter_style);
             for (i, _) in entry_content_lines.iter().enumerate() {
-                let span = if i == 0 {
+                let span = if i == 0 && ctx.is_pinned {
+                    Span::styled(gutter_content.to_owned(), pin_highlight_style)
+                } else if i == 0 {
                     Span::styled(gutter_content.to_owned(), gutter_style)
                 } else {
                     blank_gutter.clone()
@@ -676,5 +691,128 @@ mod tests {
         // Line 9 has the assistant entry.
         let assistant_cell = buffer.cell((G, 9)).expect("cell should exist");
         assert_eq!(assistant_cell.symbol(), "r");
+    }
+
+    #[rstest::rstest]
+    fn render_pinned_selected_entry_gutter_has_focus_accent_bg() {
+        // Given a ChatLogElement with one pinned user entry (auto-selected).
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::user("hello").with_pin(crate::protocol::PinPosition::Top));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the pinned entry's gutter has focus_accent (yellow) background.
+        let buffer = terminal.backend().buffer().clone();
+        let gutter_cell = buffer.cell((0, 9)).expect("cell should exist");
+        assert_eq!(
+            gutter_cell.style().bg,
+            Some(Color::Yellow),
+            "pinned selected entry gutter should have yellow background"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_pinned_unselected_entry_gutter_has_default_bg() {
+        // Given a ChatLogElement with a pinned entry and an unpinned entry (unpinned selected).
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::user("pinned").with_pin(crate::protocol::PinPosition::Top));
+            s.active_session_mut().push_entry(ChatEntry::user("unpinned"));
+            // push_entry auto-selects last (index 1, unpinned).
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the pinned (unselected) entry's gutter has no yellow background.
+        let buffer = terminal.backend().buffer().clone();
+        let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
+        assert_ne!(
+            gutter_cell.style().bg,
+            Some(Color::Yellow),
+            "pinned unselected entry gutter should not have yellow background"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_unpinned_selected_entry_gutter_has_no_focus_accent_bg() {
+        // Given a ChatLogElement with one unpinned user entry (auto-selected).
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::user("hello"));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the unpinned selected entry's gutter has no yellow background.
+        let buffer = terminal.backend().buffer().clone();
+        let gutter_cell = buffer.cell((0, 9)).expect("cell should exist");
+        assert_ne!(
+            gutter_cell.style().bg,
+            Some(Color::Yellow),
+            "unpinned selected entry gutter should not have yellow background"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_pinned_selected_unfocused_entry_gutter_has_border_unfocused_bg() {
+        // Given a ChatLogElement with one pinned entry selected, sidebar focused.
+        use crate::common::app_state::FocusScope;
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::user("hello").with_pin(crate::protocol::PinPosition::Top));
+            s.frontend.scope_stack.push(FocusScope::Sidebar);
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the pinned entry's gutter has border_unfocused background, not yellow.
+        let buffer = terminal.backend().buffer().clone();
+        let gutter_cell = buffer.cell((0, 9)).expect("cell should exist");
+        assert_eq!(
+            gutter_cell.style().bg,
+            Some(crate::feat::theme::default_theme().border_unfocused),
+            "pinned selected unfocused entry gutter should have border_unfocused background"
+        );
     }
 }
