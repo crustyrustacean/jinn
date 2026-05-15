@@ -34,6 +34,8 @@ use super::{actor, assistant, error_entry, system, table, thinking, tool_call, t
 
 /// Default number of lines to show for tool result entries before truncating.
 const DEFAULT_TOOL_RESULT_MAX_LINES: u16 = 5;
+// alternatives: |❚┃╏⣿𜺏░▒▓
+const GUTTER_STR: &str = "𜺏 ";
 
 /// Display element for the full conversation history.
 #[derive(Debug)]
@@ -118,13 +120,13 @@ impl UiElement<AppState> for ChatLogElement {
 
             // Build gutter lines for this entry (one gutter line per content line).
             let gutter_style = if is_selected && chat_log_active {
-                Style::default().bg(gutter_active_color)
+                Style::default().fg(gutter_active_color)
             } else if is_selected {
-                Style::default().bg(gutter_inactive_color)
+                Style::default().fg(gutter_inactive_color)
             } else {
-                Style::default().bg(ctx.theme.gutter_bg)
+                Style::default().fg(ctx.theme.border_unfocused)
             };
-            let gutter_content = if ctx.is_pinned { "📌" } else { "  " };
+            let gutter_content = if ctx.is_pinned { "📌" } else { GUTTER_STR };
 
             // Count wrapped lines using content_width (wrapping happens in content area).
             let entry_wrapped: u16 = entry_content_lines
@@ -161,7 +163,7 @@ impl UiElement<AppState> for ChatLogElement {
             // (wrapped) content lines. We can compute this by padding gutter_lines
             // to match the wrapped line count.
             let mut entry_gutter_lines = Vec::new();
-            let blank_gutter = Span::styled("  ".to_owned(), gutter_style);
+            let blank_gutter = Span::styled(format!("{GUTTER_STR}"), gutter_style);
             for (i, _) in entry_content_lines.iter().enumerate() {
                 let span = if i == 0 {
                     Span::styled(gutter_content.to_owned(), gutter_style)
@@ -177,8 +179,10 @@ impl UiElement<AppState> for ChatLogElement {
             if entry_wrapped > logical_count {
                 let extra = entry_wrapped - logical_count;
                 for _ in 0..extra {
-                    entry_gutter_lines
-                        .push(Line::from(Span::styled("  ".to_owned(), gutter_style)));
+                    entry_gutter_lines.push(Line::from(Span::styled(
+                        format!("{GUTTER_STR}"),
+                        gutter_style,
+                    )));
                 }
             }
 
@@ -197,8 +201,8 @@ impl UiElement<AppState> for ChatLogElement {
         for _ in 0..blank_count {
             display_content.push(Line::from(""));
             display_gutter.push(Line::from(Span::styled(
-                "  ".to_owned(),
-                Style::default().bg(state.frontend.theme.gutter_bg),
+                format!("{GUTTER_STR}"),
+                Style::default().fg(state.frontend.theme.border_unfocused),
             )));
         }
         display_content.extend(content_lines);
@@ -215,7 +219,9 @@ impl UiElement<AppState> for ChatLogElement {
         state.active_session().set_last_max_offset(max_offset);
 
         // Store viewport state for intent handlers (cursor-aware navigation).
-        state.active_session().set_entry_line_ranges(entry_line_ranges.clone());
+        state
+            .active_session()
+            .set_entry_line_ranges(entry_line_ranges.clone());
         state.active_session().set_viewport_height(area.height);
         state.active_session().set_blank_count(blank_count as u16);
 
@@ -388,16 +394,16 @@ mod tests {
             })
             .unwrap();
 
-        // Then the selected entry's gutter has yellow bg.
+        // Then the selected entry's gutter has yellow fg.
         let buffer = terminal.backend().buffer().clone();
         let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
-        assert_eq!(gutter_cell.style().bg, Some(Color::Yellow));
+        assert_eq!(gutter_cell.style().fg, Some(Color::Yellow));
 
-        // And the unselected entry's gutter has dark gray bg.
+        // And the unselected entry's gutter has dark gray fg.
         let unselected_gutter = buffer.cell((0, 9)).expect("cell should exist");
         assert_eq!(
-            unselected_gutter.style().bg,
-            Some(crate::feat::theme::default_theme().gutter_bg)
+            unselected_gutter.style().fg,
+            Some(crate::feat::theme::default_theme().border_unfocused)
         );
     }
 
@@ -424,11 +430,11 @@ mod tests {
             })
             .unwrap();
 
-        // Then the selected entry's gutter has dark gray bg (inactive border color, not yellow).
+        // Then the selected entry's gutter has dark gray fg (inactive border color, not yellow).
         let buffer = terminal.backend().buffer().clone();
         let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
         assert_eq!(
-            gutter_cell.style().bg,
+            gutter_cell.style().fg,
             Some(crate::feat::theme::default_theme().border_unfocused)
         );
     }
@@ -456,11 +462,11 @@ mod tests {
             })
             .unwrap();
 
-        // Then the selected entry's gutter has dark gray bg (inactive border color).
+        // Then the selected entry's gutter has dark gray fg (inactive border color).
         let buffer = terminal.backend().buffer().clone();
         let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
         assert_eq!(
-            gutter_cell.style().bg,
+            gutter_cell.style().fg,
             Some(crate::feat::theme::default_theme().border_unfocused)
         );
     }
@@ -487,7 +493,10 @@ mod tests {
 
         // Then viewport state is stored in the session.
         let range = state.active_session().visible_entry_range();
-        assert!(!range.is_empty(), "entry_line_ranges should be populated after render");
+        assert!(
+            !range.is_empty(),
+            "entry_line_ranges should be populated after render"
+        );
     }
 
     #[rstest::rstest]
@@ -624,12 +633,12 @@ mod tests {
             })
             .unwrap();
 
-        // Then the selected entry's gutter (yellow) should be visible in the viewport.
+        // Then the selected entry's gutter (yellow fg) should be visible in the viewport.
         let buffer = terminal.backend().buffer().clone();
         let has_yellow_gutter = (0..5).any(|row| {
             buffer
                 .cell((0, row))
-                .is_some_and(|c| c.style().bg == Some(Color::Yellow))
+                .is_some_and(|c| c.style().fg == Some(Color::Yellow))
         });
         assert!(
             has_yellow_gutter,
