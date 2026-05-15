@@ -27,15 +27,15 @@ use nullslop_domain::ProviderRegistryService;
 use nullslop_domain::ProvidersConfig;
 use nullslop_domain::StateReadGuard;
 use nullslop_domain::UserPreferencesStorageService;
-use nullslop_tui::config::TuiConfig;
-use nullslop_tui::render;
-use nullslop_tui::selection::SelectionState;
-use nullslop_tui::suspend::Suspend;
 use nullslop_tui::AppStatus;
 use nullslop_tui::MsgHandler;
 use nullslop_tui::Scope;
 use nullslop_tui::TuiApp;
 use nullslop_tui::app::WhichKeyInstance;
+use nullslop_tui::config::TuiConfig;
+use nullslop_tui::render;
+use nullslop_tui::selection::SelectionState;
+use nullslop_tui::suspend::Suspend;
 
 /// Cucumber world wrapping a full application with production actor wiring.
 ///
@@ -79,8 +79,7 @@ impl AppWorld {
 
             // Build fake services — same pattern as production App::dispatch
             // but with all fake implementations.
-            let config_storage =
-                ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
+            let config_storage = ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
             let resolved_api_keys = ApiKeysService::new(ApiKeys::new());
             let empty_config = ProvidersConfig {
                 providers: vec![],
@@ -90,12 +89,10 @@ impl AppWorld {
             let provider_registry = ProviderRegistryService::new(
                 ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
             );
-            let llm_service = LlmServiceFactoryService::new(Arc::new(
-                FakeLlmServiceFactory::new(vec![]),
-            ));
-            let user_preferences_storage = UserPreferencesStorageService::new(Arc::new(
-                InMemoryUserPreferencesStorage::new(),
-            ));
+            let llm_service =
+                LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])));
+            let user_preferences_storage =
+                UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
 
             // Call production wiring — spawns all 16 actors.
             let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
@@ -115,9 +112,7 @@ impl AppWorld {
                 .expect("send results");
         });
 
-        let (handle, core, services, actor_host) = handle_rx
-            .recv()
-            .expect("receive setup results");
+        let (handle, core, services, actor_host) = handle_rx.recv().expect("receive setup results");
 
         // Build TuiApp following the production App::dispatch pattern.
         let mut ui_registry = AppUiRegistry::new();
@@ -263,10 +258,10 @@ fn given_app_in_mode(world: &mut AppWorld, mode: String) {
         nullslop_domain::Mode::Normal => Scope::Normal,
         nullslop_domain::Mode::Input => {
             let mut state = world.app.core.state.write();
-                state
-                    .frontend
-                    .scope_stack
-                    .push(nullslop_domain::common::app_state::FocusScope::Input);
+            state
+                .frontend
+                .scope_stack
+                .push(nullslop_domain::common::app_state::FocusScope::Input);
             drop(state);
             Scope::Input
         }
@@ -435,9 +430,9 @@ fn then_input_buffer_should_be(world: &mut AppWorld, expected: String) {
 #[cucumber::then(expr = "the chat history should contain {int} entry")]
 async fn then_chat_history_count(world: &mut AppWorld, count: u64) {
     let expected = count as usize;
-    world.wait_until(|state| {
-        state.active_session().history().len() >= expected
-    }).await;
+    world
+        .wait_until(|state| state.active_session().history().len() >= expected)
+        .await;
     let actual = world.state().active_session().history().len();
     assert_eq!(
         actual, expected,
@@ -469,11 +464,13 @@ fn then_which_key_inactive(world: &mut AppWorld) {
 /// Waits up to 5 seconds for the history to have at least one entry.
 #[cucumber::then(expr = "the cursor should be on the last entry")]
 async fn then_cursor_on_last_entry(world: &mut AppWorld) {
-    world.wait_until(|state| {
-        let history_len = state.active_session().history().len();
-        history_len > 0
-            && state.active_session().selected_entry_index() == Some(history_len - 1)
-    }).await;
+    world
+        .wait_until(|state| {
+            let history_len = state.active_session().history().len();
+            history_len > 0
+                && state.active_session().selected_entry_index() == Some(history_len - 1)
+        })
+        .await;
     let state = world.state();
     let history_len = state.active_session().history().len();
     let cursor = state.active_session().selected_entry_index();

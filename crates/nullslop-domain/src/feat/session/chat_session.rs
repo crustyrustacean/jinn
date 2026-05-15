@@ -10,8 +10,8 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Range;
-use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicU16, Ordering};
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};

@@ -572,7 +572,10 @@ mod tests {
         let arrow_cell = buffer.cell((37, 0)).expect("cell should exist");
         assert_eq!(arrow_cell.symbol(), "↑");
         assert_eq!(arrow_cell.style().fg, Some(default_theme().age_fresh));
-        assert_eq!(arrow_cell.style().bg, Some(default_theme().scroll_indicator_bg));
+        assert_eq!(
+            arrow_cell.style().bg,
+            Some(default_theme().scroll_indicator_bg)
+        );
         let num_cell = buffer.cell((39, 0)).expect("cell should exist");
         assert_eq!(num_cell.symbol(), "2");
     }
@@ -606,7 +609,10 @@ mod tests {
         let arrow_cell = buffer.cell((37, 2)).expect("cell should exist");
         assert_eq!(arrow_cell.symbol(), "↓");
         assert_eq!(arrow_cell.style().fg, Some(default_theme().age_fresh));
-        assert_eq!(arrow_cell.style().bg, Some(default_theme().scroll_indicator_bg));
+        assert_eq!(
+            arrow_cell.style().bg,
+            Some(default_theme().scroll_indicator_bg)
+        );
         let num_cell = buffer.cell((39, 2)).expect("cell should exist");
         assert_eq!(num_cell.symbol(), "2");
     }
