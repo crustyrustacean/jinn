@@ -1,0 +1,452 @@
+//! Cucumber `World` wrapping a full application with production actor wiring.
+//!
+//! The [`AppWorld`] creates a complete application using the same
+//! `actor_wiring::create_core_with_actor_host` function that production uses,
+//! but with fake services so no real backends are hit. All 16 actors spawn,
+//! init sequences run, and the system-ready signal fires.
+//!
+//! This is the standard e2e world for all future feature files.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use cucumber::World;
+use nullslop::actor_wiring;
+use nullslop_domain::ApiKeys;
+use nullslop_domain::ApiKeysService;
+use nullslop_domain::AppState;
+use nullslop_domain::AppUiRegistry;
+use nullslop_domain::ConfigStorageService;
+use nullslop_domain::FakeLlmServiceFactory;
+use nullslop_domain::InMemoryConfigStorage;
+use nullslop_domain::InMemoryUserPreferencesStorage;
+use nullslop_domain::LlmServiceFactoryService;
+use nullslop_domain::ProviderRegistry;
+use nullslop_domain::ProviderRegistryService;
+use nullslop_domain::ProvidersConfig;
+use nullslop_domain::StateReadGuard;
+use nullslop_domain::UserPreferencesStorageService;
+use nullslop_tui::config::TuiConfig;
+use nullslop_tui::render;
+use nullslop_tui::selection::SelectionState;
+use nullslop_tui::suspend::Suspend;
+use nullslop_tui::AppStatus;
+use nullslop_tui::MsgHandler;
+use nullslop_tui::Scope;
+use nullslop_tui::TuiApp;
+use nullslop_tui::app::WhichKeyInstance;
+
+/// Cucumber world wrapping a full application with production actor wiring.
+///
+/// Created fresh for each scenario. Provides the full actor system
+/// (all 16 actors) backed by fake services.
+#[derive(World)]
+#[world(init = Self::new_app_world)]
+pub struct AppWorld {
+    /// The full TUI application under test (no terminal backend connected).
+    pub app: TuiApp,
+    /// Tokio runtime handle.
+    #[allow(dead_code)]
+    handle: tokio::runtime::Handle,
+}
+
+impl std::fmt::Debug for AppWorld {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppWorld")
+            .field("state", &self.app.core.state)
+            .finish_non_exhaustive()
+    }
+}
+
+impl AppWorld {
+    /// Creates a new world with the full production actor wiring and fake services.
+    ///
+    /// Spawns a dedicated tokio runtime on a separate thread so that
+    /// `create_core_with_actor_host` can call `blocking_recv` (which panics
+    /// inside an existing runtime context like the cucumber test runner).
+    /// The `TuiApp` is then constructed on the calling thread from the
+    /// cross-thread-safe results.
+    fn new_app_world() -> Self {
+        // Run setup on a separate thread to avoid
+        // "Cannot block the current thread from within a runtime".
+        // Only the core/services/actor_host cross the thread boundary
+        // (TuiApp is !Send due to trait objects).
+        let (handle_tx, handle_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("test runtime");
+            let handle = rt.handle().clone();
+
+            // Build fake services — same pattern as production App::dispatch
+            // but with all fake implementations.
+            let config_storage =
+                ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
+            let resolved_api_keys = ApiKeysService::new(ApiKeys::new());
+            let empty_config = ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            };
+            let provider_registry = ProviderRegistryService::new(
+                ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
+            );
+            let llm_service = LlmServiceFactoryService::new(Arc::new(
+                FakeLlmServiceFactory::new(vec![]),
+            ));
+            let user_preferences_storage = UserPreferencesStorageService::new(Arc::new(
+                InMemoryUserPreferencesStorage::new(),
+            ));
+
+            // Call production wiring — spawns all 16 actors.
+            let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
+                &handle,
+                llm_service,
+                provider_registry,
+                resolved_api_keys,
+                config_storage,
+                user_preferences_storage,
+            );
+
+            // Leak the runtime so it lives for the test duration.
+            let _ = Box::leak(Box::new(rt));
+
+            handle_tx
+                .send((handle, core, services, actor_host))
+                .expect("send results");
+        });
+
+        let (handle, core, services, actor_host) = handle_rx
+            .recv()
+            .expect("receive setup results");
+
+        // Build TuiApp following the production App::dispatch pattern.
+        let mut ui_registry = AppUiRegistry::new();
+        nullslop_domain::register_all_ui_elements(&mut ui_registry);
+
+        let app = TuiApp {
+            core,
+            services,
+            actor_host,
+            ui_registry,
+            events: MsgHandler::new(),
+            which_key: WhichKeyInstance::new(nullslop_tui::keymap::init(), Scope::Normal),
+            suspend: Suspend::new(),
+            event_task: None,
+            status: AppStatus::Starting,
+            tab_manager: render::init_tab_manager(),
+            selection: SelectionState::Idle,
+            selectable_rects: Default::default(),
+            pending_clipboard: false,
+            config: TuiConfig::default(),
+            sidebar: {
+                let mut s = nullslop_domain::feat::ui::sidebar::Sidebar::new();
+                nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                s
+            },
+        };
+
+        Self { app, handle }
+    }
+
+    /// Polls `AppState` at 10ms intervals until `predicate` returns `true`
+    /// or the 5-second timeout expires.
+    ///
+    /// Use in `When` steps that trigger async actor work, so `Then` steps
+    /// can assert synchronously.
+    pub async fn wait_until(&self, predicate: impl Fn(&AppState) -> bool) {
+        let state = self.app.core.state.clone();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if predicate(&state.read()) {
+                break;
+            }
+            if tokio::time::Instant::now() > deadline {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Sends a keystroke to the app.
+    pub fn press_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
+        let event = crossterm::event::Event::Key(KeyEvent::new(code, modifiers));
+        self.app.handle_msg(nullslop_tui::msg::Msg::Input(event));
+    }
+
+    /// Routes an intent through the app.
+    pub fn route_intent(&mut self, intent: nullslop_domain::Intent) {
+        self.app.route_intent(intent);
+    }
+
+    /// Submits a command to the core's message channel.
+    pub fn submit_command(&self, cmd: nullslop_domain::Command) {
+        self.app.core.submit_command(cmd);
+    }
+
+    /// Returns a read guard to the application state.
+    pub fn state(&self) -> StateReadGuard<'_> {
+        self.app.core.state.read()
+    }
+
+    /// Runs graceful coordinated shutdown of the actor system.
+    pub fn graceful_shutdown(&mut self) {
+        nullslop_domain::coordinated_shutdown(
+            self.app.actor_host.backend(),
+            &self.app.core.state,
+            &self.handle,
+            nullslop_domain::SHUTDOWN_TIMEOUT,
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Step definitions
+// ---------------------------------------------------------------------------
+
+/// Parses a human-readable key name into a [`KeyCode`].
+fn parse_key_code(name: &str) -> KeyCode {
+    match name.to_lowercase().as_str() {
+        "enter" => KeyCode::Enter,
+        "esc" | "escape" => KeyCode::Esc,
+        "backspace" => KeyCode::Backspace,
+        "tab" => KeyCode::Tab,
+        "up" => KeyCode::Up,
+        "down" => KeyCode::Down,
+        "left" => KeyCode::Left,
+        "right" => KeyCode::Right,
+        "home" => KeyCode::Home,
+        "end" => KeyCode::End,
+        "delete" => KeyCode::Delete,
+        "space" => KeyCode::Char(' '),
+        s if s.len() == 1 => KeyCode::Char(s.chars().next().expect("single char")),
+        _ => panic!("unknown key: {name}"),
+    }
+}
+
+/// Parses a human-readable modifier name into [`KeyModifiers`].
+fn parse_modifier(name: &str) -> KeyModifiers {
+    match name.to_lowercase().as_str() {
+        "shift" => KeyModifiers::SHIFT,
+        "ctrl" | "control" => KeyModifiers::CONTROL,
+        "alt" => KeyModifiers::ALT,
+        _ => panic!("unknown modifier: {name}"),
+    }
+}
+
+/// Parses a human-readable mode name into [`nullslop_domain::Mode`].
+fn parse_mode(name: &str) -> nullslop_domain::Mode {
+    match name.to_lowercase().as_str() {
+        "normal" => nullslop_domain::Mode::Normal,
+        "input" => nullslop_domain::Mode::Input,
+        "picker" => nullslop_domain::Mode::Picker,
+        _ => panic!("unknown mode: {name}"),
+    }
+}
+
+// --- Given steps ---
+
+/// World is already initialised with a fresh AppWorld.
+#[cucumber::given(expr = "a fresh app")]
+fn given_a_fresh_app(_world: &mut AppWorld) {}
+
+/// Sets the app's mode by pushing the appropriate scope onto the scope stack.
+#[cucumber::given(expr = "the app is in {word} mode")]
+fn given_app_in_mode(world: &mut AppWorld, mode: String) {
+    let scope = match parse_mode(&mode) {
+        nullslop_domain::Mode::Normal => Scope::Normal,
+        nullslop_domain::Mode::Input => {
+            let mut state = world.app.core.state.write();
+                state
+                    .frontend
+                    .scope_stack
+                    .push(nullslop_domain::common::app_state::FocusScope::Input);
+            drop(state);
+            Scope::Input
+        }
+        nullslop_domain::Mode::Picker => Scope::Picker,
+    };
+    world.app.which_key.set_scope(scope);
+}
+
+/// Pre-fills the active chat input buffer with the given text.
+#[cucumber::given(expr = "the input buffer contains {string}")]
+fn given_input_buffer_contains(world: &mut AppWorld, text: String) {
+    world
+        .app
+        .core
+        .state
+        .write()
+        .active_chat_input_mut()
+        .replace_all(text.to_owned());
+}
+
+/// Sets the active provider to a dummy value so message submission works.
+#[cucumber::given(expr = "the active provider is set")]
+fn given_active_provider_set(world: &mut AppWorld) {
+    world
+        .app
+        .core
+        .state
+        .write()
+        .active_session_mut()
+        .set_model("test".to_owned());
+}
+
+// --- When steps ---
+
+/// Simulates the user pressing a single key (no modifiers).
+#[cucumber::when(expr = "the user presses {word}")]
+fn when_user_presses_key(world: &mut AppWorld, key: String) {
+    let code = parse_key_code(&key);
+    world.press_key(code, KeyModifiers::NONE);
+}
+
+/// Simulates the user pressing a key with a modifier.
+#[cucumber::when(expr = "the user presses {word} with {word}")]
+fn when_user_presses_key_with_mod(world: &mut AppWorld, key: String, modifier: String) {
+    let code = parse_key_code(&key);
+    let mods = parse_modifier(&modifier);
+    world.press_key(code, mods);
+}
+
+/// Routes a ToggleWhichKey command directly.
+#[cucumber::when(expr = "the app routes the ToggleWhichKey command")]
+fn when_routes_toggle_which_key(world: &mut AppWorld) {
+    world.route_intent(nullslop_domain::Intent::ToggleWhichkey);
+}
+
+/// Runs a headless script through the keymap pipeline.
+#[cucumber::when(expr = "I run the headless script {string}")]
+fn when_run_headless_script(world: &mut AppWorld, script: String) {
+    run_headless_script(world, &script);
+}
+
+/// Shared implementation for running a headless script.
+fn run_headless_script(world: &mut AppWorld, content: &str) {
+    let leader = nullslop_domain::KeyEvent {
+        key: nullslop_domain::Key::Char('\\'),
+        modifiers: nullslop_domain::Modifiers::none(),
+    };
+    let lines: Vec<Vec<nullslop_domain::KeyEvent>> = content
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| ratatui_which_key::parse_key_sequence(line, &leader))
+        .collect();
+
+    for keys in lines {
+        for key in keys {
+            let state_read = world.app.core.state.read();
+            let scope = nullslop_tui::app::scope_for_focus(
+                state_read.frontend.scope_stack.current(),
+                state_read.frontend.active_tab,
+            );
+            drop(state_read);
+            world.app.which_key.set_scope(scope);
+            if let Some(intent) = world.app.which_key.handle_key(key) {
+                world.route_intent(intent);
+            }
+        }
+    }
+}
+
+// --- Then steps ---
+
+/// Asserts the application's current mode matches the expected value.
+#[cucumber::then(expr = "the mode should be {word}")]
+fn then_mode_should_be(world: &mut AppWorld, mode: String) {
+    let expected = parse_mode(&mode);
+    let actual = world
+        .app
+        .core
+        .state
+        .read()
+        .frontend
+        .scope_stack
+        .current()
+        .mode();
+    assert_eq!(
+        actual, expected,
+        "expected mode {expected:?}, got {actual:?}"
+    );
+}
+
+/// Asserts the application has requested to quit.
+#[cucumber::then(expr = "the app should quit")]
+fn then_app_should_quit(world: &mut AppWorld) {
+    let should_quit = world.app.core.state.read().frontend.should_quit;
+    assert!(
+        should_quit,
+        "expected app to quit, but should_quit is false"
+    );
+}
+
+/// Asserts the application has NOT requested to quit.
+#[cucumber::then(expr = "the app should not quit")]
+fn then_app_should_not_quit(world: &mut AppWorld) {
+    let should_quit = world.app.core.state.read().frontend.should_quit;
+    assert!(
+        !should_quit,
+        "expected app to not quit, but should_quit is true"
+    );
+}
+
+/// Asserts the active chat input buffer is empty.
+#[cucumber::then(expr = "the input buffer should be empty")]
+fn then_input_buffer_empty(world: &mut AppWorld) {
+    let text = world
+        .app
+        .core
+        .state
+        .read()
+        .active_chat_input()
+        .text()
+        .to_owned();
+    assert!(
+        text.is_empty(),
+        "expected empty input buffer, got: {text:?}"
+    );
+}
+
+/// Asserts the active chat input buffer matches the expected text.
+#[cucumber::then(expr = "the input buffer should be {string}")]
+fn then_input_buffer_should_be(world: &mut AppWorld, expected: String) {
+    let actual = world
+        .app
+        .core
+        .state
+        .read()
+        .active_chat_input()
+        .text()
+        .to_owned();
+    let expected = expected.replace("\\n", "\n").replace("\\t", "\t");
+    assert_eq!(actual, expected, "input buffer mismatch");
+}
+
+/// Asserts the active session's chat history contains the expected number of entries.
+#[cucumber::then(expr = "the chat history should contain {int} entry")]
+fn then_chat_history_count(world: &mut AppWorld, count: u64) {
+    let actual = world.app.core.state.read().active_session().history().len();
+    assert_eq!(
+        actual, count as usize,
+        "expected {count} history entries, got {actual}"
+    );
+}
+
+/// Asserts the which-key popup is active.
+#[cucumber::then(expr = "which-key should be active")]
+fn then_which_key_active(world: &mut AppWorld) {
+    assert!(
+        world.app.which_key.active,
+        "expected which-key to be active"
+    );
+}
+
+/// Asserts the which-key popup is inactive.
+#[cucumber::then(expr = "which-key should be inactive")]
+fn then_which_key_inactive(world: &mut AppWorld) {
+    assert!(
+        !world.app.which_key.active,
+        "expected which-key to be inactive"
+    );
+}
