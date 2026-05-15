@@ -237,6 +237,7 @@ mod tests {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: None,
             tool_result_max_lines: None,
+            theme_name: None,
         };
 
         // When saving and reloading.
@@ -275,6 +276,7 @@ mod tests {
             last_model: Some("test/model".to_owned()),
             last_strategy: None,
             tool_result_max_lines: None,
+            theme_name: None,
         };
 
         // When saving and reloading.
@@ -296,6 +298,7 @@ mod tests {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: None,
             tool_result_max_lines: None,
+            theme_name: None,
         };
         service.save(&prefs).expect("save");
 
@@ -317,6 +320,7 @@ mod tests {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: None,
             tool_result_max_lines: None,
+            theme_name: None,
         };
         service.save(&prefs).expect("save");
 
@@ -325,6 +329,7 @@ mod tests {
             last_model: Some("openrouter/gpt-4".to_owned()),
             last_strategy: None,
             tool_result_max_lines: None,
+            theme_name: None,
         };
         service.save(&updated).expect("save updated");
 
@@ -342,6 +347,7 @@ mod tests {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: None,
             tool_result_max_lines: None,
+            theme_name: None,
         };
         service.save(&prefs).expect("save");
 

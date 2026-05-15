@@ -1,5 +1,6 @@
 //! Shared rendering helpers for chat log entries.
 
+use crate::feat::theme::Theme;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
@@ -18,6 +19,8 @@ pub struct RenderContext {
     pub is_expanded: bool,
     /// Maximum lines before truncating tool result entries.
     pub tool_result_max_lines: u16,
+    /// The current theme colors.
+    pub theme: Theme,
 }
 
 /// Split text on `\n` and produce styled lines with the given prefix.
