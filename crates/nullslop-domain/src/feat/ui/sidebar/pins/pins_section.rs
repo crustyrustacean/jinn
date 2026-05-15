@@ -155,17 +155,19 @@ pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `SidebarMoveDown` — delegates to pins section.
+/// Handles `SidebarMoveDown` — delegates to pins section, syncs chat log cursor.
 pub fn handle_sidebar_move_down(state: &mut AppState) -> IntentResult {
     let sorted_ids = state.sorted_pinned_ids();
     state.frontend.pins.select_next(&sorted_ids);
+    sync_chat_log_cursor(state);
     IntentResult::empty()
 }
 
-/// Handles `SidebarMoveUp` — delegates to pins section.
+/// Handles `SidebarMoveUp` — delegates to pins section, syncs chat log cursor.
 pub fn handle_sidebar_move_up(state: &mut AppState) -> IntentResult {
     let sorted_ids = state.sorted_pinned_ids();
     state.frontend.pins.select_prev(&sorted_ids);
+    sync_chat_log_cursor(state);
     IntentResult::empty()
 }
 
@@ -227,7 +229,24 @@ pub fn handle_pins_pin_cycle(state: &mut AppState) -> IntentResult {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Resolves the currently selected pinned entry to its session and entry IDs.
+/// Sync the chat log cursor to the currently selected pinned entry.
+///
+/// When a pinned entry is selected in the sidebar, this sets the chat log's
+/// `selected_entry_index` to the history index of that pinned entry so the
+/// renderer scrolls to show it.
+fn sync_chat_log_cursor(state: &mut AppState) {
+    let Some(pinned_id) = state.frontend.pins.selected_id().cloned() else {
+        return;
+    };
+    let history_index = state
+        .active_session()
+        .history()
+        .iter()
+        .position(|e| e.id == pinned_id);
+    if let Some(index) = history_index {
+        state.active_session_mut().set_selected_entry_index(index);
+    }
+}
 fn resolve_selected_entry_id(state: &AppState) -> Option<(SessionId, ChatEntryId)> {
     let sorted_ids = state.sorted_pinned_ids();
     let index = state.frontend.pins.selection_index(&sorted_ids);
