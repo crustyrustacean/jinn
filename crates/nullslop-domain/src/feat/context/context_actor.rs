@@ -534,16 +534,16 @@ mod tests {
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
-        // Then the assembled messages start with the system message from the pinned entry.
+        // Then the pinned system content is inside the concatenated System message at [0].
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert!(!assembled.messages.is_empty());
-        assert_eq!(
-            assembled.messages[1],
-            crate::protocol::LlmMessage::System {
-                content: "important instruction".to_owned(),
+        match &assembled.messages[0] {
+            crate::protocol::LlmMessage::System { content } => {
+                assert!(content.contains("important instruction"));
             }
-        );
+            other => panic!("expected System message, got {other:?}"),
+        }
     }
 
     #[rstest::rstest]
@@ -723,18 +723,18 @@ mod tests {
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
-        // Then result is [top_messages] + [bottom_messages].
+        // Then top instruction is inside the concatenated System message at [0], bottom reminder is separate at [1].
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 3);
+        assert_eq!(assembled.messages.len(), 2);
+        match &assembled.messages[0] {
+            crate::protocol::LlmMessage::System { content } => {
+                assert!(content.contains("top instruction"));
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
         assert_eq!(
             assembled.messages[1],
-            crate::protocol::LlmMessage::System {
-                content: "top instruction".to_owned(),
-            }
-        );
-        assert_eq!(
-            assembled.messages[2],
             crate::protocol::LlmMessage::System {
                 content: "bottom reminder".to_owned(),
             }
@@ -809,16 +809,16 @@ mod tests {
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
-        // Then TOP pin appears as the first message.
+        // Then TOP pin content is inside the concatenated System message at [0].
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        assert_eq!(assembled.messages.len(), 7);
-        assert_eq!(
-            assembled.messages[1],
-            crate::protocol::LlmMessage::System {
-                content: "top rule".to_owned(),
+        assert_eq!(assembled.messages.len(), 6);
+        match &assembled.messages[0] {
+            crate::protocol::LlmMessage::System { content } => {
+                assert!(content.contains("top rule"));
             }
-        );
+            other => panic!("expected System message, got {other:?}"),
+        }
     }
 
     #[rstest::rstest]
@@ -848,11 +848,11 @@ mod tests {
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
-        // Then RELATIVE pin is at its original position within the working history output.
+        // Then RELATIVE pin is at its original position within the working history output (shifted by 1).
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[3],
+            assembled.messages[2],
             crate::protocol::LlmMessage::System {
                 content: "relative note".to_owned(),
             }
@@ -886,17 +886,17 @@ mod tests {
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
-        // Then BOTTOM pin appears before the last message.
+        // Then BOTTOM pin appears before the last message (indices shifted down by 1).
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
         assert_eq!(
-            assembled.messages[5],
+            assembled.messages[4],
             crate::protocol::LlmMessage::System {
                 content: "bottom reminder".to_owned(),
             }
         );
         assert_eq!(
-            assembled.messages[6],
+            assembled.messages[5],
             crate::protocol::LlmMessage::User {
                 content: "latest question".to_owned(),
             }
@@ -1198,10 +1198,10 @@ mod tests {
         // When assembling.
         actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
-        // Then the first message is the skills block.
+        // Then the skills block is inside the concatenated System message at [0].
         let events = sink.events();
         let assembled = find_prompt_assembled(&events).expect("should have PromptAssembled");
-        let first = &assembled.messages[1];
+        let first = &assembled.messages[0];
         match first {
             LlmMessage::System { content } => {
                 assert!(content.contains("<available_skills>"));
