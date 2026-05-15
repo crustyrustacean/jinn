@@ -98,11 +98,8 @@ mod tests {
 
     #[rstest::rstest]
     fn expand_tool_result_fails_with_no_selection() {
-        // Given a state with entries but no selection.
-        let mut state = AppState::default();
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello"));
+        // Given a state with empty history (no selection possible).
+        let state = AppState::default();
 
         // When validating expand tool result.
         let result = validate_expand_tool_result(&state);
@@ -160,19 +157,16 @@ mod tests {
 
     #[rstest::rstest]
     fn pin_selected_fails_with_no_selection() {
-        // Given a state with history but no entry selected.
-        let mut state = AppState::default();
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("hello"));
+        // Given a state with empty history (no selection possible).
+        let state = AppState::default();
 
         // When validating pin selected.
         let result = validate_chat_entry_pin_selected(&state);
 
-        // Then it returns NoSelection error.
+        // Then it returns EmptyHistory error.
         assert!(matches!(
             result,
-            Err(ChatEntryPinSelectedError::NoSelection)
+            Err(ChatEntryPinSelectedError::EmptyHistory)
         ));
     }
 }

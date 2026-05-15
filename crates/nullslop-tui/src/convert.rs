@@ -11,23 +11,49 @@ use nullslop_domain::{Key, KeyEvent, Modifiers};
 /// (e.g., `KeyCode::Null`, `KeyCode::Modifier`).
 #[must_use]
 pub fn from_crossterm(event: crossterm::event::KeyEvent) -> Option<KeyEvent> {
-    let key = match event.code {
-        crossterm::event::KeyCode::Char(c) => Key::Char(c),
-        crossterm::event::KeyCode::Enter => Key::Enter,
-        crossterm::event::KeyCode::Esc => Key::Esc,
-        crossterm::event::KeyCode::Tab => Key::Tab,
-        crossterm::event::KeyCode::Backspace => Key::Backspace,
-        crossterm::event::KeyCode::Up => Key::Up,
-        crossterm::event::KeyCode::Down => Key::Down,
-        crossterm::event::KeyCode::Left => Key::Left,
-        crossterm::event::KeyCode::Right => Key::Right,
-        crossterm::event::KeyCode::Home => Key::Home,
-        crossterm::event::KeyCode::End => Key::End,
-        crossterm::event::KeyCode::PageUp => Key::PageUp,
-        crossterm::event::KeyCode::PageDown => Key::PageDown,
-        crossterm::event::KeyCode::Delete => Key::Delete,
-        crossterm::event::KeyCode::F(n) => Key::F(n),
+    let (key, normalize_shift) = match event.code {
+        crossterm::event::KeyCode::Char(c) => (Key::Char(c), true),
+        crossterm::event::KeyCode::Enter => (Key::Enter, false),
+        crossterm::event::KeyCode::Esc => (Key::Esc, false),
+        crossterm::event::KeyCode::Tab => (Key::Tab, false),
+        crossterm::event::KeyCode::Backspace => (Key::Backspace, false),
+        crossterm::event::KeyCode::Up => (Key::Up, false),
+        crossterm::event::KeyCode::Down => (Key::Down, false),
+        crossterm::event::KeyCode::Left => (Key::Left, false),
+        crossterm::event::KeyCode::Right => (Key::Right, false),
+        crossterm::event::KeyCode::Home => (Key::Home, false),
+        crossterm::event::KeyCode::End => (Key::End, false),
+        crossterm::event::KeyCode::PageUp => (Key::PageUp, false),
+        crossterm::event::KeyCode::PageDown => (Key::PageDown, false),
+        crossterm::event::KeyCode::Delete => (Key::Delete, false),
+        crossterm::event::KeyCode::F(n) => (Key::F(n), false),
         _ => return None,
+    };
+
+    let has_shift = event
+        .modifiers
+        .contains(crossterm::event::KeyModifiers::SHIFT);
+
+    // Normalize: terminals differ in how they represent Shift + letter keys.
+    // Some send Char('g') + SHIFT, others send Char('G') + SHIFT.
+    // The keymap binds "G" as Key::Char('G') with no modifiers.
+    // Normalize both cases to Key::Char('G') with shift cleared.
+    let (key, has_shift) = if normalize_shift && has_shift {
+        if let Key::Char(c) = key {
+            if c.is_ascii_lowercase() {
+                // shift+'g' → 'G', clear shift
+                (Key::Char(c.to_ascii_uppercase()), false)
+            } else if c.is_ascii_uppercase() {
+                // shift+'G' → 'G', clear shift (already uppercase)
+                (Key::Char(c), false)
+            } else {
+                (Key::Char(c), true)
+            }
+        } else {
+            (key, true)
+        }
+    } else {
+        (key, has_shift)
     };
 
     let modifiers = Modifiers {
@@ -37,9 +63,7 @@ pub fn from_crossterm(event: crossterm::event::KeyEvent) -> Option<KeyEvent> {
         alt: event
             .modifiers
             .contains(crossterm::event::KeyModifiers::ALT),
-        shift: event
-            .modifiers
-            .contains(crossterm::event::KeyModifiers::SHIFT),
+        shift: has_shift,
     };
 
     Some(KeyEvent { key, modifiers })
@@ -102,6 +126,73 @@ mod tests {
         // Then returns Key::F(5).
         let key_event = result.expect("should convert");
         assert_eq!(key_event.key, Key::F(5));
+    }
+
+    #[rstest::rstest]
+    fn convert_shift_lowercase_g_produces_uppercase_g() {
+        // Given crossterm Shift+Char('g').
+        let event = crossterm_key_with_mod(
+            crossterm::event::KeyCode::Char('g'),
+            crossterm::event::KeyModifiers::SHIFT,
+        );
+
+        // When converting.
+        let result = from_crossterm(event);
+
+        // Then returns Key::Char('G') with no shift modifier.
+        let key_event = result.expect("should convert");
+        assert_eq!(key_event.key, Key::Char('G'));
+        assert!(!key_event.modifiers.shift);
+        assert!(key_event.modifiers.is_none());
+    }
+
+    #[rstest::rstest]
+    fn convert_shift_lowercase_a_produces_uppercase_a() {
+        // Given crossterm Shift+Char('a').
+        let event = crossterm_key_with_mod(
+            crossterm::event::KeyCode::Char('a'),
+            crossterm::event::KeyModifiers::SHIFT,
+        );
+
+        // When converting.
+        let result = from_crossterm(event);
+
+        // Then returns Key::Char('A') with no shift modifier.
+        let key_event = result.expect("should convert");
+        assert_eq!(key_event.key, Key::Char('A'));
+        assert!(!key_event.modifiers.shift);
+    }
+
+    #[rstest::rstest]
+    fn convert_direct_uppercase_g_no_shift() {
+        // Given crossterm Char('G') with no modifiers.
+        let event = crossterm_key(crossterm::event::KeyCode::Char('G'));
+
+        // When converting.
+        let result = from_crossterm(event);
+
+        // Then returns Key::Char('G') with no modifiers.
+        let key_event = result.expect("should convert");
+        assert_eq!(key_event.key, Key::Char('G'));
+        assert!(key_event.modifiers.is_none());
+    }
+
+    #[rstest::rstest]
+    fn convert_shift_uppercase_g_clears_shift() {
+        // Given crossterm Char('G') with SHIFT (some terminals send this).
+        let event = crossterm_key_with_mod(
+            crossterm::event::KeyCode::Char('G'),
+            crossterm::event::KeyModifiers::SHIFT,
+        );
+
+        // When converting.
+        let result = from_crossterm(event);
+
+        // Then returns Key::Char('G') with shift cleared.
+        let key_event = result.expect("should convert");
+        assert_eq!(key_event.key, Key::Char('G'));
+        assert!(!key_event.modifiers.shift);
+        assert!(key_event.modifiers.is_none());
     }
 
     #[rstest::rstest]

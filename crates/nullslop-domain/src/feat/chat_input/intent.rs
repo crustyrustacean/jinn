@@ -277,17 +277,14 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
 
 // --- Normal Escape ---
 
-/// Handles `NormalEscape` — clears chat entry selection, or shows cancel prompt.
+/// Handles `NormalEscape` — no-op for selection (always-selected invariant).
 ///
-/// If a chat entry is selected, clears the selection. Otherwise, if the
-/// session is busy (streaming/sending), activates the cancel stream confirmation
-/// prompt. If idle with no selection, does nothing.
+/// If the session is busy (streaming/sending), activates the cancel stream
+/// confirmation prompt. Otherwise, does nothing.
 pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     super::validator::validate_normal_escape(state);
 
-    if state.active_session().selected_entry_index().is_some() {
-        state.active_session_mut().clear_selection();
-    } else if !state.active_session().is_idle() {
+    if !state.active_session().is_idle() {
         // Session is busy — show cancel confirmation prompt.
         state.frontend.cancel_stream_prompt = true;
     }
@@ -815,21 +812,22 @@ mod tests {
     // --- NormalEscape tests ---
 
     #[rstest::rstest]
-    fn normal_escape_clears_selection() {
+    fn normal_escape_does_not_clear_selection() {
         // Given a state with a selected entry.
         use crate::protocol::ChatEntry;
 
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("hi"));
-        state.active_session_mut().select_next_entry();
+        // push_entry auto-selects index 0.
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
 
         // When handling NormalEscape.
         let result = super::handle_normal_escape(&mut state);
 
-        // Then the selection is cleared.
-        assert!(state.active_session().selected_entry_index().is_none());
+        // Then the selection is preserved (always-selected invariant).
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
         assert!(result.commands.is_empty());
-        // And cancel prompt is NOT set (selection takes priority).
+        // And cancel prompt is NOT set.
         assert!(!state.frontend.cancel_stream_prompt);
     }
 
