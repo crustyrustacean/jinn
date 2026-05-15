@@ -6,6 +6,7 @@
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
+use crate::feat::theme;
 use crate::protocol::Event;
 
 /// Keeps `AppState.frontend.preferences` in sync with persisted preferences.
@@ -40,6 +41,13 @@ impl Actor for PreferencesStateSyncActor {
             ActorEnvelope::Event(Event::PreferencesUpdated(ref payload)) => {
                 let mut state = self.state.write();
                 state.frontend.preferences = payload.preferences.clone();
+                // Reload theme when theme_name changes in preferences.
+                match theme::resolve_theme(payload.preferences.theme_name.as_deref()) {
+                    Ok(t) => state.frontend.theme = t,
+                    Err(e) => {
+                        tracing::warn!(err = ?e, "failed to reload theme, keeping current");
+                    }
+                }
             }
             ActorEnvelope::Command(_) | ActorEnvelope::Event(_) | ActorEnvelope::System(_) => {}
         }
@@ -82,6 +90,7 @@ mod tests {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: Some("sliding_window".to_owned()),
             tool_result_max_lines: None,
+            theme_name: None,
         };
         actor
             .handle(
@@ -113,6 +122,7 @@ mod tests {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: None,
             tool_result_max_lines: None,
+            theme_name: None,
         };
         actor
             .handle(
@@ -128,6 +138,7 @@ mod tests {
             last_model: Some("openrouter/gpt-4".to_owned()),
             last_strategy: Some("sliding_window".to_owned()),
             tool_result_max_lines: None,
+            theme_name: None,
         };
         actor
             .handle(

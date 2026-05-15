@@ -155,11 +155,14 @@ lint-testlength:
    if found:
        print(f"\n{found} inline test module(s) exceed {max_lines} lines")
 
-# Copy plugins to user config directory
-install-plugins:
+# Copy plugins and themes to user config directory
+install-defaults:
     mkdir -p ~/.config/nullslop/plugins
     cp -r plugins/* ~/.config/nullslop/plugins/
+    mkdir -p ~/.config/nullslop/themes
+    cp -r themes/*.toml ~/.config/nullslop/themes/
     @echo "Plugins installed to ~/.config/nullslop/plugins/"
+    @echo "Themes installed to ~/.config/nullslop/themes/"
 
 # Mirror trunk history to GitHub (one-way, force push)
 sync-github:

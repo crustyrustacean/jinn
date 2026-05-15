@@ -6,6 +6,7 @@
 
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
+use crate::feat::theme::Theme;
 use crate::protocol::SessionEntry;
 
 use super::SessionStoreService;
@@ -15,7 +16,7 @@ use super::SessionStoreService;
 /// Reads summaries from the store, maps them to [`SessionEntry`], and sorts
 /// so the most recently updated session appears first. Errors are logged and
 /// result in an empty list.
-pub fn load_session_entries(services: &Services) -> Vec<SessionEntry> {
+pub fn load_session_entries(services: &Services, theme: &Theme) -> Vec<SessionEntry> {
     match services.session_store.load_summaries() {
         Ok(summaries) => {
             let mut entries: Vec<SessionEntry> = summaries
@@ -25,6 +26,7 @@ pub fn load_session_entries(services: &Services) -> Vec<SessionEntry> {
                     title: summary.title,
                     updated_at: summary.updated_at,
                     byte_offset,
+                    theme: theme.clone(),
                 })
                 .collect();
             entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
@@ -42,7 +44,7 @@ pub fn load_session_entries(services: &Services) -> Vec<SessionEntry> {
 /// Reads from the session store via services and stores the entries via
 /// `SelectionState::set_items`.
 pub fn load_session_picker_items(services: &Services, state: &mut AppState) {
-    let entries = load_session_entries(services);
+    let entries = load_session_entries(services, &state.frontend.theme);
     state.frontend.session_picker.set_items(entries);
 }
 
@@ -50,7 +52,10 @@ pub fn load_session_picker_items(services: &Services, state: &mut AppState) {
 ///
 /// Same as [`load_session_entries`] but accepts the store service directly
 /// instead of the full `Services` container.
-pub fn load_session_entries_from_store(store: &SessionStoreService) -> Vec<SessionEntry> {
+pub fn load_session_entries_from_store(
+    store: &SessionStoreService,
+    theme: &Theme,
+) -> Vec<SessionEntry> {
     match store.load_summaries() {
         Ok(summaries) => {
             let mut entries: Vec<SessionEntry> = summaries
@@ -60,6 +65,7 @@ pub fn load_session_entries_from_store(store: &SessionStoreService) -> Vec<Sessi
                     title: summary.title,
                     updated_at: summary.updated_at,
                     byte_offset,
+                    theme: theme.clone(),
                 })
                 .collect();
             entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
@@ -74,12 +80,13 @@ pub fn load_session_entries_from_store(store: &SessionStoreService) -> Vec<Sessi
 
 /// Loads session entries into the picker state from a session store service.
 pub fn load_session_picker_items_from_store(store: &SessionStoreService, state: &mut AppState) {
-    let entries = load_session_entries_from_store(store);
+    let entries = load_session_entries_from_store(store, &state.frontend.theme);
     state.frontend.session_picker.set_items(entries);
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::feat::theme::default_theme;
     use crate::protocol::SessionId;
     use nullslop_selection_widget::PickerItem;
 
@@ -93,6 +100,7 @@ mod tests {
             title: "My Chat".to_owned(),
             updated_at: jiff::Timestamp::now(),
             byte_offset: 0,
+            theme: default_theme(),
         };
 
         // When calling display_label.
@@ -108,6 +116,7 @@ mod tests {
             title: "My Session".to_owned(),
             updated_at: jiff::Timestamp::now(),
             byte_offset: 0,
+            theme: default_theme(),
         };
 
         // When rendering.
@@ -123,7 +132,7 @@ mod tests {
         let services = crate::common::services::Services::new();
 
         // When loading session entries.
-        let entries = load_session_entries(&services);
+        let entries = load_session_entries(&services, &default_theme());
 
         // Then an empty list is returned (fake store has no sessions).
         assert!(entries.is_empty());

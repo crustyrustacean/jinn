@@ -309,6 +309,13 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
 /// Simply switches out of the current mode. Does NOT cancel streams or drain
 /// queues — the cancel confirmation prompt handles that via `NormalEscape`.
 pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
+    // If leaving the theme picker without confirming, restore the original theme.
+    if state.frontend.scope_stack.picker_kind() == Some(&crate::protocol::PickerKind::Theme) {
+        if let Some(original) = state.frontend.theme_preview_original.take() {
+            state.frontend.theme = original;
+        }
+    }
+
     // Pop the scope stack — restores previous scope.
     state.frontend.scope_stack.pop();
     IntentResult::empty()
@@ -712,7 +719,10 @@ mod tests {
         let result = super::handle_enter_insert_mode(&mut state);
 
         // Then scope_stack has Input on top.
-        assert_eq!(state.frontend.scope_stack.current().mode(), crate::protocol::Mode::Input);
+        assert_eq!(
+            state.frontend.scope_stack.current().mode(),
+            crate::protocol::Mode::Input
+        );
         assert!(result.commands.is_empty());
     }
 

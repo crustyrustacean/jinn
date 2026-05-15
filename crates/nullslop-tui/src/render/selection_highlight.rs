@@ -1,7 +1,6 @@
 //! Line-based selection highlight applied to the terminal buffer after rendering.
 
 use ratatui::buffer::Buffer;
-use ratatui::style::Color;
 
 use crate::TuiApp;
 use crate::selection::{SelectionState, find_last_nonws_in_row};
@@ -37,6 +36,12 @@ pub(super) fn apply_selection_highlight(app: &TuiApp, buf: &mut Buffer) {
     let top_y = anchor.1.min(focus.1).max(bounds.y);
     let bot_y = anchor.1.max(focus.1).min(bounds.bottom().saturating_sub(1));
 
+    // Extract theme colors once to avoid acquiring a read lock per cell.
+    let (sel_fg, sel_bg) = {
+        let state = app.core.state.read();
+        (state.frontend.theme.selection_fg, state.frontend.theme.selection_bg)
+    };
+
     for y in top_y..=bot_y {
         let (start_x, end_x) = if top_y == bot_y {
             // Single line — column selection.
@@ -62,8 +67,8 @@ pub(super) fn apply_selection_highlight(app: &TuiApp, buf: &mut Buffer) {
                     // Swapping identical colors is invisible
                     // (e.g. both Reset — the default for user messages
                     // and empty cells). Use explicit highlight colors.
-                    cell.set_fg(Color::Black);
-                    cell.set_bg(Color::White);
+                    cell.set_fg(sel_fg);
+                    cell.set_bg(sel_bg);
                 } else {
                     cell.set_fg(bg);
                     cell.set_bg(fg);
@@ -78,6 +83,7 @@ mod tests {
     use super::*;
     use crate::selection::SelectionState;
     use ratatui::layout::Rect;
+    use ratatui::style::Color;
     use ratatui::style::Modifier;
 
     /// Creates a minimal `TuiApp` for render testing.

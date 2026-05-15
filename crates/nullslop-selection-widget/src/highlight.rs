@@ -1,6 +1,6 @@
 //! Shared highlight utility for picker entry rows.
 //!
-//! Provides [`PICKER_HIGHLIGHT_STYLE`] and [`highlight_text`], which splits a string
+//! Provides [`highlight_text`] and [`highlight_text_with_bg`], which split a string
 //! into styled [`Span`]s based on fuzzy match byte offsets. Used by all picker entry
 //! types so the highlight look is consistent.
 
@@ -12,9 +12,22 @@ use ratatui::text::Span;
 /// Highlight style for fuzzy-matched characters in picker rows.
 ///
 /// Dark gray background with underline; foreground is inherited from the base style.
+///
+/// This constant is kept for backward compatibility. Production code should use
+/// [`highlight_text_with_bg`] with a theme-provided color instead.
 pub const PICKER_HIGHLIGHT_STYLE: Style = Style::new()
     .bg(Color::DarkGray)
     .add_modifier(Modifier::UNDERLINED);
+
+/// Builds a highlight style for the given background color.
+///
+/// Uses the provided color as background with underline modifier.
+/// Foreground is inherited from the base style via patching.
+pub fn highlight_style(highlight_bg: Color) -> Style {
+    Style::new()
+        .bg(highlight_bg)
+        .add_modifier(Modifier::UNDERLINED)
+}
 
 /// Splits `text` into spans, applying the highlight style to characters whose
 /// byte offset falls within one of `match_indices`.
@@ -35,11 +48,34 @@ pub fn highlight_text<'a>(
     base_style: Style,
     match_indices: &[Range<usize>],
 ) -> Vec<Span<'a>> {
+    highlight_text_with_bg(text, base_style, match_indices, Color::DarkGray)
+}
+
+/// Theme-aware version of [`highlight_text`] that uses the provided highlight
+/// background color instead of the hardcoded default.
+///
+/// Matched characters get the highlight style (underline + provided bg color)
+/// patched onto the base style, preserving the base foreground color.
+///
+/// # Panics
+///
+/// Does not panic; string slicing is safe because `byte_off` comes from
+/// `char_indices()`, which always yields valid UTF-8 boundaries.
+#[expect(
+    clippy::string_slice,
+    reason = "byte_off comes from char_indices(), always a valid UTF-8 boundary"
+)]
+pub fn highlight_text_with_bg<'a>(
+    text: &str,
+    base_style: Style,
+    match_indices: &[Range<usize>],
+    highlight_bg: Color,
+) -> Vec<Span<'a>> {
     if match_indices.is_empty() || text.is_empty() {
         return vec![Span::styled(text.to_owned(), base_style)];
     }
 
-    let highlight_style = base_style.patch(PICKER_HIGHLIGHT_STYLE);
+    let hl_style = base_style.patch(highlight_style(highlight_bg));
 
     let mut spans = Vec::new();
     let mut current_start = 0;
@@ -53,11 +89,7 @@ pub fn highlight_text<'a>(
             if !segment.is_empty() {
                 spans.push(Span::styled(
                     segment,
-                    if in_highlight {
-                        highlight_style
-                    } else {
-                        base_style
-                    },
+                    if in_highlight { hl_style } else { base_style },
                 ));
             }
             current_start = byte_off;
@@ -69,11 +101,7 @@ pub fn highlight_text<'a>(
         let rest = text[current_start..].to_owned();
         spans.push(Span::styled(
             rest,
-            if in_highlight {
-                highlight_style
-            } else {
-                base_style
-            },
+            if in_highlight { hl_style } else { base_style },
         ));
     }
 

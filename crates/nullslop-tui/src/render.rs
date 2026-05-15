@@ -60,7 +60,17 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     );
 
     // Tab bar — always visible.
-    tab_bar::render_tab_bar(frame, layout.tabs, &app.tab_manager);
+    {
+        let theme = &state.frontend.theme;
+        tab_bar::render_tab_bar(
+            frame,
+            layout.tabs,
+            &app.tab_manager,
+            theme.tab_active_fg,
+            theme.tab_active_bg,
+            theme.tab_inactive_fg,
+        );
+    }
 
     // Active tab content.
     let mut rects = vec![];
@@ -90,7 +100,10 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     status_bar::render_status_bar(&mut app.ui_registry, frame, layout.status_bar, &state);
 
     // Which-key popup overlay.
-    which_key::render_which_key(frame, &mut app.which_key);
+    {
+        let theme = &state.frontend.theme;
+        which_key::render_which_key(frame, &mut app.which_key, theme.focus_accent);
+    }
 
     // Picker overlay + selectable rect.
     if state.frontend.scope_stack.is_picker() {

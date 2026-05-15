@@ -3,9 +3,10 @@
 use std::ops::Range;
 
 use crate::feat::picker::style::{active_marker, selected_style};
+use crate::feat::theme::Theme;
 use nullslop_selection_widget::PickerItem;
-use nullslop_selection_widget::highlight_text;
-use ratatui::style::{Color, Style};
+use nullslop_selection_widget::highlight_text_with_bg;
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 /// A provider entry ready for display in the picker.
@@ -33,6 +34,8 @@ pub struct PickerEntry {
     pub is_remote: bool,
     /// Whether this entry is the currently active provider.
     pub is_active: bool,
+    /// Theme for rendering.
+    pub theme: Theme,
 }
 
 impl PickerItem for PickerEntry {
@@ -63,7 +66,7 @@ fn render_provider_row(
     is_selected: bool,
     match_indices: &[Range<usize>],
 ) -> Line<'static> {
-    let active_marker = active_marker(entry.is_active);
+    let active_marker = active_marker(entry.is_active, &entry.theme);
 
     let status_prefix = if !entry.is_available {
         "\u{2717} " // ✗
@@ -76,9 +79,9 @@ fn render_provider_row(
     };
 
     let label_style = if entry.is_available {
-        selected_style(is_selected)
+        selected_style(is_selected, &entry.theme)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(entry.theme.muted_text)
     };
 
     if entry.is_alias {
@@ -89,6 +92,7 @@ fn render_provider_row(
             &model_suffix,
             label_style,
             match_indices,
+            entry.theme.picker_highlight_bg,
         );
         Line::from(
             std::iter::once(active_marker)
@@ -103,6 +107,7 @@ fn render_provider_row(
             &model_suffix,
             label_style,
             match_indices,
+            entry.theme.picker_highlight_bg,
         );
         Line::from(
             std::iter::once(active_marker)
@@ -119,6 +124,7 @@ fn highlight_model_in_label<'a>(
     suffix: &str,
     base_style: Style,
     match_indices: &[Range<usize>],
+    highlight_bg: ratatui::style::Color,
 ) -> Vec<Span<'a>> {
     if match_indices.is_empty() {
         return vec![Span::styled(format!("{prefix}{model}{suffix}"), base_style)];
@@ -128,7 +134,12 @@ fn highlight_model_in_label<'a>(
     if !prefix.is_empty() {
         spans.push(Span::styled(prefix.to_owned(), base_style));
     }
-    spans.extend(highlight_text(model, base_style, match_indices));
+    spans.extend(highlight_text_with_bg(
+        model,
+        base_style,
+        match_indices,
+        highlight_bg,
+    ));
     if !suffix.is_empty() {
         spans.push(Span::styled(suffix.to_owned(), base_style));
     }

@@ -49,6 +49,13 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Persona => {
             state.frontend.persona_picker.reset();
         }
+        PickerKind::Theme => {
+            state.frontend.theme_picker.reset();
+            // Save current theme so ESC can restore it.
+            state.frontend.theme_preview_original = Some(state.frontend.theme.clone());
+            // Load discovered themes as entries.
+            load_theme_picker_entries(state);
+        }
     }
 
     match kind {
@@ -73,6 +80,44 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             )])
         }
         PickerKind::Keymap => IntentResult::empty(),
+        PickerKind::Theme => IntentResult::empty(),
+    }
+}
+
+/// Loads discovered themes into the theme picker.
+fn load_theme_picker_entries(state: &mut AppState) {
+    use crate::feat::theme::ThemeEntry;
+
+    let mut entries = Vec::new();
+
+    // Always include the default (built-in) theme.
+    entries.push(ThemeEntry {
+        name: "default".to_owned(),
+        theme: crate::feat::theme::default_theme(),
+    });
+
+    // Add discovered theme files.
+    if let Ok(discovered) = crate::feat::theme::discover_themes() {
+        for (name, _path) in discovered {
+            if name == "default" {
+                continue; // skip duplicate
+            }
+            if let Ok(theme) = crate::feat::theme::load_theme(&name) {
+                entries.push(ThemeEntry { name, theme });
+            }
+        }
+    }
+
+    state.frontend.theme_picker.set_items(entries);
+}
+
+/// Previews the selected theme in real-time when the Theme picker is active.
+fn preview_theme_if_active(state: &mut AppState) {
+    if state.frontend.scope_stack.picker_kind() != Some(&PickerKind::Theme) {
+        return;
+    }
+    if let Some(entry) = state.frontend.theme_picker.selected_item() {
+        state.frontend.theme = entry.theme.clone();
     }
 }
 
@@ -110,6 +155,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Keymap) => confirm_keymap(state),
         Some(PickerKind::Session) => (confirm_session(state), None),
         Some(PickerKind::Persona) => (confirm_persona(state), None),
+        Some(PickerKind::Theme) => (confirm_theme(state), None),
         None => (IntentResult::empty(), None),
     }
 }
@@ -120,6 +166,7 @@ pub fn handle_move_up(state: &mut AppState) -> IntentResult {
     if let Some(picker) = state.active_picker_ops() {
         picker.move_up(PICKER_MAX_VISIBLE);
     }
+    preview_theme_if_active(state);
     IntentResult::empty()
 }
 
@@ -129,6 +176,7 @@ pub fn handle_move_down(state: &mut AppState) -> IntentResult {
     if let Some(picker) = state.active_picker_ops() {
         picker.move_down(PICKER_MAX_VISIBLE);
     }
+    preview_theme_if_active(state);
     IntentResult::empty()
 }
 
@@ -261,6 +309,22 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Confirms the selected theme and persists it to preferences.
+fn confirm_theme(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.theme_picker.selected_item() else {
+        return IntentResult::empty();
+    };
+    let theme_name = entry.name.clone();
+
+    // Theme is already previewed (set on move). Just persist.
+    state.frontend.theme_preview_original = None;
+    state.frontend.scope_stack.pop();
+
+    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
+        updates: vec![PreferenceUpdate::SetTheme(Some(theme_name))],
+    })])
+}
+
 /// Confirms the selected session and dispatches a switch command.
 fn confirm_session(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.session_picker.selected_item() else {
@@ -282,10 +346,12 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 #[cfg(test)]
 mod tests {
     use crate::common::app_state::{AppState, FocusScope};
+    use crate::feat::theme::default_theme;
     use crate::protocol::{Command, Intent, PickerKind, SessionId};
     use crate::protocol::{KeymapEntry, PickerEntry, SessionEntry, StrategyEntry};
 
     use super::*;
+    use ratatui::style::Color;
 
     // --- Open picker ---
 
@@ -368,6 +434,7 @@ mod tests {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         }]);
 
         // When inserting 't'.
@@ -396,6 +463,7 @@ mod tests {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         }]);
         state.provider.provider_picker.insert_char('t');
         state.provider.provider_picker.insert_char('e');
@@ -428,6 +496,7 @@ mod tests {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         }]);
 
         // When confirming picker.
@@ -456,6 +525,7 @@ mod tests {
             title: "Test".to_owned(),
             updated_at: jiff::Timestamp::now(),
             byte_offset: 0,
+            theme: default_theme(),
         }]);
 
         // When confirming picker.
@@ -491,6 +561,7 @@ mod tests {
             category: "General".to_owned(),
             command: Intent::Quit,
             search_text: "q quit".to_owned(),
+            theme: default_theme(),
         }]);
 
         // When confirming picker.
@@ -528,12 +599,14 @@ mod tests {
                 name: "Passthrough".to_owned(),
                 description: "No processing".to_owned(),
                 is_active: false,
+                theme: default_theme(),
             },
             StrategyEntry {
                 strategy_id: crate::protocol::PromptStrategyId::sliding_window(),
                 name: "Sliding Window".to_owned(),
                 description: "Sliding window".to_owned(),
                 is_active: false,
+                theme: default_theme(),
             },
         ]);
         // Navigate to second entry.
@@ -575,6 +648,7 @@ mod tests {
                 is_available: true,
                 is_remote: false,
                 is_active: false,
+                theme: default_theme(),
             },
             PickerEntry {
                 provider_id: "b".to_owned(),
@@ -587,6 +661,7 @@ mod tests {
                 is_available: true,
                 is_remote: false,
                 is_active: false,
+                theme: default_theme(),
             },
         ]);
         state.provider.provider_picker.move_down(100);
@@ -619,6 +694,7 @@ mod tests {
                 is_available: true,
                 is_remote: false,
                 is_active: false,
+                theme: default_theme(),
             },
             PickerEntry {
                 provider_id: "b".to_owned(),
@@ -631,6 +707,7 @@ mod tests {
                 is_available: true,
                 is_remote: false,
                 is_active: false,
+                theme: default_theme(),
             },
         ]);
 
@@ -695,6 +772,7 @@ mod tests {
             category: "General".to_owned(),
             command: Intent::Quit,
             search_text: "q quit".to_owned(),
+            theme: state.frontend.theme.clone(),
         }];
         state.frontend.scope_stack.push(FocusScope::Input);
         state.frontend.scope_stack.push(FocusScope::Picker {
@@ -706,6 +784,86 @@ mod tests {
 
         // Then show_all is toggled to true.
         assert!(state.frontend.keymap_picker_show_all);
+        assert!(result.commands.is_empty());
+    }
+
+    // --- Theme picker tests ---
+
+    #[rstest::rstest]
+    fn open_theme_picker_saves_original_theme() {
+        // Given a state with a custom theme.
+        let mut state = AppState::default();
+        state.frontend.theme.focus_accent = Color::Red;
+
+        // When opening the theme picker.
+        let result = handle_open_picker(&mut state, PickerKind::Theme);
+
+        // Then the original theme is saved.
+        assert_eq!(
+            state
+                .frontend
+                .theme_preview_original
+                .as_ref()
+                .unwrap()
+                .focus_accent,
+            Color::Red
+        );
+        // And the picker has items (at least default).
+        assert!(!state.frontend.theme_picker.items().is_empty());
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn confirm_theme_persists_selection() {
+        // Given a state with theme picker open and default selected.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Theme,
+        });
+        use crate::feat::theme::{ThemeEntry, default_theme};
+        state.frontend.theme_picker.set_items(vec![ThemeEntry {
+            name: "default".to_owned(),
+            theme: default_theme(),
+        }]);
+
+        // When confirming the theme picker.
+        let (result, _maybe_intent) = handle_picker_confirm(&mut state);
+
+        // Then a SetTheme command is returned.
+        assert!(result.commands.iter().any(|c| matches!(
+            c,
+            Command::UpdatePreferences(UpdatePreferences {
+                updates
+            }) if updates.iter().any(|u| matches!(
+                u,
+                PreferenceUpdate::SetTheme(Some(name)) if name == "default"
+            ))
+        )));
+        // And the scope is popped.
+        assert!(!state.frontend.scope_stack.is_picker());
+    }
+
+    #[rstest::rstest]
+    fn escape_theme_picker_restores_original() {
+        // Given a state with theme picker open and a different theme previewed.
+        let mut state = AppState::default();
+        state.frontend.theme.focus_accent = Color::Red;
+        state.frontend.theme_preview_original = Some({
+            let mut original = default_theme();
+            original.focus_accent = Color::Yellow;
+            original
+        });
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Theme,
+        });
+
+        // When handling enter normal mode (ESC).
+        let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+        // Then the theme is restored to the original.
+        assert_eq!(state.frontend.theme.focus_accent, Color::Yellow);
+        // And preview original is cleared.
+        assert!(state.frontend.theme_preview_original.is_none());
         assert!(result.commands.is_empty());
     }
 }

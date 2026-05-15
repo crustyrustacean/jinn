@@ -1,0 +1,46 @@
+# Gruvbox Dark — sample theme for nullslop
+# Place in ~/.config/nullslop/themes/gruvbox-dark.toml
+
+# Borders & focus
+focus_accent = "#fe8019"       # orange
+border_unfocused = "#504945"   # dark gray
+
+# Text
+primary_text = "#ebdbb2"       # light cream
+muted_text = "#665c54"         # gray
+error_text = "#fb4934"         # red
+
+# Status
+success = "#b8bb26"            # green
+warning = "#fabd2f"            # yellow
+streaming = "#8ec07c"          # cyan-green
+
+# Chat log backgrounds
+gutter_bg = [29, 32, 33]
+user_block_bg = [50, 48, 47]
+tool_block_fg = [102, 92, 84]
+tool_success_bg = [40, 45, 38]
+tool_failure_bg = [52, 34, 34]
+truncation_fg = [73, 69, 64]
+
+# Picker
+picker_active_marker = "#b8bb26"
+picker_selected_bg = "#504945"
+picker_highlight_bg = "#504945"
+
+# Tab bar
+tab_active_fg = "#282828"
+tab_active_bg = "#fe8019"
+tab_inactive_fg = "#928374"
+
+# Selection highlight fallback
+selection_fg = "#282828"
+selection_bg = "#ebdbb2"
+
+# Provider picker
+accent_action = "#fe8019"
+age_fresh = "#b8bb26"
+age_stale = "#fb4934"
+
+# Scroll indicator
+scroll_indicator_bg = "#282828"

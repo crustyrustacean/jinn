@@ -9,7 +9,7 @@ use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse};
 
 /// Displays an animated streaming indicator when the active session is sending or streaming.
@@ -61,8 +61,8 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         let throbber = Throbber::default()
             .label(&label)
-            .style(Style::default().fg(Color::Cyan))
-            .throbber_style(Style::default().fg(Color::Cyan))
+            .style(Style::default().fg(state.frontend.theme.streaming))
+            .throbber_style(Style::default().fg(state.frontend.theme.streaming))
             .throbber_set(throbber_widgets_tui::ASCII)
             .use_type(WhichUse::Spin);
 

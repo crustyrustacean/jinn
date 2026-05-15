@@ -20,6 +20,8 @@ pub enum PickerKind {
     Session,
     /// Persona picker.
     Persona,
+    /// Theme picker.
+    Theme,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -30,6 +32,7 @@ impl std::fmt::Display for PickerKind {
             Self::Keymap => write!(f, "keybinds"),
             Self::Session => write!(f, "sessions"),
             Self::Persona => write!(f, "personas"),
+            Self::Theme => write!(f, "themes"),
         }
     }
 }

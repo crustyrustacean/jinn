@@ -40,6 +40,10 @@ pub struct UserPreferences {
     /// `None` means use the built-in default (5 lines).
     #[serde(default)]
     pub tool_result_max_lines: Option<u16>,
+    /// The name of the active theme. `None` or `"default"` uses the built-in theme.
+    /// Corresponds to a file in `~/.config/nullslop/themes/<name>.toml`.
+    #[serde(default)]
+    pub theme_name: Option<String>,
 }
 
 /// Returns the path to the user preferences file.
@@ -163,6 +167,7 @@ mod tests {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: Some("sliding_window".to_owned()),
             tool_result_max_lines: None,
+            theme_name: None,
         };
 
         // When saving and reloading.
@@ -222,6 +227,7 @@ last_strategy = "sliding_window""#,
             last_model: Some("test/model".to_owned()),
             last_strategy: None,
             tool_result_max_lines: None,
+            theme_name: None,
         };
 
         // When saving.
@@ -240,6 +246,7 @@ last_strategy = "sliding_window""#,
             last_model: None,
             last_strategy: None,
             tool_result_max_lines: Some(10),
+            theme_name: None,
         };
 
         // When saving and reloading.
