@@ -31,7 +31,8 @@ pub fn to_lines(
     lines.push(Line::from(Span::styled(name.to_owned(), style)));
 
     // Content lines.
-    let text = content.trim_start_matches('\n').to_owned();
+    let text = super::shared::unescape_newlines(content);
+    let text = text.trim_start_matches('\n');
     let all_lines: Vec<&str> = text.split('\n').collect();
 
     let show_all = ctx.is_expanded
@@ -170,5 +171,31 @@ mod tests {
             content_line.starts_with("output"),
             "second line should start with content"
         );
+    }
+
+    #[rstest::rstest]
+    fn tool_result_with_literal_newline_renders_multiple_lines() {
+        // Given a tool result with content containing literal \n.
+        let ctx = render_context(5, false);
+
+        // When converting to lines.
+        let lines = to_lines("bash", r#"line one\nline two\nline three"#, true, &ctx);
+
+        // Then the result has multiple lines (name + 3 content lines = 4).
+        assert_eq!(
+            lines.len(),
+            4,
+            "tool result with literal \\n should produce 4 lines, got {}",
+            lines.len()
+        );
+
+        // And no line contains the literal two-character \n.
+        for line in &lines {
+            let text: String = line.spans.iter().map(|s| s.content.clone()).collect();
+            assert!(
+                !text.contains("\\n"),
+                "line should not contain literal \\n, got: {text}"
+            );
+        }
     }
 }
