@@ -23,7 +23,7 @@ pub fn render_context_strategy_picker(frame: &mut Frame<'_>, area: Rect, state: 
         .find(|e| e.is_active)
         .map_or("unknown", |e| e.name.as_str());
 
-    let footer = strategy_entries::format_strategy_footer(active_name);
+    let footer = strategy_entries::format_strategy_footer(active_name, &state.frontend.theme);
     let widget = SelectionWidget::new(&state.frontend.context_strategy_picker)
         .title(Line::from(" Context Assembly Strategy "))
         .footer(footer);
@@ -58,9 +58,9 @@ pub fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
 /// horizontal separator, scrollable persona entries.
 pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let footer = {
-        use ratatui::style::{Color, Style};
+        use ratatui::style::Style;
         use ratatui::text::{Line, Span};
-        let gray = Style::default().fg(Color::DarkGray);
+        let gray = Style::default().fg(state.frontend.theme.muted_text);
         let active_name = state
             .context
             .active_persona
@@ -68,11 +68,25 @@ pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
             .map_or("none", |p| p.name.as_str());
         Line::from(vec![
             Span::styled("Active: ".to_owned(), gray),
-            Span::styled(active_name.to_owned(), Style::default().fg(Color::White)),
+            Span::styled(
+                active_name.to_owned(),
+                Style::default().fg(state.frontend.theme.primary_text),
+            ),
         ])
     };
     let widget = SelectionWidget::new(&state.frontend.persona_picker)
         .title(Line::from(" Personas "))
         .footer(footer);
+    widget.render(frame, area);
+}
+
+/// Renders the theme picker overlay using [`SelectionWidget`].
+///
+/// Telescope-style layout: bordered popup with filter input at top,
+/// horizontal separator, scrollable theme entries.
+pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let widget = SelectionWidget::new(&state.frontend.theme_picker)
+        .title(Line::from(" Themes "))
+        .footer(Line::from(" ESC to cancel, Enter to apply "));
     widget.render(frame, area);
 }

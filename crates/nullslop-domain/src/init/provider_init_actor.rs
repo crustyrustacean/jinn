@@ -164,6 +164,7 @@ mod tests {
                 last_model: Some("sample/sample".to_owned()),
                 last_strategy: None,
                 tool_result_max_lines: None,
+                theme_name: None,
             })
             .expect("save prefs");
 

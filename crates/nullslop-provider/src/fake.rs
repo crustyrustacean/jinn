@@ -728,12 +728,16 @@ mod tests {
 
         // Then the stream has no Text events, only tool events and Done(tool_use).
         assert!(!events.iter().any(|e| matches!(e, StreamEvent::Text(_))));
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, StreamEvent::ToolUseStart { .. })));
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, StreamEvent::ToolUseComplete { .. })));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::ToolUseStart { .. }))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::ToolUseComplete { .. }))
+        );
         assert_eq!(
             events.last(),
             Some(&StreamEvent::Done {
@@ -756,11 +760,8 @@ mod tests {
             name: "read_file".to_owned(),
             arguments: r#"{"path":"b.rs"}"#.to_owned(),
         };
-        let factory = FakeLlmServiceFactory::with_tool_loop(
-            vec![],
-            vec![tc1, tc2],
-            vec!["Done.".to_owned()],
-        );
+        let factory =
+            FakeLlmServiceFactory::with_tool_loop(vec![], vec![tc1, tc2], vec!["Done.".to_owned()]);
 
         // When creating a service and streaming with the trigger prompt.
         let service = factory.create().expect("create service");

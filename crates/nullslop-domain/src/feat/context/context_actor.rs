@@ -168,6 +168,7 @@ impl PromptAssemblyActor {
                 name: p.name.clone(),
                 description: p.description.clone(),
                 is_active: active_name.as_ref() == Some(&p.name),
+                theme: state.frontend.theme.clone(),
             })
             .collect();
         drop(state);

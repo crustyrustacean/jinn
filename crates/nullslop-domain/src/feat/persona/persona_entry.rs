@@ -2,9 +2,11 @@
 
 use std::ops::Range;
 
+use crate::feat::theme::Theme;
 use nullslop_selection_widget::PickerItem;
-use nullslop_selection_widget::highlight_text;
-use ratatui::style::{Color, Modifier, Style};
+use nullslop_selection_widget::highlight_text_with_bg;
+use ratatui::style::Modifier;
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 /// A persona entry ready for display in the picker.
@@ -16,6 +18,8 @@ pub struct PersonaEntry {
     pub description: String,
     /// Whether this is the currently active persona.
     pub is_active: bool,
+    /// Theme for rendering.
+    pub theme: Theme,
 }
 
 impl PickerItem for PersonaEntry {
@@ -30,6 +34,7 @@ impl PickerItem for PersonaEntry {
             self.is_active,
             is_selected,
             &[],
+            &self.theme,
         )
     }
 
@@ -44,6 +49,7 @@ impl PickerItem for PersonaEntry {
             self.is_active,
             is_selected,
             match_indices,
+            &self.theme,
         )
     }
 }
@@ -55,12 +61,13 @@ fn render_persona_row(
     is_active: bool,
     is_selected: bool,
     match_indices: &[Range<usize>],
+    theme: &Theme,
 ) -> Line<'static> {
     let active_marker = Span::styled(
         if is_active { "> " } else { "  " },
         if is_active {
             Style::default()
-                .fg(Color::Green)
+                .fg(theme.picker_active_marker)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
@@ -68,21 +75,26 @@ fn render_persona_row(
     );
 
     let name_style = if is_selected {
-        Style::default().fg(Color::White).bg(Color::DarkGray)
+        Style::default()
+            .fg(theme.primary_text)
+            .bg(theme.picker_selected_bg)
     } else {
         Style::default()
     };
 
     let desc_style = if is_selected {
-        Style::default().fg(Color::DarkGray).bg(Color::DarkGray)
+        Style::default()
+            .fg(theme.muted_text)
+            .bg(theme.picker_selected_bg)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(theme.muted_text)
     };
 
     let name_spans = if match_indices.is_empty() {
         vec![Span::styled(format!("{name}  "), name_style)]
     } else {
-        let mut spans = highlight_text(name, name_style, match_indices);
+        let mut spans =
+            highlight_text_with_bg(name, name_style, match_indices, theme.picker_highlight_bg);
         spans.push(Span::styled("  ".to_owned(), name_style));
         spans
     };
@@ -96,6 +108,11 @@ fn render_persona_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::feat::theme::default_theme;
+
+    fn theme() -> Theme {
+        default_theme()
+    }
 
     #[rstest::rstest]
     fn display_label_returns_name() {
@@ -104,6 +121,7 @@ mod tests {
             name: "coding-assistant".to_owned(),
             description: "Expert coder".to_owned(),
             is_active: true,
+            theme: theme(),
         };
 
         // When reading display_label.
@@ -118,6 +136,7 @@ mod tests {
             name: "coding-assistant".to_owned(),
             description: "Expert coder".to_owned(),
             is_active: false,
+            theme: theme(),
         };
 
         // When rendering a non-selected row.
@@ -134,6 +153,7 @@ mod tests {
             name: "coding-assistant".to_owned(),
             description: "Expert coder".to_owned(),
             is_active: true,
+            theme: theme(),
         };
 
         // When rendering.
@@ -150,6 +170,7 @@ mod tests {
             name: "coding-assistant".to_owned(),
             description: "Expert coder".to_owned(),
             is_active: false,
+            theme: theme(),
         };
 
         // When rendering.

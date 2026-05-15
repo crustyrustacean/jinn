@@ -7,7 +7,7 @@ use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -37,7 +37,10 @@ impl UiElement<AppState> for QueueDisplayElement {
                 } else {
                     format!("QUEUED: {first_line}")
                 };
-                Line::from(Span::styled(display, Style::default().fg(Color::DarkGray)))
+                Line::from(Span::styled(
+                    display,
+                    Style::default().fg(state.frontend.theme.muted_text),
+                ))
             })
             .collect();
 

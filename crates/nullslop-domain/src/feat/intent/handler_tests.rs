@@ -44,6 +44,7 @@ fn picker_confirm_keymap_sets_mode_and_signal() {
         category: "General".to_owned(),
         command: Intent::Quit,
         search_text: "q quit".to_owned(),
+        theme: state.frontend.theme.clone(),
     }]);
 
     // When handling PickerConfirm.
@@ -108,6 +109,7 @@ fn sidebar_picker_confirm_returns_to_sidebar() {
         is_available: true,
         is_remote: false,
         is_active: false,
+        theme: state.frontend.theme.clone(),
     }]);
     handle(&Intent::PickerConfirm, &mut state);
 
@@ -140,6 +142,7 @@ fn input_picker_confirm_returns_to_input() {
         is_available: true,
         is_remote: false,
         is_active: false,
+        theme: state.frontend.theme.clone(),
     }]);
     handle(&Intent::PickerConfirm, &mut state);
 

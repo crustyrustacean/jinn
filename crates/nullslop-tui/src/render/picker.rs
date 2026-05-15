@@ -15,6 +15,7 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
         Some(PickerKind::Keymap) => render_keymap_picker(frame, area, state),
         Some(PickerKind::Session) => render_session_picker(frame, area, state),
         Some(PickerKind::Persona) => render_persona_picker(frame, area, state),
+        Some(PickerKind::Theme) => render_theme_picker(frame, area, state),
         None => {}
     }
 }
@@ -42,6 +43,11 @@ fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 /// Renders the persona picker overlay (delegates to domain render).
 fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     nullslop_domain::feat::picker::render::render_persona_picker(frame, area, state);
+}
+
+/// Renders the theme picker overlay (delegates to domain render).
+fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    nullslop_domain::feat::picker::render::render_theme_picker(frame, area, state);
 }
 
 #[cfg(test)]

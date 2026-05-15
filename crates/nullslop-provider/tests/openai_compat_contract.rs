@@ -346,9 +346,7 @@ async fn custom_headers_from_config_are_sent() {
         default_base_url: "https://example.com/v1/",
         chat_endpoint: "chat/completions",
         models_endpoint: "models",
-        custom_headers: vec![
-            ("X-Custom-Header".to_owned(), "custom-value".to_owned()),
-        ],
+        custom_headers: vec![("X-Custom-Header".to_owned(), "custom-value".to_owned())],
     };
 
     let factory = OpenAiCompatibleFactory::new(
@@ -380,6 +378,5 @@ async fn custom_headers_from_config_are_sent() {
         .await
         .unwrap();
 
-    let _events: Vec<StreamEvent> =
-        stream.filter_map(|r| async move { r.ok() }).collect().await;
+    let _events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 }

@@ -81,7 +81,9 @@ mod tests {
 
     #[rstest::rstest]
     fn system_message_roundtrips() {
-        let msg = LlmMessage::System { content: "You are helpful.".to_owned() };
+        let msg = LlmMessage::System {
+            content: "You are helpful.".to_owned(),
+        };
         let json = serde_json::to_string(&msg).expect("serialize");
         let back: LlmMessage = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, msg);

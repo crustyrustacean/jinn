@@ -2,9 +2,10 @@
 
 use std::ops::Range;
 
+use crate::feat::theme::Theme;
 use crate::protocol::Intent;
-use nullslop_selection_widget::PICKER_HIGHLIGHT_STYLE;
 use nullslop_selection_widget::PickerItem;
+use nullslop_selection_widget::highlight_style;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
@@ -24,6 +25,8 @@ pub struct KeymapEntry {
     /// Pre-computed searchable text combining key sequence and description.
     /// Used by fuzzy matching so users can search by either keys or description.
     pub search_text: String,
+    /// Theme for rendering.
+    pub theme: Theme,
 }
 
 impl PickerItem for KeymapEntry {
@@ -39,6 +42,7 @@ impl PickerItem for KeymapEntry {
             &self.category,
             is_selected,
             &[],
+            &self.theme,
         )
     }
 
@@ -54,6 +58,7 @@ impl PickerItem for KeymapEntry {
             &self.category,
             is_selected,
             match_indices,
+            &self.theme,
         )
     }
 }
@@ -66,21 +71,22 @@ fn render_keymap_row(
     category: &str,
     is_selected: bool,
     match_indices: &[Range<usize>],
+    theme: &Theme,
 ) -> Line<'static> {
     let sel_bg = if is_selected {
-        Color::DarkGray
+        theme.picker_selected_bg
     } else {
         Color::Reset
     };
 
     let key_style = Style::default()
-        .fg(Color::Yellow)
+        .fg(theme.focus_accent)
         .bg(sel_bg)
         .add_modifier(Modifier::BOLD);
 
-    let desc_style = Style::default().fg(Color::White).bg(sel_bg);
+    let desc_style = Style::default().fg(theme.primary_text).bg(sel_bg);
 
-    let meta_style = Style::default().fg(Color::DarkGray).bg(sel_bg);
+    let meta_style = Style::default().fg(theme.muted_text).bg(sel_bg);
 
     let key_display = if key_sequence.len() < 8 {
         format!("{key_sequence:<8}")
@@ -97,6 +103,7 @@ fn render_keymap_row(
         0,
         0..key_len,
         key_sequence.len(),
+        theme.picker_highlight_bg,
     );
     let key_trailing = Span::styled("  ", key_style);
 
@@ -109,6 +116,7 @@ fn render_keymap_row(
         0,
         desc_offset..desc_offset + desc_len,
         description.len(),
+        theme.picker_highlight_bg,
     );
     let desc_trailing = Span::styled("  ", desc_style);
 
@@ -139,12 +147,13 @@ fn highlight_text_segment(
     _rendered_offset: usize,
     search_range: Range<usize>,
     searchable_len: usize,
+    highlight_bg: Color,
 ) -> Vec<Span<'static>> {
     if match_indices.is_empty() || searchable_len == 0 {
         return vec![Span::styled(text.to_owned(), base_style)];
     }
 
-    let highlight_style = base_style.patch(PICKER_HIGHLIGHT_STYLE);
+    let highlight_style = base_style.patch(highlight_style(highlight_bg));
 
     let mut spans = Vec::new();
     let mut current_start = 0;

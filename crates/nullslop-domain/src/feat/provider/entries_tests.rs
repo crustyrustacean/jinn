@@ -1,4 +1,5 @@
 use crate::feat::provider_infra::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
+use crate::feat::theme::default_theme;
 use nullslop_selection_widget::PickerItem;
 use ratatui::style::Color;
 use std::ops::Range;
@@ -48,7 +49,7 @@ fn load_two_providers() -> Vec<PickerEntry> {
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let mut api_keys = ApiKeys::new();
     api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
-    load_provider_entries(&registry, &api_keys, None)
+    load_provider_entries(&registry, &api_keys, None, &default_theme())
 }
 
 #[rstest::rstest]
@@ -89,7 +90,7 @@ fn load_provider_entries_marks_key_required_unavailable_when_key_missing() {
     let api_keys = ApiKeys::new();
 
     // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, None);
+    let entries = load_provider_entries(&registry, &api_keys, None, &default_theme());
 
     // Then the provider is marked unavailable.
     assert_eq!(entries.len(), 1);
@@ -105,7 +106,7 @@ fn load_provider_entries_marks_key_required_available_when_key_present() {
     api_keys.insert("OPENROUTER_API_KEY".to_owned(), "sk-test".to_owned());
 
     // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, None);
+    let entries = load_provider_entries(&registry, &api_keys, None, &default_theme());
 
     // Then the provider is marked available.
     assert_eq!(entries.len(), 1);
@@ -120,7 +121,7 @@ fn load_provider_entries_marks_keyless_always_available() {
     let api_keys = ApiKeys::new();
 
     // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, None);
+    let entries = load_provider_entries(&registry, &api_keys, None, &default_theme());
 
     // Then the keyless provider is always available.
     assert_eq!(entries.len(), 1);
@@ -139,7 +140,7 @@ fn load_entries_with_alias() -> (Vec<PickerEntry>, PickerEntry) {
     );
     let registry = ProviderRegistry::from_config(config).expect("registry");
     let api_keys = ApiKeys::new();
-    let entries = load_provider_entries(&registry, &api_keys, None);
+    let entries = load_provider_entries(&registry, &api_keys, None, &default_theme());
     let alias = entries
         .iter()
         .find(|e| e.is_alias)
@@ -203,7 +204,7 @@ fn load_provider_entries_alias_inherits_availability() {
     let api_keys = ApiKeys::new(); // No keys — openrouter is unavailable.
 
     // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, None);
+    let entries = load_provider_entries(&registry, &api_keys, None, &default_theme());
 
     // Then the "fast" alias (→ollama) is available and "cloud" alias (→openrouter) is not.
     let fast = entries.iter().find(|e| e.name == "fast").expect("fast");
@@ -228,7 +229,7 @@ fn static_entries_present_after_cache_merge() {
         .insert("ollama".to_owned(), vec!["mistral".to_owned()]);
 
     // When loading provider entries with the cache.
-    let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
+    let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
 
     // Then the static entry is present.
     assert_eq!(entries.len(), 2);
@@ -253,7 +254,7 @@ fn remote_entries_present_after_cache_merge() {
         .insert("ollama".to_owned(), vec!["mistral".to_owned()]);
 
     // When loading provider entries with the cache.
-    let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
+    let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
 
     // Then the remote entry is present with correct metadata.
     let remote_entry = entries
@@ -280,7 +281,7 @@ fn static_entry_not_duplicated_on_collision() {
     );
 
     // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
+    let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
 
     // Then the static entry is kept (not duplicated).
     let llama3_entries: Vec<_> = entries.iter().filter(|e| e.model == "llama3").collect();
@@ -303,7 +304,7 @@ fn new_remote_entry_added_on_collision() {
     );
 
     // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
+    let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
 
     // Then only the new remote model is added.
     let mistral_entries: Vec<_> = entries.iter().filter(|e| e.model == "mistral").collect();
@@ -325,7 +326,7 @@ fn remote_entry_present_when_key_missing() {
         .insert("openrouter".to_owned(), vec!["claude-3".to_owned()]);
 
     // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
+    let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
 
     // Then the remote model is present.
     let remote = entries
@@ -349,7 +350,7 @@ fn remote_entry_marked_unavailable_when_key_missing() {
         .insert("openrouter".to_owned(), vec!["claude-3".to_owned()]);
 
     // When loading provider entries.
-    let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
+    let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
 
     // Then the remote model is marked unavailable (no API key).
     let remote = entries
@@ -373,7 +374,7 @@ fn load_provider_entries_includes_all_remote_models() {
     );
 
     // When loading entries (no filter — returns everything).
-    let entries = load_provider_entries(&registry, &api_keys, Some(&cache));
+    let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
 
     // Then all 3 entries are present (1 static + 2 remote).
     assert_eq!(entries.len(), 3);
@@ -396,6 +397,7 @@ fn active_provider_promoted_to_first() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
         PickerEntry {
             provider_id: "b/model".into(),
@@ -408,6 +410,7 @@ fn active_provider_promoted_to_first() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
         PickerEntry {
             provider_id: "c/model".into(),
@@ -420,6 +423,7 @@ fn active_provider_promoted_to_first() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
     ];
 
@@ -447,6 +451,7 @@ fn active_entry_marked_active() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
         PickerEntry {
             provider_id: "b/model".into(),
@@ -459,6 +464,7 @@ fn active_entry_marked_active() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
         PickerEntry {
             provider_id: "c/model".into(),
@@ -471,6 +477,7 @@ fn active_entry_marked_active() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
     ];
 
@@ -498,6 +505,7 @@ fn sorted_entries_preserves_order_when_filtering() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
         PickerEntry {
             provider_id: "b/model".into(),
@@ -510,6 +518,7 @@ fn sorted_entries_preserves_order_when_filtering() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
     ];
 
@@ -536,6 +545,7 @@ fn available_entry_comes_first() {
             is_available: false,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
         PickerEntry {
             provider_id: "a/model".into(),
@@ -548,6 +558,7 @@ fn available_entry_comes_first() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
         PickerEntry {
             provider_id: "b/model".into(),
@@ -560,6 +571,7 @@ fn available_entry_comes_first() {
             is_available: false,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
     ];
 
@@ -587,6 +599,7 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
         PickerEntry {
             provider_id: "b/alpha".into(),
@@ -599,6 +612,7 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         },
     ];
 
@@ -616,7 +630,7 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
 fn format_footer_without_timestamp_shows_never() {
     // Given no last_refreshed_at timestamp.
     // When formatting the footer.
-    let line = format_footer(None, 80);
+    let line = format_footer(None, 80, &default_theme());
 
     // Then the footer contains "Updated never".
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
@@ -632,7 +646,7 @@ fn format_footer_with_timestamp_shows_age() {
         .unwrap();
 
     // When formatting the footer.
-    let line = format_footer(Some(&ts), 120);
+    let line = format_footer(Some(&ts), 120, &default_theme());
 
     // Then the footer contains "Updated" and "ago".
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
@@ -645,7 +659,7 @@ fn format_footer_with_timestamp_shows_age() {
 fn format_footer_truncates_to_width() {
     // Given no timestamp and a very narrow width.
     // When formatting the footer with width 10.
-    let line = format_footer(None, 10);
+    let line = format_footer(None, 10, &default_theme());
 
     // Then the total character count fits within 10.
     let total_len: usize = line.spans.iter().map(|s| s.content.chars().count()).sum();
@@ -656,7 +670,7 @@ fn format_footer_truncates_to_width() {
 fn age_color_returns_light_green_within_two_weeks() {
     // Given 1 second (well within 2 weeks).
     // When computing age color.
-    let color = age_color(1);
+    let color = age_color(1, &default_theme());
 
     // Then the color is LightGreen.
     assert_eq!(color, ratatui::style::Color::LightGreen);
@@ -668,7 +682,7 @@ fn age_color_returns_light_green_at_exactly_two_weeks() {
     let two_weeks = 14 * 24 * 60 * 60;
 
     // When computing age color.
-    let color = age_color(two_weeks);
+    let color = age_color(two_weeks, &default_theme());
 
     // Then the color is LightGreen.
     assert_eq!(color, ratatui::style::Color::LightGreen);
@@ -680,7 +694,7 @@ fn age_color_returns_yellow_between_two_and_four_weeks() {
     let three_weeks = 21 * 24 * 60 * 60;
 
     // When computing age color.
-    let color = age_color(three_weeks);
+    let color = age_color(three_weeks, &default_theme());
 
     // Then the color is Yellow.
     assert_eq!(color, ratatui::style::Color::Yellow);
@@ -692,7 +706,7 @@ fn age_color_returns_yellow_at_exactly_four_weeks() {
     let four_weeks = 28 * 24 * 60 * 60;
 
     // When computing age color.
-    let color = age_color(four_weeks);
+    let color = age_color(four_weeks, &default_theme());
 
     // Then the color is Yellow.
     assert_eq!(color, ratatui::style::Color::Yellow);
@@ -704,7 +718,7 @@ fn age_color_returns_red_beyond_four_weeks() {
     let five_weeks = 35 * 24 * 60 * 60;
 
     // When computing age color.
-    let color = age_color(five_weeks);
+    let color = age_color(five_weeks, &default_theme());
 
     // Then the color is Red.
     assert_eq!(color, ratatui::style::Color::Red);
@@ -823,6 +837,7 @@ fn make_picker_entry(
         is_available,
         is_remote: false,
         is_active: false,
+        theme: default_theme(),
     }
 }
 

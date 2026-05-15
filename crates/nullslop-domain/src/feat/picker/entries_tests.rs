@@ -1,3 +1,4 @@
+use crate::feat::theme::default_theme;
 use crate::protocol::{PromptStrategyId, StrategyEntry};
 use nullslop_selection_widget::PickerItem as _;
 use std::ops::Range;
@@ -9,6 +10,7 @@ fn make_entry(id: &str, name: &str, description: &str, is_active: bool) -> Strat
         name: name.to_owned(),
         description: description.to_owned(),
         is_active,
+        theme: default_theme(),
     }
 }
 
@@ -52,14 +54,22 @@ fn render_row_selected_has_background() {
 #[rstest::rstest]
 fn load_strategy_entries_returns_all_strategies() {
     let services = crate::common::services::Services::new();
-    let entries = load_strategy_entries(&services, &PromptStrategyId::passthrough());
+    let entries = load_strategy_entries(
+        &services,
+        &PromptStrategyId::passthrough(),
+        &default_theme(),
+    );
     assert_eq!(entries.len(), 4);
 }
 
 #[rstest::rstest]
 fn load_strategy_entries_marks_active() {
     let services = crate::common::services::Services::new();
-    let entries = load_strategy_entries(&services, &PromptStrategyId::passthrough());
+    let entries = load_strategy_entries(
+        &services,
+        &PromptStrategyId::passthrough(),
+        &default_theme(),
+    );
     let active_count = entries.iter().filter(|e| e.is_active).count();
     assert_eq!(active_count, 1);
     let active = entries.iter().find(|e| e.is_active).expect("active entry");
@@ -69,7 +79,11 @@ fn load_strategy_entries_marks_active() {
 #[rstest::rstest]
 fn load_strategy_entries_marks_active_with_non_default() {
     let services = crate::common::services::Services::new();
-    let entries = load_strategy_entries(&services, &PromptStrategyId::sliding_window());
+    let entries = load_strategy_entries(
+        &services,
+        &PromptStrategyId::sliding_window(),
+        &default_theme(),
+    );
     let active = entries.iter().find(|e| e.is_active).expect("active entry");
     assert_eq!(active.strategy_id, PromptStrategyId::sliding_window());
     assert_eq!(active.name, "Sliding Window");
@@ -118,7 +132,7 @@ fn sorted_strategy_entries_no_change_when_first_is_active() {
 
 #[rstest::rstest]
 fn format_strategy_footer_contains_label_and_name() {
-    let line = format_strategy_footer("Sliding Window");
+    let line = format_strategy_footer("Sliding Window", &default_theme());
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
     assert!(text.contains("Current: "));
     assert!(text.contains("Sliding Window"));
@@ -126,14 +140,14 @@ fn format_strategy_footer_contains_label_and_name() {
 
 #[rstest::rstest]
 fn format_strategy_footer_label_is_dark_gray() {
-    let line = format_strategy_footer("Passthrough");
+    let line = format_strategy_footer("Passthrough", &default_theme());
     let label_span = &line.spans[0];
     assert_eq!(label_span.style.fg, Some(ratatui::style::Color::DarkGray));
 }
 
 #[rstest::rstest]
 fn format_strategy_footer_name_is_white() {
-    let line = format_strategy_footer("Passthrough");
+    let line = format_strategy_footer("Passthrough", &default_theme());
     let name_span = &line.spans[1];
     assert_eq!(name_span.style.fg, Some(ratatui::style::Color::White));
 }

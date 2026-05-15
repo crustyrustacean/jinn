@@ -225,15 +225,19 @@ impl TuiApp {
             ) {
                 let scope = *self.which_key.scope();
                 let intent_entries = if state.frontend.keymap_picker_show_all {
-                    keymap::collect_all_bindings(self.which_key.keymap())
+                    keymap::collect_all_bindings(self.which_key.keymap(), &state.frontend.theme)
                 } else {
-                    keymap::collect_bindings_for_scope(self.which_key.keymap(), &scope)
+                    keymap::collect_bindings_for_scope(
+                        self.which_key.keymap(),
+                        &scope,
+                        &state.frontend.theme,
+                    )
                 };
                 // Entries now carry Intent directly — store them in AppState.
                 state.frontend.keymap_picker.set_items(intent_entries);
                 // Also populate all_keymap_entries for scope toggle.
                 state.frontend.all_keymap_entries =
-                    keymap::collect_all_bindings(self.which_key.keymap());
+                    keymap::collect_all_bindings(self.which_key.keymap(), &state.frontend.theme);
             }
 
             // Cancel selection when mode changes away from Picker.

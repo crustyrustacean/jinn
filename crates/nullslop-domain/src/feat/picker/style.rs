@@ -1,15 +1,16 @@
 //! Shared style helpers for picker entry rendering.
 
-use ratatui::style::{Color, Modifier, Style};
+use crate::feat::theme::Theme;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 /// Renders the active-item marker: `> ` when active, `  ` when not.
-pub fn active_marker(is_active: bool) -> Span<'static> {
+pub fn active_marker(is_active: bool, theme: &Theme) -> Span<'static> {
     Span::styled(
         if is_active { "> " } else { "  " },
         if is_active {
             Style::default()
-                .fg(Color::Green)
+                .fg(theme.picker_active_marker)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
@@ -17,30 +18,35 @@ pub fn active_marker(is_active: bool) -> Span<'static> {
     )
 }
 
-/// Returns the style for selected items (white text on dark gray background).
-pub fn selected_style(is_selected: bool) -> Style {
+/// Returns the style for selected items (primary text on selected background).
+pub fn selected_style(is_selected: bool, theme: &Theme) -> Style {
     if is_selected {
-        Style::default().fg(Color::White).bg(Color::DarkGray)
+        Style::default()
+            .fg(theme.primary_text)
+            .bg(theme.picker_selected_bg)
     } else {
         Style::default()
     }
 }
 
-/// Returns a dimmed style for description text. When selected, uses dark gray on dark gray.
-pub fn dim_style(is_selected: bool) -> Style {
+/// Returns a dimmed style for description text. When selected, uses muted text
+/// on the selected background.
+pub fn dim_style(is_selected: bool, theme: &Theme) -> Style {
     if is_selected {
-        Style::default().fg(Color::DarkGray).bg(Color::DarkGray)
+        Style::default()
+            .fg(theme.muted_text)
+            .bg(theme.picker_selected_bg)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(theme.muted_text)
     }
 }
 
-/// Builds a footer line with a dark-gray label and white value.
-pub fn labeled_footer(label: &str, value: &str) -> Line<'static> {
-    let gray = Style::default().fg(Color::DarkGray);
+/// Builds a footer line with a muted label and primary text value.
+pub fn labeled_footer(label: &str, value: &str, theme: &Theme) -> Line<'static> {
+    let gray = Style::default().fg(theme.muted_text);
     Line::from(vec![
         Span::styled(format!("{label}: "), gray),
-        Span::styled(value.to_owned(), Style::default().fg(Color::White)),
+        Span::styled(value.to_owned(), Style::default().fg(theme.primary_text)),
     ])
 }
 

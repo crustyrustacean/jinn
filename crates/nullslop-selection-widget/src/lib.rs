@@ -15,11 +15,13 @@ pub mod state;
 mod state_tests;
 pub mod widget;
 
-pub use highlight::{PICKER_HIGHLIGHT_STYLE, highlight_text};
+pub use highlight::{
+    PICKER_HIGHLIGHT_STYLE, highlight_style, highlight_text, highlight_text_with_bg,
+};
 pub use item::{MatchRanges, PickerItem};
 pub use picker_ops::PickerOps;
 pub use state::SelectionState;
 pub use widget::{
-    PICKER_H_PAD_FRAC, PICKER_MAX_HEIGHT_FRAC, PICKER_MIN_WIDTH, SelectionWidget,
+    PICKER_H_PAD_FRAC, PICKER_MAX_HEIGHT_FRAC, PICKER_MIN_WIDTH, SelectionColors, SelectionWidget,
     compute_popup_rect,
 };

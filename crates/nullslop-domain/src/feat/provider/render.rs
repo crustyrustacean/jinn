@@ -15,6 +15,7 @@ pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &AppStat
     let footer = entries::format_footer(
         state.provider.last_refreshed_at.as_ref(),
         area.width as usize,
+        &state.frontend.theme,
     );
     let widget = SelectionWidget::new(&state.provider.provider_picker)
         .title(ratatui::text::Line::from(" Model "))

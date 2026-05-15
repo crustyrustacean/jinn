@@ -8,6 +8,7 @@ use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
 use nullslop_domain::Intent;
 use nullslop_domain::PickerKind;
+use nullslop_domain::feat::theme::Theme;
 use nullslop_domain::{Key, KeyEvent, TabDirection};
 use ratatui_which_key::CrosstermKeymapExt as _;
 use ratatui_which_key::Key as WhichKeyKey;
@@ -55,6 +56,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>sm", Intent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
             .bind("<leader>ss", Intent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
             .bind("<leader>sp", Intent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
+            .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             // Input — enter input mode
             .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
             // Navigation — scrolling and tab switching
@@ -203,9 +205,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
 pub fn collect_bindings_for_scope(
     keymap: &Keymap<KeyEvent, Scope, Intent, KeyCategory>,
     scope: &Scope,
+    theme: &Theme,
 ) -> Vec<nullslop_domain::KeymapEntry> {
     let mut entries = Vec::new();
-    collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries);
+    collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries, theme);
     entries
 }
 
@@ -214,6 +217,7 @@ pub fn collect_bindings_for_scope(
 /// Iterates over all known scopes and collects entries from each one.
 pub fn collect_all_bindings(
     keymap: &Keymap<KeyEvent, Scope, Intent, KeyCategory>,
+    theme: &Theme,
 ) -> Vec<nullslop_domain::KeymapEntry> {
     let mut entries = Vec::new();
     for scope in &[
@@ -223,7 +227,7 @@ pub fn collect_all_bindings(
         Scope::Picker,
         Scope::Input,
     ] {
-        collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries);
+        collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries, theme);
     }
     entries
 }
@@ -239,6 +243,7 @@ fn collect_leaf_bindings(
     scope: Scope,
     prefix: &str,
     out: &mut Vec<nullslop_domain::KeymapEntry>,
+    theme: &Theme,
 ) {
     for child in children {
         let key_display = WhichKeyKey::display(&child.key);
@@ -259,6 +264,7 @@ fn collect_leaf_bindings(
                             category: entry.category.to_string(),
                             command: entry.action.clone(),
                             search_text: format!("{} {}", full_sequence, entry.description),
+                            theme: theme.clone(),
                         });
                     }
                 }
@@ -282,12 +288,13 @@ fn collect_leaf_bindings(
                             category: cat.to_string(),
                             command: entry.action.clone(),
                             search_text: format!("{} {}", full_sequence, entry.description),
+                            theme: theme.clone(),
                         });
                     }
                 }
 
                 // Recurse into children.
-                collect_leaf_bindings(branch_children, scope, &full_sequence, out);
+                collect_leaf_bindings(branch_children, scope, &full_sequence, out, theme);
             }
         }
     }

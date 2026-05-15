@@ -1,7 +1,7 @@
 //! Table entry rendering — aligned columns with bold headers.
 
 use crate::protocol::TableData;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use super::shared::{RenderContext, unicode_segementation_display_width};
@@ -12,12 +12,12 @@ use super::shared::{RenderContext, unicode_segementation_display_width};
 /// - A bold header line
 /// - A separator line
 /// - Styled data rows with per-cell coloring
-pub fn to_lines(data: &TableData, _ctx: &RenderContext) -> Vec<Line<'static>> {
+pub fn to_lines(data: &TableData, ctx: &RenderContext) -> Vec<Line<'static>> {
     let num_cols = data.headers.len();
     if num_cols == 0 {
         return vec![Line::from(Span::styled(
             "(empty table)",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ctx.theme.muted_text),
         ))];
     }
 
@@ -52,7 +52,7 @@ pub fn to_lines(data: &TableData, _ctx: &RenderContext) -> Vec<Line<'static>> {
     let sep_text = sep_parts.join("─┼─");
     lines.push(Line::from(Span::styled(
         sep_text,
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(ctx.theme.muted_text),
     )));
 
     // Data rows.
@@ -100,7 +100,7 @@ fn build_row_spans(
 mod tests {
     use super::*;
     use crate::feat::ui::chat_log::shared::RenderContext;
-    use ratatui::style::Modifier;
+    use ratatui::style::{Color, Modifier};
 
     fn render_context() -> RenderContext {
         RenderContext {
@@ -109,6 +109,7 @@ mod tests {
             is_pinned: false,
             is_expanded: false,
             tool_result_max_lines: 5,
+            theme: crate::feat::theme::default_theme(),
         }
     }
 
