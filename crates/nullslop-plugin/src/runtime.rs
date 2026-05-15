@@ -316,4 +316,60 @@ mod tests {
         let text = last_update.lock().unwrap().clone();
         assert_eq!(text, "Turns: 3");
     }
+
+    #[rstest::rstest]
+    fn on_event_skips_intermediate_assistant_in_tool_loop() {
+        // Given the turn counter plugin initialized.
+        let path = std::path::PathBuf::from("../../plugins/turn-counter/main.rhai");
+        if !path.exists() {
+            return;
+        }
+
+        let last_update = Arc::new(Mutex::new(String::new()));
+        let last_update_clone = last_update.clone();
+
+        let callbacks = Arc::new(HostCallbacks {
+            subscribe_events: Arc::new(|_, _| {}),
+            emit_event: Arc::new(|_, _| {}),
+            upsert_slot: Arc::new(|_| {}),
+            update_slot: Arc::new(move |_, _, text: &str| {
+                *last_update_clone.lock().unwrap() = text.to_owned();
+            }),
+            get_entries: Arc::new(|| {
+                // Simulate a tool loop:
+                //   user -> assistant (intermediate) -> tool_call -> tool_result -> assistant (final)
+                // The intermediate assistant should NOT count as a separate turn.
+                let entries: Vec<(&str, &str)> = vec![
+                    ("user", "fix the bug"),
+                    ("assistant", "let me look at the code"),
+                    ("tool_call", "read_file"),
+                    ("tool_result", "file contents here"),
+                    ("assistant", "I've fixed the bug."),
+                ];
+                entries
+                    .into_iter()
+                    .map(|(kind, text)| {
+                        let mut map = rhai::Map::new();
+                        map.insert("kind".into(), kind.into());
+                        map.insert("text".into(), text.into());
+                        map
+                    })
+                    .collect()
+            }),
+            send_command: Arc::new(|_, _| {}),
+        });
+
+        let mut runtime =
+            PluginRuntime::load(PluginId::new("turn-counter"), &path, callbacks).expect("load");
+        runtime.call_init().expect("init");
+
+        // When calling on_event.
+        let mut event = rhai::Map::new();
+        event.insert("type".into(), "provider::StreamCompleted".into());
+        runtime.call_on_event(event).expect("on_event");
+
+        // Then the count is 2 (1 user + 1 final assistant; intermediate assistant skipped).
+        let text = last_update.lock().unwrap().clone();
+        assert_eq!(text, "Turns: 2");
+    }
 }
