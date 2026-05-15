@@ -104,6 +104,7 @@ impl App {
                 );
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
+                load_theme(&core.state);
 
                 // Resolve mouse selection config from environment.
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
@@ -153,6 +154,7 @@ impl App {
                 );
                 ensure_prompt_example();
                 load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
+                load_theme(&core.state);
                 let mut headless = HeadlessApp::new(core, actor_host, self.handle());
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
@@ -212,6 +214,23 @@ fn load_prompt_templates(state: &State, path: &Path) {
     });
     tracing::info!(count = store.len(), "loaded prompt templates");
     state.write().context.prompt_templates = store;
+}
+
+/// Loads the theme from user preferences into the application state.
+///
+/// Called once after core creation. If the preferred theme cannot be loaded,
+/// falls back to the default theme. Failures are logged but not fatal.
+fn load_theme(state: &State) {
+    let theme_name = state.read().frontend.preferences.theme_name.clone();
+    match nullslop_domain::feat::theme::resolve_theme(theme_name.as_deref()) {
+        Ok(theme) => {
+            tracing::info!(theme = ?theme_name, "loaded theme");
+            state.write().frontend.theme = theme;
+        }
+        Err(e) => {
+            tracing::warn!(err = ?e, "failed to load theme, using default");
+        }
+    }
 }
 
 #[cfg(test)]

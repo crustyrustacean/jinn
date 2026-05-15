@@ -24,6 +24,7 @@ use crate::feat::persona::PersonaEntry;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::skills::Skill;
+use crate::feat::theme::Theme;
 pub use crate::feat::ui::sidebar::pins::state::PinsState;
 use crate::feat::ui::sidebar::state::SidebarState;
 use crate::feat::ui::status_bar::PluginSlotRegistry;
@@ -327,6 +328,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (push/pop on scope transitions).
     pub scope_stack: ScopeStack,
 
+    /// The current resolved theme (colors for the render pipeline).
+    /// OWNER: IntentHandler (theme picker preview), PreferencesStateSyncActor (on prefs change).
+    pub theme: Theme,
+
     /// Whether the "Press ESC again to cancel" prompt is showing.
     /// OWNER: IntentHandler (set on first ESC in Normal/Sidebar with active stream,
     ///         consumed on second ESC or dismissed on any other key).
@@ -351,6 +356,7 @@ impl Default for FrontendState {
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
             scope_stack: ScopeStack::default(),
+            theme: crate::feat::theme::default_theme(),
             cancel_stream_prompt: false,
         }
     }

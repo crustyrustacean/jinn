@@ -109,6 +109,7 @@ mod tests {
             is_pinned: false,
             is_expanded: false,
             tool_result_max_lines: 5,
+            theme: crate::feat::theme::default_theme(),
         }
     }
 

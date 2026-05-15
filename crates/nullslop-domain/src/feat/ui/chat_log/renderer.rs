@@ -103,6 +103,7 @@ impl UiElement<AppState> for ChatLogElement {
                 is_pinned: entry.pin_position.is_some(),
                 is_expanded,
                 tool_result_max_lines: max_lines,
+                theme: state.frontend.theme.clone(),
             };
 
             let entry_content_lines = entry_to_lines(entry, &ctx);
