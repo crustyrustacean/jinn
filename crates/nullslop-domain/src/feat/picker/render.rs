@@ -79,3 +79,14 @@ pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
         .footer(footer);
     widget.render(frame, area);
 }
+
+/// Renders the theme picker overlay using [`SelectionWidget`].
+///
+/// Telescope-style layout: bordered popup with filter input at top,
+/// horizontal separator, scrollable theme entries.
+pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let widget = SelectionWidget::new(&state.frontend.theme_picker)
+        .title(Line::from(" Themes "))
+        .footer(Line::from(" ESC to cancel, Enter to apply "));
+    widget.render(frame, area);
+}

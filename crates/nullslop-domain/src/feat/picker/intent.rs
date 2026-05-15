@@ -49,6 +49,13 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Persona => {
             state.frontend.persona_picker.reset();
         }
+        PickerKind::Theme => {
+            state.frontend.theme_picker.reset();
+            // Save current theme so ESC can restore it.
+            state.frontend.theme_preview_original = Some(state.frontend.theme.clone());
+            // Load discovered themes as entries.
+            load_theme_picker_entries(state);
+        }
     }
 
     match kind {
@@ -73,6 +80,44 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             )])
         }
         PickerKind::Keymap => IntentResult::empty(),
+        PickerKind::Theme => IntentResult::empty(),
+    }
+}
+
+/// Loads discovered themes into the theme picker.
+fn load_theme_picker_entries(state: &mut AppState) {
+    use crate::feat::theme::ThemeEntry;
+
+    let mut entries = Vec::new();
+
+    // Always include the default (built-in) theme.
+    entries.push(ThemeEntry {
+        name: "default".to_owned(),
+        theme: crate::feat::theme::default_theme(),
+    });
+
+    // Add discovered theme files.
+    if let Ok(discovered) = crate::feat::theme::discover_themes() {
+        for (name, _path) in discovered {
+            if name == "default" {
+                continue; // skip duplicate
+            }
+            if let Ok(theme) = crate::feat::theme::load_theme(&name) {
+                entries.push(ThemeEntry { name, theme });
+            }
+        }
+    }
+
+    state.frontend.theme_picker.set_items(entries);
+}
+
+/// Previews the selected theme in real-time when the Theme picker is active.
+fn preview_theme_if_active(state: &mut AppState) {
+    if state.frontend.scope_stack.picker_kind() != Some(&PickerKind::Theme) {
+        return;
+    }
+    if let Some(entry) = state.frontend.theme_picker.selected_item() {
+        state.frontend.theme = entry.theme.clone();
     }
 }
 
@@ -110,6 +155,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Keymap) => confirm_keymap(state),
         Some(PickerKind::Session) => (confirm_session(state), None),
         Some(PickerKind::Persona) => (confirm_persona(state), None),
+        Some(PickerKind::Theme) => (confirm_theme(state), None),
         None => (IntentResult::empty(), None),
     }
 }
@@ -120,6 +166,7 @@ pub fn handle_move_up(state: &mut AppState) -> IntentResult {
     if let Some(picker) = state.active_picker_ops() {
         picker.move_up(PICKER_MAX_VISIBLE);
     }
+    preview_theme_if_active(state);
     IntentResult::empty()
 }
 
@@ -129,6 +176,7 @@ pub fn handle_move_down(state: &mut AppState) -> IntentResult {
     if let Some(picker) = state.active_picker_ops() {
         picker.move_down(PICKER_MAX_VISIBLE);
     }
+    preview_theme_if_active(state);
     IntentResult::empty()
 }
 
@@ -259,6 +307,22 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
 
     state.frontend.scope_stack.pop();
     IntentResult::empty()
+}
+
+/// Confirms the selected theme and persists it to preferences.
+fn confirm_theme(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.theme_picker.selected_item() else {
+        return IntentResult::empty();
+    };
+    let theme_name = entry.name.clone();
+
+    // Theme is already previewed (set on move). Just persist.
+    state.frontend.theme_preview_original = None;
+    state.frontend.scope_stack.pop();
+
+    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
+        updates: vec![PreferenceUpdate::SetTheme(Some(theme_name))],
+    })])
 }
 
 /// Confirms the selected session and dispatches a switch command.
