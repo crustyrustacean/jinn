@@ -13,12 +13,14 @@ pub(super) fn render_chat_bottom_line(
     frame: &mut Frame<'_>,
     content_area: Rect,
     focus_scope: &FocusScope,
+    focus_accent: Color,
+    border_unfocused: Color,
 ) {
     let line_y = content_area.y + content_area.height.saturating_sub(1);
     let chat_line_color = if matches!(focus_scope, FocusScope::Normal) {
-        Color::Yellow
+        focus_accent
     } else {
-        Color::DarkGray
+        border_unfocused
     };
     let chat_line_style = Style::default().fg(chat_line_color);
     for x in content_area.x..(content_area.x + content_area.width) {

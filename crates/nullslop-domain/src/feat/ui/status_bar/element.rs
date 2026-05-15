@@ -11,7 +11,7 @@ use crate::feat::session::aggregate_session_stats;
 use crate::feat::ui::status_bar::SlotSection;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -68,7 +68,7 @@ impl UiElement<AppState> for StatusBarElement {
             active_model.clone()
         };
 
-        let style = Style::default().fg(Color::DarkGray);
+        let style = Style::default().fg(state.frontend.theme.muted_text);
 
         // Build left side: strategy info + plugin left slots.
         let mut left_spans: Vec<Span> = vec![Span::styled(left, style)];
@@ -83,7 +83,7 @@ impl UiElement<AppState> for StatusBarElement {
 
         let notification = state.frontend.active_status_notification();
         let right_spans = if let Some(msg) = notification {
-            let mut spans = vec![Span::styled(msg, Style::default().fg(Color::Green))];
+            let mut spans = vec![Span::styled(msg, Style::default().fg(state.frontend.theme.success))];
             for slot in state.plugin_slots.slots_for_section(SlotSection::Right) {
                 spans.push(Span::styled(format!(" {}", slot.text), style));
             }
@@ -106,6 +106,7 @@ impl UiElement<AppState> for StatusBarElement {
 #[cfg(test)]
 mod tests {
     use nullslop_testutil::{buffer_row, setup_term};
+    use ratatui::style::Color;
 
     use super::*;
     use crate::common::app_state::{AppState, StatusNotification};

@@ -14,12 +14,12 @@ pub fn init_tab_manager() -> TabManager {
 }
 
 /// Renders the tab bar.
-pub(super) fn render_tab_bar(frame: &mut Frame<'_>, area: Rect, manager: &TabManager) {
+pub(super) fn render_tab_bar(frame: &mut Frame<'_>, area: Rect, manager: &TabManager, tab_active_fg: Color, tab_active_bg: Color, tab_inactive_fg: Color) {
     let tabs = manager.tabs();
     let active_id = manager.active_id();
     let bar = TabsBar::new(tabs, active_id).tabs_style(TabsStyle {
-        active: Style::default().fg(Color::Black).bg(Color::Yellow),
-        inactive: Style::default().fg(Color::Gray),
+        active: Style::default().fg(tab_active_fg).bg(tab_active_bg),
+        inactive: Style::default().fg(tab_inactive_fg),
         ..TabsStyle::default()
     });
     frame.render_widget(bar, area);

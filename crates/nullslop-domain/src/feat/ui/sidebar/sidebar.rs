@@ -3,7 +3,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::widgets::Block;
 
 use super::section_trait::{
@@ -95,7 +95,7 @@ impl Sidebar {
     /// Sections receive their computed sub-area based on content height.
     pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         // Clear sidebar area with dark gray background.
-        let background = Block::default().style(Style::default().bg(Color::Rgb(0x19, 0x1b, 0x1e)));
+        let background = Block::default().style(Style::default().bg(state.frontend.theme.gutter_bg));
         frame.render_widget(background, area);
 
         // Stack sections vertically within the sidebar area.
@@ -156,6 +156,7 @@ impl Default for Sidebar {
 mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::style::Color;
 
     use super::*;
     use crate::feat::ui::sidebar::pins::PinsSection;
