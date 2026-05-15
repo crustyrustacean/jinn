@@ -33,13 +33,14 @@ impl UiElement<AppState> for DashboardElement {
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+        let theme = &state.frontend.theme;
         let actors = state.frontend.dashboard.actors();
         let selected_index = state.frontend.dashboard.selected_index();
 
         let lines: Vec<Line> = if actors.is_empty() {
             vec![Line::from(Span::styled(
                 "No actors registered.",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.muted_text),
             ))]
         } else {
             let mut lines = Vec::new();
@@ -47,14 +48,14 @@ impl UiElement<AppState> for DashboardElement {
             for (i, entry) in actors.iter().enumerate() {
                 let is_selected = i == selected_index;
                 let border_span = if is_selected {
-                    Span::styled(SELECTED_INDICATOR, Style::default().fg(Color::Yellow))
+                    Span::styled(SELECTED_INDICATOR, Style::default().fg(theme.focus_accent))
                 } else {
                     Span::raw(UNSELECTED_BORDER)
                 };
 
                 let (label, color) = match entry.status {
-                    ActorStatus::Starting => ("Starting", Color::Yellow),
-                    ActorStatus::Running => ("Running", Color::Green),
+                    ActorStatus::Starting => ("Starting", theme.warning),
+                    ActorStatus::Running => ("Running", theme.success),
                 };
 
                 // Name line: border + padded name ... status
@@ -69,13 +70,13 @@ impl UiElement<AppState> for DashboardElement {
                 // Description line (if present).
                 if let Some(desc) = &entry.description {
                     let desc_border = if is_selected {
-                        Span::styled(SELECTED_INDICATOR, Style::default().fg(Color::Yellow))
+                        Span::styled(SELECTED_INDICATOR, Style::default().fg(theme.focus_accent))
                     } else {
                         Span::raw(UNSELECTED_BORDER)
                     };
                     lines.push(Line::from(vec![
                         desc_border,
-                        Span::styled(format!("   {desc}"), Style::default().fg(Color::DarkGray)),
+                        Span::styled(format!("   {desc}"), Style::default().fg(theme.muted_text)),
                     ]));
                 }
 
@@ -117,6 +118,7 @@ fn fill_to_status(name: &str, area_width: u16) -> String {
 #[cfg(test)]
 mod tests {
     use nullslop_testutil::setup_term;
+    use ratatui::style::Color;
 
     use super::*;
     use crate::common::app_state::AppState;

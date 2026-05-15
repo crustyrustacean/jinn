@@ -62,8 +62,10 @@ pub(super) fn apply_selection_highlight(app: &TuiApp, buf: &mut Buffer) {
                     // Swapping identical colors is invisible
                     // (e.g. both Reset — the default for user messages
                     // and empty cells). Use explicit highlight colors.
-                    cell.set_fg(Color::Black);
-                    cell.set_bg(Color::White);
+                    let sel_fg = app.core.state.read().frontend.theme.selection_fg;
+                    let sel_bg = app.core.state.read().frontend.theme.selection_bg;
+                    cell.set_fg(sel_fg);
+                    cell.set_bg(sel_bg);
                 } else {
                     cell.set_fg(bg);
                     cell.set_bg(fg);
