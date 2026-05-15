@@ -282,6 +282,7 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 #[cfg(test)]
 mod tests {
     use crate::common::app_state::{AppState, FocusScope};
+    use crate::feat::theme::default_theme;
     use crate::protocol::{Command, Intent, PickerKind, SessionId};
     use crate::protocol::{KeymapEntry, PickerEntry, SessionEntry, StrategyEntry};
 
@@ -368,6 +369,7 @@ mod tests {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         }]);
 
         // When inserting 't'.
@@ -396,6 +398,7 @@ mod tests {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         }]);
         state.provider.provider_picker.insert_char('t');
         state.provider.provider_picker.insert_char('e');
@@ -428,6 +431,7 @@ mod tests {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         }]);
 
         // When confirming picker.
@@ -456,6 +460,7 @@ mod tests {
             title: "Test".to_owned(),
             updated_at: jiff::Timestamp::now(),
             byte_offset: 0,
+            theme: default_theme(),
         }]);
 
         // When confirming picker.
@@ -491,6 +496,7 @@ mod tests {
             category: "General".to_owned(),
             command: Intent::Quit,
             search_text: "q quit".to_owned(),
+            theme: default_theme(),
         }]);
 
         // When confirming picker.
@@ -528,12 +534,14 @@ mod tests {
                 name: "Passthrough".to_owned(),
                 description: "No processing".to_owned(),
                 is_active: false,
+                theme: default_theme(),
             },
             StrategyEntry {
                 strategy_id: crate::protocol::PromptStrategyId::sliding_window(),
                 name: "Sliding Window".to_owned(),
                 description: "Sliding window".to_owned(),
                 is_active: false,
+                theme: default_theme(),
             },
         ]);
         // Navigate to second entry.
@@ -575,6 +583,7 @@ mod tests {
                 is_available: true,
                 is_remote: false,
                 is_active: false,
+                theme: default_theme(),
             },
             PickerEntry {
                 provider_id: "b".to_owned(),
@@ -587,6 +596,7 @@ mod tests {
                 is_available: true,
                 is_remote: false,
                 is_active: false,
+                theme: default_theme(),
             },
         ]);
         state.provider.provider_picker.move_down(100);
@@ -619,6 +629,7 @@ mod tests {
                 is_available: true,
                 is_remote: false,
                 is_active: false,
+                theme: default_theme(),
             },
             PickerEntry {
                 provider_id: "b".to_owned(),
@@ -631,6 +642,7 @@ mod tests {
                 is_available: true,
                 is_remote: false,
                 is_active: false,
+                theme: default_theme(),
             },
         ]);
 
@@ -695,6 +707,7 @@ mod tests {
             category: "General".to_owned(),
             command: Intent::Quit,
             search_text: "q quit".to_owned(),
+            theme: state.frontend.theme.clone(),
         }];
         state.frontend.scope_stack.push(FocusScope::Input);
         state.frontend.scope_stack.push(FocusScope::Picker {

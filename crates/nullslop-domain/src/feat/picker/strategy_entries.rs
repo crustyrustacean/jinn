@@ -7,12 +7,14 @@
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
 use crate::feat::picker::style::promote_active_to_top;
+use crate::feat::theme::Theme;
 use crate::protocol::{PromptStrategyId, StrategyEntry};
 
 /// Loads strategy entries from the strategy registry, marking the active one.
 pub fn load_strategy_entries(
     services: &Services,
     active_strategy: &PromptStrategyId,
+    theme: &Theme,
 ) -> Vec<StrategyEntry> {
     let strategies = services.strategy_registry.list();
     strategies
@@ -24,6 +26,7 @@ pub fn load_strategy_entries(
                 is_active,
                 name: info.name,
                 description: info.description,
+                theme: theme.clone(),
             }
         })
         .collect()
@@ -42,19 +45,22 @@ pub fn sorted_strategy_entries(entries: &[StrategyEntry], filter: &str) -> Vec<S
 /// Loads strategy entries into the picker state, ready for display.
 pub fn load_strategy_picker_items(services: &Services, state: &mut AppState) {
     let active_strategy = state.active_session().active_strategy().clone();
-    let all = load_strategy_entries(services, &active_strategy);
+    let all = load_strategy_entries(services, &active_strategy, &state.frontend.theme);
     let entries = sorted_strategy_entries(&all, "");
     state.frontend.context_strategy_picker.set_items(entries);
 }
 
 /// Formats the footer line showing the current strategy.
-pub fn format_strategy_footer(strategy_name: &str) -> ratatui::text::Line<'static> {
-    use ratatui::style::{Color, Style};
+pub fn format_strategy_footer(strategy_name: &str, theme: &Theme) -> ratatui::text::Line<'static> {
+    use ratatui::style::Style;
     use ratatui::text::{Line, Span};
 
-    let gray = Style::default().fg(Color::DarkGray);
+    let gray = Style::default().fg(theme.muted_text);
     Line::from(vec![
         Span::styled("Current: ".to_owned(), gray),
-        Span::styled(strategy_name.to_owned(), Style::default().fg(Color::White)),
+        Span::styled(
+            strategy_name.to_owned(),
+            Style::default().fg(theme.primary_text),
+        ),
     ])
 }

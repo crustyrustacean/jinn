@@ -5,6 +5,7 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::feat::theme::default_theme;
     use crate::protocol::KeymapEntry;
     use nullslop_selection_widget::PickerItem;
     use ratatui::style::Color;
@@ -24,6 +25,7 @@ mod tests {
             category: category.to_owned(),
             command: crate::protocol::Intent::Quit,
             search_text,
+            theme: default_theme(),
         }
     }
 

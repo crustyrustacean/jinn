@@ -95,7 +95,8 @@ impl Sidebar {
     /// Sections receive their computed sub-area based on content height.
     pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         // Clear sidebar area with dark gray background.
-        let background = Block::default().style(Style::default().bg(state.frontend.theme.gutter_bg));
+        let background =
+            Block::default().style(Style::default().bg(state.frontend.theme.gutter_bg));
         frame.render_widget(background, area);
 
         // Stack sections vertically within the sidebar area.

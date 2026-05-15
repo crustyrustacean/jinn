@@ -7,7 +7,13 @@ use ratatui::style::{Color, Style};
 /// Draws the vertical border line (`│`) between the main column and sidebar.
 ///
 /// The color reflects sidebar focus state.
-pub(super) fn render_border(frame: &mut Frame<'_>, border: Rect, sidebar_focused: bool, focus_accent: Color, border_unfocused: Color) {
+pub(super) fn render_border(
+    frame: &mut Frame<'_>,
+    border: Rect,
+    sidebar_focused: bool,
+    focus_accent: Color,
+    border_unfocused: Color,
+) {
     let border_color = if sidebar_focused {
         focus_accent
     } else {

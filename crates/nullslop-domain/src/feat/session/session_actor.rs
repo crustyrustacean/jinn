@@ -1537,7 +1537,11 @@ mod tests {
         {
             let guard = state.read();
             let session = guard.session(&session_id);
-            assert_eq!(session.queue_len(), 1, "queue should NOT be drained on ToolUse");
+            assert_eq!(
+                session.queue_len(),
+                1,
+                "queue should NOT be drained on ToolUse"
+            );
         }
 
         // And no AssemblePrompt was emitted.
@@ -1578,7 +1582,10 @@ mod tests {
         {
             let guard = state.read();
             let session = guard.session(&session_id);
-            assert!(session.is_idle(), "session should be idle after finished with empty queue");
+            assert!(
+                session.is_idle(),
+                "session should be idle after finished with empty queue"
+            );
         }
 
         // And no AssemblePrompt was emitted.
@@ -1586,7 +1593,10 @@ mod tests {
         let found = cmds
             .iter()
             .any(|c| matches!(c, Command::AssemblePrompt(..)));
-        assert!(!found, "AssemblePrompt should not be emitted when queue is empty");
+        assert!(
+            !found,
+            "AssemblePrompt should not be emitted when queue is empty"
+        );
     }
 
     #[rstest::rstest]

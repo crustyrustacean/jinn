@@ -159,12 +159,18 @@ impl ThemeFile {
     pub fn resolve(&self) -> Theme {
         let d = default_theme();
         Theme {
-            focus_accent: self.focus_accent.map(|c| c.inner()).unwrap_or(d.focus_accent),
+            focus_accent: self
+                .focus_accent
+                .map(|c| c.inner())
+                .unwrap_or(d.focus_accent),
             border_unfocused: self
                 .border_unfocused
                 .map(|c| c.inner())
                 .unwrap_or(d.border_unfocused),
-            primary_text: self.primary_text.map(|c| c.inner()).unwrap_or(d.primary_text),
+            primary_text: self
+                .primary_text
+                .map(|c| c.inner())
+                .unwrap_or(d.primary_text),
             muted_text: self.muted_text.map(|c| c.inner()).unwrap_or(d.muted_text),
             error_text: self.error_text.map(|c| c.inner()).unwrap_or(d.error_text),
             success: self.success.map(|c| c.inner()).unwrap_or(d.success),
@@ -215,8 +221,14 @@ impl ThemeFile {
                 .tab_inactive_fg
                 .map(|c| c.inner())
                 .unwrap_or(d.tab_inactive_fg),
-            selection_fg: self.selection_fg.map(|c| c.inner()).unwrap_or(d.selection_fg),
-            selection_bg: self.selection_bg.map(|c| c.inner()).unwrap_or(d.selection_bg),
+            selection_fg: self
+                .selection_fg
+                .map(|c| c.inner())
+                .unwrap_or(d.selection_fg),
+            selection_bg: self
+                .selection_bg
+                .map(|c| c.inner())
+                .unwrap_or(d.selection_bg),
             accent_action: self
                 .accent_action
                 .map(|c| c.inner())
@@ -331,10 +343,7 @@ mod tests {
 
         // Then focus_accent is Red and everything else is default.
         assert_eq!(theme.focus_accent, Color::Red);
-        assert_eq!(
-            theme.muted_text,
-            default_theme().muted_text
-        );
+        assert_eq!(theme.muted_text, default_theme().muted_text);
     }
 
     #[rstest::rstest]
@@ -378,9 +387,6 @@ mod tests {
             original.resolve().focus_accent,
             restored.resolve().focus_accent
         );
-        assert_eq!(
-            original.resolve().gutter_bg,
-            restored.resolve().gutter_bg
-        );
+        assert_eq!(original.resolve().gutter_bg, restored.resolve().gutter_bg);
     }
 }

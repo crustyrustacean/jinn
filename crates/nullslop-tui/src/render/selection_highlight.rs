@@ -1,7 +1,6 @@
 //! Line-based selection highlight applied to the terminal buffer after rendering.
 
 use ratatui::buffer::Buffer;
-use ratatui::style::Color;
 
 use crate::TuiApp;
 use crate::selection::{SelectionState, find_last_nonws_in_row};
@@ -80,6 +79,7 @@ mod tests {
     use super::*;
     use crate::selection::SelectionState;
     use ratatui::layout::Rect;
+    use ratatui::style::Color;
     use ratatui::style::Modifier;
 
     /// Creates a minimal `TuiApp` for render testing.

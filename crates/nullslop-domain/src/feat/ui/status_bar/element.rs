@@ -83,7 +83,10 @@ impl UiElement<AppState> for StatusBarElement {
 
         let notification = state.frontend.active_status_notification();
         let right_spans = if let Some(msg) = notification {
-            let mut spans = vec![Span::styled(msg, Style::default().fg(state.frontend.theme.success))];
+            let mut spans = vec![Span::styled(
+                msg,
+                Style::default().fg(state.frontend.theme.success),
+            )];
             for slot in state.plugin_slots.slots_for_section(SlotSection::Right) {
                 spans.push(Span::styled(format!(" {}", slot.text), style));
             }

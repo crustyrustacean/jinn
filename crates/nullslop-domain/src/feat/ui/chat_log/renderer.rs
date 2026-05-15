@@ -240,7 +240,9 @@ impl UiElement<AppState> for ChatLogElement {
             let label_len = label.len();
             let indicator = Paragraph::new(Line::from(Span::styled(
                 label,
-                Style::default().fg(state.frontend.theme.muted_text).bg(state.frontend.theme.scroll_indicator_bg),
+                Style::default()
+                    .fg(state.frontend.theme.muted_text)
+                    .bg(state.frontend.theme.scroll_indicator_bg),
             )));
             // Render in the bottom-right corner of the chat area.
             let indicator_width = u16::try_from(label_len)
@@ -371,7 +373,10 @@ mod tests {
 
         // And the unselected entry's gutter has dark gray bg.
         let unselected_gutter = buffer.cell((0, 9)).expect("cell should exist");
-        assert_eq!(unselected_gutter.style().bg, Some(crate::feat::theme::default_theme().gutter_bg));
+        assert_eq!(
+            unselected_gutter.style().bg,
+            Some(crate::feat::theme::default_theme().gutter_bg)
+        );
     }
 
     #[rstest::rstest]

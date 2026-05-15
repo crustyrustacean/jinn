@@ -103,6 +103,7 @@ mod tests {
     use super::*;
 
     use crate::common::app_state::FocusScope;
+    use crate::feat::theme::default_theme;
 
     // --- PickerConfirm tests ---
 
@@ -152,6 +153,7 @@ mod tests {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         }]);
 
         // When validating picker confirm.
@@ -176,6 +178,7 @@ mod tests {
             category: "general".to_owned(),
             command: crate::protocol::Intent::Quit,
             search_text: "q quit".to_owned(),
+            theme: state.frontend.theme.clone(),
         }]);
 
         // When validating picker confirm.
@@ -198,6 +201,7 @@ mod tests {
             title: "Test Session".to_owned(),
             updated_at: jiff::Timestamp::now(),
             byte_offset: 0,
+            theme: default_theme(),
         }]);
 
         // When validating picker confirm.
@@ -223,6 +227,7 @@ mod tests {
                 name: "passthrough".to_owned(),
                 description: "No processing".to_owned(),
                 is_active: false,
+                theme: default_theme(),
             }]);
 
         // When validating picker confirm.
@@ -282,6 +287,7 @@ mod tests {
             is_available: true,
             is_remote: false,
             is_active: false,
+            theme: default_theme(),
         }]);
 
         // When confirming (simulates scope pop) then reopening.

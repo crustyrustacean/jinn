@@ -237,7 +237,7 @@ mod tests {
         let Color::Rgb(r, g, b) = result.unwrap() else {
             panic!("expected Rgb color");
         };
-        assert!((r, g, b) != (0, 0, 0) || true); // just verify it's valid
+        assert!((r, g, b) != (0, 0, 0)); // just verify it's valid
     }
 
     #[rstest::rstest]
