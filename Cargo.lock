@@ -1888,6 +1888,7 @@ dependencies = [
  "crossterm",
  "cucumber",
  "kanal",
+ "nullslop",
  "nullslop-domain",
  "nullslop-tui",
  "ratatui-spatial-splits",
