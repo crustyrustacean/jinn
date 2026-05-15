@@ -164,6 +164,7 @@ fn static_provider_entry(
         provider_name: provider.name.clone(),
         backend: provider.backend.clone(),
         model: provider.model.clone(),
+        search_text: format!("{} {}", provider.model, provider.name),
         is_alias: false,
         alias_target: None,
         is_available: registry.is_available(&provider.id, api_keys),
@@ -194,6 +195,11 @@ fn alias_entry(
         provider_name: resolved.map(|r| r.name.clone()).unwrap_or_default(),
         backend: resolved.map(|r| r.backend.clone()).unwrap_or_default(),
         model: resolved.map(|r| r.model.clone()).unwrap_or_default(),
+        search_text: format!(
+            "{} {}",
+            resolved.as_ref().map(|r| r.model.as_str()).unwrap_or_default(),
+            resolved.as_ref().map(|r| r.name.as_str()).unwrap_or_default()
+        ),
         is_alias: true,
         alias_target: resolved.map(|r| r.id.to_string()),
         is_available,
@@ -222,6 +228,7 @@ fn remote_entry(
         provider_name: provider_name.to_owned(),
         backend: backend.to_owned(),
         model: model.to_owned(),
+        search_text: format!("{model} {provider_name}"),
         is_alias: false,
         alias_target: None,
         is_available,
