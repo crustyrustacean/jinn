@@ -336,6 +336,14 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (set on first ESC in Normal/Sidebar with active stream,
     ///         consumed on second ESC or dismissed on any other key).
     pub cancel_stream_prompt: bool,
+
+    /// Theme picker state (items, filter text, selection index).
+    /// OWNER: IntentHandler (theme picker navigation).
+    pub theme_picker: nullslop_selection_widget::SelectionState<crate::feat::theme::ThemeEntry>,
+
+    /// Saved theme before preview — restored on ESC.
+    /// OWNER: IntentHandler (set on theme picker open, consumed on confirm/cancel).
+    pub theme_preview_original: Option<Theme>,
 }
 
 impl Default for FrontendState {
@@ -358,6 +366,8 @@ impl Default for FrontendState {
             scope_stack: ScopeStack::default(),
             theme: crate::feat::theme::default_theme(),
             cancel_stream_prompt: false,
+            theme_picker: nullslop_selection_widget::SelectionState::new(),
+            theme_preview_original: None,
         }
     }
 }
@@ -418,6 +428,7 @@ impl AppState {
             PickerKind::Keymap => Some(&mut self.frontend.keymap_picker),
             PickerKind::Session => Some(&mut self.frontend.session_picker),
             PickerKind::Persona => Some(&mut self.frontend.persona_picker),
+            PickerKind::Theme => Some(&mut self.frontend.theme_picker),
         }
     }
 
