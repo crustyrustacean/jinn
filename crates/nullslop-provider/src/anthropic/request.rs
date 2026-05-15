@@ -32,11 +32,20 @@ pub fn build_request(
 ) -> MessagesRequest {
     // Separate system messages from conversation messages.
     // Anthropic uses a top-level `system` field.
-    let system_text = system_prompt.map(|s| s.to_owned()).or_else(|| {
-        messages.iter().find_map(|m| match m {
+    // Concatenate all System messages to avoid silently dropping any.
+    let system_contents: Vec<String> = messages
+        .iter()
+        .filter_map(|m| match m {
             LlmMessage::System { content } => Some(content.clone()),
             _ => None,
         })
+        .collect();
+    let system_text = system_prompt.map(|s| s.to_owned()).or_else(|| {
+        if system_contents.is_empty() {
+            None
+        } else {
+            Some(system_contents.join("\n\n"))
+        }
     });
 
     // Non-system messages go into the messages array.
@@ -202,6 +211,34 @@ mod tests {
         let content = json["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "tool_use");
         assert_eq!(content[0]["name"], "echo");
+    }
+
+    #[rstest::rstest]
+    fn build_request_concats_multiple_system_messages() {
+        // Given messages with two System messages and a User message.
+        let messages = vec![
+            LlmMessage::System {
+                content: "First system.".into(),
+            },
+            LlmMessage::System {
+                content: "Second system.".into(),
+            },
+            LlmMessage::User {
+                content: "hello".into(),
+            },
+        ];
+
+        // When building request with no explicit system_prompt.
+        let req = build_request("claude-3", &messages, &[], None);
+
+        // Then system is the concatenation of both system messages.
+        assert_eq!(
+            req.system.as_deref(),
+            Some("First system.\n\nSecond system.")
+        );
+        // And messages has exactly 1 entry (the User message).
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(req.messages[0]["role"], "user");
     }
 
     #[rstest::rstest]
