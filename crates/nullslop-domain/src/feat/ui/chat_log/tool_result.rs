@@ -8,19 +8,10 @@
 //! ---(N more lines)---
 //! ```
 
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::shared::{RenderContext, pad_line_to_width};
-
-/// Foreground color for tool result text.
-const TOOL_RESULT_FG: Color = Color::Rgb(0x58, 0x5F, 0x6A);
-/// Foreground color for truncation indicator.
-const TRUNCATION_FG: Color = Color::Rgb(0x53, 0x53, 0x53);
-/// Background color for successful tool result BLOCK.
-const TOOL_RESULT_SUCCESS_BG: Color = Color::Rgb(0x28, 0x32, 0x28);
-/// Background color for failed tool result BLOCK.
-const TOOL_RESULT_FAILURE_BG: Color = Color::Rgb(0x3C, 0x28, 0x28);
 
 pub fn to_lines(
     name: &str,
@@ -29,11 +20,11 @@ pub fn to_lines(
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
     let bg = if success {
-        TOOL_RESULT_SUCCESS_BG
+        ctx.theme.tool_success_bg
     } else {
-        TOOL_RESULT_FAILURE_BG
+        ctx.theme.tool_failure_bg
     };
-    let style = Style::default().fg(TOOL_RESULT_FG).bg(bg);
+    let style = Style::default().fg(ctx.theme.tool_block_fg).bg(bg);
 
     // Name line.
     let mut lines = Vec::new();
@@ -57,7 +48,7 @@ pub fn to_lines(
             lines.push(Line::from(Span::styled((*line_text).to_owned(), style)));
         }
         // Truncation indicator line.
-        let truncation_style = Style::default().fg(TRUNCATION_FG).bg(bg);
+        let truncation_style = Style::default().fg(ctx.theme.truncation_fg).bg(bg);
         lines.push(Line::from(Span::styled(
             format!("---({remaining} more lines)---"),
             truncation_style,
