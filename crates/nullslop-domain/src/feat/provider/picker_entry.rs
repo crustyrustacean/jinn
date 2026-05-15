@@ -24,6 +24,9 @@ pub struct PickerEntry {
     pub backend: String,
     /// Model identifier (primary display text).
     pub model: String,
+    /// Searchable text combining model name and provider name for fuzzy matching.
+    /// Format: `"{model} {provider_name}"`. Used as [`display_label`](PickerItem::display_label).
+    pub search_text: String,
     /// Whether this entry is an alias.
     pub is_alias: bool,
     /// Alias display target (e.g., `"ollama/llama3"`). Only set for aliases.
@@ -40,7 +43,7 @@ pub struct PickerEntry {
 
 impl PickerItem for PickerEntry {
     fn display_label(&self) -> &str {
-        &self.model
+        &self.search_text
     }
 
     fn render_row(&self, is_selected: bool) -> Line<'static> {
@@ -58,9 +61,10 @@ impl PickerItem for PickerEntry {
 
 /// Renders a provider picker row, optionally highlighting matched characters.
 ///
-/// Match indices are byte offsets into `entry.model` (the `display_label`).
-/// The label is built as `"{status}{model} ({provider_name})"` — we highlight
-/// only the model portion.
+/// Match indices are byte offsets into `entry.search_text` (the `display_label`),
+/// which has the format `"{model} {provider_name}"`. Indices are split into model
+/// and provider-name portions so both can be independently highlighted in the
+/// rendered row.
 fn render_provider_row(
     entry: &PickerEntry,
     is_selected: bool,
@@ -84,65 +88,81 @@ fn render_provider_row(
         Style::default().fg(entry.theme.muted_text)
     };
 
-    if entry.is_alias {
-        let model_suffix = format!(" ({})", entry.provider_name);
-        let model_spans = highlight_model_in_label(
-            &format!("{}{} → ", status_prefix, entry.name),
-            &entry.model,
-            &model_suffix,
-            label_style,
-            match_indices,
-            entry.theme.picker_highlight_bg,
-        );
-        Line::from(
-            std::iter::once(active_marker)
-                .chain(model_spans)
-                .collect::<Vec<_>>(),
-        )
-    } else {
-        let model_suffix = format!(" ({})", entry.provider_name);
-        let model_spans = highlight_model_in_label(
-            status_prefix,
-            &entry.model,
-            &model_suffix,
-            label_style,
-            match_indices,
-            entry.theme.picker_highlight_bg,
-        );
-        Line::from(
-            std::iter::once(active_marker)
-                .chain(model_spans)
-                .collect::<Vec<_>>(),
-        )
-    }
-}
+    let highlight_bg = entry.theme.picker_highlight_bg;
 
-/// Splits a label into spans, applying highlight to matched bytes within the model portion.
-fn highlight_model_in_label<'a>(
-    prefix: &str,
-    model: &str,
-    suffix: &str,
-    base_style: Style,
-    match_indices: &[Range<usize>],
-    highlight_bg: ratatui::style::Color,
-) -> Vec<Span<'a>> {
-    if match_indices.is_empty() {
-        return vec![Span::styled(format!("{prefix}{model}{suffix}"), base_style)];
-    }
+    // search_text = "{model} {provider_name}"
+    // Split match indices into model-portion and provider-portion.
+    let (model_indices, provider_indices) =
+        split_match_indices(match_indices, entry.model.len());
 
     let mut spans = Vec::new();
-    if !prefix.is_empty() {
-        spans.push(Span::styled(prefix.to_owned(), base_style));
-    }
-    spans.extend(highlight_text_with_bg(
-        model,
-        base_style,
-        match_indices,
-        highlight_bg,
-    ));
-    if !suffix.is_empty() {
-        spans.push(Span::styled(suffix.to_owned(), base_style));
+
+    // Prefix (status + alias arrow if applicable).
+    if entry.is_alias {
+        spans.push(Span::styled(
+            format!("{}{} → ", status_prefix, entry.name),
+            label_style,
+        ));
+    } else {
+        spans.push(Span::styled(status_prefix.to_owned(), label_style));
     }
 
-    spans
+    // Model text with highlights.
+    spans.extend(highlight_text_with_bg(
+        &entry.model,
+        label_style,
+        &model_indices,
+        highlight_bg,
+    ));
+
+    // Suffix: " (" + highlighted provider_name + ")"
+    spans.push(Span::styled(" (".to_owned(), label_style));
+    spans.extend(highlight_text_with_bg(
+        &entry.provider_name,
+        label_style,
+        &provider_indices,
+        highlight_bg,
+    ));
+    spans.push(Span::styled(")".to_owned(), label_style));
+
+    Line::from(
+        std::iter::once(active_marker)
+            .chain(spans)
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Splits match indices from `search_text = "{model} {provider_name}"` into
+/// two groups: indices within the model portion and indices within the
+/// provider-name portion.
+///
+/// The space separator between model and provider_name occupies byte offset
+/// `model_len` (exactly one byte). Provider-portion indices are remapped to be
+/// relative to the start of `provider_name` (offset 0).
+fn split_match_indices(
+    indices: &[Range<usize>],
+    model_len: usize,
+) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
+    // search_text layout: [0..model_len) = model, [model_len] = ' ', [model_len+1..] = provider_name
+    let provider_offset = model_len + 1; // +1 for the space separator.
+
+    let mut model_indices = Vec::new();
+    let mut provider_indices = Vec::new();
+
+    for range in indices {
+        // Model portion: clamp to [0, model_len)
+        if range.start < model_len {
+            let end = range.end.min(model_len);
+            model_indices.push(range.start..end);
+        }
+
+        // Provider portion: remap to [0, provider_name.len())
+        if range.end > provider_offset {
+            let start = range.start.saturating_sub(provider_offset);
+            let end = range.end.saturating_sub(provider_offset);
+            provider_indices.push(start..end);
+        }
+    }
+
+    (model_indices, provider_indices)
 }

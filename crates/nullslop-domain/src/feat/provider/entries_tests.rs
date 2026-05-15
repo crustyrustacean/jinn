@@ -392,6 +392,7 @@ fn active_provider_promoted_to_first() {
             provider_name: "a".into(),
             backend: "a".into(),
             model: "model".into(),
+            search_text: "model a".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -405,6 +406,7 @@ fn active_provider_promoted_to_first() {
             provider_name: "b".into(),
             backend: "b".into(),
             model: "model".into(),
+            search_text: "model b".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -418,6 +420,7 @@ fn active_provider_promoted_to_first() {
             provider_name: "c".into(),
             backend: "c".into(),
             model: "model".into(),
+            search_text: "model c".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -446,6 +449,7 @@ fn active_entry_marked_active() {
             provider_name: "a".into(),
             backend: "a".into(),
             model: "model".into(),
+            search_text: "model a".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -459,6 +463,7 @@ fn active_entry_marked_active() {
             provider_name: "b".into(),
             backend: "b".into(),
             model: "model".into(),
+            search_text: "model b".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -472,6 +477,7 @@ fn active_entry_marked_active() {
             provider_name: "c".into(),
             backend: "c".into(),
             model: "model".into(),
+            search_text: "model c".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -500,6 +506,7 @@ fn sorted_entries_preserves_order_when_filtering() {
             provider_name: "a".into(),
             backend: "a".into(),
             model: "model".into(),
+            search_text: "model a".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -513,6 +520,7 @@ fn sorted_entries_preserves_order_when_filtering() {
             provider_name: "b".into(),
             backend: "b".into(),
             model: "model".into(),
+            search_text: "model b".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -540,6 +548,7 @@ fn available_entry_comes_first() {
             provider_name: "z".into(),
             backend: "z".into(),
             model: "model".into(),
+            search_text: "model z".into(),
             is_alias: false,
             alias_target: None,
             is_available: false,
@@ -553,6 +562,7 @@ fn available_entry_comes_first() {
             provider_name: "a".into(),
             backend: "a".into(),
             model: "model".into(),
+            search_text: "model a".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -566,6 +576,7 @@ fn available_entry_comes_first() {
             provider_name: "b".into(),
             backend: "b".into(),
             model: "model".into(),
+            search_text: "model b".into(),
             is_alias: false,
             alias_target: None,
             is_available: false,
@@ -594,6 +605,7 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
             provider_name: "a".into(),
             backend: "a".into(),
             model: "zebra".into(),
+            search_text: "zebra a".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -607,6 +619,7 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
             provider_name: "b".into(),
             backend: "b".into(),
             model: "alpha".into(),
+            search_text: "alpha b".into(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -832,6 +845,7 @@ fn make_picker_entry(
         provider_name: provider_name.to_owned(),
         backend: "test".to_owned(),
         model: model.to_owned(),
+        search_text: format!("{model} {provider_name}"),
         is_alias,
         alias_target: None,
         is_available,
@@ -925,4 +939,53 @@ fn render_row_with_highlight_preserves_provider_name_suffix() {
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
     assert!(text.contains("openrouter"), "should contain provider name");
     assert!(text.contains("gpt-4"), "should contain model");
+}
+
+#[rstest::rstest]
+fn display_label_includes_provider_name() {
+    // Given a PickerEntry with model "glm5.1" and provider_name "zai".
+    let entry = make_picker_entry("glm5.1", "zai", true, false);
+
+    // Then display_label contains both model and provider name.
+    assert!(entry.display_label().contains("glm5.1"));
+    assert!(entry.display_label().contains("zai"));
+}
+
+#[rstest::rstest]
+fn display_label_allows_searching_by_provider_name() {
+    // Given two entries with different providers.
+    let zai_entry = make_picker_entry("glm5.1", "zai", true, false);
+    let openrouter_entry = make_picker_entry("gpt-4o", "openrouter", true, false);
+
+    // Then the zai entry's display_label contains "zai".
+    assert!(zai_entry.display_label().contains("zai"));
+    // And the openrouter entry's display_label does NOT contain "zai".
+    assert!(!openrouter_entry.display_label().contains("zai"));
+}
+
+#[rstest::rstest]
+fn provider_name_match_is_highlighted_in_suffix() {
+    // Given a provider entry with model "llama3" and provider "ollama".
+    // search_text = "llama3 ollama" — provider name starts at byte 8.
+    let entry = make_picker_entry("llama3", "ollama", true, false);
+
+    // When highlighting with match in the provider-name portion (byte 8..14 = "ollama").
+    let highlights: &[Range<usize>] = &[8..14];
+    let line = entry.render_row_with_highlight(false, highlights);
+
+    // Then at least one span has the highlight background.
+    let has_highlight = line
+        .spans
+        .iter()
+        .any(|s| s.style.bg == Some(Color::DarkGray));
+    assert!(has_highlight, "expected highlight on provider name");
+
+    // And the highlighted text contains characters from the provider name.
+    let highlighted: String = line
+        .spans
+        .iter()
+        .filter(|s| s.style.bg == Some(Color::DarkGray))
+        .map(|s| s.content.clone())
+        .collect();
+    assert!(highlighted.contains('o'), "highlighted span should contain 'o'");
 }
