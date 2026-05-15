@@ -23,6 +23,36 @@ pub const PICKER_MIN_WIDTH: u16 = 30;
 /// Maximum fraction of terminal height the picker popup may consume.
 pub const PICKER_MAX_HEIGHT_FRAC: f32 = 0.75;
 
+/// Theme-dependent colors for the selection widget.
+///
+/// Provides a minimal set of colors that the widget needs, decoupled from
+/// the full `Theme` struct so this crate remains standalone.
+#[derive(Debug, Clone)]
+pub struct SelectionColors {
+    /// Popup border color.
+    pub border: Color,
+    /// Filter input text color.
+    pub filter_text: Color,
+    /// Horizontal separator line color.
+    pub separator: Color,
+    /// Footer text color.
+    pub footer: Color,
+    /// Fuzzy match highlight background color.
+    pub highlight_bg: Color,
+}
+
+impl Default for SelectionColors {
+    fn default() -> Self {
+        Self {
+            border: Color::DarkGray,
+            filter_text: Color::White,
+            separator: Color::DarkGray,
+            footer: Color::DarkGray,
+            highlight_bg: Color::DarkGray,
+        }
+    }
+}
+
 /// Filter prompt displayed before the user's input text.
 const PROMPT: &str = "> ";
 
@@ -102,6 +132,8 @@ where
     state: &'a SelectionState<T>,
     /// Optional footer line (e.g., "CTRL+R to refresh | Updated ...").
     footer: Option<Line<'a>>,
+    /// Theme-dependent colors for border, text, separator, etc.
+    colors: SelectionColors,
 }
 
 impl<'a, T> SelectionWidget<'a, T>
@@ -114,6 +146,7 @@ where
             title: Line::from(""),
             state,
             footer: None,
+            colors: SelectionColors::default(),
         }
     }
 
@@ -131,6 +164,13 @@ where
         self
     }
 
+    /// Sets the theme-dependent colors for the widget.
+    #[must_use]
+    pub fn colors(mut self, colors: SelectionColors) -> Self {
+        self.colors = colors;
+        self
+    }
+
     /// Renders the selection popup within the given frame area.
     ///
     /// Computes the popup rectangle, draws the bordered block, filter input,
@@ -145,7 +185,7 @@ where
         // Bordered block with muted border.
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray))
+            .border_style(Style::default().fg(self.colors.border))
             .title(self.title);
         frame.render_widget(block, popup_area);
 
@@ -164,14 +204,16 @@ where
 
         // Filter input with real cursor.
         let filter_text = format!("{}{}", PROMPT, self.state.filter());
-        let filter_paragraph = Paragraph::new(filter_text).style(Style::default().fg(Color::White));
+        let filter_paragraph =
+            Paragraph::new(filter_text).style(Style::default().fg(self.colors.filter_text));
         frame.render_widget(filter_paragraph, input_area);
         let cursor_col = input_area.x + (PROMPT.len() + self.state.cursor_pos()) as u16;
         frame.set_cursor_position((cursor_col, input_area.y));
 
         // Separator line.
         let separator = "\u{2500}".repeat(separator_area.width as usize);
-        let sep_paragraph = Paragraph::new(separator).style(Style::default().fg(Color::DarkGray));
+        let sep_paragraph =
+            Paragraph::new(separator).style(Style::default().fg(self.colors.separator));
         frame.render_widget(sep_paragraph, separator_area);
 
         // Results area — windowed display with scroll_offset.
@@ -194,10 +236,10 @@ where
         }
         frame.render_widget(Paragraph::new(result_lines), results_area);
 
-        // Footer: right-aligned in DarkGray, or empty row.
+        // Footer: right-aligned in theme color, or empty row.
         let footer_paragraph = match &self.footer {
             Some(line) => Paragraph::new(line.clone())
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(self.colors.footer))
                 .right_aligned(),
             None => Paragraph::new(""),
         };

@@ -38,7 +38,13 @@ pub(super) fn render_chat_tab(
 
     // Vertical border between main and sidebar.
     let theme = &state.frontend.theme;
-    border::render_border(frame, layout.border, sidebar_focused, theme.focus_accent, theme.border_unfocused);
+    border::render_border(
+        frame,
+        layout.border,
+        sidebar_focused,
+        theme.focus_accent,
+        theme.border_unfocused,
+    );
 
     // Sidebar.
     sidebar::render_sidebar(
@@ -117,7 +123,13 @@ pub(super) fn render_chat_tab(
     }
 
     // Chat bottom line.
-    chat_bottom_line::render_chat_bottom_line(frame, content_area, focus_scope, theme.focus_accent, theme.border_unfocused);
+    chat_bottom_line::render_chat_bottom_line(
+        frame,
+        content_area,
+        focus_scope,
+        theme.focus_accent,
+        theme.border_unfocused,
+    );
 
     // Input box.
     input_box::render_input_box(ui_registry, frame, layout.input, state);

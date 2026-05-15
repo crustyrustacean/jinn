@@ -712,7 +712,10 @@ mod tests {
         let result = super::handle_enter_insert_mode(&mut state);
 
         // Then scope_stack has Input on top.
-        assert_eq!(state.frontend.scope_stack.current().mode(), crate::protocol::Mode::Input);
+        assert_eq!(
+            state.frontend.scope_stack.current().mode(),
+            crate::protocol::Mode::Input
+        );
         assert!(result.commands.is_empty());
     }
 

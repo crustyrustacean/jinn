@@ -1,4 +1,5 @@
 use nullslop_domain::Intent;
+use nullslop_domain::feat::theme::default_theme;
 use nullslop_domain::{Key, KeyEvent, Modifiers, PickerKind, TabDirection};
 use ratatui_which_key::Key as _;
 
@@ -629,7 +630,7 @@ fn quit_binding_present_in_normal_scope() {
     let keymap = init();
 
     // When collecting bindings for Normal scope.
-    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal);
+    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal, &default_theme());
 
     // Then the quit binding 'q' is present.
     let q_entry = entries.iter().find(|e| e.key_sequence == "q");
@@ -642,7 +643,7 @@ fn quit_binding_has_correct_key() {
     let keymap = init();
 
     // When collecting bindings for Normal scope.
-    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal);
+    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal, &default_theme());
 
     // Then the quit binding has correct description, scope, and intent.
     let q_entry = entries.iter().find(|e| e.key_sequence == "q");
@@ -659,7 +660,7 @@ fn collect_bindings_for_scope_finds_multi_key_sequence() {
     let keymap = init();
 
     // When collecting bindings for Normal scope.
-    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal);
+    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal, &default_theme());
 
     // Then 'gg' (scroll to top) is present.
     let gg_entry = entries.iter().find(|e| e.key_sequence == "gg");
@@ -676,7 +677,7 @@ fn collect_bindings_for_scope_finds_leader_key_sequence() {
     let keymap = init();
 
     // When collecting bindings for Normal scope.
-    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal);
+    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal, &default_theme());
 
     // Then 'Spacesm' (search models) is present.
     let sm_entry = entries.iter().find(|e| e.key_sequence == "Spacesm");
@@ -698,7 +699,7 @@ fn collect_bindings_for_scope_excludes_prefix_only_nodes() {
     let keymap = init();
 
     // When collecting bindings for Normal scope.
-    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal);
+    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal, &default_theme());
 
     // Then plain 'g' is NOT present (it's a prefix, not a leaf).
     let g_only = entries.iter().find(|e| e.key_sequence == "g");
@@ -714,7 +715,7 @@ fn collect_bindings_for_scope_includes_category() {
     let keymap = init();
 
     // When collecting bindings for Normal scope.
-    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal);
+    let entries = collect_bindings_for_scope(&keymap, &Scope::Normal, &default_theme());
 
     // Then 'q' has General category.
     let q_entry = entries.iter().find(|e| e.key_sequence == "q");
@@ -728,7 +729,7 @@ fn collect_bindings_for_scope_separates_scopes() {
     let keymap = init();
 
     // When collecting bindings for Dashboard scope.
-    let entries = collect_bindings_for_scope(&keymap, &Scope::Dashboard);
+    let entries = collect_bindings_for_scope(&keymap, &Scope::Dashboard, &default_theme());
 
     // Then 'j' is "dashboard select down" (not "scroll line down").
     let j_entry = entries.iter().find(|e| e.key_sequence == "j");
@@ -742,7 +743,7 @@ fn bindings_include_normal_scope() {
     let keymap = init();
 
     // When collecting all bindings.
-    let entries = collect_all_bindings(&keymap);
+    let entries = collect_all_bindings(&keymap, &default_theme());
 
     // Then entries from Normal and Dashboard scopes are present.
     let normal_entries: Vec<_> = entries.iter().filter(|e| e.scope == "Normal").collect();
@@ -761,7 +762,7 @@ fn bindings_include_input_scope() {
     let keymap = init();
 
     // When collecting all bindings.
-    let entries = collect_all_bindings(&keymap);
+    let entries = collect_all_bindings(&keymap, &default_theme());
 
     // Then entries from Picker and Input scopes are present.
     let picker_entries: Vec<_> = entries.iter().filter(|e| e.scope == "Picker").collect();

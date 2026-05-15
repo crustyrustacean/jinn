@@ -5,6 +5,7 @@
 //! implementation live in `nullslop-protocol`.
 
 use crate::feat::picker::style::promote_active_to_top;
+use crate::feat::theme::Theme;
 use crate::protocol::PickerEntry;
 /// Reorders entries so that available entries appear first (sorted by model name),
 /// followed by unavailable entries (sorted by model name). When `filter` is empty,
@@ -46,24 +47,25 @@ pub fn sorted_entries(
 
 /// Formats the footer line showing refresh keybind and last update time.
 ///
-/// Returns a styled [`Line`] with the pipe separator in dark gray.
+/// Returns a styled [`Line`] with the pipe separator in muted text.
 /// Format: `CTRL+R to refresh | Updated <timestamp> (<humantime> ago)`
 pub fn format_footer(
     last_refreshed_at: Option<&jiff::Timestamp>,
     width: usize,
+    theme: &Theme,
 ) -> ratatui::text::Line<'static> {
-    use ratatui::style::{Color, Style};
+    use ratatui::style::Style;
     use ratatui::text::{Line, Span};
 
-    let gray = Style::default().fg(Color::DarkGray);
-    let orange = Style::default().fg(Color::Rgb(255, 165, 0));
+    let gray = Style::default().fg(theme.muted_text);
+    let orange = Style::default().fg(theme.accent_action);
 
     if let Some(ts) = last_refreshed_at {
         let elapsed = jiff::Timestamp::now() - *ts;
         let secs = elapsed.total(jiff::Unit::Second).unwrap_or(0.0).round() as u64;
         let duration = std::time::Duration::from_secs(secs);
         let human = humantime::format_duration(duration);
-        let age_color = age_color(secs);
+        let age_color = age_color(secs, theme);
 
         let formatted_ts = format!("{ts:.0}");
 
@@ -95,20 +97,18 @@ pub fn format_footer(
 
 /// Returns the age-based color for the "time ago" text.
 ///
-/// - `<= 2 weeks` → light green
-/// - `> 2 weeks, <= 4 weeks` → yellow
-/// - `> 4 weeks` → red
-pub fn age_color(secs: u64) -> ratatui::style::Color {
-    use ratatui::style::Color;
-
+/// - `<= 2 weeks` → age_fresh
+/// - `> 2 weeks, <= 4 weeks` → warning
+/// - `> 4 weeks` → age_stale
+pub fn age_color(secs: u64, theme: &Theme) -> ratatui::style::Color {
     const TWO_WEEKS: u64 = 14 * 24 * 60 * 60;
     const FOUR_WEEKS: u64 = 28 * 24 * 60 * 60;
     if secs <= TWO_WEEKS {
-        Color::LightGreen
+        theme.age_fresh
     } else if secs <= FOUR_WEEKS {
-        Color::Yellow
+        theme.warning
     } else {
-        Color::Red
+        theme.age_stale
     }
 }
 
@@ -156,6 +156,7 @@ fn static_provider_entry(
     provider: &crate::feat::provider_infra::ResolvedProvider,
     registry: &crate::feat::provider_infra::ProviderRegistry,
     api_keys: &crate::feat::provider_infra::ApiKeys,
+    theme: &Theme,
 ) -> PickerEntry {
     PickerEntry {
         provider_id: provider.id.to_string(),
@@ -168,6 +169,7 @@ fn static_provider_entry(
         is_available: registry.is_available(&provider.id, api_keys),
         is_remote: false,
         is_active: false,
+        theme: theme.clone(),
     }
 }
 
@@ -181,6 +183,7 @@ fn alias_entry(
     alias: &crate::feat::provider_infra::AliasEntry,
     registry: &crate::feat::provider_infra::ProviderRegistry,
     api_keys: &crate::feat::provider_infra::ApiKeys,
+    theme: &Theme,
 ) -> PickerEntry {
     let resolved = registry.resolve_alias(&alias.name);
     let is_available = resolved.is_some_and(|r| registry.is_available(&r.id.clone(), api_keys));
@@ -196,6 +199,7 @@ fn alias_entry(
         is_available,
         is_remote: false,
         is_active: false,
+        theme: theme.clone(),
     }
 }
 
@@ -209,6 +213,7 @@ fn remote_entry(
     model: &str,
     backend: &str,
     is_available: bool,
+    theme: &Theme,
 ) -> PickerEntry {
     let provider_id = format!("{provider_name}/{model}");
     PickerEntry {
@@ -222,6 +227,7 @@ fn remote_entry(
         is_available,
         is_remote: true,
         is_active: false,
+        theme: theme.clone(),
     }
 }
 
@@ -235,6 +241,7 @@ fn merge_remote_entries(
     registry: &crate::feat::provider_infra::ProviderRegistry,
     api_keys: &crate::feat::provider_infra::ApiKeys,
     cache: &crate::feat::provider_infra::ModelCache,
+    theme: &Theme,
 ) {
     let config = registry.config();
     for (provider_name, models) in &cache.entries {
@@ -259,7 +266,13 @@ fn merge_remote_entries(
             if static_ids.contains(&provider_id) {
                 continue;
             }
-            entries.push(remote_entry(provider_name, model, backend, is_available));
+            entries.push(remote_entry(
+                provider_name,
+                model,
+                backend,
+                is_available,
+                theme,
+            ));
         }
     }
 }
@@ -280,6 +293,7 @@ pub fn load_provider_entries(
     registry: &crate::feat::provider_infra::ProviderRegistry,
     api_keys: &crate::feat::provider_infra::ApiKeys,
     model_cache: Option<&crate::feat::provider_infra::ModelCache>,
+    theme: &Theme,
 ) -> Vec<PickerEntry> {
     let mut entries = Vec::new();
     let mut static_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -288,7 +302,7 @@ pub fn load_provider_entries(
     // These are the providers defined in the user's config file.
     // We track their IDs to prevent duplicates when merging remote models later.
     for provider in registry.providers() {
-        let entry = static_provider_entry(&provider, registry, api_keys);
+        let entry = static_provider_entry(&provider, registry, api_keys, theme);
         static_ids.insert(entry.provider_id.clone());
         entries.push(entry);
     }
@@ -297,7 +311,7 @@ pub fn load_provider_entries(
     // Each alias resolves to a target provider and inherits its metadata.
     // Unresolvable aliases still appear as entries (unavailable, empty defaults).
     for alias in registry.aliases() {
-        let entry = alias_entry(&alias, registry, api_keys);
+        let entry = alias_entry(&alias, registry, api_keys, theme);
         entries.push(entry);
     }
 
@@ -306,7 +320,7 @@ pub fn load_provider_entries(
     // Static entries win on collision — if a static entry already claims
     // `{provider_name}/{model}`, the remote version is skipped.
     if let Some(cache) = model_cache {
-        merge_remote_entries(&mut entries, &static_ids, registry, api_keys, cache);
+        merge_remote_entries(&mut entries, &static_ids, registry, api_keys, cache, theme);
     }
 
     entries

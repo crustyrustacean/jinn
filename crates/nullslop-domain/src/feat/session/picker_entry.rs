@@ -3,9 +3,10 @@
 use std::ops::Range;
 
 use crate::feat::picker::style::{dim_style, selected_style};
+use crate::feat::theme::Theme;
 use crate::protocol::SessionId;
 use nullslop_selection_widget::PickerItem;
-use nullslop_selection_widget::highlight_text;
+use nullslop_selection_widget::highlight_text_with_bg;
 use ratatui::text::{Line, Span};
 
 /// A saved session entry ready for display in the picker.
@@ -19,6 +20,8 @@ pub struct SessionEntry {
     pub updated_at: jiff::Timestamp,
     /// Byte offset in the JSONL file for direct seek.
     pub byte_offset: u64,
+    /// Theme for rendering.
+    pub theme: Theme,
 }
 
 impl PickerItem for SessionEntry {
@@ -27,7 +30,7 @@ impl PickerItem for SessionEntry {
     }
 
     fn render_row(&self, is_selected: bool) -> Line<'static> {
-        render_session_row(&self.title, &self.updated_at, is_selected, &[])
+        render_session_row(&self.title, &self.updated_at, is_selected, &[], &self.theme)
     }
 
     fn render_row_with_highlight(
@@ -35,7 +38,13 @@ impl PickerItem for SessionEntry {
         is_selected: bool,
         match_indices: &[Range<usize>],
     ) -> Line<'static> {
-        render_session_row(&self.title, &self.updated_at, is_selected, match_indices)
+        render_session_row(
+            &self.title,
+            &self.updated_at,
+            is_selected,
+            match_indices,
+            &self.theme,
+        )
     }
 }
 
@@ -48,10 +57,11 @@ fn render_session_row(
     updated_at: &jiff::Timestamp,
     is_selected: bool,
     match_indices: &[Range<usize>],
+    theme: &Theme,
 ) -> Line<'static> {
-    let base_style = selected_style(is_selected);
+    let base_style = selected_style(is_selected, theme);
 
-    let date_style = dim_style(is_selected);
+    let date_style = dim_style(is_selected, theme);
 
     let datetime = updated_at.to_zoned(jiff::tz::TimeZone::UTC).datetime();
     let date_str = format!(
@@ -66,7 +76,7 @@ fn render_session_row(
     let title_spans = if match_indices.is_empty() {
         vec![Span::styled(title.to_owned(), base_style)]
     } else {
-        highlight_text(title, base_style, match_indices)
+        highlight_text_with_bg(title, base_style, match_indices, theme.picker_highlight_bg)
     };
 
     let mut spans = title_spans;

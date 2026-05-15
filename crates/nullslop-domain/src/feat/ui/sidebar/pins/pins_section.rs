@@ -7,6 +7,7 @@
 use crate::common::app_state::AppState;
 use crate::common::app_state::pin_sort_key;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
+use crate::feat::theme::Theme;
 use crate::feat::ui::sidebar::section_trait::{
     SidebarIntent, SidebarSection, SidebarSectionConfig, SidebarSectionId, SidebarSectionResult,
 };
@@ -84,7 +85,7 @@ impl SidebarSection for PinsSection {
             vec![Line::from(vec![Span::styled(
                 " Pinned Context \u{2014} 0",
                 Style::default()
-                    .fg(Color::White)
+                    .fg(state.frontend.theme.primary_text)
                     .add_modifier(Modifier::BOLD),
             )])]
         } else {
@@ -93,6 +94,7 @@ impl SidebarSection for PinsSection {
                 selected_index,
                 area.width,
                 state.frontend.scope_stack.is_sidebar(),
+                &state.frontend.theme,
             )
         };
 
@@ -319,6 +321,7 @@ fn build_entry_list(
     selected_index: usize,
     _area_width: u16,
     sidebar_focused: bool,
+    theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
@@ -326,7 +329,7 @@ fn build_entry_list(
     lines.push(Line::from(vec![Span::styled(
         format!(" Pinned Context \u{2014} {}", pinned.len()),
         Style::default()
-            .fg(Color::White)
+            .fg(theme.primary_text)
             .add_modifier(Modifier::BOLD),
     )]));
     lines.push(Line::from(""));
@@ -335,9 +338,9 @@ fn build_entry_list(
         let is_selected = i == selected_index;
 
         let indicator_color = if sidebar_focused {
-            Color::Yellow
+            theme.focus_accent
         } else {
-            Color::DarkGray
+            theme.border_unfocused
         };
         let border = if is_selected {
             Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))

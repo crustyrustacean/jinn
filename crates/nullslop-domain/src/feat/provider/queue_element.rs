@@ -37,7 +37,10 @@ impl UiElement<AppState> for QueueDisplayElement {
                 } else {
                     format!("QUEUED: {first_line}")
                 };
-                Line::from(Span::styled(display, Style::default().fg(state.frontend.theme.muted_text)))
+                Line::from(Span::styled(
+                    display,
+                    Style::default().fg(state.frontend.theme.muted_text),
+                ))
             })
             .collect();
 

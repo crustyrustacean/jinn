@@ -3,6 +3,7 @@
 use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
 use crate::common::services::Services;
+use crate::feat::theme::default_theme;
 use crate::protocol::{Intent, KeymapEntry, PickerKind};
 use nullslop_selection_widget::compute_popup_rect;
 use nullslop_testutil::setup_term;
@@ -137,6 +138,7 @@ fn keymap_picker_state() -> AppState {
             category: "General".to_owned(),
             command: Intent::Quit,
             search_text: "q quit".to_owned(),
+            theme: default_theme(),
         },
         KeymapEntry {
             key_sequence: "gg".to_owned(),
@@ -145,6 +147,7 @@ fn keymap_picker_state() -> AppState {
             category: "Navigation".to_owned(),
             command: Intent::ScrollToTop,
             search_text: "gg scroll to top".to_owned(),
+            theme: default_theme(),
         },
         KeymapEntry {
             key_sequence: "<esc>".to_owned(),
@@ -153,6 +156,7 @@ fn keymap_picker_state() -> AppState {
             category: "General".to_owned(),
             command: Intent::EnterNormalMode,
             search_text: "<esc> set mode normal".to_owned(),
+            theme: default_theme(),
         },
     ];
     state.frontend.keymap_picker.set_items(entries);

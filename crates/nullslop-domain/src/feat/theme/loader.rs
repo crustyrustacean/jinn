@@ -7,9 +7,9 @@ use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt as _};
 
+use super::default_theme;
 use super::theme::{Theme, ThemeFile};
 use super::theme_error::ThemeError;
-use super::default_theme;
 
 /// Returns the path to the themes directory.
 ///
@@ -74,10 +74,8 @@ pub fn discover_themes() -> Result<Vec<(String, PathBuf)>, Report<ThemeError>> {
 pub fn load_theme(name: &str) -> Result<Theme, Report<ThemeError>> {
     let path = themes_dir().join(format!("{name}.toml"));
     if !path.exists() {
-        return Err(Report::new(ThemeError::NotFound).attach(format!(
-            "theme file not found: {}",
-            path.display()
-        )));
+        return Err(Report::new(ThemeError::NotFound)
+            .attach(format!("theme file not found: {}", path.display())));
     }
     load_theme_from_file(&path)
 }
@@ -151,7 +149,8 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            err.downcast_ref::<ThemeError>().is_some_and(|e| matches!(e, ThemeError::NotFound)),
+            err.downcast_ref::<ThemeError>()
+                .is_some_and(|e| matches!(e, ThemeError::NotFound)),
             "expected NotFound error"
         );
     }
@@ -161,18 +160,17 @@ mod tests {
         // Given a valid theme TOML file.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("test.toml");
-        std::fs::write(
-            &path,
-            "focus_accent = \"red\"\nprimary_text = \"#FFFFFF\"",
-        )
-        .expect("write");
+        std::fs::write(&path, "focus_accent = \"red\"\nprimary_text = \"#FFFFFF\"").expect("write");
 
         // When loading.
         let theme = load_theme_from_file(&path).expect("load");
 
         // Then the specified fields are set.
         assert_eq!(theme.focus_accent, ratatui::style::Color::Red);
-        assert_eq!(theme.primary_text, ratatui::style::Color::Rgb(255, 255, 255));
+        assert_eq!(
+            theme.primary_text,
+            ratatui::style::Color::Rgb(255, 255, 255)
+        );
         // And unspecified fields fall back to default.
         assert_eq!(theme.muted_text, default_theme().muted_text);
     }
@@ -241,10 +239,8 @@ mod tests {
     fn discover_themes_finds_toml_files() {
         // Given a temp directory with theme files.
         let dir = TempDir::new().expect("temp dir");
-        std::fs::write(dir.path().join("ocean.toml"), "focus_accent = \"blue\"")
-            .expect("write");
-        std::fs::write(dir.path().join("forest.toml"), "focus_accent = \"green\"")
-            .expect("write");
+        std::fs::write(dir.path().join("ocean.toml"), "focus_accent = \"blue\"").expect("write");
+        std::fs::write(dir.path().join("forest.toml"), "focus_accent = \"green\"").expect("write");
         std::fs::write(dir.path().join("readme.txt"), "not a theme").expect("write");
 
         // When discovering themes.
