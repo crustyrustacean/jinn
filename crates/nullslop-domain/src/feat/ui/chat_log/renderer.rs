@@ -161,11 +161,14 @@ impl UiElement<AppState> for ChatLogElement {
             // (wrapped) content lines. We can compute this by padding gutter_lines
             // to match the wrapped line count.
             let mut entry_gutter_lines = Vec::new();
-            for _ in &entry_content_lines {
-                entry_gutter_lines.push(Line::from(Span::styled(
-                    gutter_content.to_owned(),
-                    gutter_style,
-                )));
+            let blank_gutter = Span::styled("  ".to_owned(), gutter_style);
+            for (i, _) in entry_content_lines.iter().enumerate() {
+                let span = if i == 0 {
+                    Span::styled(gutter_content.to_owned(), gutter_style)
+                } else {
+                    blank_gutter.clone()
+                };
+                entry_gutter_lines.push(Line::from(span));
             }
 
             // If any content line wraps to >1 visual row, the gutter will be short.
@@ -553,6 +556,45 @@ mod tests {
         assert!(
             !has_pin,
             "unpinned entry should not show \u{1F4CC} pin icon"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_pinned_multi_line_entry_shows_exactly_one_pin() {
+        // Given a ChatLogElement with one pinned multi-line user entry.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(
+                ChatEntry::user("line one\nline two\nline three")
+                    .with_pin(crate::protocol::PinPosition::Top),
+            );
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then exactly one pin icon appears in the gutter.
+        let buffer = terminal.backend().buffer().clone();
+        let pin_count = (0..10)
+            .filter(|&row| {
+                (0..2).any(|col| {
+                    buffer
+                        .cell((col, row))
+                        .is_some_and(|c| c.symbol() == "\u{1F4CC}")
+                })
+            })
+            .count();
+        assert_eq!(
+            pin_count, 1,
+            "multi-line pinned entry should show exactly one pin icon, found {pin_count}"
         );
     }
 
