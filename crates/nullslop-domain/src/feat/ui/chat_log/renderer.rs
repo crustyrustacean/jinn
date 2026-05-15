@@ -25,7 +25,7 @@ use crate::common::ui_element::UiElement;
 use crate::protocol::ChatEntryKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
@@ -34,9 +34,6 @@ use super::{actor, assistant, error_entry, system, table, thinking, tool_call, t
 
 /// Default number of lines to show for tool result entries before truncating.
 const DEFAULT_TOOL_RESULT_MAX_LINES: u16 = 5;
-
-/// Gutter background color.
-const GUTTER_BG: Color = Color::Rgb(0x19, 0x1B, 0x1E);
 
 /// Display element for the full conversation history.
 #[derive(Debug)]
@@ -56,7 +53,7 @@ impl UiElement<AppState> for ChatLogElement {
         if state.session.session_loading {
             let loading = Paragraph::new("Loading session...")
                 .alignment(ratatui::layout::Alignment::Center)
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(state.frontend.theme.muted_text))
                 .block(Block::default().borders(Borders::NONE));
             frame.render_widget(loading, area);
             return;
@@ -110,9 +107,9 @@ impl UiElement<AppState> for ChatLogElement {
 
             // Build gutter lines for this entry (one gutter line per content line).
             let gutter_style = if is_selected {
-                Style::default().bg(Color::Yellow)
+                Style::default().bg(ctx.theme.focus_accent)
             } else {
-                Style::default().bg(GUTTER_BG)
+                Style::default().bg(ctx.theme.gutter_bg)
             };
             let gutter_content = if ctx.is_pinned { "📌" } else { "  " };
 
@@ -185,7 +182,7 @@ impl UiElement<AppState> for ChatLogElement {
             display_content.push(Line::from(""));
             display_gutter.push(Line::from(Span::styled(
                 "  ".to_owned(),
-                Style::default().bg(GUTTER_BG),
+                Style::default().bg(state.frontend.theme.gutter_bg),
             )));
         }
         display_content.extend(content_lines);
@@ -243,7 +240,7 @@ impl UiElement<AppState> for ChatLogElement {
             let label_len = label.len();
             let indicator = Paragraph::new(Line::from(Span::styled(
                 label,
-                Style::default().fg(Color::DarkGray).bg(Color::Black),
+                Style::default().fg(state.frontend.theme.muted_text).bg(state.frontend.theme.scroll_indicator_bg),
             )));
             // Render in the bottom-right corner of the chat area.
             let indicator_width = u16::try_from(label_len)
@@ -289,10 +286,10 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, ctx: &RenderContext) -> Ve
 mod tests {
     use crate::protocol::ChatEntry;
     use nullslop_testutil::setup_term;
+    use ratatui::style::Color;
 
     use super::*;
     use crate::common::app_state::AppState;
-    use ratatui::style::Color;
 
     // --- Gutter width constant for test offsets ---
     const G: u16 = GUTTER_WIDTH; // = 2
@@ -374,7 +371,7 @@ mod tests {
 
         // And the unselected entry's gutter has dark gray bg.
         let unselected_gutter = buffer.cell((0, 9)).expect("cell should exist");
-        assert_eq!(unselected_gutter.style().bg, Some(GUTTER_BG));
+        assert_eq!(unselected_gutter.style().bg, Some(crate::feat::theme::default_theme().gutter_bg));
     }
 
     #[rstest::rstest]
