@@ -289,14 +289,6 @@ impl ChatSessionState {
             .map_or(true, |i| i == prev_last);
         let index = self.core.history.len();
         self.core.history.push(entry);
-        tracing::info!(
-            cursor = ?self.ui.selected_entry_index,
-            prev_last,
-            history_len = self.core.history.len(),
-            was_at_last,
-            is_streaming = self.core.is_streaming,
-            "push_entry"
-        );
         if was_at_last {
             self.reset_scroll();
             let new_last = self.core.history.len() - 1;
@@ -305,35 +297,44 @@ impl ChatSessionState {
         index
     }
 
+    /// Lazily create the Assistant entry for the current stream.
+    ///
+    /// Called on first `append_stream_token`, `finish_streaming`,
+    /// `begin_tool_call`, or `cancel_streaming`. No-op if the entry
+    /// already exists or the session is not streaming.
+    fn ensure_assistant_entry(&mut self) {
+        if self.core.streaming_entry_index.is_some() || !self.core.is_streaming {
+            return;
+        }
+        let entry = ChatEntry::assistant("");
+        let index = self.push_entry(entry);
+        self.core.streaming_entry_index = Some(index);
+    }
+
     /// Begin a new streaming response.
     ///
-    /// Creates an empty `Assistant` entry, marks the session as streaming,
-    /// and returns the index of the new entry.
+    /// Sets the streaming flag but does NOT create an Assistant entry.
+    /// The entry is created lazily on first `append_stream_token`,
+    /// `begin_tool_call`, or `finish_streaming`. This ensures entries are
+    /// always appended in the correct order (thinking before assistant)
+    /// without any index-shifting insertions.
     ///
     /// # Panics
     ///
     /// Panics if the session is already streaming. This is a programming error —
     /// the caller must ensure the previous stream has finished or been cancelled
     /// before starting a new one.
-    pub fn begin_streaming(&mut self) -> usize {
+    pub fn begin_streaming(&mut self) {
         assert!(
             !self.core.is_streaming,
             "begin_streaming called while already streaming"
         );
-        let entry = ChatEntry::assistant("");
-        let index = self.push_entry(entry);
-        self.core.streaming_entry_index = Some(index);
         self.core.is_streaming = true;
-        tracing::info!(
-            cursor = ?self.ui.selected_entry_index,
-            streaming_index = index,
-            history_len = self.core.history.len(),
-            "begin_streaming"
-        );
-        index
     }
 
     /// Append a token to the streaming assistant entry.
+    ///
+    /// Lazily creates the Assistant entry if this is the first token.
     ///
     /// # Panics
     ///
@@ -344,7 +345,7 @@ impl ChatSessionState {
     )]
     #[expect(
         clippy::expect_used,
-        reason = "streaming_entry_index invariant guaranteed by begin_streaming"
+        reason = "streaming_entry_index guaranteed by ensure_assistant_entry"
     )]
     #[expect(
         clippy::panic,
@@ -358,10 +359,11 @@ impl ChatSessionState {
             self.core.is_streaming,
             "append_stream_token called while not streaming"
         );
+        self.ensure_assistant_entry();
         let index = self
             .core
             .streaming_entry_index
-            .expect("streaming_entry_index must be set when is_streaming");
+            .expect("streaming_entry_index must be set after ensure_assistant_entry");
         if let ChatEntry {
             kind: ChatEntryKind::Assistant(ref mut text),
             ..
@@ -375,58 +377,25 @@ impl ChatSessionState {
 
     /// Begin accumulating thinking tokens.
     ///
-    /// Inserts an empty `Thinking` entry immediately before the streaming
-    /// `Assistant` entry, then adjusts `streaming_entry_index` to account
-    /// for the insertion.
+    /// Appends an empty `Thinking` entry to the history. The Assistant entry
+    /// is created lazily later (on first `append_stream_token` or `finish_streaming`),
+    /// so entries naturally appear in order: thinking before assistant.
     ///
     /// # Panics
     ///
-    /// Panics if the session is not streaming.
-    #[expect(clippy::indexing_slicing, reason = "index comes from push_entry")]
-    #[expect(
-        clippy::expect_used,
-        reason = "streaming invariant guaranteed by begin_streaming"
-    )]
+    /// Panics if the session is not streaming, or if thinking has already begun.
     pub fn begin_thinking(&mut self) {
         assert!(
             self.core.is_streaming,
             "begin_thinking called while not streaming"
         );
-        let assistant_index = self
-            .core
-            .streaming_entry_index
-            .expect("streaming_entry_index must be set when is_streaming");
-        let prev_last = self.core.history.len() - 1;
-        let was_at_last = self
-            .ui
-            .selected_entry_index
-            .map_or(true, |i| i == prev_last);
-        let entry = ChatEntry::thinking("");
-        self.core.history.insert(assistant_index, entry);
-        self.core.streaming_thinking_entry_index = Some(assistant_index);
-        self.core.streaming_entry_index = Some(assistant_index + 1);
-
-        // After insertion, any cursor at or past the insertion point shifts by +1.
-        if let Some(i) = self.ui.selected_entry_index {
-            if i >= assistant_index {
-                self.ui.selected_entry_index = Some(i + 1);
-            }
-        }
-
-        tracing::info!(
-            cursor = ?self.ui.selected_entry_index,
-            assistant_index,
-            prev_last,
-            was_at_last,
-            history_len = self.core.history.len(),
-            "begin_thinking"
+        assert!(
+            self.core.streaming_thinking_entry_index.is_none(),
+            "begin_thinking called while already thinking"
         );
-
-        if was_at_last {
-            self.reset_scroll();
-            // After insertion, the new last entry is at prev_last + 1.
-            self.ui.selected_entry_index = Some(prev_last + 1);
-        }
+        let entry = ChatEntry::thinking("");
+        let index = self.push_entry(entry);
+        self.core.streaming_thinking_entry_index = Some(index);
     }
 
     /// Append a thinking token to the streaming Thinking entry.
@@ -462,21 +431,24 @@ impl ChatSessionState {
     }
 
     /// Mark streaming as finished (normal completion).
+    ///
+    /// Creates an empty Assistant entry if no tokens were ever appended
+    /// (e.g., a stream that ended immediately).
     pub fn finish_streaming(&mut self) {
+        self.ensure_assistant_entry();
         self.core.is_streaming = false;
         self.core.is_sending = false; // defensive: clear both on finish
         self.core.streaming_entry_index = None;
         self.core.streaming_tool_call_indices.clear();
         self.core.streaming_thinking_entry_index = None;
-        tracing::info!(
-            cursor = ?self.ui.selected_entry_index,
-            history_len = self.core.history.len(),
-            "finish_streaming"
-        );
     }
 
     /// Cancel streaming but keep partial text in history.
+    ///
+    /// If an Assistant entry was created, its partial text is preserved.
+    /// If no entry was created (stream cancelled before any tokens), just clears flags.
     pub fn cancel_streaming(&mut self) {
+        self.ensure_assistant_entry();
         self.core.is_streaming = false;
         self.core.is_sending = false; // defensive: clear both on cancel
         self.core.streaming_entry_index = None;
@@ -510,6 +482,7 @@ impl ChatSessionState {
     /// Called when `ToolUseStarted` arrives — the tool name is known but arguments
     /// are still streaming in.
     pub fn begin_tool_call(&mut self, index: usize, id: &str, name: &str) {
+        self.ensure_assistant_entry();
         let entry = ChatEntry::tool_call(id, name, "");
         let history_index = self.push_entry(entry);
         self.core

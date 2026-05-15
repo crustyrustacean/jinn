@@ -16,20 +16,23 @@ fn push_entry_adds_to_history() {
 }
 
 #[rstest::rstest]
-fn begin_streaming_creates_assistant_entry() {
-    // Given a session with one entry.
+fn first_stream_token_creates_assistant_entry() {
+    // Given a session with one entry, streaming started.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
+    session.begin_streaming();
 
-    // When beginning streaming.
-    let index = session.begin_streaming();
+    // Then no assistant entry yet (lazy creation).
+    assert_eq!(session.history().len(), 1);
 
-    // Then the index is 1 and history has an Assistant entry.
-    assert_eq!(index, 1);
+    // When appending the first token.
+    session.append_stream_token("Hello");
+
+    // Then the assistant entry is created.
     assert_eq!(session.history().len(), 2);
     assert!(matches!(
         session.history()[1].kind,
-        ChatEntryKind::Assistant(ref text) if text.is_empty()
+        ChatEntryKind::Assistant(ref text) if text == "Hello"
     ));
 }
 
@@ -563,10 +566,10 @@ fn finalize_tool_call_pushes_new_entry_when_not_found() {
     // When finalizing a tool call that was never started (shouldn't happen normally).
     session.finalize_tool_call("call_99", "echo", r#"{"input":"hi"}"#);
 
-    // Then a new entry is pushed to history.
-    assert_eq!(session.history().len(), 2); // assistant + new tool call
+    // Then a new entry is pushed (no assistant entry yet \xe2\x80\x94 lazy creation).
+    assert_eq!(session.history().len(), 1); // tool call only
     assert_eq!(
-        session.history()[1].kind,
+        session.history()[0].kind,
         ChatEntryKind::ToolCall {
             id: "call_99".to_owned(),
             name: "echo".to_owned(),
@@ -1089,26 +1092,24 @@ fn restore_history_auto_selects_last_entry() {
 // --- Thinking streaming tests ---
 
 #[rstest::rstest]
-fn begin_thinking_inserts_before_assistant_entry() {
-    // Given a session with a streaming Assistant entry.
+fn begin_thinking_appends_before_assistant_is_created() {
+    // Given a streaming session (no assistant entry yet — lazy creation).
     let mut session = ChatSessionState::builder()
         .with_user_entry("hello")
         .begin_streaming()
         .build();
+    // begin_streaming no longer creates an entry.
+    assert_eq!(session.history().len(), 1);
 
     // When beginning thinking.
     session.begin_thinking();
 
-    // Then the Thinking entry is at the streaming entry's original index.
-    // The Assistant entry shifted to index 2.
-    assert_eq!(session.history().len(), 3);
+    // Then the Thinking entry is appended (index 1).
+    // No Assistant entry yet — it will be created on first token.
+    assert_eq!(session.history().len(), 2);
     assert!(matches!(
         session.history()[1].kind,
         ChatEntryKind::Thinking(_)
-    ));
-    assert!(matches!(
-        session.history()[2].kind,
-        ChatEntryKind::Assistant(_)
     ));
     assert_eq!(session.streaming_thinking_entry_index(), Some(1));
 }
@@ -1280,21 +1281,21 @@ fn restore_history_empty_clears_selection() {
 
 #[rstest::rstest]
 fn begin_thinking_auto_selects_new_last_when_at_last() {
-    // Given a streaming session with cursor on assistant (last entry).
+    // Given a streaming session with cursor on user (last entry — no assistant created yet).
     let mut session = ChatSessionState::builder()
         .with_user_entry("hello")
         .begin_streaming()
         .build();
-    // begin_streaming auto-selects the assistant entry (index 1).
-    assert_eq!(session.selected_entry_index(), Some(1));
+    // begin_streaming doesn't create an entry. Cursor is on user (index 0).
+    assert_eq!(session.selected_entry_index(), Some(0));
 
-    // When beginning thinking.
+    // When beginning thinking (appends Thinking at index 1).
     session.begin_thinking();
 
-    // Then cursor is on the new last entry (assistant shifted to index 2).
-    // history: [user(0), thinking(1), assistant(2)]
-    assert_eq!(session.selected_entry_index(), Some(2));
-    assert!(matches!(session.history()[2].kind, ChatEntryKind::Assistant(_)));
+    // Then cursor advances to the new last entry (thinking at index 1).
+    // history: [user(0), thinking(1)]
+    assert_eq!(session.selected_entry_index(), Some(1));
+    assert!(matches!(session.history()[1].kind, ChatEntryKind::Thinking(_)));
 }
 
 #[rstest::rstest]
