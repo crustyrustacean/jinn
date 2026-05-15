@@ -59,6 +59,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             // Input — enter input mode
             .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
+            .bind("<c-j>", Intent::EnterInsertMode, KeyCategory::Input)
             // Navigation — scrolling and tab switching
             .bind("k", Intent::ChatEntrySelectPrev, KeyCategory::Navigation)
             .bind("j", Intent::ChatEntrySelectNext, KeyCategory::Navigation)
@@ -140,6 +141,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<s-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .bind("<c-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
+            .bind("<c-k>", Intent::EnterNormalMode, KeyCategory::General)
             .bind("<c-c>", Intent::Interrupt { session_id: None }, KeyCategory::General)
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
             .bind("<f1>", Intent::ToggleWhichkey, KeyCategory::General)

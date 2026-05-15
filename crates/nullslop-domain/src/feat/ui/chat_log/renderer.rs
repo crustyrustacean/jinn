@@ -85,11 +85,15 @@ impl UiElement<AppState> for ChatLogElement {
         let mut entry_line_ranges: Vec<(u16, u16)> = Vec::with_capacity(history.len());
         let mut wrapped_cursor: u16 = 0;
 
-        // Determine gutter focus state — yellow when chat log has focus.
-        let chat_log_focused = matches!(
+        // Determine gutter focus state — yellow only when chat log is active (Normal scope).
+        // Input and Sidebar scopes show the inactive border color instead.
+        let (gutter_active_color, gutter_inactive_color) = {
+            let theme = &state.frontend.theme;
+            (theme.focus_accent, theme.border_unfocused)
+        };
+        let chat_log_active = matches!(
             state.frontend.scope_stack.current(),
             crate::common::app_state::FocusScope::Normal
-                | crate::common::app_state::FocusScope::Input
         );
 
         for (i, entry) in history.iter().enumerate() {
@@ -113,8 +117,10 @@ impl UiElement<AppState> for ChatLogElement {
             let entry_content_lines = entry_to_lines(entry, &ctx);
 
             // Build gutter lines for this entry (one gutter line per content line).
-            let gutter_style = if is_selected && chat_log_focused {
-                Style::default().bg(ctx.theme.focus_accent)
+            let gutter_style = if is_selected && chat_log_active {
+                Style::default().bg(gutter_active_color)
+            } else if is_selected {
+                Style::default().bg(gutter_inactive_color)
             } else {
                 Style::default().bg(ctx.theme.gutter_bg)
             };
@@ -395,13 +401,13 @@ mod tests {
     #[rstest::rstest]
     fn selected_entry_gutter_is_dark_gray_when_unfocused() {
         // Given a ChatLogElement with a selected entry, sidebar focused.
+        use crate::common::app_state::FocusScope;
         let mut element = ChatLogElement;
         let state = {
             let mut s = AppState::default();
             s.active_session_mut().push_entry(ChatEntry::user("hello"));
             s.active_session_mut().push_entry(ChatEntry::user("world"));
             s.active_session_mut().select_prev_entry(); // index 0
-            use crate::common::app_state::FocusScope;
             s.frontend.scope_stack.push(FocusScope::Sidebar);
             s
         };
@@ -415,12 +421,44 @@ mod tests {
             })
             .unwrap();
 
-        // Then the selected entry's gutter has dark gray bg (not yellow).
+        // Then the selected entry's gutter has dark gray bg (inactive border color, not yellow).
         let buffer = terminal.backend().buffer().clone();
         let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
         assert_eq!(
             gutter_cell.style().bg,
-            Some(crate::feat::theme::default_theme().gutter_bg)
+            Some(crate::feat::theme::default_theme().border_unfocused)
+        );
+    }
+
+    #[rstest::rstest]
+    fn selected_entry_gutter_is_dark_gray_when_input_focused() {
+        // Given a ChatLogElement with a selected entry, input focused.
+        use crate::common::app_state::FocusScope;
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut().push_entry(ChatEntry::user("hello"));
+            s.active_session_mut().push_entry(ChatEntry::user("world"));
+            s.active_session_mut().select_prev_entry(); // index 0
+            s.frontend.scope_stack.push(FocusScope::Input);
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the selected entry's gutter has dark gray bg (inactive border color).
+        let buffer = terminal.backend().buffer().clone();
+        let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
+        assert_eq!(
+            gutter_cell.style().bg,
+            Some(crate::feat::theme::default_theme().border_unfocused)
         );
     }
 
