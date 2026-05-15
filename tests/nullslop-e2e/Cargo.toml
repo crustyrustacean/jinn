@@ -8,6 +8,7 @@ name = "e2e"
 harness = false
 
 [dependencies]
+nullslop = { path = "../.." }
 cucumber = { workspace = true }
 tokio = { workspace = true }
 nullslop-tui = { workspace = true }
