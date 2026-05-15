@@ -133,27 +133,27 @@ impl PromptAssemblyActor {
             messages.extend(bottom_messages);
         }
 
-        // Prepend skills block (if any skills are loaded).
+        // Build system prompt sections.
         let skills_block = {
             let guard = self.state.read();
             format_skills_for_prompt(&guard.context.skills)
         };
 
-        // Prepend TOP pins.
-        let mut final_messages = top_messages;
-        final_messages.append(&mut messages);
+        // Extract pinned System entry contents from top_messages.
+        let pinned_system_contents: Vec<String> = top_messages
+            .iter()
+            .filter_map(|m| match m {
+                LlmMessage::System { content } => Some(content.clone()),
+                _ => None,
+            })
+            .collect();
 
-        // Prepend skills block as a system message before everything else.
-        if !skills_block.is_empty() {
-            final_messages.insert(
-                0,
-                LlmMessage::System {
-                    content: skills_block,
-                },
-            );
-        }
+        // Remove System messages from top_messages — they'll go into the system prompt.
+        let top_non_system: Vec<LlmMessage> = top_messages
+            .into_iter()
+            .filter(|m| !matches!(m, LlmMessage::System { .. }))
+            .collect();
 
-        // Build and prepend environment context (persona, project files, date, CWD).
         let env_context = {
             let guard = self.state.read();
             let cwd = guard
@@ -165,14 +165,29 @@ impl PromptAssemblyActor {
             let persona = guard.context.active_persona.as_ref();
             build_env_context(persona, &context_files, &cwd)
         };
-        if !env_context.is_empty() {
-            final_messages.insert(
-                0,
-                LlmMessage::System {
-                    content: env_context,
-                },
-            );
+
+        // Concatenate all system sections into one message.
+        // Order: skills (lowest priority) → pinned System entries → env_context (highest priority, closest to conversation).
+        let mut system_parts: Vec<String> = Vec::new();
+        if !skills_block.is_empty() {
+            system_parts.push(skills_block);
         }
+        system_parts.extend(pinned_system_contents);
+        if !env_context.is_empty() {
+            system_parts.push(env_context);
+        }
+
+        // Assemble final messages: single system message + top pins (non-System) + working history + bottom pins.
+        let mut final_messages = Vec::new();
+
+        if !system_parts.is_empty() {
+            final_messages.push(LlmMessage::System {
+                content: system_parts.join("\n\n"),
+            });
+        }
+
+        final_messages.extend(top_non_system);
+        final_messages.append(&mut messages);
 
         let _ = ctx.send_event(Event::PromptAssembled(PromptAssembled {
             session_id,
