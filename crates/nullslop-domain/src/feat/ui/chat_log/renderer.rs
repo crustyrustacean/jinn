@@ -123,9 +123,13 @@ impl UiElement<AppState> for ChatLogElement {
             // Build gutter lines for this entry (one gutter line per content line).
             // Pin highlight style — only used on the first gutter line (the pin icon).
             let pin_highlight_style = if is_selected && ctx.is_pinned && chat_log_active {
-                Style::default().fg(ctx.theme.gutter_bg).bg(gutter_active_color)
+                Style::default()
+                    .fg(ctx.theme.gutter_bg)
+                    .bg(gutter_active_color)
             } else if is_selected && ctx.is_pinned {
-                Style::default().fg(ctx.theme.gutter_bg).bg(gutter_inactive_color)
+                Style::default()
+                    .fg(ctx.theme.gutter_bg)
+                    .bg(gutter_inactive_color)
             } else {
                 // Non-pinned or unselected — pin highlight not applicable.
                 Style::default()
@@ -141,18 +145,23 @@ impl UiElement<AppState> for ChatLogElement {
             };
             let gutter_content = if ctx.is_pinned { "📌" } else { GUTTER_STR };
 
-            // Count wrapped lines using content_width (wrapping happens in content area).
-            let entry_wrapped: u16 = entry_content_lines
-                .iter()
-                .map(|line| {
-                    let w = line.width() as u16;
-                    if content_width == 0 || w == 0 {
-                        1
-                    } else {
-                        w.div_ceil(content_width).max(1)
-                    }
-                })
-                .sum();
+            // Count wrapped lines using ratatui's own WordWrapper to match rendering.
+            //
+            // ratatui's Paragraph widget uses WordWrapper (word-boundary wrapping):
+            // it collects graphemes into pending words, breaks lines when a word
+            // would exceed max_line_width, and yields one visual line per next_line()
+            // call. With `trim: false`, leading whitespace is preserved on wrapped
+            // lines. The algorithm lives in `ratatui-widgets/src/reflow.rs`.
+            //
+            // If `Paragraph::line_count()` is ever removed, implement a function that
+            // feeds the same lines into a WordWrapper iterator and counts results.
+            let entry_wrapped: u16 = if content_width == 0 {
+                entry_content_lines.len() as u16
+            } else {
+                Paragraph::new(entry_content_lines.clone())
+                    .wrap(Wrap { trim: false })
+                    .line_count(content_width) as u16
+            };
 
             let start = wrapped_cursor;
             let end = wrapped_cursor + entry_wrapped;
@@ -731,7 +740,8 @@ mod tests {
             let mut s = AppState::default();
             s.active_session_mut()
                 .push_entry(ChatEntry::user("pinned").with_pin(crate::protocol::PinPosition::Top));
-            s.active_session_mut().push_entry(ChatEntry::user("unpinned"));
+            s.active_session_mut()
+                .push_entry(ChatEntry::user("unpinned"));
             // push_entry auto-selects last (index 1, unpinned).
             s
         };
@@ -813,6 +823,138 @@ mod tests {
             gutter_cell.style().bg,
             Some(crate::feat::theme::default_theme().border_unfocused),
             "pinned selected unfocused entry gutter should have border_unfocused background"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_long_session_shows_last_entry_at_bottom() {
+        // Given a ChatLogElement with many assistant entries containing word-wrapping text.
+        // Assistant entries are not padded, so they wrap at word boundaries.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            for i in 0..20 {
+                s.active_session_mut()
+                    .push_entry(ChatEntry::assistant(format!(
+                        "This is message number {i} with some long words that will wrap"
+                    )));
+            }
+            s
+        };
+
+        // 30-wide, 10-tall viewport (content width = 28 after 2-char gutter).
+        let (mut terminal, area) = setup_term(30, 10);
+
+        // When rendering at bottom (auto-scroll).
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the last entry's text appears in the bottom rows of the buffer.
+        // The last entry is "This is message number 19 with some long words that will wrap".
+        let buffer = terminal.backend().buffer().clone();
+        let bottom_content: String = (0..30)
+            .filter_map(|x| buffer.cell((x, 9)).map(|c| c.symbol().to_owned()))
+            .collect();
+        assert!(
+            bottom_content.contains("wrap") || bottom_content.contains("will"),
+            "last entry's text should be visible at the bottom of the viewport, got: {bottom_content}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_scroll_to_bottom_shows_full_last_entry() {
+        // Given a ChatLogElement with assistant entries containing word-wrapping text.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            for i in 0..15 {
+                s.active_session_mut()
+                    .push_entry(ChatEntry::assistant(format!(
+                        "This is message number {i} with some long words that will wrap"
+                    )));
+            }
+            // Simulate pressing G: scroll to bottom + select last entry.
+            s.active_session_mut().scroll_to_bottom();
+            let max = s.active_session().history().len() - 1;
+            s.active_session_mut().set_selected_entry_index(max);
+            s
+        };
+
+        let (mut terminal, area) = setup_term(30, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the last entry's content ("message number 14") is visible in the viewport.
+        let buffer = terminal.backend().buffer().clone();
+        let has_last_entry = (0..10).any(|row| {
+            let row_text: String = (0..30)
+                .filter_map(|x| buffer.cell((x, row)).map(|c| c.symbol().to_owned()))
+                .collect();
+            row_text.contains("14")
+        });
+        assert!(
+            has_last_entry,
+            "last entry (message number 14) should be visible after scroll to bottom"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_scroll_to_selected_middle_entry_adjusts_viewport() {
+        // Given a ChatLogElement with many entries where a middle entry is selected.
+        let mut element = ChatLogElement;
+        let state = {
+            let mut s = AppState::default();
+            // 30 entries, each with word-wrapping text.
+            for i in 0..30 {
+                s.active_session_mut()
+                    .push_entry(ChatEntry::assistant(format!(
+                        "This is message number {i} with some long words that will wrap"
+                    )));
+            }
+            // Select entry 10 (middle of 30).
+            s.active_session_mut().set_selected_entry_index(10);
+            s
+        };
+
+        let (mut terminal, area) = setup_term(30, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the selected entry is visible (yellow gutter in viewport).
+        let buffer = terminal.backend().buffer().clone();
+        let has_yellow_gutter = (0..10).any(|row| {
+            buffer
+                .cell((0, row))
+                .is_some_and(|c| c.style().fg == Some(Color::Yellow))
+        });
+        assert!(
+            has_yellow_gutter,
+            "selected middle entry should be visible in viewport after scroll-to-selected"
+        );
+
+        // And the selected entry's text ("message number 10") is visible.
+        let has_entry_10 = (0..10).any(|row| {
+            let row_text: String = (0..30)
+                .filter_map(|x| buffer.cell((x, row)).map(|c| c.symbol().to_owned()))
+                .collect();
+            row_text.contains("10")
+        });
+        assert!(
+            has_entry_10,
+            "selected middle entry's text should be visible in viewport"
         );
     }
 }

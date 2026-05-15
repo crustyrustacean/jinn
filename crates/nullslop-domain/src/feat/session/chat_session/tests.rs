@@ -1295,7 +1295,10 @@ fn begin_thinking_auto_selects_new_last_when_at_last() {
     // Then cursor advances to the new last entry (thinking at index 1).
     // history: [user(0), thinking(1)]
     assert_eq!(session.selected_entry_index(), Some(1));
-    assert!(matches!(session.history()[1].kind, ChatEntryKind::Thinking(_)));
+    assert!(matches!(
+        session.history()[1].kind,
+        ChatEntryKind::Thinking(_)
+    ));
 }
 
 #[rstest::rstest]

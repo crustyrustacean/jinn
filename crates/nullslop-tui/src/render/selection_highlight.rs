@@ -39,7 +39,10 @@ pub(super) fn apply_selection_highlight(app: &TuiApp, buf: &mut Buffer) {
     // Extract theme colors once to avoid acquiring a read lock per cell.
     let (sel_fg, sel_bg) = {
         let state = app.core.state.read();
-        (state.frontend.theme.selection_fg, state.frontend.theme.selection_bg)
+        (
+            state.frontend.theme.selection_fg,
+            state.frontend.theme.selection_bg,
+        )
     };
 
     for y in top_y..=bot_y {
