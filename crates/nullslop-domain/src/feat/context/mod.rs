@@ -1,10 +1,31 @@
-//! Prompt assembly protocol — strategies for building LLM-ready prompts from chat history.
+//! Context assembly — building LLM-ready prompts from chat history.
+//!
+//! # Assembly Pipeline
+//!
+//! Chat history is assembled into LLM-ready messages through these stages:
+//!
+//! 1. **Pin splitting** — entries are separated into TOP pins, BOTTOM pins,
+//!    and working history based on [`PinPosition`](crate::protocol::PinPosition).
+//! 2. **Strategy assembly** — the active strategy (passthrough, sliding window,
+//!    token budget, compaction) filters/trims the working history within the
+//!    session's token budget.
+//! 3. **System message construction** — a single [`LlmMessage::System`] is built
+//!    by concatenating three sections in priority order (lowest to highest):
+//!    - Skills block (`<available_skills>` XML catalog)
+//!    - Pinned System entry contents (from TOP-pinned `ChatEntryKind::System`)
+//!    - Environment context (date, CWD, persona body, project context files)
+//! 4. **Message ordering** — the final array is:
+//!    `[System] → [TOP non-System pins] → [strategy output] → [BOTTOM pins] → [last message]`
+//!
+//! Provider request builders defensively concatenate any remaining `System`
+//! messages (e.g., from BOTTOM or RELATIVE pins) into their provider-specific
+//! system prompt field, so no system-level context is silently dropped.
+//!
+//! # Contents
 //!
 //! This module defines the [`PromptAssembly`] trait and supporting types for
-//! assembling conversation context into `LlmMessage` arrays suitable for
-//! sending to LLM providers. Each strategy (passthrough, sliding window,
-//! token budget, compaction) implements this trait and can be switched
-//! at runtime per session.
+//! assembling conversation context. Each strategy implements this trait and
+//! can be switched at runtime per session.
 //!
 //! Also contains the **ContextActor** (prompt assembly, strategy management,
 //! pinning, templates) and **PromptScanActor** (template scanning).

@@ -42,7 +42,28 @@ pub fn build_request(
     tools: &[ToolDefinition],
     extra_body: &serde_json::Map<String, serde_json::Value>,
 ) -> ChatCompletionRequest {
-    let openai_messages: Vec<serde_json::Value> = messages.iter().map(message_to_json).collect();
+    // Concatenate all System messages into one system-role message.
+    let mut system_contents: Vec<String> = Vec::new();
+    let mut openai_messages: Vec<serde_json::Value> = Vec::new();
+    for msg in messages {
+        match msg {
+            LlmMessage::System { content } => {
+                system_contents.push(content.clone());
+            }
+            other => {
+                openai_messages.push(message_to_json(other));
+            }
+        }
+    }
+    if !system_contents.is_empty() {
+        openai_messages.insert(
+            0,
+            serde_json::json!({
+                "role": "system",
+                "content": system_contents.join("\n\n"),
+            }),
+        );
+    }
 
     let openai_tools = if tools.is_empty() {
         None
@@ -203,6 +224,34 @@ mod tests {
         assert_eq!(json["role"], "tool");
         assert_eq!(json["tool_call_id"], "call_1");
         assert_eq!(json["content"], "result");
+    }
+
+    #[rstest::rstest]
+    fn build_request_concats_multiple_system_messages() {
+        // Given messages with two System messages and a User message.
+        let messages = vec![
+            LlmMessage::System {
+                content: "First system.".into(),
+            },
+            LlmMessage::System {
+                content: "Second system.".into(),
+            },
+            LlmMessage::User {
+                content: "hello".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then messages has exactly 2 entries: system then user.
+        assert_eq!(req.messages.len(), 2);
+        assert_eq!(req.messages[0]["role"], "system");
+        assert_eq!(
+            req.messages[0]["content"].as_str().unwrap(),
+            "First system.\n\nSecond system."
+        );
+        assert_eq!(req.messages[1]["role"], "user");
     }
 
     #[rstest::rstest]
