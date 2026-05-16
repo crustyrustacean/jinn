@@ -29,7 +29,13 @@ fn user_entry_has_user_kind() {
     let entry = ChatEntry::user(text);
 
     // Then kind is User("hello").
-    assert_eq!(entry.kind, ChatEntryKind::User("hello".to_owned()));
+    assert_eq!(
+        entry.kind,
+        ChatEntryKind::User {
+            display: "hello".to_owned(),
+            expanded: "hello".to_owned(),
+        }
+    );
 }
 
 #[rstest::rstest]
@@ -191,10 +197,10 @@ fn pin_position_returns_none_when_unpinned() {
 #[rstest::rstest]
 fn pin_position_deserializes_old_format() {
     // Given JSON without pin_position field (old format).
-    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"User":"hello"}}"#;
+    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"User":{"display":"hello","expanded":"hello"}}}"#;
 
     // When deserializing.
-    let entry: ChatEntry = serde_json::from_str(json).expect("deserialize old format");
+    let entry: ChatEntry = serde_json::from_str(json).expect("deserialize");
 
     // Then pin_position is None (backward compat via #[serde(default)]).
     assert_eq!(entry.pin_position, None);

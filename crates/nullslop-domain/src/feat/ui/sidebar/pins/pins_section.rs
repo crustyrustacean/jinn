@@ -289,7 +289,7 @@ fn position_badge(position: PinPosition) -> (&'static str, Color) {
 /// Returns the display prefix and truncated content for a chat entry kind.
 fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
     match kind {
-        ChatEntryKind::User(text) => ("> ", truncate_str(text, 40)),
+        ChatEntryKind::User { display, .. } => ("> ", truncate_str(display, 40)),
         ChatEntryKind::Assistant(text) => ("\u{2666} ", truncate_str(text, 40)),
         ChatEntryKind::System(text) => ("\u{2699} ", truncate_str(text, 40)),
         ChatEntryKind::Error(text) => ("\u{26a0} ", truncate_str(text, 40)),

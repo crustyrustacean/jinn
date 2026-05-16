@@ -9,7 +9,7 @@ use nullslop_domain::ActorHostService;
 use nullslop_domain::Command;
 use nullslop_domain::EnqueueUserMessage;
 use nullslop_domain::IntentHandler;
-use nullslop_domain::{AppCore, AppMsg};
+use nullslop_domain::{AppCore, AppMsg, ChatEntry};
 use wherror::Error;
 
 /// Error type for headless operations.
@@ -60,7 +60,7 @@ impl HeadlessApp {
             .send(AppMsg::Command {
                 command: Command::EnqueueUserMessage(EnqueueUserMessage {
                     session_id,
-                    text: message.to_string(),
+                    entry: ChatEntry::user(message.to_string()),
                 }),
                 source: None,
             })

@@ -24,9 +24,9 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
 
     for entry in entries {
         match &entry.kind {
-            ChatEntryKind::User(text) => {
+            ChatEntryKind::User { expanded, .. } => {
                 messages.push(LlmMessage::User {
-                    content: text.clone(),
+                    content: expanded.clone(),
                 });
             }
             ChatEntryKind::Assistant(text) => {

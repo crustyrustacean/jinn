@@ -843,7 +843,7 @@ mod tests {
 
         // And the entries match the first two of the source.
         match &forked.history()[0].kind {
-            ChatEntryKind::User(t) => assert_eq!(t, "first"),
+            ChatEntryKind::User { display, .. } => assert_eq!(display, "first"),
             other => panic!("expected User, got {other:?}"),
         }
         match &forked.history()[1].kind {
@@ -956,7 +956,9 @@ mod tests {
 
         // Then all entry kinds are preserved.
         assert_eq!(loaded.history().len(), 8);
-        assert!(matches!(&loaded.history()[0].kind, ChatEntryKind::User(t) if t == "user msg"));
+        assert!(
+            matches!(&loaded.history()[0].kind, ChatEntryKind::User { display, .. } if display == "user msg")
+        );
         assert!(matches!(&loaded.history()[1].kind, ChatEntryKind::System(t) if t == "system msg"));
         assert!(matches!(&loaded.history()[2].kind, ChatEntryKind::Error(t) if t == "error msg"));
         assert!(

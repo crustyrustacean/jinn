@@ -17,7 +17,7 @@ use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::context::prompt_template::PromptTemplateStore;
-use crate::protocol::{Command, IntentResult};
+use crate::protocol::{ChatEntry, Command, IntentResult};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::validator;
@@ -168,13 +168,17 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
-    let text = state.active_chat_input().text().to_owned();
+    let display = state.active_chat_input().text().to_owned();
     let session_id = state.session.active_session.clone();
+    let expanded = crate::feat::context::prompt_template::expand_tokens(
+        &display,
+        &state.context.prompt_templates,
+    );
     state.active_chat_input_mut().reset();
 
     IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
         session_id,
-        text,
+        entry: ChatEntry::user_expanded(display, expanded),
     })])
 }
 
@@ -790,8 +794,12 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.scope_stack.push(FocusScope::Input);
         state.active_session_mut().begin_streaming();
-        state.active_session_mut().enqueue_message("msg1".into());
-        state.active_session_mut().enqueue_message("msg2".into());
+        state
+            .active_session_mut()
+            .enqueue_message(ChatEntry::user("msg1"));
+        state
+            .active_session_mut()
+            .enqueue_message(ChatEntry::user("msg2"));
 
         // When handling EnterNormalMode.
         let result = super::handle_enter_normal_mode(&mut state);
