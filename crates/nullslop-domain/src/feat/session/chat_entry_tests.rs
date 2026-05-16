@@ -147,6 +147,7 @@ fn tool_result_entry_has_tool_result_kind() {
 #[case::actor(ChatEntry::actor("src", "t"))]
 #[case::tool_call(ChatEntry::tool_call("id", "name", "args"))]
 #[case::tool_result(ChatEntry::tool_result("id", "name", "content", true))]
+#[case::skill(ChatEntry::skill("name", "/path", "content"))]
 fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     // Given an entry created with any ChatEntry constructor.
     // When checking pin_position.
@@ -269,4 +270,101 @@ fn thinking_entry_pin_position_defaults_to_none() {
 
     // Then pin_position is None.
     assert_eq!(entry.pin_position, None);
+}
+
+// --- Skill entry tests ---
+
+#[rstest::rstest]
+fn skill_entry_has_skill_kind() {
+    // Given skill details.
+    let name = "web-coder";
+    let location = "/home/user/.agents/skills/web-coder/SKILL.md";
+    let content = "# Web Coder\n\nExpert web development skill.";
+
+    // When creating a skill entry.
+    let entry = ChatEntry::skill(name, location, content);
+
+    // Then kind is Skill with correct fields.
+    assert_eq!(
+        entry.kind,
+        ChatEntryKind::Skill {
+            name: "web-coder".to_owned(),
+            location: "/home/user/.agents/skills/web-coder/SKILL.md".to_owned(),
+            content: "# Web Coder\n\nExpert web development skill.".to_owned(),
+        }
+    );
+}
+
+#[rstest::rstest]
+fn skill_kind_str_returns_skill() {
+    // Given a skill entry.
+    let entry = ChatEntry::skill("test", "/path", "content");
+
+    // Then kind_str returns "skill".
+    assert_eq!(entry.kind_str(), "skill");
+}
+
+#[rstest::rstest]
+fn skill_text_returns_content() {
+    // Given a skill entry.
+    let entry = ChatEntry::skill("test", "/path", "skill body text");
+
+    // Then text() returns the content.
+    assert_eq!(entry.text(), "skill body text");
+}
+
+#[rstest::rstest]
+fn skill_entry_serializes_roundtrip() {
+    // Given a skill entry.
+    let entry = ChatEntry::skill("my-skill", "/path/SKILL.md", "Skill content here");
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the roundtrip preserves the kind.
+    assert_eq!(
+        back.kind,
+        ChatEntryKind::Skill {
+            name: "my-skill".to_owned(),
+            location: "/path/SKILL.md".to_owned(),
+            content: "Skill content here".to_owned(),
+        }
+    );
+}
+
+#[rstest::rstest]
+fn skill_entry_pin_position_defaults_to_none() {
+    // Given a skill entry.
+    let entry = ChatEntry::skill("test", "/path", "content");
+
+    // Then pin_position is None.
+    assert_eq!(entry.pin_position, None);
+}
+
+#[rstest::rstest]
+fn skill_entry_can_be_pinned() {
+    // Given a skill entry pinned to TOP.
+    let entry = ChatEntry::skill("test", "/path", "content").with_pin(PinPosition::Top);
+
+    // Then it is pinned with TOP position.
+    assert!(entry.is_pinned());
+    assert_eq!(entry.pin_position(), Some(PinPosition::Top));
+}
+
+#[rstest::rstest]
+fn skill_entry_serializes_correct_json_shape() {
+    // Given a skill entry.
+    let entry = ChatEntry::skill("test-skill", "/skills/test-skill/SKILL.md", "body");
+
+    // When serializing.
+    let json = serde_json::to_string(&entry.kind).expect("serialize");
+
+    // Then the JSON has the expected shape: {"Skill": {...}}.
+    let v: serde_json::Value = serde_json::from_str(&json).expect("parse");
+    assert!(v.get("Skill").is_some(), "should have Skill key");
+    let skill = &v["Skill"];
+    assert_eq!(skill["name"], "test-skill");
+    assert_eq!(skill["location"], "/skills/test-skill/SKILL.md");
+    assert_eq!(skill["content"], "body");
 }
