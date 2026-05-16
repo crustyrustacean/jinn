@@ -73,7 +73,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // Pin the skill content as a TOP system entry in the session.
         if let (Some(state), Some(session_id)) = (ctx.state, ctx.session_id) {
             let location = skill_path.to_string_lossy().to_string();
-            let entry = ChatEntry::skill(&name, &location, &body)
+            let entry = ChatEntry::skill(&name, &location, body)
                 .with_pin(PinPosition::Top);
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
@@ -83,7 +83,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         ToolResult {
             tool_call_id: call.id,
             name: call.name,
-            content: body,
+            content: format!("Skill '{name}' loaded"),
             success: true,
         }
     })
@@ -233,5 +233,42 @@ mod tests {
             assert_eq!(pinned[0].pin_position(), Some(PinPosition::Top));
         }
         // If the skill doesn't exist, that's OK for this test.
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_returns_confirmation_in_tool_result() {
+        use crate::common::app_state::AppState;
+        use crate::common::state::State;
+        use crate::protocol::SessionId;
+
+        // Given a skill file in the real skills dir (best-effort).
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+
+        let call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "skill".to_owned(),
+            arguments: serde_json::json!({"name": "phased-task-loop"}).to_string(),
+        };
+
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+            state: Some(state),
+            session_id: Some(session_id),
+            app_paths: crate::common::app_paths::AppPaths::default(),
+        };
+
+        // When executing.
+        let result = execute(call, ctx).await;
+
+        // Then if the skill exists, the tool result contains a confirmation message.
+        if result.success {
+            assert_eq!(
+                result.content, "Skill 'phased-task-loop' loaded",
+                "tool result should contain confirmation, not the full body"
+            );
+        }
     }
 }
