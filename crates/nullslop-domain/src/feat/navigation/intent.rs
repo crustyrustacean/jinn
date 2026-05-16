@@ -7,18 +7,20 @@ use crate::protocol::tab::TabDirection;
 /// Number of lines to scroll per mouse wheel tick.
 const MOUSE_SCROLL_STEP: u16 = 3;
 
-/// Scrolls the chat log up by one viewport page and moves cursor to first visible entry.
+/// Scrolls the chat log up by half a viewport page and moves cursor to first visible entry.
 pub fn handle_scroll_up(state: &mut AppState) -> IntentResult {
     let viewport_height = state.active_session().viewport_height_value().max(1);
-    state.active_session_mut().scroll_up(viewport_height);
+    let half = viewport_height / 2;
+    state.active_session_mut().scroll_up(half);
     state.active_session_mut().move_cursor_to_first_visible();
     IntentResult::empty()
 }
 
-/// Scrolls the chat log down by one viewport page and moves cursor to last visible entry.
+/// Scrolls the chat log down by half a viewport page and moves cursor to last visible entry.
 pub fn handle_scroll_down(state: &mut AppState) -> IntentResult {
     let viewport_height = state.active_session().viewport_height_value().max(1);
-    state.active_session_mut().scroll_down(viewport_height);
+    let half = viewport_height / 2;
+    state.active_session_mut().scroll_down(half);
     state.active_session_mut().move_cursor_to_last_visible();
     IntentResult::empty()
 }
