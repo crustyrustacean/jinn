@@ -4,7 +4,7 @@ use crate::protocol::TableData;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, unicode_segementation_display_width};
+use super::shared::{RenderContext, pad_entry, Pad, unicode_segementation_display_width};
 
 /// Render a [`TableData`] as aligned, styled lines.
 ///
@@ -61,8 +61,7 @@ pub fn to_lines(data: &TableData, ctx: &RenderContext) -> Vec<Line<'static>> {
         lines.push(Line::from(row_spans));
     }
 
-    lines.insert(0, Line::from(""));
-    lines.push(Line::from(""));
+    pad_entry(&mut lines, Pad::Both);
     lines
 }
 

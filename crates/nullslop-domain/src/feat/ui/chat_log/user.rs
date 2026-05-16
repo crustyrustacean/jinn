@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::markdown::render_markdown;
-use super::shared::{RenderContext, pad_line_to_width};
+use super::shared::{RenderContext, pad_entry_with, pad_line_to_width, Pad};
 
 pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let mut lines = render_markdown(text, ctx.content_width, &ctx.theme);
@@ -22,7 +22,6 @@ pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     // Add padding above and below with the user block background.
     let pad_bg = Style::default().bg(ctx.theme.user_block_bg);
     let pad_line = Line::from(Span::styled(" ".repeat(ctx.content_width as usize), pad_bg));
-    lines.insert(0, pad_line.clone());
-    lines.push(pad_line);
+    pad_entry_with(&mut lines, Pad::Both, pad_line);
     lines
 }

@@ -11,7 +11,7 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_line_to_width};
+use super::shared::{RenderContext, pad_entry_with, pad_line_to_width, Pad};
 
 pub fn to_lines(
     name: &str,
@@ -64,8 +64,7 @@ pub fn to_lines(
     // Add padding above and below with the entry's background.
     let pad_bg = Style::default().bg(bg);
     let pad_line = Line::from(Span::styled(" ".repeat(ctx.content_width as usize), pad_bg));
-    lines.insert(0, pad_line.clone());
-    lines.push(pad_line);
+    pad_entry_with(&mut lines, Pad::Both, pad_line);
     lines
 }
 
