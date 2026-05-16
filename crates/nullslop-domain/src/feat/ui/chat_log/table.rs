@@ -61,6 +61,8 @@ pub fn to_lines(data: &TableData, ctx: &RenderContext) -> Vec<Line<'static>> {
         lines.push(Line::from(row_spans));
     }
 
+    lines.insert(0, Line::from(""));
+    lines.push(Line::from(""));
     lines
 }
 
@@ -137,8 +139,8 @@ mod tests {
         // When converting to lines.
         let lines = to_lines(&data, &ctx);
 
-        // Then the first line contains a span with "Provider" that has bold modifier.
-        let header_line = &lines[0];
+        // Then line 1 (after padding) contains a span with "Provider" that has bold modifier.
+        let header_line = &lines[1];
         let provider_span = header_line
             .spans
             .iter()
@@ -159,8 +161,8 @@ mod tests {
         // When converting to lines.
         let lines = to_lines(&data, &ctx);
 
-        // Then some line after header+separator contains "ollama".
-        let data_lines = &lines[2..]; // skip header + separator
+        // Then some line after padding+header+separator contains "ollama".
+        let data_lines = &lines[3..]; // skip pad + header + separator
         let has_ollama = data_lines
             .iter()
             .any(|line| line.spans.iter().any(|s| s.content.starts_with("ollama")));
@@ -176,8 +178,8 @@ mod tests {
         // When converting to lines.
         let lines = to_lines(&data, &ctx);
 
-        // Then the second line (index 1) contains the ─ (U+2500) character.
-        let separator_line = &lines[1];
+        // Then line 2 (after padding+header) contains the ─ (U+2500) character.
+        let separator_line = &lines[2];
         let has_box_drawing = separator_line
             .spans
             .iter()
