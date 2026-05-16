@@ -132,13 +132,14 @@ impl SessionPersistenceActor {
     }
 
     /// SessionLoadCompleted: restore session state and emit follow-up commands.
-    pub(in crate::feat::session::session_actor) fn handle_session_load_completed(
+    pub(in crate::feat::session::session_actor) async fn handle_session_load_completed(
         &self,
         payload: &SessionLoadCompleted,
         ctx: &ActorContext,
     ) {
         let session_id = payload.session.session_id().clone();
         let strategy_id = payload.session.active_strategy().clone();
+        let original_cwd;
 
         {
             let mut state = self.state.write();
@@ -161,9 +162,6 @@ impl SessionPersistenceActor {
             // Insert loaded session into HashMap.
             state.session.sessions.insert(session_id.clone(), loaded);
 
-            // Read default_cwd before taking a mutable session reference.
-            let default_cwd = state.session.default_cwd.clone();
-
             // Add a system message about the restore.
             let session = state
                 .session
@@ -173,28 +171,41 @@ impl SessionPersistenceActor {
             session.push_entry(ChatEntry::system(format!("Session restored: {title_text}")));
             session.set_model(model);
 
-            // Validate CWD — fallback to default if empty or non-existent on disk.
-            let original_cwd = session.cwd().to_owned();
-            let cwd_needs_fallback = original_cwd.as_os_str().is_empty() || !original_cwd.exists();
-            if cwd_needs_fallback {
-                let original_display = if original_cwd.as_os_str().is_empty() {
-                    "(empty)".to_owned()
-                } else {
-                    original_cwd.display().to_string()
-                };
-                session.push_entry(ChatEntry::system(format!(
-                    "Warning: working directory '{}' not found, falling back to '{}'",
-                    original_display,
-                    default_cwd.display()
-                )));
-                session.set_cwd(default_cwd);
-            }
+            // Read cwd before releasing the lock (for async existence check).
+            original_cwd = session.cwd().to_owned();
 
             state.session.active_session = session_id.clone();
             state.session.session_loading = false;
             state.session.session_load_started_at = None;
+        }
 
-            // Notify other actors that the active session changed.
+        // Validate CWD — fallback to default if non-existent on disk.
+        // This check is async (tokio::fs), so it runs outside the state lock.
+        let cwd_exists = tokio::fs::try_exists(&original_cwd)
+            .await
+            .unwrap_or(false);
+        if !cwd_exists {
+            let default_cwd = {
+                let state = self.state.read();
+                state.session.default_cwd.clone()
+            };
+            let mut state = self.state.write();
+            let session = state
+                .session
+                .sessions
+                .get_mut(&session_id)
+                .expect("just inserted");
+            session.push_entry(ChatEntry::system(format!(
+                "Warning: working directory '{}' not found, falling back to '{}'",
+                original_cwd.display(),
+                default_cwd.display()
+            )));
+            session.set_cwd(default_cwd);
+        }
+
+        // Notify other actors that the active session changed.
+        // (Moved outside the first lock block since we restructured.)
+        {
             let _ = ctx.send_event(Event::ActiveSessionChanged(
                 crate::protocol::system::ActiveSessionChanged {
                     session_id: session_id.clone(),

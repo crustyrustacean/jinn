@@ -56,6 +56,11 @@ pub struct SessionCoreEphemeral {
 ///
 /// Fields without `#[serde(skip)]` are persisted across restarts.
 /// All ephemeral (non-persisted) state lives in [`SessionCoreEphemeral`].
+
+/// Serde default for the `cwd` field — resolves to the current directory.
+fn default_cwd() -> std::path::PathBuf {
+    std::path::PathBuf::from(".")
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCore {
     /// Unique identifier for this session.
@@ -76,7 +81,7 @@ pub struct SessionCore {
     profile: SessionProfile,
     /// Working directory for tool execution in this session.
     /// OWNER: IntentHandler (set on session creation and cd commands)
-    #[serde(default)]
+    #[serde(default = "default_cwd")]
     cwd: std::path::PathBuf,
     /// Token usage ledger — one immutable record per request/response pair.
     /// OWNER: session-actor (records tokens on PromptAssembled and StreamCompleted).
@@ -113,7 +118,7 @@ impl Default for SessionCore {
             updated_at: Timestamp::now(),
             history: Vec::new(),
             profile: SessionProfile::default(),
-            cwd: std::path::PathBuf::new(),
+            cwd: std::path::PathBuf::from("."),
             token_ledger: Vec::new(),
             parent_session: None,
             cached_context_size: None,

@@ -233,16 +233,19 @@ fn save_blocking(
         .attach("failed to serialize blobs")?;
     let parent_session_str = session.parent_session().as_ref().map(|p| p.to_string());
 
+    let cwd_str = session.cwd().to_string_lossy().to_string();
+
     // Upsert session metadata.
     tx.execute(
-        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session, cwd)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             updated_at = excluded.updated_at,
             profile = excluded.profile,
             strategy_state = excluded.strategy_state,
-            blobs = excluded.blobs",
+            blobs = excluded.blobs,
+            cwd = excluded.cwd",
         rusqlite::params![
             session_id_str,
             title,
@@ -251,6 +254,7 @@ fn save_blocking(
             strategy_state_json,
             blobs_json,
             parent_session_str,
+            cwd_str,
         ],
     )
     .change_context(SessionStoreError)
@@ -371,7 +375,7 @@ fn load_session_blocking(
     // Load session metadata.
     let meta: Option<SessionMetadata> = conn
         .query_row(
-            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session
+            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session, cwd
              FROM sessions WHERE id = ?1",
             rusqlite::params![session_id_str],
             |row| {
@@ -382,6 +386,7 @@ fn load_session_blocking(
                     strategy_state: row.get(3)?,
                     blobs: row.get(4)?,
                     parent_session: row.get(5)?,
+                    cwd: row.get(6)?,
                 })
             },
         )
@@ -493,6 +498,9 @@ fn load_session_blocking(
         .unwrap_or_else(|_| jiff::Timestamp::now());
     session.restore_updated_at(updated_at);
 
+    // Restore cwd.
+    session.set_cwd(std::path::PathBuf::from(&meta.cwd));
+
     Ok(Some(session))
 }
 
@@ -542,7 +550,7 @@ fn fork_blocking(
     // Load source session metadata.
     let source_meta: Option<SessionMetadata> = tx
         .query_row(
-            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session
+            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session, cwd
              FROM sessions WHERE id = ?1",
             rusqlite::params![source_str],
             |row| {
@@ -553,6 +561,7 @@ fn fork_blocking(
                     strategy_state: row.get(3)?,
                     blobs: row.get(4)?,
                     parent_session: row.get(5)?,
+                    cwd: row.get(6)?,
                 })
             },
         )
@@ -568,8 +577,8 @@ fn fork_blocking(
 
     // Create new session row.
     tx.execute(
-        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session, cwd)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
             new_id_str,
             source_meta.title,
@@ -578,6 +587,7 @@ fn fork_blocking(
             source_meta.strategy_state,
             source_meta.blobs,
             source_str,
+            source_meta.cwd,
         ],
     )
     .change_context(SessionStoreError)
@@ -611,6 +621,7 @@ struct SessionMetadata {
     strategy_state: String,
     blobs: String,
     parent_session: Option<String>,
+    cwd: String,
 }
 
 #[cfg(test)]
@@ -1090,5 +1101,88 @@ mod tests {
         // entry ID again — should work since it was deleted).
         let summaries = store.load_summaries().await.expect("load_summaries");
         assert!(summaries.is_empty());
+    }
+
+    // --- CWD persistence ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn cwd_round_trips_through_save_and_load() {
+        // Given a store with a session that has a custom cwd.
+        let (_dir, store) = make_store();
+        let session_id = SessionId::new();
+        let mut session = ChatSessionState::new();
+        session.set_session_id(session_id.clone());
+        session.set_title("CWD Test".to_owned());
+        session.push_entry(ChatEntry::user("hello"));
+        session.set_cwd(std::path::PathBuf::from("/tmp/my-project"));
+
+        // When saving and loading.
+        store.save(&session).await.expect("save");
+        let loaded = store
+            .load_session(&session_id)
+            .await
+            .expect("load")
+            .expect("should exist");
+
+        // Then the cwd is preserved.
+        assert_eq!(
+            loaded.cwd(),
+            std::path::Path::new("/tmp/my-project")
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn fork_inherits_cwd_from_source() {
+        // Given a store with a session that has a custom cwd.
+        let (_dir, store) = make_store();
+        let source_id = SessionId::new();
+        let mut source = ChatSessionState::new();
+        source.set_session_id(source_id.clone());
+        source.set_title("Original".to_owned());
+        source.push_entry(ChatEntry::user("hello"));
+        source.set_cwd(std::path::PathBuf::from("/home/user/project"));
+        store.save(&source).await.expect("save source");
+
+        // When forking.
+        let forked_id = store.fork(&source_id, 0).await.expect("fork");
+
+        // Then the forked session inherits the source cwd.
+        let forked = store
+            .load_session(&forked_id)
+            .await
+            .expect("load forked")
+            .expect("should exist");
+        assert_eq!(
+            forked.cwd(),
+            std::path::Path::new("/home/user/project")
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn save_updates_cwd_on_existing_session() {
+        // Given a store with a saved session.
+        let (_dir, store) = make_store();
+        let session_id = SessionId::new();
+        let mut session = ChatSessionState::new();
+        session.set_session_id(session_id.clone());
+        session.set_title("CWD Update".to_owned());
+        session.push_entry(ChatEntry::user("hello"));
+        session.set_cwd(std::path::PathBuf::from("/old/path"));
+        store.save(&session).await.expect("save v1");
+
+        // When saving with an updated cwd.
+        session.set_cwd(std::path::PathBuf::from("/new/path"));
+        store.save(&session).await.expect("save v2");
+
+        // Then the loaded session has the new cwd.
+        let loaded = store
+            .load_session(&session_id)
+            .await
+            .expect("load")
+            .expect("should exist");
+        assert_eq!(loaded.cwd(), std::path::Path::new("/new/path"));
     }
 }
