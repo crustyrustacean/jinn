@@ -56,6 +56,14 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         ChatEntryKind::Table(data) => estimator.estimate(&data.to_plain_text()),
         // Thinking entries are excluded from context assembly — contribute 0 tokens.
         ChatEntryKind::Thinking(_) => 0,
+        // Skill entries produce LlmMessage::System with XML wrapping.
+        ChatEntryKind::Skill { content, .. } => {
+            if entry.is_pinned() {
+                estimator.estimate(content)
+            } else {
+                0
+            }
+        }
     }
 }
 
