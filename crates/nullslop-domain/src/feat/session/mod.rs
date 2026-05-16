@@ -14,6 +14,7 @@ pub mod chat_entry;
 mod chat_entry_tests;
 pub mod chat_session;
 pub mod entries;
+pub mod fork_entry;
 pub mod intent;
 pub mod picker_entry;
 pub mod profile;

@@ -73,6 +73,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .describe_group_with_category("g", "general", KeyCategory::General)
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
+            // s prefix — session management
+            .describe_group_with_category("s", "session", KeyCategory::General)
+            .bind("sf", Intent::OpenPicker { kind: PickerKind::SessionFork }, KeyCategory::General)
             .bind("gg", Intent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
@@ -179,8 +182,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<backspace>", Intent::PickerBackspace, KeyCategory::Input)
             .bind("<c-r>", Intent::RefreshModels, KeyCategory::Model)
             .bind("<c-p>", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
-            .bind("<c-a>", Intent::ToggleKeymapScopeFilter, KeyCategory::General)
+            .bind("<c-a>", Intent::ToggleForkAssistantFilter, KeyCategory::General)
             .bind("<c-n>", Intent::SessionNew, KeyCategory::General)
+            .bind("<c-u>", Intent::ToggleForkUserFilter, KeyCategory::General)
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(c) = key.key {
                     Some(Intent::PickerInsertChar { ch: c })

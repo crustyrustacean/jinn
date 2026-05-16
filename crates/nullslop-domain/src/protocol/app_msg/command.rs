@@ -28,6 +28,7 @@ use crate::feat::provider::protocol::command::{
     SendMessage, SendToLlmProvider,
 };
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::skills::skills_scan_actor::ScanSkills;
@@ -104,6 +105,8 @@ pub enum Command {
     UpdatePreferences(UpdatePreferences),
     /// Reload plugin scripts from disk.
     ReloadScripts(ReloadScripts),
+    /// Request to fork a session at a specific entry ordinal.
+    SessionForkRequested(SessionForkRequested),
 }
 
 impl Command {
@@ -142,6 +145,7 @@ impl Command {
             Self::LoadPersonaPickerEntries(..) => Some(LoadPersonaPickerEntries::NAME),
             Self::UpdatePreferences(..) => Some(UpdatePreferences::NAME),
             Self::ReloadScripts(..) => Some(ReloadScripts::NAME),
+            Self::SessionForkRequested(..) => Some(SessionForkRequested::NAME),
         }
     }
 }
@@ -216,6 +220,13 @@ impl std::fmt::Display for Command {
                 write!(f, "update preferences ({} diff(s))", payload.updates.len())
             }
             Command::ReloadScripts(..) => write!(f, "reload scripts"),
+            Command::SessionForkRequested(payload) => {
+                write!(
+                    f,
+                    "session fork at ordinal {}",
+                    payload.at_ordinal
+                )
+            }
         }
     }
 }

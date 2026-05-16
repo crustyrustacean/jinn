@@ -11,6 +11,7 @@ use crate::feat::context::protocol::command::{
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::protocol::{ChatEntry, Command, Event};
+use crate::SessionForkRequested;
 
 use super::super::SessionPersistenceActor;
 
@@ -224,6 +225,62 @@ impl SessionPersistenceActor {
             strategy_id,
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SwitchPromptStrategy");
+        }
+    }
+
+    /// SessionForkRequested: fork the session in SQLite, then load the new session.
+    ///
+    /// Calls `store.fork()` to create a new session with entries up to `at_ordinal`,
+    /// then emits `SessionLoadCompleted` to trigger the standard session-load flow.
+    pub(in crate::feat::session::session_actor) async fn on_session_fork_requested(
+        &self,
+        payload: &SessionForkRequested,
+        ctx: &ActorContext,
+    ) {
+        let Some(store) = &self.store else {
+            tracing::warn!("session-actor has no store — dropping fork request");
+            return;
+        };
+
+        // Fork in SQLite.
+        let new_id = match store
+            .fork(&payload.source_session_id, payload.at_ordinal)
+            .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::warn!(err = ?e, "failed to fork session");
+                // Clear loading state.
+                let mut state = self.state.write();
+                state.session.session_loading = false;
+                state.session.session_load_started_at = None;
+                return;
+            }
+        };
+
+        // Load the forked session.
+        match store.load_session(&new_id).await {
+            Ok(Some(session)) => {
+                if let Err(e) = ctx.send_command(Command::SessionLoadCompleted(
+                    crate::feat::session::protocol::session_load_completed::SessionLoadCompleted {
+                        session,
+                    },
+                )) {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionLoadCompleted after fork");
+                }
+            }
+            Ok(None) => {
+                tracing::warn!("forked session not found after creation");
+                let mut state = self.state.write();
+                state.session.session_loading = false;
+                state.session.session_load_started_at = None;
+            }
+            Err(e) => {
+                tracing::warn!(err = ?e, "failed to load forked session");
+                let mut state = self.state.write();
+                state.session.session_loading = false;
+                state.session.session_load_started_at = None;
+            }
         }
     }
 }

@@ -154,6 +154,10 @@ pub enum Intent {
 
     /// Reload plugin scripts from disk.
     ReloadPlugins,
+    /// Toggle user message visibility in the fork picker.
+    ToggleForkUserFilter,
+    /// Toggle assistant message visibility in the fork picker.
+    ToggleForkAssistantFilter,
 }
 
 impl std::fmt::Display for Intent {
@@ -216,6 +220,8 @@ impl std::fmt::Display for Intent {
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),
             Intent::ExpandToolResult => write!(f, "expand tool result"),
             Intent::ReloadPlugins => write!(f, "reload plugins"),
+            Intent::ToggleForkUserFilter => write!(f, "toggle fork user filter"),
+            Intent::ToggleForkAssistantFilter => write!(f, "toggle fork assistant filter"),
         }
     }
 }

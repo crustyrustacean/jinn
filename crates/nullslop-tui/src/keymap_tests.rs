@@ -957,10 +957,10 @@ fn leader_sk_produces_open_picker_keymap_in_dashboard() {
     }
 }
 
-// --- Scope filter toggle binding ---
+// --- Fork filter toggle bindings ---
 
 #[rstest::rstest]
-fn ctrl_a_produces_toggle_keymap_scope_filter() {
+fn ctrl_a_produces_toggle_fork_assistant_filter() {
     // Given the keymap.
     let keymap = init();
 
@@ -971,16 +971,42 @@ fn ctrl_a_produces_toggle_keymap_scope_filter() {
     };
     let node = keymap.get_node_at_path(&[ctrl_a]);
 
-    // Then it's a leaf with ToggleKeymapScopeFilter for Picker scope.
+    // Then it's a leaf with ToggleForkAssistantFilter for Picker scope.
     assert!(node.is_some());
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Picker);
         assert!(entry.is_some(), "'<c-a>' should be bound in Picker scope");
         assert!(
-            matches!(entry.unwrap().action, Intent::ToggleKeymapScopeFilter),
-            "expected ToggleKeymapScopeFilter"
+            matches!(entry.unwrap().action, Intent::ToggleForkAssistantFilter),
+            "expected ToggleForkAssistantFilter"
         );
     } else {
         panic!("Expected leaf node for '<c-a>'");
+    }
+}
+
+#[rstest::rstest]
+fn ctrl_u_produces_toggle_fork_user_filter() {
+    // Given the keymap.
+    let keymap = init();
+
+    // When looking up '<c-u>' in Picker scope.
+    let ctrl_u = KeyEvent {
+        key: Key::Char('u'),
+        modifiers: Modifiers::ctrl(),
+    };
+    let node = keymap.get_node_at_path(&[ctrl_u]);
+
+    // Then it's a leaf with ToggleForkUserFilter for Picker scope.
+    assert!(node.is_some());
+    if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
+        let entry = entries.iter().find(|e| e.scope == Scope::Picker);
+        assert!(entry.is_some(), "'<c-u>' should be bound in Picker scope");
+        assert!(
+            matches!(entry.unwrap().action, Intent::ToggleForkUserFilter),
+            "expected ToggleForkUserFilter"
+        );
+    } else {
+        panic!("Expected leaf node for '<c-u>'");
     }
 }
