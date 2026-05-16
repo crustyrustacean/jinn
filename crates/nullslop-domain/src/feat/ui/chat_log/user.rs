@@ -1,7 +1,7 @@
 //! User entry rendering — markdown-rendered text on a block background.
 
 use ratatui::style::Style;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 
 use super::markdown::render_markdown;
 use super::shared::{RenderContext, pad_line_to_width};
@@ -18,5 +18,11 @@ pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
         }
         pad_line_to_width(line, ctx.content_width, bg);
     }
+
+    // Add padding above and below with the user block background.
+    let pad_bg = Style::default().bg(ctx.theme.user_block_bg);
+    let pad_line = Line::from(Span::styled(" ".repeat(ctx.content_width as usize), pad_bg));
+    lines.insert(0, pad_line.clone());
+    lines.push(pad_line);
     lines
 }

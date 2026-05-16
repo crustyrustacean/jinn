@@ -60,6 +60,12 @@ pub fn to_lines(
     for line in &mut lines {
         pad_line_to_width(line, ctx.content_width, Style::default().bg(bg));
     }
+
+    // Add padding above and below with the entry's background.
+    let pad_bg = Style::default().bg(bg);
+    let pad_line = Line::from(Span::styled(" ".repeat(ctx.content_width as usize), pad_bg));
+    lines.insert(0, pad_line.clone());
+    lines.push(pad_line);
     lines
 }
 
@@ -158,18 +164,18 @@ mod tests {
         // When converting to lines.
         let lines = to_lines("bash", "output", true, &ctx);
 
-        // Then the first line contains "bash".
-        let name_content: String = lines[0].spans.iter().map(|s| s.content.clone()).collect();
+        // Then line 1 (after padding) contains "bash".
+        let name_content: String = lines[1].spans.iter().map(|s| s.content.clone()).collect();
         assert!(
             name_content.starts_with("bash"),
-            "first line should start with tool name"
+            "second line should start with tool name"
         );
 
-        // And the second line contains "output".
-        let content_line: String = lines[1].spans.iter().map(|s| s.content.clone()).collect();
+        // And line 2 (after padding) contains "output".
+        let content_line: String = lines[2].spans.iter().map(|s| s.content.clone()).collect();
         assert!(
             content_line.starts_with("output"),
-            "second line should start with content"
+            "third line should start with content"
         );
     }
 
@@ -184,8 +190,8 @@ mod tests {
         // Then the result has multiple lines (name + 3 content lines = 4).
         assert_eq!(
             lines.len(),
-            4,
-            "tool result with literal \\n should produce 4 lines, got {}",
+            6,
+            "tool result with literal \\n should produce 6 lines (pad + name + 3 content + pad), got {}",
             lines.len()
         );
 
