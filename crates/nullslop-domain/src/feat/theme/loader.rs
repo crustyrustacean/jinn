@@ -44,15 +44,10 @@ pub fn discover_themes() -> Result<Vec<(String, PathBuf)>, Report<ThemeError>> {
         .attach("failed to read themes directory")?;
 
     for entry in entries {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
+        let Ok(entry) = entry else { continue };
         let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "toml") {
-            if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                themes.push((name.to_owned(), path));
-            }
+        if path.extension().is_some_and(|ext| ext == "toml") && let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+            themes.push((name.to_owned(), path));
         }
     }
 
@@ -259,10 +254,10 @@ mod tests {
         for entry in entries {
             let entry = entry.expect("entry");
             let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "toml") {
-                if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                    themes.push((name.to_owned(), path));
-                }
+            if path.extension().is_some_and(|ext| ext == "toml")
+                && let Some(name) = path.file_stem().and_then(|s| s.to_str())
+            {
+                themes.push((name.to_owned(), path));
             }
         }
         themes.sort_by(|a, b| a.0.cmp(&b.0));

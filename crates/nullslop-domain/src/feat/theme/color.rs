@@ -45,7 +45,7 @@ impl std::fmt::Display for ThemeColor {
             Color::LightMagenta => write!(f, "lightmagenta"),
             Color::LightCyan => write!(f, "lightcyan"),
             Color::Reset => write!(f, "reset"),
-            _ => write!(f, "{:?}", self.0),
+            Color::Indexed(_) => write!(f, "{:?}", self.0),
         }
     }
 }

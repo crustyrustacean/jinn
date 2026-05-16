@@ -969,9 +969,9 @@ fn provider_name_match_is_highlighted_in_suffix() {
     // search_text = "llama3 ollama" — provider name starts at byte 7.
     let entry = make_picker_entry("llama3", "ollama", true, false);
 
-    // When highlighting with match in the provider-name portion (byte 7..13 = "ollama").
-    let highlights: &[Range<usize>] = &[7..13];
-    let line = entry.render_row_with_highlight(false, highlights);
+    // When highlighting with match in the provider-name portion (byte 8..14 = "ollama").
+    #[expect(clippy::single_range_in_vec_init, reason = "API takes a slice of ranges")]
+    let line = entry.render_row_with_highlight(false, &[8..14]);
 
     // Then at least one span has the highlight background.
     let has_highlight = line

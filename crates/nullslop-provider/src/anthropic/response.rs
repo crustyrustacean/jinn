@@ -42,7 +42,7 @@ impl AnthropicStreamParser {
         let response: serde_json::Value = serde_json::from_str(json).ok()?;
 
         let response_type = response.get("type")?.as_str()?;
-        let index = response.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
+        let index = response.get("index").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
 
         match response_type {
             "content_block_start" => {
@@ -93,7 +93,9 @@ impl AnthropicStreamParser {
                             .and_then(|p| p.as_str())
                             .unwrap_or("");
 
-                        if !partial_json.is_empty() {
+                        if partial_json.is_empty() {
+                            None
+                        } else {
                             if let Some(state) = self.tool_states.get_mut(&index) {
                                 state.json_buffer.push_str(partial_json);
                             }
@@ -101,8 +103,6 @@ impl AnthropicStreamParser {
                                 index,
                                 partial_json: partial_json.to_owned(),
                             })
-                        } else {
-                            None
                         }
                     }
                     _ => None,
@@ -216,7 +216,7 @@ mod tests {
                 assert_eq!(tool_call.name, "echo");
                 assert_eq!(tool_call.arguments, "{\"x\":1}");
             }
-            other => panic!("Expected ToolUseComplete, got {:?}", other),
+            other => panic!("Expected ToolUseComplete, got {other:?}"),
         }
     }
 
@@ -234,7 +234,7 @@ mod tests {
             Some(StreamEvent::ToolUseComplete { tool_call, .. }) => {
                 assert_eq!(tool_call.arguments, "{}");
             }
-            other => panic!("Expected ToolUseComplete, got {:?}", other),
+            other => panic!("Expected ToolUseComplete, got {other:?}"),
         }
     }
 

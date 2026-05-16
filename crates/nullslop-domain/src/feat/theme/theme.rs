@@ -159,86 +159,58 @@ impl ThemeFile {
     pub fn resolve(&self) -> Theme {
         let d = default_theme();
         Theme {
-            focus_accent: self
-                .focus_accent
-                .map(|c| c.inner())
-                .unwrap_or(d.focus_accent),
-            border_unfocused: self
-                .border_unfocused
-                .map(|c| c.inner())
-                .unwrap_or(d.border_unfocused),
-            primary_text: self
-                .primary_text
-                .map(|c| c.inner())
-                .unwrap_or(d.primary_text),
-            muted_text: self.muted_text.map(|c| c.inner()).unwrap_or(d.muted_text),
-            error_text: self.error_text.map(|c| c.inner()).unwrap_or(d.error_text),
-            success: self.success.map(|c| c.inner()).unwrap_or(d.success),
-            warning: self.warning.map(|c| c.inner()).unwrap_or(d.warning),
-            streaming: self.streaming.map(|c| c.inner()).unwrap_or(d.streaming),
-            gutter_bg: self.gutter_bg.map(|c| c.inner()).unwrap_or(d.gutter_bg),
-            user_block_bg: self
-                .user_block_bg
-                .map(|c| c.inner())
-                .unwrap_or(d.user_block_bg),
-            tool_block_fg: self
-                .tool_block_fg
-                .map(|c| c.inner())
-                .unwrap_or(d.tool_block_fg),
+            focus_accent: self.focus_accent.map_or(d.focus_accent, super::color::ThemeColor::inner),
+            border_unfocused: self.border_unfocused.map_or(d.border_unfocused, super::color::ThemeColor::inner),
+            primary_text: self.primary_text.map_or(d.primary_text, super::color::ThemeColor::inner),
+            muted_text: self.muted_text.map_or(d.muted_text, super::color::ThemeColor::inner),
+            error_text: self.error_text.map_or(d.error_text, super::color::ThemeColor::inner),
+            success: self.success.map_or(d.success, super::color::ThemeColor::inner),
+            warning: self.warning.map_or(d.warning, super::color::ThemeColor::inner),
+            streaming: self.streaming.map_or(d.streaming, super::color::ThemeColor::inner),
+            gutter_bg: self.gutter_bg.map_or(d.gutter_bg, super::color::ThemeColor::inner),
+            user_block_bg: self.user_block_bg.map_or(d.user_block_bg, super::color::ThemeColor::inner),
+            tool_block_fg: self.tool_block_fg.map_or(d.tool_block_fg, super::color::ThemeColor::inner),
             tool_success_bg: self
                 .tool_success_bg
-                .map(|c| c.inner())
-                .unwrap_or(d.tool_success_bg),
+                .map_or(d.tool_success_bg, super::color::ThemeColor::inner),
             tool_failure_bg: self
                 .tool_failure_bg
-                .map(|c| c.inner())
-                .unwrap_or(d.tool_failure_bg),
+                .map_or(d.tool_failure_bg, super::color::ThemeColor::inner),
             truncation_fg: self
                 .truncation_fg
-                .map(|c| c.inner())
-                .unwrap_or(d.truncation_fg),
+                .map_or(d.truncation_fg, super::color::ThemeColor::inner),
             picker_active_marker: self
                 .picker_active_marker
-                .map(|c| c.inner())
-                .unwrap_or(d.picker_active_marker),
+                .map_or(d.picker_active_marker, super::color::ThemeColor::inner),
             picker_selected_bg: self
                 .picker_selected_bg
-                .map(|c| c.inner())
-                .unwrap_or(d.picker_selected_bg),
+                .map_or(d.picker_selected_bg, super::color::ThemeColor::inner),
             picker_highlight_bg: self
                 .picker_highlight_bg
-                .map(|c| c.inner())
-                .unwrap_or(d.picker_highlight_bg),
+                .map_or(d.picker_highlight_bg, super::color::ThemeColor::inner),
             tab_active_fg: self
                 .tab_active_fg
-                .map(|c| c.inner())
-                .unwrap_or(d.tab_active_fg),
+                .map_or(d.tab_active_fg, super::color::ThemeColor::inner),
             tab_active_bg: self
                 .tab_active_bg
-                .map(|c| c.inner())
-                .unwrap_or(d.tab_active_bg),
+                .map_or(d.tab_active_bg, super::color::ThemeColor::inner),
             tab_inactive_fg: self
                 .tab_inactive_fg
-                .map(|c| c.inner())
-                .unwrap_or(d.tab_inactive_fg),
+                .map_or(d.tab_inactive_fg, super::color::ThemeColor::inner),
             selection_fg: self
                 .selection_fg
-                .map(|c| c.inner())
-                .unwrap_or(d.selection_fg),
+                .map_or(d.selection_fg, super::color::ThemeColor::inner),
             selection_bg: self
                 .selection_bg
-                .map(|c| c.inner())
-                .unwrap_or(d.selection_bg),
+                .map_or(d.selection_bg, super::color::ThemeColor::inner),
             accent_action: self
                 .accent_action
-                .map(|c| c.inner())
-                .unwrap_or(d.accent_action),
-            age_fresh: self.age_fresh.map(|c| c.inner()).unwrap_or(d.age_fresh),
-            age_stale: self.age_stale.map(|c| c.inner()).unwrap_or(d.age_stale),
+                .map_or(d.accent_action, super::color::ThemeColor::inner),
+            age_fresh: self.age_fresh.map_or(d.age_fresh, super::color::ThemeColor::inner),
+            age_stale: self.age_stale.map_or(d.age_stale, super::color::ThemeColor::inner),
             scroll_indicator_bg: self
                 .scroll_indicator_bg
-                .map(|c| c.inner())
-                .unwrap_or(d.scroll_indicator_bg),
+                .map_or(d.scroll_indicator_bg, super::color::ThemeColor::inner),
         }
     }
 }

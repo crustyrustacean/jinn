@@ -26,7 +26,9 @@ pub struct ProviderConfig {
 impl From<&Backend> for ProviderConfig {
     fn from(backend: &Backend) -> Self {
         match backend {
-            Backend::OpenAI => Self::openai(),
+            Backend::OpenAI | Backend::Anthropic | Backend::Google | Backend::AzureOpenAI => {
+                Self::openai()
+            }
             Backend::OpenRouter => Self::openrouter(),
             Backend::ZAI => Self::zai(),
             Backend::DeepSeek => Self::deepseek(),
@@ -39,9 +41,6 @@ impl From<&Backend> for ProviderConfig {
             Backend::Phind => Self::phind(),
             Backend::Ollama => Self::ollama(),
             Backend::ElevenLabs => Self::elevenlabs(),
-            // Anthropic, Google, and Azure have their own implementations.
-            // If someone passes them here, they get a reasonable fallback.
-            Backend::Anthropic | Backend::Google | Backend::AzureOpenAI => Self::openai(),
         }
     }
 }
