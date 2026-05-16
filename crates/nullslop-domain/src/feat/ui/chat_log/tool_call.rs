@@ -3,7 +3,7 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_line_to_width};
+use super::shared::{RenderContext, pad_entry_with, pad_line_to_width, Pad};
 
 pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let style = Style::default()
@@ -32,8 +32,7 @@ pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'s
     // Add padding above and below with the tool block background.
     let pad_bg = Style::default().bg(ctx.theme.tool_success_bg);
     let pad_line = Line::from(Span::styled(" ".repeat(ctx.content_width as usize), pad_bg));
-    lines.insert(0, pad_line.clone());
-    lines.push(pad_line);
+    pad_entry_with(&mut lines, Pad::Both, pad_line);
     lines
 }
 

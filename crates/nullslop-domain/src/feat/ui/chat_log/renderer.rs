@@ -765,10 +765,11 @@ mod tests {
             .unwrap();
 
         // Then the thinking entry appears above the assistant entry.
-        // 2 entries × 3 lines = 6, 4 blank above. Thinking at rows 4-6, assistant at 7-9.
+        // Thinking = 2 lines (pad + content), assistant = 3 lines (pad + content + pad).
+        // Total = 5, 5 blank above. Thinking content at row 6, assistant content at row 8.
         let buffer = terminal.backend().buffer().clone();
-        // Row 5 has the thinking content ("reasoning").
-        let thinking_cell = buffer.cell((G, 5)).expect("cell should exist");
+        // Row 6 has the thinking content ("reasoning").
+        let thinking_cell = buffer.cell((G, 6)).expect("cell should exist");
         assert_eq!(thinking_cell.symbol(), "r");
         // Row 8 has the assistant content ("response").
         let assistant_cell = buffer.cell((G, 8)).expect("cell should exist");
