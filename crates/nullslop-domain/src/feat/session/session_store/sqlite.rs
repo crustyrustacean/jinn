@@ -32,8 +32,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     profile          TEXT NOT NULL DEFAULT '{}',
     strategy_state   TEXT NOT NULL DEFAULT '{}',
     blobs            TEXT NOT NULL DEFAULT '{}',
-    parent_session   TEXT DEFAULT NULL,
-    fork_at_ordinal  INTEGER DEFAULT NULL
+    parent_session   TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS entries (
@@ -250,8 +249,8 @@ fn save_blocking(
 
     // Upsert session metadata.
     tx.execute(
-        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session, fork_at_ordinal)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
+        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             updated_at = excluded.updated_at,
@@ -386,7 +385,7 @@ fn load_session_blocking(
     // Load session metadata.
     let meta: Option<SessionMetadata> = conn
         .query_row(
-            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session, fork_at_ordinal
+            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session
              FROM sessions WHERE id = ?1",
             rusqlite::params![session_id_str],
             |row| {
@@ -397,7 +396,6 @@ fn load_session_blocking(
                     strategy_state: row.get(3)?,
                     blobs: row.get(4)?,
                     parent_session: row.get(5)?,
-                    fork_at_ordinal: row.get(6)?,
                 })
             },
         )
@@ -502,10 +500,12 @@ fn load_session_blocking(
     let parent = meta.parent_session.map(SessionId::from).or(None);
     session.restore_parent_session(parent);
 
-    // Touch updated_at to match persisted value.
-    // We can't set it directly since touch() sets to now.
-    // The updated_at is already set by new(), and restore methods don't touch it.
-    // We need to set it from the DB. Use blobs to carry it through.
+    // Restore updated_at from persisted value.
+    let updated_at: jiff::Timestamp = meta
+        .updated_at
+        .parse()
+        .unwrap_or_else(|_| jiff::Timestamp::now());
+    session.restore_updated_at(updated_at);
 
     Ok(Some(session))
 }
@@ -556,7 +556,7 @@ fn fork_blocking(
     // Load source session metadata.
     let source_meta: Option<SessionMetadata> = tx
         .query_row(
-            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session, fork_at_ordinal
+            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session
              FROM sessions WHERE id = ?1",
             rusqlite::params![source_str],
             |row| {
@@ -567,7 +567,6 @@ fn fork_blocking(
                     strategy_state: row.get(3)?,
                     blobs: row.get(4)?,
                     parent_session: row.get(5)?,
-                    fork_at_ordinal: row.get(6)?,
                 })
             },
         )
@@ -583,8 +582,8 @@ fn fork_blocking(
 
     // Create new session row.
     tx.execute(
-        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session, fork_at_ordinal)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![
             new_id_str,
             source_meta.title,
@@ -593,7 +592,6 @@ fn fork_blocking(
             source_meta.strategy_state,
             source_meta.blobs,
             source_str,
-            at_ordinal,
         ],
     )
     .change_context(SessionStoreError)
@@ -627,7 +625,6 @@ struct SessionMetadata {
     strategy_state: String,
     blobs: String,
     parent_session: Option<String>,
-    fork_at_ordinal: Option<usize>,
 }
 
 #[cfg(test)]
