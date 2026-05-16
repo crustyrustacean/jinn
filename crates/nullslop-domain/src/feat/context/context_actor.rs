@@ -102,10 +102,10 @@ impl PromptAssemblyActor {
                 self.on_assemble_prompt(payload, ctx).await;
             }
             Command::PinChatEntry(payload) => {
-                self.handle_pin_chat_entry(payload);
+                self.handle_pin_chat_entry(payload, ctx);
             }
             Command::UnpinChatEntry(payload) => {
-                self.handle_unpin_chat_entry(payload);
+                self.handle_unpin_chat_entry(payload, ctx);
             }
             Command::SwitchPromptStrategy(payload) => {
                 self.handle_switch_prompt_strategy(payload, ctx);
