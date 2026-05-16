@@ -181,6 +181,8 @@ mod tests {
         let tools = vec![ToolDefinition {
             name: "get_weather".into(),
             description: "Get weather".into(),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
             parameters: serde_json::json!({"type": "object"}),
         }];
 

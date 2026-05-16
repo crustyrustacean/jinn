@@ -9,6 +9,8 @@ pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: "echo".to_owned(),
         description: "Echoes the input text back as the result.".to_owned(),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {

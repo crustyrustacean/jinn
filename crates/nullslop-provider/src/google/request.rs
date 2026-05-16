@@ -213,6 +213,8 @@ mod tests {
         let def = ToolDefinition {
             name: "echo".into(),
             description: "Echo".into(),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {"input": {"type": "string"}},
