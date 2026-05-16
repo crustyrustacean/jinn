@@ -260,15 +260,30 @@ impl UiElement<AppState> for ChatLogElement {
         {
             let abs_start = start + blank_count as u16;
             let abs_end = end + blank_count as u16;
+            let entry_height = abs_end.saturating_sub(abs_start);
             let viewport_top = clamped;
             let viewport_bottom = clamped.saturating_add(area.height);
 
-            if abs_start < viewport_top {
-                clamped = abs_start;
-            } else if abs_end > viewport_bottom {
-                clamped = abs_end.saturating_sub(area.height);
+            if entry_height <= area.height {
+                // Entry fits in viewport — ensure the entire entry is visible.
+                if abs_start < viewport_top {
+                    clamped = abs_start;
+                } else if abs_end > viewport_bottom {
+                    clamped = abs_end.saturating_sub(area.height);
+                }
             } else {
-                /* no scroll adjustment needed */
+                // Entry taller than viewport — only snap if the entry is
+                // completely outside the viewport. This allows ctrl+d/ctrl+u
+                // to scroll freely through the entry without the renderer
+                // snapping back to the entry start.
+                if abs_start >= viewport_bottom {
+                    // Entry is entirely below the viewport — scroll to show its start.
+                    clamped = abs_start;
+                } else if abs_end <= viewport_top {
+                    // Entry is entirely above the viewport — scroll to show its end.
+                    clamped = abs_end.saturating_sub(area.height);
+                }
+                // Otherwise: entry overlaps viewport — no adjustment needed.
             }
         }
 
@@ -956,6 +971,103 @@ mod tests {
         assert!(
             has_entry_10,
             "selected middle entry's text should be visible in viewport"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_scroll_down_through_tall_entry_works() {
+        // Given a tall entry (50 lines) in a small (10-line) viewport, scrolled to show
+        // the middle of the entry.
+        let mut element = ChatLogElement;
+        let mut state = AppState::default();
+        let long_text: String = (0..50)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(long_text));
+        // First render to populate last_max_offset, then scroll.
+        let (mut terminal, area) = setup_term(40, 10);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        // Now scroll up to show the middle of the tall entry.
+        state.active_session_mut().scroll_up(20);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the viewport shows text from the middle of the entry, not the top.
+        let buffer = terminal.backend().buffer().clone();
+        let viewport_text: String = (0..10)
+            .map(|row| {
+                (0..40)
+                    .filter_map(|col| buffer.cell((col, row)).map(|c| c.symbol().to_owned()))
+                    .collect::<String>()
+            })
+            .collect();
+        assert!(
+            !viewport_text.contains("line 0"),
+            "viewport should not show line 0 when scrolled to middle, got: {viewport_text}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_tall_entry_snaps_when_completely_below_viewport() {
+        // Given a tall entry at the end and the viewport scrolled to the top,
+        // with the tall entry selected.
+        let mut element = ChatLogElement;
+        let mut state = AppState::default();
+        // Push 20 short entries to fill space.
+        for i in 0..20 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::assistant(format!("msg {i}")));
+        }
+        // Push a tall entry (50 lines).
+        let long_text: String = (0..50)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(long_text));
+        // push_entry auto-selects last entry (the tall one).
+
+        let (mut terminal, area) = setup_term(40, 5);
+
+        // First render to populate last_max_offset.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Scroll to top so the tall entry is completely below the viewport.
+        state.active_session_mut().scroll_to_top();
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the renderer snaps to show the tall entry's start.
+        let buffer = terminal.backend().buffer().clone();
+        let viewport_text: String = (0..5)
+            .map(|row| {
+                (0..40)
+                    .filter_map(|col| buffer.cell((col, row)).map(|c| c.symbol().to_owned()))
+                    .collect::<String>()
+            })
+            .collect();
+        assert!(
+            viewport_text.contains("line 0"),
+            "tall entry below viewport should snap to show its start, got: {viewport_text}"
         );
     }
 }
