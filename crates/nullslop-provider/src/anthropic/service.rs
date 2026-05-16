@@ -150,8 +150,7 @@ impl LlmService for AnthropicService {
                         for event in events {
                             match event {
                                 SseEvent::Data(json) => {
-                                    if let Some(StreamEvent::Text(text)) =
-                                        parser.parse_data(&json)
+                                    if let Some(StreamEvent::Text(text)) = parser.parse_data(&json)
                                     {
                                         tokens.push(Ok(text));
                                     }

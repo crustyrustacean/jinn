@@ -347,7 +347,8 @@ pub struct FrontendState {
 
     /// Fork picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (fork picker navigation).
-    pub fork_picker: nullslop_selection_widget::SelectionState<crate::feat::session::fork_entry::ForkEntry>,
+    pub fork_picker:
+        nullslop_selection_widget::SelectionState<crate::feat::session::fork_entry::ForkEntry>,
 
     /// All fork entries for the current session (pre-filter).
     /// OWNER: IntentHandler (populated when fork picker opens).

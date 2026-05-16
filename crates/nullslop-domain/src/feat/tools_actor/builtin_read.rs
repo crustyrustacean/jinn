@@ -19,9 +19,7 @@ pub fn definition() -> ToolDefinition {
             or 50KB (whichever is hit first). Use offset/limit for large files."
             .to_owned(),
         prompt_snippet: Some("Read file contents".to_owned()),
-        prompt_guidelines: vec![
-            "Use read to examine files instead of cat or sed.".to_owned(),
-        ],
+        prompt_guidelines: vec!["Use read to examine files instead of cat or sed.".to_owned()],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
@@ -154,6 +152,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         }
     }
 
@@ -314,6 +313,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         let call = ToolCall {

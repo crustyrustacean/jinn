@@ -40,13 +40,15 @@ pub fn build_request(
             _ => None,
         })
         .collect();
-    let system_text = system_prompt.map(std::borrow::ToOwned::to_owned).or_else(|| {
-        if system_contents.is_empty() {
-            None
-        } else {
-            Some(system_contents.join("\n\n"))
-        }
-    });
+    let system_text = system_prompt
+        .map(std::borrow::ToOwned::to_owned)
+        .or_else(|| {
+            if system_contents.is_empty() {
+                None
+            } else {
+                Some(system_contents.join("\n\n"))
+            }
+        });
 
     // Non-system messages go into the messages array.
     let anthropic_messages: Vec<serde_json::Value> = messages

@@ -191,11 +191,11 @@ fn render_indicator_overlay(frame: &mut Frame<'_>, label: &str, inner: Rect, y: 
 
 #[cfg(test)]
 mod tests {
-    use nullslop_testutil::setup_term;
-    use ratatui::layout::Position;
     use super::*;
     use crate::common::app_state::FocusScope;
     use crate::feat::theme::default_theme;
+    use nullslop_testutil::setup_term;
+    use ratatui::layout::Position;
 
     #[rstest::rstest]
     fn name_returns_chat_input_box() {

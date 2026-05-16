@@ -49,7 +49,6 @@ pub struct SessionCoreEphemeral {
     streaming_thinking_entry_index: Option<usize>,
 }
 
-
 /// Core session state — owned by session-actor and context-actor.
 ///
 /// IntentHandler is exempt and may read/write any field.
@@ -280,10 +279,7 @@ impl ChatSessionState {
     /// position and selection.
     pub fn push_entry(&mut self, entry: ChatEntry) -> usize {
         let prev_last = self.core.history.len().saturating_sub(1);
-        let was_at_last = self
-            .ui
-            .selected_entry_index
-            .is_none_or(|i| i == prev_last);
+        let was_at_last = self.ui.selected_entry_index.is_none_or(|i| i == prev_last);
         let index = self.core.history.len();
         self.core.history.push(entry);
         if was_at_last {

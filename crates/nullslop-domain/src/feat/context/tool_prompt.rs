@@ -42,10 +42,7 @@ pub fn build_tool_context_block(tools: &HashMap<String, ToolDefinition>) -> Opti
     if !snippets.is_empty() {
         block.push_str("Available tools:\n");
         for (name, snippet) in &snippets {
-            let _ = std::fmt::Write::write_fmt(
-                &mut block,
-                format_args!("- {name}: {snippet}\n"),
-            );
+            let _ = std::fmt::Write::write_fmt(&mut block, format_args!("- {name}: {snippet}\n"));
         }
     }
 
@@ -55,10 +52,7 @@ pub fn build_tool_context_block(tools: &HashMap<String, ToolDefinition>) -> Opti
         }
         block.push_str("Tool guidelines:\n");
         for guideline in &guidelines {
-            let _ = std::fmt::Write::write_fmt(
-                &mut block,
-                format_args!("- {guideline}\n"),
-            );
+            let _ = std::fmt::Write::write_fmt(&mut block, format_args!("- {guideline}\n"));
         }
     }
 
@@ -127,10 +121,7 @@ mod tests {
     #[rstest::rstest]
     fn tools_without_metadata_are_skipped() {
         // Given tools without snippets or guidelines.
-        let tools = HashMap::from([(
-            "echo".to_owned(),
-            test_tool("echo", None, vec![]),
-        )]);
+        let tools = HashMap::from([("echo".to_owned(), test_tool("echo", None, vec![]))]);
 
         // When building the tool context block.
         let block = build_tool_context_block(&tools);
@@ -156,11 +147,7 @@ mod tests {
         // Given a tool with both snippet and guidelines.
         let tools = HashMap::from([(
             "edit".to_owned(),
-            test_tool(
-                "edit",
-                Some("Edit files"),
-                vec!["Use edit for changes"],
-            ),
+            test_tool("edit", Some("Edit files"), vec!["Use edit for changes"]),
         )]);
 
         // When building the tool context block.

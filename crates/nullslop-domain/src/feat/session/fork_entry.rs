@@ -10,8 +10,8 @@ use crate::feat::picker::style::{dim_style, selected_style};
 use crate::feat::theme::Theme;
 use nullslop_selection_widget::PickerItem;
 use nullslop_selection_widget::highlight_text_with_bg;
-use ratatui::text::{Line, Span};
 use ratatui::style::Style;
+use ratatui::text::{Line, Span};
 
 /// A chat entry displayed in the fork picker.
 ///
@@ -43,7 +43,13 @@ impl PickerItem for ForkEntry {
         is_selected: bool,
         match_indices: &[Range<usize>],
     ) -> Line<'static> {
-        render_fork_row(&self.text, self.is_user, is_selected, match_indices, &self.theme)
+        render_fork_row(
+            &self.text,
+            self.is_user,
+            is_selected,
+            match_indices,
+            &self.theme,
+        )
     }
 }
 

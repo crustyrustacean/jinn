@@ -42,7 +42,10 @@ impl AnthropicStreamParser {
         let response: serde_json::Value = serde_json::from_str(json).ok()?;
 
         let response_type = response.get("type")?.as_str()?;
-        let index = response.get("index").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
+        let index = response
+            .get("index")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0) as usize;
 
         match response_type {
             "content_block_start" => {

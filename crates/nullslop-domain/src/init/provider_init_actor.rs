@@ -10,7 +10,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
-use crate::feat::provider_infra::{ModelCache, ProviderRegistry, cache_path};
+use crate::feat::provider_infra::{ModelCache, ProviderRegistry};
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
 
@@ -78,7 +78,7 @@ impl ProviderInitActor {
         self.services.provider_registry.replace(registry);
 
         // Load model cache from disk and merge into registry.
-        let cache_path = cache_path();
+        let cache_path = self.services.paths.cache_path();
         let cache = ModelCache::load(&cache_path).unwrap_or_else(|e| {
             tracing::warn!("provider-init failed to load model cache: {e:?}");
             None

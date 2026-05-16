@@ -93,6 +93,8 @@ pub struct TestServices {
     session_store: Option<SessionStoreService>,
     /// Custom strategy discovery (if provided).
     strategy_discovery: Option<Arc<dyn StrategyDiscovery>>,
+    /// Custom app paths (if provided).
+    paths: Option<crate::common::app_paths::AppPaths>,
 }
 
 impl Default for TestServices {
@@ -108,6 +110,7 @@ impl Default for TestServices {
             llm_service: None,
             session_store: None,
             strategy_discovery: None,
+            paths: None,
         }
     }
 }
@@ -161,6 +164,13 @@ impl TestServices {
         self
     }
 
+    /// Set custom app paths.
+    #[must_use]
+    pub fn paths(mut self, paths: crate::common::app_paths::AppPaths) -> Self {
+        self.paths = Some(paths);
+        self
+    }
+
     /// Build the [`Services`] instance.
     ///
     /// Leaks a tokio runtime if no custom handle is provided — acceptable for unit tests.
@@ -178,8 +188,13 @@ impl TestServices {
             rt.handle().clone()
         });
 
+        let temp_dir = Box::leak(Box::new(tempfile::TempDir::new().expect("test temp dir")));
+
         let (actor_tx, _actor_rx) = kanal::unbounded::<AppMsg>();
         Services {
+            paths: self
+                .paths
+                .unwrap_or_else(|| crate::common::app_paths::AppPaths::new_in(temp_dir.path())),
             handle,
             actor_channel: ActorChannelService::new(self.actor_channel_sender.unwrap_or(actor_tx)),
             llm_service: self.llm_service.unwrap_or_else(|| {

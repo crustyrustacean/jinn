@@ -30,6 +30,7 @@ pub use common::actor_host::{
 };
 
 // Re-export component types (state, UI)
+pub use common::app_paths::AppPaths;
 pub use common::app_state::pin_sort_key;
 pub use common::app_state::{
     AppState, ContextAssemblyState, FocusScope, FrontendState, ProviderState, ScopeStack,
@@ -124,9 +125,9 @@ pub use feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
     StreamCompletedReason, StreamToken,
 };
+pub use feat::session::protocol::session_fork_requested::SessionForkRequested;
 pub use feat::session::protocol::session_id::SessionId;
 pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;
-pub use feat::session::protocol::session_fork_requested::SessionForkRequested;
 pub use feat::session::protocol::session_load_requested::SessionLoadRequested;
 pub use feat::session::protocol::session_new::SessionNew;
 pub use feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};

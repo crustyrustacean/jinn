@@ -18,6 +18,8 @@ use nullslop_domain::LlmServiceFactoryService;
 use nullslop_domain::NoProvidersAvailableFactory;
 use nullslop_domain::ProviderRegistry;
 use nullslop_domain::ProviderRegistryService;
+use nullslop_domain::SessionStoreService;
+use nullslop_domain::SqliteSessionStore;
 use nullslop_domain::State;
 use nullslop_domain::UserPreferencesStorageService;
 use tokio::runtime::Runtime;
@@ -98,6 +100,7 @@ impl App {
                     provider_registry.clone(),
                     resolved_api_keys.clone(),
                     config_storage.clone(),
+                    SessionStoreService::new(Arc::new(SqliteSessionStore::new())),
                     UserPreferencesStorageService::new(Arc::new(
                         FilesystemUserPreferencesStorage::default_path(),
                     )),
@@ -148,6 +151,7 @@ impl App {
                     provider_registry,
                     resolved_api_keys,
                     config_storage,
+                    SessionStoreService::new(Arc::new(SqliteSessionStore::new())),
                     UserPreferencesStorageService::new(Arc::new(
                         FilesystemUserPreferencesStorage::default_path(),
                     )),

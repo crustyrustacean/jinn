@@ -36,8 +36,6 @@ use nullslop_domain::common::actor::protocol::event::{
 use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use nullslop_domain::feat::plugin_actor::plugin_actor::PluginActor;
-use nullslop_domain::feat::session::SessionStoreService as DomainSessionStoreService;
-use nullslop_domain::feat::session::SqliteSessionStore as DomainSqliteSessionStore;
 use nullslop_domain::init::env_init_actor::EnvInitActor;
 use nullslop_domain::init::provider_init_actor::ProviderInitActor;
 use nullslop_domain::init::system_ready_actor::SystemReadyActor;
@@ -58,6 +56,7 @@ pub fn create_core_with_actor_host(
     provider_registry: ProviderRegistryService,
     api_keys: ApiKeysService,
     config_storage: ConfigStorageService,
+    session_store: SessionStoreService,
     user_preferences_storage: UserPreferencesStorageService,
 ) -> (AppCore, Services, ActorHostService) {
     // Create channel first — actors need the sender, but AppCore needs services
@@ -87,16 +86,16 @@ pub fn create_core_with_actor_host(
 
     // Build services (needed early for infrastructure actors).
     let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
+    let paths = nullslop_domain::AppPaths::default();
     let services = Services {
+        paths: paths.clone(),
         handle: handle.clone(),
         actor_channel: ActorChannelService::new(sender.clone()),
         llm_service: llm_service.clone(),
         provider_registry: provider_registry.clone(),
         api_keys: api_keys.clone(),
         config_storage: config_storage.clone(),
-        session_store: SessionStoreService::new(Arc::new(
-            nullslop_domain::SqliteSessionStore::new(),
-        )),
+        session_store: session_store.clone(),
         strategy_registry: strategy_registry.clone(),
         user_preferences_storage: user_preferences_storage.clone(),
     };
@@ -220,6 +219,7 @@ pub fn create_core_with_actor_host(
             ctx.set_data(provider_registry.clone());
             ctx.set_data(api_keys.clone());
             ctx.set_data(state.clone());
+            ctx.set_data(paths.clone());
         },
     );
 
@@ -233,6 +233,7 @@ pub fn create_core_with_actor_host(
         |ctx| {
             ctx.set_description("Dispatches and manages tool execution");
             ctx.set_data(state.clone());
+            ctx.set_data(paths.clone());
         },
     );
 
@@ -255,9 +256,6 @@ pub fn create_core_with_actor_host(
     );
 
     // Session persistence actor.
-    let domain_session_store = DomainSqliteSessionStore::new();
-    let domain_session_store_service =
-        DomainSessionStoreService::new(Arc::new(domain_session_store));
     let token_counter = TiktokenCounter::o200k_base();
     let sp_result = spawn::<nullslop_domain::feat::session::session_actor::SessionPersistenceActor>(
         "session-persistence",
@@ -269,7 +267,7 @@ pub fn create_core_with_actor_host(
             ctx.set_description("Persists session data to disk");
             ctx.set_data(state.clone());
             ctx.set_data(services.clone());
-            ctx.set_data(domain_session_store_service.clone());
+            ctx.set_data(session_store.clone());
             ctx.set_data(token_counter);
         },
     );
@@ -283,7 +281,7 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         |ctx| {
             ctx.set_description("Scans and reloads prompt templates");
-            ctx.set_data(nullslop_domain::prompts_dir());
+            ctx.set_data(services.paths.prompts_dir());
         },
     );
 
@@ -296,7 +294,7 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         |ctx| {
             ctx.set_description("Scans and loads agent skills from ~/.agents/skills");
-            ctx.set_data(nullslop_domain::feat::skills::skills_dir());
+            ctx.set_data(services.paths.skills_dir());
             ctx.set_data(state.clone());
         },
     );
@@ -312,7 +310,7 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         |ctx| {
             ctx.set_description("Scans and loads persona files from ~/.config/nullslop/personas");
-            ctx.set_data(nullslop_domain::personas_dir());
+            ctx.set_data(services.paths.personas_dir());
         },
     );
 
@@ -340,7 +338,7 @@ pub fn create_core_with_actor_host(
         |ctx| {
             ctx.set_description("Loads and manages rhai plugins");
             ctx.set_data(state.clone());
-            ctx.set_data(nullslop_plugin::loader::plugins_dir());
+            ctx.set_data(services.paths.plugins_dir());
         },
     );
 

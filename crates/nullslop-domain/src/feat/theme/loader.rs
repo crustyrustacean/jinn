@@ -46,7 +46,9 @@ pub fn discover_themes() -> Result<Vec<(String, PathBuf)>, Report<ThemeError>> {
     for entry in entries {
         let Ok(entry) = entry else { continue };
         let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "toml") && let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+        if path.extension().is_some_and(|ext| ext == "toml")
+            && let Some(name) = path.file_stem().and_then(|s| s.to_str())
+        {
             themes.push((name.to_owned(), path));
         }
     }
