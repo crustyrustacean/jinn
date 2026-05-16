@@ -182,6 +182,9 @@ impl IntentHandler {
             Intent::PinsPinCycle => {
                 feat::ui::sidebar::pins::pins_section::handle_pins_pin_cycle(state)
             }
+            Intent::SidebarPersonaEdit => {
+                feat::ui::sidebar::pins::pins_section::handle_sidebar_persona_edit(state)
+            }
 
             // --- Chat Entry Selection ---
             Intent::ChatEntrySelectNext => {
