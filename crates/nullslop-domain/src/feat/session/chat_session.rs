@@ -73,6 +73,8 @@ pub struct SessionCore {
     title: Option<String>,
     /// When this session was last updated. Set at construction, updated on save.
     updated_at: Timestamp,
+    /// When this session was created. Set once at construction, never mutated.
+    created_at: Timestamp,
     /// All messages in this conversation.
     /// OWNER: session-actor (creates/removes entries, restores history)
     history: Vec<ChatEntry>,
@@ -116,6 +118,7 @@ impl Default for SessionCore {
             session_id: SessionId::new(),
             title: None,
             updated_at: Timestamp::now(),
+            created_at: Timestamp::now(),
             history: Vec::new(),
             profile: SessionProfile::default(),
             cwd: std::path::PathBuf::from("."),
@@ -1042,6 +1045,11 @@ impl ChatSessionState {
         self.core.updated_at = ts;
     }
 
+    /// Restore the creation timestamp from persisted data.
+    pub fn restore_created_at(&mut self, ts: jiff::Timestamp) {
+        self.core.created_at = ts;
+    }
+
     // --- New durable field accessors ---
 
     /// This session's unique identifier.
@@ -1067,6 +1075,11 @@ impl ChatSessionState {
     /// When this session was last updated.
     pub fn updated_at(&self) -> &Timestamp {
         &self.core.updated_at
+    }
+
+    /// When this session was created. Never changes after construction.
+    pub fn created_at(&self) -> &Timestamp {
+        &self.core.created_at
     }
 
     /// Update the timestamp to now.

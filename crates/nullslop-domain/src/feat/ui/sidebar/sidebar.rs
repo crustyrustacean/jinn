@@ -10,7 +10,7 @@ use super::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use super::state::SidebarState;
-use super::{persona_section, pins};
+use super::{persona_section, pins, sessions};
 use crate::common::app_state::AppState;
 
 /// The sidebar container.
@@ -55,10 +55,17 @@ impl Sidebar {
             Block::default().style(Style::default().bg(state.frontend.theme.gutter_bg));
         frame.render_widget(background, area);
 
-        // Stack sections vertically within the sidebar area.
+        // Pre-compute all section heights so we don't fight the borrow checker.
+        let heights: Vec<u16> = self.sections.iter().map(|s| s.content_height(state)).collect();
+        let n = self.sections.len();
+
+        // Render all sections except the last top-down.
         let mut y_offset = 0u16;
-        for section in &mut self.sections {
-            let height = section.content_height(state);
+        for (i, section) in self.sections.iter_mut().enumerate() {
+            let height = heights[i];
+            if i == n - 1 {
+                break; // handle last section separately
+            }
             if height == 0 || y_offset >= area.height {
                 continue;
             }
@@ -72,6 +79,25 @@ impl Sidebar {
             };
             section.render(frame, section_area, state);
             y_offset += section_height;
+        }
+
+        // Render the last section (Sessions) anchored to the bottom.
+        if n > 0 {
+            let last_idx = n - 1;
+            let height = heights[last_idx];
+            if height > 0 {
+                let bottom_y = area.height.saturating_sub(height);
+                let section_y = bottom_y.max(y_offset);
+                let available = area.height.saturating_sub(section_y);
+                let section_height = height.min(available);
+                let section_area = Rect {
+                    x: area.x,
+                    y: area.y + section_y,
+                    width: area.width,
+                    height: section_height,
+                };
+                self.sections[last_idx].render(frame, section_area, state);
+            }
         }
     }
 }
@@ -102,17 +128,25 @@ pub fn navigate_sidebar(direction: SidebarIntent, state: &mut AppState) {
             SidebarIntent::Action(_) => return,
         };
 
-        if let Some(target) = neighbor
-            && section_has_content(target, state)
-        {
-            clear_cursor(focused, state);
-            state.frontend.sidebar.focused_section = target;
-            let enter_from = match direction {
-                SidebarIntent::MoveDown => EnterFrom::Top,
-                SidebarIntent::MoveUp => EnterFrom::Bottom,
+        // Scan past consecutive empty sections.
+        let mut candidate = neighbor;
+        while let Some(target) = candidate {
+            if section_has_content(target, state) {
+                clear_cursor(focused, state);
+                state.frontend.sidebar.focused_section = target;
+                let enter_from = match direction {
+                    SidebarIntent::MoveDown => EnterFrom::Top,
+                    SidebarIntent::MoveUp => EnterFrom::Bottom,
+                    SidebarIntent::Action(_) => return,
+                };
+                receive_cursor(target, enter_from, state);
+                return;
+            }
+            candidate = match &direction {
+                SidebarIntent::MoveDown => next_section(target),
+                SidebarIntent::MoveUp => prev_section(target),
                 SidebarIntent::Action(_) => return,
             };
-            receive_cursor(target, enter_from, state);
         }
     }
 }
@@ -125,13 +159,15 @@ fn dispatch_navigate(
     match section {
         SidebarSectionId::Persona => persona_section::navigate(intent, state),
         SidebarSectionId::Pins => pins::navigate(intent, state),
+        SidebarSectionId::Sessions => sessions::navigate(intent, state),
     }
 }
 
 fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
         SidebarSectionId::Persona => Some(SidebarSectionId::Pins),
-        SidebarSectionId::Pins => None,
+        SidebarSectionId::Pins => Some(SidebarSectionId::Sessions),
+        SidebarSectionId::Sessions => None,
     }
 }
 
@@ -139,6 +175,7 @@ fn prev_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
         SidebarSectionId::Persona => None,
         SidebarSectionId::Pins => Some(SidebarSectionId::Persona),
+        SidebarSectionId::Sessions => Some(SidebarSectionId::Pins),
     }
 }
 
@@ -146,6 +183,7 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
         SidebarSectionId::Persona => true,
         SidebarSectionId::Pins => !state.sorted_pinned_ids().is_empty(),
+        SidebarSectionId::Sessions => !state.session.sessions.is_empty(),
     }
 }
 
@@ -153,6 +191,7 @@ fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
     match id {
         SidebarSectionId::Persona => state.frontend.persona_section.cursor = None,
         SidebarSectionId::Pins => state.frontend.pins.clear_selection(),
+        SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index = None,
     }
 }
 
@@ -160,6 +199,7 @@ fn receive_cursor(id: SidebarSectionId, enter_from: EnterFrom, state: &mut AppSt
     match id {
         SidebarSectionId::Persona => persona_section::receive_cursor(state, enter_from),
         SidebarSectionId::Pins => pins::receive_cursor(state, enter_from),
+        SidebarSectionId::Sessions => sessions::receive_cursor(state, enter_from),
     }
 }
 
@@ -258,8 +298,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn move_down_from_persona_with_empty_pins_stays_on_persona() {
-        // Given persona focused with no pinned entries.
+    fn move_down_from_persona_skips_empty_pins_to_sessions() {
+        // Given persona focused with no pinned entries (but sessions exist).
         let mut state = AppState::default();
         state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
         state.frontend.persona_section.cursor = Some(0);
@@ -267,10 +307,10 @@ mod tests {
         // When navigating down.
         navigate_sidebar(SidebarIntent::MoveDown, &mut state);
 
-        // Then focus stays on Persona.
+        // Then focus skips empty Pins and lands on Sessions.
         assert_eq!(
             state.frontend.sidebar.focused_section,
-            SidebarSectionId::Persona
+            SidebarSectionId::Sessions
         );
     }
 
@@ -295,7 +335,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn move_down_at_last_pin_sticks() {
+    fn move_down_at_last_pin_enters_sessions() {
         // Given pins focused with 2 entries, last pin selected.
         let mut state = state_with_pinned(2);
         state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
@@ -305,10 +345,10 @@ mod tests {
         // When navigating down.
         navigate_sidebar(SidebarIntent::MoveDown, &mut state);
 
-        // Then focus stays on Pins.
+        // Then focus moves to Sessions (which always has content).
         assert_eq!(
             state.frontend.sidebar.focused_section,
-            SidebarSectionId::Pins
+            SidebarSectionId::Sessions
         );
     }
 
@@ -323,6 +363,23 @@ mod tests {
         navigate_sidebar(SidebarIntent::MoveUp, &mut state);
 
         // Then focus stays on Persona.
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Persona
+        );
+    }
+
+    #[rstest::rstest]
+    fn move_up_from_sessions_skips_empty_pins_to_persona() {
+        // Given sessions focused with no pinned entries.
+        let mut state = AppState::default();
+        state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+        state.frontend.sessions_section.selected_index = Some(0);
+
+        // When navigating up.
+        navigate_sidebar(SidebarIntent::MoveUp, &mut state);
+
+        // Then focus skips empty Pins and lands on Persona.
         assert_eq!(
             state.frontend.sidebar.focused_section,
             SidebarSectionId::Persona

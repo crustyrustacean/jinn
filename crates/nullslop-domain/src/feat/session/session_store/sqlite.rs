@@ -222,6 +222,7 @@ fn save_blocking(
     let session_id_str = session.session_id().to_string();
     let title = session.title().unwrap_or("Untitled Session");
     let updated_at = session.updated_at().to_string();
+    let created_at = session.created_at().to_string();
     let profile_json = serde_json::to_string(session.profile())
         .change_context(SessionStoreError)
         .attach("failed to serialize profile")?;
@@ -237,8 +238,8 @@ fn save_blocking(
 
     // Upsert session metadata.
     tx.execute(
-        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session, cwd)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        "INSERT INTO sessions (id, title, updated_at, created_at, profile, strategy_state, blobs, parent_session, cwd)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             updated_at = excluded.updated_at,
@@ -250,6 +251,7 @@ fn save_blocking(
             session_id_str,
             title,
             updated_at,
+            created_at,
             profile_json,
             strategy_state_json,
             blobs_json,
@@ -339,7 +341,7 @@ fn load_summaries_blocking(
     conn: &Connection,
 ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
     let mut stmt = conn
-        .prepare("SELECT id, title, updated_at FROM sessions")
+        .prepare("SELECT id, title, updated_at, created_at FROM sessions")
         .change_context(SessionStoreError)
         .attach("failed to prepare summaries query")?;
 
@@ -348,10 +350,14 @@ fn load_summaries_blocking(
             let session_id_str: String = row.get(0)?;
             let title: String = row.get(1)?;
             let updated_at_str: String = row.get(2)?;
+            let created_at_str: String = row.get(3)?;
             Ok(SessionSummary {
                 session_id: SessionId::from(session_id_str),
                 title,
                 updated_at: updated_at_str
+                    .parse()
+                    .unwrap_or_else(|_| jiff::Timestamp::now()),
+                created_at: created_at_str
                     .parse()
                     .unwrap_or_else(|_| jiff::Timestamp::now()),
             })
@@ -375,18 +381,19 @@ fn load_session_blocking(
     // Load session metadata.
     let meta: Option<SessionMetadata> = conn
         .query_row(
-            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session, cwd
+            "SELECT title, updated_at, created_at, profile, strategy_state, blobs, parent_session, cwd
              FROM sessions WHERE id = ?1",
             rusqlite::params![session_id_str],
             |row| {
                 Ok(SessionMetadata {
                     title: row.get(0)?,
                     updated_at: row.get(1)?,
-                    profile: row.get(2)?,
-                    strategy_state: row.get(3)?,
-                    blobs: row.get(4)?,
-                    parent_session: row.get(5)?,
-                    cwd: row.get(6)?,
+                    created_at: row.get(2)?,
+                    profile: row.get(3)?,
+                    strategy_state: row.get(4)?,
+                    blobs: row.get(5)?,
+                    parent_session: row.get(6)?,
+                    cwd: row.get(7)?,
                 })
             },
         )
@@ -498,6 +505,13 @@ fn load_session_blocking(
         .unwrap_or_else(|_| jiff::Timestamp::now());
     session.restore_updated_at(updated_at);
 
+    // Restore created_at from persisted value.
+    let created_at: jiff::Timestamp = meta
+        .created_at
+        .parse()
+        .unwrap_or_else(|_| jiff::Timestamp::now());
+    session.restore_created_at(created_at);
+
     // Restore cwd.
     session.set_cwd(std::path::PathBuf::from(&meta.cwd));
 
@@ -550,18 +564,19 @@ fn fork_blocking(
     // Load source session metadata.
     let source_meta: Option<SessionMetadata> = tx
         .query_row(
-            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session, cwd
+            "SELECT title, updated_at, created_at, profile, strategy_state, blobs, parent_session, cwd
              FROM sessions WHERE id = ?1",
             rusqlite::params![source_str],
             |row| {
                 Ok(SessionMetadata {
                     title: row.get(0)?,
                     updated_at: row.get(1)?,
-                    profile: row.get(2)?,
-                    strategy_state: row.get(3)?,
-                    blobs: row.get(4)?,
-                    parent_session: row.get(5)?,
-                    cwd: row.get(6)?,
+                    created_at: row.get(2)?,
+                    profile: row.get(3)?,
+                    strategy_state: row.get(4)?,
+                    blobs: row.get(5)?,
+                    parent_session: row.get(6)?,
+                    cwd: row.get(7)?,
                 })
             },
         )
@@ -577,12 +592,13 @@ fn fork_blocking(
 
     // Create new session row.
     tx.execute(
-        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session, cwd)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO sessions (id, title, updated_at, created_at, profile, strategy_state, blobs, parent_session, cwd)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             new_id_str,
             source_meta.title,
             now,
+            now,              // fresh created_at — it's a new session
             source_meta.profile,
             source_meta.strategy_state,
             source_meta.blobs,
@@ -617,6 +633,7 @@ fn fork_blocking(
 struct SessionMetadata {
     title: String,
     updated_at: String,
+    created_at: String,
     profile: String,
     strategy_state: String,
     blobs: String,
