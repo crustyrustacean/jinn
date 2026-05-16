@@ -447,10 +447,10 @@ mod tests {
             })
             .unwrap();
 
-        // Then the bottom row content has user text.
+        // Then the user text appears in the content area (above the bottom padding).
         let buffer = terminal.backend().buffer().clone();
-        let bottom_cell = buffer.cell((G, 9)).expect("cell should exist");
-        assert_eq!(bottom_cell.symbol(), "h");
+        let content_cell = buffer.cell((G, 8)).expect("cell should exist");
+        assert_eq!(content_cell.symbol(), "h");
     }
 
     #[rstest::rstest]
@@ -488,12 +488,13 @@ mod tests {
             .unwrap();
 
         // Then the selected entry's gutter has yellow fg.
+        // 2 entries × 3 lines = 6, 4 blank above. Entry 0 at rows 4-6.
         let buffer = terminal.backend().buffer().clone();
-        let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
+        let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
         assert_eq!(gutter_cell.style().fg, Some(Color::Yellow));
 
         // And the unselected entry's gutter has dark gray fg.
-        let unselected_gutter = buffer.cell((0, 9)).expect("cell should exist");
+        let unselected_gutter = buffer.cell((0, 8)).expect("cell should exist");
         assert_eq!(
             unselected_gutter.style().fg,
             Some(crate::feat::theme::default_theme().border_unfocused)
@@ -524,8 +525,9 @@ mod tests {
             .unwrap();
 
         // Then the selected entry's gutter has dark gray fg (inactive border color, not yellow).
+        // 2 entries × 3 lines = 6, 4 blank above. Entry 0 content at row 5.
         let buffer = terminal.backend().buffer().clone();
-        let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
+        let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
         assert_eq!(
             gutter_cell.style().fg,
             Some(crate::feat::theme::default_theme().border_unfocused)
@@ -556,8 +558,9 @@ mod tests {
             .unwrap();
 
         // Then the selected entry's gutter has dark gray fg (inactive border color).
+        // 2 entries × 3 lines = 6, 4 blank above. Entry 0 content at row 5.
         let buffer = terminal.backend().buffer().clone();
-        let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
+        let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
         assert_eq!(
             gutter_cell.style().fg,
             Some(crate::feat::theme::default_theme().border_unfocused)
@@ -762,12 +765,13 @@ mod tests {
             .unwrap();
 
         // Then the thinking entry appears above the assistant entry.
+        // 2 entries × 3 lines = 6, 4 blank above. Thinking at rows 4-6, assistant at 7-9.
         let buffer = terminal.backend().buffer().clone();
-        // Line 8 has the thinking entry.
-        let thinking_cell = buffer.cell((G, 8)).expect("cell should exist");
+        // Row 5 has the thinking content ("reasoning").
+        let thinking_cell = buffer.cell((G, 5)).expect("cell should exist");
         assert_eq!(thinking_cell.symbol(), "r");
-        // Line 9 has the assistant entry.
-        let assistant_cell = buffer.cell((G, 9)).expect("cell should exist");
+        // Row 8 has the assistant content ("response").
+        let assistant_cell = buffer.cell((G, 8)).expect("cell should exist");
         assert_eq!(assistant_cell.symbol(), "r");
     }
 
@@ -792,8 +796,10 @@ mod tests {
             .unwrap();
 
         // Then the pinned entry's gutter has focus_accent (yellow) background.
+        // Entry is 3 lines (pad + content + pad), starts at row 7 in 10-line viewport.
+        // The pin icon and yellow bg appear on the first line of the entry (row 7).
         let buffer = terminal.backend().buffer().clone();
-        let gutter_cell = buffer.cell((0, 9)).expect("cell should exist");
+        let gutter_cell = buffer.cell((0, 7)).expect("cell should exist");
         assert_eq!(
             gutter_cell.style().bg,
             Some(Color::Yellow),
@@ -886,8 +892,9 @@ mod tests {
             .unwrap();
 
         // Then the pinned entry's gutter has border_unfocused background, not yellow.
+        // 1 entry × 3 lines = 3, 7 blank above. Entry at rows 7-9, pin icon at row 7.
         let buffer = terminal.backend().buffer().clone();
-        let gutter_cell = buffer.cell((0, 9)).expect("cell should exist");
+        let gutter_cell = buffer.cell((0, 7)).expect("cell should exist");
         assert_eq!(
             gutter_cell.style().bg,
             Some(crate::feat::theme::default_theme().border_unfocused),
@@ -921,15 +928,19 @@ mod tests {
             })
             .unwrap();
 
-        // Then the last entry's text appears in the bottom rows of the buffer.
-        // The last entry is "This is message number 19 with some long words that will wrap".
+        // Then the last entry's text appears near the bottom of the buffer.
+        // Each entry is 3 lines (pad + content + pad), so the bottom row is padding.
+        // Check rows 8-9 for the content or padding.
         let buffer = terminal.backend().buffer().clone();
-        let bottom_content: String = (0..30)
-            .filter_map(|x| buffer.cell((x, 9)).map(|c| c.symbol().to_owned()))
-            .collect();
+        let has_last_entry = (7..10).any(|row| {
+            let row_text: String = (0..30)
+                .filter_map(|x| buffer.cell((x, row)).map(|c| c.symbol().to_owned()))
+                .collect();
+            row_text.contains("wrap") || row_text.contains("will") || row_text.contains("19")
+        });
         assert!(
-            bottom_content.contains("wrap") || bottom_content.contains("will"),
-            "last entry's text should be visible at the bottom of the viewport, got: {bottom_content}"
+            has_last_entry,
+            "last entry's text should be visible near the bottom of the viewport"
         );
     }
 
@@ -1246,13 +1257,16 @@ mod tests {
             "cache should be re-populated after resize"
         );
 
-        // And the last message is visible at the bottom.
+        // And the last message is visible near the bottom.
         let buffer = terminal2.backend().buffer().clone();
-        let bottom_text: String = (0..60)
-            .filter_map(|x| buffer.cell((x, 9)).map(|c| c.symbol().to_owned()))
-            .collect();
+        let has_last_message = (7..10).any(|row| {
+            let row_text: String = (0..60)
+                .filter_map(|x| buffer.cell((x, row)).map(|c| c.symbol().to_owned()))
+                .collect();
+            row_text.contains("4")
+        });
         assert!(
-            bottom_text.contains("4"),
+            has_last_message,
             "last message should be visible after resize"
         );
     }
