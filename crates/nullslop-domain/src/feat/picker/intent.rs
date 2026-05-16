@@ -367,13 +367,13 @@ fn build_fork_entries(state: &AppState) -> Vec<ForkEntry> {
         .filter(|(_, e)| {
             matches!(
                 &e.kind,
-                ChatEntryKind::User(_) | ChatEntryKind::Assistant(_)
+                ChatEntryKind::User { .. } | ChatEntryKind::Assistant(_)
             )
         })
         .map(|(i, e)| ForkEntry {
             ordinal: i,
             text: e.text(),
-            is_user: matches!(&e.kind, ChatEntryKind::User(_)),
+            is_user: matches!(&e.kind, ChatEntryKind::User { .. }),
             theme: state.frontend.theme.clone(),
         })
         .collect()

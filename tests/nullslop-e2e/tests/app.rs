@@ -456,6 +456,21 @@ async fn then_chat_history_count(world: &mut AppWorld, count: u64) {
     );
 }
 
+/// Asserts the active session's chat history contains at least the expected number of entries.
+/// Waits up to 5 seconds for the count to match.
+#[cucumber::then(expr = "the chat history should contain at least {int} entry")]
+async fn then_chat_history_at_least_count(world: &mut AppWorld, count: u64) {
+    let expected = count as usize;
+    world
+        .wait_until(|state| state.active_session().history().len() >= expected)
+        .await;
+    let actual = world.state().active_session().history().len();
+    assert!(
+        actual >= expected,
+        "expected at least {count} history entries, got {actual}"
+    );
+}
+
 /// Asserts the which-key popup is active.
 #[cucumber::then(expr = "which-key should be active")]
 fn then_which_key_active(world: &mut AppWorld) {
@@ -519,4 +534,44 @@ fn then_scroll_at_bottom(world: &mut AppWorld) {
         state.active_session().is_at_bottom(),
         "expected scroll at bottom"
     );
+}
+
+// --- Prompt template expansion step definitions ---
+
+/// Injects a prompt template into the app state's template store.
+#[cucumber::given(expr = "a prompt template {string} with body {string}")]
+fn given_prompt_template(world: &mut AppWorld, name: String, body: String) {
+    let mut state = world.app.core.state.write();
+    let mut templates = state.context.prompt_templates.templates().to_vec();
+    templates.push(nullslop_domain::PromptTemplate {
+        name,
+        description: String::new(),
+        body,
+    });
+    state.context.prompt_templates = nullslop_domain::PromptTemplateStore::from_vec(templates);
+}
+
+/// Asserts the last User entry has the expected display and expanded text.
+#[cucumber::then(expr = "the last user entry has display {string} and expanded {string}")]
+fn then_last_user_entry_display_expanded(world: &mut AppWorld, display: String, expanded: String) {
+    let state = world.state();
+    let history = state.active_session().history();
+    let user_entries: Vec<_> = history
+        .iter()
+        .rev()
+        .filter(|e| matches!(&e.kind, nullslop_domain::ChatEntryKind::User { .. }))
+        .collect();
+    let last = user_entries
+        .first()
+        .expect("expected at least one user entry");
+    match &last.kind {
+        nullslop_domain::ChatEntryKind::User {
+            display: actual_display,
+            expanded: actual_expanded,
+        } => {
+            assert_eq!(actual_display, &display, "display text mismatch");
+            assert_eq!(actual_expanded, &expanded, "expanded text mismatch");
+        }
+        _ => panic!("expected User entry, got {:?}", last.kind),
+    }
 }

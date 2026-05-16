@@ -20,7 +20,7 @@ use crate::{AppState, FocusScope, PickerKind};
 
 use crate::Intent;
 use crate::IntentHandler;
-use crate::protocol::PickerEntry;
+use crate::protocol::{ChatEntry, PickerEntry};
 
 fn handle(intent: &Intent, state: &mut AppState) -> super::IntentResult {
     IntentHandler::handle(intent, state)
@@ -261,8 +261,12 @@ fn cancel_prompt_drains_queue_on_cancel() {
     // Given a state with cancel prompt active, streaming session, and queued messages.
     let mut state = AppState::default();
     state.active_session_mut().begin_streaming();
-    state.active_session_mut().enqueue_message("queued1".into());
-    state.active_session_mut().enqueue_message("queued2".into());
+    state
+        .active_session_mut()
+        .enqueue_message(ChatEntry::user("queued1"));
+    state
+        .active_session_mut()
+        .enqueue_message(ChatEntry::user("queued2"));
     state.frontend.cancel_stream_prompt = true;
 
     // When handling NormalEscape (second ESC).

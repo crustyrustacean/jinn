@@ -9,6 +9,8 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use error_stack::{Report, ResultExt as _};
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use tokio::task::spawn_blocking;
 
@@ -22,29 +24,40 @@ use super::migration::session_migrations;
 
 use super::{SessionStore, SessionStoreError};
 
+/// Configuration for the SQLite connection pool.
+///
+/// Controls pool sizing. Use [`PoolConfig::default()`] for sensible defaults
+/// or construct with a specific max size.
+pub struct PoolConfig {
+    /// Maximum number of connections in the pool.
+    pub max_size: u32,
+}
+
+impl Default for PoolConfig {
+    fn default() -> Self {
+        Self { max_size: 4 }
+    }
+}
+
 pub struct SqliteSessionStore {
-    /// Directory containing `sessions.db`.
-    dir: PathBuf,
+    /// Connection pool for `sessions.db`.
+    pool: Pool<SqliteConnectionManager>,
 }
 
 /// SQLite database file name.
 const FILE_NAME: &str = "sessions.db";
 
-impl Default for SqliteSessionStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl SqliteSessionStore {
     /// Creates a store at the platform data directory.
     ///
     /// Uses `dirs::data_dir()` → `nullslop/sessions.db` on Linux.
-    /// The database file is created on first access.
+    /// The database file is created on first access. Migrations are run
+    /// once during pool initialization.
     ///
     /// # Panics
     ///
-    /// Panics if the platform data directory cannot be determined.
+    /// Panics if the platform data directory cannot be determined or
+    /// pool creation fails.
     #[expect(
         clippy::expect_used,
         reason = "platform data dir is always available on supported targets"
@@ -54,43 +67,60 @@ impl SqliteSessionStore {
         let dir = dirs::data_dir()
             .expect("platform data directory should be available")
             .join(APP_NAME);
-        Self { dir }
+        Self::build_pool(&dir, PoolConfig::default())
     }
 
     /// Creates a store at an explicit directory (for testing).
     #[must_use]
     pub fn new_in(dir: PathBuf) -> Self {
-        Self { dir }
+        Self::build_pool(&dir, PoolConfig::default())
     }
 
-    /// Opens a connection to the database, creating it if needed.
-    fn connect(&self) -> Result<Connection, Report<SessionStoreError>> {
-        if !self.dir.exists() {
-            std::fs::create_dir_all(&self.dir)
-                .change_context(SessionStoreError)
-                .attach("failed to create session directory")?;
+    /// Creates a store at an explicit directory with custom pool configuration.
+    #[must_use]
+    pub fn new_with_config(dir: PathBuf, config: PoolConfig) -> Self {
+        Self::build_pool(&dir, config)
+    }
+
+    /// Builds the connection pool.
+    ///
+    /// Creates the directory if needed, runs migrations once on a bootstrap
+    /// connection, then builds the pool. Each pooled connection gets WAL and
+    /// foreign key pragmas set via the connection manager's init hook.
+    fn build_pool(dir: &PathBuf, config: PoolConfig) -> Self {
+        if !dir.exists() {
+            std::fs::create_dir_all(dir).expect("failed to create session directory");
         }
-        let path = self.dir.join(FILE_NAME);
-        let conn = Connection::open(&path)
-            .change_context(SessionStoreError)
-            .attach("failed to open sessions database")?;
+        let path = dir.join(FILE_NAME);
 
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
-            .change_context(SessionStoreError)
-            .attach("failed to set pragmas")?;
+        // Run migrations once on a bootstrap connection before building the pool.
+        // This ensures the schema is ready before any pooled connections are created.
+        {
+            let conn = Connection::open(&path).expect("failed to open database for migration");
+            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
+                .expect("failed to set pragmas");
+            crate::common::migration::run_migrations(&conn, &session_migrations())
+                .expect("failed to run migrations");
+        }
 
-        crate::common::migration::run_migrations(&conn, &session_migrations())
-            .change_context(SessionStoreError)
-            .attach("failed to run database migrations")?;
+        let manager = SqliteConnectionManager::file(&path).with_init(|conn| {
+            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+            Ok(())
+        });
 
-        Ok(conn)
+        let pool = Pool::builder()
+            .max_size(config.max_size)
+            .build(manager)
+            .expect("failed to create connection pool");
+
+        Self { pool }
     }
 }
 
 impl std::fmt::Debug for SqliteSessionStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SqliteSessionStore")
-            .field("dir", &self.dir)
+            .field("pool_state", &self.pool.state())
             .finish()
     }
 }
@@ -102,53 +132,57 @@ impl SessionStore for SqliteSessionStore {
     }
 
     async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
-        let dir = self.dir.clone();
+        let conn = self
+            .pool
+            .get()
+            .change_context(SessionStoreError)
+            .attach("failed to acquire connection from pool")?;
         let session = session.clone();
-        spawn_blocking(move || save_blocking(&dir, &session))
+        spawn_blocking(move || save_blocking(&conn, &session))
             .await
             .change_context(SessionStoreError)
             .attach("spawn_blocking panicked during save")?
     }
 
     async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
-        let dir = self.dir.clone();
-        spawn_blocking(move || {
-            let store = SqliteSessionStore { dir };
-            let conn = store.connect()?;
-            load_summaries_blocking(&conn)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during load_summaries")?
+        let conn = self
+            .pool
+            .get()
+            .change_context(SessionStoreError)
+            .attach("failed to acquire connection from pool")?;
+        spawn_blocking(move || load_summaries_blocking(&conn))
+            .await
+            .change_context(SessionStoreError)
+            .attach("spawn_blocking panicked during load_summaries")?
     }
 
     async fn load_session(
         &self,
         session_id: &SessionId,
     ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
-        let dir = self.dir.clone();
+        let conn = self
+            .pool
+            .get()
+            .change_context(SessionStoreError)
+            .attach("failed to acquire connection from pool")?;
         let session_id = session_id.clone();
-        spawn_blocking(move || {
-            let store = SqliteSessionStore { dir };
-            let conn = store.connect()?;
-            load_session_blocking(&conn, &session_id)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during load_session")?
+        spawn_blocking(move || load_session_blocking(&conn, &session_id))
+            .await
+            .change_context(SessionStoreError)
+            .attach("spawn_blocking panicked during load_session")?
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Report<SessionStoreError>> {
-        let dir = self.dir.clone();
+        let conn = self
+            .pool
+            .get()
+            .change_context(SessionStoreError)
+            .attach("failed to acquire connection from pool")?;
         let session_id = session_id.clone();
-        spawn_blocking(move || {
-            let store = SqliteSessionStore { dir };
-            let conn = store.connect()?;
-            delete_blocking(&conn, &session_id)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during delete")?
+        spawn_blocking(move || delete_blocking(&conn, &session_id))
+            .await
+            .change_context(SessionStoreError)
+            .attach("spawn_blocking panicked during delete")?
     }
 
     async fn fork(
@@ -156,16 +190,16 @@ impl SessionStore for SqliteSessionStore {
         source_session_id: &SessionId,
         at_ordinal: usize,
     ) -> Result<SessionId, Report<SessionStoreError>> {
-        let dir = self.dir.clone();
+        let conn = self
+            .pool
+            .get()
+            .change_context(SessionStoreError)
+            .attach("failed to acquire connection from pool")?;
         let source_session_id = source_session_id.clone();
-        spawn_blocking(move || {
-            let store = SqliteSessionStore { dir };
-            let conn = store.connect()?;
-            fork_blocking(&conn, &source_session_id, at_ordinal)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during fork")?
+        spawn_blocking(move || fork_blocking(&conn, &source_session_id, at_ordinal))
+            .await
+            .change_context(SessionStoreError)
+            .attach("spawn_blocking panicked during fork")?
     }
 }
 
@@ -177,12 +211,9 @@ impl SessionStore for SqliteSessionStore {
 /// and inserts any new entries. Orphaned entries (no longer referenced by any
 /// session) are cleaned up at the end.
 fn save_blocking(
-    dir: &PathBuf,
+    conn: &Connection,
     session: &ChatSessionState,
 ) -> Result<(), Report<SessionStoreError>> {
-    let store = SqliteSessionStore { dir: dir.clone() };
-    let conn = store.connect()?;
-
     let tx = conn
         .unchecked_transaction()
         .change_context(SessionStoreError)
@@ -262,7 +293,7 @@ fn save_blocking(
         tx.execute(
             "INSERT INTO session_entries (session_id, entry_id, ordinal, pin_position)
              VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![session_id_str, entry_id_str, ordinal, pin_str],
+            rusqlite::params![session_id_str, entry_id_str, ordinal as i64, pin_str],
         )
         .change_context(SessionStoreError)
         .attach("failed to insert session entry junction")?;
@@ -558,7 +589,7 @@ fn fork_blocking(
          SELECT ?1, entry_id, ordinal, pin_position
          FROM session_entries
          WHERE session_id = ?2 AND ordinal <= ?3",
-        rusqlite::params![new_id_str, source_str, at_ordinal],
+        rusqlite::params![new_id_str, source_str, at_ordinal as i64],
     )
     .change_context(SessionStoreError)
     .attach("failed to copy junction rows for fork")?;
@@ -812,7 +843,7 @@ mod tests {
 
         // And the entries match the first two of the source.
         match &forked.history()[0].kind {
-            ChatEntryKind::User(t) => assert_eq!(t, "first"),
+            ChatEntryKind::User { display, .. } => assert_eq!(display, "first"),
             other => panic!("expected User, got {other:?}"),
         }
         match &forked.history()[1].kind {
@@ -925,7 +956,9 @@ mod tests {
 
         // Then all entry kinds are preserved.
         assert_eq!(loaded.history().len(), 8);
-        assert!(matches!(&loaded.history()[0].kind, ChatEntryKind::User(t) if t == "user msg"));
+        assert!(
+            matches!(&loaded.history()[0].kind, ChatEntryKind::User { display, .. } if display == "user msg")
+        );
         assert!(matches!(&loaded.history()[1].kind, ChatEntryKind::System(t) if t == "system msg"));
         assert!(matches!(&loaded.history()[2].kind, ChatEntryKind::Error(t) if t == "error msg"));
         assert!(
