@@ -11,7 +11,9 @@ use crate::feat::theme::Theme;
 use crate::feat::ui::sidebar::section_trait::{
     SidebarIntent, SidebarSection, SidebarSectionConfig, SidebarSectionId, SidebarSectionResult,
 };
-use crate::protocol::{ChatEntryId, ChatEntryKind, Command, IntentResult, PinPosition, PickerKind, SessionId};
+use crate::protocol::{
+    ChatEntryId, ChatEntryKind, Command, IntentResult, PickerKind, PinPosition, SessionId,
+};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -694,10 +696,10 @@ mod tests {
         );
         // And a LoadPersonaPickerEntries command is returned.
         assert!(
-            result.commands.iter().any(|c| matches!(
-                c,
-                Command::LoadPersonaPickerEntries(..)
-            ))
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::LoadPersonaPickerEntries(..)))
         );
     }
 
