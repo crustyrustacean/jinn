@@ -11,7 +11,7 @@ use crate::feat::context::protocol::command::{
 };
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::protocol::{ChatEntry, Command, Event};
+use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
 
 use super::super::SessionPersistenceActor;
 
@@ -36,15 +36,20 @@ impl SessionPersistenceActor {
             if session.is_idle() {
                 // Set title on first user message.
                 if session.title().is_none() {
-                    let title = payload.text.lines().next().unwrap_or("").to_owned();
+                    let title = match &payload.entry.kind {
+                        ChatEntryKind::User { display, .. } => {
+                            display.lines().next().unwrap_or("").to_owned()
+                        }
+                        _ => String::new(),
+                    };
                     session.set_title(title);
                 }
-                session.push_entry(ChatEntry::user(&payload.text));
+                session.push_entry(payload.entry.clone());
                 session.begin_sending();
                 EnqueueAction::AssemblePrompt
             } else {
                 // All busy states (sending, streaming, assembling) → queue.
-                session.enqueue_message(payload.text.clone());
+                session.enqueue_message(payload.entry.clone());
                 EnqueueAction::Queued
             }
         };
@@ -72,7 +77,7 @@ impl SessionPersistenceActor {
 
                 if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
                     session_id: payload.session_id.clone(),
-                    entry: ChatEntry::user(&payload.text),
+                    entry: payload.entry.clone(),
                 })) {
                     tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
                 }
@@ -120,7 +125,7 @@ impl SessionPersistenceActor {
     ) {
         if let Err(e) = ctx.send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
             session_id: payload.session_id.clone(),
-            text: payload.text.clone(),
+            entry: ChatEntry::user(&payload.text),
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit EnqueueUserMessage");
         }

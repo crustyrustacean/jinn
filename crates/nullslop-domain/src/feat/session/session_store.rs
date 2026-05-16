@@ -10,7 +10,7 @@ mod service;
 mod sqlite;
 
 pub use service::SessionStoreService;
-pub use sqlite::SqliteSessionStore;
+pub use sqlite::{PoolConfig, SqliteSessionStore};
 
 use async_trait::async_trait;
 use error_stack::Report;

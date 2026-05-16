@@ -170,7 +170,10 @@ mod tests {
             Event::ChatEntrySubmitted(payload) => {
                 assert_eq!(
                     payload.entry.kind,
-                    crate::ChatEntryKind::User("hello".to_owned())
+                    crate::ChatEntryKind::User {
+                        display: "hello".to_owned(),
+                        expanded: "hello".to_owned()
+                    }
                 );
             }
             other => panic!("expected ChatEntrySubmitted, got {other:?}"),

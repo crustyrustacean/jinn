@@ -28,9 +28,8 @@ pub trait TokenEstimator: Send + Sync {
 /// text that `entries_to_messages` would produce for them.
 pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) -> usize {
     match &entry.kind {
-        ChatEntryKind::User(text) | ChatEntryKind::Assistant(text) | ChatEntryKind::Error(text) => {
-            estimator.estimate(text)
-        }
+        ChatEntryKind::User { expanded, .. } => estimator.estimate(expanded),
+        ChatEntryKind::Assistant(text) | ChatEntryKind::Error(text) => estimator.estimate(text),
         ChatEntryKind::ToolCall {
             name, arguments, ..
         } => estimator.estimate(name) + estimator.estimate(arguments),
