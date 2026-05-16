@@ -21,6 +21,7 @@ pub(crate) mod tool_result;
 pub(crate) mod user;
 
 pub use renderer::ChatLogElement;
+pub use shared::GUTTER_WIDTH;
 
 use crate::common::AppUiRegistry;
 
