@@ -15,9 +15,10 @@ pub mod sidebar;
 pub mod state;
 
 pub use section_trait::{
-    SidebarIntent, SidebarSection, SidebarSectionConfig, SidebarSectionId, SidebarSectionResult,
+    EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 pub use sidebar::Sidebar;
+pub use sidebar::navigate_sidebar;
 pub use state::SidebarState;
 
 /// Registers all built-in sidebar sections into the given sidebar.
