@@ -64,11 +64,9 @@ pub fn run_migrations(
 
     // Read current version.
     let current_version: Option<u32> = conn
-        .query_row(
-            "SELECT MAX(version) FROM schema_migrations",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .ok()
         .flatten();
 
@@ -121,21 +119,17 @@ mod tests {
 
     /// Reads the count of applied migrations.
     fn applied_count(conn: &Connection) -> usize {
-        conn.query_row(
-            "SELECT COUNT(*) FROM schema_migrations",
-            [],
-            |row| row.get::<_, usize>(0),
-        )
-        .expect("count migrations")
+        conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get::<_, u32>(0)
+        })
+        .expect("count migrations") as usize
     }
 
     /// Reads the max applied version (None if no migrations applied).
     fn max_version(conn: &Connection) -> Option<u32> {
-        conn.query_row(
-            "SELECT MAX(version) FROM schema_migrations",
-            [],
-            |row| row.get(0),
-        )
+        conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .ok()
         .flatten()
     }
@@ -145,7 +139,7 @@ mod tests {
         conn.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
             rusqlite::params![name],
-            |row| row.get::<_, usize>(0),
+            |row| row.get::<_, u32>(0),
         )
         .expect("check table exists")
             > 0
@@ -170,8 +164,16 @@ mod tests {
         }
 
         let migrations = vec![
-            Migration { version: 0, name: "create_foo", up: v0 },
-            Migration { version: 1, name: "add_name", up: v1 },
+            Migration {
+                version: 0,
+                name: "create_foo",
+                up: v0,
+            },
+            Migration {
+                version: 1,
+                name: "add_name",
+                up: v1,
+            },
         ];
 
         // When running migrations.
@@ -205,8 +207,16 @@ mod tests {
         }
 
         let migrations = vec![
-            Migration { version: 0, name: "create_bar", up: v0 },
-            Migration { version: 1, name: "add_val", up: v1 },
+            Migration {
+                version: 0,
+                name: "create_bar",
+                up: v0,
+            },
+            Migration {
+                version: 1,
+                name: "add_val",
+                up: v1,
+            },
         ];
 
         // Apply all migrations.
@@ -247,7 +257,11 @@ mod tests {
         // Apply only v0.
         run_migrations(
             &conn,
-            &[Migration { version: 0, name: "create_baz", up: v0 }],
+            &[Migration {
+                version: 0,
+                name: "create_baz",
+                up: v0,
+            }],
         )
         .expect("apply v0");
         assert_eq!(applied_count(&conn), 1);
@@ -255,9 +269,21 @@ mod tests {
 
         // When running with all 3 migrations.
         let all = vec![
-            Migration { version: 0, name: "create_baz", up: v0 },
-            Migration { version: 1, name: "add_a", up: v1 },
-            Migration { version: 2, name: "add_b", up: v2 },
+            Migration {
+                version: 0,
+                name: "create_baz",
+                up: v0,
+            },
+            Migration {
+                version: 1,
+                name: "add_a",
+                up: v1,
+            },
+            Migration {
+                version: 2,
+                name: "add_b",
+                up: v2,
+            },
         ];
         run_migrations(&conn, &all).expect("apply remaining");
 
@@ -287,8 +313,16 @@ mod tests {
         }
 
         let migrations = vec![
-            Migration { version: 0, name: "create_qux", up: v0_ok },
-            Migration { version: 1, name: "will_fail", up: v1_fail },
+            Migration {
+                version: 0,
+                name: "create_qux",
+                up: v0_ok,
+            },
+            Migration {
+                version: 1,
+                name: "will_fail",
+                up: v1_fail,
+            },
         ];
 
         // When running migrations and v1 fails.
