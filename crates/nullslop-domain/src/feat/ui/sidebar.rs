@@ -9,6 +9,7 @@
 //! next/previous section.
 
 pub mod pins;
+pub mod persona_section;
 pub mod section_trait;
 pub mod sidebar;
 pub mod state;
@@ -21,5 +22,6 @@ pub use state::SidebarState;
 
 /// Registers all built-in sidebar sections into the given sidebar.
 pub fn register_sections(sidebar: &mut Sidebar) {
+    sidebar.register(Box::new(persona_section::PersonaSection));
     sidebar.register(Box::new(pins::PinsSection));
 }

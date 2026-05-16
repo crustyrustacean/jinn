@@ -11,12 +11,15 @@ pub enum SidebarSectionId {
     /// The pinned context entries section.
     #[default]
     Pins,
+    /// The active persona display section.
+    Persona,
 }
 
 impl std::fmt::Display for SidebarSectionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Pins => write!(f, "Pins"),
+            Self::Persona => write!(f, "Persona"),
         }
     }
 }
