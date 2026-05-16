@@ -74,8 +74,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
             // s prefix — session management
-            .describe_group_with_category("s", "session", KeyCategory::General)
-            .bind("sf", Intent::OpenPicker { kind: PickerKind::SessionFork }, KeyCategory::General)
+            .describe_group_with_category("sf", "fork session", KeyCategory::General)
+            .bind("<leader>sf", Intent::OpenPicker { kind: PickerKind::SessionFork }, KeyCategory::General)
             .bind("gg", Intent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
