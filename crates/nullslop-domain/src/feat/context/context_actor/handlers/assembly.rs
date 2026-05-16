@@ -13,6 +13,7 @@ use crate::feat::context::{
 };
 
 use crate::feat::context::env_context::{build_env_context, load_project_context_files};
+use crate::feat::context::tool_prompt::build_tool_context_block;
 use crate::feat::skills::format::format_skills_for_prompt;
 
 use super::super::PromptAssemblyActor;
@@ -175,6 +176,15 @@ impl PromptAssemblyActor {
         system_parts.extend(pinned_system_contents);
         if !env_context.is_empty() {
             system_parts.push(env_context);
+        }
+
+        // Tool context block (available tools + tool guidelines).
+        let tool_block = {
+            let guard = self.state.read();
+            build_tool_context_block(&guard.context.tool_definitions)
+        };
+        if let Some(block) = tool_block {
+            system_parts.push(block);
         }
 
         // Assemble final messages: single system message + top pins (non-System) + working history + bottom pins.
