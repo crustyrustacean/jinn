@@ -73,8 +73,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // Pin the skill content as a TOP system entry in the session.
         if let (Some(state), Some(session_id)) = (ctx.state, ctx.session_id) {
             let location = skill_path.to_string_lossy().to_string();
-            let entry = ChatEntry::skill(&name, &location, body)
-                .with_pin(PinPosition::Top);
+            let entry = ChatEntry::skill(&name, &location, body).with_pin(PinPosition::Top);
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
             session.push_entry(entry);
