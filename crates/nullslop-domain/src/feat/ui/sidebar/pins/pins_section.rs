@@ -327,6 +327,7 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
         // Thinking entries are not shown in the pinned panel summary.
         ChatEntryKind::Thinking(text) => ("", truncate_str(text, 40)),
         ChatEntryKind::Skill { name, .. } => ("\u{1f4cb} ", truncate_str(name, 40)),
+        ChatEntryKind::Info(text) => ("\u{2139} ", truncate_str(text, 40)),
     }
 }
 
