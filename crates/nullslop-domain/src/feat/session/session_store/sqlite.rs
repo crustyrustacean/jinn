@@ -33,6 +33,7 @@ use super::{SessionStore, SessionStoreError};
 const _V0_UP: &str =
     include_str!("../../../../migrations/00000000000000_create_initial_schema/up.sql");
 const _V1_UP: &str = include_str!("../../../../migrations/00000000000001_add_cwd_column/up.sql");
+const _V2_UP: &str = include_str!("../../../../migrations/00000000000002_add_created_at_column/up.sql");
 
 /// Runs all pending migrations on a bootstrap connection.
 ///
@@ -90,6 +91,12 @@ fn run_migrations(conn: &mut SqliteConnection) {
     // ALTER TABLE ADD COLUMN fails if the column already exists. Ignore the error.
     let _ = diesel::sql_query("ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT '.'")
         .execute(conn);
+
+    // v2: add created_at column
+    let _ = diesel::sql_query(
+        "ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+    )
+    .execute(conn);
 }
 
 /// Configuration for the SQLite connection pool.
@@ -299,6 +306,7 @@ struct SessionRow {
     id: Option<String>,
     title: Option<String>,
     updated_at: String,
+    created_at: String,
     profile: String,
     strategy_state: String,
     blobs: String,
@@ -313,6 +321,7 @@ struct NewSessionRow {
     id: String,
     title: Option<String>,
     updated_at: String,
+    created_at: String,
     profile: String,
     strategy_state: String,
     blobs: String,
@@ -393,6 +402,7 @@ fn save_blocking(
     let session_id_str = session.session_id().to_string();
     let title = session.title().unwrap_or("Untitled Session");
     let updated_at = session.updated_at().to_string();
+    let created_at = session.created_at().to_string();
     let profile_json = serde_json::to_string(session.profile())
         .change_context(SessionStoreError)
         .attach("failed to serialize profile")?;
@@ -414,6 +424,7 @@ fn save_blocking(
                 id: session_id_str.clone(),
                 title: Some(title.to_owned()),
                 updated_at: updated_at.clone(),
+                created_at: created_at.clone(),
                 profile: profile_json.clone(),
                 strategy_state: strategy_state_json.clone(),
                 blobs: blobs_json.clone(),
@@ -515,6 +526,10 @@ fn load_summaries_blocking(
             title: row.title.unwrap_or_else(|| "Untitled".to_owned()),
             updated_at: row
                 .updated_at
+                .parse()
+                .unwrap_or_else(|_| jiff::Timestamp::now()),
+            created_at: row
+                .created_at
                 .parse()
                 .unwrap_or_else(|_| jiff::Timestamp::now()),
         })
@@ -627,6 +642,13 @@ fn load_session_blocking(
         .unwrap_or_else(|_| jiff::Timestamp::now());
     session.restore_updated_at(updated_at);
 
+    // Restore created_at from persisted value.
+    let created_at: jiff::Timestamp = meta
+        .created_at
+        .parse()
+        .unwrap_or_else(|_| jiff::Timestamp::now());
+    session.restore_created_at(created_at);
+
     // Restore cwd.
     session.set_cwd(std::path::PathBuf::from(&meta.cwd));
 
@@ -689,7 +711,8 @@ fn fork_blocking(
             .values(&NewSessionRow {
                 id: new_id_str.clone(),
                 title: source_meta.title,
-                updated_at: now,
+                updated_at: now.clone(),
+                created_at: now,              // fresh created_at — it's a new session
                 profile: source_meta.profile,
                 strategy_state: source_meta.strategy_state,
                 blobs: source_meta.blobs,

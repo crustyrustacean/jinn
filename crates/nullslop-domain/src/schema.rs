@@ -22,6 +22,7 @@ diesel::table! {
         id -> Nullable<Text>,
         title -> Nullable<Text>,
         updated_at -> Text,
+        created_at -> Text,
         profile -> Text,
         strategy_state -> Text,
         blobs -> Text,

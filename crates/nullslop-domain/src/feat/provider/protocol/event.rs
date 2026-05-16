@@ -62,6 +62,8 @@ pub struct StreamToken {
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
 #[event_msg("provider")]
 pub struct ProviderSwitched {
+    /// The session that switched provider.
+    pub session_id: SessionId,
     /// The display name of the new provider.
     pub provider_name: String,
 }

@@ -14,6 +14,8 @@ pub enum SidebarSectionId {
     Pins,
     /// The active persona display section.
     Persona,
+    /// The open sessions section.
+    Sessions,
 }
 
 impl std::fmt::Display for SidebarSectionId {
@@ -21,6 +23,7 @@ impl std::fmt::Display for SidebarSectionId {
         match self {
             Self::Pins => write!(f, "Pins"),
             Self::Persona => write!(f, "Persona"),
+            Self::Sessions => write!(f, "Sessions"),
         }
     }
 }

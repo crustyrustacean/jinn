@@ -27,6 +27,7 @@ use crate::feat::skills::Skill;
 use crate::feat::theme::Theme;
 pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
 pub use crate::feat::ui::sidebar::pins::state::PinsState;
+pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
 use crate::protocol::KeymapEntry;
 use crate::protocol::SessionEntry;
@@ -34,6 +35,19 @@ use crate::protocol::StrategyEntry;
 
 /// Session lifecycle state — owned by the session-actor.
 ///
+/// Tracks an in-progress session load from disk.
+///
+/// Only one session can be loaded at a time. The guard is set by the
+/// IntentHandler when the user confirms a session load, and cleared by
+/// the session-actor on completion (or the TUI tick on timeout).
+#[derive(Debug)]
+pub struct SessionLoadGuard {
+    /// Which session is being loaded.
+    pub session_id: SessionId,
+    /// When the load started — used for timeout detection.
+    pub started_at: std::time::Instant,
+}
+
 /// Written to exclusively by `SessionPersistenceActor` and `IntentHandler`.
 /// No other actor should mutate these fields.
 #[derive(Debug)]
@@ -48,18 +62,35 @@ pub struct SessionState {
     ///        IntentHandler (sets on SessionNew).
     pub active_session: SessionId,
 
-    /// Whether a session is currently being loaded from disk.
+    /// In-progress session load from disk, if any.
     /// OWNER: session-actor (clears on SessionLoadCompleted),
-    ///        IntentHandler (sets true on confirm_session).
-    pub session_loading: bool,
-    /// When the current session load started. Used for timeout detection.
-    /// Set by IntentHandler (on confirm_session), cleared by session-actor (on load completed)
-    /// and TUI tick (on timeout).
-    pub session_load_started_at: Option<std::time::Instant>,
+    ///        IntentHandler (sets on confirm_session),
+    ///        TUI tick (clears on timeout).
+    pub session_load_guard: Option<SessionLoadGuard>,
 
     /// The default CWD for new sessions, set once at startup from the process CWD.
     /// Used by `session_mut_or_create` to ensure every session has a valid CWD.
     pub default_cwd: std::path::PathBuf,
+}
+
+impl SessionState {
+    /// Whether a session is currently being loaded from disk.
+    pub fn is_loading(&self) -> bool {
+        self.session_load_guard.is_some()
+    }
+
+    /// Begin loading a session. Sets the guard with the current timestamp.
+    pub fn begin_load(&mut self, session_id: SessionId) {
+        self.session_load_guard = Some(SessionLoadGuard {
+            session_id,
+            started_at: std::time::Instant::now(),
+        });
+    }
+
+    /// Clear the loading guard (called on completion or timeout).
+    pub fn clear_load(&mut self) {
+        self.session_load_guard = None;
+    }
 }
 
 impl Default for SessionState {
@@ -71,8 +102,7 @@ impl Default for SessionState {
         Self {
             sessions,
             active_session,
-            session_loading: false,
-            session_load_started_at: None,
+            session_load_guard: None,
             default_cwd: std::path::PathBuf::from("/"),
         }
     }
@@ -288,6 +318,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (sidebar navigation).
     pub persona_section: PersonaSectionState,
 
+    /// Sessions sidebar section state — cursor tracking.
+    /// OWNER: IntentHandler (sidebar navigation).
+    pub sessions_section: SessionsSectionState,
+
     /// Actor dashboard — tracks registered actors and their status.
     /// OWNER: IntentHandler (dashboard navigation).
     pub dashboard: DashboardState,
@@ -375,6 +409,7 @@ impl Default for FrontendState {
             pins: PinsState::default(),
             sidebar: SidebarState::default(),
             persona_section: PersonaSectionState::default(),
+            sessions_section: SessionsSectionState::default(),
             dashboard: DashboardState::new(),
             tui_signals: TuiSignals::new(),
             preferences: UserPreferences::default(),

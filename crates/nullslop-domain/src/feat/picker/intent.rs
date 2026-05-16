@@ -346,8 +346,7 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
     };
     let session_id = entry.session_id.clone();
 
-    state.session.session_loading = true;
-    state.session.session_load_started_at = Some(std::time::Instant::now());
+    state.session.begin_load(session_id.clone());
     state.frontend.scope_stack.pop();
 
     IntentResult::with_commands(vec![Command::SessionLoadRequested(SessionLoadRequested {
@@ -387,8 +386,7 @@ fn confirm_session_fork(state: &mut AppState) -> IntentResult {
     let source_session_id = state.session.active_session.clone();
     let at_ordinal = entry.ordinal;
 
-    state.session.session_loading = true;
-    state.session.session_load_started_at = Some(std::time::Instant::now());
+    state.session.begin_load(source_session_id.clone());
     state.frontend.scope_stack.pop();
 
     IntentResult::with_commands(vec![Command::SessionForkRequested(SessionForkRequested {
@@ -628,10 +626,10 @@ mod tests {
         // When confirming picker.
         let (result, maybe_intent) = handle_picker_confirm(&mut state);
 
-        // Then session_loading is true.
-        assert!(state.session.session_loading);
-        // And session_load_started_at is set.
-        assert!(state.session.session_load_started_at.is_some());
+        // Then session is loading.
+        assert!(state.session.is_loading());
+        // And session_load_guard is set.
+        assert!(state.session.session_load_guard.is_some());
         // And a SessionLoadRequested command is returned.
         assert!(
             result
@@ -1050,8 +1048,8 @@ mod tests {
         // When confirming picker.
         let (result, maybe_intent) = handle_picker_confirm(&mut state);
 
-        // Then session_loading is true.
-        assert!(state.session.session_loading);
+        // Then session is loading.
+        assert!(state.session.is_loading());
         // And a SessionForkRequested command is returned.
         assert!(result.commands.iter().any(|c| matches!(
             c,

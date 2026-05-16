@@ -10,7 +10,7 @@
 //! - session history (entries, tool calls, streaming state)
 //! - session input buffers
 //! - session phase (idle → sending → streaming → idle)
-//! - `active_session`, `session_loading`
+//! - `active_session`, `session_load_guard`
 //!
 //! # Lock discipline
 //!
