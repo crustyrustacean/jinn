@@ -966,11 +966,11 @@ fn display_label_allows_searching_by_provider_name() {
 #[rstest::rstest]
 fn provider_name_match_is_highlighted_in_suffix() {
     // Given a provider entry with model "llama3" and provider "ollama".
-    // search_text = "llama3 ollama" — provider name starts at byte 8.
+    // search_text = "llama3 ollama" — provider name starts at byte 7.
     let entry = make_picker_entry("llama3", "ollama", true, false);
 
-    // When highlighting with match in the provider-name portion (byte 8..14 = "ollama").
-    let highlights: &[Range<usize>] = &[8..14];
+    // When highlighting with match in the provider-name portion (byte 7..13 = "ollama").
+    let highlights: &[Range<usize>] = &[7..13];
     let line = entry.render_row_with_highlight(false, highlights);
 
     // Then at least one span has the highlight background.

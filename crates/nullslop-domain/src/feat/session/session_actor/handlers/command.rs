@@ -155,6 +155,9 @@ impl SessionPersistenceActor {
             // Insert loaded session into HashMap.
             state.session.sessions.insert(session_id.clone(), loaded);
 
+            // Read default_cwd before taking a mutable session reference.
+            let default_cwd = state.session.default_cwd.clone();
+
             // Add a system message about the restore.
             let session = state
                 .session
@@ -163,6 +166,22 @@ impl SessionPersistenceActor {
                 .expect("just inserted");
             session.push_entry(ChatEntry::system(format!("Session restored: {title_text}")));
             session.set_model(model);
+
+            // Validate CWD — fallback to default if empty or non-existent on disk.
+            let original_cwd = session.cwd().to_owned();
+            let cwd_needs_fallback =
+                original_cwd.as_os_str().is_empty() || !original_cwd.exists();
+            if cwd_needs_fallback {
+                let original_display = if original_cwd.as_os_str().is_empty() {
+                    "(empty)".to_owned()
+                } else {
+                    original_cwd.display().to_string()
+                };
+                session.push_entry(ChatEntry::system(
+                    format!("Warning: working directory '{}' not found, falling back to '{}'", original_display, default_cwd.display()),
+                ));
+                session.set_cwd(default_cwd);
+            }
 
             state.session.active_session = session_id.clone();
             state.session.session_loading = false;

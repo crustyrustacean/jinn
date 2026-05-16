@@ -1,4 +1,5 @@
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId};
+use std::path::PathBuf;
 
 use super::*;
 
@@ -444,7 +445,7 @@ fn cancel_streaming_clears_is_streaming() {
     // Given a session that was sending before streaming started.
     let mut session = ChatSessionState::new();
     session.begin_sending();
-    session.core.is_streaming = true;
+    session.core.ephemeral.is_streaming = true;
     assert!(session.is_streaming());
 
     // When cancelling streaming.
@@ -459,7 +460,7 @@ fn cancel_streaming_clears_is_sending() {
     // Given a session that was sending before streaming started.
     let mut session = ChatSessionState::new();
     session.begin_sending();
-    session.core.is_streaming = true;
+    session.core.ephemeral.is_streaming = true;
     assert!(session.is_sending());
 
     // When cancelling streaming.
@@ -475,8 +476,8 @@ fn finish_streaming_clears_sending_too() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     // Manually set is_streaming to simulate the transition.
-    session.core.is_streaming = true;
-    session.core.streaming_entry_index = Some(session.push_entry(ChatEntry::assistant("")));
+    session.core.ephemeral.is_streaming = true;
+    session.core.ephemeral.streaming_entry_index = Some(session.push_entry(ChatEntry::assistant("")));
 
     // When finishing streaming.
     session.finish_streaming();
@@ -1396,4 +1397,38 @@ fn move_cursor_to_last_visible_sets_index() {
 
     // Then cursor is on the last visible entry.
     assert_eq!(session.selected_entry_index(), Some(2));
+}
+
+// --- CWD persistence tests ---
+
+#[rstest::rstest]
+fn cwd_preserved_across_serialization_round_trip() {
+    // Given a session with a specific CWD.
+    let mut session = ChatSessionState::new();
+    session.set_cwd(PathBuf::from("/tmp"));
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&session).expect("serialize");
+    let restored: ChatSessionState = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the CWD is preserved.
+    assert_eq!(restored.cwd(), PathBuf::from("/tmp"));
+}
+
+#[rstest::rstest]
+fn cwd_defaults_to_empty_when_missing_from_snapshot() {
+    // Given a JSON snapshot of a session without a `cwd` field.
+    let mut session = ChatSessionState::new();
+    session.set_title("test".to_owned());
+    let mut json = serde_json::to_value(&session).expect("serialize");
+    // Remove the cwd field to simulate an old snapshot.
+    json.as_object_mut().expect("object").remove("cwd");
+
+    let json_str = serde_json::to_string(&json).expect("re-serialize");
+
+    // When deserializing.
+    let restored: ChatSessionState = serde_json::from_str(&json_str).expect("deserialize");
+
+    // Then the CWD defaults to empty (PathBuf::new()).
+    assert!(restored.cwd().as_os_str().is_empty());
 }
