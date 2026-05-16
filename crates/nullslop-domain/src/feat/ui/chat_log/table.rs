@@ -107,7 +107,6 @@ mod tests {
         RenderContext {
             content_width: 60,
             _is_selected: false,
-            is_pinned: false,
             is_expanded: false,
             tool_result_max_lines: 5,
             theme: crate::feat::theme::default_theme(),

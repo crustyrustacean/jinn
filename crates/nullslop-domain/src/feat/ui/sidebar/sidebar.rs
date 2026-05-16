@@ -9,7 +9,6 @@ use ratatui::widgets::Block;
 use super::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
-use super::state::SidebarState;
 use super::{persona_section, pins};
 use crate::common::app_state::AppState;
 
