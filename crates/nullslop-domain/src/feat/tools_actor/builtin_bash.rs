@@ -14,8 +14,13 @@ pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: "bash".to_owned(),
         description: "Execute a bash command in the current working directory. \
-            Returns stdout and stderr. Optionally provide a timeout in seconds."
+            Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB \
+            (whichever is hit first). Optionally provide a timeout in seconds."
             .to_owned(),
+        prompt_snippet: Some("Execute bash commands (ls, grep, find, etc.)".to_owned()),
+        prompt_guidelines: vec![
+            "Use bash for file operations like ls, rg, find".to_owned(),
+        ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {

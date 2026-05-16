@@ -13,6 +13,8 @@ pub fn definition() -> ToolDefinition {
         name: "skill".to_owned(),
         description: "Load a specific agent skill's content into the conversation context. The skill content will be pinned as a top-priority system instruction for the rest of the conversation. Use this tool when the current task matches a skill's description from the available skills list."
             .to_owned(),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {

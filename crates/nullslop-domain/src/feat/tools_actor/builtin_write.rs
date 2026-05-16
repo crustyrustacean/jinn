@@ -17,6 +17,10 @@ pub fn definition() -> ToolDefinition {
         description: "Write content to a file. Creates the file if it doesn't exist, \
             overwrites if it does. Automatically creates parent directories."
             .to_owned(),
+        prompt_snippet: Some("Create or overwrite files".to_owned()),
+        prompt_guidelines: vec![
+            "Use write only for new files or complete rewrites.".to_owned(),
+        ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {

@@ -90,6 +90,8 @@ async fn tool_call_streaming_yields_start_delta_complete_done() {
             vec![ToolDefinition {
                 name: "echo".into(),
                 description: "Echo".into(),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
                 parameters: serde_json::json!({"type": "object"}),
             }],
         )
