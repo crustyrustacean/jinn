@@ -92,8 +92,7 @@ fn render_provider_row(
 
     // search_text = "{model} {provider_name}"
     // Split match indices into model-portion and provider-portion.
-    let (model_indices, provider_indices) =
-        split_match_indices(match_indices, entry.model.len());
+    let (model_indices, provider_indices) = split_match_indices(match_indices, entry.model.len());
 
     let mut spans = Vec::new();
 

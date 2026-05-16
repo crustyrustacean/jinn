@@ -362,7 +362,9 @@ fn load_summaries_blocking(
             Ok(SessionSummary {
                 session_id: SessionId::from(session_id_str),
                 title,
-                updated_at: updated_at_str.parse().unwrap_or_else(|_| jiff::Timestamp::now()),
+                updated_at: updated_at_str
+                    .parse()
+                    .unwrap_or_else(|_| jiff::Timestamp::now()),
             })
         })
         .change_context(SessionStoreError)
@@ -424,16 +426,14 @@ fn load_session_blocking(
             let kind_str: String = row.get(2)?;
             let pin_str: Option<String> = row.get(3)?;
 
-            let kind: ChatEntryKind =
-                serde_json::from_str(&kind_str).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-            let pin_position = pin_str
-                .as_deref()
-                .and_then(|s| match s {
-                    "Top" => Some(crate::protocol::PinPosition::Top),
-                    "Bottom" => Some(crate::protocol::PinPosition::Bottom),
-                    "Relative" => Some(crate::protocol::PinPosition::Relative),
-                    _ => None,
-                });
+            let kind: ChatEntryKind = serde_json::from_str(&kind_str)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            let pin_position = pin_str.as_deref().and_then(|s| match s {
+                "TOP" => Some(crate::protocol::PinPosition::Top),
+                "BOTTOM" => Some(crate::protocol::PinPosition::Bottom),
+                "RELATIVE" => Some(crate::protocol::PinPosition::Relative),
+                _ => None,
+            });
 
             Ok(ChatEntry {
                 id: ChatEntryId::from(id_str),
@@ -499,10 +499,7 @@ fn load_session_blocking(
     *session.strategy_state_mut() = strategy_state;
 
     // Restore parent session.
-    let parent = meta
-        .parent_session
-        .map(SessionId::from)
-        .or(None);
+    let parent = meta.parent_session.map(SessionId::from).or(None);
     session.restore_parent_session(parent);
 
     // Touch updated_at to match persisted value.
@@ -577,8 +574,9 @@ fn fork_blocking(
         .ok();
 
     let Some(source_meta) = source_meta else {
-        return Err(error_stack::Report::new(SessionStoreError)
-            .attach("source session not found for fork"));
+        return Err(
+            error_stack::Report::new(SessionStoreError).attach("source session not found for fork")
+        );
     };
 
     let now = jiff::Timestamp::now().to_string();
@@ -813,10 +811,7 @@ mod tests {
         store.delete(&session_id).await.expect("delete");
 
         // Then the session is gone.
-        let result = store
-            .load_session(&session_id)
-            .await
-            .expect("load_session");
+        let result = store.load_session(&session_id).await.expect("load_session");
         assert!(result.is_none());
 
         // And summaries are empty.
@@ -981,11 +976,21 @@ mod tests {
         assert!(matches!(&loaded.history()[0].kind, ChatEntryKind::User(t) if t == "user msg"));
         assert!(matches!(&loaded.history()[1].kind, ChatEntryKind::System(t) if t == "system msg"));
         assert!(matches!(&loaded.history()[2].kind, ChatEntryKind::Error(t) if t == "error msg"));
-        assert!(matches!(&loaded.history()[3].kind, ChatEntryKind::Assistant(t) if t == "assistant msg"));
-        assert!(matches!(&loaded.history()[4].kind, ChatEntryKind::Actor { source, text } if source == "bash" && text == "actor msg"));
-        assert!(matches!(&loaded.history()[5].kind, ChatEntryKind::Thinking(t) if t == "thinking text"));
-        assert!(matches!(&loaded.history()[6].kind, ChatEntryKind::ToolCall { id, name, arguments } if id == "call_1" && name == "bash" && arguments == "{\"cmd\": true}"));
-        assert!(matches!(&loaded.history()[7].kind, ChatEntryKind::ToolResult { id, name, content, success } if id == "call_1" && name == "bash" && content == "ok" && *success));
+        assert!(
+            matches!(&loaded.history()[3].kind, ChatEntryKind::Assistant(t) if t == "assistant msg")
+        );
+        assert!(
+            matches!(&loaded.history()[4].kind, ChatEntryKind::Actor { source, text } if source == "bash" && text == "actor msg")
+        );
+        assert!(
+            matches!(&loaded.history()[5].kind, ChatEntryKind::Thinking(t) if t == "thinking text")
+        );
+        assert!(
+            matches!(&loaded.history()[6].kind, ChatEntryKind::ToolCall { id, name, arguments } if id == "call_1" && name == "bash" && arguments == "{\"cmd\": true}")
+        );
+        assert!(
+            matches!(&loaded.history()[7].kind, ChatEntryKind::ToolResult { id, name, content, success } if id == "call_1" && name == "bash" && content == "ok" && *success)
+        );
     }
 
     // --- Pin position round-trip ---
@@ -1000,9 +1005,14 @@ mod tests {
         session.set_session_id(session_id.clone());
         session.set_title("Pins".to_owned());
 
-        session.push_entry(ChatEntry::user("pinned top").with_pin(crate::protocol::PinPosition::Top));
-        session.push_entry(ChatEntry::assistant("pinned bottom").with_pin(crate::protocol::PinPosition::Bottom));
-        session.push_entry(ChatEntry::user("pinned relative").with_pin(crate::protocol::PinPosition::Relative));
+        session
+            .push_entry(ChatEntry::user("pinned top").with_pin(crate::protocol::PinPosition::Top));
+        session.push_entry(
+            ChatEntry::assistant("pinned bottom").with_pin(crate::protocol::PinPosition::Bottom),
+        );
+        session.push_entry(
+            ChatEntry::user("pinned relative").with_pin(crate::protocol::PinPosition::Relative),
+        );
         session.push_entry(ChatEntry::user("unpinned"));
 
         // When saving and loading.
@@ -1014,9 +1024,18 @@ mod tests {
             .expect("should exist");
 
         // Then pin positions are preserved.
-        assert_eq!(loaded.history()[0].pin_position, Some(crate::protocol::PinPosition::Top));
-        assert_eq!(loaded.history()[1].pin_position, Some(crate::protocol::PinPosition::Bottom));
-        assert_eq!(loaded.history()[2].pin_position, Some(crate::protocol::PinPosition::Relative));
+        assert_eq!(
+            loaded.history()[0].pin_position,
+            Some(crate::protocol::PinPosition::Top)
+        );
+        assert_eq!(
+            loaded.history()[1].pin_position,
+            Some(crate::protocol::PinPosition::Bottom)
+        );
+        assert_eq!(
+            loaded.history()[2].pin_position,
+            Some(crate::protocol::PinPosition::Relative)
+        );
         assert_eq!(loaded.history()[3].pin_position, None);
     }
 
