@@ -8,7 +8,7 @@ use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::aggregate_session_stats;
-use crate::feat::ui::status_bar::SlotSection;
+use crate::feat::ui::status_bar::turn_counter;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Style;
@@ -70,11 +70,12 @@ impl UiElement<AppState> for StatusBarElement {
 
         let style = Style::default().fg(state.frontend.theme.muted_text);
 
-        // Build left side: strategy info + plugin left slots.
-        let mut left_spans: Vec<Span> = vec![Span::styled(left, style)];
-        for slot in state.plugin_slots.slots_for_section(SlotSection::Left) {
-            left_spans.push(Span::styled(format!(" {}", slot.text), style));
-        }
+        // Build left side: strategy info + turn count.
+        let turn_count = turn_counter::compute_turn_count(state.active_session().history());
+        let left_spans: Vec<Span> = vec![
+            Span::styled(left, style),
+            Span::styled(format!(" Turns: {turn_count}"), style),
+        ];
 
         let strategy_widget = Paragraph::new(Line::from(left_spans))
             .style(style)
@@ -83,22 +84,12 @@ impl UiElement<AppState> for StatusBarElement {
 
         let notification = state.frontend.active_status_notification();
         let right_spans = if let Some(msg) = notification {
-            let mut spans = vec![Span::styled(
-                msg,
-                Style::default().fg(state.frontend.theme.success),
-            )];
-            for slot in state.plugin_slots.slots_for_section(SlotSection::Right) {
-                spans.push(Span::styled(format!(" {}", slot.text), style));
-            }
-            spans.push(Span::styled(format!("  {model}"), style));
-            spans
+            vec![
+                Span::styled(msg, Style::default().fg(state.frontend.theme.success)),
+                Span::styled(format!("  {model}"), style),
+            ]
         } else {
-            let mut spans = vec![];
-            for slot in state.plugin_slots.slots_for_section(SlotSection::Right) {
-                spans.push(Span::styled(format!("{} ", slot.text), style));
-            }
-            spans.push(Span::styled(model, style));
-            spans
+            vec![Span::styled(model, style)]
         };
         let right_line = Line::from(right_spans);
         let model_widget = Paragraph::new(right_line).alignment(Alignment::Right);
@@ -473,26 +464,16 @@ mod tests {
         assert!(row.contains("0 0") || row.contains("\u{2191}0 \u{2193}0"));
     }
 
-    // --- Plugin slot tests ---
+    // --- Turn counter tests ---
 
     #[rstest::rstest]
-    fn render_shows_left_plugin_slot() {
-        // Given a state with a left plugin slot.
+    fn render_shows_zero_turns_when_no_history() {
+        // Given a state with no chat entries.
         let mut element = StatusBarElement;
         let mut state = AppState::default();
         state
             .active_session_mut()
             .set_model("ollama/llama3".to_owned());
-        state
-            .plugin_slots
-            .upsert(crate::feat::ui::status_bar::PluginSlot {
-                plugin_id: nullslop_plugin::PluginId::new("test"),
-                slot_id: uuid::Uuid::new_v4(),
-                stable_id: "counter".to_owned(),
-                section: crate::feat::ui::status_bar::SlotSection::Left,
-                priority: 0,
-                text: "turns:5".to_owned(),
-            });
         let (mut terminal, area) = setup_term(80, 1);
         terminal
             .draw(|frame| {
@@ -501,28 +482,30 @@ mod tests {
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
         let row = buffer_row(&buffer, 0, 80);
-        // Then the plugin slot text appears on the left.
-        assert!(row.contains("turns:5"));
+        // Then the status bar shows "Turns: 0".
+        assert!(row.contains("Turns: 0"));
     }
 
     #[rstest::rstest]
-    fn render_shows_right_plugin_slot() {
-        // Given a state with a right plugin slot.
+    fn render_shows_turn_count_with_history() {
+        // Given a state with user and assistant entries.
         let mut element = StatusBarElement;
         let mut state = AppState::default();
         state
             .active_session_mut()
             .set_model("ollama/llama3".to_owned());
         state
-            .plugin_slots
-            .upsert(crate::feat::ui::status_bar::PluginSlot {
-                plugin_id: nullslop_plugin::PluginId::new("test"),
-                slot_id: uuid::Uuid::new_v4(),
-                stable_id: "clock".to_owned(),
-                section: crate::feat::ui::status_bar::SlotSection::Right,
-                priority: 0,
-                text: "12:00".to_owned(),
-            });
+            .active_session_mut()
+            .push_entry(crate::protocol::ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(crate::protocol::ChatEntry::assistant("hi there"));
+        state
+            .active_session_mut()
+            .push_entry(crate::protocol::ChatEntry::user("how are you?"));
+        state
+            .active_session_mut()
+            .push_entry(crate::protocol::ChatEntry::assistant("doing well"));
         let (mut terminal, area) = setup_term(80, 1);
         terminal
             .draw(|frame| {
@@ -531,20 +514,34 @@ mod tests {
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
         let row = buffer_row(&buffer, 0, 80);
-        // Then the plugin slot text appears.
-        assert!(row.contains("12:00"));
-        // And the model is still shown.
-        assert!(row.contains("(ollama)/llama3"));
+        // Then the status bar shows "Turns: 4".
+        assert!(row.contains("Turns: 4"));
     }
 
     #[rstest::rstest]
-    fn render_no_plugin_slots_when_empty() {
-        // Given a state with no plugin slots.
+    fn render_turn_count_skips_tool_loop_intermediates() {
+        // Given a state with a tool-loop conversation.
         let mut element = StatusBarElement;
         let mut state = AppState::default();
         state
             .active_session_mut()
             .set_model("ollama/llama3".to_owned());
+        state
+            .active_session_mut()
+            .push_entry(crate::protocol::ChatEntry::user("fix the bug"));
+        state
+            .active_session_mut()
+            .push_entry(crate::protocol::ChatEntry::assistant("let me check"));
+        state
+            .active_session_mut()
+            .push_entry(crate::protocol::ChatEntry::tool_call(
+                "id-1",
+                "bash",
+                r#"{"command":"ls"}"#,
+            ));
+        state
+            .active_session_mut()
+            .push_entry(crate::protocol::ChatEntry::assistant("fixed it"));
         let (mut terminal, area) = setup_term(80, 1);
         terminal
             .draw(|frame| {
@@ -553,8 +550,7 @@ mod tests {
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
         let row = buffer_row(&buffer, 0, 80);
-        // Then only the standard status bar content is shown.
-        assert!(row.starts_with("(Passthrough)"));
-        assert!(row.contains("(ollama)/llama3"));
+        // Then only the user and final assistant count as turns.
+        assert!(row.contains("Turns: 2"));
     }
 }
