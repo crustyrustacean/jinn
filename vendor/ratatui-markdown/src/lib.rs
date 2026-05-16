@@ -2,6 +2,8 @@
 //!
 //! A Rust library providing markdown rendering, collapsible JSON/TOML tree views,
 //! and a rich hybrid scroll system — all built on top of [ratatui].
+
+#![allow(unused_imports)]
 //!
 //! [ratatui]: https://github.com/ratatui/ratatui
 //!

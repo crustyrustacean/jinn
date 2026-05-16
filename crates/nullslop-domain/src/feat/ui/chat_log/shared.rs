@@ -13,8 +13,6 @@ pub struct RenderContext {
     pub content_width: u16,
     /// Whether this entry is currently selected by the cursor.
     pub _is_selected: bool,
-    /// Whether this entry is pinned.
-    pub is_pinned: bool,
     /// Whether this tool result entry is expanded (show all lines).
     pub is_expanded: bool,
     /// Maximum lines before truncating tool result entries.
