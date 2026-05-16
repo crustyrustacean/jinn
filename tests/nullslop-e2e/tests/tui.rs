@@ -53,7 +53,7 @@ impl TuiWorld {
                 nullslop_domain::InMemoryConfigStorage::new(),
             )),
             session_store: nullslop_domain::SessionStoreService::new(Arc::new(
-                nullslop_domain::JsonlSessionStore::new_in(
+                nullslop_domain::SqliteSessionStore::new_in(
                     tempfile::tempdir().expect("temp dir").path().to_path_buf(),
                 ),
             )),

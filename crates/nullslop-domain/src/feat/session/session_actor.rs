@@ -41,7 +41,6 @@ use crate::feat::tools_actor::protocol::event::{
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event, PromptStrategyId};
 
-use super::entries::load_session_picker_items_from_store;
 
 /// Session lifecycle and persistence actor.
 ///
@@ -107,8 +106,8 @@ impl Actor for SessionPersistenceActor {
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
-            ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx),
+            ActorEnvelope::Event(event) => self.handle_event(&event, ctx).await,
+            ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx).await,
             _ => {}
         }
     }
@@ -116,16 +115,16 @@ impl Actor for SessionPersistenceActor {
 
 impl SessionPersistenceActor {
     /// Dispatches a bus event to the appropriate handler.
-    fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
+    async fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
             Event::PromptAssembled(payload) => self.handle_prompt_assembled(payload, ctx),
             Event::StreamToken(payload) => self.on_stream_token(payload),
-            Event::StreamCompleted(payload) => self.on_stream_completed(payload, ctx),
+            Event::StreamCompleted(payload) => self.on_stream_completed(payload, ctx).await,
             Event::ToolUseStarted(payload) => self.on_tool_use_started(payload),
             Event::ToolCallReceived(payload) => self.on_tool_call_received(payload),
             Event::ToolCallStreaming(payload) => self.on_tool_call_streaming(payload),
             Event::ToolExecutionCompleted(payload) => {
-                self.on_tool_execution_completed(payload);
+                self.on_tool_execution_completed(payload).await;
             }
             Event::ModelsRefreshed(payload) => {
                 self.on_models_refreshed(payload);
@@ -138,14 +137,14 @@ impl SessionPersistenceActor {
     }
 
     /// Dispatches a command to the appropriate handler.
-    fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
+    async fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
         match cmd {
-            Command::SessionLoadRequested(payload) => self.on_load_requested(payload, ctx),
+            Command::SessionLoadRequested(payload) => self.on_load_requested(payload, ctx).await,
             Command::LoadSessionPickerEntries(payload) => {
-                self.handle_load_session_picker_entries(payload);
+                self.handle_load_session_picker_entries(payload).await;
             }
             Command::EnqueueUserMessage(payload) => {
-                self.handle_enqueue_user_message(payload, ctx);
+                self.handle_enqueue_user_message(payload, ctx).await;
             }
             Command::SetChatInputText(payload) => self.handle_set_chat_input_text(payload),
             Command::PushChatEntry(payload) => self.handle_push_chat_entry(payload, ctx),
@@ -180,10 +179,17 @@ impl SessionPersistenceActor {
     }
 
     /// Loads session picker entries from the session store into `AppState`.
-    fn handle_load_session_picker_entries(&self, _payload: &LoadSessionPickerEntries) {
+    async fn handle_load_session_picker_entries(&self, _payload: &LoadSessionPickerEntries) {
         if let Some(ref store) = self.store {
+            let theme = {
+                let state = self.state.read();
+                state.frontend.theme.clone()
+            };
+            let entries =
+                crate::feat::session::entries::load_session_entries_from_store(store, &theme)
+                    .await;
             let mut state = self.state.write();
-            load_session_picker_items_from_store(store, &mut state);
+            state.frontend.session_picker.set_items(entries);
         }
     }
 
@@ -269,7 +275,7 @@ mod tests {
         EnqueueUserMessage, PushChatEntry, SetChatInputText,
     };
     // no context imports needed in tests currently
-    use super::super::session_store::{JsonlSessionStore, SessionStoreService};
+    use super::super::session_store::{SessionStoreService, SqliteSessionStore};
     use crate::common::services::Services;
     use crate::feat::provider::protocol::command::SendMessage;
     use crate::feat::provider::protocol::event::{
@@ -300,7 +306,7 @@ mod tests {
     /// Creates a session store in a temp directory.
     fn make_store() -> (TempDir, SessionStoreService) {
         let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
+        let store = SqliteSessionStore::new_in(dir.path().to_path_buf());
         let service = SessionStoreService::new(Arc::new(store));
         (dir, service)
     }
@@ -340,7 +346,7 @@ mod tests {
         session.set_title("Test Session".to_owned());
         session.push_entry(ChatEntry::user("hello"));
         session.push_entry(ChatEntry::assistant("world"));
-        store_service.save(&session).expect("save");
+        store_service.save(&session).await.expect("save");
 
         // When processing LoadSessionPickerEntries.
         actor
@@ -386,9 +392,9 @@ mod tests {
             .await;
 
         // Then the session is persisted with the title from the first user message.
-        let summaries = store_service.load_summaries().expect("load_summaries");
+        let summaries = store_service.load_summaries().await.expect("load_summaries");
         assert_eq!(summaries.len(), 1);
-        assert_eq!(summaries[0].1.title, "hello world");
+        assert_eq!(summaries[0].title, "hello world");
     }
 
     #[rstest::rstest]
@@ -425,9 +431,9 @@ mod tests {
             .await;
 
         // Then the session is persisted.
-        let summaries = store_service.load_summaries().expect("load_summaries");
+        let summaries = store_service.load_summaries().await.expect("load_summaries");
         assert_eq!(summaries.len(), 1);
-        assert_eq!(summaries[0].1.title, "my question");
+        assert_eq!(summaries[0].title, "my question");
     }
 
     #[rstest::rstest]
@@ -461,7 +467,7 @@ mod tests {
             .await;
 
         // Then no session is persisted.
-        let summaries = store_service.load_summaries().expect("load_summaries");
+        let summaries = store_service.load_summaries().await.expect("load_summaries");
         assert!(summaries.is_empty());
     }
 
@@ -501,9 +507,9 @@ mod tests {
             .await;
 
         // Then the session is persisted.
-        let summaries = store_service.load_summaries().expect("load_summaries");
+        let summaries = store_service.load_summaries().await.expect("load_summaries");
         assert_eq!(summaries.len(), 1);
-        assert_eq!(summaries[0].1.title, "do the thing");
+        assert_eq!(summaries[0].title, "do the thing");
     }
 
     #[rstest::rstest]
@@ -531,8 +537,8 @@ mod tests {
             .await;
 
         // Then the title is the first line only.
-        let summaries = store_service.load_summaries().expect("load_summaries");
-        assert_eq!(summaries[0].1.title, "line one");
+        let summaries = store_service.load_summaries().await.expect("load_summaries");
+        assert_eq!(summaries[0].title, "line one");
     }
 
     #[rstest::rstest]
@@ -571,8 +577,8 @@ mod tests {
             .await;
 
         // Then the title is "Untitled Session".
-        let summaries = store_service.load_summaries().expect("load_summaries");
-        assert_eq!(summaries[0].1.title, "Untitled Session");
+        let summaries = store_service.load_summaries().await.expect("load_summaries");
+        assert_eq!(summaries[0].title, "Untitled Session");
     }
 
     // =========================================================

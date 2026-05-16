@@ -331,7 +331,6 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
     let session_id = entry.session_id.clone();
-    let byte_offset = entry.byte_offset;
 
     state.session.session_loading = true;
     state.session.session_load_started_at = Some(std::time::Instant::now());
@@ -339,7 +338,6 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
 
     IntentResult::with_commands(vec![Command::SessionLoadRequested(SessionLoadRequested {
         session_id,
-        byte_offset,
     })])
 }
 
@@ -524,7 +522,6 @@ mod tests {
             session_id: SessionId::new(),
             title: "Test".to_owned(),
             updated_at: jiff::Timestamp::now(),
-            byte_offset: 0,
             theme: default_theme(),
         }]);
 

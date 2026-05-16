@@ -69,7 +69,7 @@ pub use feat::context::DefaultStrategyDiscovery;
 pub use feat::context::DefaultStrategyFactory;
 
 // Re-export session types
-pub use feat::session::JsonlSessionStore;
+pub use feat::session::SqliteSessionStore;
 pub use feat::session::SessionStoreService;
 
 // Re-export preferences types

@@ -8,10 +8,10 @@ use crate::protocol::Command;
 impl SessionPersistenceActor {
     /// Saves the current state of a session to disk.
     ///
-    /// Reads session data from shared state, touches the timestamp, and writes
-    /// via the store. Errors are logged as warnings — persistence failure
-    /// must not break the user experience.
-    pub(in crate::feat::session::session_actor) fn save_active_session(
+    /// Reads session data from shared state, touches the timestamp, clones the
+    /// session, then drops the lock before writing via the store. Errors are
+    /// logged as warnings — persistence failure must not break the user experience.
+    pub(in crate::feat::session::session_actor) async fn save_active_session(
         &self,
         session_id: &crate::protocol::SessionId,
     ) {
@@ -20,26 +20,27 @@ impl SessionPersistenceActor {
             return;
         };
 
-        {
+        let session = {
             let mut state = self.state.write();
             let Some(session) = state.session.sessions.get_mut(session_id) else {
                 tracing::warn!(session_id = ?session_id, "session not found for save");
                 return;
             };
             session.touch();
+            session.clone()
+        };
 
-            if let Err(e) = store.save(session) {
-                tracing::warn!(
-                    session_id = ?session_id,
-                    err = ?e,
-                    "failed to persist session"
-                );
-            }
+        if let Err(e) = store.save(&session).await {
+            tracing::warn!(
+                session_id = ?session_id,
+                err = ?e,
+                "failed to persist session"
+            );
         }
     }
 
     /// Loads a full session from disk and sends back a `SessionLoadCompleted` command.
-    pub(in crate::feat::session::session_actor) fn on_load_requested(
+    pub(in crate::feat::session::session_actor) async fn on_load_requested(
         &mut self,
         evt: &SessionLoadRequested,
         ctx: &crate::common::actor::ActorContext,
@@ -51,7 +52,7 @@ impl SessionPersistenceActor {
             return;
         };
 
-        match store.load_full(evt.byte_offset) {
+        match store.load_session(&evt.session_id).await {
             Ok(Some(session)) => {
                 let strategy_id = session.active_strategy().clone();
                 let strategy_blob = session
@@ -75,8 +76,8 @@ impl SessionPersistenceActor {
             }
             Ok(None) => {
                 tracing::warn!(
-                    byte_offset = evt.byte_offset,
-                    "session load returned None at offset"
+                    session_id = ?evt.session_id,
+                    "session load returned None"
                 );
                 // Create an empty session with the requested ID.
                 let mut session = crate::feat::session::chat_session::ChatSessionState::new();
