@@ -5,16 +5,16 @@ use uuid::Uuid;
 
 /// A unique identifier for a chat session.
 ///
-/// Generated using UUID v4, stored as an opaque string.
+/// Generated using UUID v7, stored as an opaque string.
 /// Derives equality and hashing so it can be used as a `HashMap` key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionId(String);
 
 impl SessionId {
-    /// Generate a new unique session ID using UUID v4.
+    /// Generate a new unique session ID using UUID v7.
     #[must_use]
     pub fn new() -> Self {
-        Self(format!("s-{}", Uuid::new_v4()))
+        Self(format!("s-{}", Uuid::now_v7()))
     }
 }
 
