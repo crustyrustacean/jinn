@@ -1,0 +1,146 @@
+//! Turn counter — counts conversation turns for the status bar.
+//!
+//! A "turn" is when a participant gives up control:
+//! - User sends a message → 1 turn
+//! - Model finishes a response (not tool-use) → 1 turn
+//!
+//! Always recomputes from the active session's chat history so the count
+//! is correct after session switches, reloads, etc.
+
+use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
+
+/// Computes the number of conversation turns in the given chat history.
+///
+/// A user entry always counts as a turn. An assistant entry counts as a turn
+/// only if it is the last entry or is NOT followed by a `ToolCall` — intermediate
+/// tool-loop assistant messages are part of the same turn.
+#[must_use]
+pub fn compute_turn_count(history: &[ChatEntry]) -> u32 {
+    let len = history.len();
+    let mut count = 0u32;
+    for (i, entry) in history.iter().enumerate() {
+        match &entry.kind {
+            ChatEntryKind::User { .. } => count += 1,
+            ChatEntryKind::Assistant(..) => {
+                let is_last = i == len - 1;
+                let followed_by_tool_call =
+                    !is_last && matches!(history[i + 1].kind, ChatEntryKind::ToolCall { .. });
+                if !followed_by_tool_call {
+                    count += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    count
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::ChatEntry;
+
+    #[rstest::rstest]
+    fn empty_history_returns_zero() {
+        // Given no chat entries.
+        let history: Vec<ChatEntry> = vec![];
+
+        // When computing the turn count.
+        let count = compute_turn_count(&history);
+
+        // Then the count is zero.
+        assert_eq!(count, 0);
+    }
+
+    #[rstest::rstest]
+    fn user_entry_counts_as_one_turn() {
+        // Given a single user entry.
+        let history = vec![ChatEntry::user("hello")];
+
+        // When computing the turn count.
+        let count = compute_turn_count(&history);
+
+        // Then the count is one.
+        assert_eq!(count, 1);
+    }
+
+    #[rstest::rstest]
+    fn assistant_entry_counts_as_one_turn() {
+        // Given a single assistant entry.
+        let history = vec![ChatEntry::assistant("hi there")];
+
+        // When computing the turn count.
+        let count = compute_turn_count(&history);
+
+        // Then the count is one.
+        assert_eq!(count, 1);
+    }
+
+    #[rstest::rstest]
+    fn assistant_followed_by_tool_call_is_not_a_turn() {
+        // Given an assistant entry followed by a tool call.
+        let history = vec![
+            ChatEntry::user("list files"),
+            ChatEntry::assistant("let me check"),
+            ChatEntry::tool_call("id-1", "bash", r#"{"command":"ls"}"#),
+            ChatEntry::tool_result("id-1", "bash", "file1.txt\nfile2.txt", true),
+            ChatEntry::assistant("here are the files"),
+        ];
+
+        // When computing the turn count.
+        let count = compute_turn_count(&history);
+
+        // Then the intermediate assistant (followed by tool_call) is not a turn.
+        // User = 1, final assistant = 1. Total = 2.
+        assert_eq!(count, 2);
+    }
+
+    #[rstest::rstest]
+    fn assistant_as_last_entry_is_a_turn() {
+        // Given history ending with an assistant entry.
+        let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi there")];
+
+        // When computing the turn count.
+        let count = compute_turn_count(&history);
+
+        // Then both entries count as turns.
+        assert_eq!(count, 2);
+    }
+
+    #[rstest::rstest]
+    fn system_and_other_entries_are_ignored() {
+        // Given entries that are not user or assistant.
+        let history = vec![
+            ChatEntry::system("welcome"),
+            ChatEntry::error("something broke"),
+        ];
+
+        // When computing the turn count.
+        let count = compute_turn_count(&history);
+
+        // Then the count is zero.
+        assert_eq!(count, 0);
+    }
+
+    #[rstest::rstest]
+    fn tool_loop_skips_intermediate_assistant_entries() {
+        // Given a tool loop with two rounds of tool calls.
+        let history = vec![
+            ChatEntry::user("fix the bug"),
+            ChatEntry::assistant("let me read the file"),
+            ChatEntry::tool_call("id-1", "bash", r#"{"command":"cat main.rs"}"#),
+            ChatEntry::tool_result("id-1", "bash", "fn main() {}", true),
+            ChatEntry::assistant("now I'll edit it"),
+            ChatEntry::tool_call("id-2", "bash", r#"{"command":"sed ..."}"#),
+            ChatEntry::tool_result("id-2", "bash", "done", true),
+            ChatEntry::assistant("the bug is fixed"),
+        ];
+
+        // When computing the turn count.
+        let count = compute_turn_count(&history);
+
+        // Then only the user entry and final assistant entry count.
+        // The two intermediate assistants (followed by tool_call) are skipped.
+        assert_eq!(count, 2);
+    }
+}

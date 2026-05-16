@@ -9,7 +9,7 @@ use std::{env, fs::File, path::PathBuf, sync::Arc};
 
 use clap_verbosity_flag::{Verbosity, WarnLevel};
 use error_stack::{Report, ResultExt};
-use nullslop_plugin::app_info::APP_NAME;
+use nullslop_domain::common::app_info::APP_NAME;
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use wherror::Error;
 
