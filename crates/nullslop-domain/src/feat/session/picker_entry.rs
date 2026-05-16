@@ -18,8 +18,6 @@ pub struct SessionEntry {
     pub title: String,
     /// When this session was last modified.
     pub updated_at: jiff::Timestamp,
-    /// Byte offset in the JSONL file for direct seek.
-    pub byte_offset: u64,
     /// Theme for rendering.
     pub theme: Theme,
 }

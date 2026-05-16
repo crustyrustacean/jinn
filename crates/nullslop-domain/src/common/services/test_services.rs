@@ -17,6 +17,7 @@ use crate::feat::provider_infra::{
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService, SessionSummary};
 use crate::protocol::{AppMsg, SessionId};
+use async_trait::async_trait;
 use error_stack::Report;
 use kanal::Sender;
 use tokio::runtime::Handle;
@@ -32,30 +33,37 @@ use super::strategy_registry::StrategyRegistryService;
 #[derive(Debug)]
 pub struct FakeSessionStore;
 
+#[async_trait]
 impl SessionStore for FakeSessionStore {
     fn name(&self) -> &'static str {
         "fake"
     }
 
-    fn save(&self, _session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
+    async fn save(&self, _session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
         Ok(())
     }
 
-    fn load_summaries(
-        &self,
-    ) -> Result<Vec<(SessionId, SessionSummary, u64)>, Report<SessionStoreError>> {
+    async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
         Ok(Vec::new())
     }
 
-    fn load_full(
+    async fn load_session(
         &self,
-        _byte_offset: u64,
+        _session_id: &SessionId,
     ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
         Ok(None)
     }
 
-    fn compact(&self) -> Result<(), Report<SessionStoreError>> {
+    async fn delete(&self, _session_id: &SessionId) -> Result<(), Report<SessionStoreError>> {
         Ok(())
+    }
+
+    async fn fork(
+        &self,
+        _source_session_id: &SessionId,
+        _at_ordinal: usize,
+    ) -> Result<SessionId, Report<SessionStoreError>> {
+        Ok(SessionId::new())
     }
 }
 

@@ -30,44 +30,56 @@ impl SessionStoreService {
         Self { svc: store }
     }
 
-    /// Append a session snapshot to the store.
+    /// Save a complete session.
     ///
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if the write fails.
-    pub fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
-        self.svc.save(session)
+    pub async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
+        self.svc.save(session).await
     }
 
-    /// Scan all lines and return lightweight summaries with byte offsets.
+    /// Load lightweight summaries for all sessions.
     ///
     /// # Errors
     ///
-    /// Returns [`SessionStoreError`] if the file cannot be opened or read.
-    pub fn load_summaries(
-        &self,
-    ) -> Result<Vec<(SessionId, SessionSummary, u64)>, Report<SessionStoreError>> {
-        self.svc.load_summaries()
+    /// Returns [`SessionStoreError`] if the database cannot be read.
+    pub async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+        self.svc.load_summaries().await
     }
 
-    /// Load a full session by seeking to the given byte offset.
+    /// Load a full session by ID.
     ///
     /// # Errors
     ///
-    /// Returns [`SessionStoreError`] if the seek or read fails.
-    pub fn load_full(
+    /// Returns [`SessionStoreError`] if the read fails.
+    pub async fn load_session(
         &self,
-        byte_offset: u64,
+        session_id: &SessionId,
     ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
-        self.svc.load_full(byte_offset)
+        self.svc.load_session(session_id).await
     }
 
-    /// Rewrite the store, keeping only the latest snapshot per session.
+    /// Delete a session and all its data.
     ///
     /// # Errors
     ///
-    /// Returns [`SessionStoreError`] if the rewrite fails.
-    pub fn compact(&self) -> Result<(), Report<SessionStoreError>> {
-        self.svc.compact()
+    /// Returns [`SessionStoreError`] if the delete fails.
+    pub async fn delete(&self, session_id: &SessionId) -> Result<(), Report<SessionStoreError>> {
+        self.svc.delete(session_id).await
+    }
+
+    /// Fork a session from a specific entry ordinal.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the source session doesn't exist or
+    /// the fork fails.
+    pub async fn fork(
+        &self,
+        source_session_id: &SessionId,
+        at_ordinal: usize,
+    ) -> Result<SessionId, Report<SessionStoreError>> {
+        self.svc.fork(source_session_id, at_ordinal).await
     }
 }

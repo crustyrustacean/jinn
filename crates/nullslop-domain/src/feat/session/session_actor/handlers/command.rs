@@ -24,7 +24,7 @@ enum EnqueueAction {
 
 impl SessionPersistenceActor {
     /// EnqueueUserMessage: if idle → assemble prompt; if busy → queue.
-    pub(in crate::feat::session::session_actor) fn handle_enqueue_user_message(
+    pub(in crate::feat::session::session_actor) async fn handle_enqueue_user_message(
         &self,
         payload: &EnqueueUserMessage,
         ctx: &ActorContext,
@@ -76,7 +76,7 @@ impl SessionPersistenceActor {
                     tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
                 }
 
-                self.save_active_session(&payload.session_id);
+                self.save_active_session(&payload.session_id).await;
             }
             EnqueueAction::Queued => {}
         }

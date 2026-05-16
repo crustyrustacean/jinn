@@ -43,6 +43,7 @@ toml = { workspace = true }
 anstyle-lossy = { workspace = true }
 anstyle = { workspace = true }
 reasoning-parser = "1.2"
+rusqlite = { version = "0.34", features = ["bundled"] }
 
 [dev-dependencies]
 rstest = { workspace = true }

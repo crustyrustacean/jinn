@@ -1,17 +1,17 @@
-//! Session store abstraction and JSONL implementation.
+//! Session store abstraction and SQLite implementation.
 //!
-//! Defines [`SessionStore`] as the trait for session persistence and
-//! [`JsonlSessionStore`] as the append-only JSONL file backend. Startup scans
-//! lightweight [`SessionSummary`] entries with byte offsets; full
-//! [`ChatSessionState`](super::chat_session::ChatSessionState) data loads on demand via seek.
+//! Defines [`SessionStore`] as the async trait for session persistence and
+//! [`SqliteSessionStore`] as the SQLite-backed implementation. Sessions are
+//! stored in normalized tables with a junction table for entries, enabling
+//! fork support without data duplication.
 
-mod jsonl;
 mod service;
+mod sqlite;
 
-pub use jsonl::FILE_NAME;
-pub use jsonl::JsonlSessionStore;
 pub use service::SessionStoreService;
+pub use sqlite::SqliteSessionStore;
 
+use async_trait::async_trait;
 use error_stack::Report;
 use wherror::Error;
 
@@ -27,60 +27,76 @@ pub struct SessionStoreError;
 /// Abstraction for session persistence.
 ///
 /// Every external dependency must have a trait abstraction (AGENTS.md §2).
-/// Filesystem I/O is an external dependency — this trait abstracts it so
+/// SQLite I/O is an external dependency — this trait abstracts it so
 /// tests can swap in-memory storage.
+///
+/// All methods are async. Implementations use `tokio::task::spawn_blocking`
+/// to bridge synchronous SQLite calls into the async runtime.
+#[async_trait]
 pub trait SessionStore: Send + Sync + 'static {
     /// Returns the storage backend name (for debugging).
     fn name(&self) -> &'static str;
 
-    /// Append a session snapshot to the store.
+    /// Save a complete session.
     ///
-    /// The implementation writes a single JSON line. Multiple snapshots for
-    /// the same session ID may exist — the latest wins on load.
+    /// Upserts session metadata, entries, and token ledger in one transaction.
+    /// Entries are deduplicated across sessions via the junction table.
     ///
     /// # Errors
     ///
     /// Returns [`SessionStoreError`] if the write fails.
-    fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>>;
+    async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>>;
 
-    /// Scan all lines and return lightweight summaries with byte offsets.
+    /// Load lightweight summaries for all sessions.
     ///
-    /// Each entry is `(session_id, summary, byte_offset)` where `byte_offset`
-    /// is the position of the **latest** line for that session in the file.
-    /// Used for startup index building and on-demand full loads.
-    ///
-    /// Corrupted or unparseable lines are skipped gracefully.
+    /// Returns one [`SessionSummary`] per session, suitable for picker display.
     ///
     /// # Errors
     ///
-    /// Returns [`SessionStoreError`] if the file cannot be opened or read.
-    fn load_summaries(
-        &self,
-    ) -> Result<Vec<(SessionId, SessionSummary, u64)>, Report<SessionStoreError>>;
+    /// Returns [`SessionStoreError`] if the database cannot be read.
+    async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>>;
 
-    /// Load a full session by seeking to the given byte offset.
+    /// Load a full session by ID.
     ///
-    /// Returns `None` if the line at the offset cannot be parsed as a
-    /// [`ChatSessionState`](super::chat_session::ChatSessionState).
+    /// Returns `None` if no session with the given ID exists.
     ///
     /// # Errors
     ///
-    /// Returns [`SessionStoreError`] if the seek or read fails.
-    fn load_full(
+    /// Returns [`SessionStoreError`] if the read fails.
+    async fn load_session(
         &self,
-        byte_offset: u64,
+        session_id: &SessionId,
     ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>>;
 
-    /// Rewrite the store, keeping only the latest snapshot per session.
+    /// Delete a session and all its data.
     ///
-    /// Call when the file grows beyond a threshold (e.g., 500 lines).
-    /// After compaction, byte offsets from previous `load_summaries` calls
-    /// are invalidated — callers must re-scan.
+    /// Removes the session row, its junction rows, and any orphaned entries
+    /// (entries no longer referenced by any session). Token ledger rows for
+    /// the session are also deleted via `ON DELETE CASCADE`.
     ///
     /// # Errors
     ///
-    /// Returns [`SessionStoreError`] if the rewrite fails.
-    fn compact(&self) -> Result<(), Report<SessionStoreError>>;
+    /// Returns [`SessionStoreError`] if the delete fails.
+    async fn delete(&self, session_id: &SessionId) -> Result<(), Report<SessionStoreError>>;
+
+    /// Fork a session from a specific entry ordinal into a new session.
+    ///
+    /// Creates a new session with `parent_session` = `source_session_id` and
+    /// `fork_at_ordinal` = `at_ordinal`. Copies junction rows from the source
+    /// session for entries with ordinal <= `at_ordinal`. Entry data is shared,
+    /// not duplicated. The new session gets its own independent token ledger.
+    ///
+    /// Returns the new session's ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the source session doesn't exist or
+    /// the fork fails.
+    async fn fork(
+        &self,
+        source_session_id: &SessionId,
+        at_ordinal: usize,
+    ) -> Result<SessionId, Report<SessionStoreError>>;
 }
 
 impl std::fmt::Debug for dyn SessionStore {
@@ -88,396 +104,5 @@ impl std::fmt::Debug for dyn SessionStore {
         f.debug_struct("SessionStore")
             .field("name", &self.name())
             .finish()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs;
-    use std::io::{Seek as _, Write as _};
-
-    use tempfile::TempDir;
-
-    use crate::protocol::SessionId;
-
-    use super::*;
-    use crate::feat::session::chat_session::ChatSessionState;
-    use crate::protocol::ChatEntry;
-
-    /// Creates a minimal `ChatSessionState` for testing.
-    fn make_session(id: &SessionId, title: &str) -> ChatSessionState {
-        let mut session = ChatSessionState::new();
-        session.set_session_id(id.clone());
-        session.set_title(title.to_owned());
-        session.push_entry(ChatEntry::user("hello"));
-        session
-    }
-
-    // --- Test 1: Save + load round-trip ---
-
-    #[rstest::rstest]
-    fn save_creates_summary() {
-        // Given a JsonlSessionStore in a temp directory.
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-        let session_id = SessionId::new();
-        let session = make_session(&session_id, "Test Session");
-
-        // When saving and loading summaries.
-        store.save(&session).expect("save");
-        let summaries = store.load_summaries().expect("load_summaries");
-
-        // Then one summary is returned.
-        assert_eq!(summaries.len(), 1);
-        let (id, summary, _offset) = &summaries[0];
-        assert_eq!(id, &session_id);
-        assert_eq!(summary.title, "Test Session");
-    }
-
-    #[rstest::rstest]
-    fn load_full_restores_data() {
-        // Given a JsonlSessionStore in a temp directory.
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-        let session_id = SessionId::new();
-        let session = make_session(&session_id, "Test Session");
-
-        // When saving and loading full at the summary offset.
-        store.save(&session).expect("save");
-        let summaries = store.load_summaries().expect("load_summaries");
-        let offset = summaries[0].2;
-
-        // Then load_full returns the complete session.
-        let full = store
-            .load_full(offset)
-            .expect("load_full")
-            .expect("should have a session");
-        assert_eq!(full.session_id(), &session_id);
-        assert_eq!(full.title(), Some("Test Session"));
-        assert_eq!(full.history().len(), 1);
-    }
-
-    // --- Test 2: Multiple sessions, latest wins ---
-
-    #[rstest::rstest]
-    fn summaries_returns_correct_count() {
-        // Given a store with 3 saves: session A (v1), session B (v1), session A (v2).
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-
-        let id_a = SessionId::new();
-        let id_b = SessionId::new();
-
-        store.save(&make_session(&id_a, "A v1")).expect("save A v1");
-        store.save(&make_session(&id_b, "B v1")).expect("save B v1");
-        store.save(&make_session(&id_a, "A v2")).expect("save A v2");
-
-        // When loading summaries.
-        let summaries = store.load_summaries().expect("load_summaries");
-
-        // Then 2 summaries are returned.
-        assert_eq!(summaries.len(), 2);
-    }
-
-    #[rstest::rstest]
-    fn summaries_returns_latest_versions() {
-        // Given a store with 3 saves: session A (v1), session B (v1), session A (v2).
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-
-        let id_a = SessionId::new();
-        let id_b = SessionId::new();
-
-        store.save(&make_session(&id_a, "A v1")).expect("save A v1");
-        store.save(&make_session(&id_b, "B v1")).expect("save B v1");
-        store.save(&make_session(&id_a, "A v2")).expect("save A v2");
-
-        // When loading summaries.
-        let summaries = store.load_summaries().expect("load_summaries");
-
-        // Then A is v2 and B is v1.
-        let entry_a = summaries
-            .iter()
-            .find(|(id, _, _)| id == &id_a)
-            .expect("session A should exist");
-        assert_eq!(entry_a.1.title, "A v2");
-
-        let entry_b = summaries
-            .iter()
-            .find(|(id, _, _)| id == &id_b)
-            .expect("session B should exist");
-        assert_eq!(entry_b.1.title, "B v1");
-    }
-
-    #[rstest::rstest]
-    fn byte_offset_points_to_latest() {
-        // Given a store with 3 saves: session A (v1), session B (v1), session A (v2).
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-
-        let id_a = SessionId::new();
-        let id_b = SessionId::new();
-
-        store.save(&make_session(&id_a, "A v1")).expect("save A v1");
-        store.save(&make_session(&id_b, "B v1")).expect("save B v1");
-        store.save(&make_session(&id_a, "A v2")).expect("save A v2");
-
-        // When loading summaries and seeking to A's offset.
-        let summaries = store.load_summaries().expect("load_summaries");
-
-        let entry_a = summaries
-            .iter()
-            .find(|(id, _, _)| id == &id_a)
-            .expect("session A should exist");
-
-        // Then session A's byte offset points to the second save (v2).
-        let full_a = store
-            .load_full(entry_a.2)
-            .expect("load_full")
-            .expect("should have session A");
-        assert_eq!(full_a.title(), Some("A v2"));
-    }
-
-    // --- Test 3: Compaction removes stale snapshots ---
-
-    #[rstest::rstest]
-    fn compact_preserves_sessions() {
-        // Given a store with 600+ lines (multiple saves of 2 sessions).
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-
-        let id_a = SessionId::new();
-        let id_b = SessionId::new();
-
-        for i in 0..300 {
-            store
-                .save(&make_session(&id_a, &format!("A iter {i}")))
-                .expect("save A");
-            store
-                .save(&make_session(&id_b, &format!("B iter {i}")))
-                .expect("save B");
-        }
-        // 600 lines total, above the 500 threshold.
-
-        // When compacting.
-        store.compact().expect("compact");
-
-        // Then summaries still return the same sessions.
-        let summaries = store.load_summaries().expect("load_summaries");
-        assert_eq!(summaries.len(), 2);
-    }
-
-    #[rstest::rstest]
-    fn compact_reduces_file_size() {
-        // Given a store with 600+ lines (multiple saves of 2 sessions).
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-
-        let id_a = SessionId::new();
-        let id_b = SessionId::new();
-
-        for i in 0..300 {
-            store
-                .save(&make_session(&id_a, &format!("A iter {i}")))
-                .expect("save A");
-            store
-                .save(&make_session(&id_b, &format!("B iter {i}")))
-                .expect("save B");
-        }
-        // 600 lines total, above the 500 threshold.
-
-        // When compacting.
-        store.compact().expect("compact");
-
-        // Then the file now has only 2 lines (one per session).
-        let content = fs::read_to_string(store.file_path()).expect("read file");
-        let line_count = content.lines().filter(|l| !l.is_empty()).count();
-        assert_eq!(line_count, 2);
-    }
-
-    // --- Test 4: Compaction is no-op below threshold ---
-
-    #[rstest::rstest]
-    fn compact_is_noop_below_threshold() {
-        // Given a store with 10 lines (below threshold).
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-
-        let id = SessionId::new();
-        for i in 0..10 {
-            store
-                .save(&make_session(&id, &format!("iter {i}")))
-                .expect("save");
-        }
-
-        let content_before = fs::read_to_string(store.file_path()).expect("read file before");
-
-        // When compacting.
-        store.compact().expect("compact");
-
-        // Then the file is unchanged.
-        let content_after = fs::read_to_string(store.file_path()).expect("read file after");
-        assert_eq!(content_before, content_after);
-    }
-
-    // --- Test 5: Corrupted lines skipped gracefully ---
-
-    #[rstest::rstest]
-    fn load_summaries_skips_corrupted_lines() {
-        // Given a JSONL file with a valid line, a corrupted line, and another valid line.
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-
-        let id_a = SessionId::new();
-        let id_b = SessionId::new();
-
-        store.save(&make_session(&id_a, "Valid A")).expect("save A");
-
-        // Write a corrupted line directly.
-        {
-            let mut file = std::fs::OpenOptions::new()
-                .append(true)
-                .open(store.file_path())
-                .expect("open");
-            writeln!(file, "this is not valid json").expect("write");
-        }
-
-        store.save(&make_session(&id_b, "Valid B")).expect("save B");
-
-        // When loading summaries.
-        let summaries = store.load_summaries().expect("load_summaries");
-
-        // Then 2 valid summaries are returned (the corrupted line is skipped).
-        assert_eq!(summaries.len(), 2);
-        let titles: Vec<&str> = summaries.iter().map(|(_, s, _)| s.title.as_str()).collect();
-        assert!(titles.contains(&"Valid A"));
-        assert!(titles.contains(&"Valid B"));
-    }
-
-    // --- Test 6: Load full from corrupted offset returns None ---
-
-    #[rstest::rstest]
-    fn load_full_returns_none_for_corrupted_line() {
-        // Given a JSONL file with a corrupted line at a known offset.
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-
-        // Write a corrupted line and capture its offset.
-        let corrupted_offset = {
-            let mut file = std::fs::File::create(store.file_path()).expect("create");
-            let offset = file.stream_position().expect("position");
-            writeln!(file, "not json").expect("write");
-            offset
-        };
-
-        // When loading full at the corrupted offset.
-        let result = store.load_full(corrupted_offset).expect("load_full");
-
-        // Then None is returned (graceful degradation).
-        assert!(result.is_none());
-    }
-
-    // --- Test 7: Load from empty store returns empty ---
-
-    #[rstest::rstest]
-    fn load_summaries_returns_empty_when_no_file() {
-        // Given a JsonlSessionStore in a temp directory with no file.
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-
-        // When loading summaries.
-        let summaries = store.load_summaries().expect("load_summaries");
-
-        // Then an empty vec is returned.
-        assert!(summaries.is_empty());
-    }
-
-    // --- Test 8: Save creates directory if missing ---
-
-    #[rstest::rstest]
-    fn save_creates_directory() {
-        // Given a JsonlSessionStore pointed at a non-existent directory.
-        let dir = TempDir::new().expect("temp dir");
-        let nested = dir.path().join("does").join("not").join("exist");
-        let store = JsonlSessionStore::new_in(nested.clone());
-        let session = make_session(&SessionId::new(), "Mkdir Test");
-
-        // When saving.
-        store.save(&session).expect("save");
-
-        // Then the directory is created.
-        assert!(nested.exists());
-    }
-
-    #[rstest::rstest]
-    fn save_creates_file() {
-        // Given a JsonlSessionStore pointed at a non-existent directory.
-        let dir = TempDir::new().expect("temp dir");
-        let nested = dir.path().join("does").join("not").join("exist");
-        let store = JsonlSessionStore::new_in(nested.clone());
-        let session = make_session(&SessionId::new(), "Mkdir Test");
-
-        // When saving.
-        store.save(&session).expect("save");
-
-        // Then the file is created.
-        assert!(nested.join(FILE_NAME).exists());
-    }
-
-    #[rstest::rstest]
-    fn save_returns_summary() {
-        // Given a JsonlSessionStore pointed at a non-existent directory.
-        let dir = TempDir::new().expect("temp dir");
-        let nested = dir.path().join("does").join("not").join("exist");
-        let store = JsonlSessionStore::new_in(nested.clone());
-        let session = make_session(&SessionId::new(), "Mkdir Test");
-
-        // When saving and loading summaries.
-        store.save(&session).expect("save");
-
-        // Then load_summaries returns the saved session.
-        let summaries = store.load_summaries().expect("load_summaries");
-        assert_eq!(summaries.len(), 1);
-        assert_eq!(summaries[0].1.title, "Mkdir Test");
-    }
-
-    // --- Test 9: Load full at offset returns correct session among many ---
-
-    #[rstest::rstest]
-    fn load_full_at_offset_returns_correct_session_among_many() {
-        // Given a store with sessions A, B, C saved in sequence.
-        let dir = TempDir::new().expect("temp dir");
-        let store = JsonlSessionStore::new_in(dir.path().to_path_buf());
-
-        let id_a = SessionId::new();
-        let id_b = SessionId::new();
-        let id_c = SessionId::new();
-
-        store
-            .save(&make_session(&id_a, "Session A"))
-            .expect("save A");
-        store
-            .save(&make_session(&id_b, "Session B"))
-            .expect("save B");
-        store
-            .save(&make_session(&id_c, "Session C"))
-            .expect("save C");
-
-        let summaries = store.load_summaries().expect("load_summaries");
-
-        // When loading full at session B's offset.
-        let entry_b = summaries
-            .iter()
-            .find(|(id, _, _)| id == &id_b)
-            .expect("session B should exist");
-
-        let full_b = store
-            .load_full(entry_b.2)
-            .expect("load_full")
-            .expect("should have session B");
-
-        // Then session B's data is returned (not A or C).
-        assert_eq!(full_b.session_id(), &id_b);
-        assert_eq!(full_b.title(), Some("Session B"));
     }
 }

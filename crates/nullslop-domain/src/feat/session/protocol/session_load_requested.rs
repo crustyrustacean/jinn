@@ -1,8 +1,8 @@
-//! Request to load a full session from disk by byte offset.
+//! Request to load a full session from disk by session ID.
 //!
 //! Emitted when the user confirms a session selection in the session picker.
-//! The persistence actor receives this event, seeks to the byte offset,
-//! and sends back a [`SessionLoadCompleted`] command with the full session data.
+//! The persistence actor receives this command, loads the session from
+//! SQLite, and sends back a [`SessionLoadCompleted`] command.
 //!
 //! [`SessionLoadCompleted`]: crate::feat::session::SessionLoadCompleted
 
@@ -11,15 +11,12 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::CommandMsg;
 use crate::protocol::SessionId;
 
-/// Request to load a full session from disk by byte offset.
+/// Request to load a full session from disk by session ID.
 ///
-/// Carries the session ID and byte offset so the actor can seek directly
-/// to the right line in the JSONL file.
+/// Carries the session ID so the actor can load it directly from SQLite.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("session")]
 pub struct SessionLoadRequested {
     /// The session to load.
     pub session_id: SessionId,
-    /// Byte offset in the JSONL file where the session line starts.
-    pub byte_offset: u64,
 }
