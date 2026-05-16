@@ -11,7 +11,7 @@ use crate::feat::theme::Theme;
 use crate::feat::ui::sidebar::section_trait::{
     SidebarIntent, SidebarSection, SidebarSectionConfig, SidebarSectionId, SidebarSectionResult,
 };
-use crate::protocol::{ChatEntryId, ChatEntryKind, Command, IntentResult, PinPosition, SessionId};
+use crate::protocol::{ChatEntryId, ChatEntryKind, Command, IntentResult, PinPosition, PickerKind, SessionId};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -80,7 +80,13 @@ impl SidebarSection for PinsSection {
         // Sort to match sorted_ids order (TOP → REL → BOT, stable by history).
         pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
 
-        let selected_index = state.frontend.pins.selection_index(&sorted_ids);
+        // Only highlight a pin entry when this section is focused.
+        let is_focused = state.frontend.sidebar.focused_section == SidebarSectionId::Pins;
+        let selected_index = if is_focused {
+            state.frontend.pins.selection_index(&sorted_ids)
+        } else {
+            usize::MAX // No pin will match this index.
+        };
         let lines = if pinned.is_empty() {
             vec![Line::from(vec![Span::styled(
                 " Pinned Context \u{2014} 0",
@@ -125,20 +131,12 @@ impl SidebarSection for PinsSection {
 
 /// Handles `SidebarFocus` — enters sidebar scope.
 ///
-/// Auto-selects the first pinned entry when no selection exists
-/// so that action intents (unpin, pin cycle) work immediately.
+/// Defaults focus to the Persona section (topmost section).
 pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
+    use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
     state.frontend.scope_stack.push(FocusScope::Sidebar);
-
-    // Auto-select the first pinned entry if nothing is selected.
-    if state.frontend.pins.selected_id().is_none() {
-        let sorted_ids = state.sorted_pinned_ids();
-        if let Some(first) = sorted_ids.first() {
-            state.frontend.pins.select_by_id(first.clone());
-        }
-    }
-
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
     IntentResult::empty()
 }
 
@@ -155,20 +153,68 @@ pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `SidebarMoveDown` — delegates to pins section, syncs chat log cursor.
+/// Handles `SidebarMoveDown` — section-crossing navigation.
+///
+/// If the persona section is focused, switches to pins and auto-selects
+/// the first pinned entry. If pins is focused, moves selection down
+/// within the pins list.
 pub fn handle_sidebar_move_down(state: &mut AppState) -> IntentResult {
-    let sorted_ids = state.sorted_pinned_ids();
-    state.frontend.pins.select_next(&sorted_ids);
-    sync_chat_log_cursor(state);
+    use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
+    match state.frontend.sidebar.focused_section {
+        SidebarSectionId::Persona => {
+            // Switch focus to pins section.
+            state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
+            // Auto-select first pinned entry.
+            let sorted_ids = state.sorted_pinned_ids();
+            if let Some(first) = sorted_ids.first() {
+                state.frontend.pins.select_by_id(first.clone());
+            }
+        }
+        SidebarSectionId::Pins => {
+            let sorted_ids = state.sorted_pinned_ids();
+            state.frontend.pins.select_next(&sorted_ids);
+            sync_chat_log_cursor(state);
+        }
+    }
     IntentResult::empty()
 }
 
-/// Handles `SidebarMoveUp` — delegates to pins section, syncs chat log cursor.
+/// Handles `SidebarMoveUp` — section-crossing navigation.
+///
+/// If the persona section is focused, does nothing (sticky at top).
+/// If pins is focused and at the first item, switches focus to persona
+/// and clears pin selection. Otherwise moves selection up within pins.
 pub fn handle_sidebar_move_up(state: &mut AppState) -> IntentResult {
-    let sorted_ids = state.sorted_pinned_ids();
-    state.frontend.pins.select_prev(&sorted_ids);
-    sync_chat_log_cursor(state);
+    use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
+    match state.frontend.sidebar.focused_section {
+        SidebarSectionId::Persona => {
+            // Already at top — sticky.
+        }
+        SidebarSectionId::Pins => {
+            let sorted_ids = state.sorted_pinned_ids();
+            let current = state.frontend.pins.selection_index(&sorted_ids);
+            if current == 0 {
+                // At first pin — move up to persona section.
+                state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+                state.frontend.pins.clear_selection();
+            } else {
+                state.frontend.pins.select_prev(&sorted_ids);
+                sync_chat_log_cursor(state);
+            }
+        }
+    }
     IntentResult::empty()
+}
+
+/// Handles `SidebarPersonaEdit` — opens the persona picker when persona section is focused.
+///
+/// No-op if the pins section is focused.
+pub fn handle_sidebar_persona_edit(state: &mut AppState) -> IntentResult {
+    use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
+    if state.frontend.sidebar.focused_section != SidebarSectionId::Persona {
+        return IntentResult::empty();
+    }
+    crate::feat::picker::intent::handle_open_picker(state, PickerKind::Persona)
 }
 
 /// Handles `PinsUnpin`.
@@ -395,6 +441,7 @@ fn build_entry_list(
 #[cfg(test)]
 mod tests {
     use crate::common::app_state::{AppState, FocusScope};
+    use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
     use crate::protocol::{ChatEntry, Command, PinPosition};
 
     use super::*;
@@ -434,7 +481,22 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sidebar_focus_selects_first_pinned_entry_when_none_selected() {
+    fn sidebar_focus_defaults_to_persona_section() {
+        // Given a default state.
+        let mut state = AppState::default();
+
+        // When handling sidebar focus.
+        handle_sidebar_focus(&mut state);
+
+        // Then the focused section is Persona.
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Persona
+        );
+    }
+
+    #[rstest::rstest]
+    fn sidebar_focus_does_not_select_pins() {
         // Given a state with 3 pinned entries and no selection.
         let mut state = AppState::default();
         let ids: Vec<_> = (0..3)
@@ -451,30 +513,8 @@ mod tests {
         // When handling sidebar focus.
         handle_sidebar_focus(&mut state);
 
-        // Then the first pinned entry is selected.
-        assert_eq!(state.frontend.pins.selected_id(), Some(&ids[0]));
-    }
-
-    #[rstest::rstest]
-    fn sidebar_focus_preserves_existing_selection() {
-        // Given a state with 3 pinned entries and the second one selected.
-        let mut state = AppState::default();
-        let ids: Vec<_> = (0..3)
-            .map(|i| {
-                let entry = ChatEntry::user(format!("entry {i}"));
-                let id = entry.id.clone();
-                state.active_session_mut().push_entry(entry);
-                state.active_session_mut().pin_entry(&id, PinPosition::Top);
-                id
-            })
-            .collect();
-        state.frontend.pins.select_by_id(ids[1].clone());
-
-        // When handling sidebar focus.
-        handle_sidebar_focus(&mut state);
-
-        // Then the second entry is still selected.
-        assert_eq!(state.frontend.pins.selected_id(), Some(&ids[1]));
+        // Then no pin is selected (persona section is focused).
+        assert!(state.frontend.pins.selected_id().is_none());
     }
 
     #[rstest::rstest]
@@ -549,8 +589,9 @@ mod tests {
 
     #[rstest::rstest]
     fn sidebar_move_down_moves_selection() {
-        // Given a state with 3 pinned entries.
+        // Given a state with 3 pinned entries and pins section focused.
         let mut state = state_with_pinned(3);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
 
         // When handling sidebar move down.
         let result = handle_sidebar_move_down(&mut state);
@@ -563,8 +604,9 @@ mod tests {
 
     #[rstest::rstest]
     fn sidebar_move_up_moves_selection() {
-        // Given a state with 3 pinned entries at index 1.
+        // Given a state with 3 pinned entries at index 1 and pins section focused.
         let mut state = state_with_pinned(3);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
         let sorted_ids = state.sorted_pinned_ids();
         state.frontend.pins.select_next(&sorted_ids);
 
@@ -574,6 +616,103 @@ mod tests {
         // Then selection moved back.
         let sorted_ids = state.sorted_pinned_ids();
         assert_eq!(state.frontend.pins.selected_id(), Some(&sorted_ids[0]));
+        assert!(result.commands.is_empty());
+    }
+
+    // --- Section-crossing tests ---
+
+    #[rstest::rstest]
+    fn sidebar_move_down_switches_from_persona_to_pins() {
+        // Given a state with 3 pinned entries and persona section focused.
+        let mut state = state_with_pinned(3);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+
+        // When handling sidebar move down.
+        let result = handle_sidebar_move_down(&mut state);
+
+        // Then focus switched to pins and first entry is selected.
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Pins
+        );
+        let sorted_ids = state.sorted_pinned_ids();
+        assert_eq!(state.frontend.pins.selected_id(), Some(&sorted_ids[0]));
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sidebar_move_up_switches_from_pins_to_persona() {
+        // Given a state with 3 pinned entries, pins focused, first item selected.
+        let mut state = state_with_pinned(3);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
+
+        // When handling sidebar move up.
+        let result = handle_sidebar_move_up(&mut state);
+
+        // Then focus switched to persona and pins selection is cleared.
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Persona
+        );
+        assert!(state.frontend.pins.selected_id().is_none());
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sidebar_move_up_sticks_on_persona_section() {
+        // Given a state with persona section focused.
+        let mut state = state_with_pinned(3);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+
+        // When handling sidebar move up.
+        let result = handle_sidebar_move_up(&mut state);
+
+        // Then focus stays on persona.
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Persona
+        );
+        assert!(result.commands.is_empty());
+    }
+
+    // --- Persona edit tests ---
+
+    #[rstest::rstest]
+    fn sidebar_persona_edit_opens_picker_when_persona_focused() {
+        // Given a state with persona section focused and sidebar scope.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Sidebar);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+
+        // When handling sidebar persona edit.
+        let result = handle_sidebar_persona_edit(&mut state);
+
+        // Then the persona picker is active.
+        assert_eq!(
+            state.frontend.scope_stack.picker_kind().copied(),
+            Some(crate::protocol::PickerKind::Persona)
+        );
+        // And a LoadPersonaPickerEntries command is returned.
+        assert!(
+            result.commands.iter().any(|c| matches!(
+                c,
+                Command::LoadPersonaPickerEntries(..)
+            ))
+        );
+    }
+
+    #[rstest::rstest]
+    fn sidebar_persona_edit_noop_when_pins_focused() {
+        // Given a state with pins section focused and sidebar scope.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Sidebar);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
+
+        // When handling sidebar persona edit.
+        let result = handle_sidebar_persona_edit(&mut state);
+
+        // Then nothing changed.
+        assert!(!state.frontend.scope_stack.is_picker());
         assert!(result.commands.is_empty());
     }
 

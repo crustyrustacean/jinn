@@ -141,6 +141,8 @@ pub enum Intent {
     PinsPinRelative,
     /// Cycle the selected pinned entry's pin position.
     PinsPinCycle,
+    /// Open the persona picker from the sidebar.
+    SidebarPersonaEdit,
 
     // --- Chat Entry Selection ---
     /// Select the next chat entry.
@@ -215,6 +217,7 @@ impl std::fmt::Display for Intent {
             Intent::PinsPinBottom => write!(f, "pins pin bottom"),
             Intent::PinsPinRelative => write!(f, "pins pin relative"),
             Intent::PinsPinCycle => write!(f, "pins pin cycle"),
+            Intent::SidebarPersonaEdit => write!(f, "edit persona"),
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),
