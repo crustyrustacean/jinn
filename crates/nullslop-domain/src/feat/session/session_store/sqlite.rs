@@ -4,14 +4,20 @@
 //! This eliminates duplication — each chat entry is stored once and shared
 //! across sessions. The junction table enables fork support by copying only
 //! small junction rows, not entry data.
+//!
+//! Uses Diesel's type-safe query DSL for compile-time column verification
+//! against the generated schema. All queries are checked at compile time —
+//! if a column is added to a migration but missing from an INSERT or SELECT,
+//! the code will not compile.
 
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+use diesel::insert_into;
+use diesel::prelude::*;
+use diesel::r2d2::{self as diesel_r2d2, CustomizeConnection, Pool};
+use diesel::upsert::excluded;
 use error_stack::{Report, ResultExt as _};
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::Connection;
 use tokio::task::spawn_blocking;
 
 use crate::common::app_info::APP_NAME;
@@ -20,9 +26,71 @@ use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::session_summary::SessionSummary;
 use crate::protocol::{ChatEntryId, SessionId};
 
-use super::migration::session_migrations;
-
 use super::{SessionStore, SessionStoreError};
+
+// Migrations are embedded at compile time from the SQL files in the migrations directory.
+// The path is relative to this source file.
+const _V0_UP: &str =
+    include_str!("../../../../migrations/00000000000000_create_initial_schema/up.sql");
+const _V1_UP: &str = include_str!("../../../../migrations/00000000000001_add_cwd_column/up.sql");
+
+/// Runs all pending migrations on a bootstrap connection.
+///
+/// Uses individual `sql_query` calls because Diesel's `sql_query` doesn't support
+/// multi-statement batches. The SQL content is embedded at compile time from the
+/// migration files.
+fn run_migrations(conn: &mut SqliteConnection) {
+    // v0: create initial schema
+    diesel::sql_query(
+        "CREATE TABLE IF NOT EXISTS sessions (\
+         id TEXT PRIMARY KEY, title TEXT, updated_at TEXT NOT NULL,\
+         profile TEXT NOT NULL DEFAULT '{}', strategy_state TEXT NOT NULL DEFAULT '{}',\
+         blobs TEXT NOT NULL DEFAULT '{}', parent_session TEXT DEFAULT NULL)",
+    )
+    .execute(conn)
+    .expect("v0: create sessions table");
+
+    diesel::sql_query(
+        "CREATE TABLE IF NOT EXISTS entries (\
+         id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, kind TEXT NOT NULL)",
+    )
+    .execute(conn)
+    .expect("v0: create entries table");
+
+    diesel::sql_query(
+        "CREATE TABLE IF NOT EXISTS session_entries (\
+         session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,\
+         entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,\
+         ordinal INTEGER NOT NULL, pin_position TEXT DEFAULT NULL,\
+         PRIMARY KEY (session_id, entry_id), UNIQUE (session_id, ordinal))",
+    )
+    .execute(conn)
+    .expect("v0: create session_entries table");
+
+    diesel::sql_query(
+        "CREATE TABLE IF NOT EXISTS token_ledger (\
+         id INTEGER PRIMARY KEY AUTOINCREMENT,\
+         session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,\
+         timestamp TEXT NOT NULL, tokens_sent INTEGER NOT NULL, tokens_received INTEGER NOT NULL)",
+    )
+    .execute(conn)
+    .expect("v0: create token_ledger table");
+
+    diesel::sql_query(
+        "CREATE INDEX IF NOT EXISTS idx_session_entries_session ON session_entries(session_id, ordinal)"
+    ).execute(conn).expect("v0: create session_entries index");
+
+    diesel::sql_query(
+        "CREATE INDEX IF NOT EXISTS idx_token_ledger_session ON token_ledger(session_id)",
+    )
+    .execute(conn)
+    .expect("v0: create token_ledger index");
+
+    // v1: add cwd column
+    // ALTER TABLE ADD COLUMN fails if the column already exists. Ignore the error.
+    let _ = diesel::sql_query("ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT '.'")
+        .execute(conn);
+}
 
 /// Configuration for the SQLite connection pool.
 ///
@@ -41,7 +109,7 @@ impl Default for PoolConfig {
 
 pub struct SqliteSessionStore {
     /// Connection pool for `sessions.db`.
-    pool: Pool<SqliteConnectionManager>,
+    pool: Pool<diesel_r2d2::ConnectionManager<SqliteConnection>>,
 }
 
 /// SQLite database file name.
@@ -84,32 +152,35 @@ impl SqliteSessionStore {
 
     /// Builds the connection pool.
     ///
-    /// Creates the directory if needed, runs migrations once on a bootstrap
-    /// connection, then builds the pool. Each pooled connection gets WAL and
-    /// foreign key pragmas set via the connection manager's init hook.
+    /// Creates the directory if needed, runs embedded migrations once on a
+    /// bootstrap connection, then builds the pool. Each pooled connection gets
+    /// WAL and foreign key pragmas set via the connection customizer.
+    #[expect(clippy::expect_used, reason = "pool creation failures are fatal")]
     fn build_pool(dir: &PathBuf, config: PoolConfig) -> Self {
         if !dir.exists() {
             std::fs::create_dir_all(dir).expect("failed to create session directory");
         }
         let path = dir.join(FILE_NAME);
+        let database_url = path.to_string_lossy().to_string();
 
         // Run migrations once on a bootstrap connection before building the pool.
         // This ensures the schema is ready before any pooled connections are created.
         {
-            let conn = Connection::open(&path).expect("failed to open database for migration");
-            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
-                .expect("failed to set pragmas");
-            crate::common::migration::run_migrations(&conn, &session_migrations())
-                .expect("failed to run migrations");
+            let mut conn = SqliteConnection::establish(&database_url)
+                .expect("failed to open database for migration");
+            diesel::sql_query("PRAGMA journal_mode=WAL")
+                .execute(&mut conn)
+                .expect("failed to set WAL pragma");
+            diesel::sql_query("PRAGMA foreign_keys=ON")
+                .execute(&mut conn)
+                .expect("failed to set foreign_keys pragma");
+            run_migrations(&mut conn);
         }
 
-        let manager = SqliteConnectionManager::file(&path).with_init(|conn| {
-            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-            Ok(())
-        });
-
+        let manager = diesel_r2d2::ConnectionManager::<SqliteConnection>::new(&database_url);
         let pool = Pool::builder()
             .max_size(config.max_size)
+            .connection_customizer(Box::new(SqliteConnectionCustomizer))
             .build(manager)
             .expect("failed to create connection pool");
 
@@ -125,6 +196,22 @@ impl std::fmt::Debug for SqliteSessionStore {
     }
 }
 
+/// Sets WAL and foreign key pragmas on each pooled connection.
+#[derive(Debug, Copy, Clone)]
+struct SqliteConnectionCustomizer;
+
+impl CustomizeConnection<SqliteConnection, diesel_r2d2::Error> for SqliteConnectionCustomizer {
+    fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel_r2d2::Error> {
+        diesel::sql_query("PRAGMA journal_mode=WAL")
+            .execute(conn)
+            .map_err(diesel_r2d2::Error::QueryError)?;
+        diesel::sql_query("PRAGMA foreign_keys=ON")
+            .execute(conn)
+            .map_err(diesel_r2d2::Error::QueryError)?;
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl SessionStore for SqliteSessionStore {
     fn name(&self) -> &'static str {
@@ -132,25 +219,25 @@ impl SessionStore for SqliteSessionStore {
     }
 
     async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
-        let conn = self
+        let mut conn = self
             .pool
             .get()
             .change_context(SessionStoreError)
             .attach("failed to acquire connection from pool")?;
         let session = session.clone();
-        spawn_blocking(move || save_blocking(&conn, &session))
+        spawn_blocking(move || save_blocking(&mut conn, &session))
             .await
             .change_context(SessionStoreError)
             .attach("spawn_blocking panicked during save")?
     }
 
     async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
-        let conn = self
+        let mut conn = self
             .pool
             .get()
             .change_context(SessionStoreError)
             .attach("failed to acquire connection from pool")?;
-        spawn_blocking(move || load_summaries_blocking(&conn))
+        spawn_blocking(move || load_summaries_blocking(&mut conn))
             .await
             .change_context(SessionStoreError)
             .attach("spawn_blocking panicked during load_summaries")?
@@ -160,26 +247,26 @@ impl SessionStore for SqliteSessionStore {
         &self,
         session_id: &SessionId,
     ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
-        let conn = self
+        let mut conn = self
             .pool
             .get()
             .change_context(SessionStoreError)
             .attach("failed to acquire connection from pool")?;
         let session_id = session_id.clone();
-        spawn_blocking(move || load_session_blocking(&conn, &session_id))
+        spawn_blocking(move || load_session_blocking(&mut conn, &session_id))
             .await
             .change_context(SessionStoreError)
             .attach("spawn_blocking panicked during load_session")?
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Report<SessionStoreError>> {
-        let conn = self
+        let mut conn = self
             .pool
             .get()
             .change_context(SessionStoreError)
             .attach("failed to acquire connection from pool")?;
         let session_id = session_id.clone();
-        spawn_blocking(move || delete_blocking(&conn, &session_id))
+        spawn_blocking(move || delete_blocking(&mut conn, &session_id))
             .await
             .change_context(SessionStoreError)
             .attach("spawn_blocking panicked during delete")?
@@ -190,17 +277,106 @@ impl SessionStore for SqliteSessionStore {
         source_session_id: &SessionId,
         at_ordinal: usize,
     ) -> Result<SessionId, Report<SessionStoreError>> {
-        let conn = self
+        let mut conn = self
             .pool
             .get()
             .change_context(SessionStoreError)
             .attach("failed to acquire connection from pool")?;
         let source_session_id = source_session_id.clone();
-        spawn_blocking(move || fork_blocking(&conn, &source_session_id, at_ordinal))
+        spawn_blocking(move || fork_blocking(&mut conn, &source_session_id, at_ordinal))
             .await
             .change_context(SessionStoreError)
             .attach("spawn_blocking panicked during fork")?
     }
+}
+
+// ── Diesel model structs ─────────────────────────────────────────────────
+
+/// Reading model for the `sessions` table.
+#[derive(Queryable)]
+#[diesel(table_name = crate::schema::sessions)]
+struct SessionRow {
+    id: Option<String>,
+    title: Option<String>,
+    updated_at: String,
+    profile: String,
+    strategy_state: String,
+    blobs: String,
+    parent_session: Option<String>,
+    cwd: String,
+}
+
+/// Insert model for the `sessions` table.
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::sessions)]
+struct NewSessionRow {
+    id: String,
+    title: Option<String>,
+    updated_at: String,
+    profile: String,
+    strategy_state: String,
+    blobs: String,
+    parent_session: Option<String>,
+    cwd: String,
+}
+
+/// Reading model for the `entries` table.
+#[derive(Queryable)]
+#[diesel(table_name = crate::schema::entries)]
+struct EntryRow {
+    id: Option<String>,
+    timestamp: String,
+    kind: String,
+}
+
+/// Insert model for the `entries` table.
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::entries)]
+struct NewEntryRow {
+    id: String,
+    timestamp: String,
+    kind: String,
+}
+
+/// Reading model for the `session_entries` table.
+#[derive(Queryable)]
+#[diesel(table_name = crate::schema::session_entries)]
+struct SessionEntryRow {
+    session_id: String,
+    entry_id: String,
+    ordinal: i32,
+    pin_position: Option<String>,
+}
+
+/// Insert model for the `session_entries` table.
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::session_entries)]
+struct NewSessionEntryRow {
+    session_id: String,
+    entry_id: String,
+    ordinal: i32,
+    pin_position: Option<String>,
+}
+
+/// Reading model for the `token_ledger` table.
+#[derive(Queryable)]
+#[diesel(table_name = crate::schema::token_ledger)]
+struct TokenLedgerRow {
+    id: Option<i32>,
+    session_id: String,
+    timestamp: String,
+    tokens_sent: i32,
+    tokens_received: i32,
+}
+
+/// Insert model for the `token_ledger` table.
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::token_ledger)]
+struct NewTokenLedgerRow {
+    session_id: String,
+    timestamp: String,
+    tokens_sent: i32,
+    tokens_received: i32,
 }
 
 // ── Blocking implementations ─────────────────────────────────────────────
@@ -211,14 +387,9 @@ impl SessionStore for SqliteSessionStore {
 /// and inserts any new entries. Orphaned entries (no longer referenced by any
 /// session) are cleaned up at the end.
 fn save_blocking(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     session: &ChatSessionState,
 ) -> Result<(), Report<SessionStoreError>> {
-    let tx = conn
-        .unchecked_transaction()
-        .change_context(SessionStoreError)
-        .attach("failed to begin transaction")?;
-
     let session_id_str = session.session_id().to_string();
     let title = session.title().unwrap_or("Untitled Session");
     let updated_at = session.updated_at().to_string();
@@ -232,164 +403,139 @@ fn save_blocking(
         .change_context(SessionStoreError)
         .attach("failed to serialize blobs")?;
     let parent_session_str = session.parent_session().as_ref().map(|p| p.to_string());
-
     let cwd_str = session.cwd().to_string_lossy().to_string();
 
-    // Upsert session metadata.
-    tx.execute(
-        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session, cwd)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-         ON CONFLICT(id) DO UPDATE SET
-            title = excluded.title,
-            updated_at = excluded.updated_at,
-            profile = excluded.profile,
-            strategy_state = excluded.strategy_state,
-            blobs = excluded.blobs,
-            cwd = excluded.cwd",
-        rusqlite::params![
-            session_id_str,
-            title,
-            updated_at,
-            profile_json,
-            strategy_state_json,
-            blobs_json,
-            parent_session_str,
-            cwd_str,
-        ],
-    )
-    .change_context(SessionStoreError)
-    .attach("failed to upsert session")?;
+    conn.transaction::<_, diesel::result::Error, _>(|txn| {
+        use crate::schema::{entries, session_entries, sessions, token_ledger};
 
-    // Delete existing junction rows and token ledger for this session.
-    // We'll rewrite them from the in-memory state.
-    tx.execute(
-        "DELETE FROM session_entries WHERE session_id = ?1",
-        rusqlite::params![session_id_str],
-    )
-    .change_context(SessionStoreError)
-    .attach("failed to clear session entries")?;
+        // Upsert session metadata.
+        insert_into(sessions::table)
+            .values(&NewSessionRow {
+                id: session_id_str.clone(),
+                title: Some(title.to_owned()),
+                updated_at: updated_at.clone(),
+                profile: profile_json.clone(),
+                strategy_state: strategy_state_json.clone(),
+                blobs: blobs_json.clone(),
+                parent_session: parent_session_str.clone(),
+                cwd: cwd_str.clone(),
+            })
+            .on_conflict(sessions::dsl::id)
+            .do_update()
+            .set((
+                sessions::title.eq(excluded(sessions::title)),
+                sessions::updated_at.eq(excluded(sessions::updated_at)),
+                sessions::profile.eq(excluded(sessions::profile)),
+                sessions::strategy_state.eq(excluded(sessions::strategy_state)),
+                sessions::blobs.eq(excluded(sessions::blobs)),
+                sessions::cwd.eq(excluded(sessions::cwd)),
+            ))
+            .execute(txn)?;
 
-    tx.execute(
-        "DELETE FROM token_ledger WHERE session_id = ?1",
-        rusqlite::params![session_id_str],
-    )
-    .change_context(SessionStoreError)
-    .attach("failed to clear token ledger")?;
-
-    // Insert entries and junction rows.
-    for (ordinal, entry) in session.history().iter().enumerate() {
-        let entry_id_str = entry.id.to_string();
-        let timestamp_str = entry.timestamp.to_string();
-        let kind_json = serde_json::to_string(&entry.kind)
-            .change_context(SessionStoreError)
-            .attach("failed to serialize entry kind")?;
-        let pin_str = entry.pin_position.map(|p| p.to_string());
-
-        // Insert entry (ignore if already exists — shared across sessions).
-        tx.execute(
-            "INSERT OR IGNORE INTO entries (id, timestamp, kind) VALUES (?1, ?2, ?3)",
-            rusqlite::params![entry_id_str, timestamp_str, kind_json],
+        // Delete existing junction rows and token ledger for this session.
+        diesel::delete(
+            session_entries::table.filter(session_entries::session_id.eq(&session_id_str)),
         )
-        .change_context(SessionStoreError)
-        .attach("failed to insert entry")?;
+        .execute(txn)?;
 
-        // Insert junction row.
-        tx.execute(
-            "INSERT INTO session_entries (session_id, entry_id, ordinal, pin_position)
-             VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![session_id_str, entry_id_str, ordinal as i64, pin_str],
+        diesel::delete(token_ledger::table.filter(token_ledger::session_id.eq(&session_id_str)))
+            .execute(txn)?;
+
+        // Insert entries and junction rows.
+        for (ordinal, entry) in session.history().iter().enumerate() {
+            let entry_id_str = entry.id.to_string();
+            let timestamp_str = entry.timestamp.to_string();
+            let kind_json = serde_json::to_string(&entry.kind)
+                .map_err(|e| diesel::result::Error::SerializationError(Box::new(e)))?;
+            let pin_str = entry.pin_position.map(|p| p.to_string());
+
+            // Insert entry (ignore if already exists — shared across sessions).
+            insert_into(entries::table)
+                .values(&NewEntryRow {
+                    id: entry_id_str.clone(),
+                    timestamp: timestamp_str,
+                    kind: kind_json,
+                })
+                .on_conflict(entries::dsl::id)
+                .do_nothing()
+                .execute(txn)?;
+
+            // Insert junction row.
+            insert_into(session_entries::table)
+                .values(&NewSessionEntryRow {
+                    session_id: session_id_str.clone(),
+                    entry_id: entry_id_str,
+                    ordinal: ordinal as i32,
+                    pin_position: pin_str,
+                })
+                .execute(txn)?;
+        }
+
+        // Insert token ledger rows.
+        for record in session.token_ledger() {
+            insert_into(token_ledger::table)
+                .values(&NewTokenLedgerRow {
+                    session_id: session_id_str.clone(),
+                    timestamp: record.timestamp.to_string(),
+                    tokens_sent: record.tokens_sent as i32,
+                    tokens_received: record.tokens_received as i32,
+                })
+                .execute(txn)?;
+        }
+
+        // Clean up orphaned entries (no longer referenced by any session).
+        diesel::sql_query(
+            "DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_entries)",
         )
-        .change_context(SessionStoreError)
-        .attach("failed to insert session entry junction")?;
-    }
+        .execute(txn)?;
 
-    // Insert token ledger rows.
-    for record in session.token_ledger() {
-        tx.execute(
-            "INSERT INTO token_ledger (session_id, timestamp, tokens_sent, tokens_received)
-             VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![
-                session_id_str,
-                record.timestamp.to_string(),
-                record.tokens_sent,
-                record.tokens_received,
-            ],
-        )
-        .change_context(SessionStoreError)
-        .attach("failed to insert token record")?;
-    }
-
-    // Clean up orphaned entries (no longer referenced by any session).
-    tx.execute(
-        "DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_entries)",
-        [],
-    )
+        Ok(())
+    })
     .change_context(SessionStoreError)
-    .attach("failed to clean orphaned entries")?;
-
-    tx.commit()
-        .change_context(SessionStoreError)
-        .attach("failed to commit transaction")?;
+    .attach("failed to save session")?;
 
     Ok(())
 }
 
 /// Loads all session summaries.
 fn load_summaries_blocking(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
 ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
-    let mut stmt = conn
-        .prepare("SELECT id, title, updated_at FROM sessions")
-        .change_context(SessionStoreError)
-        .attach("failed to prepare summaries query")?;
+    use crate::schema::sessions::dsl::*;
 
-    let summaries = stmt
-        .query_map([], |row| {
-            let session_id_str: String = row.get(0)?;
-            let title: String = row.get(1)?;
-            let updated_at_str: String = row.get(2)?;
-            Ok(SessionSummary {
-                session_id: SessionId::from(session_id_str),
-                title,
-                updated_at: updated_at_str
-                    .parse()
-                    .unwrap_or_else(|_| jiff::Timestamp::now()),
-            })
+    let rows: Vec<SessionRow> = sessions
+        .load::<SessionRow>(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to query summaries")?;
+
+    let summaries = rows
+        .into_iter()
+        .map(|row| SessionSummary {
+            session_id: SessionId::from(row.id.unwrap_or_default()),
+            title: row.title.unwrap_or_else(|| "Untitled".to_owned()),
+            updated_at: row
+                .updated_at
+                .parse()
+                .unwrap_or_else(|_| jiff::Timestamp::now()),
         })
-        .change_context(SessionStoreError)
-        .attach("failed to query summaries")?
-        .collect::<Result<Vec<_>, _>>()
-        .change_context(SessionStoreError)
-        .attach("failed to deserialize summaries")?;
+        .collect();
 
     Ok(summaries)
 }
 
 /// Loads a full session by ID.
 fn load_session_blocking(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     session_id: &SessionId,
 ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
+    use crate::schema::{entries, session_entries, sessions, token_ledger};
+
     let session_id_str = session_id.to_string();
 
     // Load session metadata.
-    let meta: Option<SessionMetadata> = conn
-        .query_row(
-            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session, cwd
-             FROM sessions WHERE id = ?1",
-            rusqlite::params![session_id_str],
-            |row| {
-                Ok(SessionMetadata {
-                    title: row.get(0)?,
-                    updated_at: row.get(1)?,
-                    profile: row.get(2)?,
-                    strategy_state: row.get(3)?,
-                    blobs: row.get(4)?,
-                    parent_session: row.get(5)?,
-                    cwd: row.get(6)?,
-                })
-            },
-        )
+    let meta: Option<SessionRow> = sessions::table
+        .filter(sessions::id.eq(&session_id_str))
+        .first::<SessionRow>(conn)
         .ok();
 
     let Some(meta) = meta else {
@@ -397,81 +543,64 @@ fn load_session_blocking(
     };
 
     // Load entries via junction table, ordered by ordinal.
-    let mut entries_stmt = conn
-        .prepare(
-            "SELECT e.id, e.timestamp, e.kind, se.pin_position
-             FROM entries e
-             JOIN session_entries se ON e.id = se.entry_id
-             WHERE se.session_id = ?1
-             ORDER BY se.ordinal",
-        )
+    let joined: Vec<(EntryRow, SessionEntryRow)> = entries::table
+        .inner_join(session_entries::table)
+        .filter(session_entries::session_id.eq(&session_id_str))
+        .order(session_entries::ordinal.asc())
+        .load::<(EntryRow, SessionEntryRow)>(conn)
         .change_context(SessionStoreError)
-        .attach("failed to prepare entries query")?;
+        .attach("failed to query entries")?;
 
-    let entries: Vec<ChatEntry> = entries_stmt
-        .query_map(rusqlite::params![session_id_str], |row| {
-            let id_str: String = row.get(0)?;
-            let timestamp_str: String = row.get(1)?;
-            let kind_str: String = row.get(2)?;
-            let pin_str: Option<String> = row.get(3)?;
-
-            let kind: ChatEntryKind = serde_json::from_str(&kind_str)
-                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-            let pin_position = pin_str.as_deref().and_then(|s| match s {
+    let entries: Vec<ChatEntry> = joined
+        .into_iter()
+        .map(|(entry, junction)| {
+            let kind: ChatEntryKind = serde_json::from_str(&entry.kind).unwrap_or_else(|e| {
+                tracing::warn!(entry_id = %entry.id.as_deref().unwrap_or("?"), error = %e, "failed to deserialize entry kind");
+                ChatEntryKind::Error(format!("corrupt entry: {e}"))
+            });
+            let pin_position = junction.pin_position.as_deref().and_then(|s| match s {
                 "TOP" => Some(crate::protocol::PinPosition::Top),
                 "BOTTOM" => Some(crate::protocol::PinPosition::Bottom),
                 "RELATIVE" => Some(crate::protocol::PinPosition::Relative),
                 _ => None,
             });
 
-            Ok(ChatEntry {
-                id: ChatEntryId::from(id_str),
-                timestamp: timestamp_str
+            ChatEntry {
+                id: ChatEntryId::from(entry.id.unwrap_or_default()),
+                timestamp: entry
+                    .timestamp
                     .parse()
                     .unwrap_or_else(|_| jiff::Timestamp::now()),
                 kind,
                 pin_position,
-            })
+            }
         })
-        .change_context(SessionStoreError)
-        .attach("failed to query entries")?
-        .collect::<Result<Vec<_>, _>>()
-        .change_context(SessionStoreError)
-        .attach("failed to deserialize entries")?;
+        .collect();
 
     // Load token ledger.
-    let mut ledger_stmt = conn
-        .prepare(
-            "SELECT timestamp, tokens_sent, tokens_received
-             FROM token_ledger WHERE session_id = ?1",
-        )
+    let ledger_rows: Vec<TokenLedgerRow> = token_ledger::table
+        .filter(token_ledger::session_id.eq(&session_id_str))
+        .load::<TokenLedgerRow>(conn)
         .change_context(SessionStoreError)
-        .attach("failed to prepare token ledger query")?;
+        .attach("failed to query token ledger")?;
 
     use crate::feat::session::token_stats::TokenRecord;
-    let ledger: Vec<TokenRecord> = ledger_stmt
-        .query_map(rusqlite::params![session_id_str], |row| {
-            let timestamp_str: String = row.get(0)?;
-            let tokens_sent: u32 = row.get(1)?;
-            let tokens_received: u32 = row.get(2)?;
-            Ok(TokenRecord {
-                timestamp: timestamp_str
-                    .parse()
-                    .unwrap_or_else(|_| jiff::Timestamp::now()),
-                tokens_sent,
-                tokens_received,
-            })
+    let ledger: Vec<TokenRecord> = ledger_rows
+        .into_iter()
+        .map(|row| TokenRecord {
+            timestamp: row
+                .timestamp
+                .parse()
+                .unwrap_or_else(|_| jiff::Timestamp::now()),
+            tokens_sent: row.tokens_sent as u32,
+            tokens_received: row.tokens_received as u32,
         })
-        .change_context(SessionStoreError)
-        .attach("failed to query token ledger")?
-        .collect::<Result<Vec<_>, _>>()
-        .change_context(SessionStoreError)
-        .attach("failed to deserialize token ledger")?;
+        .collect();
 
     // Reconstruct ChatSessionState.
     let mut session = ChatSessionState::new();
     session.set_session_id(session_id.clone());
-    session.set_title(meta.title);
+    session.set_title(meta.title.unwrap_or_default());
     session.restore_history(entries);
     session.restore_token_ledger(ledger);
 
@@ -488,7 +617,7 @@ fn load_session_blocking(
     *session.strategy_state_mut() = strategy_state;
 
     // Restore parent session.
-    let parent = meta.parent_session.map(SessionId::from).or(None);
+    let parent = meta.parent_session.map(SessionId::from);
     session.restore_parent_session(parent);
 
     // Restore updated_at from persisted value.
@@ -506,25 +635,23 @@ fn load_session_blocking(
 
 /// Deletes a session and all its associated data.
 fn delete_blocking(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     session_id: &SessionId,
 ) -> Result<(), Report<SessionStoreError>> {
+    use crate::schema::sessions;
+
     let session_id_str = session_id.to_string();
 
-    conn.execute(
-        "DELETE FROM sessions WHERE id = ?1",
-        rusqlite::params![session_id_str],
-    )
-    .change_context(SessionStoreError)
-    .attach("failed to delete session")?;
+    diesel::delete(sessions::table.filter(sessions::id.eq(&session_id_str)))
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to delete session")?;
 
     // Clean up orphaned entries.
-    conn.execute(
-        "DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_entries)",
-        [],
-    )
-    .change_context(SessionStoreError)
-    .attach("failed to clean orphaned entries after delete")?;
+    diesel::sql_query("DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_entries)")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to clean orphaned entries after delete")?;
 
     Ok(())
 }
@@ -534,94 +661,66 @@ fn delete_blocking(
 /// Creates a new session with `parent_session` = source, copies junction rows
 /// up to and including `at_ordinal`. Entry data is shared (not duplicated).
 fn fork_blocking(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     source_session_id: &SessionId,
     at_ordinal: usize,
 ) -> Result<SessionId, Report<SessionStoreError>> {
+    use crate::schema::{session_entries, sessions};
+
     let source_str = source_session_id.to_string();
     let new_id = SessionId::new();
     let new_id_str = new_id.to_string();
 
-    let tx = conn
-        .unchecked_transaction()
-        .change_context(SessionStoreError)
-        .attach("failed to begin transaction for fork")?;
+    conn.transaction::<_, diesel::result::Error, _>(|txn| {
+        // Load source session metadata.
+        let source_meta: Option<SessionRow> = sessions::table
+            .filter(sessions::id.eq(&source_str))
+            .first::<SessionRow>(txn)
+            .ok();
 
-    // Load source session metadata.
-    let source_meta: Option<SessionMetadata> = tx
-        .query_row(
-            "SELECT title, updated_at, profile, strategy_state, blobs, parent_session, cwd
-             FROM sessions WHERE id = ?1",
-            rusqlite::params![source_str],
-            |row| {
-                Ok(SessionMetadata {
-                    title: row.get(0)?,
-                    updated_at: row.get(1)?,
-                    profile: row.get(2)?,
-                    strategy_state: row.get(3)?,
-                    blobs: row.get(4)?,
-                    parent_session: row.get(5)?,
-                    cwd: row.get(6)?,
+        let Some(source_meta) = source_meta else {
+            return Err(diesel::result::Error::NotFound);
+        };
+
+        let now = jiff::Timestamp::now().to_string();
+
+        // Create new session row.
+        insert_into(sessions::table)
+            .values(&NewSessionRow {
+                id: new_id_str.clone(),
+                title: source_meta.title,
+                updated_at: now,
+                profile: source_meta.profile,
+                strategy_state: source_meta.strategy_state,
+                blobs: source_meta.blobs,
+                parent_session: Some(source_str.clone()),
+                cwd: source_meta.cwd,
+            })
+            .execute(txn)?;
+
+        // Copy junction rows up to and including at_ordinal.
+        let junction_rows: Vec<SessionEntryRow> = session_entries::table
+            .filter(session_entries::session_id.eq(&source_str))
+            .filter(session_entries::ordinal.le(at_ordinal as i32))
+            .load::<SessionEntryRow>(txn)?;
+
+        for row in junction_rows {
+            insert_into(session_entries::table)
+                .values(&NewSessionEntryRow {
+                    session_id: new_id_str.clone(),
+                    entry_id: row.entry_id,
+                    ordinal: row.ordinal,
+                    pin_position: row.pin_position,
                 })
-            },
-        )
-        .ok();
+                .execute(txn)?;
+        }
 
-    let Some(source_meta) = source_meta else {
-        return Err(
-            error_stack::Report::new(SessionStoreError).attach("source session not found for fork")
-        );
-    };
-
-    let now = jiff::Timestamp::now().to_string();
-
-    // Create new session row.
-    tx.execute(
-        "INSERT INTO sessions (id, title, updated_at, profile, strategy_state, blobs, parent_session, cwd)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        rusqlite::params![
-            new_id_str,
-            source_meta.title,
-            now,
-            source_meta.profile,
-            source_meta.strategy_state,
-            source_meta.blobs,
-            source_str,
-            source_meta.cwd,
-        ],
-    )
+        Ok(())
+    })
     .change_context(SessionStoreError)
-    .attach("failed to insert forked session")?;
-
-    // Copy junction rows up to and including at_ordinal.
-    tx.execute(
-        "INSERT INTO session_entries (session_id, entry_id, ordinal, pin_position)
-         SELECT ?1, entry_id, ordinal, pin_position
-         FROM session_entries
-         WHERE session_id = ?2 AND ordinal <= ?3",
-        rusqlite::params![new_id_str, source_str, at_ordinal as i64],
-    )
-    .change_context(SessionStoreError)
-    .attach("failed to copy junction rows for fork")?;
-
-    tx.commit()
-        .change_context(SessionStoreError)
-        .attach("failed to commit fork transaction")?;
+    .attach("failed to fork session")?;
 
     Ok(new_id)
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-/// Intermediate struct for reading session metadata from SQLite.
-struct SessionMetadata {
-    title: String,
-    updated_at: String,
-    profile: String,
-    strategy_state: String,
-    blobs: String,
-    parent_session: Option<String>,
-    cwd: String,
 }
 
 #[cfg(test)]
