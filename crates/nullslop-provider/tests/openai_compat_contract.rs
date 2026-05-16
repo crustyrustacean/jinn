@@ -36,8 +36,14 @@ fn make_factory_with_extra(
     )
 }
 
+// ---------------------------------------------------------------------------
+// Text streaming
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
 #[tokio::test]
-async fn text_streaming_yields_text_tokens_then_done() {
+async fn text_streaming_yields_text_events() {
+    // Given a mock OpenAI server that streams two text deltas.
     let mut server = mockito::Server::new_async().await;
     let factory = make_factory(&server);
 
@@ -63,23 +69,67 @@ async fn text_streaming_yields_text_tokens_then_done() {
         .await
         .unwrap();
 
+    // When collecting all stream events.
     let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
+    // Then both text tokens appear in the event stream.
     assert!(
         events
             .iter()
             .any(|e| matches!(e, StreamEvent::Text(t) if t == "Hello"))
     );
+    // And the second text token is also present.
     assert!(
         events
             .iter()
             .any(|e| matches!(e, StreamEvent::Text(t) if t == " world"))
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn text_streaming_yields_done_event() {
+    // Given a mock OpenAI server that streams text followed by a stop.
+    let mut server = mockito::Server::new_async().await;
+    let factory = make_factory(&server);
+
+    let body = "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" world\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
+
+    server
+        .mock("POST", "/chat/completions")
+        .match_header("authorization", "Bearer test-key")
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body(body)
+        .create_async()
+        .await;
+
+    let service = factory.create().unwrap();
+    let stream = service
+        .chat_stream_with_tools(
+            vec![LlmMessage::User {
+                content: "hi".into(),
+            }],
+            vec![],
+        )
+        .await
+        .unwrap();
+
+    // When collecting all stream events.
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    // Then a Done event is emitted.
     assert!(events.iter().any(|e| matches!(e, StreamEvent::Done { .. })));
 }
 
+// ---------------------------------------------------------------------------
+// Tool-call streaming
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
 #[tokio::test]
-async fn tool_call_streaming_yields_start_delta_complete_done() {
+async fn tool_call_streaming_yields_tool_use_start() {
+    // Given a mock OpenAI server that streams a tool-call response.
     let mut server = mockito::Server::new_async().await;
     let factory = make_factory(&server);
 
@@ -114,28 +164,168 @@ async fn tool_call_streaming_yields_start_delta_complete_done() {
         .await
         .unwrap();
 
+    // When collecting all stream events.
     let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
+    // Then a ToolUseStart event with the tool name is emitted.
     assert!(
         events
             .iter()
             .any(|e| matches!(e, StreamEvent::ToolUseStart { name, .. } if name == "echo"))
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tool_call_streaming_yields_input_delta() {
+    // Given a mock OpenAI server that streams a tool-call response.
+    let mut server = mockito::Server::new_async().await;
+    let factory = make_factory(&server);
+
+    let body = [
+        "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"echo\",\"arguments\":\"\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"x\\\":1}\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+    ].join("");
+
+    server
+        .mock("POST", "/chat/completions")
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body(&body)
+        .create_async()
+        .await;
+
+    let service = factory.create().unwrap();
+    let stream = service
+        .chat_stream_with_tools(
+            vec![LlmMessage::User {
+                content: "call echo".into(),
+            }],
+            vec![ToolDefinition {
+                name: "echo".into(),
+                description: "Echo".into(),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                parameters: serde_json::json!({"type": "object"}),
+            }],
+        )
+        .await
+        .unwrap();
+
+    // When collecting all stream events.
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    // Then a ToolUseInputDelta event is emitted.
     assert!(
         events
             .iter()
             .any(|e| matches!(e, StreamEvent::ToolUseInputDelta { .. }))
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tool_call_streaming_yields_tool_use_complete() {
+    // Given a mock OpenAI server that streams a tool-call response.
+    let mut server = mockito::Server::new_async().await;
+    let factory = make_factory(&server);
+
+    let body = [
+        "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"echo\",\"arguments\":\"\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"x\\\":1}\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+    ].join("");
+
+    server
+        .mock("POST", "/chat/completions")
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body(&body)
+        .create_async()
+        .await;
+
+    let service = factory.create().unwrap();
+    let stream = service
+        .chat_stream_with_tools(
+            vec![LlmMessage::User {
+                content: "call echo".into(),
+            }],
+            vec![ToolDefinition {
+                name: "echo".into(),
+                description: "Echo".into(),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                parameters: serde_json::json!({"type": "object"}),
+            }],
+        )
+        .await
+        .unwrap();
+
+    // When collecting all stream events.
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    // Then a ToolUseComplete event is emitted.
     assert!(
         events
             .iter()
             .any(|e| matches!(e, StreamEvent::ToolUseComplete { .. }))
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tool_call_streaming_yields_done_event() {
+    // Given a mock OpenAI server that streams a tool-call response.
+    let mut server = mockito::Server::new_async().await;
+    let factory = make_factory(&server);
+
+    let body = [
+        "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"echo\",\"arguments\":\"\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"x\\\":1}\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+    ].join("");
+
+    server
+        .mock("POST", "/chat/completions")
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body(&body)
+        .create_async()
+        .await;
+
+    let service = factory.create().unwrap();
+    let stream = service
+        .chat_stream_with_tools(
+            vec![LlmMessage::User {
+                content: "call echo".into(),
+            }],
+            vec![ToolDefinition {
+                name: "echo".into(),
+                description: "Echo".into(),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
+                parameters: serde_json::json!({"type": "object"}),
+            }],
+        )
+        .await
+        .unwrap();
+
+    // When collecting all stream events.
+    let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    // Then a Done event is emitted.
     assert!(events.iter().any(|e| matches!(e, StreamEvent::Done { .. })));
 }
 
+// ---------------------------------------------------------------------------
+// Model listing
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
 #[tokio::test]
 async fn list_models_returns_model_ids() {
+    // Given a mock OpenAI server that returns a model list.
     let mut server = mockito::Server::new_async().await;
 
     server
@@ -156,13 +346,23 @@ async fn list_models_returns_model_ids() {
         None,
     );
 
+    // When listing models.
     let models = svc.list_models().await.unwrap();
+
+    // Then the expected model IDs are returned.
     assert!(models.contains(&"gpt-4".to_owned()));
+    // And the second model is also present.
     assert!(models.contains(&"gpt-3.5-turbo".to_owned()));
 }
 
+// ---------------------------------------------------------------------------
+// Extra body fields
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
 #[tokio::test]
 async fn extra_body_fields_included_in_request() {
+    // Given a mock OpenAI server and a factory with extra_body fields.
     let mut server = mockito::Server::new_async().await;
     let factory = make_factory_with_extra(
         &server,
@@ -191,13 +391,21 @@ async fn extra_body_fields_included_in_request() {
         .await
         .unwrap();
 
+    // When consuming the stream.
     let _events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
+    // Then the request included the extra_body fields.
     mock.assert_async().await;
 }
 
+// ---------------------------------------------------------------------------
+// Error handling
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
 #[tokio::test]
 async fn error_response_401_mapped_to_provider_error() {
+    // Given a mock OpenAI server that returns a 401 status.
     let mut server = mockito::Server::new_async().await;
     let factory = make_factory(&server);
 
@@ -209,6 +417,8 @@ async fn error_response_401_mapped_to_provider_error() {
         .await;
 
     let service = factory.create().unwrap();
+
+    // When starting a chat stream.
     let result = service
         .chat_stream_with_tools(
             vec![LlmMessage::User {
@@ -218,11 +428,18 @@ async fn error_response_401_mapped_to_provider_error() {
         )
         .await;
 
+    // Then the result is an error.
     assert!(result.is_err());
 }
 
+// ---------------------------------------------------------------------------
+// Reasoning content
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
 #[tokio::test]
 async fn reasoning_content_produces_reasoning_event() {
+    // Given a mock OpenAI server that streams reasoning content.
     let mut server = mockito::Server::new_async().await;
     let factory = make_factory(&server);
 
@@ -247,8 +464,10 @@ async fn reasoning_content_produces_reasoning_event() {
         .await
         .unwrap();
 
+    // When collecting all stream events.
     let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
+    // Then a Reasoning event with the expected content is emitted.
     assert!(
         events
             .iter()
@@ -256,8 +475,14 @@ async fn reasoning_content_produces_reasoning_event() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Base URL override
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
 #[tokio::test]
 async fn base_url_override_routes_to_correct_host() {
+    // Given an OpenRouter config pointing at a mock server.
     let mut server = mockito::Server::new_async().await;
     let config = ProviderConfig::openrouter();
     let factory = OpenAiCompatibleFactory::new(
@@ -288,13 +513,21 @@ async fn base_url_override_routes_to_correct_host() {
         .await
         .unwrap();
 
+    // When collecting all stream events.
     let events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
+    // Then events are received from the overridden host.
     assert!(!events.is_empty());
 }
 
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
 #[test]
 fn factory_rejects_empty_api_key() {
+    // Given an OpenAI-compatible factory with an empty API key.
     let config = ProviderConfig::openai();
     let factory = OpenAiCompatibleFactory::new(
         config,
@@ -305,12 +538,21 @@ fn factory_rejects_empty_api_key() {
         "test-openai".to_owned(),
     );
 
+    // When creating the service.
     let result = factory.create();
+
+    // Then creation fails.
     assert!(result.is_err());
 }
 
+// ---------------------------------------------------------------------------
+// Simple streaming (chat_stream)
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
 #[tokio::test]
 async fn chat_stream_yields_text_tokens_only() {
+    // Given a mock OpenAI server that streams two text deltas.
     let mut server = mockito::Server::new_async().await;
     let factory = make_factory(&server);
 
@@ -333,13 +575,21 @@ async fn chat_stream_yields_text_tokens_only() {
         .await
         .unwrap();
 
+    // When collecting all tokens from the stream.
     let tokens: Vec<String> = stream.filter_map(|r| async move { r.ok() }).collect().await;
 
+    // Then exactly the expected text tokens are returned.
     assert_eq!(tokens, vec!["Hello", " world"]);
 }
 
+// ---------------------------------------------------------------------------
+// Custom headers
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
 #[tokio::test]
 async fn custom_headers_from_config_are_sent() {
+    // Given an OpenAI-compatible factory with custom headers.
     let mut server = mockito::Server::new_async().await;
 
     let config = ProviderConfig {
@@ -379,5 +629,8 @@ async fn custom_headers_from_config_are_sent() {
         .await
         .unwrap();
 
+    // When consuming the stream, the custom header was matched by the mock.
     let _events: Vec<StreamEvent> = stream.filter_map(|r| async move { r.ok() }).collect().await;
+
+    // Then the request succeeded (mock assertion is implicit via match_header).
 }
