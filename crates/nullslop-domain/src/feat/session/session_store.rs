@@ -81,10 +81,10 @@ pub trait SessionStore: Send + Sync + 'static {
 
     /// Fork a session from a specific entry ordinal into a new session.
     ///
-    /// Creates a new session with `parent_session` = `source_session_id` and
-    /// `fork_at_ordinal` = `at_ordinal`. Copies junction rows from the source
-    /// session for entries with ordinal <= `at_ordinal`. Entry data is shared,
-    /// not duplicated. The new session gets its own independent token ledger.
+    /// Creates a new session with `parent_session` = `source_session_id`.
+    /// Copies junction rows from the source session for entries with
+    /// ordinal <= `at_ordinal`. Entry data is shared, not duplicated.
+    /// The new session gets its own independent token ledger.
     ///
     /// Returns the new session's ID.
     ///

@@ -1025,6 +1025,11 @@ impl ChatSessionState {
         self.core.parent_session = parent;
     }
 
+    /// Restore the updated_at timestamp from persisted data.
+    pub fn restore_updated_at(&mut self, ts: jiff::Timestamp) {
+        self.core.updated_at = ts;
+    }
+
     // --- New durable field accessors ---
 
     /// This session's unique identifier.
