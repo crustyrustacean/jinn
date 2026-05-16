@@ -1,9 +1,10 @@
 //! [`SidebarSection`] trait and supporting types for pluggable sidebar sections.
 
 use crate::Intent;
-use crate::common::app_state::AppState;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+
+use crate::common::app_state::AppState;
 
 /// Identifies a sidebar section. Used for focus tracking and dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -24,38 +25,27 @@ impl std::fmt::Display for SidebarSectionId {
     }
 }
 
-/// Configuration passed to a section during intent handling.
+/// Result of a section navigation attempt.
 ///
-/// Tells the section whether other sections exist above/below it,
-/// enabling boundary-aware navigation (sticky vs. unhandle).
-#[derive(Debug, Clone, Copy)]
-pub struct SidebarSectionConfig {
-    /// Whether another section exists above this one.
-    pub has_above: bool,
-    /// Whether another section exists below this one.
-    pub has_below: bool,
-}
-
-impl SidebarSectionConfig {
-    /// Creates a config for a section that is the only one (no above, no below).
-    #[must_use]
-    pub const fn isolated() -> Self {
-        Self {
-            has_above: false,
-            has_below: false,
-        }
-    }
-}
-
-/// Result returned by a section after handling an intent.
+/// Sections report `Exhausted` when they run out of entries — the sidebar
+/// then decides whether to switch sections or keep the cursor where it is.
+/// The section does NOT modify its cursor on exhaustion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SidebarSectionResult {
-    /// The section handled the intent (e.g., moved selection).
-    Handled,
-    /// The section cannot move down further (at bottom of its list).
-    UnhandledDown,
-    /// The section cannot move up further (at top of its list).
-    UnhandledUp,
+pub enum SectionNavResult {
+    /// Cursor moved within the section. Section already updated its own state.
+    Moved,
+    /// No more entries in the requested direction. Section did NOT touch
+    /// its cursor — the sidebar decides what happens next.
+    Exhausted,
+}
+
+/// Which end to place the cursor on when entering a section.
+#[derive(Debug, Clone, Copy)]
+pub enum EnterFrom {
+    /// Entering from above — select the first entry.
+    Top,
+    /// Entering from below — select the last entry.
+    Bottom,
 }
 
 /// Intents that the sidebar dispatches to its sections.
@@ -73,30 +63,13 @@ pub enum SidebarIntent {
 ///
 /// Sections are responsible for:
 /// - Rendering themselves within an allocated area
-/// - Handling navigation and action intents
-/// - Reporting their content height for scrolling calculations
+/// - Reporting their content height for layout calculations
 ///
-/// When a section receives a `MoveDown`/`MoveUp` intent and is at its boundary,
-/// it returns `UnhandledDown`/`UnhandledUp` so the sidebar can move focus to
-/// the next section. The section must deselect its items when returning unhandled
-/// (so the next section can take over highlighting).
+/// Navigation is handled by standalone `navigate`/`receive_cursor` functions
+/// per section, orchestrated by `navigate_sidebar` in the sidebar module.
 pub trait SidebarSection: std::fmt::Debug + 'static {
     /// Returns the unique identifier for this section.
     fn id(&self) -> SidebarSectionId;
-
-    /// Handle a sidebar intent.
-    ///
-    /// The `config` parameter tells the section whether other sections exist
-    /// above/below, enabling boundary-aware behavior:
-    /// - If `config.has_below` is false and at the bottom, return `UnhandledDown`
-    ///   (the sidebar will try to move to the next section, or it sticks if alone).
-    /// - If `config.has_above` is false and at the top, return `UnhandledUp`.
-    fn handle_intent(
-        &mut self,
-        intent: &SidebarIntent,
-        state: &mut AppState,
-        config: &SidebarSectionConfig,
-    ) -> SidebarSectionResult;
 
     /// Render the section into the given frame area.
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState);

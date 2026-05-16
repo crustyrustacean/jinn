@@ -25,6 +25,7 @@ use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::skills::Skill;
 use crate::feat::theme::Theme;
+pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
 pub use crate::feat::ui::sidebar::pins::state::PinsState;
 use crate::feat::ui::sidebar::state::SidebarState;
 use crate::feat::ui::status_bar::PluginSlotRegistry;
@@ -284,6 +285,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (sidebar focus/leave).
     pub sidebar: SidebarState,
 
+    /// Persona sidebar section state — cursor tracking.
+    /// OWNER: IntentHandler (sidebar navigation).
+    pub persona_section: PersonaSectionState,
+
     /// Actor dashboard — tracks registered actors and their status.
     /// OWNER: IntentHandler (dashboard navigation).
     pub dashboard: DashboardState,
@@ -370,6 +375,7 @@ impl Default for FrontendState {
             should_quit: false,
             pins: PinsState::default(),
             sidebar: SidebarState::default(),
+            persona_section: PersonaSectionState::default(),
             dashboard: DashboardState::new(),
             tui_signals: TuiSignals::new(),
             preferences: UserPreferences::default(),

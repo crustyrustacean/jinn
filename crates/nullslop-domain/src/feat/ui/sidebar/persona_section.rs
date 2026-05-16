@@ -6,7 +6,7 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::ui::sidebar::section_trait::{
-    SidebarIntent, SidebarSection, SidebarSectionConfig, SidebarSectionId, SidebarSectionResult,
+    EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -19,10 +19,36 @@ const SELECTED_INDICATOR: &str = "\u{2588}";
 /// One space used as the unselected border (same as pins section).
 const UNSELECTED_BORDER: &str = " ";
 
+/// Persona section cursor state — stored on `FrontendState`.
+///
+/// Tracks whether the persona section currently has the cursor.
+/// `None` means no cursor (section not focused). `Some(0)` means
+/// the single entry is selected.
+#[derive(Debug, Clone, Default)]
+pub struct PersonaSectionState {
+    /// Which entry the cursor is on. Always `None` or `Some(0)`.
+    pub cursor: Option<usize>,
+}
+
+/// Navigate within the persona section.
+///
+/// Persona has a single entry, so any directional move exhausts immediately.
+/// The section does NOT modify its cursor — the sidebar decides what to do.
+pub fn navigate(intent: &SidebarIntent, _state: &mut AppState) -> SectionNavResult {
+    match intent {
+        SidebarIntent::MoveDown | SidebarIntent::MoveUp => SectionNavResult::Exhausted,
+        SidebarIntent::Action(_) => SectionNavResult::Moved,
+    }
+}
+
+/// Place the cursor on this section from a given direction.
+pub fn receive_cursor(state: &mut AppState, _enter_from: EnterFrom) {
+    state.frontend.persona_section.cursor = Some(0);
+}
+
 /// The persona sidebar section.
 ///
 /// Renders the active persona as a single selectable entry.
-/// Always reports `UnhandledDown`/`UnhandledUp` since there is only one item.
 #[derive(Debug)]
 pub struct PersonaSection;
 
@@ -31,23 +57,7 @@ impl SidebarSection for PersonaSection {
         SidebarSectionId::Persona
     }
 
-    fn handle_intent(
-        &mut self,
-        intent: &SidebarIntent,
-        _state: &mut AppState,
-        _config: &SidebarSectionConfig,
-    ) -> SidebarSectionResult {
-        match intent {
-            // Single item — always at bottom boundary.
-            SidebarIntent::MoveDown => SidebarSectionResult::UnhandledDown,
-            // Single item — always at top boundary.
-            SidebarIntent::MoveUp => SidebarSectionResult::UnhandledUp,
-            SidebarIntent::Action(_) => SidebarSectionResult::Handled,
-        }
-    }
-
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-        let is_focused = state.frontend.sidebar.focused_section == SidebarSectionId::Persona;
         let sidebar_focused = state.frontend.scope_stack.is_sidebar();
         let theme = &state.frontend.theme;
 
@@ -57,8 +67,8 @@ impl SidebarSection for PersonaSection {
             theme.border_unfocused
         };
 
-        let is_selected = is_focused;
-        let indicator = if is_selected {
+        let has_cursor = state.frontend.persona_section.cursor.is_some();
+        let indicator = if has_cursor {
             Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
         } else {
             Span::raw(UNSELECTED_BORDER)
@@ -82,7 +92,7 @@ impl SidebarSection for PersonaSection {
             // Blank separator.
             lines.push(Line::from(""));
             // Entry line.
-            let name_style = if is_selected {
+            let name_style = if has_cursor {
                 Style::default().add_modifier(Modifier::REVERSED)
             } else {
                 Style::default()
@@ -106,19 +116,13 @@ impl SidebarSection for PersonaSection {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{PersonaSection, navigate, receive_cursor};
+    use crate::Intent;
     use crate::common::app_state::AppState;
     use crate::feat::persona::Persona;
     use crate::feat::ui::sidebar::section_trait::{
-        SidebarSectionConfig, SidebarSectionId, SidebarSectionResult,
+        EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
     };
-
-    fn config_isolated() -> SidebarSectionConfig {
-        SidebarSectionConfig {
-            has_above: false,
-            has_below: false,
-        }
-    }
 
     // --- Section identity ---
 
@@ -169,47 +173,53 @@ mod tests {
     // --- Navigation ---
 
     #[rstest::rstest]
-    fn move_down_returns_unhandled_down() {
-        // Given a PersonaSection.
-        let mut section = PersonaSection;
+    fn navigate_returns_exhausted_for_move_down() {
+        // Given default app state.
         let mut state = AppState::default();
 
-        // When handling MoveDown.
-        let result =
-            section.handle_intent(&SidebarIntent::MoveDown, &mut state, &config_isolated());
+        // When navigating down.
+        let result = navigate(&SidebarIntent::MoveDown, &mut state);
 
-        // Then it returns UnhandledDown.
-        assert_eq!(result, SidebarSectionResult::UnhandledDown);
+        // Then the result is Exhausted (single-entry section).
+        assert_eq!(result, SectionNavResult::Exhausted);
     }
 
     #[rstest::rstest]
-    fn move_up_returns_unhandled_up() {
-        // Given a PersonaSection.
-        let mut section = PersonaSection;
+    fn navigate_returns_exhausted_for_move_up() {
+        // Given default app state.
         let mut state = AppState::default();
 
-        // When handling MoveUp.
-        let result = section.handle_intent(&SidebarIntent::MoveUp, &mut state, &config_isolated());
+        // When navigating up.
+        let result = navigate(&SidebarIntent::MoveUp, &mut state);
 
-        // Then it returns UnhandledUp.
-        assert_eq!(result, SidebarSectionResult::UnhandledUp);
+        // Then the result is Exhausted (single-entry section).
+        assert_eq!(result, SectionNavResult::Exhausted);
     }
 
     #[rstest::rstest]
-    fn action_returns_handled() {
-        // Given a PersonaSection.
-        let mut section = PersonaSection;
+    fn navigate_returns_moved_for_action() {
+        // Given default app state.
         let mut state = AppState::default();
 
-        // When handling an Action intent.
-        let result = section.handle_intent(
-            &SidebarIntent::Action(crate::Intent::Quit),
-            &mut state,
-            &config_isolated(),
-        );
+        // When navigating with an action intent.
+        let result = navigate(&SidebarIntent::Action(Intent::Quit), &mut state);
 
-        // Then it returns Handled.
-        assert_eq!(result, SidebarSectionResult::Handled);
+        // Then the result is Moved.
+        assert_eq!(result, SectionNavResult::Moved);
+    }
+
+    // --- Cursor ---
+
+    #[rstest::rstest]
+    fn receive_cursor_sets_cursor_to_some_zero() {
+        // Given default app state (cursor is None).
+        let mut state = AppState::default();
+
+        // When receiving the cursor from the top.
+        receive_cursor(&mut state, EnterFrom::Top);
+
+        // Then the persona section cursor is set to Some(0).
+        assert_eq!(state.frontend.persona_section.cursor, Some(0));
     }
 
     // --- Rendering ---
