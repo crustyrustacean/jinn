@@ -28,9 +28,19 @@ fn on_event(event) {
 
 fn compute_turn_count(entries) {
     let c = 0;
-    for e in entries {
-        if e.kind == "user" || e.kind == "assistant" {
+    let len = entries.len();
+    for i in range(0, len) {
+        let e = entries[i];
+        if e.kind == "user" {
             c += 1;
+        } else if e.kind == "assistant" {
+            // Only count as a turn if NOT followed by a tool_call.
+            // An assistant followed by tool_call is an intermediate
+            // step in the tool loop — part of the same turn.
+            let is_last = i == len - 1;
+            if is_last || entries[i + 1].kind != "tool_call" {
+                c += 1;
+            }
         }
     }
     c
