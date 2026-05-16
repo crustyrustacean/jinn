@@ -108,10 +108,4 @@ impl AppPaths {
             .join(APP_NAME)
             .join(super::app_info::PREFS_FILE_NAME)
     }
-
-    /// Plugins directory (`~/.config/nullslop/plugins`).
-    #[must_use]
-    pub fn plugins_dir(&self) -> PathBuf {
-        self.config_dir.join(APP_NAME).join("plugins")
-    }
 }
