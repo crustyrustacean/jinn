@@ -7,10 +7,13 @@ use super::shared::{RenderContext, multiline_styled};
 
 pub fn to_lines(source: &str, text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let prefix = format!("[actor] {source}: ");
-    multiline_styled(
+    let mut lines = multiline_styled(
         text,
         &prefix,
         "",
         Style::default().fg(ctx.theme.focus_accent),
-    )
+    );
+    lines.insert(0, Line::from(""));
+    lines.push(Line::from(""));
+    lines
 }
