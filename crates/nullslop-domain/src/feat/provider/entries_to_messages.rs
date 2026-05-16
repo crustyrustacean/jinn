@@ -88,6 +88,19 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             // Table and Error entries are ephemeral display / local status — not sent to the LLM.
             // Thinking entries are display-only — excluded from context assembly.
             ChatEntryKind::Table(_) | ChatEntryKind::Error(_) | ChatEntryKind::Thinking(_) => {}
+            // Skill entries produce System messages with the skill XML format.
+            // Skills are always pinned, so they always produce a message.
+            ChatEntryKind::Skill {
+                name,
+                location,
+                content,
+            } => {
+                messages.push(LlmMessage::System {
+                    content: format!(
+                        "<skill name=\"{name}\" location=\"{location}\">\n{content}\n</skill>"
+                    ),
+                });
+            }
         }
     }
 
@@ -458,6 +471,28 @@ mod tests {
             LlmMessage::Assistant {
                 content: "hi".into(),
                 tool_calls: None,
+            }
+        );
+    }
+
+    #[rstest::rstest]
+    fn skill_entry_produces_system_message_with_xml() {
+        // Given a skill entry.
+        let entries = vec![ChatEntry::skill(
+            "web-coder",
+            "/home/user/.agents/skills/web-coder/SKILL.md",
+            "Expert web development skill.",
+        )];
+
+        // When converting to messages.
+        let messages = entries_to_messages(&entries);
+
+        // Then a System message is produced with the skill XML format.
+        assert_eq!(messages.len(), 1);
+        assert_eq!(
+            messages[0],
+            LlmMessage::System {
+                content: "<skill name=\"web-coder\" location=\"/home/user/.agents/skills/web-coder/SKILL.md\">\nExpert web development skill.\n</skill>".to_owned(),
             }
         );
     }
