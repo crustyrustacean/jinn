@@ -175,11 +175,8 @@ mod tests {
         let mut state = AppState::default();
 
         // When handling MoveDown.
-        let result = section.handle_intent(
-            &SidebarIntent::MoveDown,
-            &mut state,
-            &config_isolated(),
-        );
+        let result =
+            section.handle_intent(&SidebarIntent::MoveDown, &mut state, &config_isolated());
 
         // Then it returns UnhandledDown.
         assert_eq!(result, SidebarSectionResult::UnhandledDown);
@@ -192,8 +189,7 @@ mod tests {
         let mut state = AppState::default();
 
         // When handling MoveUp.
-        let result =
-            section.handle_intent(&SidebarIntent::MoveUp, &mut state, &config_isolated());
+        let result = section.handle_intent(&SidebarIntent::MoveUp, &mut state, &config_isolated());
 
         // Then it returns UnhandledUp.
         assert_eq!(result, SidebarSectionResult::UnhandledUp);
