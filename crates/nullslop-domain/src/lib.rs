@@ -18,6 +18,7 @@ pub mod init;
 
 // Not yet reorganized (handled in later phases)
 pub mod protocol;
+pub mod schema;
 
 // Re-export actor framework types
 pub use common::actor::{
