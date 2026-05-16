@@ -1,11 +1,10 @@
-//! Assistant entry rendering — white text, no background.
+//! Assistant entry rendering — markdown-rendered text.
 
-use ratatui::style::Style;
 use ratatui::text::Line;
 
-use super::shared::{RenderContext, multiline_styled};
+use super::markdown::render_markdown;
+use super::shared::RenderContext;
 
 pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
-    let style = Style::default().fg(ctx.theme.primary_text);
-    multiline_styled(text, "", "", style)
+    render_markdown(text, ctx.content_width, &ctx.theme)
 }
