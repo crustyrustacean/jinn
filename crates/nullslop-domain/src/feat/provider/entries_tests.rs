@@ -987,5 +987,8 @@ fn provider_name_match_is_highlighted_in_suffix() {
         .filter(|s| s.style.bg == Some(Color::DarkGray))
         .map(|s| s.content.clone())
         .collect();
-    assert!(highlighted.contains('o'), "highlighted span should contain 'o'");
+    assert!(
+        highlighted.contains('o'),
+        "highlighted span should contain 'o'"
+    );
 }

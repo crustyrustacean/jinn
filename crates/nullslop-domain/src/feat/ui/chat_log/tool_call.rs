@@ -53,11 +53,7 @@ mod tests {
         let ctx = render_context();
 
         // When converting to lines.
-        let lines = to_lines(
-            "write",
-            r#"{"path":"f.txt","content":"a\nb"}"#,
-            &ctx,
-        );
+        let lines = to_lines("write", r#"{"path":"f.txt","content":"a\nb"}"#, &ctx);
 
         // Then the result has multiple lines (not just one).
         assert!(

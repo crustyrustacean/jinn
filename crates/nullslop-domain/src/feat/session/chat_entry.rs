@@ -33,6 +33,12 @@ impl Default for ChatEntryId {
     }
 }
 
+impl From<String> for ChatEntryId {
+    fn from(s: String) -> Self {
+        Self(uuid::Uuid::parse_str(&s).unwrap_or_else(|_| uuid::Uuid::new_v4()))
+    }
+}
+
 impl std::fmt::Display for ChatEntryId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
