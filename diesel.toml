@@ -1,0 +1,2 @@
+[print_schema]
+file = "crates/nullslop-domain/src/schema.rs"

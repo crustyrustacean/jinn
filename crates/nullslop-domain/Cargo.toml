@@ -42,9 +42,7 @@ toml = { workspace = true }
 anstyle-lossy = { workspace = true }
 anstyle = { workspace = true }
 reasoning-parser = "1.2"
-rusqlite = { version = "0.39", features = ["bundled"] }
-r2d2 = { workspace = true }
-r2d2_sqlite = { workspace = true, features = ["bundled"] }
+diesel = { workspace = true }
 tempfile = { workspace = true }
 
 [dev-dependencies]

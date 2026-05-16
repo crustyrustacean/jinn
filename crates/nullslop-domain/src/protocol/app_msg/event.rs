@@ -95,6 +95,8 @@ pub enum Event {
     SkillsLoaded(SkillsLoaded),
     /// Personas have been scanned and loaded from disk.
     PersonasLoaded(crate::feat::context::protocol::event::PersonasLoaded),
+    /// A chat entry was pinned or unpinned.
+    ChatEntryPinChanged(crate::feat::context::protocol::event::ChatEntryPinChanged),
     /// Environment variables and API keys have been loaded.
     EnvironmentLoaded(EnvironmentLoaded),
     /// User preferences have been updated and persisted.
@@ -133,6 +135,9 @@ impl Event {
             Self::SkillsLoaded(..) => Some(SkillsLoaded::TYPE_NAME),
             Self::PersonasLoaded(..) => {
                 Some(crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME)
+            }
+            Self::ChatEntryPinChanged(..) => {
+                Some(crate::feat::context::protocol::event::ChatEntryPinChanged::TYPE_NAME)
             }
             Self::EnvironmentLoaded(..) => Some(EnvironmentLoaded::TYPE_NAME),
             Self::PreferencesUpdated(..) => Some(PreferencesUpdated::TYPE_NAME),

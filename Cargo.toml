@@ -114,8 +114,7 @@ uuid = { version = "1.23.1", features = ["v4", "serde"] }
 tiktoken = "3"
 
 # Database
-r2d2 = "0.8"
-r2d2_sqlite = { version = "0.34", features = ["bundled"] }
+diesel = { version = "2", features = ["sqlite", "r2d2"] }
 
 # Testing (e2e)
 cucumber = "0.23"

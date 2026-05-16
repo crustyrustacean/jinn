@@ -82,6 +82,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<ToolCallReceived>();
         ctx.subscribe_event::<ToolCallStreaming>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
+        ctx.subscribe_event::<crate::feat::context::protocol::event::ChatEntryPinChanged>();
         ctx.subscribe_event::<ModelsRefreshed>();
         ctx.subscribe_event::<EnvironmentLoaded>();
 
@@ -132,6 +133,9 @@ impl SessionPersistenceActor {
             }
             Event::EnvironmentLoaded(payload) => {
                 self.on_environment_loaded(&payload.config, ctx);
+            }
+            Event::ChatEntryPinChanged(payload) => {
+                self.save_active_session(&payload.session_id).await;
             }
             _ => {}
         }
