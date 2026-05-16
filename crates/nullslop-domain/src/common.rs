@@ -7,6 +7,7 @@ pub mod app_paths;
 pub mod app_state;
 pub mod core;
 pub mod frontmatter;
+pub mod migration;
 pub mod services;
 pub mod state;
 pub mod tui_signals;
