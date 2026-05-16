@@ -81,6 +81,10 @@ pub fn create_core_with_actor_host(
         let mut guard = state.write();
         guard.session.default_cwd = cwd.clone();
         guard.active_session_mut().set_cwd(cwd);
+        // Show welcome message on startup.
+        guard
+            .active_session_mut()
+            .push_entry(nullslop_domain::welcome_msg());
     }
 
     // Build services (needed early for infrastructure actors).

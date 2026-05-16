@@ -8,6 +8,7 @@
 pub(crate) mod actor;
 pub(crate) mod assistant;
 pub(crate) mod error_entry;
+pub(crate) mod info;
 pub(crate) mod line_count_cache;
 pub(crate) mod markdown;
 pub(crate) mod renderer;
