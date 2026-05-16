@@ -17,7 +17,7 @@ impl ChatEntryId {
     /// Generate a new unique ID.
     #[must_use]
     pub fn new() -> Self {
-        Self(uuid::Uuid::new_v4())
+        Self(uuid::Uuid::now_v7())
     }
 
     /// Returns the underlying UUID value.
@@ -35,7 +35,7 @@ impl Default for ChatEntryId {
 
 impl From<String> for ChatEntryId {
     fn from(s: String) -> Self {
-        Self(uuid::Uuid::parse_str(&s).unwrap_or_else(|_| uuid::Uuid::new_v4()))
+        Self(uuid::Uuid::parse_str(&s).unwrap_or_else(|_| uuid::Uuid::now_v7()))
     }
 }
 
