@@ -286,10 +286,11 @@ impl ToolOrchestratorActor {
     fn build_tool_context(&self, session_id: &SessionId) -> ToolContext {
         let cwd = {
             let guard = self.state.read();
-            guard.session.sessions.get(session_id).map_or_else(
-                || guard.session.default_cwd.clone(),
-                |s| s.cwd().to_owned(),
-            )
+            guard
+                .session
+                .sessions
+                .get(session_id)
+                .map_or_else(|| guard.session.default_cwd.clone(), |s| s.cwd().to_owned())
         };
         ToolContext {
             cwd,

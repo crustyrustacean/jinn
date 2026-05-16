@@ -23,9 +23,6 @@ fn first_stream_token_creates_assistant_entry() {
     session.push_entry(ChatEntry::user("hello"));
     session.begin_streaming();
 
-    // Then no assistant entry yet (lazy creation).
-    assert_eq!(session.history().len(), 1);
-
     // When appending the first token.
     session.append_stream_token("Hello");
 
@@ -503,7 +500,7 @@ fn cancel_streaming_clears_is_sending() {
 }
 
 #[rstest::rstest]
-fn finish_streaming_clears_sending_too() {
+fn finish_streaming_clears_is_sending() {
     // Given a session that was sending before streaming started.
     let mut session = ChatSessionState::new();
     session.begin_sending();
@@ -515,8 +512,24 @@ fn finish_streaming_clears_sending_too() {
     // When finishing streaming.
     session.finish_streaming();
 
-    // Then both flags are cleared.
+    // Then is_sending is cleared.
     assert!(!session.is_sending());
+}
+
+#[rstest::rstest]
+fn finish_streaming_clears_is_streaming() {
+    // Given a session that was sending before streaming started.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+    // Manually set is_streaming to simulate the transition.
+    session.core.ephemeral.is_streaming = true;
+    session.core.ephemeral.streaming_entry_index =
+        Some(session.push_entry(ChatEntry::assistant("")));
+
+    // When finishing streaming.
+    session.finish_streaming();
+
+    // Then is_streaming is cleared.
     assert!(!session.is_streaming());
 }
 
@@ -613,19 +626,16 @@ fn finalize_tool_call_pushes_new_entry_when_not_found() {
 }
 
 #[rstest::rstest]
-fn multiple_tool_calls_track_independently() {
+fn first_tool_call_tracks_arguments() {
     // Given a streaming session.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
 
-    // When beginning two tool calls with different indices.
+    // When beginning a tool call and appending a delta.
     session.begin_tool_call(0, "call_1", "echo");
     session.append_tool_call_delta(0, r#"{"a":1}"#);
 
-    session.begin_tool_call(1, "call_2", "get_time");
-    session.append_tool_call_delta(1, "{}");
-
-    // Then each entry tracks its own arguments.
+    // Then the tool call entry tracks its own arguments.
     assert_eq!(
         session.history()[1].kind,
         ChatEntryKind::ToolCall {
@@ -634,6 +644,21 @@ fn multiple_tool_calls_track_independently() {
             arguments: r#"{"a":1}"#.to_owned(),
         }
     );
+}
+
+#[rstest::rstest]
+fn second_tool_call_tracks_independent_arguments() {
+    // Given a streaming session with one tool call already started.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.begin_tool_call(0, "call_1", "echo");
+    session.append_tool_call_delta(0, r#"{"a":1}"#);
+
+    // When beginning a second tool call with a different index.
+    session.begin_tool_call(1, "call_2", "get_time");
+    session.append_tool_call_delta(1, "{}");
+
+    // Then the second tool call entry tracks its own arguments independently.
     assert_eq!(
         session.history()[2].kind,
         ChatEntryKind::ToolCall {

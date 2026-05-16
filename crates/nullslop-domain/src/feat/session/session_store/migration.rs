@@ -69,11 +69,9 @@ fn v0_create_initial_schema(conn: &Connection) -> Result<(), Report<MigrationErr
 /// which resolves to the current directory on load. The session actor's
 /// CWD validation will handle the fallback to the global cwd if needed.
 fn v1_add_cwd_column(conn: &Connection) -> Result<(), Report<MigrationError>> {
-    conn.execute_batch(
-        "ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT '.';",
-    )
-    .change_context(MigrationError)
-    .attach("failed to add cwd column")?;
+    conn.execute_batch("ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT '.';")
+        .change_context(MigrationError)
+        .attach("failed to add cwd column")?;
 
     Ok(())
 }
