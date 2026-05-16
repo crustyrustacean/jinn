@@ -35,6 +35,7 @@ where
 {
     let text = text.as_ref();
     let text = text.trim_start_matches('\n');
+    let text = text.trim_end_matches('\n');
     let prefix = prefix.as_ref();
     let _ = indent.as_ref();
     let segments = text.split('\n');
@@ -64,6 +65,41 @@ pub fn pad_line_to_width(line: &mut Line<'static>, width: u16, bg_style: Style) 
     }
 }
 
+/// Which sides of an entry to pad with a blank line.
+///
+/// Controls where visual spacing is added around a chat entry.
+/// Most entries use [`Both`](Pad::Both), but entries like thinking
+/// that always precede another padded entry use [`Top`](Pad::Top) only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pad {
+    /// Add a blank line above and below the entry.
+    Both,
+    /// Add a blank line above the entry only.
+    Top,
+    /// Add a blank line below the entry only.
+    Bottom,
+}
+
+/// Add blank padding lines around an entry for visual spacing.
+///
+/// Uses plain blank `Line::from("")` for the pad lines.
+/// For styled padding (e.g. block backgrounds), use [`pad_entry_with`].
+pub fn pad_entry(lines: &mut Vec<Line<'static>>, pad: Pad) {
+    pad_entry_with(lines, pad, Line::from(""));
+}
+
+/// Add styled padding lines around an entry for visual spacing.
+///
+/// The `pad_line` is used for both top and bottom (cloned as needed).
+pub fn pad_entry_with(lines: &mut Vec<Line<'static>>, pad: Pad, pad_line: Line<'static>) {
+    if pad == Pad::Both || pad == Pad::Top {
+        lines.insert(0, pad_line.clone());
+    }
+    if pad == Pad::Both || pad == Pad::Bottom {
+        lines.push(pad_line);
+    }
+}
+
 /// Replace literal `\n` (backslash + n) sequences with actual newline characters.
 ///
 /// Tool call arguments and tool result content may contain JSON-encoded
@@ -89,4 +125,129 @@ pub fn unicode_segementation_display_width(s: &str) -> usize {
             }
         })
         .sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::style::{Color, Style};
+    use ratatui::text::{Line, Span};
+
+    use super::{multiline_styled, pad_entry, pad_entry_with, Pad};
+
+    #[rstest::rstest]
+    fn pad_entry_both_adds_blank_line_above_and_below() {
+        // Given a single content line.
+        let mut lines = vec![Line::from("hello")];
+
+        // When padding the entry on both sides.
+        pad_entry(&mut lines, Pad::Both);
+
+        // Then there are 3 lines total (pad + content + pad).
+        assert_eq!(lines.len(), 3);
+        // And the first line is blank.
+        assert!(lines[0].spans.is_empty());
+        // And the middle line has content.
+        assert_eq!(lines[1].spans[0].content, "hello");
+        // And the last line is blank.
+        assert!(lines[2].spans.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn pad_entry_both_on_empty_produces_two_pad_lines() {
+        // Given an empty lines vec.
+        let mut lines: Vec<Line<'static>> = vec![];
+
+        // When padding on both sides.
+        pad_entry(&mut lines, Pad::Both);
+
+        // Then there are 2 lines (top pad + bottom pad).
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].spans.is_empty());
+        assert!(lines[1].spans.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn pad_entry_top_adds_blank_line_above_only() {
+        // Given a single content line.
+        let mut lines = vec![Line::from("hello")];
+
+        // When padding top only.
+        pad_entry(&mut lines, Pad::Top);
+
+        // Then there are 2 lines (pad + content).
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].spans.is_empty());
+        assert_eq!(lines[1].spans[0].content, "hello");
+    }
+
+    #[rstest::rstest]
+    fn pad_entry_bottom_adds_blank_line_below_only() {
+        // Given a single content line.
+        let mut lines = vec![Line::from("hello")];
+
+        // When padding bottom only.
+        pad_entry(&mut lines, Pad::Bottom);
+
+        // Then there are 2 lines (content + pad).
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].spans[0].content, "hello");
+        assert!(lines[1].spans.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn pad_entry_with_styled_both_adds_styled_above_and_below() {
+        // Given a single content line.
+        let mut lines = vec![Line::from("hello")];
+
+        // When padding with a styled line on both sides.
+        let pad_line = Line::from(Span::styled(
+            " ".repeat(80),
+            ratatui::style::Style::default().bg(Color::DarkGray),
+        ));
+        pad_entry_with(&mut lines, Pad::Both, pad_line);
+
+        // Then there are 3 lines total (pad + content + pad).
+        assert_eq!(lines.len(), 3);
+        // And the first line has the styled pad content.
+        assert_eq!(lines[0].spans.len(), 1);
+        assert_eq!(lines[0].spans[0].content, " ".repeat(80));
+        // And the middle line has content.
+        assert_eq!(lines[1].spans[0].content, "hello");
+        // And the last line has the same styled pad content.
+        assert_eq!(lines[2].spans.len(), 1);
+        assert_eq!(lines[2].spans[0].content, " ".repeat(80));
+    }
+
+    #[rstest::rstest]
+    fn multiline_styled_trims_leading_newline() {
+        // Given text with leading newlines.
+        // When converting to lines.
+        let lines = multiline_styled("\n\nhello", "", "", Style::default());
+
+        // Then there are no leading blank lines.
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].spans[0].content, "hello");
+    }
+
+    #[rstest::rstest]
+    fn multiline_styled_trims_trailing_newline() {
+        // Given text with trailing newlines.
+        // When converting to lines.
+        let lines = multiline_styled("hello\n\n", "", "", Style::default());
+
+        // Then there are no trailing blank lines.
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].spans[0].content, "hello");
+    }
+
+    #[rstest::rstest]
+    fn multiline_styled_trims_both_newlines() {
+        // Given text with both leading and trailing newlines.
+        // When converting to lines.
+        let lines = multiline_styled("\n\nhello\n\n", "", "", Style::default());
+
+        // Then there is exactly one content line.
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].spans[0].content, "hello");
+    }
 }
