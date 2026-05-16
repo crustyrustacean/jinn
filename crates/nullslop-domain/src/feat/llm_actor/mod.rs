@@ -1238,6 +1238,8 @@ mod tests {
         let definition = ToolDefinition {
             name: "web_search".to_owned(),
             description: "Search the web".to_owned(),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         };
 

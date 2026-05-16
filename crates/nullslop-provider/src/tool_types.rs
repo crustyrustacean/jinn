@@ -13,6 +13,12 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON Schema describing the tool's input parameters.
     pub parameters: serde_json::Value,
+    /// A one-line summary shown in the "Available tools" section of the system prompt.
+    #[serde(default)]
+    pub prompt_snippet: Option<String>,
+    /// Behavioral guidelines injected into the "Tool guidelines" section of the system prompt.
+    #[serde(default)]
+    pub prompt_guidelines: Vec<String>,
 }
 
 /// A tool call requested by the LLM during a streaming response.
@@ -51,10 +57,26 @@ mod tests {
             name: "file_read".to_owned(),
             description: "Read a file".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}}),
+            prompt_snippet: Some("Read file contents".to_owned()),
+            prompt_guidelines: vec!["Use read to examine files.".to_owned()],
         };
         let json = serde_json::to_string(&def).expect("serialize");
         let back: ToolDefinition = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, def);
+    }
+
+    #[rstest::rstest]
+    fn tool_definition_deserializes_without_new_fields() {
+        // Given a JSON ToolDefinition without prompt_snippet or prompt_guidelines.
+        let json = r#"{"name":"file_read","description":"Read a file","parameters":{"type":"object","properties":{"path":{"type":"string"}}}}"#;
+
+        // When deserializing.
+        let def: ToolDefinition = serde_json::from_str(json).expect("deserialize");
+
+        // Then the new fields default to None / empty.
+        assert_eq!(def.name, "file_read");
+        assert_eq!(def.prompt_snippet, None);
+        assert!(def.prompt_guidelines.is_empty());
     }
 
     #[rstest::rstest]

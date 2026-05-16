@@ -9,6 +9,8 @@ pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: "get_time".to_owned(),
         description: "Returns the current date and time in UTC.".to_owned(),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {}

@@ -331,6 +331,8 @@ mod tests {
             definitions: vec![ToolDefinition {
                 name: "echo".to_owned(),
                 description: "echo tool".to_owned(),
+                prompt_snippet: None,
+                prompt_guidelines: vec![],
                 parameters: serde_json::json!({}),
             }],
         });

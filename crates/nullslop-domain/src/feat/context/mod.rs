@@ -36,6 +36,7 @@ pub mod prompt_scan_actor;
 pub mod prompt_template;
 pub mod protocol;
 pub mod strategy;
+pub mod tool_prompt;
 
 pub use crate::protocol::PromptStrategyId;
 pub use strategy::compaction::CompactionStrategy;
