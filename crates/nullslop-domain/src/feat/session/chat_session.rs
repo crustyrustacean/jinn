@@ -313,7 +313,8 @@ impl ChatSessionState {
     /// `begin_tool_call`, or `cancel_streaming`. No-op if the entry
     /// already exists or the session is not streaming.
     fn ensure_assistant_entry(&mut self) {
-        if self.core.ephemeral.streaming_entry_index.is_some() || !self.core.ephemeral.is_streaming {
+        if self.core.ephemeral.streaming_entry_index.is_some() || !self.core.ephemeral.is_streaming
+        {
             return;
         }
         let entry = ChatEntry::assistant("");
@@ -594,7 +595,9 @@ impl ChatSessionState {
     /// Panics if already sending, streaming, or assembling.
     pub fn begin_assembling(&mut self) {
         assert!(
-            !self.core.ephemeral.is_sending && !self.core.ephemeral.is_streaming && !self.core.ephemeral.is_assembling,
+            !self.core.ephemeral.is_sending
+                && !self.core.ephemeral.is_streaming
+                && !self.core.ephemeral.is_assembling,
             "begin_assembling called while already busy"
         );
         self.core.ephemeral.is_assembling = true;
@@ -686,7 +689,9 @@ impl ChatSessionState {
 
     /// Whether the session is completely idle (not sending, not streaming, not assembling).
     pub fn is_idle(&self) -> bool {
-        !self.core.ephemeral.is_sending && !self.core.ephemeral.is_streaming && !self.core.ephemeral.is_assembling
+        !self.core.ephemeral.is_sending
+            && !self.core.ephemeral.is_streaming
+            && !self.core.ephemeral.is_assembling
     }
 
     /// The current scroll offset (lines to skip from top).

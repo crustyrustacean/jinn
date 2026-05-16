@@ -252,7 +252,6 @@ mod tests {
         // Given a SessionLoadRequested command.
         let cmd = Command::SessionLoadRequested(SessionLoadRequested {
             session_id: SessionId::new(),
-            byte_offset: 0,
         });
 
         // When calling command_name().

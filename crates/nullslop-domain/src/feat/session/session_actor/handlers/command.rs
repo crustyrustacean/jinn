@@ -24,7 +24,7 @@ enum EnqueueAction {
 
 impl SessionPersistenceActor {
     /// EnqueueUserMessage: if idle → assemble prompt; if busy → queue.
-    pub(in crate::feat::session::session_actor) fn handle_enqueue_user_message(
+    pub(in crate::feat::session::session_actor) async fn handle_enqueue_user_message(
         &self,
         payload: &EnqueueUserMessage,
         ctx: &ActorContext,
@@ -76,7 +76,7 @@ impl SessionPersistenceActor {
                     tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
                 }
 
-                self.save_active_session(&payload.session_id);
+                self.save_active_session(&payload.session_id).await;
             }
             EnqueueAction::Queued => {}
         }
@@ -169,17 +169,18 @@ impl SessionPersistenceActor {
 
             // Validate CWD — fallback to default if empty or non-existent on disk.
             let original_cwd = session.cwd().to_owned();
-            let cwd_needs_fallback =
-                original_cwd.as_os_str().is_empty() || !original_cwd.exists();
+            let cwd_needs_fallback = original_cwd.as_os_str().is_empty() || !original_cwd.exists();
             if cwd_needs_fallback {
                 let original_display = if original_cwd.as_os_str().is_empty() {
                     "(empty)".to_owned()
                 } else {
                     original_cwd.display().to_string()
                 };
-                session.push_entry(ChatEntry::system(
-                    format!("Warning: working directory '{}' not found, falling back to '{}'", original_display, default_cwd.display()),
-                ));
+                session.push_entry(ChatEntry::system(format!(
+                    "Warning: working directory '{}' not found, falling back to '{}'",
+                    original_display,
+                    default_cwd.display()
+                )));
                 session.set_cwd(default_cwd);
             }
 

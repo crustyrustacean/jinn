@@ -108,7 +108,7 @@ impl SessionPersistenceActor {
     /// For `ToolUse` reason, transitions to sending state instead of fully idle,
     /// so the streaming indicator remains visible while the followup response
     /// is awaited. The queue is NOT drained — the turn hasn't ended.
-    pub(in crate::feat::session::session_actor) fn on_stream_completed(
+    pub(in crate::feat::session::session_actor) async fn on_stream_completed(
         &self,
         event: &StreamCompleted,
         ctx: &ActorContext,
@@ -151,7 +151,7 @@ impl SessionPersistenceActor {
 
         // Persist session after stream finishes (not on cancel).
         if should_save {
-            self.save_active_session(&event.session_id);
+            self.save_active_session(&event.session_id).await;
         }
     }
 
@@ -193,7 +193,7 @@ impl SessionPersistenceActor {
     }
 
     /// Pushes a tool result entry into the session history.
-    pub(in crate::feat::session::session_actor) fn on_tool_execution_completed(
+    pub(in crate::feat::session::session_actor) async fn on_tool_execution_completed(
         &self,
         event: &ToolExecutionCompleted,
     ) {
@@ -207,7 +207,7 @@ impl SessionPersistenceActor {
                 event.result.success,
             ));
         }
-        self.save_active_session(&event.session_id);
+        self.save_active_session(&event.session_id).await;
     }
 
     /// Pushes a table entry after model refresh.

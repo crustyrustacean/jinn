@@ -202,7 +202,6 @@ mod tests {
             session_id: crate::protocol::SessionId::new(),
             title: "Test Session".to_owned(),
             updated_at: jiff::Timestamp::now(),
-            byte_offset: 0,
             theme: default_theme(),
         }]);
 

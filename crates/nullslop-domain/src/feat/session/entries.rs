@@ -16,16 +16,15 @@ use super::SessionStoreService;
 /// Reads summaries from the store, maps them to [`SessionEntry`], and sorts
 /// so the most recently updated session appears first. Errors are logged and
 /// result in an empty list.
-pub fn load_session_entries(services: &Services, theme: &Theme) -> Vec<SessionEntry> {
-    match services.session_store.load_summaries() {
+pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<SessionEntry> {
+    match services.session_store.load_summaries().await {
         Ok(summaries) => {
             let mut entries: Vec<SessionEntry> = summaries
                 .into_iter()
-                .map(|(session_id, summary, byte_offset)| SessionEntry {
-                    session_id,
+                .map(|summary| SessionEntry {
+                    session_id: summary.session_id,
                     title: summary.title,
                     updated_at: summary.updated_at,
-                    byte_offset,
                     theme: theme.clone(),
                 })
                 .collect();
@@ -43,8 +42,8 @@ pub fn load_session_entries(services: &Services, theme: &Theme) -> Vec<SessionEn
 ///
 /// Reads from the session store via services and stores the entries via
 /// `SelectionState::set_items`.
-pub fn load_session_picker_items(services: &Services, state: &mut AppState) {
-    let entries = load_session_entries(services, &state.frontend.theme);
+pub async fn load_session_picker_items(services: &Services, state: &mut AppState) {
+    let entries = load_session_entries(services, &state.frontend.theme).await;
     state.frontend.session_picker.set_items(entries);
 }
 
@@ -52,19 +51,18 @@ pub fn load_session_picker_items(services: &Services, state: &mut AppState) {
 ///
 /// Same as [`load_session_entries`] but accepts the store service directly
 /// instead of the full `Services` container.
-pub fn load_session_entries_from_store(
+pub async fn load_session_entries_from_store(
     store: &SessionStoreService,
     theme: &Theme,
 ) -> Vec<SessionEntry> {
-    match store.load_summaries() {
+    match store.load_summaries().await {
         Ok(summaries) => {
             let mut entries: Vec<SessionEntry> = summaries
                 .into_iter()
-                .map(|(session_id, summary, byte_offset)| SessionEntry {
-                    session_id,
+                .map(|summary| SessionEntry {
+                    session_id: summary.session_id,
                     title: summary.title,
                     updated_at: summary.updated_at,
-                    byte_offset,
                     theme: theme.clone(),
                 })
                 .collect();
@@ -79,8 +77,11 @@ pub fn load_session_entries_from_store(
 }
 
 /// Loads session entries into the picker state from a session store service.
-pub fn load_session_picker_items_from_store(store: &SessionStoreService, state: &mut AppState) {
-    let entries = load_session_entries_from_store(store, &state.frontend.theme);
+pub async fn load_session_picker_items_from_store(
+    store: &SessionStoreService,
+    state: &mut AppState,
+) {
+    let entries = load_session_entries_from_store(store, &state.frontend.theme).await;
     state.frontend.session_picker.set_items(entries);
 }
 
@@ -99,7 +100,6 @@ mod tests {
             session_id: SessionId::new(),
             title: "My Chat".to_owned(),
             updated_at: jiff::Timestamp::now(),
-            byte_offset: 0,
             theme: default_theme(),
         };
 
@@ -115,7 +115,6 @@ mod tests {
             session_id: SessionId::new(),
             title: "My Session".to_owned(),
             updated_at: jiff::Timestamp::now(),
-            byte_offset: 0,
             theme: default_theme(),
         };
 
@@ -127,12 +126,13 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn load_session_entries_returns_empty_on_error() {
+    #[tokio::test]
+    async fn load_session_entries_returns_empty_on_error() {
         // Given a test Services (with fake session store that returns empty).
         let services = crate::common::services::Services::new();
 
         // When loading session entries.
-        let entries = load_session_entries(&services, &default_theme());
+        let entries = load_session_entries(&services, &default_theme()).await;
 
         // Then an empty list is returned (fake store has no sessions).
         assert!(entries.is_empty());
