@@ -79,8 +79,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 LoadPersonaPickerEntries,
             )])
         }
-        PickerKind::Keymap => IntentResult::empty(),
-        PickerKind::Theme => IntentResult::empty(),
+        PickerKind::Keymap | PickerKind::Theme => IntentResult::empty(),
     }
 }
 
@@ -429,6 +428,7 @@ mod tests {
             provider_name: "test".to_owned(),
             backend: "openai".to_owned(),
             model: "Test".to_owned(),
+            search_text: "Test test".to_owned(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -458,6 +458,7 @@ mod tests {
             provider_name: "test".to_owned(),
             backend: "openai".to_owned(),
             model: "Test".to_owned(),
+            search_text: "Test test".to_owned(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -491,6 +492,7 @@ mod tests {
             provider_name: "test".to_owned(),
             backend: "openai".to_owned(),
             model: "Test".to_owned(),
+            search_text: "Test test".to_owned(),
             is_alias: false,
             alias_target: None,
             is_available: true,
@@ -643,6 +645,7 @@ mod tests {
                 provider_name: "a".to_owned(),
                 backend: "a".to_owned(),
                 model: "a".to_owned(),
+                search_text: "a a".to_owned(),
                 is_alias: false,
                 alias_target: None,
                 is_available: true,
@@ -656,6 +659,7 @@ mod tests {
                 provider_name: "b".to_owned(),
                 backend: "b".to_owned(),
                 model: "b".to_owned(),
+                search_text: "b b".to_owned(),
                 is_alias: false,
                 alias_target: None,
                 is_available: true,
@@ -689,6 +693,7 @@ mod tests {
                 provider_name: "a".to_owned(),
                 backend: "a".to_owned(),
                 model: "a".to_owned(),
+                search_text: "a a".to_owned(),
                 is_alias: false,
                 alias_target: None,
                 is_available: true,
@@ -702,6 +707,7 @@ mod tests {
                 provider_name: "b".to_owned(),
                 backend: "b".to_owned(),
                 model: "b".to_owned(),
+                search_text: "b b".to_owned(),
                 is_alias: false,
                 alias_target: None,
                 is_available: true,
@@ -816,11 +822,12 @@ mod tests {
     #[rstest::rstest]
     fn confirm_theme_persists_selection() {
         // Given a state with theme picker open and default selected.
+        use crate::feat::theme::{ThemeEntry, default_theme};
+
         let mut state = AppState::default();
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Theme,
         });
-        use crate::feat::theme::{ThemeEntry, default_theme};
         state.frontend.theme_picker.set_items(vec![ThemeEntry {
             name: "default".to_owned(),
             theme: default_theme(),

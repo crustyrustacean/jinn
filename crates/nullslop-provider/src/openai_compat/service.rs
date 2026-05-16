@@ -210,8 +210,7 @@ impl LlmService for OpenAiCompatibleService {
                                     for stream_event in parser.parse_data(&json) {
                                         match stream_event {
                                             StreamEvent::Text(text) => tokens.push(Ok(text)),
-                                            StreamEvent::Done { .. } => {}
-                                            _ => {} // Ignore reasoning/tools in text-only stream.
+                                            _ => {}
                                         }
                                     }
                                 }
@@ -250,6 +249,9 @@ impl std::fmt::Debug for OpenAiCompatibleService {
         f.debug_struct("OpenAiCompatibleService")
             .field("provider", &self.config.name)
             .field("model", &self.model)
-            .finish()
+            .field("base_url", &self.base_url)
+            .field("api_key", &self.api_key)
+            .field("extra_body", &self.extra_body)
+            .finish_non_exhaustive()
     }
 }

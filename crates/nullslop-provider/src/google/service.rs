@@ -219,6 +219,8 @@ impl std::fmt::Debug for GoogleService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GoogleService")
             .field("model", &self.model)
-            .finish()
+            .field("api_key", &self.api_key)
+            .field("base_url", &self.base_url)
+            .finish_non_exhaustive()
     }
 }

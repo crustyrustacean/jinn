@@ -307,10 +307,10 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
 /// queues — the cancel confirmation prompt handles that via `NormalEscape`.
 pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
     // If leaving the theme picker without confirming, restore the original theme.
-    if state.frontend.scope_stack.picker_kind() == Some(&crate::protocol::PickerKind::Theme) {
-        if let Some(original) = state.frontend.theme_preview_original.take() {
-            state.frontend.theme = original;
-        }
+    if state.frontend.scope_stack.picker_kind() == Some(&crate::protocol::PickerKind::Theme)
+        && let Some(original) = state.frontend.theme_preview_original.take()
+    {
+        state.frontend.theme = original;
     }
 
     // Pop the scope stack — restores previous scope.

@@ -25,6 +25,10 @@ use crate::PickerItem;
 /// assert_eq!(state.filtered_count(), 1);
 /// ```
 #[derive(Debug)]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "fields need pub(crate) for cross-module access within the crate"
+)]
 pub struct SelectionState<T>
 where
     T: PickerItem,

@@ -44,7 +44,7 @@ fn begin_streaming_sets_is_streaming() {
     session.push_entry(ChatEntry::user("hello"));
 
     // When beginning streaming.
-    let _ = session.begin_streaming();
+    session.begin_streaming();
 
     // Then is_streaming is true.
     assert!(session.is_streaming());

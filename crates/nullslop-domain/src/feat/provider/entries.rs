@@ -309,7 +309,7 @@ pub fn load_provider_entries(
     // These are the providers defined in the user's config file.
     // We track their IDs to prevent duplicates when merging remote models later.
     for provider in registry.providers() {
-        let entry = static_provider_entry(&provider, registry, api_keys, theme);
+        let entry = static_provider_entry(provider, registry, api_keys, theme);
         static_ids.insert(entry.provider_id.clone());
         entries.push(entry);
     }
@@ -318,7 +318,7 @@ pub fn load_provider_entries(
     // Each alias resolves to a target provider and inherits its metadata.
     // Unresolvable aliases still appear as entries (unavailable, empty defaults).
     for alias in registry.aliases() {
-        let entry = alias_entry(&alias, registry, api_keys, theme);
+        let entry = alias_entry(alias, registry, api_keys, theme);
         entries.push(entry);
     }
 

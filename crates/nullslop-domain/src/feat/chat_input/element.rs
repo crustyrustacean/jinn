@@ -140,6 +140,7 @@ fn build_wrapped_lines<'a>(
 /// Shows `↑ N` on the top-right when lines are hidden above, and `↓ N` on the
 /// bottom-right when lines are hidden below. Styled like the chat log indicator
 /// (dark gray on black).
+#[expect(clippy::similar_names, reason = "fg/bg pair naming is intentional")]
 fn render_scroll_indicators(
     frame: &mut Frame<'_>,
     inner: Rect,
@@ -192,8 +193,6 @@ fn render_indicator_overlay(frame: &mut Frame<'_>, label: &str, inner: Rect, y: 
 mod tests {
     use nullslop_testutil::setup_term;
     use ratatui::layout::Position;
-    use ratatui::style::Color;
-
     use super::*;
     use crate::common::app_state::FocusScope;
     use crate::feat::theme::default_theme;

@@ -15,6 +15,7 @@ use crate::selection::{SelectionState, find_last_nonws_in_row};
 ///
 /// For first and middle rows, the highlight extends from start_x to the last
 /// non-whitespace character — internal spaces between words are included.
+#[expect(clippy::similar_names, reason = "sel_fg/sel_bg is a fg/bg pair naming convention")]
 pub(super) fn apply_selection_highlight(app: &TuiApp, buf: &mut Buffer) {
     let (anchor, focus, bounds) = match app.selection {
         SelectionState::Dragging {
