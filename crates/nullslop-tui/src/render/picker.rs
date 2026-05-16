@@ -16,6 +16,7 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
         Some(PickerKind::Session) => render_session_picker(frame, area, state),
         Some(PickerKind::Persona) => render_persona_picker(frame, area, state),
         Some(PickerKind::Theme) => render_theme_picker(frame, area, state),
+        Some(PickerKind::SessionFork) => render_session_fork_picker(frame, area, state),
         None => {}
     }
 }
@@ -48,6 +49,11 @@ fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 /// Renders the theme picker overlay (delegates to domain render).
 fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     nullslop_domain::feat::picker::render::render_theme_picker(frame, area, state);
+}
+
+/// Renders the session fork picker overlay (delegates to domain render).
+fn render_session_fork_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    nullslop_domain::feat::session::render::render_session_fork_picker(frame, area, state);
 }
 
 #[cfg(test)]
