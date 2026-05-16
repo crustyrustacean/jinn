@@ -199,6 +199,12 @@ impl IntentHandler {
             Intent::ReloadPlugins => IntentResult::with_commands(vec![Command::ReloadScripts(
                 feat::plugin_actor::protocol::command::ReloadScripts,
             )]),
+            Intent::ToggleForkUserFilter => {
+                feat::picker::intent::handle_toggle_fork_user_filter(state)
+            }
+            Intent::ToggleForkAssistantFilter => {
+                feat::picker::intent::handle_toggle_fork_assistant_filter(state)
+            }
         }
     }
 }

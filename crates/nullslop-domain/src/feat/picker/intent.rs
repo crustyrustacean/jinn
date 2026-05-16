@@ -14,9 +14,11 @@ use crate::feat::context::protocol::command::{
 };
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
+use crate::feat::session::fork_entry::ForkEntry;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::protocol::{Command, Intent, IntentResult, PickerKind};
+use crate::protocol::{ChatEntryKind, Command, Intent, IntentResult, PickerKind};
 
 use super::validator;
 
@@ -56,6 +58,11 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             // Load discovered themes as entries.
             load_theme_picker_entries(state);
         }
+        PickerKind::SessionFork => {
+            state.frontend.fork_picker.reset();
+            state.frontend.fork_show_user = true;
+            state.frontend.fork_show_assistant = true;
+        }
     }
 
     match kind {
@@ -80,6 +87,13 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             )])
         }
         PickerKind::Keymap | PickerKind::Theme => IntentResult::empty(),
+        PickerKind::SessionFork => {
+            // Populate from active session history (synchronous, no actor needed).
+            let entries = build_fork_entries(state);
+            state.frontend.all_fork_entries = entries.clone();
+            state.frontend.fork_picker.set_items(entries);
+            IntentResult::empty()
+        }
     }
 }
 
@@ -155,6 +169,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Session) => (confirm_session(state), None),
         Some(PickerKind::Persona) => (confirm_persona(state), None),
         Some(PickerKind::Theme) => (confirm_theme(state), None),
+        Some(PickerKind::SessionFork) => (confirm_session_fork(state), None),
         None => (IntentResult::empty(), None),
     }
 }
@@ -338,6 +353,89 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
     IntentResult::with_commands(vec![Command::SessionLoadRequested(SessionLoadRequested {
         session_id,
     })])
+}
+
+/// Builds fork entries from the active session's history.
+///
+/// Includes only User and Assistant entries, preserving their ordinal positions.
+fn build_fork_entries(state: &AppState) -> Vec<ForkEntry> {
+    let session = state.active_session();
+    session
+        .history()
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| {
+            matches!(
+                &e.kind,
+                ChatEntryKind::User(_) | ChatEntryKind::Assistant(_)
+            )
+        })
+        .map(|(i, e)| ForkEntry {
+            ordinal: i,
+            text: e.text(),
+            is_user: matches!(&e.kind, ChatEntryKind::User(_)),
+            theme: state.frontend.theme.clone(),
+        })
+        .collect()
+}
+
+/// Confirms the selected fork entry and dispatches a fork command.
+fn confirm_session_fork(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.fork_picker.selected_item() else {
+        return IntentResult::empty();
+    };
+    let source_session_id = state.session.active_session.clone();
+    let at_ordinal = entry.ordinal;
+
+    state.session.session_loading = true;
+    state.session.session_load_started_at = Some(std::time::Instant::now());
+    state.frontend.scope_stack.pop();
+
+    IntentResult::with_commands(vec![Command::SessionForkRequested(SessionForkRequested {
+        source_session_id,
+        at_ordinal,
+    })])
+}
+
+/// Toggles user message visibility in the fork picker.
+///
+/// No-op if the fork picker is not active.
+pub fn handle_toggle_fork_user_filter(state: &mut AppState) -> IntentResult {
+    if state.frontend.scope_stack.picker_kind().copied() != Some(PickerKind::SessionFork) {
+        return IntentResult::empty();
+    }
+
+    state.frontend.fork_show_user = !state.frontend.fork_show_user;
+    apply_fork_filters(state);
+    IntentResult::empty()
+}
+
+/// Toggles assistant message visibility in the fork picker.
+///
+/// No-op if the fork picker is not active.
+pub fn handle_toggle_fork_assistant_filter(state: &mut AppState) -> IntentResult {
+    if state.frontend.scope_stack.picker_kind().copied() != Some(PickerKind::SessionFork) {
+        return IntentResult::empty();
+    }
+
+    state.frontend.fork_show_assistant = !state.frontend.fork_show_assistant;
+    apply_fork_filters(state);
+    IntentResult::empty()
+}
+
+/// Applies fork filter flags to rebuild the displayed entries.
+fn apply_fork_filters(state: &mut AppState) {
+    let filtered: Vec<ForkEntry> = state
+        .frontend
+        .all_fork_entries
+        .iter()
+        .filter(|e| {
+            (e.is_user && state.frontend.fork_show_user)
+                || (!e.is_user && state.frontend.fork_show_assistant)
+        })
+        .cloned()
+        .collect();
+    state.frontend.fork_picker.set_items(filtered);
 }
 
 #[cfg(test)]
@@ -869,5 +967,213 @@ mod tests {
         // And preview original is cleared.
         assert!(state.frontend.theme_preview_original.is_none());
         assert!(result.commands.is_empty());
+    }
+
+    // --- Session Fork picker ---
+
+    #[rstest::rstest]
+    fn open_fork_picker_populates_entries_from_active_session() {
+        // Given a state with chat history containing user and assistant entries.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(crate::ChatEntry::user("hello"));
+        state.active_session_mut().push_entry(crate::ChatEntry::assistant("world"));
+        state.active_session_mut().push_entry(crate::ChatEntry::system("system msg"));
+        state.active_session_mut().push_entry(crate::ChatEntry::user("second question"));
+
+        // When opening the fork picker.
+        let result = handle_open_picker(&mut state, PickerKind::SessionFork);
+
+        // Then the picker is active.
+        assert_eq!(
+            state.frontend.scope_stack.picker_kind().copied(),
+            Some(PickerKind::SessionFork)
+        );
+        // And the fork picker has 3 entries (2 user + 1 assistant, no system).
+        assert_eq!(state.frontend.fork_picker.items().len(), 3);
+        // And no commands (entries come from in-memory state).
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn fork_picker_entries_have_correct_ordinals() {
+        // Given a state with chat history.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(crate::ChatEntry::user("hello"));     // ordinal 0
+        state.active_session_mut().push_entry(crate::ChatEntry::assistant("world")); // ordinal 1
+        state.active_session_mut().push_entry(crate::ChatEntry::system("sys"));     // ordinal 2 (excluded)
+        state.active_session_mut().push_entry(crate::ChatEntry::user("q2"));        // ordinal 3
+
+        // When opening the fork picker.
+        handle_open_picker(&mut state, PickerKind::SessionFork);
+
+        // Then entries have ordinals 0, 1, 3 (skipping system at 2).
+        let items = state.frontend.fork_picker.items();
+        assert_eq!(items[0].ordinal, 0);
+        assert!(items[0].is_user);
+        assert_eq!(items[1].ordinal, 1);
+        assert!(!items[1].is_user);
+        assert_eq!(items[2].ordinal, 3);
+        assert!(items[2].is_user);
+    }
+
+    #[rstest::rstest]
+    fn confirm_fork_picker_emits_fork_command() {
+        // Given a state with an active fork picker and a selected entry.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::SessionFork,
+        });
+        state.frontend.fork_picker.set_items(vec![ForkEntry {
+            ordinal: 2,
+            text: "hello".to_owned(),
+            is_user: true,
+            theme: default_theme(),
+        }]);
+        let source_id = state.session.active_session.clone();
+
+        // When confirming picker.
+        let (result, maybe_intent) = handle_picker_confirm(&mut state);
+
+        // Then session_loading is true.
+        assert!(state.session.session_loading);
+        // And a SessionForkRequested command is returned.
+        assert!(result.commands.iter().any(|c| matches!(
+            c,
+            Command::SessionForkRequested(crate::SessionForkRequested {
+                source_session_id,
+                at_ordinal: 2,
+            }) if source_session_id == &source_id
+        )));
+        // And picker is closed.
+        assert!(!state.frontend.scope_stack.is_picker());
+        assert!(maybe_intent.is_none());
+    }
+
+    #[rstest::rstest]
+    fn confirm_fork_picker_noop_with_no_selection() {
+        // Given a state with an active fork picker but no items.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::SessionFork,
+        });
+
+        // When confirming picker.
+        let (result, maybe_intent) = handle_picker_confirm(&mut state);
+
+        // Then no commands and no intent.
+        assert!(result.commands.is_empty());
+        assert!(maybe_intent.is_none());
+    }
+
+    // --- Fork filter toggles ---
+
+    #[rstest::rstest]
+    fn toggle_fork_user_filter_removes_user_entries() {
+        // Given a state with an active fork picker containing user and assistant entries.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::SessionFork,
+        });
+        state.frontend.all_fork_entries = vec![
+            ForkEntry { ordinal: 0, text: "user msg".to_owned(), is_user: true, theme: default_theme() },
+            ForkEntry { ordinal: 1, text: "asst msg".to_owned(), is_user: false, theme: default_theme() },
+            ForkEntry { ordinal: 2, text: "user msg 2".to_owned(), is_user: true, theme: default_theme() },
+        ];
+        state.frontend.fork_picker.set_items(state.frontend.all_fork_entries.clone());
+
+        // When toggling user filter off.
+        let result = handle_toggle_fork_user_filter(&mut state);
+
+        // Then the picker has only assistant entries.
+        assert!(!state.frontend.fork_show_user);
+        assert!(state.frontend.fork_show_assistant);
+        assert_eq!(state.frontend.fork_picker.items().len(), 1);
+        assert!(!state.frontend.fork_picker.items()[0].is_user);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn toggle_fork_assistant_filter_removes_assistant_entries() {
+        // Given a state with an active fork picker.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::SessionFork,
+        });
+        state.frontend.all_fork_entries = vec![
+            ForkEntry { ordinal: 0, text: "user msg".to_owned(), is_user: true, theme: default_theme() },
+            ForkEntry { ordinal: 1, text: "asst msg".to_owned(), is_user: false, theme: default_theme() },
+        ];
+        state.frontend.fork_picker.set_items(state.frontend.all_fork_entries.clone());
+
+        // When toggling assistant filter off.
+        let result = handle_toggle_fork_assistant_filter(&mut state);
+
+        // Then the picker has only user entries.
+        assert!(state.frontend.fork_show_user);
+        assert!(!state.frontend.fork_show_assistant);
+        assert_eq!(state.frontend.fork_picker.items().len(), 1);
+        assert!(state.frontend.fork_picker.items()[0].is_user);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn toggle_fork_filter_noop_when_not_fork_picker() {
+        // Given a state with a non-fork picker active.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
+
+        // When toggling fork filters.
+        let result = handle_toggle_fork_user_filter(&mut state);
+
+        // Then nothing changed.
+        assert!(state.frontend.fork_show_user);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn toggling_both_filters_off_results_in_empty_picker() {
+        // Given a state with an active fork picker.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::SessionFork,
+        });
+        state.frontend.all_fork_entries = vec![
+            ForkEntry { ordinal: 0, text: "user".to_owned(), is_user: true, theme: default_theme() },
+            ForkEntry { ordinal: 1, text: "asst".to_owned(), is_user: false, theme: default_theme() },
+        ];
+        state.frontend.fork_picker.set_items(state.frontend.all_fork_entries.clone());
+
+        // When toggling both filters off.
+        handle_toggle_fork_user_filter(&mut state);
+        handle_toggle_fork_assistant_filter(&mut state);
+
+        // Then the picker is empty.
+        assert!(!state.frontend.fork_show_user);
+        assert!(!state.frontend.fork_show_assistant);
+        assert!(state.frontend.fork_picker.items().is_empty());
+    }
+
+    #[rstest::rstest]
+    fn toggling_user_filter_twice_restores_entries() {
+        // Given a state with an active fork picker.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::SessionFork,
+        });
+        state.frontend.all_fork_entries = vec![
+            ForkEntry { ordinal: 0, text: "user".to_owned(), is_user: true, theme: default_theme() },
+            ForkEntry { ordinal: 1, text: "asst".to_owned(), is_user: false, theme: default_theme() },
+        ];
+        state.frontend.fork_picker.set_items(state.frontend.all_fork_entries.clone());
+
+        // When toggling user filter twice.
+        handle_toggle_fork_user_filter(&mut state);
+        handle_toggle_fork_user_filter(&mut state);
+
+        // Then all entries are restored.
+        assert!(state.frontend.fork_show_user);
+        assert_eq!(state.frontend.fork_picker.items().len(), 2);
     }
 }

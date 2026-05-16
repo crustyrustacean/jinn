@@ -21,6 +21,7 @@ mod handlers;
 
 use super::SessionStoreService;
 
+use crate::SessionForkRequested;
 use crate::SessionLoadRequested;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
@@ -64,6 +65,7 @@ impl Actor for SessionPersistenceActor {
         // Persistence subscriptions.
         ctx.subscribe_command::<SessionLoadRequested>();
         ctx.subscribe_command::<LoadSessionPickerEntries>();
+        ctx.subscribe_command::<SessionForkRequested>();
 
         // Session lifecycle subscriptions.
         ctx.subscribe_command::<EnqueueUserMessage>();
@@ -139,6 +141,9 @@ impl SessionPersistenceActor {
     async fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
         match cmd {
             Command::SessionLoadRequested(payload) => self.on_load_requested(payload, ctx).await,
+            Command::SessionForkRequested(payload) => {
+                self.on_session_fork_requested(payload, ctx).await;
+            }
             Command::LoadSessionPickerEntries(payload) => {
                 self.handle_load_session_picker_entries(payload).await;
             }
