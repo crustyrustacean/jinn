@@ -148,6 +148,7 @@ fn tool_result_entry_has_tool_result_kind() {
 #[case::tool_call(ChatEntry::tool_call("id", "name", "args"))]
 #[case::tool_result(ChatEntry::tool_result("id", "name", "content", true))]
 #[case::skill(ChatEntry::skill("name", "/path", "content"))]
+#[case::info(ChatEntry::info("info"))]
 fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     // Given an entry created with any ChatEntry constructor.
     // When checking pin_position.
@@ -367,4 +368,167 @@ fn skill_entry_serializes_correct_json_shape() {
     assert_eq!(skill["name"], "test-skill");
     assert_eq!(skill["location"], "/skills/test-skill/SKILL.md");
     assert_eq!(skill["content"], "body");
+}
+
+// --- Info entry tests ---
+
+#[rstest::rstest]
+fn info_entry_has_info_kind() {
+    // Given text "welcome".
+    let text = "welcome";
+
+    // When creating an info entry.
+    let entry = ChatEntry::info(text);
+
+    // Then kind is Info("welcome").
+    assert_eq!(entry.kind, ChatEntryKind::Info("welcome".to_owned()));
+}
+
+#[rstest::rstest]
+fn info_kind_str_returns_info() {
+    // Given an info entry.
+    let entry = ChatEntry::info("test");
+
+    // Then kind_str returns "info".
+    assert_eq!(entry.kind_str(), "info");
+}
+
+#[rstest::rstest]
+fn info_text_returns_content() {
+    // Given an info entry.
+    let entry = ChatEntry::info("some hint");
+
+    // Then text() returns the content.
+    assert_eq!(entry.text(), "some hint");
+}
+
+#[rstest::rstest]
+fn info_entry_serializes_roundtrip() {
+    // Given an info entry.
+    let entry = ChatEntry::info("Welcome to nullslop!");
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the roundtrip preserves the kind.
+    assert_eq!(
+        back.kind,
+        ChatEntryKind::Info("Welcome to nullslop!".to_owned())
+    );
+}
+
+#[rstest::rstest]
+fn info_entry_pin_position_defaults_to_none() {
+    // Given an info entry.
+    let entry = ChatEntry::info("test");
+
+    // Then pin_position is None.
+    assert_eq!(entry.pin_position, None);
+}
+
+#[rstest::rstest]
+fn info_entry_serializes_correct_json_shape() {
+    // Given an info entry.
+    let entry = ChatEntry::info("some info");
+
+    // When serializing just the kind.
+    let json = serde_json::to_string(&entry.kind).expect("serialize");
+
+    // Then the JSON has the expected shape: {"Info": "..."}.
+    let v: serde_json::Value = serde_json::from_str(&json).expect("parse");
+    assert!(v.get("Info").is_some(), "should have Info key");
+    assert_eq!(v["Info"], "some info");
+}
+
+// --- is_pinnable tests ---
+
+#[rstest::rstest]
+fn user_entry_is_pinnable() {
+    // Given a user entry.
+    let entry = ChatEntry::user("hello");
+
+    // Then it is pinnable.
+    assert!(entry.is_pinnable());
+}
+
+#[rstest::rstest]
+fn assistant_entry_is_pinnable() {
+    // Given an assistant entry.
+    let entry = ChatEntry::assistant("response");
+
+    // Then it is pinnable.
+    assert!(entry.is_pinnable());
+}
+
+#[rstest::rstest]
+fn tool_result_entry_is_pinnable() {
+    // Given a tool result entry.
+    let entry = ChatEntry::tool_result("id", "bash", "output", true);
+
+    // Then it is pinnable.
+    assert!(entry.is_pinnable());
+}
+
+#[rstest::rstest]
+fn skill_entry_is_pinnable() {
+    // Given a skill entry.
+    let entry = ChatEntry::skill("test", "/path", "content");
+
+    // Then it is pinnable.
+    assert!(entry.is_pinnable());
+}
+
+#[rstest::rstest]
+fn info_entry_is_not_pinnable() {
+    // Given an info entry.
+    let entry = ChatEntry::info("welcome");
+
+    // Then it is not pinnable.
+    assert!(!entry.is_pinnable());
+}
+
+#[rstest::rstest]
+fn system_entry_is_not_pinnable() {
+    // Given a system entry.
+    let entry = ChatEntry::system("status");
+
+    // Then it is not pinnable.
+    assert!(!entry.is_pinnable());
+}
+
+#[rstest::rstest]
+fn error_entry_is_not_pinnable() {
+    // Given an error entry.
+    let entry = ChatEntry::error("error");
+
+    // Then it is not pinnable.
+    assert!(!entry.is_pinnable());
+}
+
+#[rstest::rstest]
+fn actor_entry_is_not_pinnable() {
+    // Given an actor entry.
+    let entry = ChatEntry::actor("echo", "HELLO");
+
+    // Then it is not pinnable.
+    assert!(!entry.is_pinnable());
+}
+
+#[rstest::rstest]
+fn thinking_entry_is_not_pinnable() {
+    // Given a thinking entry.
+    let entry = ChatEntry::thinking("reasoning");
+
+    // Then it is not pinnable.
+    assert!(!entry.is_pinnable());
+}
+
+#[rstest::rstest]
+fn tool_call_entry_is_not_pinnable() {
+    // Given a tool call entry.
+    let entry = ChatEntry::tool_call("id", "bash", "{}");
+
+    // Then it is not pinnable.
+    assert!(!entry.is_pinnable());
 }

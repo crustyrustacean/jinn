@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::markdown::render_markdown;
-use super::shared::{RenderContext, pad_entry_with, pad_line_to_width, Pad};
+use super::shared::{Pad, RenderContext, pad_entry_with, pad_line_to_width};
 
 pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let mut lines = render_markdown(text, ctx.content_width, &ctx.theme);

@@ -34,7 +34,8 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
 use super::{
-    actor, assistant, error_entry, skill, system, table, thinking, tool_call, tool_result, user,
+    actor, assistant, error_entry, info, skill, system, table, thinking, tool_call, tool_result,
+    user,
 };
 
 /// Default number of lines to show for tool result entries before truncating.
@@ -401,6 +402,7 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, ctx: &RenderContext) -> Ve
         ChatEntryKind::Table(data) => table::to_lines(data, ctx),
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
         ChatEntryKind::Skill { name, content, .. } => skill::to_lines(name, content, ctx),
+        ChatEntryKind::Info(text) => info::to_lines(text, ctx),
     }
 }
 
@@ -1320,6 +1322,37 @@ mod tests {
         assert!(
             has_more,
             "updated content should be visible after streaming"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_info_entry_has_muted_text_color() {
+        // Given a ChatLogElement with an info entry.
+        let mut element = ChatLogElement::new();
+        let state = {
+            let mut s = AppState::default();
+            s.active_session_mut()
+                .push_entry(ChatEntry::info("Welcome to nullslop!"));
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the info text appears with muted text color.
+        let buffer = terminal.backend().buffer().clone();
+        let info_cell = buffer.cell((G, 8)).expect("cell should exist");
+        assert_eq!(info_cell.symbol(), "W");
+        assert_eq!(
+            info_cell.fg,
+            Color::DarkGray,
+            "info entry should use muted text color"
         );
     }
 }

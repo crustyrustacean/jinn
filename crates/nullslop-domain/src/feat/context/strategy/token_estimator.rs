@@ -64,6 +64,8 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
                 0
             }
         }
+        // Info entries are UI-only — excluded from context assembly.
+        ChatEntryKind::Info(_) => 0,
     }
 }
 
@@ -336,6 +338,19 @@ mod tests {
         let tokens = estimate_entry_tokens(&estimator, &entry);
 
         // Then thinking entries contribute 0 tokens.
+        assert_eq!(tokens, 0);
+    }
+
+    #[rstest::rstest]
+    fn estimate_entry_tokens_for_info_is_zero() {
+        // Given a char ratio estimator and an info entry.
+        let estimator = CharRatioEstimator;
+        let entry = ChatEntry::info("Welcome to nullslop! Press i to start typing.");
+
+        // When estimating entry tokens.
+        let tokens = estimate_entry_tokens(&estimator, &entry);
+
+        // Then info entries contribute 0 tokens.
         assert_eq!(tokens, 0);
     }
 }
