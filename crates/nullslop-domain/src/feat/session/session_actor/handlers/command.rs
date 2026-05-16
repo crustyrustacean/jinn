@@ -181,9 +181,7 @@ impl SessionPersistenceActor {
 
         // Validate CWD — fallback to default if non-existent on disk.
         // This check is async (tokio::fs), so it runs outside the state lock.
-        let cwd_exists = tokio::fs::try_exists(&original_cwd)
-            .await
-            .unwrap_or(false);
+        let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
         if !cwd_exists {
             let default_cwd = {
                 let state = self.state.read();

@@ -1126,10 +1126,7 @@ mod tests {
             .expect("should exist");
 
         // Then the cwd is preserved.
-        assert_eq!(
-            loaded.cwd(),
-            std::path::Path::new("/tmp/my-project")
-        );
+        assert_eq!(loaded.cwd(), std::path::Path::new("/tmp/my-project"));
     }
 
     #[rstest::rstest]
@@ -1154,10 +1151,7 @@ mod tests {
             .await
             .expect("load forked")
             .expect("should exist");
-        assert_eq!(
-            forked.cwd(),
-            std::path::Path::new("/home/user/project")
-        );
+        assert_eq!(forked.cwd(), std::path::Path::new("/home/user/project"));
     }
 
     #[rstest::rstest]

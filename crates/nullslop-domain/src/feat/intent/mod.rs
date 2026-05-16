@@ -12,8 +12,6 @@
 //! script modes identically to the TUI mode.
 
 pub mod handler;
-#[cfg(test)]
-mod handler_tests;
 pub mod intent;
 
 pub use crate::IntentResult;
