@@ -7,6 +7,7 @@
 //! return `end_turn`.
 
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::llm_message::LlmMessage;
@@ -45,6 +46,8 @@ pub struct FakeLlmServiceFactory {
     tool_loop_first_tool_calls: Vec<ToolCall>,
     /// Text tokens to use on subsequent calls of a tool loop.
     tool_loop_subsequent_tokens: Vec<String>,
+    /// Messages received by all services created from this factory.
+    received_calls: Arc<Mutex<Vec<Vec<LlmMessage>>>>,
 }
 
 impl FakeLlmServiceFactory {
@@ -57,6 +60,7 @@ impl FakeLlmServiceFactory {
             tool_loop_call_count: None,
             tool_loop_first_tool_calls: vec![],
             tool_loop_subsequent_tokens: vec![],
+            received_calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -73,6 +77,7 @@ impl FakeLlmServiceFactory {
             tool_loop_call_count: None,
             tool_loop_first_tool_calls: vec![],
             tool_loop_subsequent_tokens: vec![],
+            received_calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -98,6 +103,7 @@ impl FakeLlmServiceFactory {
             tool_loop_call_count: Some(Arc::new(AtomicUsize::new(0))),
             tool_loop_first_tool_calls: first_tool_calls,
             tool_loop_subsequent_tokens: subsequent_tokens,
+            received_calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -110,6 +116,17 @@ impl FakeLlmServiceFactory {
             .as_ref()
             .map_or(0, |c| c.load(Ordering::SeqCst))
     }
+
+    /// Returns a copy of all messages received by services created from this factory.
+    #[must_use]
+    pub fn received_calls(&self) -> Vec<Vec<LlmMessage>> {
+        self.received_calls.lock().expect("lock").clone()
+    }
+
+    /// Clears all recorded calls.
+    pub fn clear_calls(&self) {
+        self.received_calls.lock().expect("lock").clear();
+    }
 }
 
 impl LlmServiceFactory for FakeLlmServiceFactory {
@@ -120,6 +137,7 @@ impl LlmServiceFactory for FakeLlmServiceFactory {
             tool_loop_call_count: self.tool_loop_call_count.clone(),
             tool_loop_first_tool_calls: self.tool_loop_first_tool_calls.clone(),
             tool_loop_subsequent_tokens: self.tool_loop_subsequent_tokens.clone(),
+            received_calls: self.received_calls.clone(),
         }))
     }
 
@@ -140,6 +158,8 @@ struct FakeLlmService {
     tool_loop_first_tool_calls: Vec<ToolCall>,
     /// Text tokens for subsequent calls of a tool loop.
     tool_loop_subsequent_tokens: Vec<String>,
+    /// Shared call recording with the parent factory.
+    received_calls: Arc<Mutex<Vec<Vec<LlmMessage>>>>,
 }
 
 impl FakeLlmService {
@@ -209,8 +229,11 @@ impl FakeLlmService {
 impl LlmService for FakeLlmService {
     async fn chat_stream(
         &self,
-        _messages: Vec<LlmMessage>,
+        messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>> {
+        // Record the messages for test observability.
+        self.received_calls.lock().expect("lock").push(messages);
+
         let tokens = self.tokens.clone();
         let stream: ChatStream = Box::pin(stream::iter(tokens.into_iter().map(Ok)));
         Ok(stream)
@@ -221,6 +244,12 @@ impl LlmService for FakeLlmService {
         messages: Vec<LlmMessage>,
         _tools: Vec<crate::tool_types::ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
+        // Record the messages for test observability.
+        self.received_calls
+            .lock()
+            .expect("lock")
+            .push(messages.clone());
+
         // Check for multi-turn tool loop trigger.
         if let Some(ref counter) = self.tool_loop_call_count
             && Self::is_tool_loop_trigger(&messages)

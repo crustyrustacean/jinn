@@ -31,8 +31,13 @@ fn create_with_valid_name_succeeds() {
 
 #[rstest::rstest]
 fn create_with_empty_name_fails() {
+    // Given a new builder.
     let mut builder = WorkflowBuilder::new();
+
+    // When creating with an empty name.
     let result = builder.create(String::new(), "desc".to_owned());
+
+    // Then it fails.
     assert!(result.is_err());
 }
 
@@ -49,13 +54,17 @@ fn add_step_with_unique_id_succeeds() {
 
 #[rstest::rstest]
 fn add_step_with_duplicate_id_fails() {
+    // Given a builder with an existing step.
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
         .unwrap();
     builder.add_step(make_step("step-1")).unwrap();
 
+    // When adding a step with the same id.
     let result = builder.add_step(make_step("step-1"));
+
+    // Then it fails.
     assert!(result.is_err());
 }
 
@@ -78,17 +87,21 @@ fn add_guard_for_existing_step_succeeds() {
 
 #[rstest::rstest]
 fn add_guard_for_unknown_step_fails() {
+    // Given a builder with no steps.
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
         .unwrap();
 
+    // When adding a guard for a non-existent step.
     let result = builder.add_guard(
         "nope",
         GuardPredicate::FileExists {
             path: "/tmp/test".to_owned(),
         },
     );
+
+    // Then it fails.
     assert!(result.is_err());
 }
 
@@ -112,11 +125,13 @@ fn add_output_for_existing_step_succeeds() {
 
 #[rstest::rstest]
 fn add_output_for_unknown_step_fails() {
+    // Given a builder with no steps.
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
         .unwrap();
 
+    // When adding an output for a non-existent step.
     let result = builder.add_output(
         "nope",
         StepOutputDef::File {
@@ -124,17 +139,23 @@ fn add_output_for_unknown_step_fails() {
             path: "/tmp/out".to_owned(),
         },
     );
+
+    // Then it fails.
     assert!(result.is_err());
 }
 
 #[rstest::rstest]
 fn build_with_empty_steps_fails() {
+    // Given a builder with a name but no steps.
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
         .unwrap();
 
+    // When building.
     let result = builder.build();
+
+    // Then it fails.
     assert!(result.is_err());
 }
 
@@ -166,20 +187,33 @@ fn build_with_valid_data_string_field_matches(#[case] field: &str, #[case] expec
 }
 
 #[rstest::rstest]
-fn build_with_valid_data_has_correct_globals_and_steps() {
+fn build_with_valid_data_has_correct_globals() {
     // Given a valid workflow definition.
     let def = build_valid_workflow_def();
 
-    // Then globals and steps are correct.
+    // Then globals contain the expected entries.
     assert_eq!(def.globals.get("base_dir"), Some(&"/tmp".to_owned()));
+}
+
+#[rstest::rstest]
+fn build_with_valid_data_has_correct_steps() {
+    // Given a valid workflow definition.
+    let def = build_valid_workflow_def();
+
+    // Then steps contain the expected entries.
     assert_eq!(def.steps.len(), 1);
     assert_eq!(def.steps.first().unwrap().id, "step-1");
 }
 
 #[rstest::rstest]
 fn build_without_name_fails() {
+    // Given a builder with no name.
     let builder = WorkflowBuilder::new();
+
+    // When building.
     let result = builder.build();
+
+    // Then it fails.
     assert!(result.is_err());
 }
 
@@ -239,12 +273,9 @@ fn preview_produces_expected_format(#[case] expected: &str) {
     );
 }
 
-#[rstest::rstest]
-fn preview_shows_all_pieces() {
-    // Given a builder.
+/// Builds a video workflow def for field-level assertions.
+fn build_video_workflow_def() -> WorkflowDef {
     let mut builder = WorkflowBuilder::new();
-
-    // When building a complete workflow.
     builder
         .create(
             "video-workflow".to_owned(),
@@ -277,57 +308,33 @@ fn preview_shows_all_pieces() {
         )
         .unwrap();
 
-    // Then preview shows all the pieces.
-    let preview = builder.preview();
-    assert!(preview.contains("video-workflow"));
-    assert!(preview.contains("setup"));
-    assert!(preview.contains("render"));
-    assert!(preview.contains("file_exists({{video_dir}}/config.json)"));
-    assert!(preview.contains("Config (summary)"));
+    builder.build().unwrap()
 }
 
 #[rstest::rstest]
-fn build_produces_valid_def() {
-    // Given a builder.
-    let mut builder = WorkflowBuilder::new();
+fn build_produces_correct_name() {
+    // Given a complete video workflow.
+    let def = build_video_workflow_def();
 
-    // When building a complete workflow.
-    builder
-        .create(
-            "video-workflow".to_owned(),
-            "Music video workflow".to_owned(),
-        )
-        .unwrap();
-
-    builder.add_global("video_dir".to_owned(), "/tmp/video".to_owned());
-    builder.set_model_override("small".to_owned(), "ollama/phi3".to_owned());
-
-    builder.add_step(make_step("setup")).unwrap();
-    builder.add_step(make_step("render")).unwrap();
-
-    builder
-        .add_guard(
-            "setup",
-            GuardPredicate::FileExists {
-                path: "{{video_dir}}/config.json".to_owned(),
-            },
-        )
-        .unwrap();
-
-    builder
-        .add_output(
-            "setup",
-            StepOutputDef::Summary {
-                label: "Config".to_owned(),
-                value: "done".to_owned(),
-            },
-        )
-        .unwrap();
-
-    // Then build produces a valid WorkflowDef.
-    let def = builder.build().unwrap();
+    // Then the name is correct.
     assert_eq!(def.name, "video-workflow");
+}
+
+#[rstest::rstest]
+fn build_produces_correct_step_count() {
+    // Given a complete video workflow.
+    let def = build_video_workflow_def();
+
+    // Then the step count is correct.
     assert_eq!(def.steps.len(), 2);
+}
+
+#[rstest::rstest]
+fn build_produces_correct_guards() {
+    // Given a complete video workflow.
+    let def = build_video_workflow_def();
+
+    // Then the first step's guard is correct.
     assert_eq!(
         def.steps.first().unwrap().guards,
         GuardExpr::Predicate(GuardPredicate::FileExists {
@@ -337,7 +344,8 @@ fn build_produces_valid_def() {
 }
 
 #[rstest::rstest]
-fn adding_multiple_guards_combines_with_all() {
+fn adding_multiple_guards_produces_all_expr() {
+    // Given a builder with a step that has two guards.
     let mut builder = WorkflowBuilder::new();
     builder
         .create("test".to_owned(), "desc".to_owned())
@@ -362,10 +370,50 @@ fn adding_multiple_guards_combines_with_all() {
         )
         .unwrap();
 
+    // When building.
     let def = builder.build().unwrap();
-    let step = def.steps.first().unwrap();
 
-    // Should be wrapped in All.
+    // Then the step's guard is an All expression.
+    let step = def.steps.first().unwrap();
+    assert!(
+        matches!(&step.guards, GuardExpr::All { .. }),
+        "expected All, got {:?}",
+        step.guards
+    );
+}
+
+#[rstest::rstest]
+fn adding_multiple_guards_combines_both_predicates() {
+    // Given a builder with a step that has two guards.
+    let mut builder = WorkflowBuilder::new();
+    builder
+        .create("test".to_owned(), "desc".to_owned())
+        .unwrap();
+    builder.add_step(make_step("step-1")).unwrap();
+
+    builder
+        .add_guard(
+            "step-1",
+            GuardPredicate::FileExists {
+                path: "/a".to_owned(),
+            },
+        )
+        .unwrap();
+
+    builder
+        .add_guard(
+            "step-1",
+            GuardPredicate::FileExists {
+                path: "/b".to_owned(),
+            },
+        )
+        .unwrap();
+
+    // When building.
+    let def = builder.build().unwrap();
+
+    // Then the All expression contains two predicates.
+    let step = def.steps.first().unwrap();
     match &step.guards {
         GuardExpr::All { all } => {
             assert_eq!(all.len(), 2);

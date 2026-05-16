@@ -18,6 +18,7 @@ ratatui-which-key = { workspace = true }
 ratatui-spatial-splits = { workspace = true }
 tempfile = { workspace = true }
 kanal = { workspace = true }
+serde_json = { workspace = true }
 # These are needed because nullslop-services exposes types/traits from these crates
 # and e2e tests must match those exact types.
 

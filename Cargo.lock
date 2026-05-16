@@ -1960,6 +1960,7 @@ dependencies = [
  "nullslop-tui",
  "ratatui-spatial-splits",
  "ratatui-which-key",
+ "serde_json",
  "tempfile",
  "tokio",
 ]

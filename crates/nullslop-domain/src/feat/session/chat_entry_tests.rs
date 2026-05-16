@@ -66,8 +66,13 @@ fn entry_has_timestamp() {
 
 #[rstest::rstest]
 fn assistant_entry_has_assistant_kind() {
+    // Given text "hello".
     let text = "hello";
+
+    // When creating an assistant entry.
     let entry = ChatEntry::assistant(text);
+
+    // Then kind is Assistant("hello").
     assert_eq!(entry.kind, ChatEntryKind::Assistant("hello".to_owned()));
 }
 
