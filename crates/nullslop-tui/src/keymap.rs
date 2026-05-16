@@ -127,6 +127,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("b", Intent::PinsPinBottom, KeyCategory::Context)
             .bind("r", Intent::PinsPinRelative, KeyCategory::Context)
             .bind("m", Intent::PinsPinCycle, KeyCategory::Context)
+            .bind("e", Intent::SidebarPersonaEdit, KeyCategory::Context)
             .bind("<esc>", Intent::SidebarLeave, KeyCategory::General)
             // Tab switching
             .bind("<tab>", Intent::SwitchTab { direction: TabDirection::Next }, KeyCategory::Navigation)
