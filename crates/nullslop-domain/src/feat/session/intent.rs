@@ -7,11 +7,9 @@ use crate::protocol::{ChatEntry, Command, IntentResult, PromptStrategyId};
 
 use super::validator;
 
-/// Creates a new chat session, replacing the active one.
+/// Creates a new chat session, adding it alongside existing sessions.
 pub fn handle_session_new(state: &mut AppState) -> IntentResult {
     validator::validate_session_new(state);
-
-    state.session.sessions.remove(&state.session.active_session);
 
     let model = state
         .frontend
@@ -32,6 +30,7 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
     state.session.sessions.insert(new_id.clone(), new_session);
     state.session.active_session = new_id;
     state.frontend.scope_stack.clear_overlays();
+    state.frontend.scope_stack.push(crate::common::app_state::FocusScope::Input);
 
     IntentResult::empty()
 }
@@ -83,6 +82,8 @@ mod tests {
         assert_ne!(state.session.active_session, old_id);
         assert!(state.active_session().history().is_empty());
         assert!(!state.frontend.scope_stack.is_picker());
+        // And the old session is preserved in the sessions map.
+        assert!(state.session.sessions.contains_key(&old_id));
     }
 
     #[rstest::rstest]

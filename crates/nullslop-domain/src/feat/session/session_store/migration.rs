@@ -76,6 +76,21 @@ fn v1_add_cwd_column(conn: &Connection) -> Result<(), Report<MigrationError>> {
     Ok(())
 }
 
+/// Adds the `created_at` column to the `sessions` table.
+///
+/// Sessions created before this migration have no `created_at`, so the
+/// default is empty string. On load, an empty string falls back to
+/// `Timestamp::now()` via the parse error handler.
+fn v2_add_created_at_column(conn: &Connection) -> Result<(), Report<MigrationError>> {
+    conn.execute_batch(
+        "ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+    )
+    .change_context(MigrationError)
+    .attach("failed to add created_at column")?;
+
+    Ok(())
+}
+
 /// Returns the ordered list of session database migrations.
 pub fn session_migrations() -> Vec<Migration> {
     vec![
@@ -88,6 +103,11 @@ pub fn session_migrations() -> Vec<Migration> {
             version: 1,
             name: "add_cwd_column",
             up: v1_add_cwd_column,
+        },
+        Migration {
+            version: 2,
+            name: "add_created_at_column",
+            up: v2_add_created_at_column,
         },
     ]
 }

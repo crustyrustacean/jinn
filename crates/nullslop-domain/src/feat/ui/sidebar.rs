@@ -11,6 +11,7 @@
 pub mod persona_section;
 pub mod pins;
 pub mod section_trait;
+pub mod sessions;
 pub mod sidebar;
 pub mod state;
 
@@ -25,4 +26,5 @@ pub use state::SidebarState;
 pub fn register_sections(sidebar: &mut Sidebar) {
     sidebar.register(Box::new(persona_section::PersonaSection));
     sidebar.register(Box::new(pins::PinsSection));
+    sidebar.register(Box::new(sessions::SessionsSection::new()));
 }

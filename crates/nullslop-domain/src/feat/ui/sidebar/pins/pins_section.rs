@@ -128,8 +128,8 @@ impl SidebarSection for PinsSection {
         if count == 0 {
             return 0;
         }
-        // Header line + blank + (entry line + blank) * count - last blank
-        (2 + count * 2).saturating_sub(1) as u16
+        // Header line + blank + (entry line + blank) * count - last blank + trailing gap(1)
+        (2 + count * 2).saturating_sub(1) as u16 + 1
     }
 }
 
@@ -143,9 +143,20 @@ impl SidebarSection for PinsSection {
 pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
     use crate::feat::ui::sidebar::section_trait::{EnterFrom, SidebarSectionId};
+
     state.frontend.scope_stack.push(FocusScope::Sidebar);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
-    crate::feat::ui::sidebar::persona_section::receive_cursor(state, EnterFrom::Top);
+
+    // If a section already has cursor state, restore it.
+    let has_existing_cursor = state.frontend.persona_section.cursor.is_some()
+        || state.frontend.pins.selected_id().is_some()
+        || state.frontend.sessions_section.selected_index.is_some();
+
+    if !has_existing_cursor {
+        // First entry — default to Persona at top.
+        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+        crate::feat::ui::sidebar::persona_section::receive_cursor(state, EnterFrom::Top);
+    }
+
     IntentResult::empty()
 }
 
@@ -158,9 +169,7 @@ pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
         // Session is busy — show cancel confirmation prompt.
         state.frontend.cancel_stream_prompt = true;
     }
-    // Clear all section cursors when leaving sidebar.
-    state.frontend.persona_section.cursor = None;
-    state.frontend.pins.clear_selection();
+    // Preserve cursor positions — they'll be restored on re-entry.
     state.frontend.scope_stack.pop();
     IntentResult::empty()
 }
@@ -763,8 +772,8 @@ mod tests {
         // When asking for content height.
         let height = section.content_height(&state);
 
-        // Then it returns header(1) + blank(1) + (entry(1) + blank(1)) * 3 - last blank(1) = 7.
-        assert_eq!(height, 7);
+        // Then it returns header(1) + blank(1) + (entry(1) + blank(1)) * 3 - last blank(1) + trailing gap(1) = 8.
+        assert_eq!(height, 8);
     }
 
     // --- Rendering tests ---

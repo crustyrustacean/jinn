@@ -175,8 +175,7 @@ impl SessionPersistenceActor {
             original_cwd = session.cwd().to_owned();
 
             state.session.active_session = session_id.clone();
-            state.session.session_loading = false;
-            state.session.session_load_started_at = None;
+            state.session.clear_load();
         }
 
         // Validate CWD — fallback to default if non-existent on disk.
@@ -266,8 +265,7 @@ impl SessionPersistenceActor {
                 tracing::warn!(err = ?e, "failed to fork session");
                 // Clear loading state.
                 let mut state = self.state.write();
-                state.session.session_loading = false;
-                state.session.session_load_started_at = None;
+                state.session.clear_load();
                 return;
             }
         };
@@ -286,14 +284,12 @@ impl SessionPersistenceActor {
             Ok(None) => {
                 tracing::warn!("forked session not found after creation");
                 let mut state = self.state.write();
-                state.session.session_loading = false;
-                state.session.session_load_started_at = None;
+                state.session.clear_load();
             }
             Err(e) => {
                 tracing::warn!(err = ?e, "failed to load forked session");
                 let mut state = self.state.write();
-                state.session.session_loading = false;
-                state.session.session_load_started_at = None;
+                state.session.clear_load();
             }
         }
     }

@@ -68,7 +68,7 @@ impl UiElement<AppState> for ChatLogElement {
     #[allow(clippy::too_many_lines)]
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         // Show loading indicator when a session is being loaded.
-        if state.session.session_loading {
+        if state.session.is_loading() {
             let loading = Paragraph::new("Loading session...")
                 .alignment(ratatui::layout::Alignment::Center)
                 .style(Style::default().fg(state.frontend.theme.muted_text))

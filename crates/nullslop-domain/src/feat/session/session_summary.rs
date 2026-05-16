@@ -25,10 +25,17 @@ pub struct SessionSummary {
     pub title: String,
     /// When this session was last modified.
     pub updated_at: Timestamp,
+    /// When this session was created. Set once at construction, never mutated.
+    #[serde(default = "default_timestamp")]
+    pub created_at: Timestamp,
 }
 
 fn default_title() -> String {
     "Untitled Session".to_owned()
+}
+
+fn default_timestamp() -> Timestamp {
+    Timestamp::now()
 }
 
 #[cfg(test)]

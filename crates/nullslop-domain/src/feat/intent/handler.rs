@@ -193,6 +193,13 @@ impl IntentHandler {
             Intent::SidebarPersonaEdit => {
                 feat::ui::sidebar::pins::pins_section::handle_sidebar_persona_edit(state)
             }
+            Intent::SidebarSessionClose => {
+                feat::ui::sidebar::sessions::handle_session_close(state)
+            }
+            Intent::SidebarConfirm => {
+                feat::ui::sidebar::sessions::handle_session_activate(state);
+                IntentResult::empty()
+            }
 
             // --- Chat Entry Selection ---
             Intent::ChatEntrySelectNext => {
