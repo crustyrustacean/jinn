@@ -169,17 +169,18 @@ impl SessionPersistenceActor {
 
             // Validate CWD — fallback to default if empty or non-existent on disk.
             let original_cwd = session.cwd().to_owned();
-            let cwd_needs_fallback =
-                original_cwd.as_os_str().is_empty() || !original_cwd.exists();
+            let cwd_needs_fallback = original_cwd.as_os_str().is_empty() || !original_cwd.exists();
             if cwd_needs_fallback {
                 let original_display = if original_cwd.as_os_str().is_empty() {
                     "(empty)".to_owned()
                 } else {
                     original_cwd.display().to_string()
                 };
-                session.push_entry(ChatEntry::system(
-                    format!("Warning: working directory '{}' not found, falling back to '{}'", original_display, default_cwd.display()),
-                ));
+                session.push_entry(ChatEntry::system(format!(
+                    "Warning: working directory '{}' not found, falling back to '{}'",
+                    original_display,
+                    default_cwd.display()
+                )));
                 session.set_cwd(default_cwd);
             }
 

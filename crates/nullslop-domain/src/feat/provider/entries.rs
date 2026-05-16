@@ -197,8 +197,14 @@ fn alias_entry(
         model: resolved.map(|r| r.model.clone()).unwrap_or_default(),
         search_text: format!(
             "{} {}",
-            resolved.as_ref().map(|r| r.model.as_str()).unwrap_or_default(),
-            resolved.as_ref().map(|r| r.name.as_str()).unwrap_or_default()
+            resolved
+                .as_ref()
+                .map(|r| r.model.as_str())
+                .unwrap_or_default(),
+            resolved
+                .as_ref()
+                .map(|r| r.name.as_str())
+                .unwrap_or_default()
         ),
         is_alias: true,
         alias_target: resolved.map(|r| r.id.to_string()),

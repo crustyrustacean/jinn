@@ -477,7 +477,8 @@ fn finish_streaming_clears_sending_too() {
     session.begin_sending();
     // Manually set is_streaming to simulate the transition.
     session.core.ephemeral.is_streaming = true;
-    session.core.ephemeral.streaming_entry_index = Some(session.push_entry(ChatEntry::assistant("")));
+    session.core.ephemeral.streaming_entry_index =
+        Some(session.push_entry(ChatEntry::assistant("")));
 
     // When finishing streaming.
     session.finish_streaming();

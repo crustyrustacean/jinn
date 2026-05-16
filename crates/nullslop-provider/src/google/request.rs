@@ -244,7 +244,9 @@ mod tests {
 
         // Then system_instruction is Some with concatenated text.
         assert!(req.system_instruction.is_some());
-        let parts = req.system_instruction.as_ref().unwrap()["parts"].as_array().unwrap();
+        let parts = req.system_instruction.as_ref().unwrap()["parts"]
+            .as_array()
+            .unwrap();
         assert_eq!(
             parts[0]["text"].as_str().unwrap(),
             "First system.\n\nSecond system."

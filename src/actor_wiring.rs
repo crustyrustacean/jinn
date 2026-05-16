@@ -36,8 +36,8 @@ use nullslop_domain::common::actor::protocol::event::{
 use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use nullslop_domain::feat::plugin_actor::plugin_actor::PluginActor;
-use nullslop_domain::feat::session::SqliteSessionStore as DomainSqliteSessionStore;
 use nullslop_domain::feat::session::SessionStoreService as DomainSessionStoreService;
+use nullslop_domain::feat::session::SqliteSessionStore as DomainSqliteSessionStore;
 use nullslop_domain::init::env_init_actor::EnvInitActor;
 use nullslop_domain::init::provider_init_actor::ProviderInitActor;
 use nullslop_domain::init::system_ready_actor::SystemReadyActor;
@@ -94,9 +94,9 @@ pub fn create_core_with_actor_host(
         provider_registry: provider_registry.clone(),
         api_keys: api_keys.clone(),
         config_storage: config_storage.clone(),
-        session_store: SessionStoreService::new(
-            Arc::new(nullslop_domain::SqliteSessionStore::new()),
-        ),
+        session_store: SessionStoreService::new(Arc::new(
+            nullslop_domain::SqliteSessionStore::new(),
+        )),
         strategy_registry: strategy_registry.clone(),
         user_preferences_storage: user_preferences_storage.clone(),
     };

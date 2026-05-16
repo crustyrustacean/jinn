@@ -41,7 +41,6 @@ use crate::feat::tools_actor::protocol::event::{
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event, PromptStrategyId};
 
-
 /// Session lifecycle and persistence actor.
 ///
 /// Subscribes to session-related commands and events, mutates [`State`],
@@ -186,8 +185,7 @@ impl SessionPersistenceActor {
                 state.frontend.theme.clone()
             };
             let entries =
-                crate::feat::session::entries::load_session_entries_from_store(store, &theme)
-                    .await;
+                crate::feat::session::entries::load_session_entries_from_store(store, &theme).await;
             let mut state = self.state.write();
             state.frontend.session_picker.set_items(entries);
         }
@@ -392,7 +390,10 @@ mod tests {
             .await;
 
         // Then the session is persisted with the title from the first user message.
-        let summaries = store_service.load_summaries().await.expect("load_summaries");
+        let summaries = store_service
+            .load_summaries()
+            .await
+            .expect("load_summaries");
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].title, "hello world");
     }
@@ -431,7 +432,10 @@ mod tests {
             .await;
 
         // Then the session is persisted.
-        let summaries = store_service.load_summaries().await.expect("load_summaries");
+        let summaries = store_service
+            .load_summaries()
+            .await
+            .expect("load_summaries");
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].title, "my question");
     }
@@ -467,7 +471,10 @@ mod tests {
             .await;
 
         // Then no session is persisted.
-        let summaries = store_service.load_summaries().await.expect("load_summaries");
+        let summaries = store_service
+            .load_summaries()
+            .await
+            .expect("load_summaries");
         assert!(summaries.is_empty());
     }
 
@@ -507,7 +514,10 @@ mod tests {
             .await;
 
         // Then the session is persisted.
-        let summaries = store_service.load_summaries().await.expect("load_summaries");
+        let summaries = store_service
+            .load_summaries()
+            .await
+            .expect("load_summaries");
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].title, "do the thing");
     }
@@ -537,7 +547,10 @@ mod tests {
             .await;
 
         // Then the title is the first line only.
-        let summaries = store_service.load_summaries().await.expect("load_summaries");
+        let summaries = store_service
+            .load_summaries()
+            .await
+            .expect("load_summaries");
         assert_eq!(summaries[0].title, "line one");
     }
 
@@ -577,7 +590,10 @@ mod tests {
             .await;
 
         // Then the title is "Untitled Session".
-        let summaries = store_service.load_summaries().await.expect("load_summaries");
+        let summaries = store_service
+            .load_summaries()
+            .await
+            .expect("load_summaries");
         assert_eq!(summaries[0].title, "Untitled Session");
     }
 
@@ -1992,7 +2008,11 @@ mod tests {
                     matches!(&e.kind, ChatEntryKind::System(t) if t.contains("Warning: working directory"))
                 })
                 .collect();
-            assert_eq!(warning_entries.len(), 1, "expected exactly one warning entry");
+            assert_eq!(
+                warning_entries.len(),
+                1,
+                "expected exactly one warning entry"
+            );
             let warning_text = match &warning_entries[0].kind {
                 ChatEntryKind::System(t) => t.clone(),
                 other => panic!("expected System, got {other:?}"),
@@ -2040,7 +2060,11 @@ mod tests {
                     matches!(&e.kind, ChatEntryKind::System(t) if t.contains("Warning: working directory"))
                 })
                 .collect();
-            assert_eq!(warning_entries.len(), 1, "expected exactly one warning entry");
+            assert_eq!(
+                warning_entries.len(),
+                1,
+                "expected exactly one warning entry"
+            );
             let warning_text = match &warning_entries[0].kind {
                 ChatEntryKind::System(t) => t.clone(),
                 other => panic!("expected System, got {other:?}"),
@@ -2054,4 +2078,3 @@ mod tests {
         }
     }
 }
-
