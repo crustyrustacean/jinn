@@ -8,8 +8,8 @@
 //! and sections can signal "unhandled" to let the sidebar move focus to the
 //! next/previous section.
 
-pub mod pins;
 pub mod persona_section;
+pub mod pins;
 pub mod section_trait;
 pub mod sidebar;
 pub mod state;

@@ -8,6 +8,7 @@
 pub(crate) mod actor;
 pub(crate) mod assistant;
 pub(crate) mod error_entry;
+pub(crate) mod line_count_cache;
 pub(crate) mod markdown;
 pub(crate) mod renderer;
 pub(crate) mod shared;
@@ -24,5 +25,5 @@ use crate::common::AppUiRegistry;
 
 /// Register chat log UI element.
 pub fn register(registry: &mut AppUiRegistry) {
-    registry.register(Box::new(ChatLogElement));
+    registry.register(Box::new(ChatLogElement::new()));
 }
