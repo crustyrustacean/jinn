@@ -164,10 +164,18 @@ impl IntentHandler {
                 feat::ui::sidebar::pins::pins_section::handle_sidebar_leave(state)
             }
             Intent::SidebarMoveDown => {
-                feat::ui::sidebar::pins::pins_section::handle_sidebar_move_down(state)
+                feat::ui::sidebar::navigate_sidebar(
+                    feat::ui::sidebar::SidebarIntent::MoveDown,
+                    state,
+                );
+                IntentResult::empty()
             }
             Intent::SidebarMoveUp => {
-                feat::ui::sidebar::pins::pins_section::handle_sidebar_move_up(state)
+                feat::ui::sidebar::navigate_sidebar(
+                    feat::ui::sidebar::SidebarIntent::MoveUp,
+                    state,
+                );
+                IntentResult::empty()
             }
             Intent::PinsUnpin => feat::ui::sidebar::pins::pins_section::handle_pins_unpin(state),
             Intent::PinsPinTop => {
