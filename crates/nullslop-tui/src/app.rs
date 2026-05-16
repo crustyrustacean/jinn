@@ -82,14 +82,13 @@ impl TuiApp {
             Msg::Tick => {
                 let load_started = {
                     let state = self.core.state.read();
-                    state.session.session_load_started_at
+                    state.session.session_load_guard.as_ref().map(|g| g.started_at)
                 };
                 if let Some(started) = load_started
                     && started.elapsed() >= std::time::Duration::from_secs(10)
                 {
                     let mut state = self.core.state.write();
-                    state.session.session_loading = false;
-                    state.session.session_load_started_at = None;
+                    state.session.clear_load();
                     state
                         .active_session_mut()
                         .push_entry(nullslop_domain::ChatEntry::system(

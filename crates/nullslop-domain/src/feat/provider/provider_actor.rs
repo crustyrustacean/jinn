@@ -130,6 +130,7 @@ impl ProviderActor {
         }
 
         if let Err(e) = ctx.send_event(Event::ProviderSwitched(ProviderSwitched {
+            session_id: payload.session_id.clone(),
             provider_name: payload.provider_id.clone(),
         })) {
             tracing::warn!(err = ?e, "provider-actor failed to emit ProviderSwitched");

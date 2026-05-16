@@ -131,6 +131,8 @@ pub enum Intent {
     SidebarMoveDown,
     /// Move selection up in the sidebar.
     SidebarMoveUp,
+    /// Activate the selected session (switch to it).
+    SidebarConfirm,
     /// Unpin the selected pinned entry.
     PinsUnpin,
     /// Set the selected pinned entry's position to TOP.
@@ -141,6 +143,8 @@ pub enum Intent {
     PinsPinRelative,
     /// Cycle the selected pinned entry's pin position.
     PinsPinCycle,
+    /// Close the selected open session from the sidebar.
+    SidebarSessionClose,
     /// Open the persona picker from the sidebar.
     SidebarPersonaEdit,
 
@@ -209,11 +213,13 @@ impl std::fmt::Display for Intent {
             Intent::SidebarLeave => write!(f, "sidebar leave"),
             Intent::SidebarMoveDown => write!(f, "sidebar move down"),
             Intent::SidebarMoveUp => write!(f, "sidebar move up"),
+            Intent::SidebarConfirm => write!(f, "sidebar confirm"),
             Intent::PinsUnpin => write!(f, "pins unpin"),
             Intent::PinsPinTop => write!(f, "pins pin top"),
             Intent::PinsPinBottom => write!(f, "pins pin bottom"),
             Intent::PinsPinRelative => write!(f, "pins pin relative"),
             Intent::PinsPinCycle => write!(f, "pins pin cycle"),
+            Intent::SidebarSessionClose => write!(f, "sidebar session close"),
             Intent::SidebarPersonaEdit => write!(f, "edit persona"),
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),

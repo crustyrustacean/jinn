@@ -487,9 +487,9 @@ fn given_record_session_id(world: &mut TuiWorld) {
 #[cucumber::then(expr = "the session should have changed")]
 fn then_session_changed(world: &mut TuiWorld) {
     let state = world.app.core.state.read();
-    // The fork was requested, so session_loading should be true.
+    // The fork was requested, so is_loading should be true.
     assert!(
-        state.session.session_loading,
+        state.session.is_loading(),
         "expected session_loading to be true after fork request"
     );
 }

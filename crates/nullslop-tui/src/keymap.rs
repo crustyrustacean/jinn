@@ -125,6 +125,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("r", Intent::PinsPinRelative, KeyCategory::Context)
             .bind("m", Intent::PinsPinCycle, KeyCategory::Context)
             .bind("e", Intent::SidebarPersonaEdit, KeyCategory::Context)
+            .bind("x", Intent::SidebarSessionClose, KeyCategory::General)
+            .bind("<enter>", Intent::SidebarConfirm, KeyCategory::General)
+            .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("<esc>", Intent::SidebarLeave, KeyCategory::General)
             // Tab switching
             .bind("<tab>", Intent::SwitchTab { direction: TabDirection::Next }, KeyCategory::Navigation)
@@ -160,6 +163,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
             .bind("<c-p>", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
+            .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(c) = key.key {
                     Some(Intent::InsertChar { ch: c })
