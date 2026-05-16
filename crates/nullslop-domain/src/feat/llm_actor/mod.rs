@@ -204,7 +204,9 @@ impl LlmActor {
         } else {
             self.factory.clone()
         };
-        let model_id = provider_id.map(std::borrow::ToOwned::to_owned).unwrap_or_default();
+        let model_id = provider_id
+            .map(std::borrow::ToOwned::to_owned)
+            .unwrap_or_default();
         let sink = ctx.sink();
         let sid = session_id.clone();
 

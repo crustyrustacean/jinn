@@ -210,6 +210,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         }
     }
 
@@ -425,6 +426,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         let call = ToolCall {

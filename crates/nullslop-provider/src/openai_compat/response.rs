@@ -83,7 +83,10 @@ impl StreamResponseParser {
             // Tool call deltas.
             if let Some(tool_calls) = delta.get("tool_calls").and_then(|t| t.as_array()) {
                 for tc in tool_calls {
-                    let index = tc.get("index").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
+                    let index = tc
+                        .get("index")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0) as usize;
 
                     let state = self.tool_states.entry(index).or_default();
 

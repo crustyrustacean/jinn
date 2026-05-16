@@ -25,4 +25,6 @@ pub struct ToolContext {
     pub state: Option<crate::common::state::State>,
     /// Session ID (only available for tools that need it).
     pub session_id: Option<crate::protocol::SessionId>,
+    /// Application filesystem paths (for tools that need filesystem access).
+    pub app_paths: crate::common::app_paths::AppPaths,
 }

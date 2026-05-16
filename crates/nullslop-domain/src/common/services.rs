@@ -37,6 +37,7 @@ use strategy_registry::StrategyRegistryService;
 ///
 /// ```ignore
 /// let services = Services {
+///     paths: AppPaths::default(),
 ///     handle: handle.clone(),
 ///     actor_channel,
 ///     llm_service,
@@ -52,6 +53,8 @@ use strategy_registry::StrategyRegistryService;
 /// or [`test_services::TestServices::builder()`] to customize specific services.
 #[derive(Debug, Clone)]
 pub struct Services {
+    /// Application filesystem paths (configured once at init).
+    pub paths: crate::common::app_paths::AppPaths,
     /// Async runtime handle for spawning background tasks.
     pub handle: Handle,
     /// Channel for sending commands/events into the actor system.
@@ -98,8 +101,11 @@ impl Services {
         ));
         let handle = rt.handle().clone();
 
+        let temp_dir = Box::leak(Box::new(tempfile::TempDir::new().expect("test temp dir")));
+
         let (actor_tx, _actor_rx) = kanal::unbounded::<AppMsg>();
         Self {
+            paths: crate::common::app_paths::AppPaths::new_in(temp_dir.path()),
             handle,
             actor_channel: ActorChannelService::new(actor_tx),
             llm_service: LlmServiceFactoryService::new(Arc::new(

@@ -18,9 +18,7 @@ pub fn definition() -> ToolDefinition {
             (whichever is hit first). Optionally provide a timeout in seconds."
             .to_owned(),
         prompt_snippet: Some("Execute bash commands (ls, grep, find, etc.)".to_owned()),
-        prompt_guidelines: vec![
-            "Use bash for file operations like ls, rg, find".to_owned(),
-        ],
+        prompt_guidelines: vec!["Use bash for file operations like ls, rg, find".to_owned()],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
@@ -162,6 +160,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         }
     }
 
@@ -239,6 +238,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         let call = ToolCall {

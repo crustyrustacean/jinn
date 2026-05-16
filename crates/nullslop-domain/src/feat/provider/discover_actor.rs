@@ -8,12 +8,11 @@
 use std::collections::HashMap;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use crate::common::app_paths::AppPaths;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::RefreshModels;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
-use crate::feat::provider_infra::{
-    ApiKeysService, ModelCache, ProviderRegistryService, cache_path,
-};
+use crate::feat::provider_infra::{ApiKeysService, ModelCache, ProviderRegistryService};
 use crate::protocol::{Command, Event};
 use error_stack::Report;
 use nullslop_provider::{
@@ -38,6 +37,8 @@ pub struct DiscoverActor {
     api_keys: ApiKeysService,
     /// Shared application state (to read active session ID).
     state: State,
+    /// Application filesystem paths.
+    app_paths: AppPaths,
 }
 
 impl Actor for DiscoverActor {
@@ -59,11 +60,15 @@ impl Actor for DiscoverActor {
         let state = ctx
             .take_data::<State>()
             .expect("State must be injected via ctx.set_data()");
+        let app_paths = ctx
+            .take_data::<AppPaths>()
+            .expect("AppPaths must be injected via ctx.set_data()");
 
         Self {
             registry,
             api_keys,
             state,
+            app_paths,
         }
     }
 
@@ -183,7 +188,7 @@ impl DiscoverActor {
             entries: results.clone(),
             last_updated_at: Some(jiff::Timestamp::now()),
         };
-        let path = cache_path();
+        let path = self.app_paths.cache_path();
         if let Err(e) = cache.save(&path) {
             tracing::warn!("failed to save model cache: {e:?}");
         }

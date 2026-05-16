@@ -975,10 +975,18 @@ mod tests {
     fn open_fork_picker_populates_entries_from_active_session() {
         // Given a state with chat history containing user and assistant entries.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(crate::ChatEntry::user("hello"));
-        state.active_session_mut().push_entry(crate::ChatEntry::assistant("world"));
-        state.active_session_mut().push_entry(crate::ChatEntry::system("system msg"));
-        state.active_session_mut().push_entry(crate::ChatEntry::user("second question"));
+        state
+            .active_session_mut()
+            .push_entry(crate::ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(crate::ChatEntry::assistant("world"));
+        state
+            .active_session_mut()
+            .push_entry(crate::ChatEntry::system("system msg"));
+        state
+            .active_session_mut()
+            .push_entry(crate::ChatEntry::user("second question"));
 
         // When opening the fork picker.
         let result = handle_open_picker(&mut state, PickerKind::SessionFork);
@@ -998,10 +1006,18 @@ mod tests {
     fn fork_picker_entries_have_correct_ordinals() {
         // Given a state with chat history.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(crate::ChatEntry::user("hello"));     // ordinal 0
-        state.active_session_mut().push_entry(crate::ChatEntry::assistant("world")); // ordinal 1
-        state.active_session_mut().push_entry(crate::ChatEntry::system("sys"));     // ordinal 2 (excluded)
-        state.active_session_mut().push_entry(crate::ChatEntry::user("q2"));        // ordinal 3
+        state
+            .active_session_mut()
+            .push_entry(crate::ChatEntry::user("hello")); // ordinal 0
+        state
+            .active_session_mut()
+            .push_entry(crate::ChatEntry::assistant("world")); // ordinal 1
+        state
+            .active_session_mut()
+            .push_entry(crate::ChatEntry::system("sys")); // ordinal 2 (excluded)
+        state
+            .active_session_mut()
+            .push_entry(crate::ChatEntry::user("q2")); // ordinal 3
 
         // When opening the fork picker.
         handle_open_picker(&mut state, PickerKind::SessionFork);
@@ -1075,11 +1091,29 @@ mod tests {
             kind: PickerKind::SessionFork,
         });
         state.frontend.all_fork_entries = vec![
-            ForkEntry { ordinal: 0, text: "user msg".to_owned(), is_user: true, theme: default_theme() },
-            ForkEntry { ordinal: 1, text: "asst msg".to_owned(), is_user: false, theme: default_theme() },
-            ForkEntry { ordinal: 2, text: "user msg 2".to_owned(), is_user: true, theme: default_theme() },
+            ForkEntry {
+                ordinal: 0,
+                text: "user msg".to_owned(),
+                is_user: true,
+                theme: default_theme(),
+            },
+            ForkEntry {
+                ordinal: 1,
+                text: "asst msg".to_owned(),
+                is_user: false,
+                theme: default_theme(),
+            },
+            ForkEntry {
+                ordinal: 2,
+                text: "user msg 2".to_owned(),
+                is_user: true,
+                theme: default_theme(),
+            },
         ];
-        state.frontend.fork_picker.set_items(state.frontend.all_fork_entries.clone());
+        state
+            .frontend
+            .fork_picker
+            .set_items(state.frontend.all_fork_entries.clone());
 
         // When toggling user filter off.
         let result = handle_toggle_fork_user_filter(&mut state);
@@ -1100,10 +1134,23 @@ mod tests {
             kind: PickerKind::SessionFork,
         });
         state.frontend.all_fork_entries = vec![
-            ForkEntry { ordinal: 0, text: "user msg".to_owned(), is_user: true, theme: default_theme() },
-            ForkEntry { ordinal: 1, text: "asst msg".to_owned(), is_user: false, theme: default_theme() },
+            ForkEntry {
+                ordinal: 0,
+                text: "user msg".to_owned(),
+                is_user: true,
+                theme: default_theme(),
+            },
+            ForkEntry {
+                ordinal: 1,
+                text: "asst msg".to_owned(),
+                is_user: false,
+                theme: default_theme(),
+            },
         ];
-        state.frontend.fork_picker.set_items(state.frontend.all_fork_entries.clone());
+        state
+            .frontend
+            .fork_picker
+            .set_items(state.frontend.all_fork_entries.clone());
 
         // When toggling assistant filter off.
         let result = handle_toggle_fork_assistant_filter(&mut state);
@@ -1140,10 +1187,23 @@ mod tests {
             kind: PickerKind::SessionFork,
         });
         state.frontend.all_fork_entries = vec![
-            ForkEntry { ordinal: 0, text: "user".to_owned(), is_user: true, theme: default_theme() },
-            ForkEntry { ordinal: 1, text: "asst".to_owned(), is_user: false, theme: default_theme() },
+            ForkEntry {
+                ordinal: 0,
+                text: "user".to_owned(),
+                is_user: true,
+                theme: default_theme(),
+            },
+            ForkEntry {
+                ordinal: 1,
+                text: "asst".to_owned(),
+                is_user: false,
+                theme: default_theme(),
+            },
         ];
-        state.frontend.fork_picker.set_items(state.frontend.all_fork_entries.clone());
+        state
+            .frontend
+            .fork_picker
+            .set_items(state.frontend.all_fork_entries.clone());
 
         // When toggling both filters off.
         handle_toggle_fork_user_filter(&mut state);
@@ -1163,10 +1223,23 @@ mod tests {
             kind: PickerKind::SessionFork,
         });
         state.frontend.all_fork_entries = vec![
-            ForkEntry { ordinal: 0, text: "user".to_owned(), is_user: true, theme: default_theme() },
-            ForkEntry { ordinal: 1, text: "asst".to_owned(), is_user: false, theme: default_theme() },
+            ForkEntry {
+                ordinal: 0,
+                text: "user".to_owned(),
+                is_user: true,
+                theme: default_theme(),
+            },
+            ForkEntry {
+                ordinal: 1,
+                text: "asst".to_owned(),
+                is_user: false,
+                theme: default_theme(),
+            },
         ];
-        state.frontend.fork_picker.set_items(state.frontend.all_fork_entries.clone());
+        state
+            .frontend
+            .fork_picker
+            .set_items(state.frontend.all_fork_entries.clone());
 
         // When toggling user filter twice.
         handle_toggle_fork_user_filter(&mut state);

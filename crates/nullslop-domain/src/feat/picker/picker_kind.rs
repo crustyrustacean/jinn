@@ -35,7 +35,7 @@ impl std::fmt::Display for PickerKind {
             Self::Session => write!(f, "sessions"),
             Self::Persona => write!(f, "personas"),
             Self::Theme => write!(f, "themes"),
-        Self::SessionFork => write!(f, "session-fork"),
+            Self::SessionFork => write!(f, "session-fork"),
         }
     }
 }

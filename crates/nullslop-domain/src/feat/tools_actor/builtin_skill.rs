@@ -1,7 +1,6 @@
 //! Skill built-in tool — loads a skill's content and pins it as TOP context.
 
 use crate::feat::skills::frontmatter::strip_frontmatter;
-use crate::feat::skills::skills_dir;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{ChatEntry, PinPosition};
 
@@ -55,7 +54,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             };
         }
 
-        let skill_path = skills_dir().join(&name).join("SKILL.md");
+        let skill_path = ctx.app_paths.skills_dir().join(&name).join("SKILL.md");
 
         let content = match tokio::fs::read_to_string(&skill_path).await {
             Ok(c) => c,
@@ -113,6 +112,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         }
     }
 
@@ -220,6 +220,7 @@ mod tests {
             timeout: None,
             state: Some(state.clone()),
             session_id: Some(session_id.clone()),
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing.

@@ -221,11 +221,7 @@ impl std::fmt::Display for Command {
             }
             Command::ReloadScripts(..) => write!(f, "reload scripts"),
             Command::SessionForkRequested(payload) => {
-                write!(
-                    f,
-                    "session fork at ordinal {}",
-                    payload.at_ordinal
-                )
+                write!(f, "session fork at ordinal {}", payload.at_ordinal)
             }
         }
     }

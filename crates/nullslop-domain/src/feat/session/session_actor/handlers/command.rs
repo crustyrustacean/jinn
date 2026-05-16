@@ -1,5 +1,6 @@
 //! Command handlers — process session lifecycle commands.
 
+use crate::SessionForkRequested;
 use crate::common::actor::ActorContext;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
@@ -11,7 +12,6 @@ use crate::feat::context::protocol::command::{
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::protocol::{ChatEntry, Command, Event};
-use crate::SessionForkRequested;
 
 use super::super::SessionPersistenceActor;
 

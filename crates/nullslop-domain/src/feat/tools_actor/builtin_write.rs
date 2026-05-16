@@ -18,9 +18,7 @@ pub fn definition() -> ToolDefinition {
             overwrites if it does. Automatically creates parent directories."
             .to_owned(),
         prompt_snippet: Some("Create or overwrite files".to_owned()),
-        prompt_guidelines: vec![
-            "Use write only for new files or complete rewrites.".to_owned(),
-        ],
+        prompt_guidelines: vec!["Use write only for new files or complete rewrites.".to_owned()],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
@@ -123,6 +121,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         }
     }
 
@@ -262,6 +261,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         let call = ToolCall {

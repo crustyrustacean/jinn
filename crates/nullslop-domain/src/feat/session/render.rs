@@ -27,11 +27,7 @@ pub fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
 ///
 /// Shows User and Assistant entries from the active session, color-coded
 /// by entry kind. The footer shows active filters and shortcuts.
-pub fn render_session_fork_picker(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    state: &AppState,
-) {
+pub fn render_session_fork_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let mut filter_labels = Vec::new();
     if state.frontend.fork_show_user {
         filter_labels.push("User");

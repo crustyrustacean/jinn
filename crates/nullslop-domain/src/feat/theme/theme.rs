@@ -159,17 +159,39 @@ impl ThemeFile {
     pub fn resolve(&self) -> Theme {
         let d = default_theme();
         Theme {
-            focus_accent: self.focus_accent.map_or(d.focus_accent, super::color::ThemeColor::inner),
-            border_unfocused: self.border_unfocused.map_or(d.border_unfocused, super::color::ThemeColor::inner),
-            primary_text: self.primary_text.map_or(d.primary_text, super::color::ThemeColor::inner),
-            muted_text: self.muted_text.map_or(d.muted_text, super::color::ThemeColor::inner),
-            error_text: self.error_text.map_or(d.error_text, super::color::ThemeColor::inner),
-            success: self.success.map_or(d.success, super::color::ThemeColor::inner),
-            warning: self.warning.map_or(d.warning, super::color::ThemeColor::inner),
-            streaming: self.streaming.map_or(d.streaming, super::color::ThemeColor::inner),
-            gutter_bg: self.gutter_bg.map_or(d.gutter_bg, super::color::ThemeColor::inner),
-            user_block_bg: self.user_block_bg.map_or(d.user_block_bg, super::color::ThemeColor::inner),
-            tool_block_fg: self.tool_block_fg.map_or(d.tool_block_fg, super::color::ThemeColor::inner),
+            focus_accent: self
+                .focus_accent
+                .map_or(d.focus_accent, super::color::ThemeColor::inner),
+            border_unfocused: self
+                .border_unfocused
+                .map_or(d.border_unfocused, super::color::ThemeColor::inner),
+            primary_text: self
+                .primary_text
+                .map_or(d.primary_text, super::color::ThemeColor::inner),
+            muted_text: self
+                .muted_text
+                .map_or(d.muted_text, super::color::ThemeColor::inner),
+            error_text: self
+                .error_text
+                .map_or(d.error_text, super::color::ThemeColor::inner),
+            success: self
+                .success
+                .map_or(d.success, super::color::ThemeColor::inner),
+            warning: self
+                .warning
+                .map_or(d.warning, super::color::ThemeColor::inner),
+            streaming: self
+                .streaming
+                .map_or(d.streaming, super::color::ThemeColor::inner),
+            gutter_bg: self
+                .gutter_bg
+                .map_or(d.gutter_bg, super::color::ThemeColor::inner),
+            user_block_bg: self
+                .user_block_bg
+                .map_or(d.user_block_bg, super::color::ThemeColor::inner),
+            tool_block_fg: self
+                .tool_block_fg
+                .map_or(d.tool_block_fg, super::color::ThemeColor::inner),
             tool_success_bg: self
                 .tool_success_bg
                 .map_or(d.tool_success_bg, super::color::ThemeColor::inner),
@@ -206,8 +228,12 @@ impl ThemeFile {
             accent_action: self
                 .accent_action
                 .map_or(d.accent_action, super::color::ThemeColor::inner),
-            age_fresh: self.age_fresh.map_or(d.age_fresh, super::color::ThemeColor::inner),
-            age_stale: self.age_stale.map_or(d.age_stale, super::color::ThemeColor::inner),
+            age_fresh: self
+                .age_fresh
+                .map_or(d.age_fresh, super::color::ThemeColor::inner),
+            age_stale: self
+                .age_stale
+                .map_or(d.age_stale, super::color::ThemeColor::inner),
             scroll_indicator_bg: self
                 .scroll_indicator_bg
                 .map_or(d.scroll_indicator_bg, super::color::ThemeColor::inner),

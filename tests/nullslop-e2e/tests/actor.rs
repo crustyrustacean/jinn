@@ -120,6 +120,7 @@ fn create_actor_core(
     let orch_ref = ActorRef::new(orch_tx);
     let mut orch_ctx = ActorContext::new("tool-orchestrator", sink.clone());
     orch_ctx.set_data(state.clone());
+    orch_ctx.set_data(nullslop_domain::AppPaths::default());
     let orch_actor = ToolOrchestratorActor::activate(&mut orch_ctx);
     let shutdown_tracker = ShutdownTracker::new();
     let orch_result = spawn_actor_impl(

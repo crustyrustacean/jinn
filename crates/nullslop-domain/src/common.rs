@@ -3,6 +3,7 @@
 pub mod actor;
 pub mod actor_host;
 pub mod app_info;
+pub mod app_paths;
 pub mod app_state;
 pub mod core;
 pub mod frontmatter;

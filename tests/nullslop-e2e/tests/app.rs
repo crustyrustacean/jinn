@@ -49,6 +49,9 @@ pub struct AppWorld {
     /// Tokio runtime handle.
     #[allow(dead_code)]
     handle: tokio::runtime::Handle,
+    /// Temp directory holding all test filesystem paths. Cleaned up on drop.
+    #[allow(dead_code)]
+    temp_dir: tempfile::TempDir,
 }
 
 impl std::fmt::Debug for AppWorld {
@@ -73,12 +76,15 @@ impl AppWorld {
         // Only the core/services/actor_host cross the thread boundary
         // (TuiApp is !Send due to trait objects).
         let (handle_tx, handle_rx) = std::sync::mpsc::channel();
+        let temp_dir = tempfile::TempDir::new().expect("test temp dir");
+        let temp_dir_path = temp_dir.path().to_path_buf();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().expect("test runtime");
             let handle = rt.handle().clone();
 
             // Build fake services — same pattern as production App::dispatch
             // but with all fake implementations.
+            let paths = nullslop_domain::AppPaths::new_in(&temp_dir_path);
             let config_storage = ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
             let resolved_api_keys = ApiKeysService::new(ApiKeys::new());
             let empty_config = ProvidersConfig {
@@ -93,6 +99,9 @@ impl AppWorld {
                 LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])));
             let user_preferences_storage =
                 UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
+            let session_store = nullslop_domain::SessionStoreService::new(Arc::new(
+                nullslop_domain::SqliteSessionStore::new_in(paths.sessions_dir()),
+            ));
 
             // Call production wiring — spawns all 16 actors.
             let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
@@ -101,6 +110,7 @@ impl AppWorld {
                 provider_registry,
                 resolved_api_keys,
                 config_storage,
+                session_store,
                 user_preferences_storage,
             );
 
@@ -140,7 +150,11 @@ impl AppWorld {
             },
         };
 
-        Self { app, handle }
+        Self {
+            app,
+            handle,
+            temp_dir,
+        }
     }
 
     /// Polls `AppState` at 10ms intervals until `predicate` returns `true`

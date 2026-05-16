@@ -100,6 +100,8 @@ pub struct ToolOrchestratorActor {
     pending: HashMap<SessionId, PendingBatch>,
     /// Shared application state for reading session CWD.
     state: State,
+    /// Application filesystem paths.
+    app_paths: crate::common::app_paths::AppPaths,
 }
 
 impl Actor for ToolOrchestratorActor {
@@ -114,11 +116,15 @@ impl Actor for ToolOrchestratorActor {
         let state: State = ctx
             .take_data()
             .expect("ToolOrchestratorActor requires State injection");
+        let app_paths: crate::common::app_paths::AppPaths = ctx
+            .take_data()
+            .expect("ToolOrchestratorActor requires AppPaths injection");
 
         let mut actor = Self {
             tools: HashMap::new(),
             pending: HashMap::new(),
             state,
+            app_paths,
         };
 
         let builtins = builtin::builtin_tools();
@@ -297,6 +303,7 @@ impl ToolOrchestratorActor {
             timeout: None,
             state: Some(self.state.clone()),
             session_id: Some(session_id.clone()),
+            app_paths: self.app_paths.clone(),
         }
     }
 
@@ -474,6 +481,7 @@ mod tests {
     fn test_context_with_state(sink: &std::sync::Arc<RecordingSink>, state: State) -> ActorContext {
         let mut ctx = ActorContext::new("test-tool-orchestrator", sink.clone());
         ctx.set_data(state);
+        ctx.set_data(crate::common::app_paths::AppPaths::default());
         ctx
     }
 
@@ -710,6 +718,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing the echo tool.
@@ -734,6 +743,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing the echo tool.
@@ -757,6 +767,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing the get_time tool.
@@ -789,6 +800,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing the read tool.
@@ -815,6 +827,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing the read tool.
@@ -1146,6 +1159,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing the write tool.
@@ -1178,6 +1192,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing the write tool.
@@ -1209,6 +1224,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing the write tool.
@@ -1244,6 +1260,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing the write tool.
@@ -1269,6 +1286,7 @@ mod tests {
             timeout: None,
             state: None,
             session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
         };
 
         // When executing the write tool.

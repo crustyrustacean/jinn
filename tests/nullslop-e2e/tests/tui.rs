@@ -21,6 +21,9 @@ use nullslop_tui::{Scope, TuiApp};
 pub struct TuiWorld {
     /// The full TUI application under test.
     pub app: TuiApp,
+    /// Temp directory holding all test filesystem paths. Cleaned up on drop.
+    #[allow(dead_code)]
+    temp_dir: tempfile::TempDir,
 }
 
 impl TuiWorld {
@@ -41,7 +44,12 @@ impl TuiWorld {
         let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
         let (actor_tx, _actor_rx) = kanal::unbounded::<nullslop_domain::AppMsg>();
 
+        let temp_dir = tempfile::TempDir::new().expect("test temp dir");
+        let paths = nullslop_domain::AppPaths::new_in(temp_dir.path());
+        let sessions_dir = paths.sessions_dir();
+
         let services = nullslop_domain::Services {
+            paths,
             handle,
             actor_channel: nullslop_domain::ActorChannelService::new(actor_tx),
             llm_service: llm,
@@ -53,9 +61,7 @@ impl TuiWorld {
                 nullslop_domain::InMemoryConfigStorage::new(),
             )),
             session_store: nullslop_domain::SessionStoreService::new(Arc::new(
-                nullslop_domain::SqliteSessionStore::new_in(
-                    tempfile::tempdir().expect("temp dir").path().to_path_buf(),
-                ),
+                nullslop_domain::SqliteSessionStore::new_in(sessions_dir),
             )),
             strategy_registry,
             user_preferences_storage: nullslop_domain::UserPreferencesStorageService::new(
@@ -65,7 +71,7 @@ impl TuiWorld {
 
         let app = TuiApp::test_builder().services(services).build();
 
-        Self { app }
+        Self { app, temp_dir }
     }
 
     /// Sends a keystroke to the app.
@@ -370,7 +376,9 @@ fn given_session_has_messages(world: &mut TuiWorld, user_count: u64, assistant_c
     for i in 0..user_count {
         state
             .active_session_mut()
-            .push_entry(nullslop_domain::ChatEntry::user(format!("user message {i}")));
+            .push_entry(nullslop_domain::ChatEntry::user(format!(
+                "user message {i}"
+            )));
     }
     for i in 0..assistant_count {
         state
@@ -382,11 +390,17 @@ fn given_session_has_messages(world: &mut TuiWorld, user_count: u64, assistant_c
 }
 
 /// Adds an actor message to the active session history.
-#[cucumber::given(expr = "the active session has an actor message from {string} with text {string}")]
+#[cucumber::given(
+    expr = "the active session has an actor message from {string} with text {string}"
+)]
 fn given_session_has_actor_message(world: &mut TuiWorld, source: String, text: String) {
-    world.app.core.state.write().active_session_mut().push_entry(
-        nullslop_domain::ChatEntry::actor(source, text),
-    );
+    world
+        .app
+        .core
+        .state
+        .write()
+        .active_session_mut()
+        .push_entry(nullslop_domain::ChatEntry::actor(source, text));
 }
 
 /// Simulates pressing 's' then 'f' to open the fork picker.
@@ -408,7 +422,15 @@ fn when_user_opens_fork_picker(world: &mut TuiWorld) {
 /// Asserts the fork picker shows the expected number of entries.
 #[cucumber::then(expr = "the fork picker should show {int} entries")]
 fn then_fork_picker_entry_count(world: &mut TuiWorld, count: u64) {
-    let actual = world.app.core.state.read().frontend.fork_picker.items().len();
+    let actual = world
+        .app
+        .core
+        .state
+        .read()
+        .frontend
+        .fork_picker
+        .items()
+        .len();
     assert_eq!(
         actual, count as usize,
         "expected {count} fork picker entries, got {actual}"
@@ -418,7 +440,15 @@ fn then_fork_picker_entry_count(world: &mut TuiWorld, count: u64) {
 /// Asserts the fork picker is active.
 #[cucumber::then(expr = "the fork picker should be active")]
 fn then_fork_picker_active(world: &mut TuiWorld) {
-    let kind = world.app.core.state.read().frontend.scope_stack.picker_kind().copied();
+    let kind = world
+        .app
+        .core
+        .state
+        .read()
+        .frontend
+        .scope_stack
+        .picker_kind()
+        .copied();
     assert_eq!(
         kind,
         Some(nullslop_domain::PickerKind::SessionFork),
