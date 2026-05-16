@@ -180,6 +180,19 @@ pub enum ChatEntryKind {
         /// Whether execution succeeded.
         success: bool,
     },
+    /// A skill loaded into the session context.
+    ///
+    /// Created when the `skill` built-in tool loads a SKILL.md file.
+    /// Always pinned to TOP. Renders as a collapsible entry showing
+    /// only the skill name by default.
+    Skill {
+        /// The skill name.
+        name: String,
+        /// Absolute path to the SKILL.md file.
+        location: String,
+        /// The full skill content (body of SKILL.md with frontmatter stripped).
+        content: String,
+    },
 }
 
 impl ChatEntry {
@@ -348,6 +361,26 @@ impl ChatEntry {
         }
     }
 
+    /// Create a new skill entry with the current timestamp.
+    #[must_use]
+    pub fn skill<N, L, C>(name: N, location: L, content: C) -> Self
+    where
+        N: Into<String>,
+        L: Into<String>,
+        C: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Skill {
+                name: name.into(),
+                location: location.into(),
+                content: content.into(),
+            },
+            pin_position: None,
+        }
+    }
+
     /// Set the pin position on this entry, returning the modified entry.
     ///
     /// Used as a builder: `ChatEntry::user("instruction").with_pin(PinPosition::Top)`
@@ -382,6 +415,7 @@ impl ChatEntry {
             ChatEntryKind::Thinking(..) => "thinking",
             ChatEntryKind::ToolCall { .. } => "tool_call",
             ChatEntryKind::ToolResult { .. } => "tool_result",
+            ChatEntryKind::Skill { .. } => "skill",
         }
     }
 
@@ -408,6 +442,7 @@ impl ChatEntry {
             ChatEntryKind::ToolResult { name, content, .. } => {
                 format!("{name}: {content}")
             }
+            ChatEntryKind::Skill { content, .. } => content.clone(),
         }
     }
 
@@ -445,6 +480,10 @@ impl ChatEntry {
                 name.hash(&mut hasher);
                 content.hash(&mut hasher);
                 success.hash(&mut hasher);
+            }
+            ChatEntryKind::Skill { name, content, .. } => {
+                name.hash(&mut hasher);
+                content.hash(&mut hasher);
             }
         }
         hasher.finish()
@@ -555,6 +594,28 @@ impl Serialize for ChatEntryKind {
                 )?;
                 map.end()
             }
+            ChatEntryKind::Skill {
+                name,
+                location,
+                content,
+            } => {
+                #[derive(Serialize)]
+                struct SkillData {
+                    name: String,
+                    location: String,
+                    content: String,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "Skill",
+                    &SkillData {
+                        name: name.clone(),
+                        location: location.clone(),
+                        content: content.clone(),
+                    },
+                )?;
+                map.end()
+            }
             ChatEntryKind::Thinking(t) => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("Thinking", t)?;
@@ -649,11 +710,24 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             success: data.success,
                         })
                     }
+                    "Skill" => {
+                        #[derive(Deserialize)]
+                        struct SkillData {
+                            name: String,
+                            location: String,
+                            content: String,
+                        }
+                        let data: SkillData = map.next_value()?;
+                        Ok(ChatEntryKind::Skill {
+                            name: data.name,
+                            location: data.location,
+                            content: data.content,
+                        })
+                    }
                     "Thinking" => {
                         let text: String = map.next_value()?;
                         Ok(ChatEntryKind::Thinking(text))
                     }
-                    // "Table" is never deserialized — it's ephemeral.
                     other => Err(de::Error::unknown_variant(
                         other,
                         &[
@@ -665,6 +739,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             "ToolCall",
                             "ToolResult",
                             "Thinking",
+                            "Skill",
                         ],
                     )),
                 }
