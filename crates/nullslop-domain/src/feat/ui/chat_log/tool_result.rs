@@ -179,7 +179,7 @@ mod tests {
         let ctx = render_context(5, false);
 
         // When converting to lines.
-        let lines = to_lines("bash", r#"line one\nline two\nline three"#, true, &ctx);
+        let lines = to_lines("bash", r"line one\nline two\nline three", true, &ctx);
 
         // Then the result has multiple lines (name + 3 content lines = 4).
         assert_eq!(

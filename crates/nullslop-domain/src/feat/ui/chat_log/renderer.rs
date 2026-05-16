@@ -52,6 +52,7 @@ impl UiElement<AppState> for ChatLogElement {
         true
     }
 
+    #[allow(clippy::too_many_lines)]
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         // Show loading indicator when a session is being loaded.
         if state.session.session_loading {
@@ -185,7 +186,7 @@ impl UiElement<AppState> for ChatLogElement {
             // (wrapped) content lines. We can compute this by padding gutter_lines
             // to match the wrapped line count.
             let mut entry_gutter_lines = Vec::new();
-            let blank_gutter = Span::styled(format!("{GUTTER_STR}"), gutter_style);
+            let blank_gutter = Span::styled(GUTTER_STR.to_string(), gutter_style);
             for (i, _) in entry_content_lines.iter().enumerate() {
                 let span = if i == 0 && ctx.is_pinned {
                     Span::styled(gutter_content.to_owned(), pin_highlight_style)
@@ -204,7 +205,7 @@ impl UiElement<AppState> for ChatLogElement {
                 let extra = entry_wrapped - logical_count;
                 for _ in 0..extra {
                     entry_gutter_lines.push(Line::from(Span::styled(
-                        format!("{GUTTER_STR}"),
+                        GUTTER_STR.to_string(),
                         gutter_style,
                     )));
                 }
@@ -225,7 +226,7 @@ impl UiElement<AppState> for ChatLogElement {
         for _ in 0..blank_count {
             display_content.push(Line::from(""));
             display_gutter.push(Line::from(Span::styled(
-                format!("{GUTTER_STR}"),
+                GUTTER_STR.to_string(),
                 Style::default().fg(state.frontend.theme.border_unfocused),
             )));
         }

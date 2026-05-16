@@ -23,7 +23,7 @@ async fn text_streaming_yields_text_events() {
     server
         .mock(
             "POST",
-            mockito::Matcher::Regex(r#"\?key=test-key"#.to_owned()),
+            mockito::Matcher::Regex(r"\?key=test-key".to_owned()),
         )
         .with_status(200)
         .with_header("content-type", "text/event-stream")
@@ -68,7 +68,7 @@ async fn tool_call_streaming_yields_start_delta_complete_done() {
     server
         .mock(
             "POST",
-            mockito::Matcher::Regex(r#"\?key=test-key"#.to_owned()),
+            mockito::Matcher::Regex(r"\?key=test-key".to_owned()),
         )
         .with_status(200)
         .with_header("content-type", "text/event-stream")
@@ -118,7 +118,7 @@ async fn error_response_401_returns_error() {
     server
         .mock(
             "POST",
-            mockito::Matcher::Regex(r#"\?key=test-key"#.to_owned()),
+            mockito::Matcher::Regex(r"\?key=test-key".to_owned()),
         )
         .with_status(401)
         .with_body("{\"error\":\"unauthorized\"}")
@@ -147,7 +147,7 @@ async fn chat_stream_yields_text_tokens_only() {
     server
         .mock(
             "POST",
-            mockito::Matcher::Regex(r#"\?key=test-key"#.to_owned()),
+            mockito::Matcher::Regex(r"\?key=test-key".to_owned()),
         )
         .with_status(200)
         .with_header("content-type", "text/event-stream")

@@ -26,6 +26,7 @@ impl GeminiStreamParser {
     }
 
     /// Parse a single SSE data payload into zero or more `StreamEvent`s.
+    #[allow(clippy::manual_let_else, clippy::collapsible_if)]
     pub fn parse_data(&mut self, json: &str) -> Vec<StreamEvent> {
         let mut results = Vec::new();
 

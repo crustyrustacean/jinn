@@ -40,7 +40,7 @@ pub fn build_request(
             _ => None,
         })
         .collect();
-    let system_text = system_prompt.map(|s| s.to_owned()).or_else(|| {
+    let system_text = system_prompt.map(std::borrow::ToOwned::to_owned).or_else(|| {
         if system_contents.is_empty() {
             None
         } else {
@@ -117,7 +117,7 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
                     "id": tc.id,
                     "name": tc.name,
                     "input": serde_json::from_str::<serde_json::Value>(&tc.arguments)
-                        .unwrap_or(serde_json::Value::Object(Default::default())),
+                        .unwrap_or(serde_json::Value::Object(serde_json::Map::default())),
                 }));
             }
 

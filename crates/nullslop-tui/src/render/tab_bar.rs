@@ -14,6 +14,7 @@ pub fn init_tab_manager() -> TabManager {
 }
 
 /// Renders the tab bar.
+#[expect(clippy::similar_names, reason = "tab_active_fg/tab_active_bg is a fg/bg pair naming convention")]
 pub(super) fn render_tab_bar(
     frame: &mut Frame<'_>,
     area: Rect,

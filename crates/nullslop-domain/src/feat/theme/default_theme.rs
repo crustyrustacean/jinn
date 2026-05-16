@@ -109,11 +109,11 @@ mod tests {
     #[rstest::rstest]
     fn default_theme_round_trips_through_toml() {
         // Given the default theme.
-        let theme = default_theme();
-
         // When converting to a ThemeFile, serializing, and re-parsing.
         use crate::feat::theme::color::ThemeColor;
         use crate::feat::theme::theme::ThemeFile;
+
+        let theme = default_theme();
 
         let file = ThemeFile {
             focus_accent: Some(ThemeColor(theme.focus_accent)),
