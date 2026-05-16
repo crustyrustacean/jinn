@@ -1,7 +1,7 @@
 //! Chat entry selection intent handlers — navigate and pin entries.
 
 use crate::common::app_state::AppState;
-use crate::feat::context::protocol::command::PinChatEntry;
+use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::protocol::{Command, IntentResult, PinPosition};
 
 use super::validator;
@@ -77,24 +77,33 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Pins the currently selected chat entry.
+/// Toggles the pin state of the currently selected chat entry.
 ///
-/// Returns a `PinChatEntry` command with `Relative` position.
+/// If the entry is pinned, sends an `UnpinChatEntry` command.
+/// If the entry is not pinned, sends a `PinChatEntry` command with `Relative` position.
 pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
     if validator::validate_chat_entry_pin_selected(state).is_err() {
         return IntentResult::empty();
     }
 
     let session_id = state.session.active_session.clone();
-    let Some(entry_id) = state.active_session().selected_entry_id().cloned() else {
+    let Some(selected) = state.active_session().selected_entry() else {
         return IntentResult::empty();
     };
+    let entry_id = selected.id.clone();
 
-    IntentResult::with_commands(vec![Command::PinChatEntry(PinChatEntry {
-        session_id,
-        entry_id,
-        position: PinPosition::Relative,
-    })])
+    if selected.is_pinned() {
+        IntentResult::with_commands(vec![Command::UnpinChatEntry(UnpinChatEntry {
+            session_id,
+            entry_id,
+        })])
+    } else {
+        IntentResult::with_commands(vec![Command::PinChatEntry(PinChatEntry {
+            session_id,
+            entry_id,
+            position: PinPosition::Relative,
+        })])
+    }
 }
 
 /// Toggles expand/collapse of the selected tool result entry.
@@ -187,6 +196,33 @@ mod tests {
 
         // Then no commands.
         assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn toggle_pin_selected_returns_unpin_command_when_pinned() {
+        // Given a state with a selected pinned entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+        let entry_id = state.active_session().selected_entry_id().unwrap().clone();
+        state
+            .active_session_mut()
+            .pin_entry(&entry_id, PinPosition::Top);
+
+        // When handling pin selected (toggle).
+        let result = handle_pin_selected(&mut state);
+
+        // Then an UnpinChatEntry command is returned.
+        assert!(result.commands.iter().any(|c| {
+            matches!(
+                c,
+                Command::UnpinChatEntry(
+                    crate::feat::context::protocol::command::UnpinChatEntry { .. }
+                )
+            )
+        }));
     }
 
     #[rstest::rstest]
