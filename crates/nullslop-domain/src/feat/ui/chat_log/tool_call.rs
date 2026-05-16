@@ -28,6 +28,12 @@ pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'s
             Style::default().bg(ctx.theme.tool_success_bg),
         );
     }
+
+    // Add padding above and below with the tool block background.
+    let pad_bg = Style::default().bg(ctx.theme.tool_success_bg);
+    let pad_line = Line::from(Span::styled(" ".repeat(ctx.content_width as usize), pad_bg));
+    lines.insert(0, pad_line.clone());
+    lines.push(pad_line);
     lines
 }
 
