@@ -114,7 +114,7 @@ impl SessionPersistenceActor {
         ctx: &ActorContext,
     ) {
         let should_save = event.reason == StreamCompletedReason::Finished;
-        let drained_messages: Vec<String>;
+        let drained_entries: Vec<ChatEntry>;
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
@@ -137,7 +137,7 @@ impl SessionPersistenceActor {
             }
 
             // Drain queue on Finished — the turn has ended.
-            drained_messages = if event.reason == StreamCompletedReason::Finished {
+            drained_entries = if event.reason == StreamCompletedReason::Finished {
                 session.drain_queue().into_iter().collect()
             } else {
                 vec![]
@@ -145,8 +145,8 @@ impl SessionPersistenceActor {
         }
 
         // If messages were drained, start a new turn.
-        if !drained_messages.is_empty() {
-            self.start_turn_from_queued(&event.session_id, &drained_messages, ctx);
+        if !drained_entries.is_empty() {
+            self.start_turn_from_queued(&event.session_id, &drained_entries, ctx);
         }
 
         // Persist session after stream finishes (not on cancel).
@@ -264,19 +264,19 @@ impl SessionPersistenceActor {
             .push_entry(ChatEntry::table(data));
     }
 
-    /// Drain queued messages into a new turn: push each as a separate User
-    /// entry, then emit `AssemblePrompt` with the full session history.
+    /// Drain queued messages into a new turn: push each entry, then emit
+    /// `AssemblePrompt` with the full session history.
     pub(in crate::feat::session::session_actor) fn start_turn_from_queued(
         &self,
         session_id: &SessionId,
-        messages: &[String],
+        entries: &[ChatEntry],
         ctx: &ActorContext,
     ) {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
-            for text in messages {
-                session.push_entry(ChatEntry::user(text));
+            for entry in entries {
+                session.push_entry(entry.clone());
             }
             session.begin_sending();
         }
@@ -296,11 +296,11 @@ impl SessionPersistenceActor {
             tracing::warn!(err = ?e, "session-actor failed to emit AssemblePrompt from queue drain");
         }
 
-        // Emit ChatEntrySubmitted for each queued message.
-        for text in messages {
+        // Emit ChatEntrySubmitted for each queued entry.
+        for entry in entries {
             if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
                 session_id: session_id.clone(),
-                entry: ChatEntry::user(text),
+                entry: entry.clone(),
             })) {
                 tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted for queued message");
             }
