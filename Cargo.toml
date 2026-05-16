@@ -6,7 +6,7 @@ resolver = "3"
 default-run = "nullslop"
 
 [workspace]
-members = ["crates/*", "tests/*"]
+members = ["crates/*", "tests/*", "vendor/*"]
 
 [lib]
 path = "src/lib.rs"
@@ -38,6 +38,7 @@ rstest = { workspace = true }
 [workspace.dependencies]
 # Internal
 nullslop-domain = { path = "crates/nullslop-domain" }
+ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest"] }
 nullslop-provider = { path = "crates/nullslop-provider" }
 nullslop-tui = { path = "crates/nullslop-tui" }
 nullslop-cli = { path = "crates/nullslop-cli" }
