@@ -177,8 +177,7 @@ impl SessionPersistenceActor {
             | Command::ScanSkills
             | Command::RescanPersonas(..)
             | Command::LoadPersonaPickerEntries(..)
-            | Command::UpdatePreferences(..)
-            | Command::ReloadScripts(..) => {}
+            | Command::UpdatePreferences(..) => {}
         }
     }
 

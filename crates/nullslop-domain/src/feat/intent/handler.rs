@@ -207,9 +207,6 @@ impl IntentHandler {
             Intent::ExpandToolResult => {
                 feat::chat_entry_selection::intent::handle_expand_tool_result(state)
             }
-            Intent::ReloadPlugins => IntentResult::with_commands(vec![Command::ReloadScripts(
-                feat::plugin_actor::protocol::command::ReloadScripts,
-            )]),
             Intent::ToggleForkUserFilter => {
                 feat::picker::intent::handle_toggle_fork_user_filter(state)
             }

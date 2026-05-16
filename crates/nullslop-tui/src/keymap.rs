@@ -31,8 +31,6 @@ pub enum KeyCategory {
     Input,
     /// Context strategy and prompt template management.
     Context,
-    /// Plugin management: reloading plugins.
-    Plugin,
 }
 
 /// Builds and returns the full keymap with all scope bindings.
@@ -81,7 +79,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
             .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::ContextAssembly }, KeyCategory::General)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
-            .bind("gpr", Intent::ReloadPlugins, KeyCategory::Plugin)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)

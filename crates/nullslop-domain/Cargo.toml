@@ -10,10 +10,8 @@ which-key = ["ratatui-which-key"]
 [dependencies]
 # Internal deps
 nullslop-provider = { workspace = true }
-nullslop-plugin = { path = "../nullslop-plugin" }
 nullslop-selection-widget = { workspace = true }
 nullslop-protocol-derive = { workspace = true }
-rhai = { version = "1", features = ["sync"] }
 ratatui-markdown = { workspace = true }
 
 # External deps
