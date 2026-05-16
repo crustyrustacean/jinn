@@ -388,7 +388,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
                     session_id: session_id.clone(),
-                    text: "hello world".into(),
+                    entry: ChatEntry::user("hello world"),
                 })),
                 &ctx,
             )
@@ -545,7 +545,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
                     session_id: session_id.clone(),
-                    text: "line one\nline two".into(),
+                    entry: ChatEntry::user("line one\nline two"),
                 })),
                 &ctx,
             )
@@ -620,7 +620,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
                     session_id: session_id.clone(),
-                    text: "hello".into(),
+                    entry: ChatEntry::user("hello"),
                 })),
                 &ctx,
             )
@@ -659,7 +659,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
                     session_id: session_id.clone(),
-                    text: "new message".into(),
+                    entry: ChatEntry::user("new message"),
                 })),
                 &ctx,
             )
@@ -694,7 +694,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
                     session_id: session_id.clone(),
-                    text: "hello".into(),
+                    entry: ChatEntry::user("hello"),
                 })),
                 &ctx,
             )
@@ -722,7 +722,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
                     session_id: session_id.clone(),
-                    text: "hello".into(),
+                    entry: ChatEntry::user("hello"),
                 })),
                 &ctx,
             )
@@ -742,7 +742,7 @@ mod tests {
         );
         assert!(matches!(
             &prompt.history[0].kind,
-            ChatEntryKind::User(t) if t == "hello"
+            ChatEntryKind::User { display, .. } if display == "hello"
         ));
     }
 
@@ -758,7 +758,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
                     session_id: session_id.clone(),
-                    text: "hello".into(),
+                    entry: ChatEntry::user("hello"),
                 })),
                 &ctx,
             )
@@ -769,7 +769,7 @@ mod tests {
         let found = events.iter().any(|e| match e {
             Event::ChatEntrySubmitted(payload) => {
                 payload.session_id == session_id
-                    && matches!(&payload.entry.kind, ChatEntryKind::User(t) if t == "hello")
+                    && matches!(&payload.entry.kind, ChatEntryKind::User { display, .. } if display == "hello")
             }
             _ => false,
         });
@@ -796,7 +796,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
                     session_id: session_id.clone(),
-                    text: "queued msg".into(),
+                    entry: ChatEntry::user("queued msg"),
                 })),
                 &ctx,
             )
@@ -829,7 +829,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Command(Command::EnqueueUserMessage(EnqueueUserMessage {
                     session_id: session_id.clone(),
-                    text: "busy msg".into(),
+                    entry: ChatEntry::user("busy msg"),
                 })),
                 &ctx,
             )
@@ -928,7 +928,7 @@ mod tests {
         // Then an EnqueueUserMessage command was emitted.
         let cmds = sink.commands();
         let found = cmds.iter().any(|c| match c {
-            Command::EnqueueUserMessage(payload) => payload.text == "hello",
+            Command::EnqueueUserMessage(payload) => payload.entry.text() == "hello",
             _ => false,
         });
         assert!(found, "expected EnqueueUserMessage command");
@@ -1450,8 +1450,8 @@ mod tests {
         {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
-            session.enqueue_message("queued1".into());
-            session.enqueue_message("queued2".into());
+            session.enqueue_message(ChatEntry::user("queued1"));
+            session.enqueue_message(ChatEntry::user("queued2"));
         }
 
         sink.clear();
@@ -1498,9 +1498,9 @@ mod tests {
         {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
-            session.enqueue_message("msg1".into());
-            session.enqueue_message("msg2".into());
-            session.enqueue_message("msg3".into());
+            session.enqueue_message(ChatEntry::user("msg1"));
+            session.enqueue_message(ChatEntry::user("msg2"));
+            session.enqueue_message(ChatEntry::user("msg3"));
         }
 
         sink.clear();
@@ -1525,7 +1525,7 @@ mod tests {
         let user_entries: Vec<_> = prompt
             .history
             .iter()
-            .filter(|e| matches!(&e.kind, ChatEntryKind::User(t) if t == "msg1" || t == "msg2" || t == "msg3"))
+            .filter(|e| matches!(&e.kind, ChatEntryKind::User { display, .. } if display == "msg1" || display == "msg2" || display == "msg3"))
             .collect();
         assert_eq!(user_entries.len(), 3, "expected 3 separate user entries");
     }
@@ -1548,7 +1548,7 @@ mod tests {
         {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
-            session.enqueue_message("queued".into());
+            session.enqueue_message(ChatEntry::user("queued"));
         }
 
         sink.clear();
@@ -1646,8 +1646,8 @@ mod tests {
         {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
-            session.enqueue_message("q1".into());
-            session.enqueue_message("q2".into());
+            session.enqueue_message(ChatEntry::user("q1"));
+            session.enqueue_message(ChatEntry::user("q2"));
         }
 
         sink.clear();
@@ -1671,8 +1671,8 @@ mod tests {
             })
             .collect();
         assert_eq!(submitted.len(), 2, "expected 2 ChatEntrySubmitted events");
-        assert!(matches!(&submitted[0], ChatEntryKind::User(t) if t == "q1"));
-        assert!(matches!(&submitted[1], ChatEntryKind::User(t) if t == "q2"));
+        assert!(matches!(&submitted[0], ChatEntryKind::User { display, .. } if display == "q1"));
+        assert!(matches!(&submitted[1], ChatEntryKind::User { display, .. } if display == "q2"));
     }
 
     // --- ToolCallReceived ---

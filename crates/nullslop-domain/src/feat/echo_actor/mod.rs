@@ -41,7 +41,7 @@ impl EchoActor {
                 session_id,
                 entry:
                     ChatEntry {
-                        kind: ChatEntryKind::User(text),
+                        kind: ChatEntryKind::User { display, .. },
                         ..
                     },
                 ..
@@ -49,7 +49,7 @@ impl EchoActor {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
                     session_id: session_id.clone(),
-                    entry: ChatEntry::actor("echo", text.to_uppercase()),
+                    entry: ChatEntry::actor("echo", display.to_uppercase()),
                 })) {
                     tracing::error!(err = ?e, "echo actor failed to send command");
                 }

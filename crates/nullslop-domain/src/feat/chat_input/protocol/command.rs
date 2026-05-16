@@ -29,8 +29,8 @@ pub struct PushChatEntry {
 pub struct EnqueueUserMessage {
     /// The session this message belongs to.
     pub session_id: SessionId,
-    /// The message text to enqueue.
-    pub text: String,
+    /// The fully constructed user chat entry (with display/expanded text).
+    pub entry: ChatEntry,
 }
 
 /// Set the chat input buffer text directly.
