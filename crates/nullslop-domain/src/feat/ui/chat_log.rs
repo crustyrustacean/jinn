@@ -12,6 +12,7 @@ pub(crate) mod line_count_cache;
 pub(crate) mod markdown;
 pub(crate) mod renderer;
 pub(crate) mod shared;
+pub(crate) mod skill;
 pub(crate) mod system;
 pub(crate) mod table;
 pub(crate) mod thinking;
