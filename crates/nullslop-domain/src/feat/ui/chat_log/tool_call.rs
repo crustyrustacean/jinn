@@ -3,7 +3,7 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_entry_with, pad_line_to_width, Pad};
+use super::shared::{Pad, RenderContext, pad_entry_with, pad_line_to_width};
 
 pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let style = Style::default()

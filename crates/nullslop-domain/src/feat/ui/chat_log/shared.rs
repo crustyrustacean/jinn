@@ -132,7 +132,7 @@ mod tests {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
-    use super::{multiline_styled, pad_entry, pad_entry_with, Pad};
+    use super::{Pad, multiline_styled, pad_entry, pad_entry_with};
 
     #[rstest::rstest]
     fn pad_entry_both_adds_blank_line_above_and_below() {

@@ -4,7 +4,7 @@ use crate::protocol::TableData;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_entry, Pad, unicode_segementation_display_width};
+use super::shared::{Pad, RenderContext, pad_entry, unicode_segementation_display_width};
 
 /// Render a [`TableData`] as aligned, styled lines.
 ///

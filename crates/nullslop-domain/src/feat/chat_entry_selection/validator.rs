@@ -55,21 +55,30 @@ pub enum ChatEntryPinSelectedError {
     NoSelection,
     /// The chat history is empty.
     EmptyHistory,
+    /// The selected entry kind cannot be pinned.
+    NotPinnable,
 }
 
 /// Validates the ChatEntryPinSelected intent.
 ///
-/// Returns an error if the history is empty or no entry is selected.
+/// Returns an error if the history is empty, no entry is selected, or the
+/// selected entry is not a pinnable kind (only User, Assistant, ToolResult,
+/// and Skill entries can be pinned).
 ///
 /// # Errors
 ///
-/// Returns an error if the history is empty or no entry is selected.
+/// Returns an error if the history is empty, no entry is selected, or the
+/// selected entry is not pinnable.
 pub fn validate_chat_entry_pin_selected(state: &AppState) -> Result<(), ChatEntryPinSelectedError> {
     if state.active_session().history().is_empty() {
         return Err(ChatEntryPinSelectedError::EmptyHistory);
     }
-    if state.active_session().selected_entry_index().is_none() {
-        return Err(ChatEntryPinSelectedError::NoSelection);
+    let selected = state
+        .active_session()
+        .selected_entry()
+        .ok_or(ChatEntryPinSelectedError::NoSelection)?;
+    if !selected.is_pinnable() {
+        return Err(ChatEntryPinSelectedError::NotPinnable);
     }
     Ok(())
 }
@@ -79,6 +88,44 @@ mod tests {
     use crate::protocol::ChatEntry;
 
     use super::*;
+
+    #[rstest::rstest]
+    fn pin_selected_rejects_info_entry() {
+        // Given a state with a selected info entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::info("welcome"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating pin selected.
+        let result = validate_chat_entry_pin_selected(&state);
+
+        // Then it returns NotPinnable error.
+        assert!(matches!(
+            result,
+            Err(ChatEntryPinSelectedError::NotPinnable)
+        ));
+    }
+
+    #[rstest::rstest]
+    fn pin_selected_rejects_system_entry() {
+        // Given a state with a selected system entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::system("status"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating pin selected.
+        let result = validate_chat_entry_pin_selected(&state);
+
+        // Then it returns NotPinnable error.
+        assert!(matches!(
+            result,
+            Err(ChatEntryPinSelectedError::NotPinnable)
+        ));
+    }
 
     #[rstest::rstest]
     fn expand_tool_result_succeeds_with_selected_tool_result() {

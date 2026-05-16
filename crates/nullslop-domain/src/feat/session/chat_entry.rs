@@ -193,6 +193,12 @@ pub enum ChatEntryKind {
         /// The full skill content (body of SKILL.md with frontmatter stripped).
         content: String,
     },
+    /// An informational message (UI-only, not sent to the LLM).
+    ///
+    /// Used for welcome messages and other user-facing hints.
+    /// Excluded from prompt assembly, token estimation, and LLM context.
+    /// Cannot be pinned.
+    Info(String),
 }
 
 impl ChatEntry {
@@ -381,6 +387,23 @@ impl ChatEntry {
         }
     }
 
+    /// Create a new info chat entry with the current timestamp.
+    ///
+    /// Info entries are UI-only — they are excluded from prompt assembly,
+    /// token estimation, and LLM context. They cannot be pinned.
+    #[must_use]
+    pub fn info<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Info(text.into()),
+            pin_position: None,
+        }
+    }
+
     /// Set the pin position on this entry, returning the modified entry.
     ///
     /// Used as a builder: `ChatEntry::user("instruction").with_pin(PinPosition::Top)`
@@ -393,6 +416,22 @@ impl ChatEntry {
     /// Whether this entry is pinned to the context.
     pub fn is_pinned(&self) -> bool {
         self.pin_position.is_some()
+    }
+
+    /// Whether this entry kind can be pinned to the context.
+    ///
+    /// Only user messages, assistant responses, tool results, and skill loads
+    /// can be pinned. Info entries, system messages, errors, actors, thinking,
+    /// tool calls, and tables are not pinnable.
+    #[must_use]
+    pub fn is_pinnable(&self) -> bool {
+        matches!(
+            self.kind,
+            ChatEntryKind::User { .. }
+                | ChatEntryKind::Assistant(..)
+                | ChatEntryKind::ToolResult { .. }
+                | ChatEntryKind::Skill { .. }
+        )
     }
 
     /// The pin position, if this entry is pinned.
@@ -416,6 +455,7 @@ impl ChatEntry {
             ChatEntryKind::ToolCall { .. } => "tool_call",
             ChatEntryKind::ToolResult { .. } => "tool_result",
             ChatEntryKind::Skill { .. } => "skill",
+            ChatEntryKind::Info(..) => "info",
         }
     }
 
@@ -431,7 +471,8 @@ impl ChatEntry {
             ChatEntryKind::System(t)
             | ChatEntryKind::Error(t)
             | ChatEntryKind::Assistant(t)
-            | ChatEntryKind::Thinking(t) => t.clone(),
+            | ChatEntryKind::Thinking(t)
+            | ChatEntryKind::Info(t) => t.clone(),
             ChatEntryKind::Actor { text, .. } => text.clone(),
             ChatEntryKind::Table(data) => data.to_plain_text(),
             ChatEntryKind::ToolCall {
@@ -485,6 +526,7 @@ impl ChatEntry {
                 name.hash(&mut hasher);
                 content.hash(&mut hasher);
             }
+            ChatEntryKind::Info(t) => t.hash(&mut hasher),
         }
         hasher.finish()
     }
@@ -621,6 +663,11 @@ impl Serialize for ChatEntryKind {
                 map.serialize_entry("Thinking", t)?;
                 map.end()
             }
+            ChatEntryKind::Info(t) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("Info", t)?;
+                map.end()
+            }
         }
     }
 }
@@ -728,6 +775,10 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         let text: String = map.next_value()?;
                         Ok(ChatEntryKind::Thinking(text))
                     }
+                    "Info" => {
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::Info(text))
+                    }
                     other => Err(de::Error::unknown_variant(
                         other,
                         &[
@@ -740,6 +791,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             "ToolResult",
                             "Thinking",
                             "Skill",
+                            "Info",
                         ],
                     )),
                 }
