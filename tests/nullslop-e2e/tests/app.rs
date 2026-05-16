@@ -174,6 +174,7 @@ impl AppWorld {
     }
 
     /// Submits a command to the core's message channel.
+    #[allow(dead_code)]
     pub fn submit_command(&self, cmd: nullslop_domain::Command) {
         self.app.core.submit_command(cmd);
     }
@@ -184,6 +185,7 @@ impl AppWorld {
     }
 
     /// Runs graceful coordinated shutdown of the actor system.
+    #[allow(dead_code)]
     pub fn graceful_shutdown(&mut self) {
         nullslop_domain::coordinated_shutdown(
             self.app.actor_host.backend(),

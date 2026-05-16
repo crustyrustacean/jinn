@@ -164,7 +164,7 @@ impl LlmActor {
         let messages_for_stream = messages.clone();
         let mut session = SessionData::new(messages);
         if provider_id.is_some() {
-            session.provider_id = provider_id.map(|p| p.to_owned());
+            session.provider_id = provider_id.map(std::borrow::ToOwned::to_owned);
         }
         self.sessions.insert(session_id.clone(), session);
 
@@ -204,7 +204,7 @@ impl LlmActor {
         } else {
             self.factory.clone()
         };
-        let model_id = provider_id.map(|p| p.to_owned()).unwrap_or_default();
+        let model_id = provider_id.map(std::borrow::ToOwned::to_owned).unwrap_or_default();
         let sink = ctx.sink();
         let sid = session_id.clone();
 

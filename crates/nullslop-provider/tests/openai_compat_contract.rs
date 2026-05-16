@@ -9,7 +9,7 @@ use nullslop_provider::{
     ToolDefinition,
 };
 
-async fn make_factory(server: &mockito::ServerGuard) -> OpenAiCompatibleFactory {
+fn make_factory(server: &mockito::ServerGuard) -> OpenAiCompatibleFactory {
     let config = ProviderConfig::openai();
     OpenAiCompatibleFactory::new(
         config,
@@ -21,7 +21,7 @@ async fn make_factory(server: &mockito::ServerGuard) -> OpenAiCompatibleFactory 
     )
 }
 
-async fn make_factory_with_extra(
+fn make_factory_with_extra(
     server: &mockito::ServerGuard,
     extra: serde_json::Value,
 ) -> OpenAiCompatibleFactory {
@@ -39,7 +39,7 @@ async fn make_factory_with_extra(
 #[tokio::test]
 async fn text_streaming_yields_text_tokens_then_done() {
     let mut server = mockito::Server::new_async().await;
-    let factory = make_factory(&server).await;
+    let factory = make_factory(&server);
 
     let body = "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" world\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
 
@@ -81,7 +81,7 @@ async fn text_streaming_yields_text_tokens_then_done() {
 #[tokio::test]
 async fn tool_call_streaming_yields_start_delta_complete_done() {
     let mut server = mockito::Server::new_async().await;
-    let factory = make_factory(&server).await;
+    let factory = make_factory(&server);
 
     let body = [
         "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"echo\",\"arguments\":\"\"}}]},\"finish_reason\":null}]}\n\n",
@@ -165,8 +165,7 @@ async fn extra_body_fields_included_in_request() {
     let factory = make_factory_with_extra(
         &server,
         serde_json::json!({"enable_thinking": true, "tool_stream": true}),
-    )
-    .await;
+    );
 
     let mock = server
         .mock("POST", "/chat/completions")
@@ -198,7 +197,7 @@ async fn extra_body_fields_included_in_request() {
 #[tokio::test]
 async fn error_response_401_mapped_to_provider_error() {
     let mut server = mockito::Server::new_async().await;
-    let factory = make_factory(&server).await;
+    let factory = make_factory(&server);
 
     server
         .mock("POST", "/chat/completions")
@@ -223,7 +222,7 @@ async fn error_response_401_mapped_to_provider_error() {
 #[tokio::test]
 async fn reasoning_content_produces_reasoning_event() {
     let mut server = mockito::Server::new_async().await;
-    let factory = make_factory(&server).await;
+    let factory = make_factory(&server);
 
     let body = "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"thinking...\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
 
@@ -311,7 +310,7 @@ fn factory_rejects_empty_api_key() {
 #[tokio::test]
 async fn chat_stream_yields_text_tokens_only() {
     let mut server = mockito::Server::new_async().await;
-    let factory = make_factory(&server).await;
+    let factory = make_factory(&server);
 
     let body = "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" world\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
 

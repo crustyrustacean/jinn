@@ -79,8 +79,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 LoadPersonaPickerEntries,
             )])
         }
-        PickerKind::Keymap => IntentResult::empty(),
-        PickerKind::Theme => IntentResult::empty(),
+        PickerKind::Keymap | PickerKind::Theme => IntentResult::empty(),
     }
 }
 
@@ -820,11 +819,12 @@ mod tests {
     #[rstest::rstest]
     fn confirm_theme_persists_selection() {
         // Given a state with theme picker open and default selected.
+        use crate::feat::theme::{ThemeEntry, default_theme};
+
         let mut state = AppState::default();
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Theme,
         });
-        use crate::feat::theme::{ThemeEntry, default_theme};
         state.frontend.theme_picker.set_items(vec![ThemeEntry {
             name: "default".to_owned(),
             theme: default_theme(),

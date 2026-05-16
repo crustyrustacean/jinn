@@ -31,7 +31,7 @@ use crate::protocol::{
 /// and have no meaning across restarts (stream indices, queues, in-progress flags).
 /// The entire struct is skipped during serialization so individual fields cannot
 /// be accidentally excluded from persistence.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionCoreEphemeral {
     /// Index into `history` for the entry currently receiving stream tokens.
     streaming_entry_index: Option<usize>,
@@ -49,19 +49,6 @@ pub struct SessionCoreEphemeral {
     streaming_thinking_entry_index: Option<usize>,
 }
 
-impl Default for SessionCoreEphemeral {
-    fn default() -> Self {
-        Self {
-            streaming_entry_index: None,
-            is_streaming: false,
-            message_queue: VecDeque::new(),
-            is_sending: false,
-            is_assembling: false,
-            streaming_tool_call_indices: HashMap::new(),
-            streaming_thinking_entry_index: None,
-        }
-    }
-}
 
 /// Core session state — owned by session-actor and context-actor.
 ///
@@ -188,7 +175,7 @@ impl Clone for SessionUi {
             entry_line_ranges: RwLock::new(
                 self.entry_line_ranges
                     .read()
-                    .unwrap_or_else(|e| e.into_inner())
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .clone(),
             ),
             viewport_height: AtomicU16::new(self.viewport_height.load(Ordering::Relaxed)),
@@ -296,7 +283,7 @@ impl ChatSessionState {
         let was_at_last = self
             .ui
             .selected_entry_index
-            .map_or(true, |i| i == prev_last);
+            .is_none_or(|i| i == prev_last);
         let index = self.core.history.len();
         self.core.history.push(entry);
         if was_at_last {

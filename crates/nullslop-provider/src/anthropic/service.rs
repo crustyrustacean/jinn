@@ -150,12 +150,10 @@ impl LlmService for AnthropicService {
                         for event in events {
                             match event {
                                 SseEvent::Data(json) => {
-                                    if let Some(stream_event) = parser.parse_data(&json) {
-                                        match stream_event {
-                                            StreamEvent::Text(text) => tokens.push(Ok(text)),
-                                            StreamEvent::Done { .. } => {}
-                                            _ => {}
-                                        }
+                                    if let Some(StreamEvent::Text(text)) =
+                                        parser.parse_data(&json)
+                                    {
+                                        tokens.push(Ok(text));
                                     }
                                 }
                                 SseEvent::Done => {}
@@ -222,6 +220,9 @@ impl std::fmt::Debug for AnthropicService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AnthropicService")
             .field("model", &self.model)
-            .finish()
+            .field("api_key", &self.api_key)
+            .field("system_prompt", &self.system_prompt)
+            .field("base_url", &self.base_url)
+            .finish_non_exhaustive()
     }
 }

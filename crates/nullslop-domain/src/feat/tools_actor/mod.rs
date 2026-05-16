@@ -1454,7 +1454,7 @@ mod tests {
 
         let session_id = {
             let mut guard = actor.state.write();
-            let session = guard.active_session_mut();
+            let _session = guard.active_session_mut();
             // Don't set cwd — it defaults to empty.
             guard.session.active_session.clone()
         };

@@ -97,7 +97,7 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
                     "functionCall": {
                         "name": tc.name,
                         "args": serde_json::from_str::<serde_json::Value>(&tc.arguments)
-                            .unwrap_or(serde_json::Value::Object(Default::default()))
+                            .unwrap_or(serde_json::Value::Object(serde_json::Map::default()))
                     }
                 }));
             }
@@ -141,7 +141,7 @@ fn tool_definition_to_json(def: &ToolDefinition) -> serde_json::Value {
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_owned()))
+                .filter_map(|v| v.as_str().map(std::borrow::ToOwned::to_owned))
                 .collect::<Vec<String>>()
         })
         .unwrap_or_default();
