@@ -410,6 +410,45 @@ impl ChatEntry {
             }
         }
     }
+
+    /// Compute a cheap fingerprint of this entry's visual content.
+    ///
+    /// Two entries with the same visual content produce the same fingerprint.
+    /// Used by the line count cache to detect content changes without re-rendering.
+    /// The fingerprint changes when text content or entry kind changes.
+    #[must_use]
+    pub fn content_fingerprint(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        // Hash the kind discriminant + content.
+        std::mem::discriminant(&self.kind).hash(&mut hasher);
+        match &self.kind {
+            ChatEntryKind::User { display, .. } => display.hash(&mut hasher),
+            ChatEntryKind::System(t) => t.hash(&mut hasher),
+            ChatEntryKind::Error(t) => t.hash(&mut hasher),
+            ChatEntryKind::Assistant(t) => t.hash(&mut hasher),
+            ChatEntryKind::Actor { text, .. } => text.hash(&mut hasher),
+            ChatEntryKind::Table(data) => data.to_plain_text().hash(&mut hasher),
+            ChatEntryKind::Thinking(t) => t.hash(&mut hasher),
+            ChatEntryKind::ToolCall {
+                name, arguments, ..
+            } => {
+                name.hash(&mut hasher);
+                arguments.hash(&mut hasher);
+            }
+            ChatEntryKind::ToolResult {
+                name,
+                content,
+                success,
+                ..
+            } => {
+                name.hash(&mut hasher);
+                content.hash(&mut hasher);
+                success.hash(&mut hasher);
+            }
+        }
+        hasher.finish()
+    }
 }
 
 impl Serialize for ChatEntryKind {
