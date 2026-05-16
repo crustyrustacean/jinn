@@ -318,7 +318,10 @@ fn then_history_entry_is_user(world: &mut TuiWorld, index: u64, text: String) {
     let entry = &guard.active_session().history()[(index - 1) as usize];
     assert_eq!(
         entry.kind,
-        nullslop_domain::ChatEntryKind::User(text),
+        nullslop_domain::ChatEntryKind::User {
+            display: text.clone(),
+            expanded: text
+        },
         "entry {index} is not a User message with the expected text"
     );
 }

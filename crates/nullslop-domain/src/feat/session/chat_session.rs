@@ -38,7 +38,7 @@ pub struct SessionCoreEphemeral {
     /// Whether an LLM stream is actively producing tokens.
     is_streaming: bool,
     /// Messages waiting to be sent to the LLM, one at a time.
-    message_queue: VecDeque<String>,
+    message_queue: VecDeque<crate::protocol::ChatEntry>,
     /// Whether a message has been dispatched to the LLM but no tokens have arrived yet.
     is_sending: bool,
     /// Whether a prompt assembly request is in progress.
@@ -455,12 +455,19 @@ impl ChatSessionState {
     /// Cancel streaming and drain queued messages back to the input buffer.
     ///
     /// Used when the user interrupts or switches to Normal mode during an
-    /// active stream. The drained queue text is joined with newlines and
-    /// replaces whatever was in the input box.
+    /// active stream. The display text from drained entries is joined with
+    /// newlines and replaces whatever was in the input box.
     pub fn cancel_stream_and_drain(&mut self) {
         self.cancel_streaming();
-        let drained: Vec<String> = self.drain_queue().into_iter().collect();
-        let drained_text = drained.join("\n");
+        let drained = self.drain_queue();
+        let display_texts: Vec<&str> = drained
+            .iter()
+            .filter_map(|e| match &e.kind {
+                ChatEntryKind::User { display, .. } => Some(display.as_str()),
+                _ => None,
+            })
+            .collect();
+        let drained_text = display_texts.join("\n");
         if !drained_text.is_empty() {
             self.chat_input_mut().replace_all(drained_text);
         }
@@ -545,7 +552,7 @@ impl ChatSessionState {
     // --- Queue ---
 
     /// Read-only access to the message queue.
-    pub fn queue(&self) -> &VecDeque<String> {
+    pub fn queue(&self) -> &VecDeque<crate::protocol::ChatEntry> {
         &self.core.ephemeral.message_queue
     }
 
@@ -555,17 +562,17 @@ impl ChatSessionState {
     }
 
     /// Push a message onto the back of the queue.
-    pub fn enqueue_message(&mut self, text: String) {
-        self.core.ephemeral.message_queue.push_back(text);
+    pub fn enqueue_message(&mut self, entry: crate::protocol::ChatEntry) {
+        self.core.ephemeral.message_queue.push_back(entry);
     }
 
     /// Pop the front message from the queue, if any.
-    pub fn dequeue_message(&mut self) -> Option<String> {
+    pub fn dequeue_message(&mut self) -> Option<crate::protocol::ChatEntry> {
         self.core.ephemeral.message_queue.pop_front()
     }
 
     /// Drain all queued messages, returning them in order.
-    pub fn drain_queue(&mut self) -> VecDeque<String> {
+    pub fn drain_queue(&mut self) -> std::collections::VecDeque<crate::protocol::ChatEntry> {
         std::mem::take(&mut self.core.ephemeral.message_queue)
     }
 

@@ -129,7 +129,16 @@ pub struct ChatEntry {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatEntryKind {
     /// A message typed by the user.
-    User(String),
+    ///
+    /// `display` is what the user typed (shown in the UI, used for session titles).
+    /// `expanded` is the token-expanded text (sent to the LLM).
+    /// When no prompt tokens are present, both fields are identical.
+    User {
+        /// What the user typed (shown in UI, used for session titles).
+        display: String,
+        /// Token-expanded text (sent to the LLM).
+        expanded: String,
+    },
     /// A system-generated message (status updates, etc.).
     System(String),
     /// An error message displayed prominently (e.g., stream cancelled).
@@ -180,10 +189,35 @@ impl ChatEntry {
     where
         T: Into<String>,
     {
+        let t = text.into();
         Self {
             id: ChatEntryId::new(),
             timestamp: jiff::Timestamp::now(),
-            kind: ChatEntryKind::User(text.into()),
+            kind: ChatEntryKind::User {
+                display: t.clone(),
+                expanded: t,
+            },
+            pin_position: None,
+        }
+    }
+
+    /// Create a user entry with separate display and expanded text.
+    ///
+    /// Use when prompt token expansion produces a different expanded text
+    /// than what the user typed.
+    #[must_use]
+    pub fn user_expanded<D, E>(display: D, expanded: E) -> Self
+    where
+        D: Into<String>,
+        E: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::User {
+                display: display.into(),
+                expanded: expanded.into(),
+            },
             pin_position: None,
         }
     }
@@ -339,7 +373,7 @@ impl ChatEntry {
     #[must_use]
     pub fn kind_str(&self) -> &'static str {
         match self.kind {
-            ChatEntryKind::User(..) => "user",
+            ChatEntryKind::User { .. } => "user",
             ChatEntryKind::System(..) => "system",
             ChatEntryKind::Error(..) => "error",
             ChatEntryKind::Assistant(..) => "assistant",
@@ -359,8 +393,8 @@ impl ChatEntry {
     #[must_use]
     pub fn text(&self) -> String {
         match &self.kind {
-            ChatEntryKind::User(t)
-            | ChatEntryKind::System(t)
+            ChatEntryKind::User { display, .. } => display.clone(),
+            ChatEntryKind::System(t)
             | ChatEntryKind::Error(t)
             | ChatEntryKind::Assistant(t)
             | ChatEntryKind::Thinking(t) => t.clone(),
@@ -388,9 +422,20 @@ impl Serialize for ChatEntryKind {
                 map.serialize_entry("System", &data.to_plain_text())?;
                 map.end()
             }
-            ChatEntryKind::User(t) => {
+            ChatEntryKind::User { display, expanded } => {
+                #[derive(Serialize)]
+                struct UserData {
+                    display: String,
+                    expanded: String,
+                }
                 let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("User", t)?;
+                map.serialize_entry(
+                    "User",
+                    &UserData {
+                        display: display.clone(),
+                        expanded: expanded.clone(),
+                    },
+                )?;
                 map.end()
             }
             ChatEntryKind::System(t) => {
@@ -500,8 +545,16 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                     .ok_or_else(|| de::Error::missing_field("variant"))?;
                 match key.as_str() {
                     "User" => {
-                        let text: String = map.next_value()?;
-                        Ok(ChatEntryKind::User(text))
+                        #[derive(Deserialize)]
+                        struct UserData {
+                            display: String,
+                            expanded: String,
+                        }
+                        let data: UserData = map.next_value()?;
+                        Ok(ChatEntryKind::User {
+                            display: data.display,
+                            expanded: data.expanded,
+                        })
                     }
                     "System" => {
                         let text: String = map.next_value()?;

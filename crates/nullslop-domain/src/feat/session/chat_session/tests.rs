@@ -279,25 +279,39 @@ fn enqueue_message_adds_to_queue() {
     assert_eq!(session.queue_len(), 0);
 
     // When enqueuing a message.
-    session.enqueue_message("hello".to_owned());
+    session.enqueue_message(ChatEntry::user("hello"));
 
     // Then the queue has one message.
     assert_eq!(session.queue_len(), 1);
-    assert_eq!(session.queue()[0], "hello");
+    assert_eq!(
+        session.queue()[0].kind,
+        ChatEntryKind::User {
+            display: "hello".to_owned(),
+            expanded: "hello".to_owned()
+        }
+    );
 }
 
 #[rstest::rstest]
 fn dequeue_message_returns_first_in_order() {
     // Given a session with two queued messages.
     let mut session = ChatSessionState::new();
-    session.enqueue_message("first".to_owned());
-    session.enqueue_message("second".to_owned());
+    session.enqueue_message(ChatEntry::user("first"));
+    session.enqueue_message(ChatEntry::user("second"));
 
     // When dequeuing a message.
     let msg = session.dequeue_message();
 
     // Then it returns the first message and the queue has one left.
-    assert_eq!(msg.as_deref(), Some("first"));
+    assert!(msg.is_some());
+    let entry = msg.unwrap();
+    assert_eq!(
+        entry.kind,
+        ChatEntryKind::User {
+            display: "first".to_owned(),
+            expanded: "first".to_owned()
+        }
+    );
     assert_eq!(session.queue_len(), 1);
 }
 
@@ -317,27 +331,45 @@ fn dequeue_message_returns_none_when_empty() {
 fn drain_returns_all_in_order() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
-    session.enqueue_message("a".to_owned());
-    session.enqueue_message("b".to_owned());
-    session.enqueue_message("c".to_owned());
+    session.enqueue_message(ChatEntry::user("a"));
+    session.enqueue_message(ChatEntry::user("b"));
+    session.enqueue_message(ChatEntry::user("c"));
 
     // When draining the queue.
     let drained = session.drain_queue();
 
     // Then all messages are returned in order.
     assert_eq!(drained.len(), 3);
-    assert_eq!(drained[0], "a");
-    assert_eq!(drained[1], "b");
-    assert_eq!(drained[2], "c");
+    assert_eq!(
+        drained[0].kind,
+        ChatEntryKind::User {
+            display: "a".to_owned(),
+            expanded: "a".to_owned()
+        }
+    );
+    assert_eq!(
+        drained[1].kind,
+        ChatEntryKind::User {
+            display: "b".to_owned(),
+            expanded: "b".to_owned()
+        }
+    );
+    assert_eq!(
+        drained[2].kind,
+        ChatEntryKind::User {
+            display: "c".to_owned(),
+            expanded: "c".to_owned()
+        }
+    );
 }
 
 #[rstest::rstest]
 fn drain_empties_queue() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
-    session.enqueue_message("a".to_owned());
-    session.enqueue_message("b".to_owned());
-    session.enqueue_message("c".to_owned());
+    session.enqueue_message(ChatEntry::user("a"));
+    session.enqueue_message(ChatEntry::user("b"));
+    session.enqueue_message(ChatEntry::user("c"));
 
     // When draining the queue.
     let _ = session.drain_queue();
@@ -1045,7 +1077,13 @@ fn selected_entry_returns_entry_at_index() {
 
     // Then it returns the entry at index 1.
     assert!(entry.is_some());
-    assert_eq!(entry.unwrap().kind, ChatEntryKind::User("b".to_owned()));
+    assert_eq!(
+        entry.unwrap().kind,
+        ChatEntryKind::User {
+            display: "b".to_owned(),
+            expanded: "b".to_owned()
+        }
+    );
 }
 
 #[rstest::rstest]
