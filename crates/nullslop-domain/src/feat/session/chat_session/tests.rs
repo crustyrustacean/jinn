@@ -1455,7 +1455,7 @@ fn cwd_preserved_across_serialization_round_trip() {
 }
 
 #[rstest::rstest]
-fn cwd_defaults_to_empty_when_missing_from_snapshot() {
+fn cwd_defaults_to_dot_when_missing_from_snapshot() {
     // Given a JSON snapshot of a session without a `cwd` field.
     let mut session = ChatSessionState::new();
     session.set_title("test".to_owned());
@@ -1468,6 +1468,6 @@ fn cwd_defaults_to_empty_when_missing_from_snapshot() {
     // When deserializing.
     let restored: ChatSessionState = serde_json::from_str(&json_str).expect("deserialize");
 
-    // Then the CWD defaults to empty (PathBuf::new()).
-    assert!(restored.cwd().as_os_str().is_empty());
+    // Then the CWD defaults to "." (resolves to current directory).
+    assert_eq!(restored.cwd(), PathBuf::from("."));
 }

@@ -63,11 +63,33 @@ fn v0_create_initial_schema(conn: &Connection) -> Result<(), Report<MigrationErr
     Ok(())
 }
 
+/// Adds the `cwd` column to the `sessions` table.
+///
+/// Sessions created before this migration have no cwd, so the default is `.`
+/// which resolves to the current directory on load. The session actor's
+/// CWD validation will handle the fallback to the global cwd if needed.
+fn v1_add_cwd_column(conn: &Connection) -> Result<(), Report<MigrationError>> {
+    conn.execute_batch(
+        "ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT '.';",
+    )
+    .change_context(MigrationError)
+    .attach("failed to add cwd column")?;
+
+    Ok(())
+}
+
 /// Returns the ordered list of session database migrations.
 pub fn session_migrations() -> Vec<Migration> {
-    vec![Migration {
-        version: 0,
-        name: "create_initial_schema",
-        up: v0_create_initial_schema,
-    }]
+    vec![
+        Migration {
+            version: 0,
+            name: "create_initial_schema",
+            up: v0_create_initial_schema,
+        },
+        Migration {
+            version: 1,
+            name: "add_cwd_column",
+            up: v1_add_cwd_column,
+        },
+    ]
 }

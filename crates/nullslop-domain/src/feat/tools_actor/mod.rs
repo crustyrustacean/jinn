@@ -288,14 +288,7 @@ impl ToolOrchestratorActor {
             let guard = self.state.read();
             guard.session.sessions.get(session_id).map_or_else(
                 || guard.session.default_cwd.clone(),
-                |s| {
-                    let c = s.cwd().to_owned();
-                    if c.as_os_str().is_empty() {
-                        guard.session.default_cwd.clone()
-                    } else {
-                        c
-                    }
-                },
+                |s| s.cwd().to_owned(),
             )
         };
         ToolContext {
@@ -1471,22 +1464,22 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn build_tool_context_returns_default_cwd_for_session_with_empty_cwd() {
-        // Given an activated actor with a session that has an empty CWD.
+    async fn build_tool_context_uses_session_default_cwd_when_not_overridden() {
+        // Given an activated actor with a session using the default CWD (".").
         let (_sink, mut ctx) = default_test_ctx();
         let actor = ToolOrchestratorActor::activate(&mut ctx);
 
         let session_id = {
             let mut guard = actor.state.write();
             let _session = guard.active_session_mut();
-            // Don't set cwd — it defaults to empty.
+            // Don't set cwd — it defaults to ".".
             guard.session.active_session.clone()
         };
 
         // When building tool context for that session.
         let tool_ctx = actor.build_tool_context(&session_id);
 
-        // Then the CWD falls back to default_cwd ("/").
-        assert_eq!(tool_ctx.cwd, PathBuf::from("/"));
+        // Then the session cwd is used ("." from default).
+        assert_eq!(tool_ctx.cwd, PathBuf::from("."));
     }
 }
