@@ -31,6 +31,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
+use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
 use super::{actor, assistant, error_entry, system, table, thinking, tool_call, tool_result, user};
 
@@ -41,7 +42,19 @@ const GUTTER_STR: &str = "𜺏 ";
 
 /// Display element for the full conversation history.
 #[derive(Debug)]
-pub struct ChatLogElement;
+pub struct ChatLogElement {
+    line_cache: EntryLineCache,
+}
+
+impl ChatLogElement {
+    /// Create a new chat log element with a fresh line count cache.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            line_cache: EntryLineCache::new(),
+        }
+    }
+}
 
 impl UiElement<AppState> for ChatLogElement {
     fn name(&self) -> String {
@@ -85,172 +98,78 @@ impl UiElement<AppState> for ChatLogElement {
 
         // Build lines while tracking per-entry wrapped line ranges.
         // entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line) in wrapped coords.
-        let mut content_lines: Vec<Line> = Vec::new();
-        let mut gutter_lines: Vec<Line> = Vec::new();
+        // --- PASS 1: Compute entry_line_ranges from cache (no rendering). ---
+        //
+        // Walk all entries. On cache hit, use the cached wrapped count.
+        // On cache miss, render the entry to compute its count and store
+        // the lines for potential reuse in pass 2.
         let mut entry_line_ranges: Vec<(u16, u16)> = Vec::with_capacity(history.len());
         let mut wrapped_cursor: u16 = 0;
-
-        // Determine gutter focus state — yellow only when chat log is active (Normal scope).
-        // Input and Sidebar scopes show the inactive border color instead.
-        let (gutter_active_color, gutter_inactive_color) = {
-            let theme = &state.frontend.theme;
-            (theme.focus_accent, theme.border_unfocused)
-        };
-        let chat_log_active = matches!(
-            state.frontend.scope_stack.current(),
-            crate::common::app_state::FocusScope::Normal
-        );
+        // Store rendered lines from cache misses for reuse in pass 2.
+        let mut miss_lines: std::collections::HashMap<usize, Vec<Line<'static>>> =
+            std::collections::HashMap::new();
 
         for (i, entry) in history.iter().enumerate() {
-            let is_selected = selected_idx == Some(i);
             let is_expanded = state.active_session().is_entry_expanded(&entry.id);
-            let max_lines = state
-                .frontend
-                .preferences
-                .tool_result_max_lines
-                .unwrap_or(DEFAULT_TOOL_RESULT_MAX_LINES);
 
-            let ctx = RenderContext {
-                content_width,
-                _is_selected: is_selected,
-                is_pinned: entry.pin_position.is_some(),
-                is_expanded,
-                tool_result_max_lines: max_lines,
-                theme: state.frontend.theme.clone(),
-            };
-
-            let entry_content_lines = entry_to_lines(entry, &ctx);
-
-            // Build gutter lines for this entry (one gutter line per content line).
-            // Pin highlight style — only used on the first gutter line (the pin icon).
-            let pin_highlight_style = if is_selected && ctx.is_pinned && chat_log_active {
-                Style::default()
-                    .fg(ctx.theme.gutter_bg)
-                    .bg(gutter_active_color)
-            } else if is_selected && ctx.is_pinned {
-                Style::default()
-                    .fg(ctx.theme.gutter_bg)
-                    .bg(gutter_inactive_color)
+            if let Some(cached_count) = self.line_cache.get(entry, is_expanded, content_width) {
+                // Cache hit — use the cached wrapped count directly.
+                let start = wrapped_cursor;
+                let end = wrapped_cursor + cached_count;
+                entry_line_ranges.push((start, end));
+                wrapped_cursor = end;
             } else {
-                // Non-pinned or unselected — pin highlight not applicable.
-                Style::default()
-            };
-
-            // Base gutter style for all lines (including continuations of pinned entries).
-            let gutter_style = if is_selected && chat_log_active {
-                Style::default().fg(gutter_active_color)
-            } else if is_selected {
-                Style::default().fg(gutter_inactive_color)
-            } else {
-                Style::default().fg(ctx.theme.border_unfocused)
-            };
-            let gutter_content = if ctx.is_pinned { "📌" } else { GUTTER_STR };
-
-            // Count wrapped lines using ratatui's own WordWrapper to match rendering.
-            //
-            // ratatui's Paragraph widget uses WordWrapper (word-boundary wrapping):
-            // it collects graphemes into pending words, breaks lines when a word
-            // would exceed max_line_width, and yields one visual line per next_line()
-            // call. With `trim: false`, leading whitespace is preserved on wrapped
-            // lines. The algorithm lives in `ratatui-widgets/src/reflow.rs`.
-            //
-            // If `Paragraph::line_count()` is ever removed, implement a function that
-            // feeds the same lines into a WordWrapper iterator and counts results.
-            let entry_wrapped: u16 = if content_width == 0 {
-                entry_content_lines.len() as u16
-            } else {
-                Paragraph::new(entry_content_lines.clone())
-                    .wrap(Wrap { trim: false })
-                    .line_count(content_width) as u16
-            };
-
-            let start = wrapped_cursor;
-            let end = wrapped_cursor + entry_wrapped;
-            entry_line_ranges.push((start, end));
-            wrapped_cursor = end;
-
-            // For each content line, emit one gutter line per visual wrapped line.
-            // We can't know exact wrap points, but we emit `wrapped_count` gutter
-            // lines for this entry so the gutter total matches the content total.
-            // Since we can't predict exact wrap points, we emit gutter lines per
-            // *logical* content line and rely on the fact that the gutter Paragraph
-            // won't wrap (gutter lines are always 2 chars in a 2-wide area).
-            //
-            // Actually, the simplest correct approach: emit one gutter line per
-            // logical content line. When the content Paragraph wraps a line, it
-            // creates extra visual rows, but the gutter Paragraph (with 2-char lines
-            // in a 2-wide area) won't wrap. The scroll offset keeps them in sync
-            // because both use the same scroll value.
-            //
-            // The key insight: we need gutter_lines.len() == total number of visual
-            // (wrapped) content lines. We can compute this by padding gutter_lines
-            // to match the wrapped line count.
-            let mut entry_gutter_lines = Vec::new();
-            let blank_gutter = Span::styled(GUTTER_STR.to_string(), gutter_style);
-            for (i, _) in entry_content_lines.iter().enumerate() {
-                let span = if i == 0 && ctx.is_pinned {
-                    Span::styled(gutter_content.to_owned(), pin_highlight_style)
-                } else if i == 0 {
-                    Span::styled(gutter_content.to_owned(), gutter_style)
-                } else {
-                    blank_gutter.clone()
+                // Cache miss — render to compute count.
+                let is_selected = selected_idx == Some(i);
+                let max_lines = state
+                    .frontend
+                    .preferences
+                    .tool_result_max_lines
+                    .unwrap_or(DEFAULT_TOOL_RESULT_MAX_LINES);
+                let ctx = RenderContext {
+                    content_width,
+                    _is_selected: is_selected,
+                    is_pinned: entry.pin_position.is_some(),
+                    is_expanded,
+                    tool_result_max_lines: max_lines,
+                    theme: state.frontend.theme.clone(),
                 };
-                entry_gutter_lines.push(Line::from(span));
-            }
+                let lines = entry_to_lines(entry, &ctx);
+                let wrapped_count: u16 = if content_width == 0 {
+                    lines.len() as u16
+                } else {
+                    Paragraph::new(lines.clone())
+                        .wrap(Wrap { trim: false })
+                        .line_count(content_width) as u16
+                };
+                self.line_cache
+                    .insert(entry, is_expanded, content_width, wrapped_count);
 
-            // If any content line wraps to >1 visual row, the gutter will be short.
-            // Pad gutter lines to match the wrapped count.
-            let logical_count = entry_content_lines.len() as u16;
-            if entry_wrapped > logical_count {
-                let extra = entry_wrapped - logical_count;
-                for _ in 0..extra {
-                    entry_gutter_lines.push(Line::from(Span::styled(
-                        GUTTER_STR.to_string(),
-                        gutter_style,
-                    )));
-                }
-            }
+                let start = wrapped_cursor;
+                let end = wrapped_cursor + wrapped_count;
+                entry_line_ranges.push((start, end));
+                wrapped_cursor = end;
 
-            content_lines.extend(entry_content_lines);
-            gutter_lines.extend(entry_gutter_lines);
+                // Store lines for reuse if this entry is visible.
+                miss_lines.insert(i, lines);
+            }
         }
 
         let total_wrapped = wrapped_cursor;
 
-        // Bottom-align: when content fits within the viewport, prepend blank lines
-        // so messages appear at the bottom with empty space above.
+        // --- Scroll math (same as before, but without content_lines). ---
         let blank_count = area.height.saturating_sub(total_wrapped) as usize;
-
-        let mut display_content = Vec::with_capacity(blank_count + content_lines.len());
-        let mut display_gutter = Vec::with_capacity(blank_count + gutter_lines.len());
-        for _ in 0..blank_count {
-            display_content.push(Line::from(""));
-            display_gutter.push(Line::from(Span::styled(
-                GUTTER_STR.to_string(),
-                Style::default().fg(state.frontend.theme.border_unfocused),
-            )));
-        }
-        display_content.extend(content_lines);
-        display_gutter.extend(gutter_lines);
-
-        let scroll_offset = state.active_session().scroll_offset();
-
-        // Clamp scroll_offset: when padded to fill, max_offset is 0 (no scrolling).
-        // When content overflows, allow scrolling up to total − viewport height.
         let total_display = total_wrapped + blank_count as u16;
         let max_offset = total_display.saturating_sub(area.height);
 
-        // Feed max_offset back to state so scroll handlers can resolve "at bottom".
         state.active_session().set_last_max_offset(max_offset);
-
-        // Store viewport state for intent handlers (cursor-aware navigation).
         state
             .active_session()
             .set_entry_line_ranges(entry_line_ranges.clone());
         state.active_session().set_viewport_height(area.height);
         state.active_session().set_blank_count(blank_count as u16);
 
-        // Resolve scroll offset: None means "show bottom" → use max_offset.
+        let scroll_offset = state.active_session().scroll_offset();
         let resolved = scroll_offset.unwrap_or(max_offset);
         let mut clamped = resolved.min(max_offset);
 
@@ -265,39 +184,170 @@ impl UiElement<AppState> for ChatLogElement {
             let viewport_bottom = clamped.saturating_add(area.height);
 
             if entry_height <= area.height {
-                // Entry fits in viewport — ensure the entire entry is visible.
                 if abs_start < viewport_top {
                     clamped = abs_start;
                 } else if abs_end > viewport_bottom {
                     clamped = abs_end.saturating_sub(area.height);
                 }
-            } else {
-                // Entry taller than viewport — only snap if the entry is
-                // completely outside the viewport. This allows ctrl+d/ctrl+u
-                // to scroll freely through the entry without the renderer
-                // snapping back to the entry start.
-                if abs_start >= viewport_bottom {
-                    // Entry is entirely below the viewport — scroll to show its start.
-                    clamped = abs_start;
-                } else if abs_end <= viewport_top {
-                    // Entry is entirely above the viewport — scroll to show its end.
-                    clamped = abs_end.saturating_sub(area.height);
-                }
-                // Otherwise: entry overlaps viewport — no adjustment needed.
+            } else if abs_start >= viewport_bottom {
+                clamped = abs_start;
+            } else if abs_end <= viewport_top {
+                clamped = abs_end.saturating_sub(area.height);
             }
         }
 
+        // --- PASS 2: Render only visible entries. ---
+        //
+        // Determine which entries overlap the viewport and render their lines.
+        // The Paragraph is built from only visible entries, with a local scroll
+        // offset to account for lines above the viewport.
+        let viewport_top = clamped;
+        let viewport_bottom = clamped.saturating_add(area.height);
+
+        // Determine gutter focus state.
+        let chat_log_active = matches!(
+            state.frontend.scope_stack.current(),
+            crate::common::app_state::FocusScope::Normal
+        );
+        let (gutter_active_color, gutter_inactive_color) = {
+            let theme = &state.frontend.theme;
+            (theme.focus_accent, theme.border_unfocused)
+        };
+
+        // Find visible entry indices.
+        let mut visible_indices: Vec<usize> = Vec::new();
+        for (i, &(start, end)) in entry_line_ranges.iter().enumerate() {
+            let abs_start = start + blank_count as u16;
+            let abs_end = end + blank_count as u16;
+            if abs_end > viewport_top && abs_start < viewport_bottom {
+                visible_indices.push(i);
+            }
+        }
+
+        let mut content_lines: Vec<Line<'static>> = Vec::new();
+        let mut gutter_lines: Vec<Line<'static>> = Vec::new();
+        let mut lines_before_viewport: u16 = 0;
+
+        // Blank lines above content.
+        if blank_count > 0 && viewport_top < blank_count as u16 {
+            // Include blank lines up to the content start.
+            for _ in 0..blank_count {
+                content_lines.push(Line::from(""));
+                gutter_lines.push(Line::from(Span::styled(
+                    GUTTER_STR.to_string(),
+                    Style::default().fg(state.frontend.theme.border_unfocused),
+                )));
+            }
+            // Blank lines that are above the viewport contribute to the scroll offset.
+            lines_before_viewport = viewport_top;
+        }
+
+        // Render visible entries.
+        for &i in &visible_indices {
+            let entry = &history[i];
+            let is_selected = selected_idx == Some(i);
+            let is_expanded = state.active_session().is_entry_expanded(&entry.id);
+            let max_lines = state
+                .frontend
+                .preferences
+                .tool_result_max_lines
+                .unwrap_or(DEFAULT_TOOL_RESULT_MAX_LINES);
+
+            let (entry_start, _entry_end) = entry_line_ranges[i];
+            let abs_entry_start = entry_start + blank_count as u16;
+
+            // Get content lines — reuse from cache miss or render fresh.
+            let entry_content_lines = if let Some(lines) = miss_lines.remove(&i) {
+                lines
+            } else {
+                let ctx = RenderContext {
+                    content_width,
+                    _is_selected: is_selected,
+                    is_pinned: entry.pin_position.is_some(),
+                    is_expanded,
+                    tool_result_max_lines: max_lines,
+                    theme: state.frontend.theme.clone(),
+                };
+                entry_to_lines(entry, &ctx)
+            };
+
+            // Build gutter lines.
+            let is_pinned = entry.pin_position.is_some();
+            let gutter_style = if is_selected && chat_log_active {
+                Style::default().fg(gutter_active_color)
+            } else if is_selected {
+                Style::default().fg(gutter_inactive_color)
+            } else {
+                Style::default().fg(state.frontend.theme.border_unfocused)
+            };
+            let gutter_content = if is_pinned { "📌" } else { GUTTER_STR };
+
+            let pin_highlight_style = if is_selected && is_pinned && chat_log_active {
+                Style::default()
+                    .fg(state.frontend.theme.gutter_bg)
+                    .bg(gutter_active_color)
+            } else if is_selected && is_pinned {
+                Style::default()
+                    .fg(state.frontend.theme.gutter_bg)
+                    .bg(gutter_inactive_color)
+            } else {
+                Style::default()
+            };
+
+            let entry_wrapped: u16 = if content_width == 0 {
+                entry_content_lines.len() as u16
+            } else {
+                Paragraph::new(entry_content_lines.clone())
+                    .wrap(Wrap { trim: false })
+                    .line_count(content_width) as u16
+            };
+
+            let mut entry_gutter_lines = Vec::new();
+            let blank_gutter = Span::styled(GUTTER_STR.to_string(), gutter_style);
+            for (j, _) in entry_content_lines.iter().enumerate() {
+                let span = if j == 0 && is_pinned {
+                    Span::styled(gutter_content.to_owned(), pin_highlight_style)
+                } else if j == 0 {
+                    Span::styled(gutter_content.to_owned(), gutter_style)
+                } else {
+                    blank_gutter.clone()
+                };
+                entry_gutter_lines.push(Line::from(span));
+            }
+
+            let logical_count = entry_content_lines.len() as u16;
+            if entry_wrapped > logical_count {
+                let extra = entry_wrapped - logical_count;
+                for _ in 0..extra {
+                    entry_gutter_lines.push(Line::from(Span::styled(
+                        GUTTER_STR.to_string(),
+                        gutter_style,
+                    )));
+                }
+            }
+
+            // Track lines above viewport for scroll calculation.
+            if abs_entry_start < viewport_top {
+                lines_before_viewport += viewport_top.saturating_sub(abs_entry_start);
+            }
+
+            content_lines.extend(entry_content_lines);
+            gutter_lines.extend(entry_gutter_lines);
+        }
+
+        let paragraph_scroll = lines_before_viewport;
+
         // Render gutter column.
-        let gutter_widget = Paragraph::new(display_gutter)
+        let gutter_widget = Paragraph::new(gutter_lines)
             .block(Block::default().borders(Borders::NONE))
-            .scroll((clamped, 0));
+            .scroll((paragraph_scroll, 0));
         frame.render_widget(gutter_widget, gutter_area);
 
         // Render content column.
-        let chat_widget = Paragraph::new(display_content)
+        let chat_widget = Paragraph::new(content_lines)
             .block(Block::default().borders(Borders::NONE))
             .wrap(Wrap { trim: false })
-            .scroll((clamped, 0));
+            .scroll((paragraph_scroll, 0));
         frame.render_widget(chat_widget, content_area);
 
         // Render a scroll indicator when the user has scrolled up from the bottom.
@@ -366,7 +416,7 @@ mod tests {
     #[rstest::rstest]
     fn name_returns_chat_log() {
         // Given a ChatLogElement.
-        let element = ChatLogElement;
+        let element = ChatLogElement::new();
 
         // When querying the name.
         let name = element.name();
@@ -378,7 +428,7 @@ mod tests {
     #[rstest::rstest]
     fn render_few_messages_bottom_aligned() {
         // Given a ChatLogElement with one user entry in a 40x10 viewport.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut().push_entry(ChatEntry::user("hello"));
@@ -403,7 +453,7 @@ mod tests {
     #[rstest::rstest]
     fn chat_log_element_is_selectable() {
         // Given a ChatLogElement.
-        let element = ChatLogElement;
+        let element = ChatLogElement::new();
 
         // When calling is_selectable.
         let selectable: &dyn UiElement<AppState> = &element;
@@ -415,7 +465,7 @@ mod tests {
     #[rstest::rstest]
     fn selected_entry_gutter_is_yellow() {
         // Given a ChatLogElement with 2 entries, first selected.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut().push_entry(ChatEntry::user("hello"));
@@ -451,7 +501,7 @@ mod tests {
     fn selected_entry_gutter_is_dark_gray_when_unfocused() {
         // Given a ChatLogElement with a selected entry, sidebar focused.
         use crate::common::app_state::FocusScope;
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut().push_entry(ChatEntry::user("hello"));
@@ -483,7 +533,7 @@ mod tests {
     fn selected_entry_gutter_is_dark_gray_when_input_focused() {
         // Given a ChatLogElement with a selected entry, input focused.
         use crate::common::app_state::FocusScope;
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut().push_entry(ChatEntry::user("hello"));
@@ -514,7 +564,7 @@ mod tests {
     #[rstest::rstest]
     fn render_stores_viewport_state() {
         // Given a ChatLogElement with entries.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut().push_entry(ChatEntry::user("hello"));
@@ -542,7 +592,7 @@ mod tests {
     #[rstest::rstest]
     fn render_pinned_entry_shows_pin_in_gutter() {
         // Given a ChatLogElement with one pinned user entry.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut()
@@ -577,7 +627,7 @@ mod tests {
     #[rstest::rstest]
     fn render_unpinned_entry_has_no_pin_icon() {
         // Given a ChatLogElement with one unpinned user entry.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut().push_entry(ChatEntry::user("hello"));
@@ -611,7 +661,7 @@ mod tests {
     #[rstest::rstest]
     fn render_pinned_multi_line_entry_shows_exactly_one_pin() {
         // Given a ChatLogElement with one pinned multi-line user entry.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut().push_entry(
@@ -651,7 +701,7 @@ mod tests {
     fn render_scroll_to_selected_keeps_entry_visible() {
         // Given a ChatLogElement with many entries where the first is selected
         // and the viewport is small enough that it would normally be scrolled off.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             // Add 20 entries (each 1 line).
@@ -689,7 +739,7 @@ mod tests {
     #[rstest::rstest]
     fn render_thinking_entry_appears_above_assistant() {
         // Given a ChatLogElement with thinking then assistant entries.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut()
@@ -721,7 +771,7 @@ mod tests {
     #[rstest::rstest]
     fn render_pinned_selected_entry_gutter_has_focus_accent_bg() {
         // Given a ChatLogElement with one pinned user entry (auto-selected).
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut()
@@ -751,7 +801,7 @@ mod tests {
     #[rstest::rstest]
     fn render_pinned_unselected_entry_gutter_has_default_bg() {
         // Given a ChatLogElement with a pinned entry and an unpinned entry (unpinned selected).
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut()
@@ -784,7 +834,7 @@ mod tests {
     #[rstest::rstest]
     fn render_unpinned_selected_entry_gutter_has_no_focus_accent_bg() {
         // Given a ChatLogElement with one unpinned user entry (auto-selected).
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut().push_entry(ChatEntry::user("hello"));
@@ -814,7 +864,7 @@ mod tests {
     fn render_pinned_selected_unfocused_entry_gutter_has_border_unfocused_bg() {
         // Given a ChatLogElement with one pinned entry selected, sidebar focused.
         use crate::common::app_state::FocusScope;
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut()
@@ -846,7 +896,7 @@ mod tests {
     fn render_long_session_shows_last_entry_at_bottom() {
         // Given a ChatLogElement with many assistant entries containing word-wrapping text.
         // Assistant entries are not padded, so they wrap at word boundaries.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             for i in 0..20 {
@@ -883,7 +933,7 @@ mod tests {
     #[rstest::rstest]
     fn render_scroll_to_bottom_shows_full_last_entry() {
         // Given a ChatLogElement with assistant entries containing word-wrapping text.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             for i in 0..15 {
@@ -925,7 +975,7 @@ mod tests {
     #[rstest::rstest]
     fn render_scroll_to_selected_middle_entry_adjusts_viewport() {
         // Given a ChatLogElement with many entries where a middle entry is selected.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             // 30 entries, each with word-wrapping text.
@@ -978,7 +1028,7 @@ mod tests {
     fn render_scroll_down_through_tall_entry_works() {
         // Given a tall entry (50 lines) in a small (10-line) viewport, scrolled to show
         // the middle of the entry.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let mut state = AppState::default();
         let long_text: String = (0..50)
             .map(|i| format!("line {i}"))
@@ -1021,7 +1071,7 @@ mod tests {
     fn render_tall_entry_snaps_when_completely_below_viewport() {
         // Given a tall entry at the end and the viewport scrolled to the top,
         // with the tall entry selected.
-        let mut element = ChatLogElement;
+        let mut element = ChatLogElement::new();
         let mut state = AppState::default();
         // Push 20 short entries to fill space.
         for i in 0..20 {
@@ -1068,6 +1118,190 @@ mod tests {
         assert!(
             viewport_text.contains("line 0"),
             "tall entry below viewport should snap to show its start, got: {viewport_text}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn virtualization_populates_cache_after_render() {
+        // Given a ChatLogElement with many entries.
+        let mut element = ChatLogElement::new();
+        let state = {
+            let mut s = AppState::default();
+            for i in 0..30 {
+                s.active_session_mut()
+                    .push_entry(ChatEntry::assistant(format!("msg {i}")));
+            }
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the cache has entries for all 30 entries.
+        assert_eq!(
+            element.line_cache.len(),
+            30,
+            "cache should have entries for all 30 entries after render"
+        );
+    }
+
+    #[rstest::rstest]
+    fn expand_collapse_invalidates_and_rerenders() {
+        // Given a ChatLogElement with a long tool result entry.
+        let mut element = ChatLogElement::new();
+        let long_content: String = (0..20)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let entry = ChatEntry::tool_result("call1", "bash", &long_content, true);
+        let entry_id = entry.id.clone();
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(entry);
+
+        let (mut terminal, area) = setup_term(80, 30);
+
+        // When rendering (truncated — max_lines=5 by default).
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the truncation indicator is visible in the buffer.
+        let buffer = terminal.backend().buffer().clone();
+        let has_more_lines = (0..30).any(|row| {
+            let row_text: String = (2..80)
+                .filter_map(|col| buffer.cell((col, row)).map(|c| c.symbol().to_owned()))
+                .collect();
+            row_text.contains("more lines")
+        });
+        assert!(
+            has_more_lines,
+            "truncated tool result should show truncation indicator"
+        );
+
+        // When expanding the entry and re-rendering.
+        state.active_session_mut().toggle_expand_entry(entry_id);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the expanded content shows all lines.
+        let buffer2 = terminal.backend().buffer().clone();
+        let has_line_19 = (0..30).any(|row| {
+            let row_text: String = (2..80)
+                .filter_map(|col| buffer2.cell((col, row)).map(|c| c.symbol().to_owned()))
+                .collect();
+            row_text.contains("line 19")
+        });
+        assert!(
+            has_line_19,
+            "expanded tool result should show all content including line 19"
+        );
+    }
+
+    #[rstest::rstest]
+    fn resize_clears_cache_and_rerenders() {
+        // Given a ChatLogElement rendered at width 40.
+        let mut element = ChatLogElement::new();
+        let state = {
+            let mut s = AppState::default();
+            for i in 0..5 {
+                s.active_session_mut()
+                    .push_entry(ChatEntry::assistant(format!("message {i}")));
+            }
+            s
+        };
+
+        let (mut terminal, area) = setup_term(40, 10);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // When rendering at a different width (simulating resize).
+        let (mut terminal2, area2) = setup_term(60, 10);
+        terminal2
+            .draw(|frame| {
+                element.render(frame, area2, &state);
+            })
+            .unwrap();
+
+        // Then the cache is still populated (re-populated at new width).
+        assert_eq!(
+            element.line_cache.len(),
+            5,
+            "cache should be re-populated after resize"
+        );
+
+        // And the last message is visible at the bottom.
+        let buffer = terminal2.backend().buffer().clone();
+        let bottom_text: String = (0..60)
+            .filter_map(|x| buffer.cell((x, 9)).map(|c| c.symbol().to_owned()))
+            .collect();
+        assert!(
+            bottom_text.contains("4"),
+            "last message should be visible after resize"
+        );
+    }
+
+    #[rstest::rstest]
+    fn streaming_content_change_invalidates_cache() {
+        // Given a ChatLogElement rendered during active streaming.
+        let mut element = ChatLogElement::new();
+        let (mut terminal, area) = setup_term(40, 10);
+
+        let mut state = AppState::default();
+        state.active_session_mut().begin_streaming();
+        state.active_session_mut().append_stream_token("initial");
+
+        // When rendering with initial streaming content.
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        assert_eq!(element.line_cache.len(), 1, "cache should have 1 entry");
+
+        // When more tokens arrive (content changes, fingerprint changes).
+        state
+            .active_session_mut()
+            .append_stream_token(" + more text");
+
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the cache still has 1 entry (re-computed with new fingerprint).
+        assert_eq!(
+            element.line_cache.len(),
+            1,
+            "cache should have 1 entry after streaming token append"
+        );
+
+        // And the updated content is visible.
+        let buffer = terminal.backend().buffer().clone();
+        let has_more = (0..10).any(|row| {
+            let row_text: String = (2..40)
+                .filter_map(|col| buffer.cell((col, row)).map(|c| c.symbol().to_owned()))
+                .collect();
+            row_text.contains("more")
+        });
+        assert!(
+            has_more,
+            "updated content should be visible after streaming"
         );
     }
 }
