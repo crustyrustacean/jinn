@@ -1,4 +1,5 @@
 use super::render::*;
+use nullslop_domain::feat::ui::chat_log::GUTTER_WIDTH;
 use nullslop_selection_widget::compute_popup_rect;
 use nullslop_testutil::setup_term;
 use ratatui::layout::Rect;
@@ -26,18 +27,24 @@ fn render_registers_content_rect_for_selectable_chat_log() {
         })
         .unwrap();
 
-    // Then the chat area rect is registered as selectable.
-    // Chat log is selectable — content area is the main column's sub-area.
+    // Then the chat area rect is registered as selectable, excluding the gutter.
+    // Chat log is selectable — the selectable area starts after the gutter column.
     let layout = AppLayout::new(frame_area(80, 24), 1, 12);
-    let chat_area = layout.content;
+    let content = layout.content;
+    let expected = Rect {
+        x: content.x + GUTTER_WIDTH,
+        y: content.y,
+        width: content.width.saturating_sub(GUTTER_WIDTH),
+        height: content.height,
+    };
     let found = app
         .selectable_rects
-        .find_for_position(chat_area.x + 1, chat_area.y + 1);
+        .find_for_position(expected.x + 1, expected.y + 1);
     assert!(
         found.is_some(),
         "chat log content rect should be selectable"
     );
-    assert_eq!(found.unwrap(), chat_area);
+    assert_eq!(found.unwrap(), expected);
 }
 
 #[rstest::rstest]
@@ -98,10 +105,13 @@ fn content_area_rect_is_selectable() {
         .unwrap();
 
     // Then the content area rect is also still selectable (chat-log is selectable).
+    // Query a position inside the gutter-excluded selectable rect.
     let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+    let content = layout.content;
+    let select_x = content.x + GUTTER_WIDTH + 1;
     let content_found = app
         .selectable_rects
-        .find_for_position(layout.content.x + 1, layout.content.y + 1);
+        .find_for_position(select_x, content.y + 1);
     assert!(
         content_found.is_some(),
         "content rect should also be selectable alongside picker"
@@ -111,4 +121,26 @@ fn content_area_rect_is_selectable() {
 /// Helper to create a Rect matching the terminal dimensions.
 fn frame_area(w: u16, h: u16) -> Rect {
     Rect::new(0, 0, w, h)
+}
+
+#[rstest::rstest]
+fn gutter_area_is_not_selectable() {
+    // Given a TuiApp rendered in Chat tab with a 80x24 terminal.
+    let mut app = render_test_app();
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then clicking in the gutter (first column of content area) is not selectable.
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+    let content = layout.content;
+    let found = app
+        .selectable_rects
+        .find_for_position(content.x, content.y + 1);
+    assert!(found.is_none(), "gutter area should not be selectable");
 }
