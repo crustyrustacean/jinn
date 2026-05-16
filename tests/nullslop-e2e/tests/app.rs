@@ -25,6 +25,7 @@ use nullslop_domain::LlmServiceFactoryService;
 use nullslop_domain::ProviderRegistry;
 use nullslop_domain::ProviderRegistryService;
 use nullslop_domain::ProvidersConfig;
+use nullslop_domain::SessionLoadRequested;
 use nullslop_domain::StateReadGuard;
 use nullslop_domain::UserPreferencesStorageService;
 use nullslop_tui::AppStatus;
@@ -52,6 +53,8 @@ pub struct AppWorld {
     /// Temp directory holding all test filesystem paths. Cleaned up on drop.
     #[allow(dead_code)]
     temp_dir: tempfile::TempDir,
+    /// Pre-reload CWD captured during "saved and reloaded" step.
+    cwd_before_reload: Option<std::path::PathBuf>,
 }
 
 impl std::fmt::Debug for AppWorld {
@@ -154,6 +157,7 @@ impl AppWorld {
             app,
             handle,
             temp_dir,
+            cwd_before_reload: None,
         }
     }
 
@@ -574,4 +578,119 @@ fn then_last_user_entry_display_expanded(world: &mut AppWorld, display: String, 
         }
         _ => panic!("expected User entry, got {:?}", last.kind),
     }
+}
+
+// --- Session CWD step definitions ---
+
+/// Asserts the active session's CWD is not empty.
+#[cucumber::then(expr = "the session CWD should not be empty")]
+fn then_session_cwd_not_empty(world: &mut AppWorld) {
+    let state = world.state();
+    let cwd = state.active_session().cwd();
+    assert!(
+        !cwd.as_os_str().is_empty(),
+        "expected non-empty CWD, got: {:?}",
+        cwd
+    );
+}
+
+/// Saves the active session, captures its CWD, then triggers a reload.
+#[cucumber::when(expr = "the session is saved and reloaded")]
+async fn when_session_saved_and_reloaded(world: &mut AppWorld) {
+    // Wait for any pending actor work to complete (e.g., session save after
+    // message enqueue). The session actor saves asynchronously, so we wait
+    // for the history to stabilize.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // Capture CWD before reload.
+    let (session_id, cwd_before) = {
+        let state = world.state();
+        let session = state.active_session();
+        (
+            session.session_id().clone(),
+            session.cwd().to_owned(),
+        )
+    };
+
+    // Trigger reload by sending SessionLoadRequested.
+    world.submit_command(nullslop_domain::Command::SessionLoadRequested(
+        nullslop_domain::SessionLoadRequested {
+            session_id: session_id.clone(),
+        },
+    ));
+
+    // Wait for the load to complete (session_loading transitions to false).
+    world
+        .wait_until(|state| !state.session.session_loading)
+        .await;
+
+    // Wait a bit more for the async cwd check to complete.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Store the pre-reload CWD for comparison.
+    world.cwd_before_reload = Some(cwd_before);
+}
+
+/// Asserts the session CWD is the same as before the reload.
+#[cucumber::then(expr = "the session CWD should be preserved")]
+fn then_session_cwd_preserved(world: &mut AppWorld) {
+    let state = world.state();
+    let cwd_after = state.active_session().cwd();
+    let cwd_before = world
+        .cwd_before_reload
+        .as_ref()
+        .expect("no pre-reload CWD stored");
+    assert_eq!(
+        cwd_after, cwd_before,
+        "CWD not preserved across reload"
+    );
+}
+
+/// Sets the active session's CWD to a non-existent path.
+#[cucumber::given(expr = "the session CWD is set to a non-existent path")]
+fn given_session_cwd_nonexistent(world: &mut AppWorld) {
+    world
+        .app
+        .core
+        .state
+        .write()
+        .active_session_mut()
+        .set_cwd(std::path::PathBuf::from("/nonexistent/test/path/xyz"));
+}
+
+/// Asserts a warning about the missing CWD appears in chat history.
+#[cucumber::then(expr = "a warning about the missing CWD should appear")]
+async fn then_warning_about_missing_cwd(world: &mut AppWorld) {
+    world
+        .wait_until(|state| {
+            state
+                .active_session()
+                .history()
+                .iter()
+                .any(|e| {
+                    matches!(&e.kind, nullslop_domain::ChatEntryKind::System(t) if t.contains("Warning: working directory"))
+                })
+        })
+        .await;
+    let state = world.state();
+    let found = state
+        .active_session()
+        .history()
+        .iter()
+        .any(|e| {
+            matches!(&e.kind, nullslop_domain::ChatEntryKind::System(t) if t.contains("Warning: working directory"))
+        });
+    assert!(found, "expected a warning about missing CWD in chat history");
+}
+
+/// Asserts the session CWD has fallen back to the global default.
+#[cucumber::then(expr = "the session CWD should fall back to the global CWD")]
+fn then_session_cwd_fallback(world: &mut AppWorld) {
+    let state = world.state();
+    let actual = state.active_session().cwd();
+    let expected = &state.session.default_cwd;
+    assert_eq!(
+        actual, expected,
+        "expected CWD to fall back to global CWD"
+    );
 }
