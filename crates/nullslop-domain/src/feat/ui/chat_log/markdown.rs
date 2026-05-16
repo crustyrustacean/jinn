@@ -19,6 +19,7 @@ use crate::feat::theme::Theme;
 /// markdown, and renders it using the nullslop theme. The `width` parameter
 /// controls word-wrapping.
 pub fn render_markdown(text: &str, width: u16, theme: &Theme) -> Vec<Line<'static>> {
+    let text = text.trim();
     let renderer = MarkdownRenderer::new(width as usize)
         .with_render_hooks(highlight_hooks(width as usize, theme));
     let blocks = renderer.parse(text);
