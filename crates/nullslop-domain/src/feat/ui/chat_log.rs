@@ -8,6 +8,7 @@
 pub(crate) mod actor;
 pub(crate) mod assistant;
 pub(crate) mod error_entry;
+pub(crate) mod markdown;
 pub(crate) mod renderer;
 pub(crate) mod shared;
 pub(crate) mod system;
