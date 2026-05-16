@@ -132,7 +132,6 @@ impl UiElement<AppState> for ChatLogElement {
                 let ctx = RenderContext {
                     content_width,
                     _is_selected: is_selected,
-                    is_pinned: entry.pin_position.is_some(),
                     is_expanded,
                     tool_result_max_lines: max_lines,
                     theme: state.frontend.theme.clone(),
@@ -266,7 +265,6 @@ impl UiElement<AppState> for ChatLogElement {
                 let ctx = RenderContext {
                     content_width,
                     _is_selected: is_selected,
-                    is_pinned: entry.pin_position.is_some(),
                     is_expanded,
                     tool_result_max_lines: max_lines,
                     theme: state.frontend.theme.clone(),

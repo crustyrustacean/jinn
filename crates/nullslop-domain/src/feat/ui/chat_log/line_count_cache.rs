@@ -96,11 +96,13 @@ impl EntryLineCache {
     }
 
     /// Remove a specific entry from the cache.
+    #[allow(dead_code)]
     pub fn invalidate_entry(&mut self, id: &ChatEntryId) {
         self.entries.remove(id);
     }
 
     /// Clear the entire cache.
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.entries.clear();
         self.content_width = None;
@@ -108,12 +110,14 @@ impl EntryLineCache {
 
     /// Number of entries currently cached.
     #[must_use]
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
     /// Whether the cache is empty.
     #[must_use]
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
