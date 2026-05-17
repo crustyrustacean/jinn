@@ -165,6 +165,7 @@ mod tests {
                 last_strategy: None,
                 tool_entry_max_lines: None,
                 theme_name: None,
+                session_lifecycles: vec![],
             })
             .expect("save prefs");
 

@@ -1496,3 +1496,32 @@ fn cwd_defaults_to_dot_when_missing_from_snapshot() {
     // Then the CWD defaults to "." (resolves to current directory).
     assert_eq!(restored.cwd(), PathBuf::from("."));
 }
+
+#[rstest::rstest]
+fn serde_round_trips_lifecycle_fields() {
+    // Given a session with lifecycle fields set.
+    let mut session = ChatSessionState::new();
+    session.set_lifecycle_name(Some("fossil branch".to_owned()));
+    session.set_lifecycle_args(vec!["feature-x".to_owned()]);
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&session).expect("serialize");
+    let back: ChatSessionState = serde_json::from_str(&json).expect("deserialize");
+
+    // Then lifecycle fields are preserved.
+    assert_eq!(back.lifecycle_name(), Some("fossil branch"));
+    assert_eq!(back.lifecycle_args(), &["feature-x".to_owned()]);
+}
+
+#[rstest::rstest]
+fn serde_defaults_lifecycle_fields_when_missing() {
+    // Given a JSON object without lifecycle fields.
+    let json = r#"{"session_id":"test","updated_at":"2026-01-01T00:00:00Z","created_at":"2026-01-01T00:00:00Z","history":[],"profile":{"model":"","strategy":"passthrough"},"cwd":"."}"#;
+
+    // When deserializing.
+    let back: ChatSessionState = serde_json::from_str(json).expect("deserialize");
+
+    // Then lifecycle fields default to None/empty.
+    assert!(back.lifecycle_name().is_none());
+    assert!(back.lifecycle_args().is_empty());
+}

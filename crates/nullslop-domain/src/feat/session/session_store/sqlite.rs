@@ -369,6 +369,8 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     parent_session,
                     strategy_state,
                     blobs,
+                    lifecycle_name: _lifecycle_name,
+                    lifecycle_args: _lifecycle_args,
                     ephemeral: _ephemeral, // runtime-only state, not persisted
                 },
             ui: _ui, // runtime-only UI state, not persisted
@@ -455,6 +457,8 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 parent_session: parent_session.map(SessionId::from),
                 strategy_state,
                 blobs,
+                lifecycle_name: None,
+                lifecycle_args: Vec::new(),
                 ephemeral: SessionCoreEphemeral::default(),
             },
             ui: SessionUi::default(),
