@@ -90,6 +90,12 @@ pub fn create_core_with_actor_host(
     // Build services (needed early for infrastructure actors).
     let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
     let paths = nullslop_domain::AppPaths::default();
+
+    // Set themes directory from AppPaths (used by theme picker intent).
+    {
+        let mut guard = state.write();
+        guard.frontend.themes_dir = paths.themes_dir();
+    }
     let services = Services {
         paths: paths.clone(),
         handle: handle.clone(),
@@ -179,6 +185,7 @@ pub fn create_core_with_actor_host(
     >("preferences-sync", &sink, handle, &counter, &shutdown_tracker, |ctx| {
         ctx.set_description("Syncs AppState.frontend.preferences from PreferencesUpdated events");
         ctx.set_data(state.clone());
+        ctx.set_data(paths.themes_dir());
     });
 
     // ── Domain actors ────────────────────────────────────────────────────
