@@ -36,10 +36,10 @@ pub struct UserPreferences {
     /// Format: strategy name (e.g., `"sliding_window"`).
     #[serde(default)]
     pub last_strategy: Option<String>,
-    /// Maximum number of lines to display for tool result entries in the chat log.
+    /// Maximum number of lines to display for tool entries in the chat log.
     /// `None` means use the built-in default (5 lines).
     #[serde(default)]
-    pub tool_result_max_lines: Option<u16>,
+    pub tool_entry_max_lines: Option<u16>,
     /// The name of the active theme. `None` or `"default"` uses the built-in theme.
     /// Corresponds to a file in `~/.config/nullslop/themes/<name>.toml`.
     #[serde(default)]
@@ -137,10 +137,10 @@ mod tests {
         // Given default preferences.
         let prefs = UserPreferences::default();
 
-        // Then last_model, last_strategy, and tool_result_max_lines are None.
+        // Then last_model, last_strategy, and tool_entry_max_lines are None.
         assert!(prefs.last_model.is_none());
         assert!(prefs.last_strategy.is_none());
-        assert!(prefs.tool_result_max_lines.is_none());
+        assert!(prefs.tool_entry_max_lines.is_none());
     }
 
     #[rstest::rstest]
@@ -155,7 +155,7 @@ mod tests {
         // Then defaults are returned.
         assert!(prefs.last_model.is_none());
         assert!(prefs.last_strategy.is_none());
-        assert!(prefs.tool_result_max_lines.is_none());
+        assert!(prefs.tool_entry_max_lines.is_none());
     }
 
     #[rstest::rstest]
@@ -166,7 +166,7 @@ mod tests {
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: Some("sliding_window".to_owned()),
-            tool_result_max_lines: None,
+            tool_entry_max_lines: None,
             theme_name: None,
         };
 
@@ -215,7 +215,7 @@ last_strategy = "sliding_window""#,
         // Then defaults are returned (all fields None).
         assert!(prefs.last_model.is_none());
         assert!(prefs.last_strategy.is_none());
-        assert!(prefs.tool_result_max_lines.is_none());
+        assert!(prefs.tool_entry_max_lines.is_none());
     }
 
     #[rstest::rstest]
@@ -226,7 +226,7 @@ last_strategy = "sliding_window""#,
         let prefs = UserPreferences {
             last_model: Some("test/model".to_owned()),
             last_strategy: None,
-            tool_result_max_lines: None,
+            tool_entry_max_lines: None,
             theme_name: None,
         };
 
@@ -238,14 +238,14 @@ last_strategy = "sliding_window""#,
     }
 
     #[rstest::rstest]
-    fn save_then_load_round_trips_tool_result_max_lines() {
-        // Given preferences with a tool_result_max_lines override.
+    fn save_then_load_round_trips_tool_entry_max_lines() {
+        // Given preferences with a tool_entry_max_lines override.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             last_model: None,
             last_strategy: None,
-            tool_result_max_lines: Some(10),
+            tool_entry_max_lines: Some(10),
             theme_name: None,
         };
 
@@ -254,7 +254,7 @@ last_strategy = "sliding_window""#,
         let reloaded = load_preferences_from(&path).expect("load");
 
         // Then the round-tripped value matches.
-        assert_eq!(reloaded.tool_result_max_lines, Some(10));
+        assert_eq!(reloaded.tool_entry_max_lines, Some(10));
     }
 
     #[rstest::rstest]

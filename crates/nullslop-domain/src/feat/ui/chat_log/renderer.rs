@@ -38,8 +38,8 @@ use super::{
     user,
 };
 
-/// Default number of lines to show for tool result entries before truncating.
-const DEFAULT_TOOL_RESULT_MAX_LINES: u16 = 5;
+/// Default number of lines to show for tool entries (calls and results) before truncating.
+const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 // alternatives: |❚┃╏⣿𜺏░▒▓
 const GUTTER_STR: &str = "𜺏 ";
 
@@ -127,13 +127,13 @@ impl UiElement<AppState> for ChatLogElement {
                 let max_lines = state
                     .frontend
                     .preferences
-                    .tool_result_max_lines
-                    .unwrap_or(DEFAULT_TOOL_RESULT_MAX_LINES);
+                    .tool_entry_max_lines
+                    .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                 let ctx = RenderContext {
                     content_width,
                     _is_selected: is_selected,
                     is_expanded,
-                    tool_result_max_lines: max_lines,
+                    tool_entry_max_lines: max_lines,
                     theme: state.frontend.theme.clone(),
                 };
                 let lines = entry_to_lines(entry, &ctx);
@@ -252,8 +252,8 @@ impl UiElement<AppState> for ChatLogElement {
             let max_lines = state
                 .frontend
                 .preferences
-                .tool_result_max_lines
-                .unwrap_or(DEFAULT_TOOL_RESULT_MAX_LINES);
+                .tool_entry_max_lines
+                .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
 
             let (entry_start, _entry_end) = entry_line_ranges[i];
             let abs_entry_start = entry_start + blank_count as u16;
@@ -266,7 +266,7 @@ impl UiElement<AppState> for ChatLogElement {
                     content_width,
                     _is_selected: is_selected,
                     is_expanded,
-                    tool_result_max_lines: max_lines,
+                    tool_entry_max_lines: max_lines,
                     theme: state.frontend.theme.clone(),
                 };
                 entry_to_lines(entry, &ctx)
