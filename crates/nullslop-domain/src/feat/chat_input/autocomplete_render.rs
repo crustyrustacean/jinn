@@ -6,7 +6,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 /// Maximum number of visible rows in the autocomplete popup.
 pub const AUTOCOMPLETE_MAX_VISIBLE: usize = 20;
@@ -89,6 +89,9 @@ pub fn render_autocomplete_popup(frame: &mut Frame<'_>, input_area: Rect, state:
     let popup_x = anchor_x.min(term_width.saturating_sub(popup_width));
 
     let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+    // Clear the popup area so content behind it doesn't show through.
+    frame.render_widget(Clear, popup_area);
 
     // Render bordered block.
     let block = Block::default()
