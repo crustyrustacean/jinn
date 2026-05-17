@@ -4,7 +4,7 @@
 //! dispatches [`ExecuteToolBatch`] requests, and emits [`ToolBatchCompleted`] when
 //! all calls in a batch finish.
 //!
-//! Built-in tools (`echo`, `get_time`, `read`, `write`) are registered at
+//! Built-in tools (`get_time`, `read`, `write`) are registered at
 //! activation and executed via spawned tokio tasks. Actor-provided tools
 //! are routed via [`ExecuteTool`] commands on the bus.
 //!
@@ -14,7 +14,6 @@
 
 mod builtin;
 pub(crate) mod builtin_bash;
-pub(crate) mod builtin_echo;
 pub(crate) mod builtin_get_time;
 pub(crate) mod builtin_read;
 #[cfg(test)]

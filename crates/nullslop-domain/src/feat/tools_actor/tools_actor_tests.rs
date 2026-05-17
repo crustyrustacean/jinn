@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use crate::common::actor::{Actor, ActorContext, RecordingSink};
 use crate::common::app_state::AppState;
 use crate::common::state::State;
-use crate::feat::tools_actor::builtin_echo;
 use crate::feat::tools_actor::builtin_get_time;
 use crate::feat::tools_actor::builtin_read;
 use crate::feat::tools_actor::builtin_write;
@@ -59,19 +58,6 @@ fn find_execution_completed(events: &[Event]) -> Vec<&ToolExecutionCompleted> {
 }
 
 // --- Activation tests ---
-
-#[rstest::rstest]
-#[tokio::test]
-async fn activate_registers_echo_tool() {
-    // Given a fresh actor context with state.
-    let (_sink, mut ctx) = default_test_ctx();
-
-    // When activating the actor.
-    let actor = ToolOrchestratorActor::activate(&mut ctx);
-
-    // Then the echo tool is registered.
-    assert!(actor.tools.contains_key("echo"));
-}
 
 #[rstest::rstest]
 #[tokio::test]
@@ -135,7 +121,7 @@ async fn activate_emits_tools_registered_for_builtins() {
         .iter()
         .find(|p| p.provider == "builtin")
         .expect("expected builtin ToolsRegistered");
-    assert_eq!(builtin_evt.definitions.len(), 7);
+    assert_eq!(builtin_evt.definitions.len(), 6);
 }
 
 // --- RegisterTools command tests ---
@@ -250,55 +236,6 @@ async fn register_tools_records_tool_count() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn execute_builtin_echo_tool() {
-    // Given an echo tool call.
-    let call = ToolCall {
-        id: "call_1".to_owned(),
-        name: "echo".to_owned(),
-        arguments: r#"{"input":"hello world"}"#.to_owned(),
-    };
-    let ctx = ToolContext {
-        cwd: PathBuf::from("/tmp"),
-        timeout: None,
-        state: None,
-        session_id: None,
-        app_paths: crate::common::app_paths::AppPaths::default(),
-    };
-
-    // When executing the echo tool.
-    let result = builtin_echo::execute(call, ctx).await;
-    assert_eq!(result.tool_call_id, "call_1");
-    assert_eq!(result.name, "echo");
-    assert_eq!(result.content, "hello world");
-    assert!(result.success);
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn execute_builtin_echo_tool_returns_error_on_bad_json() {
-    // Given an echo tool call with invalid JSON.
-    let call = ToolCall {
-        id: "call_2".to_owned(),
-        name: "echo".to_owned(),
-        arguments: "not json".to_owned(),
-    };
-    let ctx = ToolContext {
-        cwd: PathBuf::from("/tmp"),
-        timeout: None,
-        state: None,
-        session_id: None,
-        app_paths: crate::common::app_paths::AppPaths::default(),
-    };
-
-    // When executing the echo tool.
-    let result = builtin_echo::execute(call, ctx).await;
-
-    // Then the result indicates failure.
-    assert_eq!(result.tool_call_id, "call_2");
-}
-
-#[rstest::rstest]
-#[tokio::test]
 async fn execute_builtin_get_time_tool() {
     // Given a get_time tool call.
     let call = ToolCall {
@@ -386,7 +323,7 @@ async fn execute_builtin_read_tool_returns_error_on_missing_file() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn execute_batch_with_echo_tool_emits_completion() {
+async fn execute_batch_with_get_time_tool_emits_completion() {
     // Given an activated actor.
     let (sink, mut ctx) = default_test_ctx();
     let mut actor = ToolOrchestratorActor::activate(&mut ctx);
@@ -394,13 +331,13 @@ async fn execute_batch_with_echo_tool_emits_completion() {
 
     let session_id = SessionId::new();
 
-    // When executing a batch with one echo call.
+    // When executing a batch with one get_time call.
     let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
         session_id: session_id.clone(),
         tool_calls: vec![ToolCall {
             id: "call_1".to_owned(),
-            name: "echo".to_owned(),
-            arguments: r#"{"input":"hello"}"#.to_owned(),
+            name: "get_time".to_owned(),
+            arguments: "{}".to_owned(),
         }],
     });
     actor.handle_command(&cmd, &ctx);
@@ -410,14 +347,14 @@ async fn execute_batch_with_echo_tool_emits_completion() {
     let events = sink.take_events();
     let completed = find_execution_completed(&events);
     assert_eq!(completed.len(), 1);
-    assert_eq!(completed[0].result.content, "hello");
     assert!(completed[0].result.success);
+    assert!(!completed[0].result.content.is_empty());
 }
 
 #[rstest::rstest]
 #[tokio::test]
 async fn completion_event_triggers_batch_completed() {
-    // Given an activated actor with a single echo batch executed.
+    // Given an activated actor with a single get_time batch executed.
     let (sink, mut ctx) = default_test_ctx();
     let mut actor = ToolOrchestratorActor::activate(&mut ctx);
     sink.clear();
@@ -428,8 +365,8 @@ async fn completion_event_triggers_batch_completed() {
         session_id: session_id.clone(),
         tool_calls: vec![ToolCall {
             id: "call_1".to_owned(),
-            name: "echo".to_owned(),
-            arguments: r#"{"input":"hello"}"#.to_owned(),
+            name: "get_time".to_owned(),
+            arguments: "{}".to_owned(),
         }],
     });
     actor.handle_command(&cmd, &ctx);
@@ -450,7 +387,7 @@ async fn completion_event_triggers_batch_completed() {
     let batch_completed = find_batch_completed(&events);
     assert_eq!(batch_completed.len(), 1);
     assert_eq!(batch_completed[0].results.len(), 1);
-    assert_eq!(batch_completed[0].results[0].content, "hello");
+    assert!(!batch_completed[0].results[0].content.is_empty());
 }
 
 #[rstest::rstest]
@@ -463,19 +400,19 @@ async fn execute_batch_with_two_tools_emits_two_completions() {
 
     let session_id = SessionId::new();
 
-    // When executing a batch with two echo calls.
+    // When executing a batch with two get_time calls.
     let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
         session_id: session_id.clone(),
         tool_calls: vec![
             ToolCall {
                 id: "call_a".to_owned(),
-                name: "echo".to_owned(),
-                arguments: r#"{"input":"first"}"#.to_owned(),
+                name: "get_time".to_owned(),
+                arguments: "{}".to_owned(),
             },
             ToolCall {
                 id: "call_b".to_owned(),
-                name: "echo".to_owned(),
-                arguments: r#"{"input":"second"}"#.to_owned(),
+                name: "get_time".to_owned(),
+                arguments: "{}".to_owned(),
             },
         ],
     });
@@ -491,7 +428,7 @@ async fn execute_batch_with_two_tools_emits_two_completions() {
 #[rstest::rstest]
 #[tokio::test]
 async fn first_completion_does_not_complete_batch() {
-    // Given an activated actor with a batch of two echo calls executed.
+    // Given an activated actor with a batch of two get_time calls executed.
     let (sink, mut ctx) = default_test_ctx();
     let mut actor = ToolOrchestratorActor::activate(&mut ctx);
     sink.clear();
@@ -503,13 +440,13 @@ async fn first_completion_does_not_complete_batch() {
         tool_calls: vec![
             ToolCall {
                 id: "call_a".to_owned(),
-                name: "echo".to_owned(),
-                arguments: r#"{"input":"first"}"#.to_owned(),
+                name: "get_time".to_owned(),
+                arguments: "{}".to_owned(),
             },
             ToolCall {
                 id: "call_b".to_owned(),
-                name: "echo".to_owned(),
-                arguments: r#"{"input":"second"}"#.to_owned(),
+                name: "get_time".to_owned(),
+                arguments: "{}".to_owned(),
             },
         ],
     });
@@ -536,7 +473,7 @@ async fn first_completion_does_not_complete_batch() {
 #[rstest::rstest]
 #[tokio::test]
 async fn second_completion_emits_batch_completed() {
-    // Given an activated actor with a batch of two echo calls where first completion was fed back.
+    // Given an activated actor with a batch of two get_time calls where first completion was fed back.
     let (sink, mut ctx) = default_test_ctx();
     let mut actor = ToolOrchestratorActor::activate(&mut ctx);
     sink.clear();
@@ -548,13 +485,13 @@ async fn second_completion_emits_batch_completed() {
         tool_calls: vec![
             ToolCall {
                 id: "call_a".to_owned(),
-                name: "echo".to_owned(),
-                arguments: r#"{"input":"first"}"#.to_owned(),
+                name: "get_time".to_owned(),
+                arguments: "{}".to_owned(),
             },
             ToolCall {
                 id: "call_b".to_owned(),
-                name: "echo".to_owned(),
-                arguments: r#"{"input":"second"}"#.to_owned(),
+                name: "get_time".to_owned(),
+                arguments: "{}".to_owned(),
             },
         ],
     });
@@ -857,7 +794,7 @@ async fn tool_execution_completed_for_unknown_session_is_ignored() {
         session_id: unknown_session,
         result: ToolResult {
             tool_call_id: "call_0".to_owned(),
-            name: "echo".to_owned(),
+            name: "get_time".to_owned(),
             content: "orphan".to_owned(),
             success: true,
         },
@@ -911,7 +848,7 @@ async fn build_tool_context_returns_default_cwd_for_unknown_session() {
 #[rstest::rstest]
 #[tokio::test]
 async fn cancel_tool_batch_removes_pending_batch() {
-    // Given an activated actor with a pending batch of two echo calls.
+    // Given an activated actor with a pending batch of two get_time calls.
     let (sink, mut ctx) = default_test_ctx();
     let mut actor = ToolOrchestratorActor::activate(&mut ctx);
     sink.clear();
@@ -923,13 +860,13 @@ async fn cancel_tool_batch_removes_pending_batch() {
         tool_calls: vec![
             ToolCall {
                 id: "call_a".to_owned(),
-                name: "echo".to_owned(),
-                arguments: r#"{"input":"first"}"#.to_owned(),
+                name: "get_time".to_owned(),
+                arguments: "{}".to_owned(),
             },
             ToolCall {
                 id: "call_b".to_owned(),
-                name: "echo".to_owned(),
-                arguments: r#"{"input":"second"}"#.to_owned(),
+                name: "get_time".to_owned(),
+                arguments: "{}".to_owned(),
             },
         ],
     });
@@ -951,7 +888,7 @@ async fn cancel_tool_batch_removes_pending_batch() {
 #[rstest::rstest]
 #[tokio::test]
 async fn cancel_tool_batch_aborts_spawned_tasks() {
-    // Given an activated actor with a pending batch of echo calls.
+    // Given an activated actor with a pending batch of get_time calls.
     let (sink, mut ctx) = default_test_ctx();
     let mut actor = ToolOrchestratorActor::activate(&mut ctx);
     sink.clear();
@@ -962,8 +899,8 @@ async fn cancel_tool_batch_aborts_spawned_tasks() {
         session_id: session_id.clone(),
         tool_calls: vec![ToolCall {
             id: "call_1".to_owned(),
-            name: "echo".to_owned(),
-            arguments: r#"{"input":"hello"}"#.to_owned(),
+            name: "get_time".to_owned(),
+            arguments: "{}".to_owned(),
         }],
     });
     actor.handle_command(&cmd, &ctx);
