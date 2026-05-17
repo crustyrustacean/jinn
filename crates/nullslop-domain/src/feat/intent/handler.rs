@@ -177,6 +177,17 @@ impl IntentHandler {
                 );
                 IntentResult::empty()
             }
+            Intent::SidebarSectionNext => {
+                feat::ui::sidebar::jump_to_section(
+                    feat::ui::sidebar::SidebarIntent::MoveDown,
+                    state,
+                );
+                IntentResult::empty()
+            }
+            Intent::SidebarSectionPrev => {
+                feat::ui::sidebar::jump_to_section(feat::ui::sidebar::SidebarIntent::MoveUp, state);
+                IntentResult::empty()
+            }
             Intent::PinsUnpin => feat::ui::sidebar::pins::pins_section::handle_pins_unpin(state),
             Intent::PinsPinTop => {
                 feat::ui::sidebar::pins::pins_section::handle_pins_pin(state, PinPosition::Top)
@@ -193,9 +204,7 @@ impl IntentHandler {
             Intent::SidebarPersonaEdit => {
                 feat::ui::sidebar::pins::pins_section::handle_sidebar_persona_edit(state)
             }
-            Intent::SidebarSessionClose => {
-                feat::ui::sidebar::sessions::handle_session_close(state)
-            }
+            Intent::SidebarSessionClose => feat::ui::sidebar::sessions::handle_session_close(state),
             Intent::SidebarConfirm => {
                 feat::ui::sidebar::sessions::handle_session_activate(state);
                 IntentResult::empty()

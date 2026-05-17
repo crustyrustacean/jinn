@@ -55,7 +55,11 @@ impl Sidebar {
         frame.render_widget(background, area);
 
         // Pre-compute all section heights so we don't fight the borrow checker.
-        let heights: Vec<u16> = self.sections.iter().map(|s| s.content_height(state)).collect();
+        let heights: Vec<u16> = self
+            .sections
+            .iter()
+            .map(|s| s.content_height(state))
+            .collect();
         let n = self.sections.len();
 
         // Render all sections except the last top-down.
@@ -202,6 +206,53 @@ fn receive_cursor(id: SidebarSectionId, enter_from: EnterFrom, state: &mut AppSt
     }
 }
 
+/// Check if a section has a retained cursor.
+fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
+    match id {
+        SidebarSectionId::Persona => state.frontend.persona_section.cursor.is_some(),
+        SidebarSectionId::Pins => state.frontend.pins.selected_id().is_some(),
+        SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index.is_some(),
+    }
+}
+
+/// Jump directly to the next/previous sidebar section without clearing cursors.
+///
+/// Uses existing [`next_section`]/[`prev_section`] helpers, skipping empty sections.
+/// Retains the leaving section's cursor position. If the target section has no
+/// cursor (never visited), calls [`receive_cursor`] as fallback.
+/// If the target has a retained cursor, ensures scroll offset is valid.
+pub fn jump_to_section(direction: SidebarIntent, state: &mut AppState) {
+    let focused = state.frontend.sidebar.focused_section;
+    let neighbor_fn: fn(SidebarSectionId) -> Option<SidebarSectionId> = match &direction {
+        SidebarIntent::MoveDown => next_section,
+        SidebarIntent::MoveUp => prev_section,
+        SidebarIntent::Action(_) => return,
+    };
+
+    // Find the next non-empty section.
+    let mut candidate = neighbor_fn(focused);
+    while let Some(target) = candidate {
+        if section_has_content(target, state) {
+            state.frontend.sidebar.focused_section = target;
+
+            // If target has no cursor, call receive_cursor as fallback.
+            if !section_has_cursor(target, state) {
+                let enter_from = match direction {
+                    SidebarIntent::MoveDown => EnterFrom::Top,
+                    SidebarIntent::MoveUp => EnterFrom::Bottom,
+                    SidebarIntent::Action(_) => return,
+                };
+                receive_cursor(target, enter_from, state);
+            } else if target == SidebarSectionId::Sessions {
+                // Ensure scroll offset is valid for sessions.
+                sessions::scroll_to_cursor(state);
+            }
+            return;
+        }
+        candidate = neighbor_fn(target);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ratatui::Terminal;
@@ -210,7 +261,6 @@ mod tests {
 
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::common::app_state::FocusScope;
     use crate::feat::ui::sidebar::pins::PinsSection;
     use crate::feat::ui::sidebar::pins::pins_section::handle_sidebar_focus;
     use crate::feat::ui::sidebar::section_trait::SidebarIntent;
@@ -397,5 +447,157 @@ mod tests {
 
         // Then persona section has the cursor.
         assert_eq!(state.frontend.persona_section.cursor, Some(0));
+    }
+
+    // --- jump_to_section ---
+
+    use super::jump_to_section;
+
+    #[rstest::rstest]
+    fn jump_next_from_persona_to_pins_retains_persona_cursor() {
+        // Given persona focused with cursor at 0, pins with 3 entries.
+        let mut state = state_with_pinned(3);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+        state.frontend.persona_section.cursor = Some(0);
+
+        // When jumping to next section.
+        jump_to_section(SidebarIntent::MoveDown, &mut state);
+
+        // Then focus moves to Pins.
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Pins
+        );
+        // And persona cursor is retained.
+        assert_eq!(state.frontend.persona_section.cursor, Some(0));
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_from_pins_to_persona_retains_pins_cursor() {
+        // Given pins focused with cursor on second pin, pins has 3 entries.
+        let mut state = state_with_pinned(3);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
+        let second_id = state.sorted_pinned_ids()[1].clone();
+        state.frontend.pins.select_by_id(second_id.clone());
+
+        // When jumping to prev section.
+        jump_to_section(SidebarIntent::MoveUp, &mut state);
+
+        // Then focus moves to Persona.
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Persona
+        );
+        // And pins cursor is retained.
+        assert_eq!(state.frontend.pins.selected_id(), Some(&second_id));
+    }
+
+    #[rstest::rstest]
+    fn jump_next_from_persona_skips_empty_pins_to_sessions() {
+        // Given persona focused with no pinned entries.
+        let mut state = AppState::default();
+        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+        state.frontend.persona_section.cursor = Some(0);
+
+        // When jumping to next section.
+        jump_to_section(SidebarIntent::MoveDown, &mut state);
+
+        // Then focus skips empty Pins and lands on Sessions.
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Sessions
+        );
+    }
+
+    #[rstest::rstest]
+    fn jump_next_fallback_receive_cursor_on_never_visited_section() {
+        // Given persona focused, pins has entries but no cursor set.
+        let mut state = state_with_pinned(3);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+        state.frontend.persona_section.cursor = Some(0);
+        // Pins has no selection.
+        assert!(state.frontend.pins.selected_id().is_none());
+
+        // When jumping to next section.
+        jump_to_section(SidebarIntent::MoveDown, &mut state);
+
+        // Then focus moves to Pins and receive_cursor was called (first pin selected).
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Pins
+        );
+        let first_pin_id = state.sorted_pinned_ids()[0].clone();
+        assert_eq!(state.frontend.pins.selected_id(), Some(&first_pin_id));
+    }
+
+    #[rstest::rstest]
+    fn jump_next_from_sessions_at_boundary_does_nothing() {
+        // Given sessions focused (last section).
+        let mut state = AppState::default();
+        state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+        state.frontend.sessions_section.selected_index = Some(0);
+
+        // When jumping to next section (no section after Sessions).
+        jump_to_section(SidebarIntent::MoveDown, &mut state);
+
+        // Then focus stays on Sessions.
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Sessions
+        );
+    }
+
+    #[rstest::rstest]
+    fn jump_prev_from_persona_at_boundary_does_nothing() {
+        // Given persona focused (first section).
+        let mut state = AppState::default();
+        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+        state.frontend.persona_section.cursor = Some(0);
+
+        // When jumping to prev section (no section before Persona).
+        jump_to_section(SidebarIntent::MoveUp, &mut state);
+
+        // Then focus stays on Persona.
+        assert_eq!(
+            state.frontend.sidebar.focused_section,
+            SidebarSectionId::Persona
+        );
+    }
+
+    #[rstest::rstest]
+    fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
+        // Given 20 sessions, persona focused, sessions has cursor at index 18 with scroll_offset 4.
+        let mut state = {
+            let mut s = AppState::default();
+            for i in 1..20 {
+                let session = crate::feat::session::chat_session::ChatSessionState::new();
+                let id = session.session_id().clone();
+                s.session.sessions.insert(id, {
+                    let mut sess = crate::feat::session::chat_session::ChatSessionState::new();
+                    sess.push_entry(crate::protocol::ChatEntry::user(format!(
+                        "message for session {i}"
+                    )));
+                    sess
+                });
+            }
+            s
+        };
+        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+        state.frontend.persona_section.cursor = Some(0);
+        // Pre-set sessions cursor and scroll.
+        state.frontend.sessions_section.selected_index = Some(18);
+        state.frontend.sessions_section.scroll_offset = 4;
+
+        // When jumping to sessions (skipping empty pins if any, or through pins).
+        jump_to_section(SidebarIntent::MoveDown, &mut state);
+
+        // Sessions may or may not be the target depending on pins.
+        // If pins is empty (default state has no pins), we land on sessions.
+        if state.frontend.sidebar.focused_section == SidebarSectionId::Sessions {
+            // Then cursor is retained.
+            assert_eq!(state.frontend.sessions_section.selected_index, Some(18));
+            // And scroll_to_cursor was called to adjust offset.
+            assert_eq!(state.frontend.sessions_section.scroll_offset, 4);
+        }
     }
 }

@@ -19,6 +19,8 @@ use throbber_widgets_tui::ThrobberState;
 const ACTIVE_PREFIX: &str = "▸ ";
 /// Inactive session prefix (two spaces to align with `ACTIVE_PREFIX`).
 const INACTIVE_PREFIX: &str = "  ";
+/// Maximum number of session entries visible at once.
+const MAX_VISIBLE_SESSIONS: usize = 15;
 
 /// Sessions section cursor state — stored on `FrontendState`.
 ///
@@ -28,6 +30,8 @@ const INACTIVE_PREFIX: &str = "  ";
 pub struct SessionsSectionState {
     /// Index into the sorted open sessions list.
     pub selected_index: Option<usize>,
+    /// Scroll offset: the first session entry index that is visible.
+    pub scroll_offset: usize,
 }
 
 /// A sorted snapshot of open session metadata for rendering.
@@ -48,10 +52,7 @@ fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         .iter()
         .map(|(id, session)| SessionEntry {
             id: id.clone(),
-            title: session
-                .title()
-                .unwrap_or("Untitled Session")
-                .to_owned(),
+            title: session.title().unwrap_or("Untitled Session").to_owned(),
             is_active: id == active_id,
             created_at: session.created_at().clone(),
             is_idle: session.is_idle(),
@@ -59,6 +60,27 @@ fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         .collect();
     entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     entries
+}
+
+/// Adjusts scroll offset to ensure the selected index is visible within the window.
+///
+/// If no index is selected, does nothing.
+pub fn scroll_to_cursor(state: &mut AppState) {
+    let Some(index) = state.frontend.sessions_section.selected_index else {
+        return;
+    };
+    let total = sorted_open_sessions(state).len();
+    let visible = MAX_VISIBLE_SESSIONS.min(total);
+    if visible == 0 {
+        return;
+    }
+    let offset = &mut state.frontend.sessions_section.scroll_offset;
+
+    if index < *offset {
+        *offset = index;
+    } else if index >= *offset + visible {
+        *offset = index - visible + 1;
+    }
 }
 
 /// Navigate within the sessions section.
@@ -72,7 +94,7 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
         return SectionNavResult::Exhausted;
     }
 
-    match intent {
+    let result = match intent {
         SidebarIntent::MoveDown => {
             let current = state.frontend.sessions_section.selected_index.unwrap_or(0);
             if current >= sessions.len() - 1 {
@@ -92,19 +114,27 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
             SectionNavResult::Moved
         }
         SidebarIntent::Action(_) => SectionNavResult::Moved,
-    }
+    };
+
+    scroll_to_cursor(state);
+    result
 }
 
 /// Place the cursor on this section from a given direction.
 ///
-/// Finds the active session in the sorted list and positions the cursor there.
-pub fn receive_cursor(state: &mut AppState, _enter_from: EnterFrom) {
+/// Positions at the edge of the list: index 0 from top, last index from bottom.
+/// This keeps the linear `j`/`k` scroll model consistent.
+pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
     let sessions = sorted_open_sessions(state);
-    let active_index = sessions
-        .iter()
-        .position(|s| s.is_active)
-        .unwrap_or(0);
-    state.frontend.sessions_section.selected_index = Some(active_index);
+    if sessions.is_empty() {
+        return;
+    }
+    let index = match enter_from {
+        EnterFrom::Top => 0,
+        EnterFrom::Bottom => sessions.len() - 1,
+    };
+    state.frontend.sessions_section.selected_index = Some(index);
+    scroll_to_cursor(state);
 }
 
 /// Activates the session under the cursor.
@@ -167,6 +197,7 @@ impl SidebarSection for SessionsSection {
             sidebar_focused && state.frontend.sidebar.focused_section == SidebarSectionId::Sessions;
 
         let selected_index = state.frontend.sessions_section.selected_index;
+        let scroll_offset = state.frontend.sessions_section.scroll_offset;
 
         let mut lines = Vec::new();
 
@@ -187,7 +218,12 @@ impl SidebarSection for SessionsSection {
                 Style::default().fg(theme.muted_text),
             )]));
         } else {
-            for (i, entry) in sessions.iter().enumerate() {
+            let visible_count = MAX_VISIBLE_SESSIONS.min(sessions.len());
+            let start = scroll_offset.min(sessions.len());
+            let end = (start + visible_count).min(sessions.len());
+
+            for (visual_i, entry) in sessions[start..end].iter().enumerate() {
+                let i = start + visual_i; // absolute index for selection check
                 let is_selected = section_focused && selected_index == Some(i);
 
                 // Indicator: animated throbber when working, blank space when idle.
@@ -212,10 +248,7 @@ impl SidebarSection for SessionsSection {
                         Style::default().fg(theme.primary_text),
                     )
                 } else {
-                    Span::styled(
-                        INACTIVE_PREFIX.to_owned(),
-                        Style::default(),
-                    )
+                    Span::styled(INACTIVE_PREFIX.to_owned(), Style::default())
                 };
 
                 let title_style = if is_selected {
@@ -240,6 +273,49 @@ impl SidebarSection for SessionsSection {
 
             // Advance animation for next frame.
             self.throbber_state.calc_next();
+
+            // Scroll indicators.
+            let lines_above = scroll_offset;
+            let lines_below = sessions
+                .len()
+                .saturating_sub(scroll_offset)
+                .saturating_sub(visible_count);
+
+            if lines_above > 0 || lines_below > 0 {
+                let indicator_style = Style::default().fg(Color::Black).bg(theme.age_fresh);
+
+                if lines_above > 0 {
+                    let indicator_row = area.y + 2; // header + blank
+                    let label = "\u{2191}"; // ↑
+                    let indicator_width = 1u16;
+                    let indicator_area = Rect {
+                        x: area.x + area.width.saturating_sub(indicator_width),
+                        y: indicator_row,
+                        width: indicator_width,
+                        height: 1,
+                    };
+                    frame.render_widget(
+                        Paragraph::new(Line::from(Span::styled(label, indicator_style))),
+                        indicator_area,
+                    );
+                }
+
+                if lines_below > 0 {
+                    let last_entry_row = area.y + 2 + visible_count as u16 - 1;
+                    let label = "\u{2193}"; // ↓
+                    let indicator_width = 1u16;
+                    let indicator_area = Rect {
+                        x: area.x + area.width.saturating_sub(indicator_width),
+                        y: last_entry_row,
+                        width: indicator_width,
+                        height: 1,
+                    };
+                    frame.render_widget(
+                        Paragraph::new(Line::from(Span::styled(label, indicator_style))),
+                        indicator_area,
+                    );
+                }
+            }
         }
 
         // Trailing gap.
@@ -251,8 +327,9 @@ impl SidebarSection for SessionsSection {
 
     fn content_height(&self, state: &AppState) -> u16 {
         let session_count = state.session.sessions.len() as u16;
-        // header(1) + blank(1) + sessions(N) + trailing gap(1)
-        3 + session_count.max(1) // max(1) for "No open sessions" message
+        let visible = session_count.min(MAX_VISIBLE_SESSIONS as u16);
+        // header(1) + blank(1) + visible sessions(N) + trailing gap(1)
+        3 + visible.max(1) // max(1) for "No open sessions" message
     }
 }
 
@@ -270,7 +347,6 @@ fn truncate_str(s: &str, max_len: usize) -> String {
     result.push('…');
     result
 }
-
 
 // ---------------------------------------------------------------------------
 // Close session handler
@@ -305,9 +381,7 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
 
     // The selected session must be idle (not streaming/sending).
     let sessions = sorted_open_sessions(state);
-    let entry = sessions
-        .get(index)
-        .ok_or(SessionCloseError::NoSelection)?;
+    let entry = sessions.get(index).ok_or(SessionCloseError::NoSelection)?;
     let session = state
         .session
         .sessions
@@ -334,24 +408,51 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
     let index = state.frontend.sessions_section.selected_index.unwrap();
     let sessions = sorted_open_sessions(state);
     let closing_id = sessions[index].id.clone();
+    let was_active = sessions[index].is_active;
 
     // Remove from HashMap (keeps in SQLite).
     state.session.sessions.remove(&closing_id);
 
     if state.session.sessions.is_empty() {
-        // Last session — create a new one (same logic as SessionNew intent).
-        let new_session = crate::feat::session::chat_session::ChatSessionState::new();
+        // Last session — create a new one with the last-used model/strategy.
+        let new_session = {
+            let model = state
+                .frontend
+                .preferences
+                .last_model
+                .clone()
+                .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
+            let strategy = state
+                .frontend
+                .preferences
+                .last_strategy
+                .as_deref()
+                .map_or_else(
+                    crate::protocol::PromptStrategyId::passthrough,
+                    crate::protocol::PromptStrategyId::new,
+                );
+            crate::feat::session::chat_session::ChatSessionState::new_with_profile(
+                crate::feat::session::profile::SessionProfile::from_config(model, strategy),
+            )
+        };
         let new_id = new_session.session_id().clone();
         state.session.sessions.insert(new_id.clone(), new_session);
         state.session.active_session = new_id;
         state.frontend.sessions_section.selected_index = Some(0);
-    } else {
-        // Activate next session. Clamp index to valid range.
+    } else if was_active {
+        // Closed the active session — activate next one. Clamp index to valid range.
         let remaining = sorted_open_sessions(state);
         let clamped = index.min(remaining.len() - 1);
         state.session.active_session = remaining[clamped].id.clone();
         state.frontend.sessions_section.selected_index = Some(clamped);
+    } else {
+        // Closed a non-active session — keep active session, clamp cursor.
+        let remaining = sorted_open_sessions(state);
+        let clamped = index.min(remaining.len() - 1);
+        state.frontend.sessions_section.selected_index = Some(clamped);
     }
+
+    scroll_to_cursor(state);
 
     crate::protocol::IntentResult::empty()
 }
@@ -364,6 +465,7 @@ mod tests {
         EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
     };
     use crate::protocol::ChatEntry;
+    use ratatui::style::Color;
 
     // Helper: create state with N sessions.
     fn state_with_sessions(count: usize) -> AppState {
@@ -404,6 +506,19 @@ mod tests {
         let section = SessionsSection::new();
         let state = state_with_sessions(3);
         assert_eq!(section.content_height(&state), 6); // header + blank + 3 sessions + gap
+    }
+
+    #[rstest::rstest]
+    fn content_height_capped_at_max_visible() {
+        // Given state with 20 sessions (more than MAX_VISIBLE_SESSIONS = 15).
+        let section = SessionsSection::new();
+        let state = state_with_sessions(20);
+
+        // When computing content height.
+        let height = section.content_height(&state);
+
+        // Then it is capped at 3 + 15 = 18, not 3 + 20 = 23.
+        assert_eq!(height, 18);
     }
 
     // --- Navigation ---
@@ -476,29 +591,141 @@ mod tests {
     #[rstest::rstest]
     fn navigate_action_returns_moved() {
         let mut state = AppState::default();
-        let result = navigate(
-            &SidebarIntent::Action(crate::Intent::Quit),
-            &mut state,
-        );
+        let result = navigate(&SidebarIntent::Action(crate::Intent::Quit), &mut state);
         assert_eq!(result, SectionNavResult::Moved);
+    }
+
+    // --- scroll_to_cursor ---
+
+    use super::scroll_to_cursor;
+
+    #[rstest::rstest]
+    fn scroll_to_cursor_adjusts_offset_when_cursor_above_window() {
+        // Given 20 sessions with scroll_offset at 5, cursor at index 3.
+        let mut state = state_with_sessions(20);
+        state.frontend.sessions_section.scroll_offset = 5;
+        state.frontend.sessions_section.selected_index = Some(3);
+
+        // When scrolling to cursor.
+        scroll_to_cursor(&mut state);
+
+        // Then scroll_offset moves to 3.
+        assert_eq!(state.frontend.sessions_section.scroll_offset, 3);
+    }
+
+    #[rstest::rstest]
+    fn scroll_to_cursor_adjusts_offset_when_cursor_below_window() {
+        // Given 20 sessions with scroll_offset at 0, cursor at index 18.
+        let mut state = state_with_sessions(20);
+        state.frontend.sessions_section.scroll_offset = 0;
+        state.frontend.sessions_section.selected_index = Some(18);
+
+        // When scrolling to cursor.
+        scroll_to_cursor(&mut state);
+
+        // Then scroll_offset moves to 18 - 15 + 1 = 4.
+        assert_eq!(state.frontend.sessions_section.scroll_offset, 4);
+    }
+
+    #[rstest::rstest]
+    fn scroll_to_cursor_noop_when_cursor_visible() {
+        // Given 20 sessions with scroll_offset at 5, cursor at index 10.
+        let mut state = state_with_sessions(20);
+        state.frontend.sessions_section.scroll_offset = 5;
+        state.frontend.sessions_section.selected_index = Some(10);
+
+        // When scrolling to cursor.
+        scroll_to_cursor(&mut state);
+
+        // Then scroll_offset stays at 5 (10 is within 5..20).
+        assert_eq!(state.frontend.sessions_section.scroll_offset, 5);
+    }
+
+    #[rstest::rstest]
+    fn scroll_to_cursor_noop_when_no_selection() {
+        // Given 20 sessions with no selection.
+        let mut state = state_with_sessions(20);
+        state.frontend.sessions_section.scroll_offset = 5;
+        state.frontend.sessions_section.selected_index = None;
+
+        // When scrolling to cursor.
+        scroll_to_cursor(&mut state);
+
+        // Then scroll_offset stays at 5.
+        assert_eq!(state.frontend.sessions_section.scroll_offset, 5);
+    }
+
+    #[rstest::rstest]
+    fn navigate_down_scrolls_viewport_at_bottom() {
+        // Given 20 sessions, scroll_offset at 0, cursor at index 14 (last visible).
+        let mut state = state_with_sessions(20);
+        state.frontend.sessions_section.scroll_offset = 0;
+        state.frontend.sessions_section.selected_index = Some(14);
+
+        // When navigating down to index 15.
+        navigate(&SidebarIntent::MoveDown, &mut state);
+
+        // Then cursor is at 15 and scroll_offset moved to 1.
+        assert_eq!(state.frontend.sessions_section.selected_index, Some(15));
+        assert_eq!(state.frontend.sessions_section.scroll_offset, 1);
+    }
+
+    #[rstest::rstest]
+    fn navigate_up_scrolls_viewport_at_top() {
+        // Given 20 sessions, scroll_offset at 5, cursor at index 5.
+        let mut state = state_with_sessions(20);
+        state.frontend.sessions_section.scroll_offset = 5;
+        state.frontend.sessions_section.selected_index = Some(5);
+
+        // When navigating up to index 4.
+        navigate(&SidebarIntent::MoveUp, &mut state);
+
+        // Then cursor is at 4 and scroll_offset moved to 4.
+        assert_eq!(state.frontend.sessions_section.selected_index, Some(4));
+        assert_eq!(state.frontend.sessions_section.scroll_offset, 4);
     }
 
     // --- receive_cursor ---
 
     #[rstest::rstest]
-    fn receive_cursor_positions_at_active_session() {
-        // Given state with 3 sessions, second one active.
+    fn receive_cursor_from_top_positions_at_index_zero() {
+        // Given state with 3 sessions.
         let mut state = state_with_sessions(3);
-        let sessions = sorted_open_sessions(&state);
-        // Make the last session active (by ID from original sort).
-        let last_id = sessions.iter().find(|s| !s.is_active).unwrap().id.clone();
-        state.session.active_session = last_id;
+
+        // When receiving cursor from top.
+        receive_cursor(&mut state, EnterFrom::Top);
+
+        // Then the selected index is 0.
+        assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
+    }
+
+    #[rstest::rstest]
+    fn receive_cursor_from_bottom_positions_at_last_index() {
+        // Given state with 3 sessions.
+        let mut state = state_with_sessions(3);
+        let count = sorted_open_sessions(&state).len();
+
+        // When receiving cursor from bottom.
+        receive_cursor(&mut state, EnterFrom::Bottom);
+
+        // Then the selected index is the last one.
+        assert_eq!(
+            state.frontend.sessions_section.selected_index,
+            Some(count - 1)
+        );
+    }
+
+    #[rstest::rstest]
+    fn receive_cursor_noop_when_empty() {
+        // Given state with no sessions (manually clear default).
+        let mut state = AppState::default();
+        state.session.sessions.clear();
 
         // When receiving cursor.
         receive_cursor(&mut state, EnterFrom::Top);
 
-        // Then the selected index is 0 (active session sorts to top).
-        assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
+        // Then no index is selected.
+        assert_eq!(state.frontend.sessions_section.selected_index, None);
     }
 
     // --- sorted_open_sessions ---
@@ -582,26 +809,156 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
+    fn render_shows_down_arrow_when_entries_hidden_below() {
+        // Given 20 sessions with scroll_offset at 0 (15 visible, 5 hidden below).
+        let mut section = SessionsSection::new();
+        let state = {
+            let mut s = state_with_sessions(20);
+            s.frontend.sessions_section.scroll_offset = 0;
+            s
+        };
+        // content_height = 3 + 15 = 18, but we'll render in a taller area to be safe.
+        let rows = render_rows(&mut section, &state, 30, 20);
+
+        // Then the ↓ indicator appears on the last visible entry row.
+        // Row layout: 0=header, 1=blank, 2..16=entries (15), 17=gap.
+        // Last entry row is row 16 (index 14 in visible window).
+        // Indicator is right-aligned on that row.
+        let last_entry_row = &rows[16];
+        assert!(
+            last_entry_row.contains("\u{2193}"),
+            "last entry row should contain ↓, got: {last_entry_row}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_shows_up_arrow_when_entries_hidden_above() {
+        // Given 20 sessions with scroll_offset at 5 (15 visible, 5 hidden above).
+        let mut section = SessionsSection::new();
+        let state = {
+            let mut s = state_with_sessions(20);
+            s.frontend.sessions_section.scroll_offset = 5;
+            s
+        };
+        let rows = render_rows(&mut section, &state, 30, 20);
+
+        // Then the ↑ indicator appears on the first visible entry row (row 2).
+        let first_entry_row = &rows[2];
+        assert!(
+            first_entry_row.contains("\u{2191}"),
+            "first entry row should contain ↑, got: {first_entry_row}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_shows_both_arrows_when_viewport_in_middle() {
+        // Given 20 sessions with scroll_offset at 3 (3 hidden above, 2 hidden below).
+        let mut section = SessionsSection::new();
+        let state = {
+            let mut s = state_with_sessions(20);
+            s.frontend.sessions_section.scroll_offset = 3;
+            s
+        };
+        let rows = render_rows(&mut section, &state, 30, 20);
+
+        // Then both indicators appear.
+        let first_entry_row = &rows[2];
+        let last_entry_row = &rows[16];
+        assert!(
+            first_entry_row.contains("\u{2191}"),
+            "first entry row should contain ↑, got: {first_entry_row}"
+        );
+        assert!(
+            last_entry_row.contains("\u{2193}"),
+            "last entry row should contain ↓, got: {last_entry_row}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_no_arrows_when_all_entries_visible() {
+        // Given 5 sessions (fewer than MAX_VISIBLE_SESSIONS).
+        let mut section = SessionsSection::new();
+        let state = state_with_sessions(5);
+        let rows = render_rows(&mut section, &state, 30, 10);
+
+        // Then no arrow indicators appear on entry rows.
+        let combined = rows.join("");
+        assert!(
+            !combined.contains("\u{2191}") && !combined.contains("\u{2193}"),
+            "should not contain scroll indicators, got: {combined}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_arrow_has_inverted_colors() {
+        // Given 20 sessions with scroll_offset at 0 (↓ indicator visible).
+        let mut section = SessionsSection::new();
+        let state = {
+            let mut s = state_with_sessions(20);
+            s.frontend.sessions_section.scroll_offset = 0;
+            s
+        };
+        let (mut terminal, area) = setup_term(30, 20);
+        terminal
+            .draw(|frame| {
+                section.render(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the ↓ indicator on row 16 has fg=Black, bg=LightGreen.
+        let buffer = terminal.backend().buffer();
+        let arrow_cell = buffer.cell((29, 16)).expect("cell should exist");
+        assert_eq!(arrow_cell.symbol(), "\u{2193}");
+        assert_eq!(arrow_cell.style().fg, Some(Color::Black));
+        assert_eq!(arrow_cell.style().bg, Some(Color::LightGreen));
+    }
+
     // --- Close session ---
 
-    use super::{handle_session_close, validate_session_close, SessionCloseError};
+    use super::{SessionCloseError, handle_session_close, validate_session_close};
 
     #[rstest::rstest]
     fn close_session_switches_to_next() {
-        // Given state with 3 sessions, sessions section focused, cursor at index 0.
+        // Given state with 3 sessions, sessions section focused, cursor at index 0 (active session).
         let mut state = state_with_sessions(3);
         state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
         let sessions = sorted_open_sessions(&state);
+        // Active session is at index 0 (sorted newest-first, default is oldest → last, but we
+        // set active to index 0 explicitly to test active-session close).
+        state.session.active_session = sessions[0].id.clone();
         let closing_id = sessions[0].id.clone();
         state.frontend.sessions_section.selected_index = Some(0);
 
-        // When closing the session.
+        // When closing the active session.
+        handle_session_close(&mut state);
+
+        // Then the closed session is removed and active session changed.
+        assert!(!state.session.sessions.contains_key(&closing_id));
+        assert_eq!(state.session.sessions.len(), 2);
+        assert_ne!(state.session.active_session, closing_id);
+    }
+
+    #[rstest::rstest]
+    fn close_non_active_session_keeps_active() {
+        // Given state with 3 sessions, sessions section focused, cursor at index 1 (not active).
+        let mut state = state_with_sessions(3);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+        let sessions = sorted_open_sessions(&state);
+        // Active session is at index 0.
+        state.session.active_session = sessions[0].id.clone();
+        let active_id = state.session.active_session.clone();
+        // Close session at index 1 (non-active).
+        let closing_id = sessions[1].id.clone();
+        state.frontend.sessions_section.selected_index = Some(1);
+
+        // When closing the non-active session.
         handle_session_close(&mut state);
 
         // Then the closed session is removed.
         assert!(!state.session.sessions.contains_key(&closing_id));
-        // And the active session has changed.
-        assert_eq!(state.session.sessions.len(), 2);
+        // And the active session did NOT change.
+        assert_eq!(state.session.active_session, active_id);
     }
 
     #[rstest::rstest]
@@ -638,6 +995,24 @@ mod tests {
         let selected = state.frontend.sessions_section.selected_index;
         assert!(selected.is_some());
         assert!(selected.unwrap() < state.session.sessions.len());
+    }
+
+    #[rstest::rstest]
+    fn close_session_adjusts_scroll_offset() {
+        // Given 20 sessions with scroll_offset at 10, sessions section focused, cursor at 10.
+        let mut state = state_with_sessions(20);
+        state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+        state.frontend.sessions_section.scroll_offset = 10;
+        state.frontend.sessions_section.selected_index = Some(10);
+
+        // When closing the session at index 10.
+        handle_session_close(&mut state);
+
+        // Then scroll_offset is adjusted to keep the cursor visible.
+        // After removal there are 19 sessions. The clamped index is 10.
+        // scroll_to_cursor ensures index 10 is visible in a window of 15 from offset 10.
+        assert_eq!(state.frontend.sessions_section.selected_index, Some(10));
+        assert!(state.frontend.sessions_section.scroll_offset <= 10);
     }
 
     #[rstest::rstest]
