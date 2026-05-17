@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use crate::common::app_paths::AppPaths;
 use crate::common::state::State;
 use crate::feat::theme;
 use crate::protocol::Event;
@@ -18,8 +19,10 @@ use crate::protocol::Event;
 pub struct PreferencesStateSyncActor {
     /// Shared application state.
     state: State,
-    /// Path to the themes directory for theme resolution.
+    /// Path to the user themes directory.
     themes_dir: PathBuf,
+    /// Path to the system themes directory.
+    system_themes_dir: PathBuf,
 }
 
 impl Actor for PreferencesStateSyncActor {
@@ -37,11 +40,15 @@ impl Actor for PreferencesStateSyncActor {
             .take_data::<State>()
             .expect("PreferencesStateSyncActor requires State injection");
 
-        let themes_dir = ctx
-            .take_data::<PathBuf>()
-            .unwrap_or_else(|| crate::common::app_paths::AppPaths::default().themes_dir());
+        let paths = ctx
+            .take_data::<AppPaths>()
+            .unwrap_or_else(|| AppPaths::default());
 
-        Self { state, themes_dir }
+        Self {
+            state,
+            themes_dir: paths.themes_dir(),
+            system_themes_dir: paths.system_themes_dir(),
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
@@ -53,6 +60,7 @@ impl Actor for PreferencesStateSyncActor {
                 match theme::resolve_theme(
                     payload.preferences.theme_name.as_deref(),
                     &self.themes_dir,
+                    &self.system_themes_dir,
                 ) {
                     Ok(t) => state.frontend.theme = t,
                     Err(e) => {

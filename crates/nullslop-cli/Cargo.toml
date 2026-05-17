@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 clap = { workspace = true }
 clap-verbosity-flag = { workspace = true }
+clap_complete = { workspace = true }
 
 [lints]
 workspace = true
