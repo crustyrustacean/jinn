@@ -40,6 +40,7 @@ pub(crate) struct SessionEntry {
     pub(crate) is_active: bool,
     pub(crate) created_at: jiff::Timestamp,
     pub(crate) is_idle: bool,
+    pub(crate) last_entry_is_error: bool,
 }
 
 /// Collects all open sessions sorted by `created_at` descending (newest first).
@@ -55,6 +56,10 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
             is_active: id == active_id,
             created_at: *session.created_at(),
             is_idle: session.is_idle(),
+            last_entry_is_error: session
+                .history()
+                .last()
+                .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..))),
         })
         .collect();
     entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -243,7 +248,15 @@ impl SidebarSection for SessionsSection {
                     Span::styled(INACTIVE_PREFIX.to_owned(), Style::default())
                 };
 
-                let title_style = if is_selected {
+                let title_style = if entry.last_entry_is_error {
+                    if is_selected {
+                        Style::default()
+                            .fg(Color::Red)
+                            .add_modifier(Modifier::REVERSED)
+                    } else {
+                        Style::default().fg(Color::Red)
+                    }
+                } else if is_selected {
                     Style::default().add_modifier(Modifier::REVERSED)
                 } else if entry.is_active {
                     Style::default().fg(theme.primary_text)
