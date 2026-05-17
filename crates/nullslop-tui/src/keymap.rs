@@ -117,6 +117,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Navigation — pinned entry list
             .bind("j", Intent::SidebarMoveDown, KeyCategory::Navigation)
             .bind("k", Intent::SidebarMoveUp, KeyCategory::Navigation)
+            .bind("J", Intent::SidebarSectionNext, KeyCategory::Navigation)
+            .bind("K", Intent::SidebarSectionPrev, KeyCategory::Navigation)
             // Actions
             .bind("u", Intent::PinsUnpin, KeyCategory::Context)
             // Position — change pin position of selected entry

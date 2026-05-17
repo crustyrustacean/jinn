@@ -131,6 +131,10 @@ pub enum Intent {
     SidebarMoveDown,
     /// Move selection up in the sidebar.
     SidebarMoveUp,
+    /// Jump to the next sidebar section.
+    SidebarSectionNext,
+    /// Jump to the previous sidebar section.
+    SidebarSectionPrev,
     /// Activate the selected session (switch to it).
     SidebarConfirm,
     /// Unpin the selected pinned entry.
@@ -213,6 +217,8 @@ impl std::fmt::Display for Intent {
             Intent::SidebarLeave => write!(f, "sidebar leave"),
             Intent::SidebarMoveDown => write!(f, "sidebar move down"),
             Intent::SidebarMoveUp => write!(f, "sidebar move up"),
+            Intent::SidebarSectionNext => write!(f, "sidebar section next"),
+            Intent::SidebarSectionPrev => write!(f, "sidebar section prev"),
             Intent::SidebarConfirm => write!(f, "sidebar confirm"),
             Intent::PinsUnpin => write!(f, "pins unpin"),
             Intent::PinsPinTop => write!(f, "pins pin top"),
