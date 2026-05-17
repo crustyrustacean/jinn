@@ -116,6 +116,7 @@ mod tests {
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
         actor
             .handle(
@@ -149,6 +150,7 @@ mod tests {
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
         actor
             .handle(
@@ -166,6 +168,7 @@ mod tests {
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
         actor
             .handle(

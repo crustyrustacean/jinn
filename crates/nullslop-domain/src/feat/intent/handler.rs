@@ -77,6 +77,51 @@ impl IntentHandler {
         }
 
         match intent {
+            // --- Arg Input (takes priority when ArgInput scope is active) ---
+            Intent::InsertChar { ch }
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ArgInput
+                ) =>
+            {
+                feat::session_lifecycle::intent::handle_arg_input_insert_char(state, *ch)
+            }
+            Intent::DeleteGrapheme
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ArgInput
+                ) =>
+            {
+                feat::session_lifecycle::intent::handle_arg_input_delete(state)
+            }
+            Intent::MoveCursorLeft
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ArgInput
+                ) =>
+            {
+                feat::session_lifecycle::intent::handle_arg_input_cursor_left(state)
+            }
+            Intent::MoveCursorRight
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ArgInput
+                ) =>
+            {
+                feat::session_lifecycle::intent::handle_arg_input_cursor_right(state)
+            }
+            Intent::EnterNormalMode
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ArgInput
+                ) =>
+            {
+                // ESC cancels arg input — pop scope, clear state.
+                state.frontend.scope_stack.pop();
+                state.frontend.arg_input = crate::common::app_state::ArgInputState::default();
+                crate::protocol::IntentResult::empty()
+            }
+
             // --- Chat Input ---
             Intent::InsertChar { ch } => feat::chat_input::intent::handle_insert_char(*ch, state),
             Intent::DeleteGrapheme => feat::chat_input::intent::handle_delete_grapheme(state),
@@ -216,7 +261,9 @@ impl IntentHandler {
             Intent::SidebarPersonaEdit => {
                 feat::ui::sidebar::pins::pins_section::handle_sidebar_persona_edit(state)
             }
-            Intent::SidebarSessionClose => feat::ui::sidebar::sessions::handle_session_close(state),
+            Intent::SidebarSessionClose => {
+                feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state)
+            }
             Intent::SidebarConfirm => {
                 feat::ui::sidebar::sessions::handle_session_activate(state);
                 IntentResult::empty()
@@ -240,6 +287,22 @@ impl IntentHandler {
             }
             Intent::ToggleForkAssistantFilter => {
                 feat::picker::intent::handle_toggle_fork_assistant_filter(state)
+            }
+
+            // --- Session Lifecycle ---
+            Intent::SessionLifecycleSetup {
+                lifecycle_name,
+                args,
+            } => feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+                state,
+                lifecycle_name,
+                args,
+            ),
+            Intent::SessionClose => {
+                feat::session_lifecycle::intent::handle_session_close(state, None)
+            }
+            Intent::ArgInputConfirm => {
+                feat::session_lifecycle::intent::handle_arg_input_confirm(state)
             }
         }
     }

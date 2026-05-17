@@ -1,47 +1,13 @@
 //! Session management intent handlers — session creation, model refresh, and prompt template rescan.
 
 use crate::common::app_state::AppState;
-use crate::feat::provider_infra::NO_PROVIDER_ID;
-use crate::feat::session::profile::SessionProfile;
-use crate::protocol::{ChatEntry, Command, IntentResult, PromptStrategyId};
+use crate::protocol::{ChatEntry, Command, IntentResult};
 
 use super::validator;
 
-/// Creates a new chat session, adding it alongside existing sessions.
+/// Creates a new chat session, delegating to the blank lifecycle setup.
 pub fn handle_session_new(state: &mut AppState) -> IntentResult {
-    validator::validate_session_new(state);
-
-    let model = state
-        .frontend
-        .preferences
-        .last_model
-        .clone()
-        .unwrap_or_else(|| NO_PROVIDER_ID.to_owned());
-    let strategy = state
-        .frontend
-        .preferences
-        .last_strategy
-        .as_deref()
-        .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
-    let persona_name = state
-        .context
-        .active_persona
-        .as_ref()
-        .map(|p| p.name.clone())
-        .unwrap_or_else(|| "coding-assistant".to_owned());
-    let new_session = crate::feat::session::chat_session::ChatSessionState::new_with_profile(
-        SessionProfile::new(model, strategy, persona_name),
-    );
-    let new_id = new_session.session_id().clone();
-    state.session.sessions.insert(new_id.clone(), new_session);
-    state.session.active_session = new_id;
-    state.frontend.scope_stack.clear_overlays();
-    state
-        .frontend
-        .scope_stack
-        .push(crate::common::app_state::FocusScope::Input);
-
-    IntentResult::empty()
+    crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(state, "", &[])
 }
 
 /// Refreshes the model list from the active provider.

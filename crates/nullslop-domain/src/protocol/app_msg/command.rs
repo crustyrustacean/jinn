@@ -30,6 +30,7 @@ use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPick
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
@@ -104,6 +105,10 @@ pub enum Command {
     UpdatePreferences(UpdatePreferences),
     /// Request to fork a session at a specific entry ordinal.
     SessionForkRequested(SessionForkRequested),
+    /// Run a lifecycle setup command asynchronously.
+    RunSessionSetup(RunSessionSetup),
+    /// Run a lifecycle teardown command asynchronously.
+    RunSessionTeardown(RunSessionTeardown),
 }
 
 impl Command {
@@ -142,6 +147,8 @@ impl Command {
             Self::LoadPersonaPickerEntries(..) => Some(LoadPersonaPickerEntries::NAME),
             Self::UpdatePreferences(..) => Some(UpdatePreferences::NAME),
             Self::SessionForkRequested(..) => Some(SessionForkRequested::NAME),
+            Self::RunSessionSetup(..) => Some(RunSessionSetup::NAME),
+            Self::RunSessionTeardown(..) => Some(RunSessionTeardown::NAME),
         }
     }
 }
@@ -217,6 +224,12 @@ impl std::fmt::Display for Command {
             }
             Command::SessionForkRequested(payload) => {
                 write!(f, "session fork at ordinal {}", payload.at_ordinal)
+            }
+            Command::RunSessionSetup(payload) => {
+                write!(f, "run session setup for {}", payload.session_id)
+            }
+            Command::RunSessionTeardown(payload) => {
+                write!(f, "run session teardown for {}", payload.session_id)
             }
         }
     }

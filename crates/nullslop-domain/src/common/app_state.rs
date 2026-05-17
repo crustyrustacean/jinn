@@ -23,6 +23,20 @@ use crate::feat::persona::Persona;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
+
+/// State for the arg input popup — collecting positional args for a lifecycle command.
+#[derive(Debug, Clone, Default)]
+pub struct ArgInputState {
+    /// Which lifecycle we're collecting args for.
+    pub lifecycle_name: String,
+    /// The command template with `<param>` tokens for display.
+    pub template_display: String,
+    /// User's raw input text.
+    pub input: String,
+    /// Byte offset for cursor position in the input.
+    pub cursor_pos: usize,
+}
 use crate::feat::skills::Skill;
 use crate::feat::theme::Theme;
 pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
@@ -161,6 +175,8 @@ pub enum FocusScope {
     Sidebar,
     /// Picker overlay active — kind distinguishes Provider/Session/Keymap/etc.
     Picker { kind: PickerKind },
+    /// Arg input popup — collecting positional args for a lifecycle command.
+    ArgInput,
 }
 
 impl FocusScope {
@@ -171,6 +187,7 @@ impl FocusScope {
             Self::Normal | Self::Sidebar => Mode::Normal,
             Self::Input => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
+            Self::ArgInput => Mode::Input,
         }
     }
 }
@@ -182,6 +199,7 @@ impl std::fmt::Display for FocusScope {
             Self::Input => write!(f, "Input"),
             Self::Sidebar => write!(f, "Sidebar"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
+            Self::ArgInput => write!(f, "ArgInput"),
         }
     }
 }
@@ -404,6 +422,14 @@ pub struct FrontendState {
     /// Set once during init from `AppPaths`. Used by the theme picker to discover themes.
     /// OWNER: Init code (set once at startup).
     pub themes_dir: std::path::PathBuf,
+
+    /// Session lifecycle picker state (items, filter text, selection index).
+    /// OWNER: IntentHandler (lifecycle picker navigation).
+    pub session_lifecycle_picker: nullslop_selection_widget::SelectionState<SessionLifecycleEntry>,
+
+    /// Arg input popup state — active when `FocusScope::ArgInput` is on the scope stack.
+    /// OWNER: IntentHandler (arg input editing, confirmation).
+    pub arg_input: ArgInputState,
 }
 
 impl Default for FrontendState {
@@ -435,6 +461,8 @@ impl Default for FrontendState {
             fork_show_user: true,
             fork_show_assistant: true,
             themes_dir: std::path::PathBuf::new(),
+            session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
+            arg_input: ArgInputState::default(),
         }
     }
 }
@@ -495,6 +523,7 @@ impl AppState {
             PickerKind::Persona => Some(&mut self.frontend.persona_picker),
             PickerKind::Theme => Some(&mut self.frontend.theme_picker),
             PickerKind::SessionFork => Some(&mut self.frontend.fork_picker),
+            PickerKind::SessionLifecycle => Some(&mut self.frontend.session_lifecycle_picker),
         }
     }
 

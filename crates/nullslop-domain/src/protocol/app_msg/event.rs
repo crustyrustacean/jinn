@@ -29,6 +29,9 @@ use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
 };
+use crate::feat::session_lifecycle::protocol::event::{
+    SessionSetupCompleted, SessionTeardownCompleted,
+};
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -103,6 +106,10 @@ pub enum Event {
     PreferencesUpdated(PreferencesUpdated),
     /// The active session changed (tab switch or session load).
     ActiveSessionChanged(crate::protocol::system::ActiveSessionChanged),
+    /// A lifecycle setup command completed.
+    SessionSetupCompleted(SessionSetupCompleted),
+    /// A lifecycle teardown command completed.
+    SessionTeardownCompleted(SessionTeardownCompleted),
 }
 
 impl Event {
@@ -144,6 +151,8 @@ impl Event {
             Self::ActiveSessionChanged(..) => {
                 Some(crate::protocol::system::ActiveSessionChanged::TYPE_NAME)
             }
+            Self::SessionSetupCompleted(..) => Some(SessionSetupCompleted::TYPE_NAME),
+            Self::SessionTeardownCompleted(..) => Some(SessionTeardownCompleted::TYPE_NAME),
         }
     }
 }

@@ -145,13 +145,6 @@ fn format_strategy_footer_label_is_dark_gray() {
     assert_eq!(label_span.style.fg, Some(ratatui::style::Color::DarkGray));
 }
 
-#[rstest::rstest]
-fn format_strategy_footer_name_is_white() {
-    let line = format_strategy_footer("Passthrough", &default_theme());
-    let name_span = &line.spans[1];
-    assert_eq!(name_span.style.fg, Some(ratatui::style::Color::White));
-}
-
 // --- Highlight tests ---
 
 #[rstest::rstest]

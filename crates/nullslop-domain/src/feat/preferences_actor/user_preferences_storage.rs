@@ -239,6 +239,7 @@ mod tests {
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
 
         // When saving and reloading.
@@ -279,6 +280,7 @@ mod tests {
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
 
         // When saving and reloading.
@@ -302,6 +304,7 @@ mod tests {
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
         service.save(&prefs).expect("save");
 
@@ -325,6 +328,7 @@ mod tests {
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
         service.save(&prefs).expect("save");
 
@@ -335,6 +339,7 @@ mod tests {
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
         service.save(&updated).expect("save updated");
 
@@ -354,6 +359,7 @@ mod tests {
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
         service.save(&prefs).expect("save");
 
