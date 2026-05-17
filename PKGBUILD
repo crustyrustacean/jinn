@@ -12,6 +12,7 @@ arch=('x86_64')
 
 # Build from local checkout. Run makepkg from the project root directory.
 # No source array — we reference $startdir directly.
+options=(!debug)
 source=()
 
 prepare() {
