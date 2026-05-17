@@ -5,6 +5,7 @@
 //! stored in normalized tables with a junction table for entries, enabling
 //! fork support without data duplication.
 
+mod migrator;
 mod service;
 mod sqlite;
 

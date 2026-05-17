@@ -29,77 +29,7 @@ use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntryId, SessionId};
 
 use super::{SessionStore, SessionStoreError};
-
-// Migrations are embedded at compile time from the SQL files in the migrations directory.
-// The path is relative to this source file.
-const _V0_UP: &str =
-    include_str!("../../../../migrations/00000000000000_create_initial_schema/up.sql");
-const _V1_UP: &str = include_str!("../../../../migrations/00000000000001_add_cwd_column/up.sql");
-const _V2_UP: &str =
-    include_str!("../../../../migrations/00000000000002_add_created_at_column/up.sql");
-
-/// Runs all pending migrations on a bootstrap connection.
-///
-/// Uses individual `sql_query` calls because Diesel's `sql_query` doesn't support
-/// multi-statement batches. The SQL content is embedded at compile time from the
-/// migration files.
-fn run_migrations(conn: &mut SqliteConnection) {
-    // v0: create initial schema
-    diesel::sql_query(
-        "CREATE TABLE IF NOT EXISTS sessions (\
-         id TEXT PRIMARY KEY, title TEXT, updated_at TEXT NOT NULL,\
-         profile TEXT NOT NULL DEFAULT '{}', strategy_state TEXT NOT NULL DEFAULT '{}',\
-         blobs TEXT NOT NULL DEFAULT '{}', parent_session TEXT DEFAULT NULL)",
-    )
-    .execute(conn)
-    .expect("v0: create sessions table");
-
-    diesel::sql_query(
-        "CREATE TABLE IF NOT EXISTS entries (\
-         id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, kind TEXT NOT NULL)",
-    )
-    .execute(conn)
-    .expect("v0: create entries table");
-
-    diesel::sql_query(
-        "CREATE TABLE IF NOT EXISTS session_entries (\
-         session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,\
-         entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,\
-         ordinal INTEGER NOT NULL, pin_position TEXT DEFAULT NULL,\
-         PRIMARY KEY (session_id, entry_id), UNIQUE (session_id, ordinal))",
-    )
-    .execute(conn)
-    .expect("v0: create session_entries table");
-
-    diesel::sql_query(
-        "CREATE TABLE IF NOT EXISTS token_ledger (\
-         id INTEGER PRIMARY KEY AUTOINCREMENT,\
-         session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,\
-         timestamp TEXT NOT NULL, tokens_sent INTEGER NOT NULL, tokens_received INTEGER NOT NULL)",
-    )
-    .execute(conn)
-    .expect("v0: create token_ledger table");
-
-    diesel::sql_query(
-        "CREATE INDEX IF NOT EXISTS idx_session_entries_session ON session_entries(session_id, ordinal)"
-    ).execute(conn).expect("v0: create session_entries index");
-
-    diesel::sql_query(
-        "CREATE INDEX IF NOT EXISTS idx_token_ledger_session ON token_ledger(session_id)",
-    )
-    .execute(conn)
-    .expect("v0: create token_ledger index");
-
-    // v1: add cwd column
-    // ALTER TABLE ADD COLUMN fails if the column already exists. Ignore the error.
-    let _ = diesel::sql_query("ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT '.'")
-        .execute(conn);
-
-    // v2: add created_at column
-    let _ =
-        diesel::sql_query("ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
-            .execute(conn);
-}
+use super::migrator;
 
 /// Configuration for the SQLite connection pool.
 ///
@@ -183,7 +113,7 @@ impl SqliteSessionStore {
             diesel::sql_query("PRAGMA foreign_keys=ON")
                 .execute(&mut conn)
                 .expect("failed to set foreign_keys pragma");
-            run_migrations(&mut conn);
+            migrator::run_migrations(&mut conn);
         }
 
         let manager = diesel_r2d2::ConnectionManager::<SqliteConnection>::new(&database_url);
