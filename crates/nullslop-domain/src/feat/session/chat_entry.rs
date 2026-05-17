@@ -3,7 +3,7 @@
 //! Each [`ChatEntry`] records a timestamped message from the user,
 //! the system, or an actor.
 
-use ratatui::text::Span;
+use ratatui::text::{Line, Span};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A unique identifier for a [`ChatEntry`].
@@ -96,6 +96,23 @@ impl TableData {
         }
         lines.join("\n")
     }
+}
+
+/// Extract plain text from a list of styled `Line`s.
+///
+/// Joins each line's span content with `\n` separators.
+/// Used by `text()`, `content_fingerprint()`, and serialization fallback.
+fn lines_to_plain_text(lines: &[Line<'static>]) -> String {
+    lines
+        .iter()
+        .map(|line| {
+            line.spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// A single entry in the chat history.
@@ -196,9 +213,12 @@ pub enum ChatEntryKind {
     /// An informational message (UI-only, not sent to the LLM).
     ///
     /// Used for welcome messages and other user-facing hints.
-    /// Excluded from prompt assembly, token estimation, and LLM context.
-    /// Cannot be pinned.
-    Info(String),
+    /// Excluded from prompt assembly, token estimation, LLM context,
+    /// and session persistence. Cannot be pinned.
+    ///
+    /// Contains pre-built styled lines for rich formatting.
+    /// Falls back to plain text during serialization.
+    Info(Vec<Line<'static>>),
 }
 
 impl ChatEntry {
@@ -390,16 +410,16 @@ impl ChatEntry {
     /// Create a new info chat entry with the current timestamp.
     ///
     /// Info entries are UI-only — they are excluded from prompt assembly,
-    /// token estimation, and LLM context. They cannot be pinned.
+    /// token estimation, and LLM context. They cannot be pinned and
+    /// are not persisted.
+    ///
+    /// Accepts pre-built styled lines for rich formatting.
     #[must_use]
-    pub fn info<T>(text: T) -> Self
-    where
-        T: Into<String>,
-    {
+    pub fn info(lines: Vec<Line<'static>>) -> Self {
         Self {
             id: ChatEntryId::new(),
             timestamp: jiff::Timestamp::now(),
-            kind: ChatEntryKind::Info(text.into()),
+            kind: ChatEntryKind::Info(lines),
             pin_position: None,
         }
     }
@@ -471,8 +491,8 @@ impl ChatEntry {
             ChatEntryKind::System(t)
             | ChatEntryKind::Error(t)
             | ChatEntryKind::Assistant(t)
-            | ChatEntryKind::Thinking(t)
-            | ChatEntryKind::Info(t) => t.clone(),
+            | ChatEntryKind::Thinking(t) => t.clone(),
+            ChatEntryKind::Info(lines) => lines_to_plain_text(lines),
             ChatEntryKind::Actor { text, .. } => text.clone(),
             ChatEntryKind::Table(data) => data.to_plain_text(),
             ChatEntryKind::ToolCall {
@@ -526,7 +546,7 @@ impl ChatEntry {
                 name.hash(&mut hasher);
                 content.hash(&mut hasher);
             }
-            ChatEntryKind::Info(t) => t.hash(&mut hasher),
+            ChatEntryKind::Info(lines) => lines_to_plain_text(lines).hash(&mut hasher),
         }
         hasher.finish()
     }
@@ -663,9 +683,9 @@ impl Serialize for ChatEntryKind {
                 map.serialize_entry("Thinking", t)?;
                 map.end()
             }
-            ChatEntryKind::Info(t) => {
+            ChatEntryKind::Info(lines) => {
                 let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("Info", t)?;
+                map.serialize_entry("Info", &lines_to_plain_text(lines))?;
                 map.end()
             }
         }
@@ -776,8 +796,11 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         Ok(ChatEntryKind::Thinking(text))
                     }
                     "Info" => {
+                        // Info entries are not persisted. If we encounter one in
+                        // deserialized data (e.g. from an older version), treat
+                        // it as System so we don't lose the text.
                         let text: String = map.next_value()?;
-                        Ok(ChatEntryKind::Info(text))
+                        Ok(ChatEntryKind::System(text))
                     }
                     other => Err(de::Error::unknown_variant(
                         other,
