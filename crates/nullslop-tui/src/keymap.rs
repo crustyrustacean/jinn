@@ -82,8 +82,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
-            // Expand/collapse tool result
-            .bind("e", Intent::ExpandToolResult, KeyCategory::Navigation)
+            // Expand/collapse tool entry
+            .bind("e", Intent::ExpandToolEntry, KeyCategory::Navigation)
             // Escape: cancel selection
             .bind("<esc>", Intent::NormalEscape, KeyCategory::General);
         })
