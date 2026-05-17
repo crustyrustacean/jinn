@@ -11,7 +11,7 @@ use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::profile::SessionProfile;
-use crate::feat::session_lifecycle::command_template::CommandTemplate;
+use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
 use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
 use crate::protocol::{Command, IntentResult, PromptStrategyId, SessionId};
 
@@ -46,7 +46,7 @@ pub fn validate_arg_input(state: &AppState) -> Result<(), ArgInputError> {
     let arg_count = if arg_state.input.trim().is_empty() {
         0
     } else {
-        arg_state.input.split_whitespace().count()
+        parse_quoted_args(&arg_state.input).len()
     };
 
     if arg_count < param_count {
@@ -207,11 +207,7 @@ pub fn handle_arg_input_confirm(state: &mut AppState) -> IntentResult {
     let args: Vec<String> = if arg_state.input.trim().is_empty() {
         vec![]
     } else {
-        arg_state
-            .input
-            .split_whitespace()
-            .map(String::from)
-            .collect()
+        parse_quoted_args(&arg_state.input)
     };
 
     // Pop ArgInput scope.
@@ -806,5 +802,44 @@ mod tests {
         ));
         // And a new session is created.
         assert_ne!(state.session.active_session, old_id);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_confirm_treats_quoted_input_as_single_arg() {
+        // Given an arg input state with quoted text.
+        let mut state = AppState::default();
+        state.frontend.arg_input.lifecycle_name = "fossil branch".to_owned();
+        state.frontend.arg_input.input = r#""my branch" target"#.to_owned();
+        state.frontend.arg_input.cursor_pos = state.frontend.arg_input.input.len();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: None,
+                setup_command: Some("script.sh $1 $2".to_owned()),
+                teardown_command: None,
+            });
+        let old_id = state.session.active_session.clone();
+
+        // When confirming arg input.
+        let result = handle_arg_input_confirm(&mut state);
+
+        // Then "my branch" is one arg and "target" is the second.
+        assert_ne!(state.session.active_session, old_id);
+        assert_eq!(
+            state.active_session().lifecycle_args(),
+            &["my branch".to_owned(), "target".to_owned()]
+        );
+        assert!(matches!(
+            &result.commands[0],
+            Command::RunSessionSetup(RunSessionSetup {
+                command,
+                args,
+                ..
+            }) if command == "script.sh my branch target"
+                && args == &["my branch".to_owned(), "target".to_owned()]
+        ));
     }
 }
