@@ -9,6 +9,9 @@
 pub mod element;
 pub mod intent;
 
+#[cfg(test)]
+mod element_tests;
+
 pub use element::DashboardElement;
 
 use std::collections::HashMap;

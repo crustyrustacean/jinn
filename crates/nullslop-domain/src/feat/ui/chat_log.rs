@@ -12,6 +12,8 @@ pub(crate) mod info;
 pub(crate) mod line_count_cache;
 pub(crate) mod markdown;
 pub(crate) mod renderer;
+#[cfg(test)]
+mod renderer_tests;
 pub(crate) mod shared;
 pub(crate) mod skill;
 pub(crate) mod system;

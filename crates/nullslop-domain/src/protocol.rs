@@ -16,6 +16,8 @@
 pub mod app_msg;
 pub mod intent;
 pub mod key;
+#[cfg(test)]
+mod key_tests;
 pub mod mode;
 pub mod system;
 pub mod tab;
