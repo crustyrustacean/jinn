@@ -18,6 +18,7 @@ use crate::feat::chat_input::AutocompleteTrigger;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::chat_input::slash_command::SlashCommand;
+use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::protocol::{ChatEntry, Command, IntentResult};
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -37,7 +38,7 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
             .active_chat_input()
             .autocomplete()
             .as_ref()
-            .map(|ac| ac.trigger());
+            .map(AutocompleteState::trigger);
 
         match (ch, trigger) {
             (' ', _) => {
@@ -139,7 +140,7 @@ pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
             .active_chat_input()
             .autocomplete()
             .as_ref()
-            .map(|ac| ac.trigger());
+            .map(AutocompleteState::trigger);
         let matches = compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
         state
             .active_chat_input_mut()
@@ -177,7 +178,7 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
                     .active_chat_input()
                     .autocomplete()
                     .as_ref()
-                    .map(|ac| ac.trigger());
+                    .map(AutocompleteState::trigger);
                 let matches =
                     compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
                 state
@@ -243,7 +244,7 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
         .active_chat_input()
         .autocomplete()
         .as_ref()
-        .map(|ac| ac.trigger());
+        .map(AutocompleteState::trigger);
 
     // Complete the selection.
     if let Some(selected) = state.active_chat_input().autocomplete_selected() {
@@ -270,9 +271,6 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
                 }
             }
             // Fall through to normal submit.
-        }
-        Some(AutocompleteTrigger::Hash) => {
-            // The completed hash template name is just text — submit normally.
         }
         _ => {}
     }
@@ -313,7 +311,7 @@ pub fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
                 .active_chat_input()
                 .autocomplete()
                 .as_ref()
-                .map(|ac| ac.trigger());
+                .map(AutocompleteState::trigger);
             let matches =
                 compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
             state
