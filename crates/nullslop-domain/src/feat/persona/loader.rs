@@ -101,6 +101,37 @@ pub fn scan_personas_dir(dir: &Path) -> Vec<Persona> {
     personas
 }
 
+/// Scans both system and user persona directories, merging results.
+///
+/// System personas are loaded first. User personas with the same name
+/// override system ones. Results are sorted by name.
+pub fn scan_personas_merged(user_dir: &Path, system_dir: &Path) -> Vec<Persona> {
+    let mut seen = std::collections::HashSet::new();
+    let mut personas = Vec::new();
+
+    // System personas first (lower priority).
+    for persona in scan_personas_dir(system_dir) {
+        seen.insert(persona.name.clone());
+        personas.push(persona);
+    }
+
+    // User personas override system ones of the same name.
+    for persona in scan_personas_dir(user_dir) {
+        if seen.contains(&persona.name) {
+            // Replace the system persona with the user version.
+            if let Some(pos) = personas.iter().position(|p| p.name == persona.name) {
+                personas[pos] = persona;
+            }
+        } else {
+            seen.insert(persona.name.clone());
+            personas.push(persona);
+        }
+    }
+
+    personas.sort_by(|a, b| a.name.cmp(&b.name));
+    personas
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -17,6 +17,9 @@ fn main() {
         Some(nullslop_cli::cli::Commands::Headless { log_file, .. }) => TracingMode::Headless {
             log_file: log_file.clone(),
         },
+        Some(nullslop_cli::cli::Commands::Completions { .. }) => TracingMode::Tui {
+            log_dir: None,
+        },
     };
 
     if let Err(e) = init_tracing(cli.verbosity, mode) {

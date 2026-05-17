@@ -4,13 +4,12 @@
 //! scans the personas directory (path injected via [`ActorContext`] data), and emits
 //! [`PersonasLoaded`] events with the results.
 
-use std::path::Path;
-
 use crate::common::actor::ActorContext;
 use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
+use crate::common::app_paths::AppPaths;
 use crate::feat::context::protocol::command::RescanPersonas;
 use crate::feat::context::protocol::event::PersonasLoaded;
-use crate::feat::persona::scan_personas_dir;
+use crate::feat::persona::scan_personas_merged;
 use crate::protocol::{Command, Event};
 
 /// Persona scan configuration for [`ScanActor`].
@@ -31,8 +30,8 @@ impl ScanConfig for PersonaScanConfig {
         matches!(command, Command::RescanPersonas(..))
     }
 
-    fn scan(path: &Path) -> Vec<crate::feat::persona::Persona> {
-        scan_personas_dir(path)
+    fn scan(paths: &AppPaths) -> Vec<crate::feat::persona::Persona> {
+        scan_personas_merged(&paths.personas_dir(), &paths.system_personas_dir())
     }
 
     fn on_success(
@@ -64,10 +63,10 @@ pub type PersonaScanActor = ScanActor<PersonaScanConfig>;
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use std::sync::Arc;
 
     use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::common::app_paths::AppPaths;
     use crate::feat::context::protocol::command::RescanPersonas;
     use crate::feat::context::protocol::event::PersonasLoaded;
     use crate::protocol::{Command, Event};
@@ -91,7 +90,7 @@ mod tests {
 
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
-        ctx.set_data(dir.path().to_owned());
+        ctx.set_data(AppPaths::new_in(dir.path()));
         let mut actor = PersonaScanActor::activate(&mut ctx);
 
         // When processing RescanPersonas command.
@@ -118,7 +117,7 @@ mod tests {
 
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
-        ctx.set_data(dir.path().to_owned());
+        ctx.set_data(AppPaths::new_in(dir.path()));
         let mut actor = PersonaScanActor::activate(&mut ctx);
 
         // When processing RescanPersonas command.
@@ -140,9 +139,13 @@ mod tests {
     #[tokio::test]
     async fn scan_personas_nonexistent_dir_emits_empty_loaded() {
         // Given an actor with a nonexistent directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        // Use paths that point to nonexistent dirs.
+        let paths = AppPaths::new_in(dir.path());
+
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
-        ctx.set_data(PathBuf::from("/nonexistent/personas"));
+        ctx.set_data(paths);
         let mut actor = PersonaScanActor::activate(&mut ctx);
 
         // When processing RescanPersonas command.

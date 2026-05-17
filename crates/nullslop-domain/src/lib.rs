@@ -85,9 +85,8 @@ pub use feat::preferences_actor::UserPreferencesStorageService;
 pub use feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 pub use feat::preferences_actor::protocol::event::PreferencesUpdated;
 
-// Re-export prompt template utilities
-pub use feat::context::prompt_template::{ensure_prompts_dir_with_example, prompts_dir};
-pub use feat::persona::{Persona, PersonaEntry, ensure_personas_dir_with_seed, personas_dir};
+// Re-export persona types
+pub use feat::persona::{Persona, PersonaEntry};
 
 // Re-export services submodules
 pub use common::services::actor_channel;

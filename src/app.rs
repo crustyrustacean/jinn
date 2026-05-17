@@ -92,8 +92,14 @@ impl App {
         let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
 
         match cli.command.unwrap_or(Commands::Tui) {
+            Commands::Completions { shell } => {
+                use clap::CommandFactory;
+                let mut cmd = Cli::command();
+                let name = cmd.get_name().to_string();
+                clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+                return Ok(());
+            }
             Commands::Tui => {
-                ensure_persona_seed();
                 let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
                     &self.handle(),
                     llm_service.clone(),
@@ -105,9 +111,9 @@ impl App {
                         FilesystemUserPreferencesStorage::default_path(),
                     )),
                 );
-                ensure_prompt_example();
-                load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
-                load_theme(&core.state);
+                let paths = &services.paths;
+                load_prompt_templates(&core.state, &paths.prompts_dir(), &paths.system_prompts_dir());
+                load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
                 // Resolve mouse selection config from environment.
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
@@ -144,7 +150,6 @@ impl App {
                 runner.run().change_context(AppError)?;
             }
             Commands::Headless { command, .. } => {
-                ensure_persona_seed();
                 let (core, _services, actor_host) = actor_wiring::create_core_with_actor_host(
                     &self.handle(),
                     llm_service.clone(),
@@ -156,9 +161,8 @@ impl App {
                         FilesystemUserPreferencesStorage::default_path(),
                     )),
                 );
-                ensure_prompt_example();
-                load_prompt_templates(&core.state, &nullslop_domain::prompts_dir());
-                load_theme(&core.state);
+                load_prompt_templates(&core.state, &_services.paths.prompts_dir(), &_services.paths.system_prompts_dir());
+                load_theme(&core.state, &_services.paths.themes_dir(), &_services.paths.system_themes_dir());
                 let mut headless = HeadlessApp::new(core, actor_host, self.handle());
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
@@ -187,32 +191,12 @@ impl Default for App {
     }
 }
 
-/// Ensures the prompts directory exists and contains an example template.
+/// Loads prompt templates from both user and system directories into the application state.
 ///
 /// Called once after core creation. Failures are logged but not fatal —
-/// the example is a convenience, not a requirement.
-fn ensure_prompt_example() {
-    if let Err(e) = nullslop_domain::ensure_prompts_dir_with_example() {
-        tracing::warn!("failed to ensure prompt example: {e:?}");
-    }
-}
-
-/// Ensures the personas directory exists and contains the seed persona.
-///
-/// Called once after core creation. Failures are logged but not fatal —
-/// the seed persona is a convenience, not a requirement.
-fn ensure_persona_seed() {
-    if let Err(e) = nullslop_domain::ensure_personas_dir_with_seed() {
-        tracing::warn!("failed to ensure persona seed: {e:?}");
-    }
-}
-
-/// Loads prompt templates from the given directory into the application state.
-///
-/// Called once after core creation. Failures are logged but not fatal —
-/// an empty store is used when the directory is missing or unreadable.
-fn load_prompt_templates(state: &State, path: &Path) {
-    let store = nullslop_domain::PromptTemplateStore::load_from_dir(path).unwrap_or_else(|e| {
+/// an empty store is used when both directories are missing or unreadable.
+fn load_prompt_templates(state: &State, user_dir: &Path, system_dir: &Path) {
+    let store = nullslop_domain::PromptTemplateStore::load_from_dirs(user_dir, system_dir).unwrap_or_else(|e| {
         tracing::warn!("failed to load prompt templates: {e:?}");
         nullslop_domain::PromptTemplateStore::new()
     });
@@ -222,17 +206,15 @@ fn load_prompt_templates(state: &State, path: &Path) {
 
 /// Loads the theme from user preferences into the application state.
 ///
-/// Called once after core creation. If the preferred theme cannot be loaded,
-/// falls back to the default theme. Failures are logged but not fatal.
-fn load_theme(state: &State) {
-    let (theme_name, themes_dir) = {
+/// Searches the user themes directory first, then the system themes directory.
+/// If the preferred theme cannot be loaded, falls back to the default theme.
+/// Failures are logged but not fatal.
+fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
+    let theme_name = {
         let guard = state.read();
-        (
-            guard.frontend.preferences.theme_name.clone(),
-            guard.frontend.themes_dir.clone(),
-        )
+        guard.frontend.preferences.theme_name.clone()
     };
-    match nullslop_domain::feat::theme::resolve_theme(theme_name.as_deref(), &themes_dir) {
+    match nullslop_domain::feat::theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
         Ok(theme) => {
             tracing::info!(theme = ?theme_name, "loaded theme");
             state.write().frontend.theme = theme;
@@ -246,6 +228,7 @@ fn load_theme(state: &State) {
 #[cfg(test)]
 mod tests {
     use nullslop_domain::AppState;
+    use std::path::PathBuf;
 
     use super::*;
 
@@ -259,8 +242,9 @@ mod tests {
 
         let state = State::new(AppState::default());
 
-        // When loading prompt templates from the temp directory.
-        load_prompt_templates(&state, dir.path());
+        // When loading prompt templates from the temp directory (user dir only).
+        let empty = PathBuf::from("/nonexistent");
+        load_prompt_templates(&state, dir.path(), &empty);
 
         // Then the template count is correct.
         let state = state.read();
@@ -277,8 +261,9 @@ mod tests {
 
         let state = State::new(AppState::default());
 
-        // When loading prompt templates from the temp directory.
-        load_prompt_templates(&state, dir.path());
+        // When loading prompt templates from the temp directory (user dir only).
+        let empty = PathBuf::from("/nonexistent");
+        load_prompt_templates(&state, dir.path(), &empty);
 
         // Then the template is findable by name.
         let state = state.read();

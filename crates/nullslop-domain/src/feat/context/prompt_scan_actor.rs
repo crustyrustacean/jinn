@@ -1,13 +1,12 @@
 //! Prompt template scanning configuration for the generic scan actor.
 //!
-//! Subscribes to [`RescanPromptTemplates`] commands, scans the prompts
-//! directory (path injected via [`ActorContext`] data), and emits
-//! [`PromptTemplatesLoaded`] events with the results.
-
-use std::path::Path;
+//! Subscribes to [`RescanPromptTemplates`] commands, scans user and system
+//! prompts directories (paths injected via [`ActorContext`] data as [`AppPaths`]),
+//! and emits [`PromptTemplatesLoaded`] events with the results.
 
 use crate::common::actor::ActorContext;
 use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
+use crate::common::app_paths::AppPaths;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::provider::protocol::command::RescanPromptTemplates;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
@@ -15,10 +14,11 @@ use crate::protocol::{Command, Event};
 
 /// Prompt template scan configuration for [`ScanActor`].
 ///
-/// On `RescanPromptTemplates`, scans the injected directory path recursively,
-/// parses all `*.md` files, and emits `PromptTemplatesLoaded` with the results.
+/// On `RescanPromptTemplates`, scans both system and user prompt directories
+/// recursively, parses all `*.md` files, and emits `PromptTemplatesLoaded`
+/// with the merged results. User templates override system templates.
 ///
-/// The scan path is injected via [`ActorContext::set_data::<PathBuf>()`] during
+/// Paths are injected via [`ActorContext::set_data::<AppPaths>()`] during
 /// actor spawn in `src/actor_wiring.rs`.
 pub struct PromptScanConfig;
 
@@ -44,8 +44,8 @@ impl ScanConfig for PromptScanConfig {
         matches!(command, Command::RescanPromptTemplates)
     }
 
-    fn scan(path: &Path) -> PromptScanResult {
-        PromptTemplateStore::load_from_dir(path)
+    fn scan(paths: &AppPaths) -> PromptScanResult {
+        PromptTemplateStore::load_from_dirs(&paths.prompts_dir(), &paths.system_prompts_dir())
     }
 
     fn on_success(result: PromptScanResult, _config: &Self, ctx: &ActorContext) {

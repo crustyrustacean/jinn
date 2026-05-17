@@ -5,12 +5,11 @@
 //! shared [`State`](crate::common::state::State), and emits
 //! [`SkillsLoaded`](crate::protocol::Event::SkillsLoaded) events.
 
-use std::path::Path;
-
 use serde::{Deserialize, Serialize};
 
 use crate::common::actor::ActorContext;
 use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
+use crate::common::app_paths::AppPaths;
 use crate::common::state::State;
 use crate::feat::skills::scan::scan_skills;
 use crate::feat::skills::skill::Skill;
@@ -44,8 +43,8 @@ impl ScanConfig for SkillsScanConfig {
         matches!(command, Command::ScanSkills)
     }
 
-    fn scan(path: &Path) -> Vec<Skill> {
-        scan_skills(path)
+    fn scan(paths: &AppPaths) -> Vec<Skill> {
+        scan_skills(&paths.skills_dir())
     }
 
     fn on_success(skills: Vec<Skill>, config: &Self, ctx: &ActorContext) {
@@ -102,6 +101,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::common::app_paths::AppPaths;
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::protocol::Command;
@@ -122,10 +122,10 @@ mod tests {
     async fn scan_skills_command_writes_to_app_state() {
         // Given an actor with a temp directory containing a skill.
         let dir = tempfile::tempdir().expect("create temp dir");
-        let skill_dir = dir.path().join("test-skill");
-        std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+        let skills_base = dir.path().join(".agents/skills/test-skill");
+        std::fs::create_dir_all(&skills_base).expect("create skill dir");
         std::fs::write(
-            skill_dir.join("SKILL.md"),
+            skills_base.join("SKILL.md"),
             "---\nname: test-skill\ndescription: A test skill\n---\n\n# Content",
         )
         .expect("write SKILL.md");
@@ -133,7 +133,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        ctx.set_data(dir.path().to_owned());
+        ctx.set_data(AppPaths::new_in(dir.path()));
         ctx.set_data(state.clone());
         let mut actor = SkillsScanActor::activate(&mut ctx);
 
@@ -157,7 +157,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        ctx.set_data(dir.path().to_owned());
+        ctx.set_data(AppPaths::new_in(dir.path()));
         ctx.set_data(state);
         let mut actor = SkillsScanActor::activate(&mut ctx);
 
@@ -183,7 +183,7 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        ctx.set_data(dir.path().to_owned());
+        ctx.set_data(AppPaths::new_in(dir.path()));
         ctx.set_data(state);
         let mut actor = SkillsScanActor::activate(&mut ctx);
 
@@ -203,10 +203,12 @@ mod tests {
     #[tokio::test]
     async fn scan_skills_nonexistent_dir_emits_empty_loaded() {
         // Given an actor with a nonexistent directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        ctx.set_data(std::path::PathBuf::from("/nonexistent/skills"));
+        ctx.set_data(AppPaths::new_in(dir.path()));
         ctx.set_data(state);
         let mut actor = SkillsScanActor::activate(&mut ctx);
 
