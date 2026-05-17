@@ -20,6 +20,8 @@ pub enum Scope {
     Input,
     /// Arg input mode — typing positional args for a lifecycle command.
     ArgInput,
+    /// Token budget input mode — typing a numeric budget value.
+    TokenBudgetInput,
     /// Sidebar resize mode — adjusting sidebar width.
     SidebarResize,
 }
@@ -33,6 +35,7 @@ impl std::fmt::Display for Scope {
             Self::Picker => write!(f, "Picker"),
             Self::Input => write!(f, "Input"),
             Self::ArgInput => write!(f, "ArgInput"),
+            Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
         }
     }
@@ -49,6 +52,7 @@ impl std::str::FromStr for Scope {
             "Picker" => Ok(Self::Picker),
             "Input" => Ok(Self::Input),
             "ArgInput" => Ok(Self::ArgInput),
+            "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
             "SidebarResize" => Ok(Self::SidebarResize),
             _ => Err(()),
         }

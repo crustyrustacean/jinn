@@ -81,6 +81,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
             .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::ContextAssembly }, KeyCategory::General)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
+            .bind("gb", Intent::TokenBudgetInputEnter, KeyCategory::Context)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             // Sidebar resize
             .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
@@ -231,6 +232,24 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<c-c>", Intent::Quit, KeyCategory::General);
     });
 
+    // TokenBudgetInput scope — typing a numeric budget value.
+    keymap.scope(Scope::TokenBudgetInput, |b| {
+        b
+        .bind("<esc>", Intent::TokenBudgetInputLeave, KeyCategory::General)
+        .bind("<enter>", Intent::TokenBudgetInputConfirm, KeyCategory::Input)
+        .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
+        .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
+        .catch_all(|key: KeyEvent| {
+            if let Key::Char(c) = key.key {
+                Some(Intent::InsertChar { ch: c })
+            } else {
+                None
+            }
+        });
+    });
+
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
         match mouse.kind {
             MouseEventKind::ScrollUp => Some(Intent::MouseScrollUp),
@@ -270,6 +289,7 @@ pub fn collect_all_bindings(
         Scope::Picker,
         Scope::Input,
         Scope::ArgInput,
+        Scope::TokenBudgetInput,
         Scope::SidebarResize,
     ] {
         collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries, theme);

@@ -255,6 +255,7 @@ impl ChatSessionState {
                 profile: SessionProfile::from_config(
                     crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
                     strategy_id,
+                    crate::feat::session::profile::DEFAULT_TOKEN_BUDGET,
                 ),
                 ..SessionCore::default()
             },

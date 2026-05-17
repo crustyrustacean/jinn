@@ -116,10 +116,16 @@ impl UiElement<AppState> for StatusBarElement {
             }
         }
 
+        let mut budget_info = String::new();
+        if state.active_session().active_strategy().as_str() == "token_budget" {
+            let budget = state.active_session().profile().token_budget;
+            budget_info = format!(" budget:{}", format_tokens(budget as u64));
+        }
+
         let left = if pinned_count > 0 {
-            format!("({strategy}) \u{1f4cc}{pinned_count} {token_info}")
+            format!("({strategy})\u{1f4cc}{pinned_count} {token_info}{budget_info}")
         } else {
-            format!("({strategy}) {token_info}")
+            format!("({strategy}) {token_info}{budget_info}")
         };
 
         let model = if active_model == NO_PROVIDER_ID {
