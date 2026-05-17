@@ -8,6 +8,13 @@ default-run = "nullslop"
 [workspace]
 members = ["crates/*", "tests/*", "vendor/*"]
 
+[profile.release]
+strip = true
+opt-level = "s"    # optimize for size
+lto = true
+codegen-units = 1
+panic = "abort"
+
 [lib]
 path = "src/lib.rs"
 
