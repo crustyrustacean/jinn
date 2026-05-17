@@ -113,6 +113,39 @@ fn no_output_info(default_cwd: &std::path::Path) -> ChatEntry {
     ])
 }
 
+/// INFO entry shown while a setup command is running.
+fn setup_running_msg() -> ChatEntry {
+    use ratatui::style::{Color, Style};
+    use ratatui::text::{Line, Span};
+
+    ChatEntry::info(vec![Line::from(Span::styled(
+        "⚙️ Running setup script...",
+        Style::default().fg(Color::Yellow),
+    ))])
+}
+
+/// INFO entry shown when a setup command completes successfully.
+fn setup_complete_msg(cwd: &std::path::Path) -> ChatEntry {
+    use ratatui::style::{Color, Style};
+    use ratatui::text::{Line, Span};
+
+    ChatEntry::info(vec![Line::from(Span::styled(
+        format!("✅ Setup complete — {}", cwd.display()),
+        Style::default().fg(Color::Green),
+    ))])
+}
+
+/// INFO entry shown while a teardown command is running.
+fn teardown_running_msg() -> ChatEntry {
+    use ratatui::style::{Color, Style};
+    use ratatui::text::{Line, Span};
+
+    ChatEntry::info(vec![Line::from(Span::styled(
+        "⚙️ Running teardown script...",
+        Style::default().fg(Color::Yellow),
+    ))])
+}
+
 /// Format a `LifecycleCommandError` into a clean user-facing message.
 fn format_lifecycle_error(err: &LifecycleCommandError) -> String {
     match err {
@@ -362,6 +395,14 @@ impl SessionPersistenceActor {
     /// On success, sets the session's CWD to the command's output.
     /// On failure, sets the default CWD and pushes an error entry.
     async fn handle_run_session_setup(&self, payload: &RunSessionSetup, ctx: &ActorContext) {
+        // Push "running" info entry so the user sees feedback immediately.
+        {
+            let mut state = self.state.write();
+            if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+                session.push_entry(setup_running_msg());
+            }
+        }
+
         let result = run_setup_command(&payload.command).await;
 
         match result {
@@ -369,6 +410,7 @@ impl SessionPersistenceActor {
                 let mut state = self.state.write();
                 if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
                     session.set_cwd(cwd.clone());
+                    session.push_entry(setup_complete_msg(&cwd));
                 }
                 drop(state);
 
@@ -426,6 +468,14 @@ impl SessionPersistenceActor {
     /// On success, removes the session from the map and switches to another.
     /// On failure, pushes an error entry and keeps the session open.
     async fn handle_run_session_teardown(&self, payload: &RunSessionTeardown, ctx: &ActorContext) {
+        // Push "running" info entry so the user sees feedback immediately.
+        {
+            let mut state = self.state.write();
+            if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+                session.push_entry(teardown_running_msg());
+            }
+        }
+
         let result = run_teardown_command(&payload.command).await;
 
         match result {
@@ -575,7 +625,7 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod tests {
-    use super::{no_output_info, strip_ansi};
+    use super::{no_output_info, setup_complete_msg, setup_running_msg, strip_ansi, teardown_running_msg};
     use crate::protocol::ChatEntryKind;
     use ratatui::style::Color;
     use std::path::Path;
@@ -683,5 +733,57 @@ mod tests {
         assert!(second_span.content.contains("/tmp/test-project"));
         assert!(second_span.content.starts_with("Using "));
         assert!(second_span.content.ends_with(" as cwd"));
+    }
+
+    #[rstest::rstest]
+    fn setup_running_msg_is_yellow_with_gear_emoji() {
+        // When building the setup running message.
+        let entry = setup_running_msg();
+
+        // Then it is an Info entry with one line.
+        let ChatEntryKind::Info(lines) = &entry.kind else {
+            panic!("expected Info entry");
+        };
+        assert_eq!(lines.len(), 1);
+        let span = &lines[0].spans[0];
+        assert!(span.content.contains("⚙️"));
+        assert!(span.content.contains("Running setup script"));
+        assert_eq!(span.style.fg, Some(Color::Yellow));
+    }
+
+    #[rstest::rstest]
+    fn setup_complete_msg_is_green_with_checkmark_and_cwd() {
+        // Given a CWD path.
+        let cwd = Path::new("/tmp/my-project");
+
+        // When building the setup complete message.
+        let entry = setup_complete_msg(cwd);
+
+        // Then it is an Info entry with the checkmark and CWD.
+        let ChatEntryKind::Info(lines) = &entry.kind else {
+            panic!("expected Info entry");
+        };
+        assert_eq!(lines.len(), 1);
+        let span = &lines[0].spans[0];
+        assert!(span.content.contains("✅"));
+        assert!(span.content.contains("Setup complete"));
+        assert!(span.content.contains("/tmp/my-project"));
+        assert_eq!(span.style.fg, Some(Color::Green));
+    }
+
+    #[rstest::rstest]
+    fn teardown_running_msg_is_yellow_with_gear_emoji() {
+        // When building the teardown running message.
+        let entry = teardown_running_msg();
+
+        // Then it is an Info entry with one line.
+        let ChatEntryKind::Info(lines) = &entry.kind else {
+            panic!("expected Info entry");
+        };
+        assert_eq!(lines.len(), 1);
+        let span = &lines[0].spans[0];
+        assert!(span.content.contains("⚙️"));
+        assert!(span.content.contains("Running teardown script"));
+        assert_eq!(span.style.fg, Some(Color::Yellow));
     }
 }
