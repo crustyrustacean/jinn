@@ -44,8 +44,7 @@ pub fn render_session_fork_picker(frame: &mut Frame<'_>, area: Rect, state: &App
     let count = state.frontend.fork_picker.items().len();
     let footer = Line::styled(
         format!(
-            "{} ({count} entries) | CTRL+U user · CTRL+A assistant",
-            filter_text
+            "{filter_text} ({count} entries) | CTRL+U user · CTRL+A assistant"
         ),
         Style::default().fg(Color::Rgb(255, 165, 0)),
     );

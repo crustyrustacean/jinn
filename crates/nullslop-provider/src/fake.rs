@@ -118,12 +118,20 @@ impl FakeLlmServiceFactory {
     }
 
     /// Returns a copy of all messages received by services created from this factory.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
     #[must_use]
     pub fn received_calls(&self) -> Vec<Vec<LlmMessage>> {
         self.received_calls.lock().expect("lock").clone()
     }
 
     /// Clears all recorded calls.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
     pub fn clear_calls(&self) {
         self.received_calls.lock().expect("lock").clear();
     }

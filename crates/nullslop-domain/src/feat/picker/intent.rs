@@ -90,7 +90,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::SessionFork => {
             // Populate from active session history (synchronous, no actor needed).
             let entries = build_fork_entries(state);
-            state.frontend.all_fork_entries = entries.clone();
+            state.frontend.all_fork_entries.clone_from(&entries);
             state.frontend.fork_picker.set_items(entries);
             IntentResult::empty()
         }

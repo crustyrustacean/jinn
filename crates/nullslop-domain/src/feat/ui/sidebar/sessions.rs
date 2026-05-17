@@ -54,7 +54,7 @@ fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
             id: id.clone(),
             title: session.title().unwrap_or("Untitled Session").to_owned(),
             is_active: id == active_id,
-            created_at: session.created_at().clone(),
+            created_at: *session.created_at(),
             is_idle: session.is_idle(),
         })
         .collect();
@@ -164,18 +164,12 @@ pub fn handle_session_activate(state: &mut AppState) {
 ///
 /// Renders all sessions loaded into memory with the active session highlighted.
 #[derive(Debug)]
+#[derive(Default)]
 pub struct SessionsSection {
     /// Animation state for the working indicator.
     throbber_state: ThrobberState,
 }
 
-impl Default for SessionsSection {
-    fn default() -> Self {
-        Self {
-            throbber_state: ThrobberState::default(),
-        }
-    }
-}
 
 impl SessionsSection {
     /// Creates a new sessions section.
@@ -189,6 +183,7 @@ impl SidebarSection for SessionsSection {
         SidebarSectionId::Sessions
     }
 
+    #[allow(clippy::too_many_lines)]
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         let sessions = sorted_open_sessions(state);
         let theme = &state.frontend.theme;
@@ -363,6 +358,10 @@ pub enum SessionCloseError {
 }
 
 /// Validates that a session close can proceed.
+///
+/// # Errors
+///
+/// Returns [`SessionCloseError`] if the sessions section is not focused, no session is selected, or the session is busy.
 pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError> {
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 
@@ -398,6 +397,10 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
 /// Removes the session from the in-memory HashMap (keeps it in SQLite).
 /// Activates the next session in the sorted list, clamping the index.
 /// If the last session is closed, creates a new empty session.
+///
+/// # Panics
+///
+/// Panics if the selected index is out of bounds (should not happen after validation).
 pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResult {
     // Validate.
     if validate_session_close(state).is_err() {

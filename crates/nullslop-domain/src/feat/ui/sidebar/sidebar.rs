@@ -120,12 +120,12 @@ impl Default for Sidebar {
 /// This is the single navigation entry point called by the IntentHandler.
 /// Sections report `Exhausted` when they run out of entries; this function
 /// decides whether to switch to an adjacent section or keep the cursor where it is.
-pub fn navigate_sidebar(direction: SidebarIntent, state: &mut AppState) {
+pub fn navigate_sidebar(direction: &SidebarIntent, state: &mut AppState) {
     let focused = state.frontend.sidebar.focused_section;
-    let result = dispatch_navigate(focused, &direction, state);
+    let result = dispatch_navigate(focused, direction, state);
 
     if result == SectionNavResult::Exhausted {
-        let neighbor = match &direction {
+        let neighbor = match direction {
             SidebarIntent::MoveDown => next_section(focused),
             SidebarIntent::MoveUp => prev_section(focused),
             SidebarIntent::Action(_) => return,
@@ -145,7 +145,7 @@ pub fn navigate_sidebar(direction: SidebarIntent, state: &mut AppState) {
                 receive_cursor(target, enter_from, state);
                 return;
             }
-            candidate = match &direction {
+            candidate = match direction {
                 SidebarIntent::MoveDown => next_section(target),
                 SidebarIntent::MoveUp => prev_section(target),
                 SidebarIntent::Action(_) => return,
@@ -221,9 +221,9 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
 /// Retains the leaving section's cursor position. If the target section has no
 /// cursor (never visited), calls [`receive_cursor`] as fallback.
 /// If the target has a retained cursor, ensures scroll offset is valid.
-pub fn jump_to_section(direction: SidebarIntent, state: &mut AppState) {
+pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
     let focused = state.frontend.sidebar.focused_section;
-    let neighbor_fn: fn(SidebarSectionId) -> Option<SidebarSectionId> = match &direction {
+    let neighbor_fn: fn(SidebarSectionId) -> Option<SidebarSectionId> = match direction {
         SidebarIntent::MoveDown => next_section,
         SidebarIntent::MoveUp => prev_section,
         SidebarIntent::Action(_) => return,
@@ -335,7 +335,7 @@ mod tests {
         state.frontend.persona_section.cursor = Some(0);
 
         // When navigating down.
-        navigate_sidebar(SidebarIntent::MoveDown, &mut state);
+        navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
 
         // Then focus moves to Pins and the first pinned entry is selected.
         assert_eq!(
@@ -354,7 +354,7 @@ mod tests {
         state.frontend.persona_section.cursor = Some(0);
 
         // When navigating down.
-        navigate_sidebar(SidebarIntent::MoveDown, &mut state);
+        navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
 
         // Then focus skips empty Pins and lands on Sessions.
         assert_eq!(
@@ -372,7 +372,7 @@ mod tests {
         state.frontend.pins.select_by_id(first_id);
 
         // When navigating up from the first pin.
-        navigate_sidebar(SidebarIntent::MoveUp, &mut state);
+        navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
 
         // Then focus moves to Persona, pins selection is cleared, and persona has cursor.
         assert_eq!(
@@ -392,7 +392,7 @@ mod tests {
         state.frontend.pins.select_by_id(last_id);
 
         // When navigating down.
-        navigate_sidebar(SidebarIntent::MoveDown, &mut state);
+        navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
 
         // Then focus moves to Sessions (which always has content).
         assert_eq!(
@@ -409,7 +409,7 @@ mod tests {
         state.frontend.persona_section.cursor = Some(0);
 
         // When navigating up.
-        navigate_sidebar(SidebarIntent::MoveUp, &mut state);
+        navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
 
         // Then focus stays on Persona.
         assert_eq!(
@@ -426,7 +426,7 @@ mod tests {
         state.frontend.sessions_section.selected_index = Some(0);
 
         // When navigating up.
-        navigate_sidebar(SidebarIntent::MoveUp, &mut state);
+        navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
 
         // Then focus skips empty Pins and lands on Persona.
         assert_eq!(
@@ -461,7 +461,7 @@ mod tests {
         state.frontend.persona_section.cursor = Some(0);
 
         // When jumping to next section.
-        jump_to_section(SidebarIntent::MoveDown, &mut state);
+        jump_to_section(&SidebarIntent::MoveDown, &mut state);
 
         // Then focus moves to Pins.
         assert_eq!(
@@ -481,7 +481,7 @@ mod tests {
         state.frontend.pins.select_by_id(second_id.clone());
 
         // When jumping to prev section.
-        jump_to_section(SidebarIntent::MoveUp, &mut state);
+        jump_to_section(&SidebarIntent::MoveUp, &mut state);
 
         // Then focus moves to Persona.
         assert_eq!(
@@ -500,7 +500,7 @@ mod tests {
         state.frontend.persona_section.cursor = Some(0);
 
         // When jumping to next section.
-        jump_to_section(SidebarIntent::MoveDown, &mut state);
+        jump_to_section(&SidebarIntent::MoveDown, &mut state);
 
         // Then focus skips empty Pins and lands on Sessions.
         assert_eq!(
@@ -519,7 +519,7 @@ mod tests {
         assert!(state.frontend.pins.selected_id().is_none());
 
         // When jumping to next section.
-        jump_to_section(SidebarIntent::MoveDown, &mut state);
+        jump_to_section(&SidebarIntent::MoveDown, &mut state);
 
         // Then focus moves to Pins and receive_cursor was called (first pin selected).
         assert_eq!(
@@ -538,7 +538,7 @@ mod tests {
         state.frontend.sessions_section.selected_index = Some(0);
 
         // When jumping to next section (no section after Sessions).
-        jump_to_section(SidebarIntent::MoveDown, &mut state);
+        jump_to_section(&SidebarIntent::MoveDown, &mut state);
 
         // Then focus stays on Sessions.
         assert_eq!(
@@ -555,7 +555,7 @@ mod tests {
         state.frontend.persona_section.cursor = Some(0);
 
         // When jumping to prev section (no section before Persona).
-        jump_to_section(SidebarIntent::MoveUp, &mut state);
+        jump_to_section(&SidebarIntent::MoveUp, &mut state);
 
         // Then focus stays on Persona.
         assert_eq!(
@@ -589,7 +589,7 @@ mod tests {
         state.frontend.sessions_section.scroll_offset = 4;
 
         // When jumping to sessions (skipping empty pins if any, or through pins).
-        jump_to_section(SidebarIntent::MoveDown, &mut state);
+        jump_to_section(&SidebarIntent::MoveDown, &mut state);
 
         // Sessions may or may not be the target depending on pins.
         // If pins is empty (default state has no pins), we land on sessions.

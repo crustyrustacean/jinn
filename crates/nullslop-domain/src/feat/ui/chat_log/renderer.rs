@@ -49,6 +49,12 @@ pub struct ChatLogElement {
     line_cache: EntryLineCache,
 }
 
+impl Default for ChatLogElement {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ChatLogElement {
     /// Create a new chat log element with a fresh line count cache.
     #[must_use]
@@ -1264,7 +1270,7 @@ mod tests {
             let row_text: String = (0..60)
                 .filter_map(|x| buffer.cell((x, row)).map(|c| c.symbol().to_owned()))
                 .collect();
-            row_text.contains("4")
+            row_text.contains('4')
         });
         assert!(
             has_last_message,

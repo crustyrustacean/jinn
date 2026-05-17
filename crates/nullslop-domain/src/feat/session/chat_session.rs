@@ -53,13 +53,13 @@ pub struct SessionCoreEphemeral {
     pub(crate) cached_context_size: Option<u32>,
 }
 
-/// Core session state — owned by session-actor and context-actor.
-///
-/// IntentHandler is exempt and may read/write any field.
-/// No other actor should mutate these fields.
-///
-/// Fields without `#[serde(skip)]` are persisted across restarts.
-/// All ephemeral (non-persisted) state lives in [`SessionCoreEphemeral`].
+// Core session state — owned by session-actor and context-actor.
+//
+// IntentHandler is exempt and may read/write any field.
+// No other actor should mutate these fields.
+//
+// Fields without `#[serde(skip)]` are persisted across restarts.
+// All ephemeral (non-persisted) state lives in [`SessionCoreEphemeral`].
 
 /// Serde default for the `cwd` field — resolves to the current directory.
 fn default_cwd() -> std::path::PathBuf {
