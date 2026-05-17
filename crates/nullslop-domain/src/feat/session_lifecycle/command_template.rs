@@ -303,7 +303,7 @@ impl CommandTemplate {
 
             // Prefix for non-first lines.
             if line_idx > 0 {
-                segments.push(DisplaySegment::static_text("&& "));
+                segments.push(DisplaySegment::static_text("  && "));
             }
 
             // Parse the raw text for <...> placeholders.
@@ -919,7 +919,7 @@ mod tests {
         assert_eq!(
             lines[1],
             vec![
-                DisplaySegment::static_text("&& "),
+                DisplaySegment::static_text("  && "),
                 DisplaySegment::static_text("echo world"),
             ]
         );
@@ -942,11 +942,11 @@ mod tests {
         assert!(lines[0].last().unwrap().text.ends_with('\\'));
         // Last line: "&& echo ./<branch>" (no trailing \).
         assert!(!lines[4].last().unwrap().text.ends_with('\\'));
-        // Lines 2-4 start with "&& ".
-        assert_eq!(lines[1][0].text, "&& ");
-        assert_eq!(lines[2][0].text, "&& ");
-        assert_eq!(lines[3][0].text, "&& ");
-        assert_eq!(lines[4][0].text, "&& ");
+        // Lines 2-4 start with "  && ".
+        assert_eq!(lines[1][0].text, "  && ");
+        assert_eq!(lines[2][0].text, "  && ");
+        assert_eq!(lines[3][0].text, "  && ");
+        assert_eq!(lines[4][0].text, "  && ");
     }
 
     #[rstest::rstest]
@@ -979,8 +979,8 @@ mod tests {
         assert_eq!(lines[0][1], DisplaySegment::param("my-feature", 0));
         assert_eq!(lines[0][2], DisplaySegment::static_text(" \\"));
 
-        // Line 2: static("&& "), static("cd "), param("my-feature", 0).
-        assert_eq!(lines[1][0], DisplaySegment::static_text("&& "));
+        // Line 2: static("  && "), static("cd "), param("my-feature", 0).
+        assert_eq!(lines[1][0], DisplaySegment::static_text("  && "));
         assert_eq!(lines[1][1], DisplaySegment::static_text("cd "));
         assert_eq!(lines[1][2], DisplaySegment::param("my-feature", 0));
     }
@@ -999,7 +999,7 @@ mod tests {
         assert_eq!(lines[0][0], DisplaySegment::static_text("script.sh "));
         assert_eq!(lines[0][1], DisplaySegment::param("foo", 0));
 
-        // Line 2: static("&& "), static("other.sh "), param("bar", 1).
+        // Line 2: static("  && "), static("other.sh "), param("bar", 1).
         assert_eq!(lines[1][1], DisplaySegment::static_text("other.sh "));
         assert_eq!(lines[1][2], DisplaySegment::param("bar", 1));
     }
@@ -1016,7 +1016,7 @@ mod tests {
         // Line 1: static("mkdir "), param("my-feature", 0).
         assert_eq!(lines[0][1], DisplaySegment::param("my-feature", 0));
 
-        // Line 2: static("&& "), static("cd "), param("<target>", 1).
+        // Line 2: static("  && "), static("cd "), param("<target>", 1).
         assert_eq!(lines[1][1], DisplaySegment::static_text("cd "));
         assert_eq!(lines[1][2], DisplaySegment::param("<target>", 1));
     }
