@@ -15,7 +15,11 @@ pub mod autocomplete_render;
 #[cfg(test)]
 mod autocomplete_render_tests;
 pub mod element;
+#[cfg(test)]
+mod element_tests;
 pub mod intent;
+#[cfg(test)]
+mod intent_tests;
 pub mod protocol;
 pub mod state;
 pub mod validator;
@@ -44,4 +48,4 @@ pub fn register(registry: &mut AppUiRegistry) {
 }
 
 #[cfg(test)]
-mod tests;
+mod chat_input_tests;

@@ -1207,4 +1207,4 @@ impl ChatSessionState {
 }
 
 #[cfg(test)]
-mod tests;
+mod chat_session_tests;

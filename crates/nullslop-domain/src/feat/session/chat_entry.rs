@@ -500,7 +500,11 @@ impl ChatEntry {
         std::mem::discriminant(&self.kind).hash(&mut hasher);
         match &self.kind {
             ChatEntryKind::User { display, .. } => display.hash(&mut hasher),
-            ChatEntryKind::System(t) | ChatEntryKind::Error(t) | ChatEntryKind::Assistant(t) | ChatEntryKind::Thinking(t) | ChatEntryKind::Info(t) => t.hash(&mut hasher),
+            ChatEntryKind::System(t)
+            | ChatEntryKind::Error(t)
+            | ChatEntryKind::Assistant(t)
+            | ChatEntryKind::Thinking(t)
+            | ChatEntryKind::Info(t) => t.hash(&mut hasher),
             ChatEntryKind::Actor { text, .. } => text.hash(&mut hasher),
             ChatEntryKind::Table(data) => data.to_plain_text().hash(&mut hasher),
             ChatEntryKind::ToolCall {

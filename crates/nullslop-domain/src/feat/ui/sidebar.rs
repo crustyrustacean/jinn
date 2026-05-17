@@ -15,6 +15,11 @@ pub mod sessions;
 pub mod sidebar;
 pub mod state;
 
+#[cfg(test)]
+mod sessions_tests;
+#[cfg(test)]
+mod sidebar_tests;
+
 pub use section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };

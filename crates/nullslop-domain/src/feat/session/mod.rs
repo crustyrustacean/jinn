@@ -22,6 +22,8 @@ pub mod protocol;
 pub mod render;
 pub mod session_actor;
 pub mod token_stats;
+#[cfg(test)]
+mod token_stats_tests;
 pub mod validator;
 
 pub use chat_session::{ChatSessionState, SessionCore, SessionUi};
