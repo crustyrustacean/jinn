@@ -1,7 +1,7 @@
 //! Session lifecycle picker and arg input popup rendering.
 
 use crate::common::app_state::AppState;
-use crate::feat::session_lifecycle::command_template::{CommandTemplate, Param};
+use crate::feat::session_lifecycle::command_template::{CommandTemplate, Param, parse_quoted_args};
 use nullslop_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -83,8 +83,8 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         return;
     }
 
-    // Split the user's input into tokens by whitespace.
-    let input_args: Vec<&str> = arg_state.input.split_whitespace().collect();
+    // Split the user's input into tokens, respecting double quotes and escapes.
+    let input_args: Vec<String> = parse_quoted_args(&arg_state.input);
 
     // Render lines one by one, tracking y position.
     let mut y_offset = inner.y;
@@ -110,8 +110,8 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         }
         let line_text = match param {
             Param::Named(_) | Param::Positional(_) => {
-                let value = if idx < input_args.len() {
-                    input_args[idx]
+                let value: &str = if idx < input_args.len() {
+                    &input_args[idx]
                 } else {
                     ""
                 };
@@ -128,7 +128,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
             }
             Param::Splat => {
                 // Splat shows all remaining args after positional slots.
-                let remaining: Vec<&str> = input_args[idx..].to_vec();
+                let remaining = &input_args[idx..];
                 if remaining.is_empty() {
                     "$@: ".to_owned()
                 } else {
