@@ -1,9 +1,8 @@
 //! Theme file discovery and loading.
 //!
-//! Scans a themes directory for `*.toml` files, parses them, and resolves
-//! missing fields from the default theme. All functions accept an explicit
-//! `themes_dir` path — callers pass `AppPaths.themes_dir()` or
-//! `AppState.frontend.themes_dir`.
+//! Scans user and system themes directories for `*.toml` files, parses them,
+//! and resolves missing fields from the default theme. User themes override
+//! system themes of the same name.
 
 use std::path::{Path, PathBuf};
 
@@ -46,19 +45,40 @@ pub fn discover_themes(themes_dir: &Path) -> Result<Vec<(String, PathBuf)>, Repo
     Ok(themes)
 }
 
-/// Loads a theme by name from the given themes directory.
+/// Loads a theme by name, searching user dir first then system dir.
 ///
-/// Looks for `<themes_dir>/<name>.toml`. If not found, returns
-/// [`ThemeError::NotFound`]. If found but invalid, returns
-/// [`ThemeError::Parse`].
+/// Looks for `<dir>/<name>.toml` in the user themes directory first, then
+/// falls back to the system themes directory. If not found in either,
+/// returns [`ThemeError::NotFound`].
 ///
 /// # Errors
 ///
-/// - [`ThemeError::NotFound`] — no TOML file with that name exists.
+/// - [`ThemeError::NotFound`] — no TOML file with that name exists in either dir.
 /// - [`ThemeError::Parse`] — TOML is malformed or contains invalid colors.
 /// - [`ThemeError::Io`] — file cannot be read.
-pub fn load_theme(name: &str, themes_dir: &Path) -> Result<Theme, Report<ThemeError>> {
-    let path = themes_dir.join(format!("{name}.toml"));
+pub fn load_theme(name: &str, user_dir: &Path, system_dir: &Path) -> Result<Theme, Report<ThemeError>> {
+    let user_path = user_dir.join(format!("{name}.toml"));
+    if user_path.exists() {
+        return load_theme_from_file(&user_path);
+    }
+    let system_path = system_dir.join(format!("{name}.toml"));
+    if system_path.exists() {
+        return load_theme_from_file(&system_path);
+    }
+    Err(Report::new(ThemeError::NotFound)
+        .attach(format!("theme file not found: {}", name)))
+}
+
+/// Loads a theme by name from a single directory.
+///
+/// Convenience wrapper for callers that only have one directory
+/// (e.g., tests). Looks for `<dir>/<name>.toml`.
+///
+/// # Errors
+///
+/// Same as [`load_theme`].
+pub fn load_theme_from_dir(name: &str, dir: &Path) -> Result<Theme, Report<ThemeError>> {
+    let path = dir.join(format!("{name}.toml"));
     if !path.exists() {
         return Err(Report::new(ThemeError::NotFound)
             .attach(format!("theme file not found: {}", path.display())));
@@ -86,32 +106,50 @@ pub fn load_theme_from_file(path: &Path) -> Result<Theme, Report<ThemeError>> {
     Ok(file.resolve())
 }
 
-/// Resolves a theme name to a `Theme`.
+/// Resolves a theme name to a `Theme`, searching user dir then system dir.
 ///
 /// - If `name` is `None` or `"default"`: tries loading `default.toml` from
-///   `themes_dir` first (allows user customization of the default). If not
-///   found, falls back to the embedded default theme.
-/// - Otherwise, loads the named theme from `themes_dir`.
+///   user dir first, then system dir. If not found in either, falls back to
+///   the embedded default theme.
+/// - Otherwise, loads the named theme from user dir, then system dir.
 ///
 /// # Errors
 ///
 /// Propagates errors from [`load_theme`] for non-default theme names.
 /// For the default theme, only returns errors for parse/IO failures
 /// (not-found silently falls back to embedded).
-pub fn resolve_theme(name: Option<&str>, themes_dir: &Path) -> Result<Theme, Report<ThemeError>> {
+pub fn resolve_theme(name: Option<&str>, user_dir: &Path, system_dir: &Path) -> Result<Theme, Report<ThemeError>> {
     match name {
         None | Some("default") => {
-            // Try filesystem first — allows user customization.
-            match load_theme("default", themes_dir) {
+            // Try user dir, then system dir — allows user customization.
+            match load_theme("default", user_dir, system_dir) {
                 Ok(theme) => Ok(theme),
                 Err(err) if err.downcast_ref::<ThemeError>() == Some(&ThemeError::NotFound) => {
-                    // File not found — use embedded default.
+                    // File not found anywhere — use embedded default.
                     Ok(default_theme())
                 }
                 Err(err) => Err(err),
             }
         }
-        Some(name) => load_theme(name, themes_dir),
+        Some(name) => load_theme(name, user_dir, system_dir),
+    }
+}
+
+/// Resolves a theme from a single directory.
+///
+/// Convenience wrapper for callers that only have one directory (e.g., tests).
+pub fn resolve_theme_from_dir(name: Option<&str>, themes_dir: &Path) -> Result<Theme, Report<ThemeError>> {
+    match name {
+        None | Some("default") => {
+            match load_theme_from_dir("default", themes_dir) {
+                Ok(theme) => Ok(theme),
+                Err(err) if err.downcast_ref::<ThemeError>() == Some(&ThemeError::NotFound) => {
+                    Ok(default_theme())
+                }
+                Err(err) => Err(err),
+            }
+        }
+        Some(name) => load_theme_from_dir(name, themes_dir),
     }
 }
 
@@ -139,7 +177,7 @@ mod tests {
         // Given a theme name that doesn't exist.
         let dir = TempDir::new().expect("temp dir");
 
-        let result = load_theme("nonexistent_theme_xyz", dir.path());
+        let result = load_theme_from_dir("nonexistent_theme_xyz", dir.path());
 
         // Then it returns NotFound error.
         assert!(result.is_err());
@@ -220,7 +258,7 @@ mod tests {
         let dir = TempDir::new().expect("temp dir");
 
         // When resolving with None.
-        let theme = resolve_theme(None, dir.path()).expect("resolve");
+        let theme = resolve_theme_from_dir(None, dir.path()).expect("resolve");
 
         // Then it returns the embedded default theme.
         assert_eq!(theme.focus_accent, default_theme().focus_accent);
@@ -232,7 +270,7 @@ mod tests {
         let dir = TempDir::new().expect("temp dir");
 
         // When resolving with "default".
-        let theme = resolve_theme(Some("default"), dir.path()).expect("resolve");
+        let theme = resolve_theme_from_dir(Some("default"), dir.path()).expect("resolve");
 
         // Then it returns the embedded default theme.
         assert_eq!(theme.focus_accent, default_theme().focus_accent);
@@ -246,7 +284,7 @@ mod tests {
         std::fs::write(&path, "focus_accent = \"red\"").expect("write");
 
         // When resolving with "default".
-        let theme = resolve_theme(Some("default"), dir.path()).expect("resolve");
+        let theme = resolve_theme_from_dir(Some("default"), dir.path()).expect("resolve");
 
         // Then it loads from the filesystem (focus_accent overridden).
         assert_eq!(theme.focus_accent, ratatui::style::Color::Red);
@@ -269,5 +307,49 @@ mod tests {
         assert_eq!(themes.len(), 2);
         assert_eq!(themes[0].0, "forest");
         assert_eq!(themes[1].0, "ocean");
+    }
+
+    #[rstest::rstest]
+    fn load_theme_searches_user_then_system() {
+        // Given a user dir without the theme and a system dir with it.
+        let user_dir = TempDir::new().expect("temp dir");
+        let system_dir = TempDir::new().expect("temp dir");
+        std::fs::write(system_dir.path().join("ocean.toml"), "focus_accent = \"blue\"").expect("write");
+
+        // When loading from both dirs.
+        let theme = load_theme("ocean", user_dir.path(), system_dir.path()).expect("load");
+
+        // Then the system theme is loaded.
+        assert_eq!(theme.focus_accent, ratatui::style::Color::Blue);
+    }
+
+    #[rstest::rstest]
+    fn load_theme_user_overrides_system() {
+        // Given user dir with "ocean" (blue) and system dir with "ocean" (red).
+        let user_dir = TempDir::new().expect("temp dir");
+        let system_dir = TempDir::new().expect("temp dir");
+        std::fs::write(user_dir.path().join("ocean.toml"), "focus_accent = \"blue\"").expect("write");
+        std::fs::write(system_dir.path().join("ocean.toml"), "focus_accent = \"red\"").expect("write");
+
+        // When loading from both dirs.
+        let theme = load_theme("ocean", user_dir.path(), system_dir.path()).expect("load");
+
+        // Then the user version wins.
+        assert_eq!(theme.focus_accent, ratatui::style::Color::Blue);
+    }
+
+    #[rstest::rstest]
+    fn resolve_theme_searches_both_dirs() {
+        // Given user dir with "ocean" and system dir with "forest".
+        let user_dir = TempDir::new().expect("temp dir");
+        let system_dir = TempDir::new().expect("temp dir");
+        std::fs::write(user_dir.path().join("ocean.toml"), "focus_accent = \"blue\"").expect("write");
+        std::fs::write(system_dir.path().join("forest.toml"), "focus_accent = \"green\"").expect("write");
+
+        // When resolving "forest" (only in system).
+        let theme = resolve_theme(Some("forest"), user_dir.path(), system_dir.path()).expect("resolve");
+
+        // Then the system theme is found.
+        assert_eq!(theme.focus_accent, ratatui::style::Color::Green);
     }
 }

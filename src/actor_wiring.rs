@@ -95,6 +95,7 @@ pub fn create_core_with_actor_host(
     {
         let mut guard = state.write();
         guard.frontend.themes_dir = paths.themes_dir();
+        guard.frontend.system_themes_dir = paths.system_themes_dir();
     }
     let services = Services {
         paths: paths.clone(),
@@ -185,7 +186,7 @@ pub fn create_core_with_actor_host(
     >("preferences-sync", &sink, handle, &counter, &shutdown_tracker, |ctx| {
         ctx.set_description("Syncs AppState.frontend.preferences from PreferencesUpdated events");
         ctx.set_data(state.clone());
-        ctx.set_data(paths.themes_dir());
+        ctx.set_data(paths.clone());
     });
 
     // ── Domain actors ────────────────────────────────────────────────────
@@ -291,7 +292,7 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         |ctx| {
             ctx.set_description("Scans and reloads prompt templates");
-            ctx.set_data(services.paths.prompts_dir());
+            ctx.set_data(services.paths.clone());
         },
     );
 
@@ -304,7 +305,7 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         |ctx| {
             ctx.set_description("Scans and loads agent skills from ~/.agents/skills");
-            ctx.set_data(services.paths.skills_dir());
+            ctx.set_data(services.paths.clone());
             ctx.set_data(state.clone());
         },
     );
@@ -320,7 +321,7 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         |ctx| {
             ctx.set_description("Scans and loads persona files from ~/.config/nullslop/personas");
-            ctx.set_data(services.paths.personas_dir());
+            ctx.set_data(services.paths.clone());
         },
     );
 

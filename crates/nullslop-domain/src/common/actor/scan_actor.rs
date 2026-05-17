@@ -11,8 +11,7 @@
 //! Also provides [`NoDirectMsg`], a marker type for actors that don't use
 //! direct messages (the `Actor::Message` associated type).
 
-use std::path::{Path, PathBuf};
-
+use crate::common::app_paths::AppPaths;
 use super::{Actor, ActorContext, ActorEnvelope};
 
 /// Marker type for actors that don't accept direct messages.
@@ -30,7 +29,7 @@ pub trait ScanConfig: Send + 'static {
 
     /// Activate the scan config: subscribe to commands and extract extra data.
     ///
-    /// Called once during [`ScanActor::activate`], after the `PathBuf` has
+    /// Called once during [`ScanActor::activate`], after `AppPaths` has
     /// already been extracted from context.
     fn activate(ctx: &mut ActorContext) -> Self;
 
@@ -39,10 +38,10 @@ pub trait ScanConfig: Send + 'static {
     /// Called by [`ScanActor::handle_command`] to decide whether to run the scan.
     fn is_rescan_command(command: &crate::protocol::Command) -> bool;
 
-    /// Run the blocking scan on the given path.
+    /// Run the blocking scan using the given paths.
     ///
     /// Called inside `spawn_blocking`, so this must not access any async runtime.
-    fn scan(path: &Path) -> Self::Output;
+    fn scan(paths: &AppPaths) -> Self::Output;
 
     /// Handle a successful scan result.
     ///
@@ -61,11 +60,11 @@ pub trait ScanConfig: Send + 'static {
 
 /// Generic scan actor that runs a blocking directory scan on command.
 ///
-/// Subscribes to one command type (defined by `C`), takes a `PathBuf` from
+/// Subscribes to one command type (defined by `C`), takes `AppPaths` from
 /// injected context data, and calls `C::scan()` inside `spawn_blocking`.
 pub struct ScanActor<C: ScanConfig> {
-    /// Directory to scan.
-    scan_path: PathBuf,
+    /// Application paths for resolving scan directories.
+    paths: AppPaths,
     /// Per-actor configuration (extra state, event constructors, etc.).
     config: C,
 }
@@ -75,14 +74,14 @@ impl<C: ScanConfig + Sync> Actor for ScanActor<C> {
 
     #[expect(
         clippy::expect_used,
-        reason = "PathBuf must be injected via ctx.set_data before activate"
+        reason = "AppPaths must be injected via ctx.set_data before activate"
     )]
     fn activate(ctx: &mut ActorContext) -> Self {
         let config = C::activate(ctx);
-        let scan_path = ctx
-            .take_data::<PathBuf>()
-            .expect("PathBuf must be injected via ctx.set_data()");
-        Self { scan_path, config }
+        let paths = ctx
+            .take_data::<AppPaths>()
+            .expect("AppPaths must be injected via ctx.set_data()");
+        Self { paths, config }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
@@ -107,8 +106,8 @@ impl<C: ScanConfig> ScanActor<C> {
 
     /// Runs the blocking scan and delegates result handling.
     async fn run_scan(&self, ctx: &ActorContext) {
-        let scan_path = self.scan_path.clone();
-        let result = tokio::task::spawn_blocking(move || C::scan(&scan_path)).await;
+        let paths = self.paths.clone();
+        let result = tokio::task::spawn_blocking(move || C::scan(&paths)).await;
 
         match result {
             Ok(output) => C::on_success(output, &self.config, ctx),

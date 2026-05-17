@@ -426,6 +426,11 @@ pub struct FrontendState {
     /// OWNER: Init code (set once at startup).
     pub themes_dir: std::path::PathBuf,
 
+    /// Path to the system themes directory (`/usr/share/nullslop/themes/`).
+    /// Set once during init from `AppPaths`. Used as fallback for theme discovery.
+    /// OWNER: Init code (set once at startup).
+    pub system_themes_dir: std::path::PathBuf,
+
     /// Session lifecycle picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (lifecycle picker navigation).
     pub session_lifecycle_picker: nullslop_selection_widget::SelectionState<SessionLifecycleEntry>,
@@ -468,6 +473,7 @@ impl Default for FrontendState {
             fork_show_user: true,
             fork_show_assistant: true,
             themes_dir: std::path::PathBuf::new(),
+            system_themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
             arg_input: ArgInputState::default(),
             sidebar_width: 30,

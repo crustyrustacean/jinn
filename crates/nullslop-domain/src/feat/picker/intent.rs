@@ -117,14 +117,30 @@ fn load_theme_picker_entries(state: &mut AppState) {
         theme: crate::feat::theme::default_theme(),
     });
 
-    // Add discovered theme files.
+    // Add discovered theme files from both user and system directories.
     let themes_dir = state.frontend.themes_dir.clone();
+    let system_themes_dir = state.frontend.system_themes_dir.clone();
     if let Ok(discovered) = crate::feat::theme::discover_themes(&themes_dir) {
         for (name, _path) in discovered {
             if name == "default" {
                 continue; // skip duplicate
             }
-            if let Ok(theme) = crate::feat::theme::load_theme(&name, &themes_dir) {
+            if let Ok(theme) = crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir) {
+                entries.push(ThemeEntry { name, theme });
+            }
+        }
+    }
+    // Also discover themes that only exist in the system directory.
+    if let Ok(system_discovered) = crate::feat::theme::discover_themes(&system_themes_dir) {
+        for (name, _path) in system_discovered {
+            if name == "default" {
+                continue;
+            }
+            // Skip if already loaded from user dir.
+            if entries.iter().any(|e: &ThemeEntry| e.name == name) {
+                continue;
+            }
+            if let Ok(theme) = crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir) {
                 entries.push(ThemeEntry { name, theme });
             }
         }
