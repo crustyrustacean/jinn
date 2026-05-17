@@ -182,10 +182,10 @@ impl SelectionState {
     /// Extracts the selected text from a ratatui buffer using line selection.
     ///
     /// Row classification:
-    /// - **Single line** (anchor_y == focus_y): column-based from min(ax,fx) to max(ax,fx).
-    /// - **First line** (anchor row): from anchor_x to last non-whitespace char.
-    /// - **Middle lines**: from bounds.x to last non-whitespace char.
-    /// - **Last line** (focus row): from bounds.x to focus_x.
+    /// - **Single line** (top_y == bot_y): column-based from min(ax,fx) to max(ax,fx).
+    /// - **Top row**: from top_x to last non-whitespace char.
+    /// - **Middle rows**: from bounds.x to last non-whitespace char.
+    /// - **Bottom row**: from bounds.x to bot_x.
     ///
     /// Trailing whitespace is trimmed per row. Rows are joined with `\n`.
     /// Empty trailing rows are omitted. Returns `None` for `Idle`.
@@ -211,6 +211,13 @@ impl SelectionState {
         let bot_y = anchor.1.max(focus.1).min(bounds_right);
         let bot_y = bot_y.min(bounds.bottom().saturating_sub(1));
 
+        // Resolve which point is on the top vs bottom row.
+        let (top_x, bot_x) = if anchor.1 <= focus.1 {
+            (anchor_x, focus_x)
+        } else {
+            (focus_x, anchor_x)
+        };
+
         if top_y > bot_y {
             return Some(String::new());
         }
@@ -221,14 +228,13 @@ impl SelectionState {
             let (start_x, end_x) = if top_y == bot_y {
                 // Single line — column selection.
                 (anchor_x.min(focus_x), anchor_x.max(focus_x))
-            } else if y == anchor.1 {
-                // First line — from anchor_x to last non-whitespace.
-                let end =
-                    find_last_nonws_in_row(buffer, y, anchor_x, bounds_right).unwrap_or(anchor_x);
-                (anchor_x, end)
-            } else if y == focus.1 {
-                // Last line — from bounds.x to focus_x.
-                (bounds.x, focus_x)
+            } else if y == top_y {
+                // Top row — from top_x to last non-whitespace.
+                let end = find_last_nonws_in_row(buffer, y, top_x, bounds_right).unwrap_or(top_x);
+                (top_x, end)
+            } else if y == bot_y {
+                // Bottom row — from bounds.x to bot_x.
+                (bounds.x, bot_x)
             } else {
                 // Middle line — from bounds.x to last non-whitespace.
                 let end =
