@@ -35,8 +35,8 @@ tab_active_bg = "#c4a7e7"      # purple
 tab_inactive_fg = "#636575"    # comment
 
 # Selection highlight fallback
-selection_fg = "#2c2e34"       # bg
-selection_bg = "#c4a7e7"       # purple
+selection_fg = "#e2e2e3"       # foreground
+selection_bg = [85, 87, 96]       # slightly lighter than gutter
 
 # Provider picker
 accent_action = "#f5a56e"      # orange
