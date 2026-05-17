@@ -389,7 +389,9 @@ impl SessionPersistenceActor {
             if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
                 session_id,
                 strategy_id,
-            })) {}
+            })) {
+                tracing::error!(err = ?e, "failed to send command");
+            }
         }
     }
 
