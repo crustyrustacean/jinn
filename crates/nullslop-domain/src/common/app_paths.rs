@@ -18,6 +18,7 @@ use super::app_info::APP_NAME;
 ///
 /// Construct once at init and share via `Services.paths`.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_field_names)]
 pub struct AppPaths {
     /// `~/.config/nullslop` — providers.toml, prompts/, personas/, plugins/, themes/, nullslop.toml
     config_dir: PathBuf,

@@ -25,6 +25,8 @@
 //! Missing fields fall back to the default theme values.
 
 pub mod color;
+#[cfg(test)]
+mod color_tests;
 pub mod default_theme;
 pub mod loader;
 pub mod theme;

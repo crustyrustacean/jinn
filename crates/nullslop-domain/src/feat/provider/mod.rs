@@ -22,6 +22,9 @@ mod render_tests;
 #[cfg(test)]
 mod entries_tests;
 
+#[cfg(test)]
+mod entries_to_messages_tests;
+
 pub use indicator::StreamingIndicatorElement;
 pub use queue_element::QueueDisplayElement;
 

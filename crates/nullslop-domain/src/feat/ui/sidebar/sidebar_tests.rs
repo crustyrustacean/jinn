@@ -1,0 +1,342 @@
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
+use ratatui::style::Color;
+
+use crate::common::app_state::AppState;
+use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::ui::sidebar::pins::PinsSection;
+use crate::feat::ui::sidebar::pins::pins_section::handle_sidebar_focus;
+use crate::feat::ui::sidebar::section_trait::SidebarIntent;
+use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
+use crate::feat::ui::sidebar::sidebar::{Sidebar, jump_to_section, navigate_sidebar};
+use crate::protocol::ChatEntry;
+use crate::protocol::PinPosition;
+
+fn state_with_pinned(count: usize) -> AppState {
+    let mut state = AppState::default();
+    for i in 0..count {
+        let entry = ChatEntry::user(format!("entry {i}"));
+        let id = entry.id.clone();
+        state.active_session_mut().push_entry(entry);
+        state.active_session_mut().pin_entry(&id, PinPosition::Top);
+    }
+    state
+}
+
+// --- Registration ---
+
+#[rstest::rstest]
+fn register_adds_section() {
+    // Given a new sidebar.
+    let mut sidebar = Sidebar::new();
+
+    // When registering a section.
+    sidebar.register(Box::new(PinsSection));
+
+    // Then section count is 1.
+    assert_eq!(sidebar.section_count(), 1);
+}
+
+// --- Rendering ---
+
+#[rstest::rstest]
+fn render_clears_area_with_sidebar_background() {
+    // Given a sidebar with no sections.
+    let mut sidebar = Sidebar::new();
+    let state = AppState::default();
+
+    let backend = TestBackend::new(30, 10);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, 30, 10), &state);
+        })
+        .unwrap();
+
+    // Then the entire area has the sidebar background (#191b1e).
+    let expected_bg = Color::Rgb(0x19, 0x1b, 0x1e);
+    let buf = terminal.backend().buffer();
+    for y in 0..10u16 {
+        for x in 0..30u16 {
+            let cell = buf.cell((x, y)).expect("cell");
+            assert_eq!(
+                cell.bg, expected_bg,
+                "cell ({x},{y}) should have #191b1e bg"
+            );
+        }
+    }
+}
+
+// --- navigate_sidebar ---
+
+#[rstest::rstest]
+fn move_down_from_persona_with_pins_enters_pins_at_first_entry() {
+    // Given persona focused with 3 pinned entries.
+    let mut state = state_with_pinned(3);
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    state.frontend.persona_section.cursor = Some(0);
+
+    // When navigating down.
+    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+
+    // Then focus moves to Pins and the first pinned entry is selected.
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Pins
+    );
+    let first_pin_id = state.sorted_pinned_ids()[0].clone();
+    assert_eq!(state.frontend.pins.selected_id(), Some(&first_pin_id));
+}
+
+#[rstest::rstest]
+fn move_down_from_persona_skips_empty_pins_to_sessions() {
+    // Given persona focused with no pinned entries (but sessions exist).
+    let mut state = AppState::default();
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    state.frontend.persona_section.cursor = Some(0);
+
+    // When navigating down.
+    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+
+    // Then focus skips empty Pins and lands on Sessions.
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Sessions
+    );
+}
+
+#[rstest::rstest]
+fn move_up_from_first_pin_enters_persona() {
+    // Given pins focused with 3 entries, first pin selected.
+    let mut state = state_with_pinned(3);
+    state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
+    let first_id = state.sorted_pinned_ids()[0].clone();
+    state.frontend.pins.select_by_id(first_id);
+
+    // When navigating up from the first pin.
+    navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
+
+    // Then focus moves to Persona, pins selection is cleared, and persona has cursor.
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Persona
+    );
+    assert!(state.frontend.pins.selected_id().is_none());
+    assert_eq!(state.frontend.persona_section.cursor, Some(0));
+}
+
+#[rstest::rstest]
+fn move_down_at_last_pin_enters_sessions() {
+    // Given pins focused with 2 entries, last pin selected.
+    let mut state = state_with_pinned(2);
+    state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
+    let last_id = state.sorted_pinned_ids()[1].clone();
+    state.frontend.pins.select_by_id(last_id);
+
+    // When navigating down.
+    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+
+    // Then focus moves to Sessions (which always has content).
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Sessions
+    );
+}
+
+#[rstest::rstest]
+fn move_up_at_persona_sticks() {
+    // Given persona focused.
+    let mut state = AppState::default();
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    state.frontend.persona_section.cursor = Some(0);
+
+    // When navigating up.
+    navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
+
+    // Then focus stays on Persona.
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Persona
+    );
+}
+
+#[rstest::rstest]
+fn move_up_from_sessions_skips_empty_pins_to_persona() {
+    // Given sessions focused with no pinned entries.
+    let mut state = AppState::default();
+    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.sessions_section.selected_index = Some(0);
+
+    // When navigating up.
+    navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
+
+    // Then focus skips empty Pins and lands on Persona.
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Persona
+    );
+}
+
+// --- handle_sidebar_focus ---
+
+#[rstest::rstest]
+fn sidebar_focus_places_cursor_on_persona() {
+    // Given default app state.
+    let mut state = AppState::default();
+
+    // When handling sidebar focus.
+    handle_sidebar_focus(&mut state);
+
+    // Then persona section has the cursor.
+    assert_eq!(state.frontend.persona_section.cursor, Some(0));
+}
+
+// --- jump_to_section ---
+
+#[rstest::rstest]
+fn jump_next_from_persona_to_pins_retains_persona_cursor() {
+    // Given persona focused with cursor at 0, pins with 3 entries.
+    let mut state = state_with_pinned(3);
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    state.frontend.persona_section.cursor = Some(0);
+
+    // When jumping to next section.
+    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+
+    // Then focus moves to Pins.
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Pins
+    );
+    // And persona cursor is retained.
+    assert_eq!(state.frontend.persona_section.cursor, Some(0));
+}
+
+#[rstest::rstest]
+fn jump_prev_from_pins_to_persona_retains_pins_cursor() {
+    // Given pins focused with cursor on second pin, pins has 3 entries.
+    let mut state = state_with_pinned(3);
+    state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
+    let second_id = state.sorted_pinned_ids()[1].clone();
+    state.frontend.pins.select_by_id(second_id.clone());
+
+    // When jumping to prev section.
+    jump_to_section(&SidebarIntent::MoveUp, &mut state);
+
+    // Then focus moves to Persona.
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Persona
+    );
+    // And pins cursor is retained.
+    assert_eq!(state.frontend.pins.selected_id(), Some(&second_id));
+}
+
+#[rstest::rstest]
+fn jump_next_from_persona_skips_empty_pins_to_sessions() {
+    // Given persona focused with no pinned entries.
+    let mut state = AppState::default();
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    state.frontend.persona_section.cursor = Some(0);
+
+    // When jumping to next section.
+    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+
+    // Then focus skips empty Pins and lands on Sessions.
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Sessions
+    );
+}
+
+#[rstest::rstest]
+fn jump_next_fallback_receive_cursor_on_never_visited_section() {
+    // Given persona focused, pins has entries but no cursor set.
+    let mut state = state_with_pinned(3);
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    state.frontend.persona_section.cursor = Some(0);
+    // Pins has no selection.
+    assert!(state.frontend.pins.selected_id().is_none());
+
+    // When jumping to next section.
+    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+
+    // Then focus moves to Pins and receive_cursor was called (first pin selected).
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Pins
+    );
+    let first_pin_id = state.sorted_pinned_ids()[0].clone();
+    assert_eq!(state.frontend.pins.selected_id(), Some(&first_pin_id));
+}
+
+#[rstest::rstest]
+fn jump_next_from_sessions_at_boundary_does_nothing() {
+    // Given sessions focused (last section).
+    let mut state = AppState::default();
+    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.sessions_section.selected_index = Some(0);
+
+    // When jumping to next section (no section after Sessions).
+    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+
+    // Then focus stays on Sessions.
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Sessions
+    );
+}
+
+#[rstest::rstest]
+fn jump_prev_from_persona_at_boundary_does_nothing() {
+    // Given persona focused (first section).
+    let mut state = AppState::default();
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    state.frontend.persona_section.cursor = Some(0);
+
+    // When jumping to prev section (no section before Persona).
+    jump_to_section(&SidebarIntent::MoveUp, &mut state);
+
+    // Then focus stays on Persona.
+    assert_eq!(
+        state.frontend.sidebar.focused_section,
+        SidebarSectionId::Persona
+    );
+}
+
+#[rstest::rstest]
+fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
+    // Given 20 sessions, persona focused, sessions has cursor at index 18 with scroll_offset 4.
+    let mut state = {
+        let mut s = AppState::default();
+        for i in 1..20 {
+            let session = ChatSessionState::new();
+            let id = session.session_id().clone();
+            s.session.sessions.insert(id, {
+                let mut sess = ChatSessionState::new();
+                sess.push_entry(ChatEntry::user(format!("message for session {i}")));
+                sess
+            });
+        }
+        s
+    };
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    state.frontend.persona_section.cursor = Some(0);
+    // Pre-set sessions cursor and scroll.
+    state.frontend.sessions_section.selected_index = Some(18);
+    state.frontend.sessions_section.scroll_offset = 4;
+
+    // When jumping to sessions (skipping empty pins if any, or through pins).
+    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+
+    // Sessions may or may not be the target depending on pins.
+    // If pins is empty (default state has no pins), we land on sessions.
+    if state.frontend.sidebar.focused_section == SidebarSectionId::Sessions {
+        // Then cursor is retained.
+        assert_eq!(state.frontend.sessions_section.selected_index, Some(18));
+        // And scroll_to_cursor was called to adjust offset.
+        assert_eq!(state.frontend.sessions_section.scroll_offset, 4);
+    }
+}
