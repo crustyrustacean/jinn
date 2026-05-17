@@ -66,6 +66,13 @@ fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, state: &Ap
     );
 }
 
+/// Renders the arg input popup (delegates to domain render).
+pub(super) fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    nullslop_domain::feat::session_lifecycle::render::render_arg_input(
+        frame, area, state,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use nullslop_selection_widget::compute_popup_rect;

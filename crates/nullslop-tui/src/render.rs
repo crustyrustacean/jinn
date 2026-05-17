@@ -14,7 +14,7 @@ pub mod which_key;
 pub use app_layout::{AppLayout, MIN_HEIGHT, MIN_WIDTH};
 pub use tab_bar::init_tab_manager;
 
-use nullslop_domain::Mode;
+use nullslop_domain::{FocusScope, Mode};
 use ratatui::Frame;
 
 use crate::TuiApp;
@@ -104,6 +104,12 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // Picker overlay + selectable rect.
     if state.frontend.scope_stack.is_picker() {
         picker::render_picker(frame, area, &state);
+        rects.push(nullslop_selection_widget::compute_popup_rect(area));
+    }
+
+    // Arg input popup overlay (+ selectable rect).
+    if matches!(state.frontend.scope_stack.current(), FocusScope::ArgInput) {
+        picker::render_arg_input(frame, area, &state);
         rects.push(nullslop_selection_widget::compute_popup_rect(area));
     }
 
