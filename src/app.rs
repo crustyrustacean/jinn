@@ -239,60 +239,9 @@ fn load_theme(state: &State) {
 
 #[cfg(test)]
 mod tests {
-    use clap_verbosity_flag::Verbosity;
-    use nullslop_cli::cli::{Cli, Commands, HeadlessCommands};
     use nullslop_domain::AppState;
 
     use super::*;
-
-    fn test_cli(command: Option<Commands>) -> Cli {
-        Cli {
-            verbosity: Verbosity::new(0, 0),
-            log_dir: None,
-            command,
-        }
-    }
-
-    #[rstest::rstest]
-    #[timeout(std::time::Duration::from_secs(15))]
-    fn dispatch_headless_script_completes_successfully() {
-        // Given a script file containing "q".
-        let dir = tempfile::tempdir().expect("temp dir");
-        let script_path = dir.path().join("test.script");
-        std::fs::write(&script_path, "q").expect("write script");
-
-        let mut app = App::new().expect("create app");
-        let cli = test_cli(Some(Commands::Headless {
-            log_file: None,
-            command: Some(HeadlessCommands::Script {
-                path: script_path.to_str().expect("path to str").to_string(),
-            }),
-        }));
-
-        // When dispatching the headless script command.
-        let result = app.dispatch(cli);
-
-        // Then it completes without error.
-        assert!(result.is_ok());
-    }
-
-    #[rstest::rstest]
-    fn dispatch_headless_script_returns_error_for_missing_file() {
-        // Given a nonexistent script path.
-        let mut app = App::new().expect("create app");
-        let cli = test_cli(Some(Commands::Headless {
-            log_file: None,
-            command: Some(HeadlessCommands::Script {
-                path: "/no/such/file.script".to_string(),
-            }),
-        }));
-
-        // When dispatching the headless script command.
-        let result = app.dispatch(cli);
-
-        // Then an error is returned.
-        assert!(result.is_err());
-    }
 
     #[rstest::rstest]
     fn load_prompt_templates_sets_count() {

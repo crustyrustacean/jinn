@@ -135,11 +135,9 @@ fn migrate_v0(conn: &mut SqliteConnection) {
     .execute(conn)
     .expect("v0: create token_ledger table");
 
-    sql_query(
-        "CREATE INDEX idx_session_entries_session ON session_entries(session_id, ordinal)",
-    )
-    .execute(conn)
-    .expect("v0: create session_entries index");
+    sql_query("CREATE INDEX idx_session_entries_session ON session_entries(session_id, ordinal)")
+        .execute(conn)
+        .expect("v0: create session_entries index");
 
     sql_query("CREATE INDEX idx_token_ledger_session ON token_ledger(session_id)")
         .execute(conn)
@@ -223,10 +221,9 @@ mod tests {
             count: i64,
         }
 
-        let rows: Vec<CountRow> =
-            sql_query("SELECT COUNT(*) AS count FROM _migrations")
-                .load(&mut conn)
-                .expect("query count");
+        let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM _migrations")
+            .load(&mut conn)
+            .expect("query count");
 
         assert_eq!(rows[0].count, 3);
     }
