@@ -151,6 +151,8 @@ pub enum Intent {
     SidebarSessionClose,
     /// Open the persona picker from the sidebar.
     SidebarPersonaEdit,
+    /// Open the session lifecycle picker from the sidebar sessions section.
+    SidebarSessionNewWithLifecycle,
 
     // --- Chat Entry Selection ---
     /// Select the next chat entry.
@@ -250,6 +252,7 @@ impl std::fmt::Display for Intent {
             Intent::PinsPinCycle => write!(f, "pins pin cycle"),
             Intent::SidebarSessionClose => write!(f, "sidebar session close"),
             Intent::SidebarPersonaEdit => write!(f, "edit persona"),
+            Intent::SidebarSessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),

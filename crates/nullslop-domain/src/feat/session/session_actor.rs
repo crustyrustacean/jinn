@@ -130,7 +130,7 @@ fn setup_complete_msg(cwd: &std::path::Path) -> ChatEntry {
     use ratatui::text::{Line, Span};
 
     ChatEntry::info(vec![Line::from(Span::styled(
-        format!("✅ Setup complete — {}", cwd.display()),
+        format!("✅ Setup complete — Using {} as cwd", cwd.display()),
         Style::default().fg(Color::Green),
     ))])
 }
@@ -767,7 +767,7 @@ mod tests {
         let span = &lines[0].spans[0];
         assert!(span.content.contains("✅"));
         assert!(span.content.contains("Setup complete"));
-        assert!(span.content.contains("/tmp/my-project"));
+        assert!(span.content.contains("Using /tmp/my-project as cwd"));
         assert_eq!(span.style.fg, Some(Color::Green));
     }
 
