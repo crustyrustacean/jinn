@@ -11,8 +11,8 @@
 //! Also provides [`NoDirectMsg`], a marker type for actors that don't use
 //! direct messages (the `Actor::Message` associated type).
 
-use crate::common::app_paths::AppPaths;
 use super::{Actor, ActorContext, ActorEnvelope};
+use crate::common::app_paths::AppPaths;
 
 /// Marker type for actors that don't accept direct messages.
 ///

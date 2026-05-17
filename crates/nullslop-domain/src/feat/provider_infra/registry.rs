@@ -107,6 +107,7 @@ impl ProviderRegistry {
                     requires_key: entry.requires_key,
                     extra_body: entry.extra_body.clone(),
                     is_remote: false,
+                    context_length: entry.context_length,
                 };
                 resolved_map.insert(id, resolved.clone());
                 resolved_list.push(resolved);
@@ -158,22 +159,26 @@ impl ProviderRegistry {
                 continue;
             };
 
-            for model in models {
-                let id = ProviderId::new(format!("{}/{}", entry.name, model));
+            for model_info in models {
+                let id = ProviderId::new(format!("{}/{}", entry.name, model_info.id));
                 if self.resolved_map.contains_key(&id) {
                     continue; // Static entry wins.
                 }
 
+                // Manual override from config takes precedence over API-discovered value.
+                let context_length = entry.context_length.or(model_info.context_length);
+
                 let resolved = ResolvedProvider {
                     id: id.clone(),
                     name: entry.name.clone(),
-                    model: model.clone(),
+                    model: model_info.id.clone(),
                     backend: entry.backend.clone(),
                     base_url: entry.base_url.clone(),
                     api_key_env: entry.api_key_env.clone(),
                     requires_key: entry.requires_key,
                     extra_body: entry.extra_body.clone(),
                     is_remote: true,
+                    context_length,
                 };
                 self.resolved_map.insert(id.clone(), resolved.clone());
                 self.resolved_list.push(resolved);

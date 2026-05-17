@@ -5,6 +5,7 @@
 use error_stack::{Report, ResultExt as _};
 use reqwest::Client;
 
+use crate::ModelInfo;
 use crate::service::LlmServiceError;
 
 /// Response from Google's `/v1beta/models` endpoint.
@@ -17,6 +18,8 @@ struct ModelsResponse {
 #[derive(Debug, serde::Deserialize)]
 struct ModelEntry {
     name: String,
+    /// Maximum input token limit for this model.
+    input_token_limit: Option<u32>,
 }
 
 /// Fetch available model IDs from Google Gemini.
@@ -27,7 +30,7 @@ struct ModelEntry {
 pub async fn list_models(
     client: &Client,
     api_key: &str,
-) -> Result<Vec<String>, Report<LlmServiceError>> {
+) -> Result<Vec<ModelInfo>, Report<LlmServiceError>> {
     let url = format!("https://generativelanguage.googleapis.com/v1beta/models?key={api_key}");
 
     let response = client
@@ -58,5 +61,12 @@ pub async fn list_models(
         .change_context(LlmServiceError::Provider)
         .attach("failed to parse Google list_models response")?;
 
-    Ok(models.models.into_iter().map(|m| m.name).collect())
+    Ok(models
+        .models
+        .into_iter()
+        .map(|m| ModelInfo {
+            id: m.name,
+            context_length: m.input_token_limit,
+        })
+        .collect())
 }
