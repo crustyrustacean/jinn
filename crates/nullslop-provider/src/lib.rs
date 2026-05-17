@@ -31,5 +31,19 @@ pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, To
 pub use stream_event::{StopReason, StreamEvent};
 pub use tool_types::{ToolCall, ToolDefinition, ToolResult};
 
+/// Rich model metadata returned by provider model listing endpoints.
+///
+/// Each provider's `list_models` returns a `Vec<ModelInfo>`. The `context_length`
+/// is populated when the provider returns it (e.g. OpenRouter's `context_length`,
+/// Anthropic's `context_window`, Google's `inputTokenLimit`). It is `None` when
+/// the provider does not supply it or the field is missing/null.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModelInfo {
+    /// The model identifier (e.g. `"openai/gpt-4"`, `"claude-sonnet-4-20250514"`).
+    pub id: String,
+    /// Maximum context length in tokens, if the provider reports it.
+    pub context_length: Option<u32>,
+}
+
 #[cfg(test)]
 mod fake_tests;

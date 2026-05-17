@@ -350,9 +350,80 @@ async fn list_models_returns_model_ids() {
     let models = svc.list_models().await.unwrap();
 
     // Then the expected model IDs are returned.
-    assert!(models.contains(&"gpt-4".to_owned()));
+    assert!(models.iter().any(|m| m.id == "gpt-4"));
     // And the second model is also present.
-    assert!(models.contains(&"gpt-3.5-turbo".to_owned()));
+    assert!(models.iter().any(|m| m.id == "gpt-3.5-turbo"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn list_models_parses_context_length() {
+    // Given a mock OpenAI server that returns models with context_length.
+    let mut server = mockito::Server::new_async().await;
+
+    server
+        .mock("GET", "/models")
+        .match_header("authorization", "Bearer test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            "{\"data\":[{\"id\":\"gpt-4\",\"context_length\":128000},{\"id\":\"gpt-3.5-turbo\",\"context_length\":16385}]}",
+        )
+        .create_async()
+        .await;
+
+    let config = ProviderConfig::openai();
+    let svc = nullslop_provider::OpenAiCompatibleService::new(
+        config,
+        "gpt-4".into(),
+        Some(server.url()),
+        "test-key".into(),
+        None,
+    );
+
+    // When listing models.
+    let models = svc.list_models().await.unwrap();
+
+    // Then context_length is parsed for each model.
+    let gpt4 = models.iter().find(|m| m.id == "gpt-4").expect("gpt-4");
+    assert_eq!(gpt4.context_length, Some(128000));
+    let gpt35 = models
+        .iter()
+        .find(|m| m.id == "gpt-3.5-turbo")
+        .expect("gpt-3.5");
+    assert_eq!(gpt35.context_length, Some(16385));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn list_models_handles_missing_context_length() {
+    // Given a mock server that returns models without context_length.
+    let mut server = mockito::Server::new_async().await;
+
+    server
+        .mock("GET", "/models")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("{\"data\":[{\"id\":\"local-model\"}]}")
+        .create_async()
+        .await;
+
+    let config = ProviderConfig::openai();
+    let svc = nullslop_provider::OpenAiCompatibleService::new(
+        config,
+        "local-model".into(),
+        Some(server.url()),
+        "test-key".into(),
+        None,
+    );
+
+    // When listing models.
+    let models = svc.list_models().await.unwrap();
+
+    // Then context_length is None when not provided.
+    let model = models.first().expect("at least one model");
+    assert_eq!(model.id, "local-model");
+    assert_eq!(model.context_length, None);
 }
 
 // ---------------------------------------------------------------------------

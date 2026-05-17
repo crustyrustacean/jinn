@@ -274,14 +274,14 @@ fn merge_remote_entries(
             None => ("unknown", false),
         };
 
-        for model in models {
-            let provider_id = format!("{provider_name}/{model}");
+        for model_info in models {
+            let provider_id = format!("{provider_name}/{}", model_info.id);
             if static_ids.contains(&provider_id) {
                 continue;
             }
             entries.push(remote_entry(
                 provider_name,
-                model,
+                &model_info.id,
                 backend,
                 is_available,
                 theme,

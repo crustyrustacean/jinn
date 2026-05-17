@@ -24,6 +24,7 @@ fn ollama_entry() -> ProviderEntry {
         api_key_env: None,
         requires_key: false,
         extra_body: None,
+        context_length: None,
     }
 }
 
@@ -36,6 +37,7 @@ fn openrouter_entry() -> ProviderEntry {
         api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
         requires_key: true,
         extra_body: None,
+        context_length: None,
     }
 }
 
@@ -82,6 +84,7 @@ fn rejects_invalid_backend_string() {
             api_key_env: None,
             requires_key: false,
             extra_body: None,
+            context_length: None,
         }],
         vec![],
         None,
@@ -106,6 +109,7 @@ fn rejects_empty_models_list() {
             api_key_env: None,
             requires_key: false,
             extra_body: None,
+            context_length: None,
         }],
         vec![],
         None,
@@ -130,6 +134,7 @@ fn registry_has_two_entries() {
             api_key_env: None,
             requires_key: false,
             extra_body: None,
+            context_length: None,
         }],
         vec![],
         None,
@@ -155,6 +160,7 @@ fn entries_have_correct_ids() {
             api_key_env: None,
             requires_key: false,
             extra_body: None,
+            context_length: None,
         }],
         vec![],
         None,
@@ -186,6 +192,7 @@ fn entries_are_individually_lookupable() {
             api_key_env: None,
             requires_key: false,
             extra_body: None,
+            context_length: None,
         }],
         vec![],
         None,
@@ -303,6 +310,7 @@ fn create_factory_succeeds_for_sample_backend() {
             api_key_env: None,
             requires_key: false,
             extra_body: None,
+            context_length: None,
         }],
         vec![],
         None,
@@ -330,6 +338,7 @@ fn create_factory_succeeds_for_keyless_openai_backend() {
             api_key_env: None,
             requires_key: false,
             extra_body: None,
+            context_length: None,
         }],
         vec![],
         None,
@@ -437,7 +446,13 @@ fn create_factory_for_model_succeeds_for_known_provider() {
 
     // And a cache with a remote model.
     let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert("ollama".to_owned(), vec!["mistral".to_owned()]);
+    cache_entries.insert(
+        "ollama".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "mistral".to_owned(),
+            context_length: None,
+        }],
+    );
     let cache = crate::feat::provider_infra::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
@@ -479,6 +494,7 @@ fn create_factory_succeeds_for_merged_remote_model() {
             api_key_env: None,
             requires_key: false,
             extra_body: None,
+            context_length: None,
         }],
         vec![],
         None,
@@ -487,7 +503,13 @@ fn create_factory_succeeds_for_merged_remote_model() {
     let api_keys = ApiKeys::new();
 
     let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert("lmstudio".to_owned(), vec!["my-real-model".to_owned()]);
+    cache_entries.insert(
+        "lmstudio".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "my-real-model".to_owned(),
+            context_length: None,
+        }],
+    );
     let cache = crate::feat::provider_infra::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
@@ -533,6 +555,7 @@ fn create_factory_succeeds_for_merged_model_with_slashes() {
             api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
             requires_key: true,
             extra_body: None,
+            context_length: None,
         }],
         vec![],
         None,
@@ -544,7 +567,10 @@ fn create_factory_succeeds_for_merged_model_with_slashes() {
     let mut cache_entries = std::collections::HashMap::new();
     cache_entries.insert(
         "openrouter".to_owned(),
-        vec!["anthropic/claude-sonnet-4".to_owned()],
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "anthropic/claude-sonnet-4".to_owned(),
+            context_length: None,
+        }],
     );
     let cache = crate::feat::provider_infra::ModelCache {
         entries: cache_entries,
@@ -575,6 +601,7 @@ fn registry_propagates_extra_body_to_resolved_provider() {
             api_key_env: None,
             requires_key: false,
             extra_body: Some(serde_json::json!({"enable_thinking": true, "tool_stream": true})),
+            context_length: None,
         }],
         vec![],
         None,
@@ -616,7 +643,13 @@ fn merge_cache_adds_remote_entries() {
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert("ollama".to_owned(), vec!["mistral".to_owned()]);
+    cache_entries.insert(
+        "ollama".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "mistral".to_owned(),
+            context_length: None,
+        }],
+    );
     let cache = crate::feat::provider_infra::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
@@ -641,7 +674,13 @@ fn merge_cache_static_wins_on_collision() {
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert("ollama".to_owned(), vec!["llama3".to_owned()]);
+    cache_entries.insert(
+        "ollama".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "llama3".to_owned(),
+            context_length: None,
+        }],
+    );
     let cache = crate::feat::provider_infra::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
@@ -665,7 +704,13 @@ fn merge_cache_sets_is_remote_true() {
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert("ollama".to_owned(), vec!["deepseek-v3".to_owned()]);
+    cache_entries.insert(
+        "ollama".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "deepseek-v3".to_owned(),
+            context_length: None,
+        }],
+    );
     let cache = crate::feat::provider_infra::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
@@ -693,7 +738,13 @@ fn merge_cache_ignores_unknown_provider() {
     let mut registry = ProviderRegistry::from_config(config).expect("registry");
 
     let mut cache_entries = std::collections::HashMap::new();
-    cache_entries.insert("unknown-provider".to_owned(), vec!["model".to_owned()]);
+    cache_entries.insert(
+        "unknown-provider".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "model".to_owned(),
+            context_length: None,
+        }],
+    );
     let cache = crate::feat::provider_infra::ModelCache {
         entries: cache_entries,
         last_updated_at: None,
