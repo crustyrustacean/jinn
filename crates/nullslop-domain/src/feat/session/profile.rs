@@ -10,10 +10,18 @@ use serde::{Deserialize, Serialize};
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::protocol::PromptStrategyId;
 
-/// Per-session model and strategy selection.
+/// Default persona name used when none is explicitly set.
+const DEFAULT_PERSONA_NAME: &str = "coding-assistant";
+
+/// Serde default for `persona_name` — ensures old serialized sessions deserialize correctly.
+fn default_persona_name() -> String {
+    DEFAULT_PERSONA_NAME.to_owned()
+}
+
+/// Per-session model, strategy, and persona selection.
 ///
-/// Every session carries its own model and strategy. The session profile
-/// is the single source of truth for "what model/strategy does this session use?"
+/// Every session carries its own model, strategy, and persona. The session profile
+/// is the single source of truth for "what model/strategy/persona does this session use?"
 /// The global config (`nullslop.toml`) holds the user's preferred defaults
 /// and is updated by the picker, but session load/restore never touches it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +31,10 @@ pub struct SessionProfile {
     pub model: String,
     /// The active prompt strategy for this session.
     pub strategy: PromptStrategyId,
+    /// The persona name for this session. Always populated — defaults to `"coding-assistant"`.
+    /// Old serialized sessions without this field deserialize to the default.
+    #[serde(default = "default_persona_name")]
+    pub persona_name: String,
 }
 
 impl Default for SessionProfile {
@@ -30,6 +42,7 @@ impl Default for SessionProfile {
         Self {
             model: NO_PROVIDER_ID.to_owned(),
             strategy: PromptStrategyId::passthrough(),
+            persona_name: DEFAULT_PERSONA_NAME.to_owned(),
         }
     }
 }
@@ -37,7 +50,20 @@ impl Default for SessionProfile {
 impl SessionProfile {
     /// Creates a profile seeded from config values.
     pub fn from_config(model: String, strategy: PromptStrategyId) -> Self {
-        Self { model, strategy }
+        Self {
+            model,
+            strategy,
+            persona_name: DEFAULT_PERSONA_NAME.to_owned(),
+        }
+    }
+
+    /// Creates a profile with all fields specified.
+    pub fn new(model: String, strategy: PromptStrategyId, persona_name: String) -> Self {
+        Self {
+            model,
+            strategy,
+            persona_name,
+        }
     }
 }
 

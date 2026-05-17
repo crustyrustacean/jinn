@@ -23,8 +23,14 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
         .last_strategy
         .as_deref()
         .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
+    let persona_name = state
+        .context
+        .active_persona
+        .as_ref()
+        .map(|p| p.name.clone())
+        .unwrap_or_else(|| "coding-assistant".to_owned());
     let new_session = crate::feat::session::chat_session::ChatSessionState::new_with_profile(
-        SessionProfile::from_config(model, strategy),
+        SessionProfile::new(model, strategy, persona_name),
     );
     let new_id = new_session.session_id().clone();
     state.session.sessions.insert(new_id.clone(), new_session);
