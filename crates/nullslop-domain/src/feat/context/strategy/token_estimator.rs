@@ -345,7 +345,9 @@ mod tests {
     fn estimate_entry_tokens_for_info_is_zero() {
         // Given a char ratio estimator and an info entry.
         let estimator = CharRatioEstimator;
-        let entry = ChatEntry::info("Welcome to nullslop! Press i to start typing.");
+        let entry = ChatEntry::info(vec![ratatui::text::Line::from(
+            "Welcome to nullslop! Press i to start typing.",
+        )]);
 
         // When estimating entry tokens.
         let tokens = estimate_entry_tokens(&estimator, &entry);

@@ -505,7 +505,7 @@ mod tests {
     fn info_entries_are_skipped() {
         // Given an Info entry alongside user and assistant entries.
         let entries = vec![
-            ChatEntry::info("welcome"),
+            ChatEntry::info(vec![ratatui::text::Line::from("welcome")]),
             ChatEntry::user("hello"),
             ChatEntry::assistant("hi"),
         ];
