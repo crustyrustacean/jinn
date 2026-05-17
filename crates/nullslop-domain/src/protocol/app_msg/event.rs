@@ -35,7 +35,7 @@ use crate::feat::session_lifecycle::protocol::event::{
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolUseStarted, ToolsRegistered,
+    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered,
 };
 use crate::init::EnvironmentLoaded;
 use crate::protocol::system::{KeyDown, KeyUp, ModeChanged};
@@ -86,6 +86,10 @@ pub enum Event {
     ToolBatchCompleted(ToolBatchCompleted),
     /// A single tool execution completed.
     ToolExecutionCompleted(ToolExecutionCompleted),
+    /// A tool has started executing (streaming tools only).
+    ToolExecutionStarted(ToolExecutionStarted),
+    /// Incremental output from a running tool.
+    ToolExecutionOutput(ToolExecutionOutput),
     /// Tools were registered by an actor.
     ToolsRegistered(ToolsRegistered),
     /// A prompt has been assembled and is ready to send.
@@ -135,6 +139,8 @@ impl Event {
             Self::PromptTemplatesLoaded(..) => Some(PromptTemplatesLoaded::TYPE_NAME),
             Self::ToolBatchCompleted(..) => Some(ToolBatchCompleted::TYPE_NAME),
             Self::ToolExecutionCompleted(..) => Some(ToolExecutionCompleted::TYPE_NAME),
+            Self::ToolExecutionStarted(..) => Some(ToolExecutionStarted::TYPE_NAME),
+            Self::ToolExecutionOutput(..) => Some(ToolExecutionOutput::TYPE_NAME),
             Self::ToolsRegistered(..) => Some(ToolsRegistered::TYPE_NAME),
             Self::PromptAssembled(..) => Some(PromptAssembled::TYPE_NAME),
             Self::PromptStrategySwitched(..) => Some(PromptStrategySwitched::TYPE_NAME),

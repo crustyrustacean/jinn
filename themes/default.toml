@@ -23,6 +23,7 @@ user_block_bg = [52, 53, 65]
 tool_block_fg = [88, 95, 106]
 tool_success_bg = [40, 50, 40]
 tool_failure_bg = [60, 40, 40]
+tool_pending_bg = [45, 45, 50]
 truncation_fg = [83, 83, 83]
 
 # Picker

@@ -8,6 +8,8 @@
 //! ---(N more lines)---
 //! ```
 
+use crate::feat::session::tool_result_status::ToolResultStatus;
+use crate::feat::theme::Theme;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
@@ -16,14 +18,10 @@ use super::shared::{Pad, RenderContext, pad_entry_with, pad_line_to_width};
 pub fn to_lines(
     name: &str,
     content: &str,
-    success: bool,
+    status: ToolResultStatus,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
-    let bg = if success {
-        ctx.theme.tool_success_bg
-    } else {
-        ctx.theme.tool_failure_bg
-    };
+    let bg = status_background(status, &ctx.theme);
     let style = Style::default().fg(ctx.theme.tool_block_fg).bg(bg);
 
     // Name line.
@@ -68,9 +66,19 @@ pub fn to_lines(
     lines
 }
 
+/// Select the background color based on tool result status.
+fn status_background(status: ToolResultStatus, theme: &Theme) -> ratatui::style::Color {
+    match status {
+        ToolResultStatus::Pending => theme.tool_pending_bg,
+        ToolResultStatus::Success => theme.tool_success_bg,
+        ToolResultStatus::Failure => theme.tool_failure_bg,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::ui::chat_log::shared::RenderContext;
 
     fn render_context(max_lines: u16, is_expanded: bool) -> RenderContext {
@@ -93,7 +101,7 @@ mod tests {
             .join("\n");
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, true, &ctx);
+        let lines = to_lines("bash", &content, ToolResultStatus::Success, &ctx);
 
         // Then some line contains the truncation indicator.
         let has_indicator = lines.iter().any(|line| {
@@ -117,7 +125,7 @@ mod tests {
             .join("\n");
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, true, &ctx);
+        let lines = to_lines("bash", &content, ToolResultStatus::Success, &ctx);
 
         // Then some line contains "line 10".
         let has_last_line = lines
@@ -145,7 +153,7 @@ mod tests {
         let content = "line 1\nline 2\nline 3".to_owned();
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, true, &ctx);
+        let lines = to_lines("bash", &content, ToolResultStatus::Success, &ctx);
 
         // Then no line contains "more lines".
         let has_indicator = lines
@@ -160,7 +168,7 @@ mod tests {
         let ctx = render_context(5, false);
 
         // When converting to lines.
-        let lines = to_lines("bash", "output", true, &ctx);
+        let lines = to_lines("bash", "output", ToolResultStatus::Success, &ctx);
 
         // Then line 1 (after padding) contains "bash".
         let name_content: String = lines[1].spans.iter().map(|s| s.content.clone()).collect();
@@ -183,7 +191,7 @@ mod tests {
         let ctx = render_context(5, false);
 
         // When converting to lines.
-        let lines = to_lines("bash", r"line one\nline two\nline three", true, &ctx);
+        let lines = to_lines("bash", r"line one\nline two\nline three", ToolResultStatus::Success, &ctx);
 
         // Then the result has multiple lines (name + 3 content lines = 4).
         assert_eq!(
@@ -201,5 +209,27 @@ mod tests {
                 "line should not contain literal \\n, got: {text}"
             );
         }
+    }
+
+    #[rstest::rstest]
+    fn pending_tool_result_uses_pending_background() {
+        // Given a pending tool result.
+        let ctx = render_context(5, false);
+        let theme = crate::feat::theme::default_theme();
+
+        // When converting to lines.
+        let lines = to_lines("bash", "", ToolResultStatus::Pending, &ctx);
+
+        // Then the lines use the pending background color.
+        assert!(!lines.is_empty(), "pending tool result should produce lines");
+        for line in &lines {
+            let has_pending_bg = line.spans.iter().any(|s| {
+                matches!(s.style.bg, Some(color) if color == theme.tool_pending_bg)
+            });
+            if has_pending_bg {
+                return;
+            }
+        }
+        panic!("no line uses the pending background color");
     }
 }
