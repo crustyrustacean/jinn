@@ -47,43 +47,79 @@ pub fn welcome_msg() -> crate::protocol::ChatEntry {
     let primary = Style::default().fg(crate::feat::theme::default_theme().primary_text);
     let bold = primary.add_modifier(Modifier::BOLD);
 
+    let dim = Style::default().fg(crate::feat::theme::default_theme().muted_text);
+
     crate::protocol::ChatEntry::info(vec![
         Line::from(Span::styled("Welcome to nullslop!", bold)),
         Line::from(""),
         Line::from(vec![
             Span::styled("   i       ", bold),
-            Span::styled("\u{2014} ", muted),
+            Span::styled("— ", muted),
             Span::styled("enter insert mode", primary),
         ]),
         Line::from(vec![
-            Span::styled("   Ctrl+J  ", bold),
-            Span::styled("\u{2014} ", muted),
-            Span::styled("enter insert mode", primary),
+            Span::styled("   ESC     ", bold),
+            Span::styled("— ", muted),
+            Span::styled("cancel stream (press twice)", primary),
         ]),
         Line::from(vec![
             Span::styled("   ?       ", bold),
-            Span::styled("\u{2014} ", muted),
+            Span::styled("— ", muted),
             Span::styled("show all shortcuts", primary),
         ]),
         Line::from(vec![
             Span::styled("   q       ", bold),
-            Span::styled("\u{2014} ", muted),
+            Span::styled("— ", muted),
             Span::styled("quit", primary),
         ]),
+        Line::from(""),
+        Line::from(Span::styled("   Spatial Navigation", dim)),
         Line::from(vec![
             Span::styled("   Ctrl+K  ", bold),
-            Span::styled("\u{2014} ", muted),
-            Span::styled("back to normal mode", primary),
+            Span::styled("— ", muted),
+            Span::styled("focus left (input or chat history)", primary),
         ]),
         Line::from(vec![
             Span::styled("   Ctrl+L  ", bold),
-            Span::styled("\u{2014} ", muted),
-            Span::styled("toggle sidebar", primary),
+            Span::styled("— ", muted),
+            Span::styled("focus right (sidebar)", primary),
         ]),
         Line::from(vec![
-            Span::styled("   ESC     ", bold),
-            Span::styled("\u{2014} ", muted),
-            Span::styled("cancel stream", primary),
+            Span::styled("   Ctrl+J  ", bold),
+            Span::styled("— ", muted),
+            Span::styled("focus input box", primary),
+        ]),
+    ])
+}
+
+/// Returns a guidance message for when no API keys are found.
+///
+/// Instructs the user to create a `.env` file and shows the path to
+/// `providers.toml` for reference. Uses [`crate::protocol::ChatEntry::info`]
+/// so the message is excluded from LLM context.
+pub fn no_api_keys_msg() -> crate::protocol::ChatEntry {
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::{Line, Span};
+
+    let primary = Style::default().fg(crate::feat::theme::default_theme().primary_text);
+    let bold = primary.add_modifier(Modifier::BOLD);
+
+    let config_path = crate::feat::provider_infra::config_path()
+        .to_string_lossy()
+        .into_owned();
+
+    crate::protocol::ChatEntry::info(vec![
+        Line::from(Span::styled("No API keys found", bold)),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Create a ", primary),
+            Span::styled(".env", bold),
+            Span::styled(" file in your working directory with your API keys.", primary),
+        ]),
+        Line::from(vec![
+            Span::styled("See ", primary),
+            Span::styled(config_path, bold),
+            Span::styled(" for available environment variables.", primary),
         ]),
     ])
 }
@@ -110,11 +146,39 @@ mod welcome_tests {
         // Then it mentions all key shortcuts.
         let text = entry.text();
         assert!(text.contains('i'), "should mention i");
-        assert!(text.contains("Ctrl+J"), "should mention Ctrl+J");
+        assert!(text.contains("ESC"), "should mention ESC");
         assert!(text.contains('?'), "should mention ?");
         assert!(text.contains('q'), "should mention q");
         assert!(text.contains("Ctrl+K"), "should mention Ctrl+K");
         assert!(text.contains("Ctrl+L"), "should mention Ctrl+L");
-        assert!(text.contains("ESC"), "should mention ESC");
+        assert!(text.contains("Ctrl+J"), "should mention Ctrl+J");
+        assert!(
+            text.contains("Spatial Navigation"),
+            "should mention Spatial Navigation"
+        );
+    }
+
+    #[rstest::rstest]
+    fn no_api_keys_msg_is_info_entry() {
+        // When creating the no-api-keys message.
+        let entry = no_api_keys_msg();
+
+        // Then it is an Info entry.
+        assert!(matches!(entry.kind, ChatEntryKind::Info(_)));
+    }
+
+    #[rstest::rstest]
+    fn no_api_keys_msg_contains_guidance() {
+        // When creating the no-api-keys message.
+        let entry = no_api_keys_msg();
+
+        // Then it mentions guidance keywords.
+        let text = entry.text();
+        assert!(text.contains("No API keys found"), "should mention header");
+        assert!(text.contains(".env"), "should mention .env");
+        assert!(
+            text.contains("providers.toml"),
+            "should mention providers.toml"
+        );
     }
 }

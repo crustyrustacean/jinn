@@ -882,6 +882,31 @@ async fn then_chat_history_at_least_count(world: &mut AppWorld, count: u64) {
     );
 }
 
+/// Asserts the last chat entry's text contains the expected string.
+#[cucumber::then(expr = "the last chat entry should contain {string}")]
+async fn then_last_entry_contains_text(world: &mut AppWorld, expected: String) {
+    world
+        .wait_until(|state| {
+            state
+                .active_session()
+                .history()
+                .last()
+                .is_some_and(|e| e.text().contains(&expected))
+        })
+        .await;
+    let state = world.state();
+    let last = state
+        .active_session()
+        .history()
+        .last()
+        .expect("at least one entry");
+    let text = last.text();
+    assert!(
+        text.contains(&expected),
+        "expected last entry to contain '{expected}', got '{text}'"
+    );
+}
+
 /// Asserts the which-key popup is active.
 #[cucumber::then(expr = "which-key should be active")]
 fn then_which_key_active(world: &mut AppWorld) {

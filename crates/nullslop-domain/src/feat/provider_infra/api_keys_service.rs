@@ -66,6 +66,12 @@ impl ApiKeysService {
     pub fn insert(&self, env_var: String, value: String) {
         self.inner.write().insert(env_var, value);
     }
+
+    /// Returns `true` if no keys have been resolved.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.read().is_empty()
+    }
 }
 
 #[cfg(test)]
