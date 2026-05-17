@@ -2,6 +2,9 @@
 
 use ratatui::layout::{Constraint, Layout, Rect};
 
+/// Minimum sidebar width in columns.
+pub const MIN_SIDEBAR_WIDTH: u16 = 15;
+
 /// Minimum terminal width.
 pub const MIN_WIDTH: u16 = 40;
 /// Minimum terminal height.
@@ -49,12 +52,14 @@ impl AppLayout {
     ///
     /// `max_input_height` caps the input box height (e.g., 50% of terminal).
     #[must_use]
-    pub fn new(area: Rect, input_lines: u16, max_input_height: u16) -> Self {
+    pub fn new(area: Rect, input_lines: u16, max_input_height: u16, sidebar_width: u16) -> Self {
         let [tabs, rest] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
 
         // Horizontal split: main column | border(1) | sidebar
-        let sidebar_width = (rest.width * 20 / 100).min(30);
+        let sidebar_width = sidebar_width
+            .min(rest.width.saturating_sub(MIN_WIDTH))
+            .max(MIN_SIDEBAR_WIDTH);
         let border_width: u16 = 1;
         let main_width = rest
             .width
@@ -133,7 +138,7 @@ mod tests {
     fn includes_status_bar() {
         // Given a 40x14 area.
         let area = Rect::new(0, 0, 40, 14);
-        let layout = AppLayout::new(area, 1, area.height / 2);
+        let layout = AppLayout::new(area, 1, area.height / 2, 30);
 
         // Then the status bar has height 1 and is at the bottom.
         assert_eq!(layout.status_bar.height, 2);
