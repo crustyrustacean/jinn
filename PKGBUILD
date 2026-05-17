@@ -6,7 +6,7 @@ pkgrel=1
 pkgdesc='Agentic LLM agent harness'
 url='https://github.com/jayson-lennon/nullslop'
 license=(AGPL-3.0)
-makedepends=('cargo' 'clang')
+makedepends=('cargo' 'clang' 'upx')
 depends=('sqlite' 'gcc-libs')
 arch=('x86_64')
 
@@ -26,6 +26,7 @@ build() {
     cd "$srcdir/$pkgname-$pkgver"
     export RUSTUP_TOOLCHAIN=stable
     CFLAGS+=" -ffat-lto-objects" cargo build --frozen --release --all-features
+    upx -9 target/release/nullslop
 }
 
 package() {
