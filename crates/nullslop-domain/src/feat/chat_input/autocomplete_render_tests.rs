@@ -377,11 +377,6 @@ fn render_autocomplete_popup_clears_background() {
     terminal
         .draw(|frame| {
             let area = Rect::new(0, 0, 80, 20);
-            let filler = ratatui::widgets::Paragraph::new(
-                "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                    .to_owned(),
-            )
-            .style(ratatui::style::Style::default().fg(Color::Red));
             for y in 0..area.height {
                 let row = Rect::new(area.x, area.y + y, area.width, 1);
                 frame.render_widget(ratatui::widgets::Paragraph::new("X".repeat(80)), row);
