@@ -581,6 +581,102 @@ fn close_session_rejected_when_wrong_section() {
     assert_eq!(result, Err(SessionCloseError::WrongSection));
 }
 
+// --- Error-colored session titles ---
+
+#[rstest::rstest]
+fn render_session_title_is_red_when_last_entry_is_error() {
+    // Given a session whose last history entry is an error.
+    let mut section = SessionsSection::new();
+    let state = {
+        let mut s = AppState::default();
+        // Push an error entry into the active (only) session.
+        s.active_session_mut()
+            .push_entry(ChatEntry::error("teardown failed"));
+        s
+    };
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(30, 5);
+    terminal
+        .draw(|frame| {
+            section.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then the title text on row 2 (first entry row) has red foreground.
+    let buffer = terminal.backend().buffer();
+    // The title starts after indicator(1) + space(1) + prefix(2) = column 4.
+    let title_cell = buffer.cell((4, 2)).expect("title cell should exist");
+    assert_eq!(title_cell.style().fg, Some(Color::Red));
+}
+
+#[rstest::rstest]
+fn render_session_title_is_normal_when_last_entry_is_not_error() {
+    // Given a session whose last history entry is a user message (not error).
+    let mut section = SessionsSection::new();
+    let state = {
+        let mut s = AppState::default();
+        s.active_session_mut().push_entry(ChatEntry::user("hello"));
+        s
+    };
+    let primary_text = state.frontend.theme.primary_text;
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(30, 5);
+    terminal
+        .draw(|frame| {
+            section.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then the title text on row 2 has the primary_text color (active session).
+    let buffer = terminal.backend().buffer();
+    let title_cell = buffer.cell((4, 2)).expect("title cell should exist");
+    assert_eq!(title_cell.style().fg, Some(primary_text));
+}
+
+#[rstest::rstest]
+fn sorted_sessions_reports_last_entry_is_error() {
+    // Given a session whose last entry is an error.
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::error("boom"));
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the entry has last_entry_is_error = true.
+    assert!(sessions[0].last_entry_is_error);
+}
+
+#[rstest::rstest]
+fn sorted_sessions_reports_last_entry_not_error() {
+    // Given a session whose last entry is a user message.
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::user("hello"));
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the entry has last_entry_is_error = false.
+    assert!(!sessions[0].last_entry_is_error);
+}
+
+#[rstest::rstest]
+fn sorted_sessions_empty_history_is_not_error() {
+    // Given a session with no history entries.
+    let state = AppState::default();
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the entry has last_entry_is_error = false.
+    assert!(!sessions[0].last_entry_is_error);
+}
+
 // --- Activate session ---
 
 #[rstest::rstest]
