@@ -200,3 +200,22 @@ sync-github:
        --mainbranch trunk \
        --autopush "$GITHUB_REMOTE"
 
+# Bump version (major/minor/patch) in Cargo.toml and PKGBUILD
+bump LEVEL:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    case "{{LEVEL}}" in
+        major|minor|patch) ;;
+        *) echo "Usage: just bump <major|minor|patch>" >&2; exit 1 ;;
+    esac
+
+    CURRENT=$(grep -m1 '^version' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+    NEW=$(rust-script scripts/bump-version.rs "$CURRENT" "{{LEVEL}}")
+
+    sed -i "s/^version = \".*\"/version = \"$NEW\"/" Cargo.toml
+    sed -i "s/^pkgver=.*/pkgver=$NEW/" PKGBUILD
+    sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+    echo "Bumped to $NEW"
+
