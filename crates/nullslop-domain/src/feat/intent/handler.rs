@@ -147,6 +147,17 @@ impl IntentHandler {
             Intent::MoveCursorUp => feat::chat_input::intent::handle_move_cursor_up(state),
             Intent::MoveCursorDown => feat::chat_input::intent::handle_move_cursor_down(state),
 
+            // --- Paste ---
+            Intent::PasteText { text } => match state.frontend.scope_stack.current() {
+                crate::common::app_state::FocusScope::Input => {
+                    feat::chat_input::intent::handle_paste_text(text, state)
+                }
+                crate::common::app_state::FocusScope::Picker { .. } => {
+                    feat::picker::intent::handle_picker_paste(state, text)
+                }
+                _ => IntentResult::empty(),
+            }
+
             // --- Navigation ---
             Intent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
             Intent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
@@ -314,5 +325,47 @@ impl IntentHandler {
             }
             Intent::SidebarResizeLeave => feat::sidebar_resize::intent::handle_resize_leave(state),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::common::app_state::AppState;
+    use crate::feat::intent::IntentHandler;
+    use crate::protocol::Intent;
+
+    #[rstest::rstest]
+    fn paste_text_ignored_in_normal_scope() {
+        // Given an AppState in Normal scope (default).
+        let mut state = AppState::default();
+
+        // When handling PasteText.
+        let result =
+            IntentHandler::handle(&Intent::PasteText { text: "hello".into() }, &mut state);
+
+        // Then the buffer is empty and no commands are emitted.
+        assert!(state.active_chat_input().is_empty());
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn paste_text_inserts_in_input_scope() {
+        // Given an AppState in Input scope.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(
+            crate::common::app_state::FocusScope::Input,
+        );
+
+        // When handling PasteText.
+        let result = IntentHandler::handle(
+            &Intent::PasteText {
+                text: "hello\nworld".into(),
+            },
+            &mut state,
+        );
+
+        // Then the buffer has the pasted text.
+        assert_eq!(state.active_chat_input().text(), "hello\nworld");
+        assert!(result.commands.is_empty());
     }
 }
