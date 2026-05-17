@@ -172,6 +172,17 @@ pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Handles `PasteText` in picker scope — bulk inserts pasted text into the filter.
+///
+/// Newlines are stripped by the picker's `insert_text` method since the filter
+/// is a single-line input.
+pub fn handle_picker_paste(state: &mut AppState, text: &str) -> IntentResult {
+    if let Some(picker) = state.active_picker_ops() {
+        picker.insert_text(text);
+    }
+    IntentResult::empty()
+}
+
 /// Removes the last character from the active picker's filter.
 pub fn handle_backspace(state: &mut AppState) -> IntentResult {
     validator::validate_picker_backspace(state);

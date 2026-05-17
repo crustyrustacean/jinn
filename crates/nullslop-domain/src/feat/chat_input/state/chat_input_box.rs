@@ -122,12 +122,22 @@ impl ChatInputBoxState {
     /// Insert text at the current cursor position and advance the cursor by the
     /// number of graphemes in the text.
     ///
-    /// Convenience method that loops over characters and calls
-    /// [`insert_grapheme_at_cursor`](Self::insert_grapheme_at_cursor) for each.
+    /// Performs a single bulk insertion — O(n) overall instead of O(n²) when
+    /// inserting many characters one at a time via
+    /// [`insert_grapheme_at_cursor`](Self::insert_grapheme_at_cursor).
+    /// Newlines are preserved in the buffer.
     pub fn insert_text(&mut self, text: &str) {
-        for ch in text.chars() {
-            self.insert_grapheme_at_cursor(ch);
+        if text.is_empty() {
+            return;
         }
+        let byte_offset = self
+            .input_buffer
+            .grapheme_indices(true)
+            .nth(self.cursor_pos)
+            .map_or(self.input_buffer.len(), |(i, _)| i);
+        self.input_buffer.insert_str(byte_offset, text);
+        self.cursor_pos += text.graphemes(true).count();
+        self.desired_col = None;
     }
 
     /// Insert a character at the current cursor position and advance the cursor by 1.

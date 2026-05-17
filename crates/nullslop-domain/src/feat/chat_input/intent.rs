@@ -1,8 +1,9 @@
 //! Chat input box intent handlers.
 //!
-//! Handles 16 chat-input intents:
+//! Handles 17 chat-input intents:
 //!
 //! - **InsertChar** — inserts a character, manages autocomplete triggering/filtering/expansion.
+//! - **PasteText** — bulk inserts pasted text, deactivates autocomplete.
 //! - **DeleteGrapheme** — backspace with autocomplete awareness.
 //! - **DeleteGraphemeForward** — forward delete with autocomplete awareness.
 //! - **SubmitMessage** — validates, extracts text, resets buffer, returns `EnqueueUserMessage`.
@@ -109,6 +110,19 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
         }
     }
 
+    IntentResult::empty()
+}
+
+// --- Paste ---
+
+/// Handles `PasteText` — bulk inserts pasted text and deactivates autocomplete.
+///
+/// Pastes bypass the per-character insertion pipeline entirely, inserting the
+/// full string in one O(n) operation. Autocomplete is always deactivated on
+/// paste since the pasted content may span multiple lines or tokens.
+pub fn handle_paste_text(text: &str, state: &mut AppState) -> IntentResult {
+    state.active_chat_input_mut().deactivate_autocomplete();
+    state.active_chat_input_mut().insert_text(text);
     IntentResult::empty()
 }
 
