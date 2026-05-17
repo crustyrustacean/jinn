@@ -3,6 +3,7 @@
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::common::app_state::{AppState, FocusScope, TokenBudgetInputState};
+use crate::feat::context::protocol::command::SwitchPromptStrategy;
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::protocol::{Command, IntentResult};
 
@@ -53,14 +54,24 @@ pub fn handle_token_budget_confirm(state: &mut AppState) -> IntentResult {
     // Update session profile.
     state.active_session_mut().profile_mut().token_budget = budget;
 
+    // Read current strategy and session ID before clearing state.
+    let session_id = state.session.active_session.clone();
+    let strategy_id = state.active_session().active_strategy().clone();
+
     // Pop scope and clear state.
     state.frontend.scope_stack.pop();
     state.frontend.token_budget_input = TokenBudgetInputState::default();
 
-    // Persist to preferences (update global default).
-    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
-        updates: vec![PreferenceUpdate::SetTokenBudget(budget)],
-    })])
+    // Rebuild the strategy with the new budget and persist to preferences.
+    IntentResult::with_commands(vec![
+        Command::SwitchPromptStrategy(SwitchPromptStrategy {
+            session_id,
+            strategy_id,
+        }),
+        Command::UpdatePreferences(UpdatePreferences {
+            updates: vec![PreferenceUpdate::SetTokenBudget(budget)],
+        }),
+    ])
 }
 
 /// Cancels the token budget input popup.
@@ -215,10 +226,14 @@ mod tests {
         ));
         // And input state is cleared.
         assert!(state.frontend.token_budget_input.input.is_empty());
-        // And UpdatePreferences command is emitted.
-        assert_eq!(result.commands.len(), 1);
+        // And two commands are emitted: SwitchPromptStrategy and UpdatePreferences.
+        assert_eq!(result.commands.len(), 2);
         assert!(matches!(
             &result.commands[0],
+            Command::SwitchPromptStrategy(_)
+        ));
+        assert!(matches!(
+            &result.commands[1],
             Command::UpdatePreferences(cmd) if cmd.updates.len() == 1
                 && matches!(&cmd.updates[0], PreferenceUpdate::SetTokenBudget(999_999))
         ));
