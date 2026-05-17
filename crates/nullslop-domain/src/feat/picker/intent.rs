@@ -110,12 +110,13 @@ fn load_theme_picker_entries(state: &mut AppState) {
     });
 
     // Add discovered theme files.
-    if let Ok(discovered) = crate::feat::theme::discover_themes() {
+    let themes_dir = state.frontend.themes_dir.clone();
+    if let Ok(discovered) = crate::feat::theme::discover_themes(&themes_dir) {
         for (name, _path) in discovered {
             if name == "default" {
                 continue; // skip duplicate
             }
-            if let Ok(theme) = crate::feat::theme::load_theme(&name) {
+            if let Ok(theme) = crate::feat::theme::load_theme(&name, &themes_dir) {
                 entries.push(ThemeEntry { name, theme });
             }
         }
