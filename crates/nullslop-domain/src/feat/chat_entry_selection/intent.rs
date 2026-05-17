@@ -106,9 +106,9 @@ pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
     }
 }
 
-/// Toggles expand/collapse of the selected tool result entry.
-pub fn handle_expand_tool_result(state: &mut AppState) -> IntentResult {
-    if validator::validate_expand_tool_result(state).is_err() {
+/// Toggles expand/collapse of the selected tool entry (tool call or tool result).
+pub fn handle_expand_tool_entry(state: &mut AppState) -> IntentResult {
+    if validator::validate_expand_tool_entry(state).is_err() {
         return IntentResult::empty();
     }
 
@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn expand_tool_result_toggles_expanded_state() {
+    fn expand_tool_entry_toggles_expanded_state() {
         // Given a state with a selected tool result.
         let mut state = AppState::default();
         state
@@ -235,8 +235,8 @@ mod tests {
         state.active_session_mut().select_next_entry();
         let entry_id = state.active_session().selected_entry_id().unwrap().clone();
 
-        // When handling expand tool result.
-        let result = handle_expand_tool_result(&mut state);
+        // When handling expand tool entry.
+        let result = handle_expand_tool_entry(&mut state);
 
         // Then the entry is expanded.
         assert!(state.active_session().is_entry_expanded(&entry_id));
@@ -244,7 +244,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn expand_tool_result_toggles_back_to_collapsed() {
+    fn expand_tool_entry_toggles_back_to_collapsed() {
         // Given a state with an expanded tool result.
         let mut state = AppState::default();
         state
@@ -256,30 +256,30 @@ mod tests {
             .active_session_mut()
             .toggle_expand_entry(entry_id.clone());
 
-        // When handling expand tool result again.
-        handle_expand_tool_result(&mut state);
+        // When handling expand tool entry again.
+        handle_expand_tool_entry(&mut state);
 
         // Then the entry is collapsed.
         assert!(!state.active_session().is_entry_expanded(&entry_id));
     }
 
     #[rstest::rstest]
-    fn expand_tool_result_noop_with_no_selection() {
+    fn expand_tool_entry_noop_with_no_selection() {
         // Given a state with entries but no selection.
         let mut state = AppState::default();
         state
             .active_session_mut()
             .push_entry(ChatEntry::tool_result("id", "bash", "output", true));
 
-        // When handling expand tool result.
-        let result = handle_expand_tool_result(&mut state);
+        // When handling expand tool entry.
+        let result = handle_expand_tool_entry(&mut state);
 
         // Then no change.
         assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
-    fn expand_tool_result_noop_with_non_tool_result() {
+    fn expand_tool_entry_noop_with_non_tool_entry() {
         // Given a state with a selected user entry.
         let mut state = AppState::default();
         state
@@ -287,10 +287,30 @@ mod tests {
             .push_entry(ChatEntry::user("hello"));
         state.active_session_mut().select_next_entry();
 
-        // When handling expand tool result.
-        let result = handle_expand_tool_result(&mut state);
+        // When handling expand tool entry.
+        let result = handle_expand_tool_entry(&mut state);
 
         // Then no change.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn expand_tool_entry_toggles_tool_call_expanded_state() {
+        // Given a state with a selected tool call.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::tool_call(
+            "id",
+            "bash",
+            "{\"cmd\": true}",
+        ));
+        state.active_session_mut().select_next_entry();
+        let entry_id = state.active_session().selected_entry_id().unwrap().clone();
+
+        // When handling expand tool entry.
+        let result = handle_expand_tool_entry(&mut state);
+
+        // Then the entry is expanded.
+        assert!(state.active_session().is_entry_expanded(&entry_id));
         assert!(result.commands.is_empty());
     }
 }
