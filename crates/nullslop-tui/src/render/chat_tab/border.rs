@@ -1,23 +1,25 @@
 //! Vertical border line between main column and sidebar.
 
+use nullslop_domain::FocusScope;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 
 /// Draws the vertical border line (`│`) between the main column and sidebar.
 ///
-/// The color reflects sidebar focus state.
+/// The color reflects sidebar focus state and resize mode.
 pub(super) fn render_border(
     frame: &mut Frame<'_>,
     border: Rect,
-    sidebar_focused: bool,
+    focus_scope: &FocusScope,
     focus_accent: Color,
     border_unfocused: Color,
+    sidebar_resize_accent: Color,
 ) {
-    let border_color = if sidebar_focused {
-        focus_accent
-    } else {
-        border_unfocused
+    let border_color = match focus_scope {
+        FocusScope::SidebarResize => sidebar_resize_accent,
+        FocusScope::Sidebar => focus_accent,
+        _ => border_unfocused,
     };
     let border_style = Style::default().fg(border_color);
     for y in border.y..(border.y + border.height) {
@@ -60,7 +62,7 @@ mod tests {
             .unwrap();
 
         // Then the vertical separator is Yellow.
-        let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+        let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
         let buffer = terminal.backend().buffer();
         let cell = buffer
             .cell((layout.border.x, layout.border.y + 5))
@@ -83,11 +85,40 @@ mod tests {
             .unwrap();
 
         // Then the vertical separator is DarkGray.
-        let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+        let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
         let buffer = terminal.backend().buffer();
         let cell = buffer
             .cell((layout.border.x, layout.border.y + 5))
             .expect("separator cell");
         assert_eq!(cell.fg, Color::DarkGray);
+    }
+
+    #[rstest::rstest]
+    fn separator_is_green_when_resizing() {
+        // Given a TuiApp rendered with SidebarResize scope.
+        let mut app = crate::TuiApp::test_builder().build();
+        app.core
+            .state
+            .write()
+            .frontend
+            .scope_stack
+            .push(nullslop_domain::FocusScope::SidebarResize);
+        let (mut terminal, _area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                app.render(frame);
+            })
+            .unwrap();
+
+        // Then the vertical separator is Green (sidebar_resize_accent).
+        let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
+        let buffer = terminal.backend().buffer();
+        let cell = buffer
+            .cell((layout.border.x, layout.border.y + 5))
+            .expect("separator cell");
+        assert_eq!(cell.symbol(), "\u{2502}");
+        assert_eq!(cell.fg, Color::Green);
     }
 }

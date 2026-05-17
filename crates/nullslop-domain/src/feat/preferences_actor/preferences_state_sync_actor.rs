@@ -72,6 +72,8 @@ impl Actor for PreferencesStateSyncActor {
                         state.context.active_persona = Some(persona);
                     }
                 }
+
+                state.frontend.sidebar_width = payload.preferences.sidebar_width.unwrap_or(30);
             }
             ActorEnvelope::Command(_) | ActorEnvelope::Event(_) | ActorEnvelope::System(_) => {}
         }
@@ -117,6 +119,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
         actor
             .handle(
@@ -151,6 +154,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
         actor
             .handle(
@@ -169,6 +173,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
         actor
             .handle(

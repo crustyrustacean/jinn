@@ -29,7 +29,7 @@ fn render_registers_content_rect_for_selectable_chat_log() {
 
     // Then the chat area rect is registered as selectable, excluding the gutter.
     // Chat log is selectable — the selectable area starts after the gutter column.
-    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
     let content = layout.content;
     let expected = Rect {
         x: content.x + GUTTER_WIDTH,
@@ -106,7 +106,7 @@ fn content_area_rect_is_selectable() {
 
     // Then the content area rect is also still selectable (chat-log is selectable).
     // Query a position inside the gutter-excluded selectable rect.
-    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
     let content = layout.content;
     let select_x = content.x + GUTTER_WIDTH + 1;
     let content_found = app
@@ -137,7 +137,7 @@ fn gutter_area_is_not_selectable() {
         .unwrap();
 
     // Then clicking in the gutter (first column of content area) is not selectable.
-    let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
     let content = layout.content;
     let found = app
         .selectable_rects

@@ -77,6 +77,9 @@ pub struct UserPreferences {
     #[serde(default)]
     #[serde(rename = "session_lifecycle")]
     pub session_lifecycles: Vec<SessionLifecycle>,
+    /// Sidebar width in columns. None means use the built-in default (30 columns).
+    #[serde(default)]
+    pub sidebar_width: Option<u16>,
 }
 
 /// Returns the path to the user preferences file.
@@ -203,6 +206,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
 
         // When saving and reloading.
@@ -265,6 +269,7 @@ last_strategy = "sliding_window""#,
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
 
         // When saving.
@@ -286,6 +291,7 @@ last_strategy = "sliding_window""#,
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
 
         // When saving and reloading.
@@ -315,6 +321,7 @@ last_strategy = "sliding_window""#,
                     "~/.config/nullslop/scripts/fossil-cleanup.sh $1".to_owned(),
                 ),
             }],
+            sidebar_width: None,
         };
 
         // When saving and reloading.
@@ -337,6 +344,24 @@ last_strategy = "sliding_window""#,
 
         // Then session_lifecycles is empty.
         assert!(prefs.session_lifecycles.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn save_then_load_round_trips_sidebar_width() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            last_model: None,
+            last_strategy: None,
+            tool_entry_max_lines: None,
+            theme_name: None,
+            persona_name: None,
+            session_lifecycles: vec![],
+            sidebar_width: Some(25),
+        };
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+        assert_eq!(reloaded.sidebar_width, Some(25));
     }
 
     #[rstest::rstest]
