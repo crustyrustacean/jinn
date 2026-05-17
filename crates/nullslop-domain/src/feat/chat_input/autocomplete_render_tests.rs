@@ -360,3 +360,54 @@ fn render_slash_command_popup_shows_no_commands_message() {
         "should show no commands message, got: {line}"
     );
 }
+
+#[rstest::rstest]
+fn render_autocomplete_popup_clears_background() {
+    // Given a terminal with pre-existing content behind the popup area.
+    let matches = vec![AutocompleteMatch {
+        name: "short".to_owned(),
+        description: String::new(),
+    }];
+    let state = state_with_autocomplete("#", 0, matches);
+
+    let (mut terminal, _area) = setup_term(80, 24);
+    let input_area = Rect::new(0, 20, 80, 4);
+
+    // Pre-fill the popup area with visible content to simulate bleed-through.
+    terminal
+        .draw(|frame| {
+            let area = Rect::new(0, 0, 80, 20);
+            let filler = ratatui::widgets::Paragraph::new(
+                "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                    .to_owned(),
+            )
+            .style(ratatui::style::Style::default().fg(Color::Red));
+            for y in 0..area.height {
+                let row = Rect::new(area.x, area.y + y, area.width, 1);
+                frame.render_widget(ratatui::widgets::Paragraph::new("X".repeat(80)), row);
+            }
+        })
+        .unwrap();
+
+    // When rendering the autocomplete popup on top.
+    terminal
+        .draw(|frame| {
+            render_autocomplete_popup(frame, input_area, &state);
+        })
+        .unwrap();
+
+    // Then the popup area background is cleared — cells outside the content
+    // text but inside the popup should not contain the filler 'X' characters.
+    let buffer = terminal.backend().buffer().clone();
+    // Popup: anchor_x = 0 + 2 + 0 = 2. 1 match => height = 3.
+    // popup_y = 20 - 3 = 17. Popup area is (2, 17, width, 3).
+    // The right side of the inner area (past the match text) should be spaces, not X.
+    let inner_x = 3; // past left border
+    let cell_past_content = buffer.cell((inner_x + 10, 18)).expect("cell past content");
+    assert_eq!(
+        cell_past_content.symbol(),
+        " ",
+        "cells past popup content should be cleared, got: '{}'",
+        cell_past_content.symbol()
+    );
+}
