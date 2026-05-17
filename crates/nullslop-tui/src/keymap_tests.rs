@@ -622,6 +622,92 @@ fn input_scope_escape_appears_under_general_category() {
     );
 }
 
+// --- Input scope: Shift+Enter and Ctrl+Enter ---
+
+#[rstest::rstest]
+fn input_shift_enter_produces_insert_newline() {
+    // Given the keymap.
+    let keymap = init();
+
+    // When looking up '<s-enter>' in Input scope.
+    let s_enter = KeyEvent {
+        key: Key::Enter,
+        modifiers: Modifiers::shift(),
+    };
+    let node = keymap.get_node_at_path(&[s_enter]);
+
+    // Then it's a leaf with InsertChar { '\n' } for Input scope.
+    assert!(node.is_some());
+    if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
+        let entry = entries.iter().find(|e| e.scope == Scope::Input);
+        assert!(
+            entry.is_some(),
+            "'<s-enter>' should be bound in Input scope"
+        );
+        assert!(
+            matches!(&entry.unwrap().action, Intent::InsertChar { ch } if *ch == '\n'),
+            "expected InsertChar {{ ch: '\\n' }}"
+        );
+    } else {
+        panic!("Expected leaf node for '<s-enter>'");
+    }
+}
+
+#[rstest::rstest]
+fn input_ctrl_enter_produces_insert_newline() {
+    // Given the keymap.
+    let keymap = init();
+
+    // When looking up '<c-enter>' in Input scope.
+    let c_enter = KeyEvent {
+        key: Key::Enter,
+        modifiers: Modifiers::ctrl(),
+    };
+    let node = keymap.get_node_at_path(&[c_enter]);
+
+    // Then it's a leaf with InsertChar { '\n' } for Input scope.
+    assert!(node.is_some());
+    if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
+        let entry = entries.iter().find(|e| e.scope == Scope::Input);
+        assert!(
+            entry.is_some(),
+            "'<c-enter>' should be bound in Input scope"
+        );
+        assert!(
+            matches!(&entry.unwrap().action, Intent::InsertChar { ch } if *ch == '\n'),
+            "expected InsertChar {{ ch: '\\n' }}"
+        );
+    } else {
+        panic!("Expected leaf node for '<c-enter>'");
+    }
+}
+
+#[rstest::rstest]
+fn input_enter_produces_submit_message() {
+    // Given the keymap.
+    let keymap = init();
+
+    // When looking up '<enter>' in Input scope.
+    let enter = KeyEvent {
+        key: Key::Enter,
+        modifiers: Modifiers::none(),
+    };
+    let node = keymap.get_node_at_path(&[enter]);
+
+    // Then it's a leaf with SubmitMessage for Input scope.
+    assert!(node.is_some());
+    if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
+        let entry = entries.iter().find(|e| e.scope == Scope::Input);
+        assert!(entry.is_some(), "'<enter>' should be bound in Input scope");
+        assert!(
+            matches!(entry.unwrap().action, Intent::SubmitMessage),
+            "expected SubmitMessage"
+        );
+    } else {
+        panic!("Expected leaf node for '<enter>'");
+    }
+}
+
 // --- Tree walker tests ---
 
 #[rstest::rstest]

@@ -196,6 +196,56 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn convert_shift_enter_preserves_shift_modifier() {
+        // Given crossterm Enter with SHIFT.
+        let event = crossterm_key_with_mod(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::SHIFT,
+        );
+
+        // When converting.
+        let result = from_crossterm(event);
+
+        // Then returns Key::Enter with shift=true.
+        let key_event = result.expect("should convert");
+        assert_eq!(key_event.key, Key::Enter);
+        assert!(key_event.modifiers.shift);
+        assert!(!key_event.modifiers.ctrl);
+    }
+
+    #[rstest::rstest]
+    fn convert_ctrl_enter_preserves_ctrl_modifier() {
+        // Given crossterm Enter with CONTROL.
+        let event = crossterm_key_with_mod(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::CONTROL,
+        );
+
+        // When converting.
+        let result = from_crossterm(event);
+
+        // Then returns Key::Enter with ctrl=true.
+        let key_event = result.expect("should convert");
+        assert_eq!(key_event.key, Key::Enter);
+        assert!(key_event.modifiers.ctrl);
+        assert!(!key_event.modifiers.shift);
+    }
+
+    #[rstest::rstest]
+    fn convert_plain_enter_has_no_modifiers() {
+        // Given crossterm Enter with no modifiers.
+        let event = crossterm_key(crossterm::event::KeyCode::Enter);
+
+        // When converting.
+        let result = from_crossterm(event);
+
+        // Then returns Key::Enter with no modifiers.
+        let key_event = result.expect("should convert");
+        assert_eq!(key_event.key, Key::Enter);
+        assert!(key_event.modifiers.is_none());
+    }
+
+    #[rstest::rstest]
     fn convert_unknown_returns_none() {
         // Given crossterm Null.
         let event = crossterm_key(crossterm::event::KeyCode::Null);
