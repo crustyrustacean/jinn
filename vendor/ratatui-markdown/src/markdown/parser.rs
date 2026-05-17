@@ -222,7 +222,11 @@ impl MarkdownRenderer {
                     paragraph_lines.clear();
                 }
                 let content = trimmed.chars().skip(2).collect::<String>();
-                blocks.push(MarkdownBlock::ListItem(content, list_indent));
+                blocks.push(MarkdownBlock::ListItem {
+                    content,
+                    indent: list_indent,
+                    ordered: None,
+                });
                 continue;
             }
 
@@ -234,8 +238,13 @@ impl MarkdownRenderer {
                         blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
                         paragraph_lines.clear();
                     }
+                    let number: u32 = prefix.parse().unwrap();
                     let content = trimmed[pos + 2..].to_string();
-                    blocks.push(MarkdownBlock::ListItem(content, list_indent));
+                    blocks.push(MarkdownBlock::ListItem {
+                        content,
+                        indent: list_indent,
+                        ordered: Some(number),
+                    });
                     continue;
                 }
             }
@@ -403,7 +412,11 @@ impl MarkdownRenderer {
                     text_lines.clear();
                 }
                 let item_text: String = trimmed.chars().skip(2).collect();
-                blocks.push(MarkdownBlock::ListItem(item_text, 0));
+                blocks.push(MarkdownBlock::ListItem {
+                    content: item_text,
+                    indent: 0,
+                    ordered: None,
+                });
                 continue;
             }
 
