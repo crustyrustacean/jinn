@@ -36,8 +36,8 @@ tab_active_bg = "yellow"
 tab_inactive_fg = "gray"
 
 # Selection highlight
-selection_fg = "black"
-selection_bg = "white"
+selection_fg = [220, 220, 220]
+selection_bg = [80, 82, 88]
 
 # Provider picker
 accent_action = [255, 165, 0]

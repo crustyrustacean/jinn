@@ -34,8 +34,8 @@ tab_active_bg = "#cba6f7"      # Mauve
 tab_inactive_fg = "#7f849c"    # Overlay1
 
 # Selection highlight fallback
-selection_fg = "#1e1e2e"       # Base
-selection_bg = "#cba6f7"       # Mauve
+selection_fg = "#cdd6f4"       # Text
+selection_bg = [79, 80, 98]       # Surface0
 
 # Provider picker
 accent_action = "#fab387"      # Peach

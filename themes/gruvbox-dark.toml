@@ -34,8 +34,8 @@ tab_active_bg = "#fe8019"
 tab_inactive_fg = "#928374"
 
 # Selection highlight fallback
-selection_fg = "#282828"
-selection_bg = "#ebdbb2"
+selection_fg = "#ebdbb2"       # light cream
+selection_bg = [90, 86, 80]
 
 # Provider picker
 accent_action = "#fe8019"
