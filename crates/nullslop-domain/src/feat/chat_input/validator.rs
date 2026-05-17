@@ -89,9 +89,11 @@ mod tests {
     fn autocomplete_confirm_succeeds_when_active() {
         // Given a state with autocomplete active.
         let mut state = AppState::default();
-        state
-            .active_chat_input_mut()
-            .activate_autocomplete(0, vec![]);
+        state.active_chat_input_mut().activate_autocomplete(
+            0,
+            crate::feat::chat_input::AutocompleteTrigger::Hash,
+            vec![],
+        );
 
         // When validating autocomplete confirm.
         let result = validate_autocomplete_confirm(&state);
