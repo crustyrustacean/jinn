@@ -207,7 +207,7 @@ impl CommandTemplate {
                 Param::Named(name) => {
                     let search = format!("<{name}>");
                     let replacement = if arg_idx < args.len() {
-                        args[arg_idx].clone()
+                        shell_quote(&args[arg_idx])
                     } else {
                         String::new()
                     };
@@ -217,7 +217,7 @@ impl CommandTemplate {
                 Param::Positional(_n) => {
                     let search = format!("{param}");
                     let replacement = if arg_idx < args.len() {
-                        args[arg_idx].clone()
+                        shell_quote(&args[arg_idx])
                     } else {
                         String::new()
                     };
@@ -232,7 +232,11 @@ impl CommandTemplate {
 
         // Replace $@ and $* with remaining args (those not consumed by non-splat params).
         if self.has_splat() {
-            let joined = args[arg_idx..].join(" ");
+            let joined = args[arg_idx..]
+                .iter()
+                .map(|a| shell_quote(a))
+                .collect::<Vec<_>>()
+                .join(" ");
             result = result.replace("$@", &joined);
             result = result.replace("$*", &joined);
         }
@@ -402,6 +406,86 @@ impl CommandTemplate {
 
         segments
     }
+}
+
+/// Shell-quote a value for safe interpolation into a `$SHELL -c` command.
+///
+/// Uses single-quote wrapping with `\'\'\'` escape for embedded single quotes.
+/// Only applies quoting when the value contains spaces or shell-special characters.
+/// Safe values pass through unchanged.
+#[must_use]
+pub fn shell_quote(s: &str) -> String {
+    /// Characters that require shell quoting.
+    const SHELL_SPECIAL: &[char] = &[
+        ' ', '\t', '\n', '\r', '|', '&', ';', '<', '>', '$', '`', '\\', '"', '\'', '(', ')', '*',
+        '?', '[', ']', '~', '#', '!', '{', '}', '=', ':',
+    ];
+
+    if s.is_empty() {
+        return "''".to_owned();
+    }
+
+    if !s.contains(SHELL_SPECIAL) {
+        return s.to_owned();
+    }
+
+    // Wrap in single quotes, escaping embedded single quotes as '\'\''.
+    let escaped = s.replace('\'', "'\\''");
+    format!("'{escaped}'")
+}
+
+/// Parse a user input string into arguments, preserving quote characters.
+///
+/// Same splitting logic as [`parse_quoted_args`] (splits on unquoted whitespace,
+/// respects backslash escapes) but keeps the double-quote characters in the tokens.
+/// Used for display purposes so users see their literal input including quotes.
+#[must_use]
+pub fn split_preserving_quotes(input: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if in_quotes {
+            if ch == '\\' {
+                // Backslash escape inside quotes: next char is literal (skip backslash).
+                current.push('\\');
+                if let Some(escaped) = chars.next() {
+                    current.push(escaped);
+                }
+            } else if ch == '"' {
+                // End of quoted section — keep the quote char.
+                current.push(ch);
+                in_quotes = false;
+            } else {
+                current.push(ch);
+            }
+        } else if ch == '\\' {
+            // Backslash escape outside quotes.
+            current.push('\\');
+            if let Some(escaped) = chars.next() {
+                current.push(escaped);
+            }
+        } else if ch == '"' {
+            // Start of quoted section — keep the quote char.
+            current.push(ch);
+            in_quotes = true;
+        } else if ch.is_whitespace() {
+            if !current.is_empty() {
+                args.push(current.clone());
+                current.clear();
+            }
+        } else {
+            current.push(ch);
+        }
+    }
+
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    args
 }
 
 /// Parse a user input string into arguments, respecting double quotes and backslash escapes.
@@ -1178,6 +1262,93 @@ mod tests {
         assert_eq!(
             parse_quoted_args("  foo bar  "),
             vec!["foo".to_owned(), "bar".to_owned()]
+        );
+    }
+
+    // --- shell_quote ---
+
+    #[rstest::rstest]
+    fn shell_quote_safe_value_passes_through() {
+        assert_eq!(shell_quote("hello"), "hello");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_value_with_spaces_is_wrapped() {
+        assert_eq!(shell_quote("my branch"), "'my branch'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_empty_string_is_empty_quotes() {
+        assert_eq!(shell_quote(""), "''");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_embedded_single_quote_is_escaped() {
+        assert_eq!(shell_quote("it's here"), "'it'\\''s here'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_dollar_sign_is_quoted() {
+        assert_eq!(shell_quote("$HOME"), "'$HOME'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_semicolon_is_quoted() {
+        assert_eq!(shell_quote("foo;bar"), "'foo;bar'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_pipe_is_quoted() {
+        assert_eq!(shell_quote("foo|bar"), "'foo|bar'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_path_with_slash_is_safe() {
+        // Forward slashes are not shell-special.
+        assert_eq!(shell_quote("/tmp/workdir"), "/tmp/workdir");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_hyphenated_value_is_safe() {
+        assert_eq!(shell_quote("my-branch"), "my-branch");
+    }
+
+    // --- split_preserving_quotes ---
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_keeps_quotes() {
+        assert_eq!(
+            split_preserving_quotes("\"my branch\" target"),
+            vec!["\"my branch\"".to_owned(), "target".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_no_quotes() {
+        assert_eq!(
+            split_preserving_quotes("foo bar"),
+            vec!["foo".to_owned(), "bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_empty_input() {
+        assert_eq!(split_preserving_quotes(""), Vec::<String>::new());
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_single_quoted_arg() {
+        assert_eq!(
+            split_preserving_quotes("\"hello world\""),
+            vec!["\"hello world\"".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_unterminated_quote() {
+        assert_eq!(
+            split_preserving_quotes("\"foo bar"),
+            vec!["\"foo bar".to_owned()]
         );
     }
 }

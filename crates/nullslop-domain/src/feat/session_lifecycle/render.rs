@@ -1,7 +1,7 @@
 //! Session lifecycle picker and arg input popup rendering.
 
 use crate::common::app_state::AppState;
-use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
+use crate::feat::session_lifecycle::command_template::{CommandTemplate, split_preserving_quotes};
 use nullslop_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -62,9 +62,9 @@ pub fn arg_input_popup_rect(area: Rect, state: &AppState) -> Rect {
         .and_then(|l| l.setup_command.as_ref())
         .map(|cmd| {
             let template = CommandTemplate::parse(cmd);
-            let input_args: Vec<String> = parse_quoted_args(&arg_state.input);
-            let lines = template.display_line_segments(&input_args);
-            (lines.len() as u16) + 2 // command lines + blank + input
+            let display_args: Vec<String> = split_preserving_quotes(&arg_state.input);
+            let lines = template.display_line_segments(&display_args);
+            (lines.len() as u16) + 2 // command lines + separator + input
         })
         .unwrap_or(1);
 
@@ -104,13 +104,13 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 
     let theme = &state.frontend.theme;
 
-    // Split the user's input into tokens, respecting double quotes and escapes.
-    let input_args: Vec<String> = parse_quoted_args(&arg_state.input);
+    // Split the user's input into tokens for display (preserving quotes).
+    let display_args: Vec<String> = split_preserving_quotes(&arg_state.input);
 
     // Compute content height: command lines + blank + input line.
     let content_rows = match &template {
         Some(t) => {
-            let lines = t.display_line_segments(&input_args);
+            let lines = t.display_line_segments(&display_args);
             (lines.len() as u16) + 2 // command lines + blank + input
         }
         None => 1, // minimal popup
@@ -157,7 +157,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     }
 
     // Get the structured display lines.
-    let display_lines = template.display_line_segments(&input_args);
+    let display_lines = template.display_line_segments(&display_args);
 
     // Render lines one by one, tracking y position.
     let mut y_offset = inner.y;
@@ -289,7 +289,7 @@ mod tests {
 
         // Then the command display appears on the first inner line.
         let buffer = terminal.backend().buffer().clone();
-        let input_args: Vec<String> = parse_quoted_args("");
+        let input_args: Vec<String> = split_preserving_quotes("");
         let tmpl = CommandTemplate::parse("script.sh $1 $2");
         let lines = tmpl.display_line_segments(&input_args);
         let content_rows = (lines.len() as u16) + 2;
@@ -324,7 +324,7 @@ mod tests {
 
         // Then the input line ("> hello world") appears at the bottom.
         let buffer = terminal.backend().buffer().clone();
-        let input_args: Vec<String> = parse_quoted_args("hello world");
+        let input_args: Vec<String> = split_preserving_quotes("hello world");
         let tmpl = CommandTemplate::parse("script.sh $1");
         let lines = tmpl.display_line_segments(&input_args);
         let content_rows = (lines.len() as u16) + 2;
@@ -442,7 +442,7 @@ mod tests {
 
         // Then the popup has multiple command lines.
         let buffer = terminal.backend().buffer().clone();
-        let input_args: Vec<String> = parse_quoted_args("");
+        let input_args: Vec<String> = split_preserving_quotes("");
         let tmpl = CommandTemplate::parse("echo hello && echo world");
         let lines = tmpl.display_line_segments(&input_args);
         let content_rows = (lines.len() as u16) + 2;
@@ -492,7 +492,7 @@ mod tests {
         let theme = crate::feat::theme::default_theme();
         let expected_color = theme.accent_action;
 
-        let input_args: Vec<String> = parse_quoted_args("my-feature");
+        let input_args: Vec<String> = split_preserving_quotes("my-feature");
         let tmpl = CommandTemplate::parse("mkdir <branch>");
         let lines = tmpl.display_line_segments(&input_args);
         let content_rows = (lines.len() as u16) + 2;
@@ -536,7 +536,7 @@ mod tests {
 
         // Then the last command line does not end with \.
         let buffer = terminal.backend().buffer().clone();
-        let input_args: Vec<String> = parse_quoted_args("");
+        let input_args: Vec<String> = split_preserving_quotes("");
         let tmpl = CommandTemplate::parse("echo hello && echo world");
         let lines = tmpl.display_line_segments(&input_args);
         let content_rows = (lines.len() as u16) + 2;
@@ -575,7 +575,7 @@ mod tests {
         let theme = crate::feat::theme::default_theme();
         let expected_color = theme.accent_action;
 
-        let input_args: Vec<String> = parse_quoted_args("");
+        let input_args: Vec<String> = split_preserving_quotes("");
         let tmpl = CommandTemplate::parse("mkdir <branch> && cd <target>");
         let lines = tmpl.display_line_segments(&input_args);
         let content_rows = (lines.len() as u16) + 2;
