@@ -1,3 +1,5 @@
+use ratatui::text::Line;
+
 use super::chat_entry::*;
 
 #[rstest::rstest]
@@ -148,7 +150,7 @@ fn tool_result_entry_has_tool_result_kind() {
 #[case::tool_call(ChatEntry::tool_call("id", "name", "args"))]
 #[case::tool_result(ChatEntry::tool_result("id", "name", "content", true))]
 #[case::skill(ChatEntry::skill("name", "/path", "content"))]
-#[case::info(ChatEntry::info("info"))]
+#[case::info(ChatEntry::info(vec![Line::from("info")]))]
 fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     // Given an entry created with any ChatEntry constructor.
     // When checking pin_position.
@@ -375,28 +377,28 @@ fn skill_entry_serializes_correct_json_shape() {
 #[rstest::rstest]
 fn info_entry_has_info_kind() {
     // Given text "welcome".
-    let text = "welcome";
+    let lines = vec![Line::from("welcome")];
 
     // When creating an info entry.
-    let entry = ChatEntry::info(text);
+    let entry = ChatEntry::info(lines);
 
-    // Then kind is Info("welcome").
-    assert_eq!(entry.kind, ChatEntryKind::Info("welcome".to_owned()));
+    // Then kind is Info.
+    assert!(matches!(entry.kind, ChatEntryKind::Info(_)));
+    // And text() returns the plain text.
+    assert_eq!(entry.text(), "welcome");
 }
 
 #[rstest::rstest]
 fn info_kind_str_returns_info() {
     // Given an info entry.
-    let entry = ChatEntry::info("test");
-
-    // Then kind_str returns "info".
+    let entry = ChatEntry::info(vec![Line::from("test")]);
     assert_eq!(entry.kind_str(), "info");
 }
 
 #[rstest::rstest]
 fn info_text_returns_content() {
     // Given an info entry.
-    let entry = ChatEntry::info("some hint");
+    let entry = ChatEntry::info(vec![Line::from("some hint")]);
 
     // Then text() returns the content.
     assert_eq!(entry.text(), "some hint");
@@ -405,23 +407,23 @@ fn info_text_returns_content() {
 #[rstest::rstest]
 fn info_entry_serializes_roundtrip() {
     // Given an info entry.
-    let entry = ChatEntry::info("Welcome to nullslop!");
+    let entry = ChatEntry::info(vec![Line::from("Welcome to nullslop!")]);
 
     // When serializing and deserializing.
     let json = serde_json::to_string(&entry).expect("serialize");
     let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
 
-    // Then the roundtrip preserves the kind.
+    // Then the roundtrip converts Info to System (Info entries are not persisted).
     assert_eq!(
         back.kind,
-        ChatEntryKind::Info("Welcome to nullslop!".to_owned())
+        ChatEntryKind::System("Welcome to nullslop!".to_owned())
     );
 }
 
 #[rstest::rstest]
 fn info_entry_pin_position_defaults_to_none() {
     // Given an info entry.
-    let entry = ChatEntry::info("test");
+    let entry = ChatEntry::info(vec![Line::from("test")]);
 
     // Then pin_position is None.
     assert_eq!(entry.pin_position, None);
@@ -430,7 +432,7 @@ fn info_entry_pin_position_defaults_to_none() {
 #[rstest::rstest]
 fn info_entry_serializes_correct_json_shape() {
     // Given an info entry.
-    let entry = ChatEntry::info("some info");
+    let entry = ChatEntry::info(vec![Line::from("some info")]);
 
     // When serializing just the kind.
     let json = serde_json::to_string(&entry.kind).expect("serialize");
@@ -482,7 +484,7 @@ fn skill_entry_is_pinnable() {
 #[rstest::rstest]
 fn info_entry_is_not_pinnable() {
     // Given an info entry.
-    let entry = ChatEntry::info("welcome");
+    let entry = ChatEntry::info(vec![Line::from("welcome")]);
 
     // Then it is not pinnable.
     assert!(!entry.is_pinnable());

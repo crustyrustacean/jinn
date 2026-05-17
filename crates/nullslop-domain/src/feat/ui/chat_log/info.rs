@@ -1,16 +1,19 @@
-//! Info entry rendering — dark gray with indentation.
+//! Info entry rendering — styled lines with padding.
 //!
 //! Info entries are UI-only messages (welcome hints, etc.) that are
-//! excluded from prompt assembly and LLM context. They render identically
-//! to system entries: dark gray text with padding.
+//! excluded from prompt assembly and LLM context. They carry pre-built
+//! styled `Line`s for rich formatting and render with padding.
 
-use ratatui::style::Style;
 use ratatui::text::Line;
 
-use super::shared::{Pad, RenderContext, multiline_styled, pad_entry};
+use super::shared::{Pad, RenderContext, pad_entry};
 
-pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
-    let mut lines = multiline_styled(text, "", "", Style::default().fg(ctx.theme.muted_text));
+/// Render pre-built info lines with padding.
+///
+/// Clones the lines (to satisfy `&mut Vec` padding) and adds blank
+/// padding above and below for visual spacing.
+pub fn to_lines(lines: &[Line<'static>], _ctx: &RenderContext) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = lines.to_vec();
     pad_entry(&mut lines, Pad::Both);
     lines
 }
