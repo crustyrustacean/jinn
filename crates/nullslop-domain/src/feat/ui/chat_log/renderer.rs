@@ -38,8 +38,8 @@ use super::{
     user,
 };
 
-/// Default number of lines to show for tool result entries before truncating.
-const DEFAULT_TOOL_RESULT_MAX_LINES: u16 = 5;
+/// Default number of lines to show for tool entries (calls and results) before truncating.
+const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 // alternatives: |❚┃╏⣿𜺏░▒▓
 const GUTTER_STR: &str = "𜺏 ";
 
@@ -127,13 +127,13 @@ impl UiElement<AppState> for ChatLogElement {
                 let max_lines = state
                     .frontend
                     .preferences
-                    .tool_result_max_lines
-                    .unwrap_or(DEFAULT_TOOL_RESULT_MAX_LINES);
+                    .tool_entry_max_lines
+                    .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                 let ctx = RenderContext {
                     content_width,
                     _is_selected: is_selected,
                     is_expanded,
-                    tool_result_max_lines: max_lines,
+                    tool_entry_max_lines: max_lines,
                     theme: state.frontend.theme.clone(),
                 };
                 let lines = entry_to_lines(entry, &ctx);
@@ -252,8 +252,8 @@ impl UiElement<AppState> for ChatLogElement {
             let max_lines = state
                 .frontend
                 .preferences
-                .tool_result_max_lines
-                .unwrap_or(DEFAULT_TOOL_RESULT_MAX_LINES);
+                .tool_entry_max_lines
+                .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
 
             let (entry_start, _entry_end) = entry_line_ranges[i];
             let abs_entry_start = entry_start + blank_count as u16;
@@ -266,7 +266,7 @@ impl UiElement<AppState> for ChatLogElement {
                     content_width,
                     _is_selected: is_selected,
                     is_expanded,
-                    tool_result_max_lines: max_lines,
+                    tool_entry_max_lines: max_lines,
                     theme: state.frontend.theme.clone(),
                 };
                 entry_to_lines(entry, &ctx)
@@ -400,7 +400,7 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, ctx: &RenderContext) -> Ve
         ChatEntryKind::Table(data) => table::to_lines(data, ctx),
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
         ChatEntryKind::Skill { name, content, .. } => skill::to_lines(name, content, ctx),
-        ChatEntryKind::Info(text) => info::to_lines(text, ctx),
+        ChatEntryKind::Info(lines) => info::to_lines(lines, ctx),
     }
 }
 
@@ -1324,13 +1324,19 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_info_entry_has_muted_text_color() {
-        // Given a ChatLogElement with an info entry.
+    fn render_info_entry_uses_pre_built_styles() {
+        // Given a ChatLogElement with an info entry containing pre-styled lines.
+        use ratatui::style::{Color, Style};
+        use ratatui::text::{Line, Span};
+
         let mut element = ChatLogElement::new();
         let state = {
             let mut s = AppState::default();
             s.active_session_mut()
-                .push_entry(ChatEntry::info("Welcome to nullslop!"));
+                .push_entry(ChatEntry::info(vec![Line::from(Span::styled(
+                    "Styled!",
+                    Style::default().fg(Color::Cyan),
+                ))]));
             s
         };
 
@@ -1343,14 +1349,14 @@ mod tests {
             })
             .unwrap();
 
-        // Then the info text appears with muted text color.
+        // Then the info text appears with the pre-built style.
         let buffer = terminal.backend().buffer().clone();
         let info_cell = buffer.cell((G, 8)).expect("cell should exist");
-        assert_eq!(info_cell.symbol(), "W");
+        assert_eq!(info_cell.symbol(), "S");
         assert_eq!(
             info_cell.fg,
-            Color::DarkGray,
-            "info entry should use muted text color"
+            Color::Cyan,
+            "info entry should use its pre-built span style"
         );
     }
 }

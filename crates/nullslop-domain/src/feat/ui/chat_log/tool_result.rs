@@ -36,14 +36,14 @@ pub fn to_lines(
     let all_lines: Vec<&str> = text.split('\n').collect();
 
     let show_all = ctx.is_expanded
-        || u16::try_from(all_lines.len()).unwrap_or(u16::MAX) <= ctx.tool_result_max_lines;
+        || u16::try_from(all_lines.len()).unwrap_or(u16::MAX) <= ctx.tool_entry_max_lines;
 
     if show_all {
         for line_text in &all_lines {
             lines.push(Line::from(Span::styled((*line_text).to_owned(), style)));
         }
     } else {
-        let max = ctx.tool_result_max_lines as usize;
+        let max = ctx.tool_entry_max_lines as usize;
         let remaining = all_lines.len() - max;
         for line_text in &all_lines[..max] {
             lines.push(Line::from(Span::styled((*line_text).to_owned(), style)));
@@ -78,7 +78,7 @@ mod tests {
             content_width: 80,
             _is_selected: false,
             is_expanded,
-            tool_result_max_lines: max_lines,
+            tool_entry_max_lines: max_lines,
             theme: crate::feat::theme::default_theme(),
         }
     }
