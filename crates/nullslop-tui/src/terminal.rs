@@ -7,7 +7,10 @@
 use std::io;
 
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{
+        DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -48,6 +51,7 @@ impl<'a> TerminalGuard<'a> {
         execute!(terminal.backend_mut(), LeaveAlternateScreen)
             .change_context(TerminalSuspendError)
             .attach("failed to leave alternate screen")?;
+        let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
         terminal
             .show_cursor()
             .change_context(TerminalSuspendError)
@@ -60,6 +64,10 @@ impl Drop for TerminalGuard<'_> {
     fn drop(&mut self) {
         let _ = enable_raw_mode();
         let _ = execute!(self.terminal.backend_mut(), EnterAlternateScreen);
+        let _ = execute!(
+            self.terminal.backend_mut(),
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        );
         let _ = execute!(self.terminal.backend_mut(), EnableMouseCapture);
         let _ = self.terminal.hide_cursor();
         let _ = self.terminal.clear();
