@@ -19,6 +19,7 @@ prepare() {
     ln -sf "$startdir" "$srcdir/$pkgname-$pkgver"
     cd "$srcdir/$pkgname-$pkgver"
     export RUSTUP_TOOLCHAIN=stable
+    cargo generate-lockfile
     cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
 }
 
