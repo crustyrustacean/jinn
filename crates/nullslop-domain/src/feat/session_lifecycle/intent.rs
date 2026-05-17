@@ -4,6 +4,8 @@
 //! system. The IntentHandler calls these functions directly; they mutate `AppState`
 //! and return `IntentResult` with commands for the actor system.
 
+use wherror::Error;
+
 use crate::common::app_state::AppState;
 use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
@@ -12,6 +14,50 @@ use crate::feat::session::profile::SessionProfile;
 use crate::feat::session_lifecycle::command_template::CommandTemplate;
 use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
 use crate::protocol::{Command, IntentResult, PromptStrategyId, SessionId};
+
+/// Errors that can occur when validating arg input.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub enum ArgInputError {
+    /// User provided fewer args than the lifecycle template expects.
+    #[error("expected {expected} arguments, got {provided}")]
+    NotEnoughArgs {
+        /// Number of params the template has.
+        expected: usize,
+        /// Number of args the user entered.
+        provided: usize,
+    },
+}
+
+/// Validates that the arg input has enough tokens for the lifecycle template.
+pub fn validate_arg_input(state: &AppState) -> Result<(), ArgInputError> {
+    let arg_state = &state.frontend.arg_input;
+
+    let param_count = state
+        .frontend
+        .preferences
+        .session_lifecycles
+        .iter()
+        .find(|l| l.name == arg_state.lifecycle_name)
+        .and_then(|l| l.setup_command.as_ref())
+        .map(|cmd| CommandTemplate::parse(cmd).param_count())
+        .unwrap_or(0);
+
+    let arg_count = if arg_state.input.trim().is_empty() {
+        0
+    } else {
+        arg_state.input.split_whitespace().count()
+    };
+
+    if arg_count < param_count {
+        return Err(ArgInputError::NotEnoughArgs {
+            expected: param_count,
+            provided: arg_count,
+        });
+    }
+
+    Ok(())
+}
 
 /// Handle `Intent::SessionLifecycleSetup`.
 ///
@@ -142,7 +188,14 @@ pub fn handle_session_close(state: &mut AppState, session_id: Option<&SessionId>
 ///
 /// Splits the arg input by whitespace, pops the ArgInput scope,
 /// and delegates to `handle_session_lifecycle_setup` with the parsed args.
+/// If not enough args are provided for the lifecycle template,
+/// returns without popping (user stays in the arg input popup).
 pub fn handle_arg_input_confirm(state: &mut AppState) -> IntentResult {
+    // Validate that enough args are provided.
+    if let Err(_) = validate_arg_input(state) {
+        return IntentResult::empty();
+    }
+
     let arg_state = &state.frontend.arg_input;
     let lifecycle_name = arg_state.lifecycle_name.clone();
     let args: Vec<String> = if arg_state.input.trim().is_empty() {
@@ -521,8 +574,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn arg_input_confirm_with_empty_input_passes_no_args() {
-        // Given an arg input state with empty input.
+    fn arg_input_confirm_rejects_empty_input_when_params_needed() {
+        // Given an arg input state with empty input for a template that expects $1.
         let mut state = AppState::default();
         state.frontend.arg_input.lifecycle_name = "test".to_owned();
         state.frontend.arg_input.input = String::new();
@@ -536,15 +589,17 @@ mod tests {
                 setup_command: Some("script.sh $1".to_owned()),
                 teardown_command: None,
             });
+        let old_id = state.session.active_session.clone();
 
-        // When confirming arg input.
+        // When confirming arg input with empty input.
         let result = handle_arg_input_confirm(&mut state);
 
-        // Then the command is rendered with empty args.
-        assert!(matches!(
-            &result.commands[0],
-            Command::RunSessionSetup(RunSessionSetup { args, .. } ) if args.is_empty()
-        ));
+        // Then no command is emitted (validation rejects empty input).
+        assert!(result.commands.is_empty());
+        // And no session was created (state unchanged).
+        assert_eq!(state.session.active_session, old_id);
+        // And arg input state is NOT cleared (user stays in popup).
+        assert_eq!(state.frontend.arg_input.lifecycle_name, "test");
     }
 
     #[rstest::rstest]
@@ -591,5 +646,159 @@ mod tests {
         let _result = handle_arg_input_cursor_right(&mut state);
 
         assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+    }
+
+    // --- Arg input validation ---
+
+    #[rstest::rstest]
+    fn validate_arg_input_accepts_sufficient_args() {
+        // Given a state with a $1 $2 lifecycle and two args provided.
+        let mut state = AppState::default();
+        state.frontend.arg_input.lifecycle_name = "test".to_owned();
+        state.frontend.arg_input.input = "foo bar".to_owned();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: Some("script.sh $1 $2".to_owned()),
+                teardown_command: None,
+            });
+
+        // When validating.
+        let result = validate_arg_input(&state);
+
+        // Then validation passes.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn validate_arg_input_rejects_insufficient_args() {
+        // Given a state with a $1 $2 lifecycle and only one arg.
+        let mut state = AppState::default();
+        state.frontend.arg_input.lifecycle_name = "test".to_owned();
+        state.frontend.arg_input.input = "foo".to_owned();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: Some("script.sh $1 $2".to_owned()),
+                teardown_command: None,
+            });
+
+        // When validating.
+        let result = validate_arg_input(&state);
+
+        // Then validation fails with NotEnoughArgs.
+        assert!(matches!(
+            result,
+            Err(ArgInputError::NotEnoughArgs {
+                expected: 2,
+                provided: 1
+            })
+        ));
+    }
+
+    #[rstest::rstest]
+    fn validate_arg_input_accepts_empty_input_when_no_params() {
+        // Given a state with a lifecycle that has no params.
+        let mut state = AppState::default();
+        state.frontend.arg_input.lifecycle_name = "blank".to_owned();
+        state.frontend.arg_input.input = String::new();
+
+        // When validating.
+        let result = validate_arg_input(&state);
+
+        // Then validation passes (no params to fill).
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn validate_arg_input_accepts_splat_without_numbered_params() {
+        // Given a state with a $@ lifecycle and any args.
+        let mut state = AppState::default();
+        state.frontend.arg_input.lifecycle_name = "test".to_owned();
+        state.frontend.arg_input.input = "anything".to_owned();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: Some("script.sh $@".to_owned()),
+                teardown_command: None,
+            });
+
+        // When validating.
+        let result = validate_arg_input(&state);
+
+        // Then validation passes (splat accepts any number).
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn validate_arg_input_rejects_when_named_param_missing() {
+        // Given a state with a <branch> <target> lifecycle and only one arg.
+        let mut state = AppState::default();
+        state.frontend.arg_input.lifecycle_name = "test".to_owned();
+        state.frontend.arg_input.input = "my-branch".to_owned();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: Some("script.sh <branch> <target>".to_owned()),
+                teardown_command: None,
+            });
+
+        // When validating.
+        let result = validate_arg_input(&state);
+
+        // Then validation fails.
+        assert!(result.is_err());
+    }
+
+    #[rstest::rstest]
+    fn arg_input_confirm_accepts_sufficient_args() {
+        // Given a state with a $1 $2 lifecycle and both args provided.
+        let mut state = AppState::default();
+        state.frontend.arg_input.lifecycle_name = "test".to_owned();
+        state.frontend.arg_input.input = "foo bar".to_owned();
+        state.frontend.arg_input.cursor_pos = 7;
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: Some("script.sh $1 $2".to_owned()),
+                teardown_command: None,
+            });
+        let old_id = state.session.active_session.clone();
+
+        // When confirming arg input.
+        let result = handle_arg_input_confirm(&mut state);
+
+        // Then a command is emitted with the rendered args.
+        assert!(!result.commands.is_empty(), "command should be emitted");
+        assert!(matches!(
+            &result.commands[0],
+            Command::RunSessionSetup(RunSessionSetup {
+                command,
+                args,
+                ..
+            }) if command == "script.sh foo bar" && args == &["foo".to_owned(), "bar".to_owned()]
+        ));
+        // And a new session is created.
+        assert_ne!(state.session.active_session, old_id);
     }
 }
