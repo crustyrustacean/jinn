@@ -180,8 +180,11 @@ install-defaults:
     cp -r themes/*.toml ~/.config/nullslop/themes/
     mkdir -p ~/.config/nullslop/personas
     cp -r personas/*.md ~/.config/nullslop/personas/
+    mkdir -p ~/.config/nullslop/prompts
+    cp -r prompts/*.md ~/.config/nullslop/prompts/
     @echo "Themes installed to ~/.config/nullslop/themes/"
     @echo "Personas installed to ~/.config/nullslop/personas/"
+    @echo "Prompts installed to ~/.config/nullslop/prompts/"
 
 # Mirror trunk history to GitHub (one-way, force push)
 sync-github:
