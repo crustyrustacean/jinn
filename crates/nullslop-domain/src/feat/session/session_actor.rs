@@ -37,7 +37,8 @@ use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, S
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::feat::session_lifecycle::command_runner::run_lifecycle_command;
+use crate::feat::session_lifecycle::command_runner::run_setup_command;
+use crate::feat::session_lifecycle::command_runner::run_teardown_command;
 use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
 use crate::feat::session_lifecycle::protocol::event::{
@@ -336,7 +337,7 @@ impl SessionPersistenceActor {
     /// On success, sets the session's CWD to the command's output.
     /// On failure, sets the default CWD and pushes an error entry.
     async fn handle_run_session_setup(&self, payload: &RunSessionSetup, ctx: &ActorContext) {
-        let result = run_lifecycle_command(&payload.command).await;
+        let result = run_setup_command(&payload.command).await;
 
         match result {
             Ok(cwd) => {
@@ -392,10 +393,10 @@ impl SessionPersistenceActor {
     /// On success, removes the session from the map and switches to another.
     /// On failure, pushes an error entry and keeps the session open.
     async fn handle_run_session_teardown(&self, payload: &RunSessionTeardown, ctx: &ActorContext) {
-        let result = run_lifecycle_command(&payload.command).await;
+        let result = run_teardown_command(&payload.command).await;
 
         match result {
-            Ok(_cwd) => {
+            Ok(()) => {
                 // Teardown succeeded — remove session and switch active.
                 {
                     let mut state = self.state.write();
@@ -516,8 +517,8 @@ impl SessionPersistenceActor {
                 lifecycle = %lifecycle_name,
                 "running teardown during shutdown"
             );
-            match run_lifecycle_command(&command).await {
-                Ok(_cwd) => {
+            match run_teardown_command(&command).await {
+                Ok(()) => {
                     tracing::info!(
                         session_id = %session_id,
                         "teardown completed during shutdown"

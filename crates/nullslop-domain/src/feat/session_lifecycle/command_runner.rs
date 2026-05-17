@@ -1,9 +1,8 @@
-//! Lifecycle command runner — executes setup/teardown commands and captures output.
+//! Lifecycle command runner — executes setup and teardown commands.
 //!
-//! [`run_lifecycle_command`] spawns a command via the user's shell, captures
-//! stdout and stderr, and returns the last line of stdout as a [`PathBuf`].
-//! This is the async primitive used by the session-persistence actor to run
-//! setup and teardown commands.
+//! Two entry points:
+//! - [`run_setup_command`] — expects stdout output (last line becomes the session CWD)
+//! - [`run_teardown_command`] — only checks exit code, output is irrelevant
 
 use std::path::PathBuf;
 
@@ -31,20 +30,10 @@ pub enum LifecycleCommandError {
     ExecutionFailed,
 }
 
-/// Runs a lifecycle command and returns the resulting directory path.
-///
-/// Spawns the command via the user's shell (`$SHELL`, falling back to `/bin/sh`).
-/// Captures stdout and stderr. On success, returns the last non-empty line of
-/// stdout (trimmed) as a [`PathBuf`].
-///
-/// # Errors
-///
-/// Returns [`LifecycleCommandError::CommandFailed`] if the process exits non-zero.
-/// Returns [`LifecycleCommandError::NoOutput`] if stdout is empty.
-/// Returns [`LifecycleCommandError::ExecutionFailed`] if the process cannot be spawned.
-pub async fn run_lifecycle_command(
+/// Shared shell invocation logic used by both setup and teardown runners.
+async fn run_command(
     command: &str,
-) -> Result<PathBuf, Report<LifecycleCommandError>> {
+) -> Result<(std::process::Output, String, String), Report<LifecycleCommandError>> {
     use error_stack::ResultExt as _;
 
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
@@ -57,9 +46,10 @@ pub async fn run_lifecycle_command(
         .change_context(LifecycleCommandError::ExecutionFailed)
         .attach("failed to spawn lifecycle command")?;
 
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
     if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         return Err(Report::new(LifecycleCommandError::CommandFailed {
             exit_code: output.status.code(),
             stdout,
@@ -67,7 +57,25 @@ pub async fn run_lifecycle_command(
         }));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok((output, stdout, stderr))
+}
+
+/// Runs a setup command and returns the resulting directory path.
+///
+/// Spawns the command via the user's shell (`$SHELL`, falling back to `/bin/sh`).
+/// Captures stdout and stderr. On success, returns the last non-empty line of
+/// stdout (trimmed) as a [`PathBuf`].
+///
+/// # Errors
+///
+/// Returns [`LifecycleCommandError::CommandFailed`] if the process exits non-zero.
+/// Returns [`LifecycleCommandError::NoOutput`] if stdout is empty.
+/// Returns [`LifecycleCommandError::ExecutionFailed`] if the process cannot be spawned.
+pub async fn run_setup_command(
+    command: &str,
+) -> Result<PathBuf, Report<LifecycleCommandError>> {
+    let (_output, stdout, _stderr) = run_command(command).await?;
+
     let last_line = stdout
         .lines()
         .map(|line| line.trim())
@@ -78,19 +86,34 @@ pub async fn run_lifecycle_command(
     Ok(PathBuf::from(last_line))
 }
 
+/// Runs a teardown command. Only checks the exit code — output is ignored.
+///
+/// Spawns the command via the user's shell (`$SHELL`, falling back to `/bin/sh`).
+///
+/// # Errors
+///
+/// Returns [`LifecycleCommandError::CommandFailed`] if the process exits non-zero.
+/// Returns [`LifecycleCommandError::ExecutionFailed`] if the process cannot be spawned.
+pub async fn run_teardown_command(command: &str) -> Result<(), Report<LifecycleCommandError>> {
+    run_command(command).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // --- Setup command tests ---
+
     #[rstest::rstest]
     #[tokio::test]
-    async fn run_returns_last_line_as_path() {
+    async fn setup_returns_last_line_as_path() {
         // Given a command that echoes a directory path.
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().to_string_lossy().to_string();
 
-        // When running the command.
-        let result = run_lifecycle_command(&format!("echo {path}")).await;
+        // When running the setup command.
+        let result = run_setup_command(&format!("echo {path}")).await;
 
         // Then the result is the directory path.
         assert!(result.is_ok());
@@ -99,13 +122,14 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn run_returns_last_non_empty_line() {
+    async fn setup_returns_last_non_empty_line() {
         // Given a command that outputs multiple lines.
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().to_string_lossy().to_string();
 
-        // When running the command with leading output.
-        let result = run_lifecycle_command(&format!("echo 'setting up...'; echo '{path}'")).await;
+        // When running the setup command with leading output.
+        let result =
+            run_setup_command(&format!("echo 'setting up...'; echo '{path}'")).await;
 
         // Then the result is the last non-empty line.
         assert!(result.is_ok());
@@ -114,13 +138,13 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn run_trims_whitespace() {
+    async fn setup_trims_whitespace() {
         // Given a command that echoes with trailing whitespace.
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().to_string_lossy().to_string();
 
-        // When running the command.
-        let result = run_lifecycle_command(&format!("echo '{path}  '")).await;
+        // When running the setup command.
+        let result = run_setup_command(&format!("echo '{path}  '")).await;
 
         // Then the result is trimmed.
         assert!(result.is_ok());
@@ -129,9 +153,9 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn run_returns_error_on_nonzero_exit() {
+    async fn setup_returns_error_on_nonzero_exit() {
         // Given a command that exits with code 1.
-        let result = run_lifecycle_command("exit 1").await;
+        let result = run_setup_command("exit 1").await;
 
         // Then the result is a CommandFailed error.
         assert!(result.is_err());
@@ -149,9 +173,9 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn run_captures_stdout_and_stderr_on_failure() {
+    async fn setup_captures_stdout_and_stderr_on_failure() {
         // Given a command that writes to both stdout and stderr before failing.
-        let result = run_lifecycle_command(
+        let result = run_setup_command(
             "echo 'stdout message'; echo 'stderr message' >&2; exit 1",
         )
         .await;
@@ -177,9 +201,9 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn run_returns_error_on_empty_stdout() {
-        // Given a command that succeeds with no output.
-        let result = run_lifecycle_command("true").await;
+    async fn setup_returns_error_on_empty_stdout() {
+        // Given a setup command that succeeds with no output.
+        let result = run_setup_command("true").await;
 
         // Then the result is a NoOutput error.
         assert!(result.is_err());
@@ -192,47 +216,42 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn run_accepts_relative_path() {
-        // Given a command that outputs a relative path.
-        let result = run_lifecycle_command("echo ./my-project").await;
+    async fn setup_accepts_relative_path() {
+        // Given a setup command that outputs a relative path.
+        let result = run_setup_command("echo ./my-project").await;
 
         // Then the result is the relative path.
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), PathBuf::from("./my-project"));
     }
 
-    // -- Shutdown teardown tests ------------------------------------------------
-
-    // The shutdown path iterates sessions, finds teardown commands, and calls
-    // `run_lifecycle_command` for each. We test the observable behavior:
-    // a teardown command that removes a file actually removes it.
+    // --- Teardown command tests ---
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn teardown_removes_marker_file() {
-        // Given a marker file that exists.
+    async fn teardown_succeeds_with_empty_stdout() {
+        // Given a teardown command that removes a marker file (no stdout).
         let dir = tempfile::tempdir().expect("temp dir");
         let marker = dir.path().join("teardown-marker");
         std::fs::write(&marker, b"present").expect("write marker");
         assert!(marker.exists(), "marker should exist before teardown");
 
-        // When running a teardown command that removes the marker.
-        let teardown = format!("rm -f {}", marker.display());
-        let result = run_lifecycle_command(&teardown).await;
+        // When running the teardown command.
+        let result = run_teardown_command(&format!("rm -f {}", marker.display())).await;
 
-        // Then the command fails (rm produces no stdout — NoOutput error),
-        // but the marker file is gone.
-        assert!(result.is_err(), "rm produces no stdout, so we get NoOutput");
+        // Then the command succeeds (teardown doesn't require stdout).
+        assert!(result.is_ok(), "teardown should succeed without stdout");
+        // And the marker file is gone.
         assert!(!marker.exists(), "teardown should have removed the marker");
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn teardown_command_failure_does_not_panic() {
+    async fn teardown_returns_failure_on_nonzero_exit() {
         // Given a teardown command that fails.
-        let result = run_lifecycle_command("exit 42").await;
+        let result = run_teardown_command("exit 42").await;
 
-        // Then we get a CommandFailed error (no panic).
+        // Then we get a CommandFailed error.
         assert!(result.is_err());
         let report = result.unwrap_err();
         let err = report.downcast_ref::<LifecycleCommandError>();
@@ -255,11 +274,21 @@ mod tests {
         // When running two teardown commands sequentially (as shutdown does).
         let cmd_a = format!("rm -f {}", marker_a.display());
         let cmd_b = format!("rm -f {}", marker_b.display());
-        let _ = run_lifecycle_command(&cmd_a).await;
-        let _ = run_lifecycle_command(&cmd_b).await;
+        let _ = run_teardown_command(&cmd_a).await;
+        let _ = run_teardown_command(&cmd_b).await;
 
         // Then both files are removed.
         assert!(!marker_a.exists(), "first teardown should remove marker a");
         assert!(!marker_b.exists(), "second teardown should remove marker b");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn teardown_succeeds_with_any_stdout() {
+        // Given a teardown command that produces stdout but exits 0.
+        let result = run_teardown_command("echo 'cleaning up...'").await;
+
+        // Then the command succeeds (stdout is ignored).
+        assert!(result.is_ok());
     }
 }
