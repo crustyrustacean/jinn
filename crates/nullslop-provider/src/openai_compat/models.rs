@@ -6,6 +6,7 @@
 use error_stack::{Report, ResultExt as _};
 use reqwest::Client;
 
+use crate::ModelInfo;
 use crate::service::LlmServiceError;
 
 /// Response from the OpenAI-compatible `/models` endpoint.
@@ -18,6 +19,9 @@ struct ModelsResponse {
 #[derive(Debug, serde::Deserialize)]
 struct ModelEntry {
     id: String,
+    /// Maximum context length in tokens (e.g. from OpenRouter's `context_length`).
+    /// Not all providers return this field.
+    context_length: Option<u32>,
 }
 
 /// Fetch available model IDs from an OpenAI-compatible provider.
@@ -33,7 +37,7 @@ pub async fn list_models(
     models_endpoint: &str,
     api_key: &str,
     custom_headers: &[(String, String)],
-) -> Result<Vec<String>, Report<LlmServiceError>> {
+) -> Result<Vec<ModelInfo>, Report<LlmServiceError>> {
     let url = format!("{}/{}", base_url.trim_end_matches('/'), models_endpoint);
 
     let mut request = client.get(&url).bearer_auth(api_key);
@@ -69,5 +73,12 @@ pub async fn list_models(
         .change_context(LlmServiceError::Provider)
         .attach("failed to parse list_models response")?;
 
-    Ok(models.data.into_iter().map(|m| m.id).collect())
+    Ok(models
+        .data
+        .into_iter()
+        .map(|m| ModelInfo {
+            id: m.id,
+            context_length: m.context_length,
+        })
+        .collect())
 }

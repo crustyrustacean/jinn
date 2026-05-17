@@ -125,7 +125,9 @@ fn load_theme_picker_entries(state: &mut AppState) {
             if name == "default" {
                 continue; // skip duplicate
             }
-            if let Ok(theme) = crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir) {
+            if let Ok(theme) =
+                crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir)
+            {
                 entries.push(ThemeEntry { name, theme });
             }
         }
@@ -140,7 +142,9 @@ fn load_theme_picker_entries(state: &mut AppState) {
             if entries.iter().any(|e: &ThemeEntry| e.name == name) {
                 continue;
             }
-            if let Ok(theme) = crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir) {
+            if let Ok(theme) =
+                crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir)
+            {
                 entries.push(ThemeEntry { name, theme });
             }
         }
