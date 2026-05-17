@@ -183,8 +183,17 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         y_offset += 1;
     }
 
-    // Blank line before input.
+    // Separator line between command and input.
     if y_offset < max_y {
+        let separator: String = "─".repeat(inner.width as usize);
+        let separator_line = Line::from(Span::styled(
+            separator,
+            Style::default().fg(theme.border_unfocused),
+        ));
+        frame.render_widget(
+            Paragraph::new(separator_line),
+            Rect::new(inner.x, y_offset, inner.width, 1),
+        );
         y_offset += 1;
     }
 
