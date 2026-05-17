@@ -91,7 +91,7 @@ impl HeadlessWorld {
             let user_preferences_storage =
                 UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
             let session_store = SessionStoreService::new(Arc::new(SqliteSessionStore::new_in(
-                paths.sessions_dir(),
+                &paths.sessions_dir(),
             )));
 
             // Call production wiring — spawns all 16 actors.

@@ -17,6 +17,8 @@ mod registry;
 
 mod registry_service;
 #[cfg(test)]
+mod registry_service_tests;
+#[cfg(test)]
 mod registry_tests;
 mod resolved_provider;
 mod sample;

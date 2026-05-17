@@ -5,6 +5,8 @@ pub mod actor_host;
 pub mod app_info;
 pub mod app_paths;
 pub mod app_state;
+#[cfg(test)]
+mod app_state_tests;
 pub mod core;
 pub mod frontmatter;
 pub mod services;

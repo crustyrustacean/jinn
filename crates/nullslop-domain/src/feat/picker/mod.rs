@@ -4,6 +4,9 @@
 //! cursor movement, toggle scope filter), their validators, and rendering.
 
 pub mod intent;
+
+#[cfg(test)]
+mod intent_tests;
 pub mod keymap_entries;
 pub mod keymap_entry;
 pub mod picker_kind;
@@ -18,5 +21,8 @@ mod entries_tests;
 pub mod strategy_entry;
 pub mod style;
 pub mod validator;
+
+#[cfg(test)]
+mod validator_tests;
 
 pub use picker_kind::PickerKind;

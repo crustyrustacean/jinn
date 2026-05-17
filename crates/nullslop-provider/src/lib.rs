@@ -30,3 +30,6 @@ pub use sample::SampleLlmServiceFactory;
 pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
 pub use stream_event::{StopReason, StreamEvent};
 pub use tool_types::{ToolCall, ToolDefinition, ToolResult};
+
+#[cfg(test)]
+mod fake_tests;

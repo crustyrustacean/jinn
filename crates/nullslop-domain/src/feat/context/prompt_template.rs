@@ -11,6 +11,8 @@
 mod expand;
 mod loader;
 mod store;
+#[cfg(test)]
+mod store_tests;
 
 pub use expand::expand_tokens;
 pub use loader::PromptTemplateParseError;
