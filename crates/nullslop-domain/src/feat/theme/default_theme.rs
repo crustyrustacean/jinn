@@ -58,6 +58,7 @@ mod tests {
             ("age_fresh", theme.age_fresh),
             ("age_stale", theme.age_stale),
             ("scroll_indicator_bg", theme.scroll_indicator_bg),
+            ("sidebar_resize_accent", theme.sidebar_resize_accent),
         ];
 
         for (name, color) in &fields {

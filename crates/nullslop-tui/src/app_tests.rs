@@ -63,6 +63,11 @@ fn test_app() -> TuiApp {
 #[case::sidebar(nullslop_domain::FocusScope::Sidebar, ActiveTab::Chat, Scope::Sidebar)]
 #[case::input(nullslop_domain::FocusScope::Input, ActiveTab::Chat, Scope::Input)]
 #[case::picker(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, ActiveTab::Chat, Scope::Picker)]
+#[case::sidebar_resize(
+    nullslop_domain::FocusScope::SidebarResize,
+    ActiveTab::Chat,
+    Scope::SidebarResize
+)]
 fn scope_for_focus_maps_correctly(
     #[case] focus: nullslop_domain::FocusScope,
     #[case] tab: ActiveTab,

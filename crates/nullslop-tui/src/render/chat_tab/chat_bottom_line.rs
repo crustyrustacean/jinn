@@ -58,7 +58,7 @@ mod tests {
             .unwrap();
 
         // Then the chat bottom line (last row of content area) is Yellow.
-        let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+        let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
         let line_y = layout.content.y + layout.content.height - 1;
         let buffer = terminal.backend().buffer();
         let cell = buffer
@@ -88,7 +88,7 @@ mod tests {
             .unwrap();
 
         // Then the chat bottom line is DarkGray.
-        let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+        let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
         let line_y = layout.content.y + layout.content.height - 1;
         let buffer = terminal.backend().buffer();
         let cell = buffer
@@ -117,7 +117,7 @@ mod tests {
             .unwrap();
 
         // Then the chat bottom line is DarkGray.
-        let layout = AppLayout::new(frame_area(80, 24), 1, 12);
+        let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
         let line_y = layout.content.y + layout.content.height - 1;
         let buffer = terminal.backend().buffer();
         let cell = buffer

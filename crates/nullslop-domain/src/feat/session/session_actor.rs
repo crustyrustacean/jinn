@@ -1,4 +1,4 @@
-//! Session lifecycle and persistence actor — owns session state from input to streaming.
+//! Session lifecycle and persistence actor - owns session state from input to streaming.
 //!
 //! This actor is the **sole owner** of session-related state: chat history, input
 //! buffers, session phase transitions, tool call state, and streaming tokens. It
@@ -92,6 +92,25 @@ fn strip_ansi(s: &str) -> String {
         }
     }
     out
+}
+
+/// Build an info chat entry for when a setup command produces no output.
+///
+/// Shows a yellow "No path returned" line and a white line with the fallback CWD.
+fn no_output_info(default_cwd: &std::path::Path) -> ChatEntry {
+    use ratatui::style::{Color, Style};
+    use ratatui::text::{Line, Span};
+
+    ChatEntry::info(vec![
+        Line::from(Span::styled(
+            "No path returned by setup command.",
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(Span::styled(
+            format!("Using {} as cwd", default_cwd.display()),
+            Style::default().fg(Color::White),
+        )),
+    ])
 }
 
 /// Format a `LifecycleCommandError` into a clean user-facing message.
@@ -232,7 +251,7 @@ impl SessionPersistenceActor {
             Command::RunSessionTeardown(payload) => {
                 self.handle_run_session_teardown(payload, ctx).await;
             }
-            // Commands NOT subscribed to — these should not arrive.
+            // Commands NOT subscribed to - these should not arrive.
             Command::AssemblePrompt(..)
             | Command::SendToLlmProvider(..)
             | Command::ExecuteTool(..)
@@ -358,6 +377,10 @@ impl SessionPersistenceActor {
                 }
             }
             Err(report) => {
+                let is_no_output = matches!(
+                    report.downcast_ref::<LifecycleCommandError>(),
+                    Some(LifecycleCommandError::NoOutput)
+                );
                 let error_msg =
                     if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
                         format_lifecycle_error(cmd_err)
@@ -369,7 +392,12 @@ impl SessionPersistenceActor {
                     let default = state.session.default_cwd.clone();
                     if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
                         session.set_cwd(default.clone());
-                        session.push_entry(ChatEntry::error(&error_msg));
+                        let entry = if is_no_output {
+                            no_output_info(&default)
+                        } else {
+                            ChatEntry::error(&error_msg)
+                        };
+                        session.push_entry(entry);
                     }
                     default
                 };
@@ -396,7 +424,7 @@ impl SessionPersistenceActor {
 
         match result {
             Ok(()) => {
-                // Teardown succeeded — remove session and switch active.
+                // Teardown succeeded - remove session and switch active.
                 {
                     let mut state = self.state.write();
                     state.session.sessions.remove(&payload.session_id);
@@ -456,9 +484,14 @@ impl SessionPersistenceActor {
                     };
                 {
                     let mut state = self.state.write();
+                    state.session.active_session = payload.session_id.clone();
                     if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
                         session.push_entry(ChatEntry::error(&error_msg));
                     }
+                    state
+                        .frontend
+                        .scope_stack
+                        .push(crate::common::app_state::FocusScope::Input);
                 }
 
                 if let Err(e) =
@@ -475,7 +508,7 @@ impl SessionPersistenceActor {
 
     /// Runs teardown commands for all open sessions that have a lifecycle with teardown.
     ///
-    /// Called during coordinated shutdown. Runs commands sequentially —
+    /// Called during coordinated shutdown. Runs commands sequentially -
     /// teardown order matters (each must complete before the next starts).
     async fn run_pending_teardowns(&self) {
         use crate::feat::session_lifecycle::command_template::CommandTemplate;
@@ -536,7 +569,10 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_ansi;
+    use super::{no_output_info, strip_ansi};
+    use crate::protocol::ChatEntryKind;
+    use ratatui::style::Color;
+    use std::path::Path;
 
     #[rstest::rstest]
     fn strip_ansi_removes_bold_codes() {
@@ -590,5 +626,56 @@ mod tests {
         let input = "normal text\nwith newlines";
         let result = strip_ansi(input);
         assert_eq!(result, "normal text\nwith newlines");
+    }
+
+    #[rstest::rstest]
+    fn no_output_info_is_info_entry_with_two_lines() {
+        // Given a default CWD path.
+        let cwd = Path::new("/tmp/test-project");
+
+        // When building the no-output info entry.
+        let entry = no_output_info(cwd);
+
+        // Then it is an Info entry with exactly 2 lines.
+        let ChatEntryKind::Info(lines) = &entry.kind else {
+            panic!("expected Info entry, got {:?}", entry.kind);
+        };
+        assert_eq!(lines.len(), 2);
+    }
+
+    #[rstest::rstest]
+    fn no_output_info_first_line_is_yellow() {
+        // Given a default CWD path.
+        let cwd = Path::new("/tmp/test-project");
+
+        // When building the no-output info entry.
+        let entry = no_output_info(cwd);
+
+        // Then the first line has yellow foreground.
+        let ChatEntryKind::Info(lines) = &entry.kind else {
+            panic!("expected Info entry");
+        };
+        let first_span = &lines[0].spans[0];
+        assert_eq!(first_span.content, "No path returned by setup command.");
+        assert_eq!(first_span.style.fg, Some(Color::Yellow));
+    }
+
+    #[rstest::rstest]
+    fn no_output_info_second_line_is_white_with_cwd() {
+        // Given an absolute default CWD path.
+        let cwd = Path::new("/tmp/test-project");
+
+        // When building the no-output info entry.
+        let entry = no_output_info(cwd);
+
+        // Then the second line is white and contains the absolute CWD.
+        let ChatEntryKind::Info(lines) = &entry.kind else {
+            panic!("expected Info entry");
+        };
+        let second_span = &lines[1].spans[0];
+        assert_eq!(second_span.style.fg, Some(Color::White));
+        assert!(second_span.content.contains("/tmp/test-project"));
+        assert!(second_span.content.starts_with("Using "));
+        assert!(second_span.content.ends_with(" as cwd"));
     }
 }
