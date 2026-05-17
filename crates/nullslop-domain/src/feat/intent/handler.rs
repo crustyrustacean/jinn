@@ -300,6 +300,16 @@ impl IntentHandler {
             Intent::ArgInputConfirm => {
                 feat::session_lifecycle::intent::handle_arg_input_confirm(state)
             }
+
+            // --- Sidebar Resize ---
+            Intent::SidebarResizeEnter => feat::sidebar_resize::intent::handle_resize_enter(state),
+            Intent::SidebarResizeExpand => {
+                feat::sidebar_resize::intent::handle_resize_expand(state)
+            }
+            Intent::SidebarResizeContract => {
+                feat::sidebar_resize::intent::handle_resize_contract(state)
+            }
+            Intent::SidebarResizeLeave => feat::sidebar_resize::intent::handle_resize_leave(state),
         }
     }
 }

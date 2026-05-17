@@ -16,6 +16,7 @@ pub mod provider;
 pub mod provider_infra;
 pub mod session;
 pub mod session_lifecycle;
+pub mod sidebar_resize;
 pub mod skills;
 pub mod theme;
 pub mod tools_actor;

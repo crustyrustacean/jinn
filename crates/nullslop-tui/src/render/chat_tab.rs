@@ -41,9 +41,10 @@ pub(super) fn render_chat_tab(
     border::render_border(
         frame,
         layout.border,
-        sidebar_focused,
+        focus_scope,
         theme.focus_accent,
         theme.border_unfocused,
+        theme.sidebar_resize_accent,
     );
 
     // Sidebar.

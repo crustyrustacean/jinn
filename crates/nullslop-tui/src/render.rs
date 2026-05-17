@@ -35,6 +35,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             area,
             wstate.active_chat_input().visual_line_count() as u16,
             max_input_height,
+            wstate.frontend.sidebar_width,
         );
         let text_width = pre_layout.main.width.saturating_sub(2) as usize;
         wstate.active_chat_input_mut().set_wrap_width(text_width);
@@ -53,6 +54,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         area,
         state.active_chat_input().visual_line_count() as u16,
         max_input_height,
+        state.frontend.sidebar_width,
     );
 
     // Tab bar — always visible.

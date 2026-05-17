@@ -20,6 +20,8 @@ pub enum PreferenceUpdate {
     SetTheme(Option<String>),
     /// Set the active persona name.
     SetPersona(Option<String>),
+    /// Set the sidebar width preference.
+    SetSidebarWidth(Option<u16>),
 }
 
 impl PreferenceUpdate {
@@ -30,6 +32,7 @@ impl PreferenceUpdate {
             Self::SetLastStrategy(v) => prefs.last_strategy.clone_from(v),
             Self::SetTheme(v) => prefs.theme_name.clone_from(v),
             Self::SetPersona(v) => prefs.persona_name.clone_from(v),
+            Self::SetSidebarWidth(v) => prefs.sidebar_width.clone_from(v),
         }
     }
 }
