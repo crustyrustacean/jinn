@@ -38,6 +38,11 @@ pub enum Intent {
     MoveCursorDown,
     /// Confirm the autocomplete selection (Tab in Input scope).
     AutocompleteConfirm,
+    /// Paste text from the clipboard (bracketed paste).
+    PasteText {
+        /// The pasted text content.
+        text: String,
+    },
 
     // --- Navigation ---
     /// Scroll the chat log up.
@@ -208,6 +213,10 @@ impl std::fmt::Display for Intent {
             Intent::MoveCursorUp => write!(f, "cursor up"),
             Intent::MoveCursorDown => write!(f, "cursor down"),
             Intent::AutocompleteConfirm => write!(f, "autocomplete confirm"),
+            Intent::PasteText { text } => {
+                let line_count = text.lines().count();
+                write!(f, "paste ({line_count} lines)")
+            }
             Intent::ScrollUp => write!(f, "scroll up"),
             Intent::ScrollDown => write!(f, "scroll down"),
             Intent::MouseScrollUp => write!(f, "mouse scroll up"),

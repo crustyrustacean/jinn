@@ -131,6 +131,27 @@ where
         self.scroll_offset = 0;
     }
 
+    /// Bulk inserts text at the cursor position, advances the cursor, re-filters, and
+    /// resets selection and scroll offset to 0.
+    ///
+    /// Newlines are stripped — the picker filter is a single line.
+    pub fn insert_text(&mut self, text: &str) {
+        let flat: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+        if flat.is_empty() {
+            return;
+        }
+        let byte_offset = self
+            .filter
+            .grapheme_indices(true)
+            .nth(self.cursor_pos)
+            .map_or(self.filter.len(), |(i, _)| i);
+        self.filter.insert_str(byte_offset, &flat);
+        self.cursor_pos += flat.graphemes(true).count();
+        self.recompute_filtered();
+        self.selection = 0;
+        self.scroll_offset = 0;
+    }
+
     /// Deletes the grapheme before the cursor, decrements the cursor, re-filters, and
     /// resets selection and scroll offset to 0.
     ///
