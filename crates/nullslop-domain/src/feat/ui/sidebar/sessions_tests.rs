@@ -708,3 +708,49 @@ fn activate_is_noop_when_not_sessions_section() {
     // Then active session is unchanged.
     assert_eq!(state.session.active_session, original_active);
 }
+
+// --- SidebarSessionNewWithLifecycle ---
+
+#[rstest::rstest]
+fn new_with_lifecycle_noop_when_not_sessions_section() {
+    // Given sidebar focused on persona section.
+    let mut state = AppState::default();
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+
+    // When handling the intent via IntentHandler.
+    let result = crate::feat::intent::IntentHandler::handle(
+        &crate::Intent::SidebarSessionNewWithLifecycle,
+        &mut state,
+    );
+
+    // Then no picker is opened (scope stays sidebar, no picker overlay).
+    assert!(!state.frontend.scope_stack.is_picker());
+    // And no commands emitted.
+    assert!(result.commands.is_empty());
+}
+
+#[rstest::rstest]
+fn new_with_lifecycle_opens_picker_when_sessions_section() {
+    // Given sidebar focused on sessions section.
+    let mut state = AppState::default();
+    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state
+        .frontend
+        .scope_stack
+        .push(crate::common::app_state::FocusScope::Sidebar);
+
+    // When handling the intent via IntentHandler.
+    let result = crate::feat::intent::IntentHandler::handle(
+        &crate::Intent::SidebarSessionNewWithLifecycle,
+        &mut state,
+    );
+
+    // Then the picker scope is pushed with SessionLifecycle kind.
+    assert!(state.frontend.scope_stack.is_picker());
+    assert_eq!(
+        state.frontend.scope_stack.picker_kind(),
+        Some(&crate::protocol::PickerKind::SessionLifecycle)
+    );
+    // And no commands emitted (lifecycle entries are loaded synchronously).
+    assert!(result.commands.is_empty());
+}

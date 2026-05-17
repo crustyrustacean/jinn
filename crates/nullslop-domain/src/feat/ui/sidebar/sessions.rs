@@ -511,3 +511,19 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::proto
 
     result
 }
+
+/// Handles `SidebarSessionNewWithLifecycle` — opens the lifecycle picker
+/// when the sessions section is focused.
+///
+/// No-op if the sessions section is not focused.
+pub fn handle_sidebar_session_new_with_lifecycle(
+    state: &mut AppState,
+) -> crate::protocol::IntentResult {
+    use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
+    use crate::protocol::PickerKind;
+
+    if state.frontend.sidebar.focused_section != SidebarSectionId::Sessions {
+        return crate::protocol::IntentResult::empty();
+    }
+    crate::feat::picker::intent::handle_open_picker(state, PickerKind::SessionLifecycle)
+}
