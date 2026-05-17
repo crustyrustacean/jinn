@@ -134,6 +134,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("x", Intent::SidebarSessionClose, KeyCategory::General)
             .bind("<enter>", Intent::SidebarConfirm, KeyCategory::General)
             .bind("n", Intent::SessionNew, KeyCategory::General)
+            .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
             .bind("<esc>", Intent::SidebarLeave, KeyCategory::General)
             // Tab switching
             .bind("<tab>", Intent::SwitchTab { direction: TabDirection::Next }, KeyCategory::Navigation)
