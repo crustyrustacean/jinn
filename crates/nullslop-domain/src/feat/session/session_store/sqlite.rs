@@ -496,7 +496,13 @@ fn save_blocking(
             .execute(txn)?;
 
         // Insert entries and junction rows.
-        for (ordinal, entry) in session.history().iter().enumerate() {
+        // Info entries are runtime-only UI hints — skip them during persistence.
+        for (ordinal, entry) in session
+            .history()
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| !matches!(e.kind, crate::protocol::ChatEntryKind::Info(_)))
+        {
             let entry_id_str = entry.id.to_string();
             let timestamp_str = entry.timestamp.to_string();
             let kind_json = serde_json::to_string(&entry.kind)
