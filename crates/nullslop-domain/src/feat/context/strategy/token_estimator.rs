@@ -55,7 +55,8 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         // Table entries are ephemeral display data — estimate based on plain-text content.
         ChatEntryKind::Table(data) => estimator.estimate(&data.to_plain_text()),
         // Thinking entries are excluded from context assembly — contribute 0 tokens.
-        ChatEntryKind::Thinking(_) => 0,
+        // Info entries are UI-only — excluded from context assembly.
+        ChatEntryKind::Thinking(_) | ChatEntryKind::Info(_) => 0,
         // Skill entries produce LlmMessage::System with XML wrapping.
         ChatEntryKind::Skill { content, .. } => {
             if entry.is_pinned() {
@@ -64,8 +65,6 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
                 0
             }
         }
-        // Info entries are UI-only — excluded from context assembly.
-        ChatEntryKind::Info(_) => 0,
     }
 }
 

@@ -10,7 +10,7 @@
 //! if a column is added to a migration but missing from an INSERT or SELECT,
 //! the code will not compile.
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use async_trait::async_trait;
 use diesel::insert_into;
@@ -74,19 +74,19 @@ impl SqliteSessionStore {
         let dir = dirs::data_dir()
             .expect("platform data directory should be available")
             .join(APP_NAME);
-        Self::build_pool(&dir, PoolConfig::default())
+        Self::build_pool(&dir, &PoolConfig::default())
     }
 
     /// Creates a store at an explicit directory (for testing).
     #[must_use]
-    pub fn new_in(dir: PathBuf) -> Self {
-        Self::build_pool(&dir, PoolConfig::default())
+    pub fn new_in(dir: &Path) -> Self {
+        Self::build_pool(dir, &PoolConfig::default())
     }
 
     /// Creates a store at an explicit directory with custom pool configuration.
     #[must_use]
-    pub fn new_with_config(dir: PathBuf, config: PoolConfig) -> Self {
-        Self::build_pool(&dir, config)
+    pub fn new_with_config(dir: &Path, config: &PoolConfig) -> Self {
+        Self::build_pool(dir, config)
     }
 
     /// Builds the connection pool.
@@ -95,7 +95,7 @@ impl SqliteSessionStore {
     /// bootstrap connection, then builds the pool. Each pooled connection gets
     /// WAL and foreign key pragmas set via the connection customizer.
     #[expect(clippy::expect_used, reason = "pool creation failures are fatal")]
-    fn build_pool(dir: &PathBuf, config: PoolConfig) -> Self {
+    fn build_pool(dir: &Path, config: &PoolConfig) -> Self {
         if !dir.exists() {
             std::fs::create_dir_all(dir).expect("failed to create session directory");
         }
@@ -124,6 +124,12 @@ impl SqliteSessionStore {
             .expect("failed to create connection pool");
 
         Self { pool }
+    }
+}
+
+impl Default for SqliteSessionStore {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -382,7 +388,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
             blobs: serde_json::to_string(blobs)
                 .change_context(SessionStoreError)
                 .attach("failed to serialize blobs")?,
-            parent_session: parent_session.as_ref().map(|p| p.to_string()),
+            parent_session: parent_session.as_ref().map(std::string::ToString::to_string),
             cwd: cwd.to_string_lossy().to_string(),
         })
     }
@@ -555,7 +561,7 @@ fn save_blocking(
 fn load_summaries_blocking(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
-    use crate::schema::sessions::dsl::*;
+    use crate::schema::sessions::dsl::sessions;
 
     let rows: Vec<SessionRow> = sessions
         .load::<SessionRow>(conn)
@@ -772,7 +778,7 @@ mod tests {
 
     fn make_store() -> (TempDir, SqliteSessionStore) {
         let dir = TempDir::new().expect("temp dir");
-        let store = SqliteSessionStore::new_in(dir.path().to_path_buf());
+        let store = SqliteSessionStore::new_in(dir.path());
         (dir, store)
     }
 
@@ -909,7 +915,7 @@ mod tests {
         // Given a SqliteSessionStore pointed at a non-existent directory.
         let dir = TempDir::new().expect("temp dir");
         let nested = dir.path().join("does").join("not").join("exist");
-        let store = SqliteSessionStore::new_in(nested.clone());
+        let store = SqliteSessionStore::new_in(&nested);
         let session = make_session(&SessionId::new(), "Mkdir Test");
 
         // When saving.
