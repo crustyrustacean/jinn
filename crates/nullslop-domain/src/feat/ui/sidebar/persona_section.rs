@@ -59,6 +59,8 @@ impl SidebarSection for PersonaSection {
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         let sidebar_focused = state.frontend.scope_stack.is_sidebar();
+        let section_focused =
+            sidebar_focused && state.frontend.sidebar.focused_section == SidebarSectionId::Persona;
         let theme = &state.frontend.theme;
 
         let indicator_color = if sidebar_focused {
@@ -67,8 +69,8 @@ impl SidebarSection for PersonaSection {
             theme.border_unfocused
         };
 
-        let has_cursor = state.frontend.persona_section.cursor.is_some();
-        let indicator = if has_cursor {
+        let is_selected = section_focused && state.frontend.persona_section.cursor.is_some();
+        let indicator = if is_selected {
             Span::styled(SELECTED_INDICATOR, Style::default().fg(indicator_color))
         } else {
             Span::raw(UNSELECTED_BORDER)
@@ -92,7 +94,7 @@ impl SidebarSection for PersonaSection {
             // Blank separator.
             lines.push(Line::from(""));
             // Entry line.
-            let name_style = if has_cursor {
+            let name_style = if is_selected {
                 Style::default().add_modifier(Modifier::REVERSED)
             } else {
                 Style::default()

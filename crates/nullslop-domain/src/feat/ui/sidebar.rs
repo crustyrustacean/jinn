@@ -19,6 +19,7 @@ pub use section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 pub use sidebar::Sidebar;
+pub use sidebar::jump_to_section;
 pub use sidebar::navigate_sidebar;
 pub use state::SidebarState;
 

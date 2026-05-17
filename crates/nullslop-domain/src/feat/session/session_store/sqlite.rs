@@ -33,7 +33,8 @@ use super::{SessionStore, SessionStoreError};
 const _V0_UP: &str =
     include_str!("../../../../migrations/00000000000000_create_initial_schema/up.sql");
 const _V1_UP: &str = include_str!("../../../../migrations/00000000000001_add_cwd_column/up.sql");
-const _V2_UP: &str = include_str!("../../../../migrations/00000000000002_add_created_at_column/up.sql");
+const _V2_UP: &str =
+    include_str!("../../../../migrations/00000000000002_add_created_at_column/up.sql");
 
 /// Runs all pending migrations on a bootstrap connection.
 ///
@@ -93,10 +94,9 @@ fn run_migrations(conn: &mut SqliteConnection) {
         .execute(conn);
 
     // v2: add created_at column
-    let _ = diesel::sql_query(
-        "ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
-    )
-    .execute(conn);
+    let _ =
+        diesel::sql_query("ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+            .execute(conn);
 }
 
 /// Configuration for the SQLite connection pool.
@@ -712,7 +712,7 @@ fn fork_blocking(
                 id: new_id_str.clone(),
                 title: source_meta.title,
                 updated_at: now.clone(),
-                created_at: now,              // fresh created_at — it's a new session
+                created_at: now, // fresh created_at — it's a new session
                 profile: source_meta.profile,
                 strategy_state: source_meta.strategy_state,
                 blobs: source_meta.blobs,

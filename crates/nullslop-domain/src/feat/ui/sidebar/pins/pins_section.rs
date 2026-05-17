@@ -103,11 +103,15 @@ impl SidebarSection for PinsSection {
                     .add_modifier(Modifier::BOLD),
             )])]
         } else {
+            let sidebar_focused = state.frontend.scope_stack.is_sidebar();
+            let section_focused =
+                sidebar_focused && state.frontend.sidebar.focused_section == SidebarSectionId::Pins;
             build_entry_list(
                 &pinned,
                 selected_index,
                 area.width,
-                state.frontend.scope_stack.is_sidebar(),
+                sidebar_focused,
+                section_focused,
                 &state.frontend.theme,
             )
         };
@@ -356,6 +360,7 @@ fn build_entry_list(
     selected_index: usize,
     _area_width: u16,
     sidebar_focused: bool,
+    section_focused: bool,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
@@ -370,7 +375,7 @@ fn build_entry_list(
     lines.push(Line::from(""));
 
     for (i, entry) in pinned.iter().enumerate() {
-        let is_selected = i == selected_index;
+        let is_selected = section_focused && i == selected_index;
 
         let indicator_color = if sidebar_focused {
             theme.focus_accent
@@ -865,11 +870,9 @@ mod tests {
             .unwrap();
 
         let buffer = terminal.backend().buffer();
-        // First entry at index 0 is selected by default.
-        // The indicator should be DarkGray when sidebar is not focused.
+        // When sidebar is not focused, no selection indicator is shown.
         let cell0 = buffer.cell((0, 2)).expect("cell 0,2");
-        assert_eq!(cell0.symbol(), "\u{2588}");
-        assert_eq!(cell0.fg, Color::DarkGray);
+        assert_eq!(cell0.symbol(), " ");
     }
 
     #[rstest::rstest]

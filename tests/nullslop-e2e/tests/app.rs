@@ -1263,9 +1263,7 @@ async fn when_session_saved_and_reloaded(world: &mut AppWorld) {
     ));
 
     // Wait for the load to complete (is_loading transitions to false).
-    world
-        .wait_until(|state| !state.session.is_loading())
-        .await;
+    world.wait_until(|state| !state.session.is_loading()).await;
 
     // Wait a bit more for the async cwd check to complete.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
