@@ -49,6 +49,7 @@ pub trait RenderHooks: Send + Sync {
         _is_last_in_group: bool,
         _ancestors_are_last: &[bool],
         _index_in_group: usize,
+        _ordered: Option<u32>,
     ) -> Option<String> {
         None
     }
