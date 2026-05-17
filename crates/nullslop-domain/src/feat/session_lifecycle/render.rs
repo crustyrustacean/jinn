@@ -1,13 +1,13 @@
 //! Session lifecycle picker and arg input popup rendering.
 
 use crate::common::app_state::AppState;
-use crate::feat::session_lifecycle::command_template::CommandTemplate;
+use crate::feat::session_lifecycle::command_template::{CommandTemplate, Param};
 use nullslop_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Renders the session lifecycle picker overlay using [`SelectionWidget`].
@@ -25,8 +25,8 @@ pub fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, state:
 ///
 /// Shows a centered popup with:
 /// - Title: "Session Lifecycle Args"
-/// - Command template line (e.g., `./script.sh <1> <2>`)
-/// - One line per parameter: `$1: value`, `$2: value`, etc.
+/// - Command template line (e.g., `./script.sh <1> <2>` or `./script.sh <branch> <target>`)
+/// - One line per parameter: `$1: value`, `<branch>: value`, etc.
 /// - Input line at bottom showing current text with cursor
 pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let arg_state = &state.frontend.arg_input;
@@ -52,6 +52,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
             .title(" Session Lifecycle Args ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme.focus_accent));
+        frame.render_widget(Clear, popup_area);
         frame.render_widget(block, popup_area);
         return;
     };
@@ -66,7 +67,8 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.focus_accent));
 
-    // Render the block first.
+    // Clear background before rendering the popup borders.
+    frame.render_widget(Clear, popup_area);
     frame.render_widget(block, popup_area);
 
     // Inner area for content (1 padding on each side).
@@ -101,31 +103,39 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         y_offset += 1;
     }
 
-    // Parameter lines.
-    if template.has_splat() {
-        // $@ / $*: show all args on one line.
-        if y_offset < max_y {
-            let value = arg_state.input.clone();
-            let line_text =
-                if value.is_empty() { "$@: ".to_owned() } else { format!("$@: {value}") };
-            let para = Paragraph::new(Line::from(Span::raw(line_text)));
-            frame.render_widget(para, Rect::new(inner.x, y_offset, inner.width, 1));
-            y_offset += 1;
-        }
-    }
-
-    for &param_num in template.params() {
+    // Parameter lines — one per unique parameter in order of first appearance.
+    for (idx, param) in template.params().iter().enumerate() {
         if y_offset >= max_y {
             break;
         }
-        // param_num is 1-indexed; input_args is 0-indexed.
-        let value = if param_num <= input_args.len() {
-            input_args[param_num - 1]
-        } else {
-            ""
+        let line_text = match param {
+            Param::Named(_) | Param::Positional(_) => {
+                let value = if idx < input_args.len() {
+                    input_args[idx]
+                } else {
+                    ""
+                };
+                let label = match param {
+                    Param::Named(name) => format!("<{name}>"),
+                    Param::Positional(n) => format!("${}", n),
+                    Param::Splat => unreachable!(),
+                };
+                if value.is_empty() {
+                    format!("{label}: ")
+                } else {
+                    format!("{label}: {value}")
+                }
+            }
+            Param::Splat => {
+                // Splat shows all remaining args after positional slots.
+                let remaining: Vec<&str> = input_args[idx..].to_vec();
+                if remaining.is_empty() {
+                    "$@: ".to_owned()
+                } else {
+                    format!("$@: {}", remaining.join(" "))
+                }
+            }
         };
-        let line_text =
-            if value.is_empty() { format!("${}: ", param_num) } else { format!("${}: {value}", param_num) };
         let para = Paragraph::new(Line::from(Span::raw(line_text)));
         frame.render_widget(para, Rect::new(inner.x, y_offset, inner.width, 1));
         y_offset += 1;
@@ -274,14 +284,12 @@ mod tests {
             .unwrap();
 
         // Then parameter labels and values appear.
-        // Layout: inner.y = popup.y+1 = template, popup.y+2 = blank, popup.y+3 = first param.
         let buffer = terminal.backend().buffer().clone();
         let popup_area = nullslop_selection_widget::compute_popup_rect(area);
         let inner_x = popup_area.x + 1;
         let param_y = popup_area.y + 3; // row 3: $1: foo
 
         if param_y < buffer.area().height {
-            // Check "$1: foo" presence starting at inner_x.
             let expected = "$1: foo";
             for (i, expected_ch) in expected.chars().enumerate() {
                 let x = inner_x + i as u16;
@@ -397,6 +405,121 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn arg_input_popup_shows_named_params() {
+        // Given a state with <branch> <target> named params and typed input.
+        let state =
+            make_state_with_args("test", Some("script.sh <branch> <target>"), "my-feature workdir", 0);
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                render_arg_input(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the named parameter labels appear with values.
+        let buffer = terminal.backend().buffer().clone();
+        let popup_area = nullslop_selection_widget::compute_popup_rect(area);
+        let inner_x = popup_area.x + 1;
+
+        // Row 3: <branch>: my-feature
+        let param_y = popup_area.y + 3;
+        if param_y < buffer.area().height {
+            let expected = "<branch>: my-feature";
+            for (i, expected_ch) in expected.chars().enumerate() {
+                let x = inner_x + i as u16;
+                if x >= buffer.area().width {
+                    break;
+                }
+                if let Some(cell) = buffer.cell((x, param_y)) {
+                    assert_eq!(
+                        cell.symbol(),
+                        expected_ch.to_string(),
+                        "named param label mismatch at offset {i}"
+                    );
+                }
+            }
+        }
+
+        // Row 4: <target>: workdir
+        let param2_y = popup_area.y + 4;
+        if param2_y < buffer.area().height {
+            let expected2 = "<target>: workdir";
+            for (i, expected_ch) in expected2.chars().enumerate() {
+                let x = inner_x + i as u16;
+                if x >= buffer.area().width {
+                    break;
+                }
+                if let Some(cell) = buffer.cell((x, param2_y)) {
+                    assert_eq!(
+                        cell.symbol(),
+                        expected_ch.to_string(),
+                        "second named param mismatch at offset {i}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[rstest::rstest]
+    fn arg_input_popup_shows_mixed_named_and_positional() {
+        // Given a state with mixed <branch> $1 params.
+        let state = make_state_with_args("test", Some("script.sh <branch> $1"), "a b", 0);
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering.
+        terminal
+            .draw(|frame| {
+                render_arg_input(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then both param types appear with their values.
+        let buffer = terminal.backend().buffer().clone();
+        let popup_area = nullslop_selection_widget::compute_popup_rect(area);
+        let inner_x = popup_area.x + 1;
+
+        // Row 3: <branch>: a
+        let param_y = popup_area.y + 3;
+        if param_y < buffer.area().height {
+            let expected = "<branch>: a";
+            for (i, expected_ch) in expected.chars().enumerate() {
+                let x = inner_x + i as u16;
+                if x >= buffer.area().width {
+                    break;
+                }
+                if let Some(cell) = buffer.cell((x, param_y)) {
+                    assert_eq!(
+                        cell.symbol(),
+                        expected_ch.to_string(),
+                        "mixed first param mismatch at offset {i}"
+                    );
+                }
+            }
+        }
+
+        // Row 4: $1: b
+        let param2_y = popup_area.y + 4;
+        if param2_y < buffer.area().height {
+            let expected2 = "$1: b";
+            for (i, expected_ch) in expected2.chars().enumerate() {
+                let x = inner_x + i as u16;
+                if x >= buffer.area().width {
+                    break;
+                }
+                if let Some(cell) = buffer.cell((x, param2_y)) {
+                    assert_eq!(
+                        cell.symbol(),
+                        expected_ch.to_string(),
+                        "mixed second param mismatch at offset {i}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[rstest::rstest]
     fn arg_input_popup_handles_no_template() {
         // Given a state with an unknown lifecycle name (no matching template).
         let state = make_state_with_args("nonexistent", None, "foo", 3);
@@ -428,5 +551,46 @@ mod tests {
             }
         }
         assert!(found_title, "minimal popup should show title");
+    }
+
+    #[rstest::rstest]
+    fn arg_input_popup_background_cleared() {
+        // Given a state with text in the chat area.
+        let state = AppState::default();
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // First draw something in the background so we can detect if Clear works.
+        terminal
+            .draw(|frame| {
+                // Fill the terminal with characters *before* the popup area.
+                let fill = Paragraph::new(Line::from(Span::raw("XXXXX")));
+                frame.render_widget(fill, Rect::new(0, 0, 80, 24));
+            })
+            .unwrap();
+
+        // Then draw the arg input popup on top.
+        terminal
+            .draw(|frame| {
+                render_arg_input(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the background character cells inside the popup area should be empty
+        // (cleared by Clear widget), not "X".
+        let buffer = terminal.backend().buffer().clone();
+        let popup_area = nullslop_selection_widget::compute_popup_rect(area);
+
+        // Check a few interior cells (not border) for cleared content.
+        let inner_center = (
+            popup_area.x + popup_area.width / 2,
+            popup_area.y + popup_area.height / 2,
+        );
+        if let Some(cell) = buffer.cell(inner_center) {
+            assert_ne!(
+                cell.symbol(),
+                "X",
+                "background should be cleared inside popup"
+            );
+        }
     }
 }
