@@ -70,6 +70,31 @@ impl PromptTemplateStore {
         })
     }
 
+    /// Loads all `*.md` files from both system and user directories (recursively),
+    /// merging results. User templates override system templates of the same name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either directory cannot be read due to I/O failure.
+    pub fn load_from_dirs(user_dir: &Path, system_dir: &Path) -> Result<Self, Report<PromptTemplateStoreError>> {
+        let mut templates = Vec::new();
+        let mut seen_names = std::collections::HashSet::new();
+
+        // System templates first (lower priority).
+        if system_dir.exists() {
+            Self::scan_dir(system_dir, &mut templates, &mut seen_names)?;
+        }
+
+        // User templates override system ones of the same name.
+        if user_dir.exists() {
+            Self::scan_dir_override(user_dir, &mut templates, &mut seen_names)?;
+        }
+
+        Ok(Self {
+            templates: templates.into(),
+        })
+    }
+
     /// Creates a store from a pre-built list of templates (for testing).
     #[must_use]
     pub fn from_vec(templates: Vec<PromptTemplate>) -> Self {
@@ -157,6 +182,59 @@ impl PromptTemplateStore {
                             path = %path.display(),
                             "duplicate prompt template name, skipping"
                         );
+                    } else {
+                        seen_names.insert(template.name.clone());
+                        templates.push(template);
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        path = %path.display(),
+                        error = %e,
+                        "failed to parse prompt template, skipping"
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Recursively scans a directory, overriding existing templates with the same name.
+    ///
+    /// Used for user directories — user templates replace system templates.
+    fn scan_dir_override(
+        dir: &Path,
+        templates: &mut Vec<PromptTemplate>,
+        seen_names: &mut std::collections::HashSet<String>,
+    ) -> Result<(), Report<PromptTemplateStoreError>> {
+        let entries = std::fs::read_dir(dir)
+            .change_context(PromptTemplateStoreError::Io)
+            .attach(format!("failed to read directory {}", dir.display()))?;
+
+        for entry in entries {
+            let entry: std::fs::DirEntry = entry
+                .change_context(PromptTemplateStoreError::Io)
+                .attach(format!("failed to read dir entry in {}", dir.display()))?;
+
+            let path = entry.path();
+
+            if path.is_dir() {
+                Self::scan_dir_override(&path, templates, seen_names)?;
+                continue;
+            }
+
+            if path.extension().is_none_or(|ext| ext != "md") {
+                continue;
+            }
+
+            match parse_template_file(&path) {
+                Ok(template) => {
+                    if seen_names.contains(&template.name) {
+                        // Replace the system template with the user version.
+                        if let Some(pos) = templates.iter().position(|t| t.name == template.name) {
+                            templates[pos] = template;
+                        }
                     } else {
                         seen_names.insert(template.name.clone());
                         templates.push(template);
