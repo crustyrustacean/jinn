@@ -240,6 +240,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
 
         // When saving and reloading.
@@ -281,6 +282,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
 
         // When saving and reloading.
@@ -305,6 +307,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
         service.save(&prefs).expect("save");
 
@@ -329,6 +332,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
         service.save(&prefs).expect("save");
 
@@ -340,6 +344,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
         service.save(&updated).expect("save updated");
 
@@ -360,6 +365,7 @@ mod tests {
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
+            sidebar_width: None,
         };
         service.save(&prefs).expect("save");
 

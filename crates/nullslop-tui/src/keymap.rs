@@ -82,6 +82,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::ContextAssembly }, KeyCategory::General)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
+            // Sidebar resize
+            .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
             // Expand/collapse tool entry
@@ -138,6 +140,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<s-tab>", Intent::SwitchTab { direction: TabDirection::Prev }, KeyCategory::Navigation)
             // Pane navigation — focus back to chat
             .bind("<c-h>", Intent::SidebarLeave, KeyCategory::Navigation)
+            // Sidebar resize
+            .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
             // Input — external editor
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
             // Input — enter input mode
@@ -216,6 +220,15 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         });
     });
 
+    // SidebarResize scope — adjusting sidebar width.
+    keymap.scope(Scope::SidebarResize, |b| {
+        b
+        .bind("h", Intent::SidebarResizeExpand, KeyCategory::Navigation)
+        .bind("l", Intent::SidebarResizeContract, KeyCategory::Navigation)
+        .bind("<esc>", Intent::SidebarResizeLeave, KeyCategory::General)
+        .bind("<c-c>", Intent::Quit, KeyCategory::General);
+    });
+
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
         match mouse.kind {
             MouseEventKind::ScrollUp => Some(Intent::MouseScrollUp),
@@ -255,6 +268,7 @@ pub fn collect_all_bindings(
         Scope::Picker,
         Scope::Input,
         Scope::ArgInput,
+        Scope::SidebarResize,
     ] {
         collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries, theme);
     }

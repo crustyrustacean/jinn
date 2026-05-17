@@ -178,6 +178,16 @@ pub enum Intent {
     SessionClose,
     /// Confirm the arg input and trigger lifecycle setup.
     ArgInputConfirm,
+
+    // --- Sidebar Resize ---
+    /// Enter sidebar resize mode.
+    SidebarResizeEnter,
+    /// Expand the sidebar (move border left).
+    SidebarResizeExpand,
+    /// Contract the sidebar (move border right).
+    SidebarResizeContract,
+    /// Exit sidebar resize mode, returning to Normal scope.
+    SidebarResizeLeave,
 }
 
 impl std::fmt::Display for Intent {
@@ -252,6 +262,10 @@ impl std::fmt::Display for Intent {
             }
             Intent::SessionClose => write!(f, "session close"),
             Intent::ArgInputConfirm => write!(f, "arg input confirm"),
+            Intent::SidebarResizeEnter => write!(f, "sidebar resize enter"),
+            Intent::SidebarResizeExpand => write!(f, "sidebar resize expand"),
+            Intent::SidebarResizeContract => write!(f, "sidebar resize contract"),
+            Intent::SidebarResizeLeave => write!(f, "sidebar resize leave"),
         }
     }
 }

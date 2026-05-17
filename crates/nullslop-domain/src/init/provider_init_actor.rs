@@ -176,6 +176,7 @@ mod tests {
                 theme_name: None,
                 persona_name: None,
                 session_lifecycles: vec![],
+                sidebar_width: None,
             })
             .expect("save prefs");
 
