@@ -17,6 +17,9 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
         Some(PickerKind::Persona) => render_persona_picker(frame, area, state),
         Some(PickerKind::Theme) => render_theme_picker(frame, area, state),
         Some(PickerKind::SessionFork) => render_session_fork_picker(frame, area, state),
+        Some(PickerKind::SessionLifecycle) => {
+            render_session_lifecycle_picker(frame, area, state);
+        }
         None => {}
     }
 }
@@ -54,6 +57,18 @@ fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 /// Renders the session fork picker overlay (delegates to domain render).
 fn render_session_fork_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     nullslop_domain::feat::session::render::render_session_fork_picker(frame, area, state);
+}
+
+/// Renders the session lifecycle picker overlay (delegates to domain render).
+fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    nullslop_domain::feat::session_lifecycle::render::render_session_lifecycle_picker(
+        frame, area, state,
+    );
+}
+
+/// Renders the arg input popup (delegates to domain render).
+pub(super) fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    nullslop_domain::feat::session_lifecycle::render::render_arg_input(frame, area, state);
 }
 
 #[cfg(test)]

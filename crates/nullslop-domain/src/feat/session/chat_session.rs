@@ -106,6 +106,16 @@ pub struct SessionCore {
     /// Generic blob storage for future subsystems.
     #[serde(default)]
     pub(crate) blobs: HashMap<String, JsonValue>,
+    /// Name of the session lifecycle that created this session.
+    /// `None` means the implicit "blank" lifecycle (no setup command).
+    /// OWNER: IntentHandler (set on session creation).
+    #[serde(default)]
+    pub(crate) lifecycle_name: Option<String>,
+    /// Arguments passed to the lifecycle setup command.
+    /// Replayed during teardown so the same args are available.
+    /// OWNER: IntentHandler (set on session creation).
+    #[serde(default)]
+    pub(crate) lifecycle_args: Vec<String>,
     /// Runtime-only state — not persisted across restarts.
     #[serde(skip)]
     pub(crate) ephemeral: SessionCoreEphemeral,
@@ -125,6 +135,8 @@ impl Default for SessionCore {
             parent_session: None,
             strategy_state: HashMap::new(),
             blobs: HashMap::new(),
+            lifecycle_name: None,
+            lifecycle_args: Vec::new(),
             ephemeral: SessionCoreEphemeral::default(),
         }
     }
@@ -1113,6 +1125,28 @@ impl ChatSessionState {
     /// Mutable access to generic blob storage.
     pub fn blobs_mut(&mut self) -> &mut HashMap<String, JsonValue> {
         &mut self.core.blobs
+    }
+
+    // --- Lifecycle fields ---
+
+    /// The name of the lifecycle that created this session, if any.
+    pub fn lifecycle_name(&self) -> Option<&str> {
+        self.core.lifecycle_name.as_deref()
+    }
+
+    /// Set the lifecycle name.
+    pub fn set_lifecycle_name(&mut self, name: Option<String>) {
+        self.core.lifecycle_name = name;
+    }
+
+    /// The args used during setup (replayed for teardown).
+    pub fn lifecycle_args(&self) -> &[String] {
+        &self.core.lifecycle_args
+    }
+
+    /// Set the lifecycle args.
+    pub fn set_lifecycle_args(&mut self, args: Vec<String>) {
+        self.core.lifecycle_args = args;
     }
 }
 

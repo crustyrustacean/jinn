@@ -114,7 +114,9 @@ impl ProviderActor {
             | Command::RescanPersonas(..)
             | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)
-            | Command::SessionForkRequested(..) => {}
+            | Command::SessionForkRequested(..)
+            | Command::RunSessionSetup(..)
+            | Command::RunSessionTeardown(..) => {}
         }
     }
 

@@ -22,6 +22,29 @@ pub enum UserPreferencesError {
     Parse,
 }
 
+/// A named session lifecycle recipe — paired setup and teardown commands.
+///
+/// Defined in `nullslop.toml` under `[[session_lifecycle]]`. The setup command
+/// runs when creating a new session; the teardown command runs when closing it.
+/// Commands may contain positional parameters (`$1`, `$2`) that are collected
+/// from the user before execution.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionLifecycle {
+    /// Human-readable name shown in the lifecycle picker.
+    pub name: String,
+    /// Optional description shown below the name in the picker.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Command to run when creating a session. Last line of stdout becomes the CWD.
+    /// May contain `$1`, `$2` positional args. `None` means no setup (blank lifecycle).
+    #[serde(default)]
+    pub setup_command: Option<String>,
+    /// Command to run when closing a session. Receives the same args as setup.
+    /// `None` means no teardown needed.
+    #[serde(default)]
+    pub teardown_command: Option<String>,
+}
+
 /// User preferences persisted in `nullslop.toml`.
 ///
 /// This file stores user behavior preferences that should survive
@@ -48,6 +71,12 @@ pub struct UserPreferences {
     /// Corresponds to a file in `~/.config/nullslop/personas/<name>.md`.
     #[serde(default)]
     pub persona_name: Option<String>,
+    /// Named session lifecycle recipes — paired setup/teardown commands.
+    /// The implicit "blank" lifecycle (no commands) is always available and
+    /// does not need to be listed here.
+    #[serde(default)]
+    #[serde(rename = "session_lifecycle")]
+    pub session_lifecycles: Vec<SessionLifecycle>,
 }
 
 /// Returns the path to the user preferences file.
@@ -173,6 +202,7 @@ mod tests {
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
 
         // When saving and reloading.
@@ -234,6 +264,7 @@ last_strategy = "sliding_window""#,
             tool_entry_max_lines: None,
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
 
         // When saving.
@@ -254,6 +285,7 @@ last_strategy = "sliding_window""#,
             tool_entry_max_lines: Some(10),
             theme_name: None,
             persona_name: None,
+            session_lifecycles: vec![],
         };
 
         // When saving and reloading.
@@ -265,11 +297,84 @@ last_strategy = "sliding_window""#,
     }
 
     #[rstest::rstest]
+    fn save_then_load_round_trips_session_lifecycles() {
+        // Given preferences with a session lifecycle.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            last_model: None,
+            last_strategy: None,
+            tool_entry_max_lines: None,
+            theme_name: None,
+            persona_name: None,
+            session_lifecycles: vec![SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: Some("Open a fossil branch in a new workdir".to_owned()),
+                setup_command: Some("~/.config/nullslop/scripts/fossil-branch.sh $1".to_owned()),
+                teardown_command: Some(
+                    "~/.config/nullslop/scripts/fossil-cleanup.sh $1".to_owned(),
+                ),
+            }],
+        };
+
+        // When saving and reloading.
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then the lifecycle is preserved.
+        assert_eq!(reloaded.session_lifecycles.len(), 1);
+        assert_eq!(reloaded.session_lifecycles[0].name, "fossil branch");
+        assert_eq!(
+            reloaded.session_lifecycles[0].setup_command.as_deref(),
+            Some("~/.config/nullslop/scripts/fossil-branch.sh $1")
+        );
+    }
+
+    #[rstest::rstest]
+    fn default_preferences_has_empty_lifecycles() {
+        // Given default preferences.
+        let prefs = UserPreferences::default();
+
+        // Then session_lifecycles is empty.
+        assert!(prefs.session_lifecycles.is_empty());
+    }
+
+    #[rstest::rstest]
     fn preferences_path_ends_with_nullslop_toml() {
         // Given the standard preferences path.
         let path = preferences_path();
 
         // Then it ends with nullslop/nullslop.toml.
         assert!(path.to_string_lossy().ends_with("nullslop/nullslop.toml"));
+    }
+
+    #[rstest::rstest]
+    fn load_parses_table_array_session_lifecycle() {
+        // Given a TOML file using [[session_lifecycle]] table array syntax.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"last_model = "ollama/llama3"
+
+[[session_lifecycle]]
+name = "fossil branch"
+description = "Open a fossil branch in a new workdir"
+setup_command = "~/.config/nullslop/scripts/fossil-branch.sh $1"
+teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
+"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then session_lifecycles is populated.
+        assert_eq!(prefs.session_lifecycles.len(), 1);
+        assert_eq!(prefs.session_lifecycles[0].name, "fossil branch");
+        assert_eq!(
+            prefs.session_lifecycles[0].setup_command.as_deref(),
+            Some("~/.config/nullslop/scripts/fossil-branch.sh $1")
+        );
     }
 }

@@ -1,7 +1,7 @@
-//! Status bar — displays the active prompt strategy and current model.
+//! Status bar — displays the session CWD, active prompt strategy, and current model.
 //!
-//! Shows `<strategy> | <model>` in a single row. The strategy name comes from
-//! `PromptStrategyId`'s `Display` impl (e.g., "Passthrough", "Sliding Window").
+//! Shows the session's working directory on line 1, and status information
+//! on line 2: strategy, pinned count, token stats, turn count, and model.
 //! The model shows `({provider})/{model}` when set, or "no model selected" otherwise.
 
 use crate::common::app_state::AppState;
@@ -10,7 +10,7 @@ use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::aggregate_session_stats;
 use crate::feat::ui::status_bar::turn_counter;
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
@@ -18,6 +18,25 @@ use ratatui::widgets::Paragraph;
 /// A display element that shows the active strategy and provider/model in the status bar.
 #[derive(Debug)]
 pub struct StatusBarElement;
+
+/// Shorten a path for display: resolve `.` to absolute, replace home with `~`.
+fn shorten_path(path: &std::path::Path) -> String {
+    let absolute = if path == std::path::Path::new(".") {
+        std::env::current_dir().unwrap_or_else(|_| path.to_path_buf())
+    } else {
+        path.to_path_buf()
+    };
+    if let Some(home) = dirs::home_dir() {
+        if let Ok(relative) = absolute.strip_prefix(&home) {
+            let display = relative.display().to_string();
+            if display.is_empty() {
+                return "~".to_owned();
+            }
+            return format!("~/{}", display);
+        }
+    }
+    absolute.display().to_string()
+}
 
 /// Format a token count in human-readable form.
 #[allow(clippy::cast_precision_loss)]
@@ -37,6 +56,20 @@ impl UiElement<AppState> for StatusBarElement {
     }
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+        // Split area into cwd line + info line.
+        let [cwd_area, info_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
+
+        // --- Line 1: CWD ---
+        let cwd = state.active_session().cwd();
+        let cwd_display = shorten_path(cwd);
+        let style = Style::default().fg(state.frontend.theme.muted_text);
+        let cwd_widget = Paragraph::new(Line::from(Span::styled(cwd_display, style)))
+            .style(style)
+            .alignment(Alignment::Left);
+        frame.render_widget(cwd_widget, cwd_area);
+
+        // --- Line 2: Existing info ---
         let strategy = state.active_session().active_strategy();
         let pinned_count = state.active_session().pinned_entries().len();
 
@@ -68,8 +101,6 @@ impl UiElement<AppState> for StatusBarElement {
             active_model.clone()
         };
 
-        let style = Style::default().fg(state.frontend.theme.muted_text);
-
         // Build left side: strategy info + turn count.
         let turn_count = turn_counter::compute_turn_count(state.active_session().history());
         let left_spans: Vec<Span> = vec![
@@ -80,7 +111,7 @@ impl UiElement<AppState> for StatusBarElement {
         let strategy_widget = Paragraph::new(Line::from(left_spans))
             .style(style)
             .alignment(Alignment::Left);
-        frame.render_widget(strategy_widget, area);
+        frame.render_widget(strategy_widget, info_area);
 
         let notification = state.frontend.active_status_notification();
         let right_spans = if let Some(msg) = notification {
@@ -93,6 +124,6 @@ impl UiElement<AppState> for StatusBarElement {
         };
         let right_line = Line::from(right_spans);
         let model_widget = Paragraph::new(right_line).alignment(Alignment::Right);
-        frame.render_widget(model_widget, area);
+        frame.render_widget(model_widget, info_area);
     }
 }

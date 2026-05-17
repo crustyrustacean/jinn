@@ -18,6 +18,8 @@ pub enum Scope {
     Picker,
     /// Input mode — typing into the input buffer.
     Input,
+    /// Arg input mode — typing positional args for a lifecycle command.
+    ArgInput,
 }
 
 impl std::fmt::Display for Scope {
@@ -28,6 +30,7 @@ impl std::fmt::Display for Scope {
             Self::Sidebar => write!(f, "Sidebar"),
             Self::Picker => write!(f, "Picker"),
             Self::Input => write!(f, "Input"),
+            Self::ArgInput => write!(f, "ArgInput"),
         }
     }
 }
@@ -42,6 +45,7 @@ impl std::str::FromStr for Scope {
             "Sidebar" => Ok(Self::Sidebar),
             "Picker" => Ok(Self::Picker),
             "Input" => Ok(Self::Input),
+            "ArgInput" => Ok(Self::ArgInput),
             _ => Err(()),
         }
     }

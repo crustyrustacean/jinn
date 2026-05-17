@@ -257,10 +257,8 @@ mod tests {
         let mut ctx = ActorContext::new("test", sink);
         let state = State::new(AppState::default());
         ctx.set_data(state.clone());
-        ctx.set_data(
-            Box::new(crate::feat::context::DefaultStrategyFactory)
-                as Box<dyn crate::feat::context::strategy::types::StrategyFactory>,
-        );
+        ctx.set_data(Box::new(crate::feat::context::DefaultStrategyFactory)
+            as Box<dyn crate::feat::context::strategy::types::StrategyFactory>);
         ctx.set_data(TestServices::builder().build());
         let actor = PromptAssemblyActor::activate(&mut ctx);
         (actor, state)
@@ -270,7 +268,10 @@ mod tests {
     fn on_personas_loaded_selects_coding_assistant_when_none_active() {
         // Given a context actor with no active persona.
         let (actor, state) = create_actor();
-        let personas = vec![make_persona("learning-tutor"), make_persona("coding-assistant")];
+        let personas = vec![
+            make_persona("learning-tutor"),
+            make_persona("coding-assistant"),
+        ];
         let payload = PersonasLoaded {
             personas,
             error: None,
@@ -282,7 +283,11 @@ mod tests {
         // Then coding-assistant is selected by name, not position.
         let guard = state.read();
         assert_eq!(
-            guard.context.active_persona.as_ref().map(|p| p.name.as_str()),
+            guard
+                .context
+                .active_persona
+                .as_ref()
+                .map(|p| p.name.as_str()),
             Some("coding-assistant")
         );
     }
@@ -295,7 +300,10 @@ mod tests {
             let mut guard = state.write();
             guard.context.active_persona = Some(make_persona("learning-tutor"));
         }
-        let personas = vec![make_persona("coding-assistant"), make_persona("learning-tutor")];
+        let personas = vec![
+            make_persona("coding-assistant"),
+            make_persona("learning-tutor"),
+        ];
         let payload = PersonasLoaded {
             personas,
             error: None,
@@ -307,7 +315,11 @@ mod tests {
         // Then learning-tutor is kept (still exists in list).
         let guard = state.read();
         assert_eq!(
-            guard.context.active_persona.as_ref().map(|p| p.name.as_str()),
+            guard
+                .context
+                .active_persona
+                .as_ref()
+                .map(|p| p.name.as_str()),
             Some("learning-tutor")
         );
     }
@@ -332,7 +344,11 @@ mod tests {
         // Then falls back to coding-assistant.
         let guard = state.read();
         assert_eq!(
-            guard.context.active_persona.as_ref().map(|p| p.name.as_str()),
+            guard
+                .context
+                .active_persona
+                .as_ref()
+                .map(|p| p.name.as_str()),
             Some("coding-assistant")
         );
     }
@@ -353,7 +369,11 @@ mod tests {
         // Then first available is selected.
         let guard = state.read();
         assert_eq!(
-            guard.context.active_persona.as_ref().map(|p| p.name.as_str()),
+            guard
+                .context
+                .active_persona
+                .as_ref()
+                .map(|p| p.name.as_str()),
             Some("learning-tutor")
         );
     }

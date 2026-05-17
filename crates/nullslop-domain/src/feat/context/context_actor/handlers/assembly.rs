@@ -174,7 +174,11 @@ impl PromptAssemblyActor {
                     guard.context.personas.iter().find(|p| p.name == name)
                 })
                 .or_else(|| {
-                    guard.context.personas.iter().find(|p| p.name == "coding-assistant")
+                    guard
+                        .context
+                        .personas
+                        .iter()
+                        .find(|p| p.name == "coding-assistant")
                 });
             build_env_context(persona, &context_files, &cwd)
         };

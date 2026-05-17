@@ -114,7 +114,10 @@ pub fn no_api_keys_msg() -> crate::protocol::ChatEntry {
         Line::from(vec![
             Span::styled("Create a ", primary),
             Span::styled(".env", bold),
-            Span::styled(" file in your working directory with your API keys.", primary),
+            Span::styled(
+                " file in your working directory with your API keys.",
+                primary,
+            ),
         ]),
         Line::from(vec![
             Span::styled("See ", primary),

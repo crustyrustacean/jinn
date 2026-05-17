@@ -24,6 +24,8 @@ pub enum PickerKind {
     Theme,
     /// Session fork picker — select a message to fork from.
     SessionFork,
+    /// Session lifecycle picker — select a lifecycle recipe for new session creation.
+    SessionLifecycle,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -36,6 +38,7 @@ impl std::fmt::Display for PickerKind {
             Self::Persona => write!(f, "personas"),
             Self::Theme => write!(f, "themes"),
             Self::SessionFork => write!(f, "session-fork"),
+            Self::SessionLifecycle => write!(f, "session-lifecycle"),
         }
     }
 }

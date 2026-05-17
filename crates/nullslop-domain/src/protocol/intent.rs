@@ -165,6 +165,19 @@ pub enum Intent {
     ToggleForkUserFilter,
     /// Toggle assistant message visibility in the fork picker.
     ToggleForkAssistantFilter,
+
+    // --- Session Lifecycle ---
+    /// Run a lifecycle setup command to create a new session.
+    SessionLifecycleSetup {
+        /// The lifecycle name (e.g., "fossil branch").
+        lifecycle_name: String,
+        /// Resolved positional arguments.
+        args: Vec<String>,
+    },
+    /// Close the active session, running teardown if applicable.
+    SessionClose,
+    /// Confirm the arg input and trigger lifecycle setup.
+    ArgInputConfirm,
 }
 
 impl std::fmt::Display for Intent {
@@ -234,6 +247,11 @@ impl std::fmt::Display for Intent {
 
             Intent::ToggleForkUserFilter => write!(f, "toggle fork user filter"),
             Intent::ToggleForkAssistantFilter => write!(f, "toggle fork assistant filter"),
+            Intent::SessionLifecycleSetup { lifecycle_name, .. } => {
+                write!(f, "session lifecycle setup: {lifecycle_name}")
+            }
+            Intent::SessionClose => write!(f, "session close"),
+            Intent::ArgInputConfirm => write!(f, "arg input confirm"),
         }
     }
 }

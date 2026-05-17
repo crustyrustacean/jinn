@@ -74,6 +74,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // s prefix — session management
             .describe_group_with_category("sf", "fork session", KeyCategory::General)
             .bind("<leader>sf", Intent::OpenPicker { kind: PickerKind::SessionFork }, KeyCategory::General)
+            .describe_group_with_category("sl", "lifecycle", KeyCategory::General)
+            .bind("<leader>sl", Intent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
             .bind("gg", Intent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
@@ -198,6 +200,22 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             });
         });
 
+    // ArgInput scope — typing positional args for a lifecycle command.
+    keymap.scope(Scope::ArgInput, |b| {
+        b.bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
+        .bind("<enter>", Intent::ArgInputConfirm, KeyCategory::Input)
+        .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
+        .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
+        .catch_all(|key: KeyEvent| {
+            if let Key::Char(c) = key.key {
+                Some(Intent::InsertChar { ch: c })
+            } else {
+                None
+            }
+        });
+    });
+
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
         match mouse.kind {
             MouseEventKind::ScrollUp => Some(Intent::MouseScrollUp),
@@ -236,6 +254,7 @@ pub fn collect_all_bindings(
         Scope::Sidebar,
         Scope::Picker,
         Scope::Input,
+        Scope::ArgInput,
     ] {
         collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries, theme);
     }
