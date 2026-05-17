@@ -77,6 +77,15 @@ impl ProviderInitActor {
         };
         self.services.provider_registry.replace(registry);
 
+        // Check if no API keys were resolved. If so, push a guidance message.
+        if self.services.api_keys.is_empty() {
+            tracing::warn!("no API keys found, showing guidance message");
+            self.state
+                .write()
+                .active_session_mut()
+                .push_entry(crate::feat::session::no_api_keys_msg());
+        }
+
         // Load model cache from disk and merge into registry.
         let cache_path = self.services.paths.cache_path();
         let cache = ModelCache::load(&cache_path).unwrap_or_else(|e| {
@@ -233,5 +242,66 @@ mod tests {
             .iter()
             .any(|c| matches!(c, Command::ProviderSwitch(..)));
         assert!(!found, "expected no ProviderSwitch command");
+    }
+
+    /// Creates a test actor with Services defaults, returning the shared state for assertions.
+    fn create_actor_with_state() -> (
+        ProviderInitActor,
+        Services,
+        Arc<RecordingSink>,
+        ActorContext,
+        State,
+    ) {
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("provider-init", sink.clone() as Arc<dyn MessageSink>);
+
+        let services = Services::new();
+        let state = State::new(AppState::default());
+        ctx.set_data(services.clone());
+        ctx.set_data(state.clone());
+        let actor = ProviderInitActor::activate(&mut ctx);
+        (actor, services, sink, ctx, state)
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn pushes_no_api_keys_msg_when_keys_empty() {
+        // Given a provider init actor with no API keys.
+        let (mut actor, _services, _sink, ctx, state) = create_actor_with_state();
+
+        let config = crate::feat::provider_infra::ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "openrouter".to_owned(),
+                backend: "openrouter".to_owned(),
+                models: vec!["gpt-4".to_owned()],
+                base_url: None,
+                api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
+                requires_key: true,
+                extra_body: None,
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+
+        // When processing EnvironmentLoaded with no API keys resolved.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::EnvironmentLoaded(EnvironmentLoaded { config })),
+                &ctx,
+            )
+            .await;
+
+        // Then the active session has a no-api-keys info entry.
+        let s = state.read();
+        let text = s
+            .active_session()
+            .history()
+            .last()
+            .expect("at least one entry")
+            .text();
+        assert!(
+            text.contains("No API keys found"),
+            "should contain no-api-keys guidance, got: {text}"
+        );
     }
 }

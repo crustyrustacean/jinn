@@ -50,6 +50,12 @@ impl ApiKeys {
             .get(env_var.as_ref())
             .is_some_and(|v| !v.is_empty())
     }
+
+    /// Returns `true` if no keys have been resolved.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.keys.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -104,5 +110,26 @@ mod tests {
 
         // When getting a nonexistent key.
         assert_eq!(keys.get("NOPE"), None);
+    }
+
+    #[rstest::rstest]
+    fn is_empty_returns_true_when_no_keys() {
+        // Given an empty store.
+        let keys = ApiKeys::new();
+
+        // When checking if empty.
+        // Then it returns true.
+        assert!(keys.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn is_empty_returns_false_when_keys_present() {
+        // Given a store with a key.
+        let mut keys = ApiKeys::new();
+        keys.insert("MY_KEY".to_owned(), "sk-secret".to_owned());
+
+        // When checking if empty.
+        // Then it returns false.
+        assert!(!keys.is_empty());
     }
 }

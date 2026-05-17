@@ -75,6 +75,7 @@ pub use feat::session::PoolConfig;
 pub use feat::session::SessionStoreService;
 pub use feat::session::SqliteSessionStore;
 pub use feat::session::welcome_msg;
+pub use feat::session::no_api_keys_msg;
 
 // Re-export preferences types
 pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
