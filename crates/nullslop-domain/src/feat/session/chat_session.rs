@@ -47,6 +47,10 @@ pub struct SessionCoreEphemeral {
     pub(crate) streaming_tool_call_indices: HashMap<usize, usize>,
     /// Index into `history` for the entry currently receiving thinking tokens.
     pub(crate) streaming_thinking_entry_index: Option<usize>,
+    /// Cached context size in tokens (assembled prompt size).
+    /// Updated when PromptAssembled fires. Not persisted across restarts.
+    /// OWNER: session-actor.
+    pub(crate) cached_context_size: Option<u32>,
 }
 
 /// Core session state — owned by session-actor and context-actor.
@@ -94,11 +98,6 @@ pub struct SessionCore {
     /// OWNER: session-actor (set at session creation).
     #[serde(default)]
     pub(crate) parent_session: Option<SessionId>,
-    /// Cached context size in tokens (assembled prompt size).
-    /// Updated when PromptAssembled fires.
-    /// OWNER: session-actor.
-    #[serde(default)]
-    pub(crate) cached_context_size: Option<u32>,
     /// Per-strategy persistent state. Keyed by strategy ID so switching
     /// strategies preserves previous state for when the user switches back.
     /// OWNER: context-actor (reads/writes during RestoreStrategyState, SwitchPromptStrategy).
@@ -124,7 +123,6 @@ impl Default for SessionCore {
             cwd: std::path::PathBuf::from("."),
             token_ledger: Vec::new(),
             parent_session: None,
-            cached_context_size: None,
             strategy_state: HashMap::new(),
             blobs: HashMap::new(),
             ephemeral: SessionCoreEphemeral::default(),
@@ -1022,12 +1020,12 @@ impl ChatSessionState {
 
     /// The cached context size in tokens, if a prompt has been assembled.
     pub fn context_size(&self) -> Option<u32> {
-        self.core.cached_context_size
+        self.core.ephemeral.cached_context_size
     }
 
     /// Update the cached context size.
     pub fn set_context_size(&mut self, size: u32) {
-        self.core.cached_context_size = Some(size);
+        self.core.ephemeral.cached_context_size = Some(size);
     }
 
     /// Restore the token ledger from persisted data.

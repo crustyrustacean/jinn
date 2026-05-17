@@ -406,17 +406,16 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     title,
                     updated_at,
                     created_at,
-                    history: _history,
+                    history: _history, // persisted via entries + session_entries tables below
                     profile,
                     cwd,
-                    token_ledger: _ledger,
+                    token_ledger: _ledger, // persisted via token_ledger table below
                     parent_session,
-                    cached_context_size: _cached_context_size,
                     strategy_state,
                     blobs,
-                    ephemeral: _ephemeral,
+                    ephemeral: _ephemeral, // runtime-only state, not persisted
                 },
-            ui: _ui,
+            ui: _ui, // runtime-only UI state, not persisted
         } = session;
 
         Ok(Self {
@@ -496,7 +495,6 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 cwd: std::path::PathBuf::from(cwd),
                 token_ledger: ctx.ledger,
                 parent_session: parent_session.map(SessionId::from),
-                cached_context_size: None,
                 strategy_state,
                 blobs,
                 ephemeral: SessionCoreEphemeral::default(),
