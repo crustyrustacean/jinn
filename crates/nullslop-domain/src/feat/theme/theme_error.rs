@@ -3,7 +3,7 @@
 use wherror::Error;
 
 /// Errors that can occur during theme loading and parsing.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum ThemeError {
     /// Theme file not found.
     #[error("theme not found")]

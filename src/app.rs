@@ -225,8 +225,14 @@ fn load_prompt_templates(state: &State, path: &Path) {
 /// Called once after core creation. If the preferred theme cannot be loaded,
 /// falls back to the default theme. Failures are logged but not fatal.
 fn load_theme(state: &State) {
-    let theme_name = state.read().frontend.preferences.theme_name.clone();
-    match nullslop_domain::feat::theme::resolve_theme(theme_name.as_deref()) {
+    let (theme_name, themes_dir) = {
+        let guard = state.read();
+        (
+            guard.frontend.preferences.theme_name.clone(),
+            guard.frontend.themes_dir.clone(),
+        )
+    };
+    match nullslop_domain::feat::theme::resolve_theme(theme_name.as_deref(), &themes_dir) {
         Ok(theme) => {
             tracing::info!(theme = ?theme_name, "loaded theme");
             state.write().frontend.theme = theme;

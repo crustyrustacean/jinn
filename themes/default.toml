@@ -1,0 +1,47 @@
+# Default — the built-in nullslop theme
+# This file is the single source of truth for the default theme colors.
+# Installed to ~/.config/nullslop/themes/default.toml
+
+# Borders & focus
+focus_accent = "yellow"
+border_unfocused = "darkgray"
+
+# Text
+primary_text = [220, 220, 220]
+muted_text = "darkgray"
+error_text = "red"
+
+# Status
+success = "green"
+warning = "yellow"
+streaming = "cyan"
+
+# Chat log backgrounds
+gutter_bg = [25, 27, 30]
+user_block_bg = [52, 53, 65]
+tool_block_fg = [88, 95, 106]
+tool_success_bg = [40, 50, 40]
+tool_failure_bg = [60, 40, 40]
+truncation_fg = [83, 83, 83]
+
+# Picker
+picker_active_marker = "green"
+picker_selected_bg = "darkgray"
+picker_highlight_bg = "darkgray"
+
+# Tab bar
+tab_active_fg = "black"
+tab_active_bg = "yellow"
+tab_inactive_fg = "gray"
+
+# Selection highlight
+selection_fg = "black"
+selection_bg = "white"
+
+# Provider picker
+accent_action = [255, 165, 0]
+age_fresh = "lightgreen"
+age_stale = "red"
+
+# Scroll indicator
+scroll_indicator_bg = "black"

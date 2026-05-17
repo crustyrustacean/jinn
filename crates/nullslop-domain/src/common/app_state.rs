@@ -399,6 +399,11 @@ pub struct FrontendState {
     /// Whether assistant messages are shown in the fork picker.
     /// OWNER: IntentHandler (toggled via ToggleForkAssistantFilter intent).
     pub fork_show_assistant: bool,
+
+    /// Path to the themes directory (`~/.config/nullslop/themes/`).
+    /// Set once during init from `AppPaths`. Used by the theme picker to discover themes.
+    /// OWNER: Init code (set once at startup).
+    pub themes_dir: std::path::PathBuf,
 }
 
 impl Default for FrontendState {
@@ -429,6 +434,7 @@ impl Default for FrontendState {
             all_fork_entries: vec![],
             fork_show_user: true,
             fork_show_assistant: true,
+            themes_dir: std::path::PathBuf::new(),
         }
     }
 }
