@@ -35,7 +35,9 @@ pub mod theme_error;
 
 pub use color::ThemeColor;
 pub use default_theme::default_theme;
-pub use loader::{discover_themes, load_theme, load_theme_from_dir, resolve_theme, resolve_theme_from_dir};
+pub use loader::{
+    discover_themes, load_theme, load_theme_from_dir, resolve_theme, resolve_theme_from_dir,
+};
 pub use theme::Theme;
 pub use theme_entry::ThemeEntry;
 pub use theme_error::ThemeError;

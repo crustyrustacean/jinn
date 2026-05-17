@@ -212,6 +212,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
         .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
         .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
                 Some(Intent::InsertChar { ch: c })

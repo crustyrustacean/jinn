@@ -76,7 +76,10 @@ impl PromptTemplateStore {
     /// # Errors
     ///
     /// Returns an error if either directory cannot be read due to I/O failure.
-    pub fn load_from_dirs(user_dir: &Path, system_dir: &Path) -> Result<Self, Report<PromptTemplateStoreError>> {
+    pub fn load_from_dirs(
+        user_dir: &Path,
+        system_dir: &Path,
+    ) -> Result<Self, Report<PromptTemplateStoreError>> {
         let mut templates = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
 

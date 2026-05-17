@@ -243,6 +243,21 @@ pub fn handle_arg_input_delete(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Handle forward delete in the arg input popup (deletes the grapheme at/after cursor).
+pub fn handle_arg_input_delete_forward(state: &mut AppState) -> IntentResult {
+    use unicode_segmentation::UnicodeSegmentation;
+    let arg = &mut state.frontend.arg_input;
+    if arg.cursor_pos < arg.input.len() {
+        let next_end = arg.input[arg.cursor_pos..]
+            .grapheme_indices(true)
+            .nth(1)
+            .map(|(i, _)| arg.cursor_pos + i)
+            .unwrap_or(arg.input.len());
+        arg.input.drain(arg.cursor_pos..next_end);
+    }
+    IntentResult::empty()
+}
+
 /// Handle cursor left in the arg input popup.
 pub fn handle_arg_input_cursor_left(state: &mut AppState) -> IntentResult {
     use unicode_segmentation::UnicodeSegmentation;
@@ -268,8 +283,9 @@ pub fn handle_arg_input_cursor_right(state: &mut AppState) -> IntentResult {
             .grapheme_indices(true)
             .nth(1)
             .map(|(i, _)| arg.cursor_pos + i);
-        if let Some(next_idx) = next {
-            arg.cursor_pos = next_idx;
+        match next {
+            Some(next_idx) => arg.cursor_pos = next_idx,
+            None => arg.cursor_pos = arg.input.len(),
         }
     }
     IntentResult::empty()
@@ -648,6 +664,79 @@ mod tests {
         let _result = handle_arg_input_cursor_right(&mut state);
 
         assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_cursor_right_reaches_end_of_input() {
+        // Given cursor one grapheme before end.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "ab".to_owned();
+        state.frontend.arg_input.cursor_pos = 1;
+
+        // When moving right.
+        let _result = handle_arg_input_cursor_right(&mut state);
+
+        // Then cursor advances to end (input.len()).
+        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_cursor_right_at_end_stays() {
+        // Given cursor already at end.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 3;
+
+        // When moving right.
+        let _result = handle_arg_input_cursor_right(&mut state);
+
+        // Then cursor stays at end.
+        assert_eq!(state.frontend.arg_input.cursor_pos, 3);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_delete_forward_removes_char_after_cursor() {
+        // Given input "abc" with cursor at position 1 (after 'a').
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 1;
+
+        // When forward deleting.
+        let _result = handle_arg_input_delete_forward(&mut state);
+
+        // Then 'b' is removed, cursor stays at 1.
+        assert_eq!(state.frontend.arg_input.input, "ac");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_delete_forward_at_end_does_nothing() {
+        // Given input "abc" with cursor at end.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 3;
+
+        // When forward deleting.
+        let _result = handle_arg_input_delete_forward(&mut state);
+
+        // Then input is unchanged.
+        assert_eq!(state.frontend.arg_input.input, "abc");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 3);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_delete_forward_at_start_removes_first_char() {
+        // Given input "abc" with cursor at start.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 0;
+
+        // When forward deleting.
+        let _result = handle_arg_input_delete_forward(&mut state);
+
+        // Then 'a' is removed.
+        assert_eq!(state.frontend.arg_input.input, "bc");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 0);
     }
 
     // --- Arg input validation ---
