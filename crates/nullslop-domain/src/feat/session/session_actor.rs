@@ -38,6 +38,7 @@ use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session_lifecycle::command_runner::run_lifecycle_command;
+use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
 use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownCompleted,
@@ -62,6 +63,56 @@ pub struct SessionPersistenceActor {
     pub(super) store: Option<SessionStoreService>,
     /// Token counter for recording token usage in the session ledger.
     pub(super) counter: TiktokenCounter,
+}
+
+/// Remove ANSI escape sequences (CSI SGR codes) from a string.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            // Consume '['.
+            if chars.next() != Some('[') {
+                out.push(ch);
+                continue;
+            }
+            // Consume parameter bytes (digits, semicolons, '?').
+            while let Some(&next) = chars.as_str().as_bytes().first() {
+                if next.is_ascii_digit() || next == b';' || next == b'?' {
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            // Consume the final byte (m, K, H, etc.).
+            chars.next();
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Format a `LifecycleCommandError` into a clean user-facing message.
+fn format_lifecycle_error(err: &LifecycleCommandError) -> String {
+    match err {
+        LifecycleCommandError::CommandFailed {
+            exit_code,
+            stdout,
+            stderr,
+        } => {
+            let mut parts = vec![format!("Command failed (exit code: {:?})", exit_code)];
+            if !stdout.is_empty() {
+                parts.push(format!("stdout:\n{}", strip_ansi(stdout)));
+            }
+            if !stderr.is_empty() {
+                parts.push(format!("stderr:\n{}", strip_ansi(stderr)));
+            }
+            parts.join("\n\n")
+        }
+        LifecycleCommandError::NoOutput => "Command produced no output".to_owned(),
+        LifecycleCommandError::ExecutionFailed => "Failed to execute command".to_owned(),
+    }
 }
 
 impl Actor for SessionPersistenceActor {
@@ -306,7 +357,13 @@ impl SessionPersistenceActor {
                 }
             }
             Err(report) => {
-                let error_msg = format!("{report:#?}");
+                let error_msg = if let Some(cmd_err) =
+                    report.downcast_ref::<LifecycleCommandError>()
+                {
+                    format_lifecycle_error(cmd_err)
+                } else {
+                    strip_ansi(&format!("{report:#?}"))
+                };
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd.clone();
@@ -391,7 +448,13 @@ impl SessionPersistenceActor {
                 }
             }
             Err(report) => {
-                let error_msg = format!("{report:#?}");
+                let error_msg = if let Some(cmd_err) =
+                    report.downcast_ref::<LifecycleCommandError>()
+                {
+                    format_lifecycle_error(cmd_err)
+                } else {
+                    strip_ansi(&format!("{report:#?}"))
+                };
                 {
                     let mut state = self.state.write();
                     if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
@@ -469,5 +532,64 @@ impl SessionPersistenceActor {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_ansi;
+
+    #[rstest::rstest]
+    fn strip_ansi_removes_bold_codes() {
+        // Given text with bold ANSI codes.
+        let input = "\x1b[1mbold text\x1b[22m";
+
+        // When stripping ANSI.
+        let result = strip_ansi(input);
+
+        // Then the ANSI codes are removed.
+        assert_eq!(result, "bold text");
+    }
+
+    #[rstest::rstest]
+    fn strip_ansi_removes_color_codes() {
+        let input = "\x1b[31mred\x1b[0m";
+        let result = strip_ansi(input);
+        assert_eq!(result, "red");
+    }
+
+    #[rstest::rstest]
+    fn strip_ansi_passes_plain_text() {
+        let input = "hello world";
+        let result = strip_ansi(input);
+        assert_eq!(result, "hello world");
+    }
+
+    #[rstest::rstest]
+    fn strip_ansi_handles_chained_codes() {
+        let input = "\x1b[1m\x1b[31mbold red\x1b[0m";
+        let result = strip_ansi(input);
+        assert_eq!(result, "bold red");
+    }
+
+    #[rstest::rstest]
+    fn strip_ansi_handles_complex_csi_sequences() {
+        // 38;5;196 is foreground 256-color (bright red).
+        let input = "\x1b[38;5;196mcolored\x1b[0m";
+        let result = strip_ansi(input);
+        assert_eq!(result, "colored");
+    }
+
+    #[rstest::rstest]
+    fn strip_ansi_handles_empty_string() {
+        let result = strip_ansi("");
+        assert_eq!(result, "");
+    }
+
+    #[rstest::rstest]
+    fn strip_ansi_handles_text_with_no_ansi() {
+        let input = "normal text\nwith newlines";
+        let result = strip_ansi(input);
+        assert_eq!(result, "normal text\nwith newlines");
     }
 }

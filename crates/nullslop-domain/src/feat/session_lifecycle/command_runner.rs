@@ -18,6 +18,8 @@ pub enum LifecycleCommandError {
     CommandFailed {
         /// The process exit code.
         exit_code: Option<i32>,
+        /// Captured stdout output.
+        stdout: String,
         /// Captured stderr output.
         stderr: String,
     },
@@ -56,9 +58,11 @@ pub async fn run_lifecycle_command(
         .attach("failed to spawn lifecycle command")?;
 
     if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         return Err(Report::new(LifecycleCommandError::CommandFailed {
             exit_code: output.status.code(),
+            stdout,
             stderr,
         }));
     }
@@ -145,19 +149,27 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn run_captures_stderr_on_failure() {
-        // Given a command that writes to stderr before failing.
-        let result = run_lifecycle_command("echo 'something went wrong' >&2; exit 1").await;
+    async fn run_captures_stdout_and_stderr_on_failure() {
+        // Given a command that writes to both stdout and stderr before failing.
+        let result = run_lifecycle_command(
+            "echo 'stdout message'; echo 'stderr message' >&2; exit 1",
+        )
+        .await;
 
-        // Then the error contains the stderr output.
+        // Then the error contains both stdout and stderr output.
         assert!(result.is_err());
         let report = result.unwrap_err();
         let err = report
             .downcast_ref::<LifecycleCommandError>()
             .expect("downcast");
         match err {
-            LifecycleCommandError::CommandFailed { stderr, .. } => {
-                assert!(stderr.contains("something went wrong"));
+            LifecycleCommandError::CommandFailed {
+                stdout,
+                stderr,
+                ..
+            } => {
+                assert!(stdout.contains("stdout message"));
+                assert!(stderr.contains("stderr message"));
             }
             other => panic!("expected CommandFailed, got {other:?}"),
         }

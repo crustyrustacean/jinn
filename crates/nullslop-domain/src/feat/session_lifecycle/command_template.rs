@@ -158,27 +158,31 @@ impl CommandTemplate {
 
         // Build a map: for each non-splat param, which arg index it uses.
         // Splat is handled separately.
-        let non_splat_count = self.param_count();
-        assert!(
-            non_splat_count <= args.len(),
-            "expected at least {non_splat_count} args, got {}",
-            args.len()
-        );
 
         // Replace non-splat params in order, assigning args sequentially.
         // Each non-splat param gets the next available arg (args[0], args[1], ...).
-        // Splat is handled after all non-splat params are replaced.
+        // If an arg is missing, substitute empty string instead of panicking.
         let mut arg_idx = 0usize;
         for param in &self.params {
             match param {
                 Param::Named(name) => {
                     let search = format!("<{name}>");
-                    result = result.replace(&search, &args[arg_idx]);
+                    let replacement = if arg_idx < args.len() {
+                        args[arg_idx].clone()
+                    } else {
+                        String::new()
+                    };
+                    result = result.replace(&search, &replacement);
                     arg_idx += 1;
                 }
                 Param::Positional(_n) => {
                     let search = format!("{param}");
-                    result = result.replace(&search, &args[arg_idx]);
+                    let replacement = if arg_idx < args.len() {
+                        args[arg_idx].clone()
+                    } else {
+                        String::new()
+                    };
+                    result = result.replace(&search, &replacement);
                     arg_idx += 1;
                 }
                 Param::Splat => {
@@ -530,5 +534,43 @@ mod tests {
     fn display_trait_delegates_to_display_method() {
         let tmpl = CommandTemplate::parse("script.sh $1 $2");
         assert_eq!(format!("{tmpl}"), tmpl.display());
+    }
+
+    // --- Safe render: missing args ---
+
+    #[rstest::rstest]
+    fn render_missing_named_param_substitutes_empty() {
+        // Given a template with two named params but only one arg.
+        let tmpl = CommandTemplate::parse("script.sh <branch> <target>");
+
+        // When rendering with missing args.
+        let result = tmpl.render(&["my-branch".to_owned()]);
+
+        // Then the missing param is replaced with empty string (no panic).
+        assert_eq!(result, "script.sh my-branch ");
+    }
+
+    #[rstest::rstest]
+    fn render_missing_positional_param_substitutes_empty() {
+        // Given a template with $1 $2 but only one arg.
+        let tmpl = CommandTemplate::parse("script.sh $1 $2");
+
+        // When rendering with missing args.
+        let result = tmpl.render(&["first".to_owned()]);
+
+        // Then the missing param is replaced with empty string (no panic).
+        assert_eq!(result, "script.sh first ");
+    }
+
+    #[rstest::rstest]
+    fn render_empty_args_list_does_not_panic() {
+        // Given a template with params but no args.
+        let tmpl = CommandTemplate::parse("script.sh $1 $2");
+
+        // When rendering with empty args list.
+        let result = tmpl.render(&[]);
+
+        // Then no panic — missing params replaced with empty.
+        assert_eq!(result, "script.sh  ");
     }
 }
