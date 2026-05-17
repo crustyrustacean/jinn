@@ -1010,3 +1010,56 @@ fn ctrl_u_produces_toggle_fork_user_filter() {
         panic!("Expected leaf node for '<c-u>'");
     }
 }
+
+// --- Sidebar scope: c binding for persona edit ---
+
+#[rstest::rstest]
+fn sidebar_c_produces_sidebar_persona_edit() {
+    // Given the keymap.
+    let keymap = init();
+
+    // When looking up 'c' in Sidebar scope.
+    let c_key = KeyEvent {
+        key: Key::Char('c'),
+        modifiers: Modifiers::none(),
+    };
+    let node = keymap.get_node_at_path(&[c_key]);
+
+    // Then it's a leaf with SidebarPersonaEdit for Sidebar scope.
+    assert!(node.is_some());
+    if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
+        let entry = entries.iter().find(|e| e.scope == Scope::Sidebar);
+        assert!(entry.is_some(), "'c' should be bound in Sidebar scope");
+        assert!(
+            matches!(entry.unwrap().action, Intent::SidebarPersonaEdit),
+            "expected SidebarPersonaEdit, got {:?}",
+            entry.unwrap().action
+        );
+    } else {
+        panic!("Expected leaf node for 'c' in Sidebar scope");
+    }
+}
+
+#[rstest::rstest]
+fn sidebar_e_is_not_sidebar_persona_edit() {
+    // Given the keymap.
+    let keymap = init();
+
+    // When looking up 'e' in Sidebar scope.
+    let e_key = KeyEvent {
+        key: Key::Char('e'),
+        modifiers: Modifiers::none(),
+    };
+    let node = keymap.get_node_at_path(&[e_key]);
+
+    // Then 'e' is either not bound in Sidebar scope or bound to something other than SidebarPersonaEdit.
+    if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
+        let sidebar_entry = entries.iter().find(|e| e.scope == Scope::Sidebar);
+        assert!(
+            sidebar_entry.is_none()
+                || !matches!(sidebar_entry.unwrap().action, Intent::SidebarPersonaEdit),
+            "'e' should NOT be bound to SidebarPersonaEdit in Sidebar scope"
+        );
+    }
+    // If node is None or a Branch, 'e' has no Sidebar leaf binding — which is correct.
+}
