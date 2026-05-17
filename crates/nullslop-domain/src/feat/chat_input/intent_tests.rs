@@ -691,8 +691,7 @@ fn paste_text_inserts_into_chat_input() {
     let mut state = AppState::default();
 
     // When handling PasteText with "hello\nworld".
-    let result =
-        crate::feat::chat_input::intent::handle_paste_text("hello\nworld", &mut state);
+    let result = crate::feat::chat_input::intent::handle_paste_text("hello\nworld", &mut state);
 
     // Then the buffer contains the pasted text with newlines preserved.
     assert_eq!(state.active_chat_input().text(), "hello\nworld");

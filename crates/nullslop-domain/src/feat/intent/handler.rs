@@ -164,7 +164,7 @@ impl IntentHandler {
                     feat::picker::intent::handle_picker_paste(state, text)
                 }
                 _ => IntentResult::empty(),
-            }
+            },
 
             // --- Navigation ---
             Intent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
@@ -348,8 +348,12 @@ mod tests {
         let mut state = AppState::default();
 
         // When handling PasteText.
-        let result =
-            IntentHandler::handle(&Intent::PasteText { text: "hello".into() }, &mut state);
+        let result = IntentHandler::handle(
+            &Intent::PasteText {
+                text: "hello".into(),
+            },
+            &mut state,
+        );
 
         // Then the buffer is empty and no commands are emitted.
         assert!(state.active_chat_input().is_empty());
@@ -360,9 +364,10 @@ mod tests {
     fn paste_text_inserts_in_input_scope() {
         // Given an AppState in Input scope.
         let mut state = AppState::default();
-        state.frontend.scope_stack.push(
-            crate::common::app_state::FocusScope::Input,
-        );
+        state
+            .frontend
+            .scope_stack
+            .push(crate::common::app_state::FocusScope::Input);
 
         // When handling PasteText.
         let result = IntentHandler::handle(

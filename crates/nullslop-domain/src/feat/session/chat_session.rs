@@ -299,6 +299,17 @@ impl ChatSessionState {
         &self.core.history
     }
 
+    /// Whether this session has no history entries.
+    ///
+    /// A session is "empty" when it has never had any entries pushed —
+    /// no user messages, no system messages, nothing.
+    /// Not to be confused with [`Self::is_idle`] which checks
+    /// streaming/sending/assembling state.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.core.history.is_empty()
+    }
+
     /// Append an entry to the history and return its index.
     ///
     /// Implements smart auto-scroll: only resets scroll and advances cursor
