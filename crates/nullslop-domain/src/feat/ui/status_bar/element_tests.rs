@@ -15,14 +15,14 @@ fn name_returns_status_bar() {
 fn render_shows_no_model_selected_when_unset() {
     let mut element = StatusBarElement;
     let state = AppState::default();
-    let (mut terminal, area) = setup_term(50, 1);
+    let (mut terminal, area) = setup_term(50, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 50);
+    let row = buffer_row(&buffer, 1, 50);
     assert!(row.starts_with("(Passthrough)"));
     assert!(row.contains("no model selected"));
 }
@@ -34,14 +34,14 @@ fn render_shows_provider_and_model() {
     state
         .active_session_mut()
         .set_model("ollama/llama3".to_owned());
-    let (mut terminal, area) = setup_term(50, 1);
+    let (mut terminal, area) = setup_term(50, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 50);
+    let row = buffer_row(&buffer, 1, 50);
     assert!(row.starts_with("(Passthrough)"));
     assert!(row.contains("(ollama)/llama3"));
 }
@@ -53,16 +53,17 @@ fn render_right_aligns_text() {
     state
         .active_session_mut()
         .set_model("ollama/llama3".to_owned());
-    let (mut terminal, area) = setup_term(50, 1);
+    let (mut terminal, area) = setup_term(50, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let first = buffer.cell((0, 0)).expect("first cell");
+    // Row 1 is the info line.
+    let first = buffer.cell((0, 1)).expect("first cell");
     assert_eq!(first.symbol(), "(");
-    let last = buffer.cell((49, 0)).expect("last cell");
+    let last = buffer.cell((49, 1)).expect("last cell");
     assert_eq!(last.symbol(), "3");
 }
 
@@ -73,17 +74,18 @@ fn render_uses_gray_color() {
     state
         .active_session_mut()
         .set_model("ollama/llama3".to_owned());
-    let (mut terminal, area) = setup_term(40, 1);
+    let (mut terminal, area) = setup_term(40, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
+    // Find a non-space cell on the info line (row 1).
     let text_cell = (0..40)
-        .filter_map(|x| buffer.cell((x, 0)))
+        .filter_map(|x| buffer.cell((x, 1)))
         .find(|c| c.symbol() != " ")
-        .expect("should have text cell");
+        .expect("should have text cell on info line");
     assert_eq!(text_cell.fg, Color::DarkGray);
 }
 
@@ -94,14 +96,14 @@ fn render_shows_provider_with_slash_in_model() {
     state
         .active_session_mut()
         .set_model("openrouter/anthropic/claude-sonnet-4".to_owned());
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     assert!(row.starts_with("(Passthrough)"));
     assert!(row.contains("(openrouter)/anthropic/claude-sonnet-4"));
 }
@@ -116,14 +118,14 @@ fn render_shows_non_default_strategy() {
     state
         .active_session_mut()
         .switch_strategy(crate::protocol::PromptStrategyId::sliding_window());
-    let (mut terminal, area) = setup_term(50, 1);
+    let (mut terminal, area) = setup_term(50, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 50);
+    let row = buffer_row(&buffer, 1, 50);
     assert!(row.starts_with("(Sliding Window)"));
     assert!(row.contains("(ollama)/llama3"));
 }
@@ -142,14 +144,14 @@ fn render_shows_pinned_count_when_entries_pinned() {
     state
         .active_session_mut()
         .pin_entry(&entry_id, crate::protocol::PinPosition::Relative);
-    let (mut terminal, area) = setup_term(60, 1);
+    let (mut terminal, area) = setup_term(60, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 60);
+    let row = buffer_row(&buffer, 1, 60);
     assert!(row.contains("\u{1f4cc}"));
     assert!(row.contains('1'));
 }
@@ -161,14 +163,14 @@ fn render_hides_pinned_count_when_no_entries_pinned() {
     state
         .active_session_mut()
         .set_model("ollama/llama3".to_owned());
-    let (mut terminal, area) = setup_term(60, 1);
+    let (mut terminal, area) = setup_term(60, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 60);
+    let row = buffer_row(&buffer, 1, 60);
     assert!(row.starts_with("(Passthrough) "));
     assert!(!row.contains("\u{1f4cc}"));
 }
@@ -184,14 +186,14 @@ fn render_shows_notification_when_active() {
     state
         .frontend
         .set_status_notification("Copied to clipboard");
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     // Then the notification text appears in the right portion.
     assert!(row.contains("Copied to clipboard"));
     // And the model is still shown.
@@ -207,7 +209,7 @@ fn render_notification_uses_green_color() {
         .active_session_mut()
         .set_model("ollama/llama3".to_owned());
     state.frontend.set_status_notification("Copied!");
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
@@ -216,9 +218,9 @@ fn render_notification_uses_green_color() {
     let buffer = terminal.backend().buffer().clone();
 
     // Find a cell in the notification text ("Copied!") that has green fg.
-    // The notification is right-aligned, so scan right side for 'C'.
+    // The notification is on row 1, right-aligned.
     let green_cell = (0..80)
-        .filter_map(|x| buffer.cell((x, 0)))
+        .filter_map(|x| buffer.cell((x, 1)))
         .find(|c| c.symbol() == "C" && c.fg == Color::Green);
     assert!(green_cell.is_some(), "notification text should be green");
 }
@@ -231,14 +233,14 @@ fn render_no_notification_shows_model_only() {
     state
         .active_session_mut()
         .set_model("ollama/llama3".to_owned());
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     // Then only the model is shown on the right.
     assert!(row.contains("(ollama)/llama3"));
     assert!(!row.contains("Copied"));
@@ -258,14 +260,14 @@ fn render_expired_notification_not_shown() {
             .checked_sub(std::time::Duration::from_secs(5))
             .unwrap(),
     });
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     // Then the notification is not shown.
     assert!(!row.contains("old msg"));
     // And the model is still shown normally.
@@ -279,14 +281,14 @@ fn render_shows_token_counts_with_zero_values() {
     // Given a state with no token records.
     let mut element = StatusBarElement;
     let state = AppState::default();
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows zero token counts.
     assert!(row.contains("\u{2191}0 \u{2193}0"));
 }
@@ -305,14 +307,14 @@ fn render_shows_token_counts_with_values() {
         tokens_sent: 1500,
         tokens_received: 750,
     });
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows token counts.
     assert!(row.contains("1.5k"));
     assert!(row.contains("750"));
@@ -333,14 +335,14 @@ fn render_shows_context_size_when_cached() {
         tokens_received: 0,
     });
     state.active_session_mut().set_context_size(5000);
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows ctx:5.0k.
     assert!(row.contains("ctx:5.0k"));
 }
@@ -350,14 +352,14 @@ fn render_hides_context_size_when_not_cached() {
     // Given a session with no cached context size.
     let mut element = StatusBarElement;
     let state = AppState::default();
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     // Then ctx: is not shown.
     assert!(!row.contains("ctx:"));
     // But token counts are still shown.
@@ -374,14 +376,14 @@ fn render_shows_zero_turns_when_no_history() {
     state
         .active_session_mut()
         .set_model("ollama/llama3".to_owned());
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows "Turns: 0".
     assert!(row.contains("Turns: 0"));
 }
@@ -406,14 +408,14 @@ fn render_shows_turn_count_with_history() {
     state
         .active_session_mut()
         .push_entry(crate::protocol::ChatEntry::assistant("doing well"));
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows "Turns: 4".
     assert!(row.contains("Turns: 4"));
 }
@@ -442,14 +444,111 @@ fn render_turn_count_skips_tool_loop_intermediates() {
     state
         .active_session_mut()
         .push_entry(crate::protocol::ChatEntry::assistant("fixed it"));
-    let (mut terminal, area) = setup_term(80, 1);
+    let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 0, 80);
+    let row = buffer_row(&buffer, 1, 80);
     // Then only the user and final assistant count as turns.
     assert!(row.contains("Turns: 2"));
+}
+
+// --- CWD display tests ---
+
+#[rstest::rstest]
+fn render_shows_cwd_on_first_line() {
+    // Given default state (cwd is "." which resolves to the current dir).
+    let mut element = StatusBarElement;
+    let state = AppState::default();
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    // The first row should have content (cwd).
+    let row0 = buffer_row(&buffer, 0, 80);
+    assert!(!row0.trim().is_empty(), "cwd line should not be empty");
+}
+
+#[rstest::rstest]
+fn render_shows_absolute_path_for_non_home_cwd() {
+    // Given a session with a non-home CWD.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state
+        .active_session_mut()
+        .set_cwd(std::path::PathBuf::from("/tmp/test-project"));
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    // The cwd line (row 0) should show the full absolute path.
+    let row0 = buffer_row(&buffer, 0, 80);
+    assert!(
+        row0.contains("/tmp/test-project"),
+        "expected /tmp/test-project in cwd line, got: {row0}"
+    );
+}
+
+#[rstest::rstest]
+fn render_shows_tilde_for_home_cwd() {
+    // Given a session whose CWD is the user's home directory.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    let home = dirs::home_dir().expect("home dir exists");
+    state.active_session_mut().set_cwd(home);
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    // The cwd line should show just "~" (home dir).
+    let row0 = buffer_row(&buffer, 0, 80);
+    assert!(
+        row0.trim_start().starts_with('~'),
+        "expected ~ in cwd line, got: {row0}"
+    );
+}
+
+#[rstest::rstest]
+fn render_shows_tilde_substitution_for_path_under_home() {
+    // Given a session whose CWD is under the user's home directory.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    let home = dirs::home_dir().expect("home dir exists");
+    state
+        .active_session_mut()
+        .set_cwd(home.join("projects/my-app"));
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    // The cwd line should show "~/projects/my-app".
+    let row0 = buffer_row(&buffer, 0, 80);
+    assert!(
+        row0.trim_start().starts_with("~/projects/my-app"),
+        "expected ~/projects/my-app in cwd line, got: {row0}"
+    );
 }

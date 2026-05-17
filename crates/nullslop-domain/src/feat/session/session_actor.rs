@@ -37,9 +37,9 @@ use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, S
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 use crate::feat::session_lifecycle::command_runner::run_setup_command;
 use crate::feat::session_lifecycle::command_runner::run_teardown_command;
-use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
 use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownCompleted,
@@ -358,13 +358,12 @@ impl SessionPersistenceActor {
                 }
             }
             Err(report) => {
-                let error_msg = if let Some(cmd_err) =
-                    report.downcast_ref::<LifecycleCommandError>()
-                {
-                    format_lifecycle_error(cmd_err)
-                } else {
-                    strip_ansi(&format!("{report:#?}"))
-                };
+                let error_msg =
+                    if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
+                        format_lifecycle_error(cmd_err)
+                    } else {
+                        strip_ansi(&format!("{report:#?}"))
+                    };
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd.clone();
@@ -449,13 +448,12 @@ impl SessionPersistenceActor {
                 }
             }
             Err(report) => {
-                let error_msg = if let Some(cmd_err) =
-                    report.downcast_ref::<LifecycleCommandError>()
-                {
-                    format_lifecycle_error(cmd_err)
-                } else {
-                    strip_ansi(&format!("{report:#?}"))
-                };
+                let error_msg =
+                    if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
+                        format_lifecycle_error(cmd_err)
+                    } else {
+                        strip_ansi(&format!("{report:#?}"))
+                    };
                 {
                     let mut state = self.state.write();
                     if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {

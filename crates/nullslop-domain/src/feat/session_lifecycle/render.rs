@@ -157,8 +157,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         let grapheme_count = arg_state.input[..arg_state.cursor_pos]
             .graphemes(true)
             .count();
-        let cursor_x =
-            (prefix_len + grapheme_count as u16).min(inner.width.saturating_sub(1));
+        let cursor_x = (prefix_len + grapheme_count as u16).min(inner.width.saturating_sub(1));
         frame.set_cursor_position((inner.x.saturating_add(cursor_x), y_offset));
     }
 }
@@ -407,8 +406,12 @@ mod tests {
     #[rstest::rstest]
     fn arg_input_popup_shows_named_params() {
         // Given a state with <branch> <target> named params and typed input.
-        let state =
-            make_state_with_args("test", Some("script.sh <branch> <target>"), "my-feature workdir", 0);
+        let state = make_state_with_args(
+            "test",
+            Some("script.sh <branch> <target>"),
+            "my-feature workdir",
+            0,
+        );
         let (mut terminal, area) = setup_term(80, 24);
 
         // When rendering.

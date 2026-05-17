@@ -71,9 +71,7 @@ async fn run_command(
 /// Returns [`LifecycleCommandError::CommandFailed`] if the process exits non-zero.
 /// Returns [`LifecycleCommandError::NoOutput`] if stdout is empty.
 /// Returns [`LifecycleCommandError::ExecutionFailed`] if the process cannot be spawned.
-pub async fn run_setup_command(
-    command: &str,
-) -> Result<PathBuf, Report<LifecycleCommandError>> {
+pub async fn run_setup_command(command: &str) -> Result<PathBuf, Report<LifecycleCommandError>> {
     let (_output, stdout, _stderr) = run_command(command).await?;
 
     let last_line = stdout
@@ -128,8 +126,7 @@ mod tests {
         let path = dir.path().to_string_lossy().to_string();
 
         // When running the setup command with leading output.
-        let result =
-            run_setup_command(&format!("echo 'setting up...'; echo '{path}'")).await;
+        let result = run_setup_command(&format!("echo 'setting up...'; echo '{path}'")).await;
 
         // Then the result is the last non-empty line.
         assert!(result.is_ok());
@@ -175,10 +172,8 @@ mod tests {
     #[tokio::test]
     async fn setup_captures_stdout_and_stderr_on_failure() {
         // Given a command that writes to both stdout and stderr before failing.
-        let result = run_setup_command(
-            "echo 'stdout message'; echo 'stderr message' >&2; exit 1",
-        )
-        .await;
+        let result =
+            run_setup_command("echo 'stdout message'; echo 'stderr message' >&2; exit 1").await;
 
         // Then the error contains both stdout and stderr output.
         assert!(result.is_err());
@@ -187,11 +182,7 @@ mod tests {
             .downcast_ref::<LifecycleCommandError>()
             .expect("downcast");
         match err {
-            LifecycleCommandError::CommandFailed {
-                stdout,
-                stderr,
-                ..
-            } => {
+            LifecycleCommandError::CommandFailed { stdout, stderr, .. } => {
                 assert!(stdout.contains("stdout message"));
                 assert!(stderr.contains("stderr message"));
             }

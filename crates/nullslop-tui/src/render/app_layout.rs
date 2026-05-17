@@ -84,7 +84,7 @@ impl AppLayout {
         let [content, input, status_bar] = Layout::vertical([
             Constraint::Min(1),
             Constraint::Length(input_height),
-            Constraint::Length(1),
+            Constraint::Length(2),
         ])
         .areas(main);
 
@@ -136,7 +136,7 @@ mod tests {
         let layout = AppLayout::new(area, 1, area.height / 2);
 
         // Then the status bar has height 1 and is at the bottom.
-        assert_eq!(layout.status_bar.height, 1);
+        assert_eq!(layout.status_bar.height, 2);
         assert!(layout.status_bar.y > layout.input.y);
         assert_eq!(layout.status_bar.y + layout.status_bar.height, area.height);
     }
