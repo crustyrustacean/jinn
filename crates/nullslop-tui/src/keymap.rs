@@ -126,7 +126,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("b", Intent::PinsPinBottom, KeyCategory::Context)
             .bind("r", Intent::PinsPinRelative, KeyCategory::Context)
             .bind("m", Intent::PinsPinCycle, KeyCategory::Context)
-            .bind("e", Intent::SidebarPersonaEdit, KeyCategory::Context)
+            .bind("c", Intent::SidebarPersonaEdit, KeyCategory::Context)
             .bind("x", Intent::SidebarSessionClose, KeyCategory::General)
             .bind("<enter>", Intent::SidebarConfirm, KeyCategory::General)
             .bind("n", Intent::SessionNew, KeyCategory::General)
