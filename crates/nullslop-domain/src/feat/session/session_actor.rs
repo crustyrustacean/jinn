@@ -507,9 +507,12 @@ impl SessionPersistenceActor {
                                 crate::protocol::PromptStrategyId::passthrough,
                                 crate::protocol::PromptStrategyId::new,
                             );
+                        let token_budget = state.frontend.preferences.context_token_budget.budget;
                         let new_session = ChatSessionState::new_with_profile(
                             crate::feat::session::profile::SessionProfile::from_config(
-                                model, strategy,
+                                model,
+                                strategy,
+                                token_budget,
                             ),
                         );
                         let new_id = new_session.session_id().clone();

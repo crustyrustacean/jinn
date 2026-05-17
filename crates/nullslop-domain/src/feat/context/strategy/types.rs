@@ -86,6 +86,7 @@ pub trait StrategyFactory: Send + Sync {
     fn create(
         &self,
         id: &PromptStrategyId,
+        token_budget: usize,
     ) -> Result<Box<dyn PromptAssembly>, Report<PromptAssemblyError>>;
 
     /// The name of this factory, for debugging.

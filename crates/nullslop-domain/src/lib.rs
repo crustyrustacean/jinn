@@ -78,6 +78,7 @@ pub use feat::session::no_api_keys_msg;
 pub use feat::session::welcome_msg;
 
 // Re-export preferences types
+pub use feat::preferences_actor::ContextTokenBudgetConfig;
 pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
 pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
 pub use feat::preferences_actor::UserPreferences;
