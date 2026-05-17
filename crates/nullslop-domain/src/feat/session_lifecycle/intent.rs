@@ -927,7 +927,7 @@ mod tests {
                 command,
                 args,
                 ..
-            }) if command == "script.sh my branch target"
+            }) if command == "script.sh 'my branch' target"
                 && args == &["my branch".to_owned(), "target".to_owned()]
         ));
     }
