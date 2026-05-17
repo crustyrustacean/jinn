@@ -110,6 +110,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
         }
     }
 
@@ -218,6 +219,7 @@ mod tests {
             state: Some(state.clone()),
             session_id: Some(session_id.clone()),
             app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
         };
 
         // When executing.
@@ -257,6 +259,7 @@ mod tests {
             state: Some(state),
             session_id: Some(session_id),
             app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
         };
 
         // When executing.

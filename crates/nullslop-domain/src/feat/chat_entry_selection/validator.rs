@@ -6,6 +6,9 @@
 use crate::common::app_state::AppState;
 use wherror::Error;
 
+#[cfg(test)]
+use crate::feat::session::tool_result_status::ToolResultStatus;
+
 // --- Infallible validators ---
 
 /// Validates the ChatEntrySelectNext intent.
@@ -135,7 +138,7 @@ mod tests {
         let mut state = AppState::default();
         state
             .active_session_mut()
-            .push_entry(ChatEntry::tool_result("id", "bash", "output", true));
+            .push_entry(ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Success));
         state.active_session_mut().select_next_entry();
 
         // When validating expand tool entry.
