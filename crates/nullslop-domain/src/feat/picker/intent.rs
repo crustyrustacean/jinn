@@ -320,8 +320,14 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
         state.context.active_persona = Some(p);
     }
 
+    // Also update the active session's persona binding.
+    state.active_session_mut().set_persona_name(persona_name.clone());
+
     state.frontend.scope_stack.pop();
-    IntentResult::empty()
+
+    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
+        updates: vec![PreferenceUpdate::SetPersona(Some(persona_name))],
+    })])
 }
 
 /// Confirms the selected theme and persists it to preferences.

@@ -238,6 +238,7 @@ mod tests {
             last_strategy: None,
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
 
         // When saving and reloading.
@@ -277,6 +278,7 @@ mod tests {
             last_strategy: None,
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
 
         // When saving and reloading.
@@ -299,6 +301,7 @@ mod tests {
             last_strategy: None,
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
         service.save(&prefs).expect("save");
 
@@ -321,6 +324,7 @@ mod tests {
             last_strategy: None,
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
         service.save(&prefs).expect("save");
 
@@ -330,6 +334,7 @@ mod tests {
             last_strategy: None,
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
         service.save(&updated).expect("save updated");
 
@@ -348,6 +353,7 @@ mod tests {
             last_strategy: None,
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
         service.save(&prefs).expect("save");
 
