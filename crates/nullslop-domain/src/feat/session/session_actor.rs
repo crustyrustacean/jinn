@@ -34,13 +34,19 @@ use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
+use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::feat::session_lifecycle::command_runner::run_lifecycle_command;
+use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
+use crate::feat::session_lifecycle::protocol::event::{
+    SessionSetupCompleted, SessionTeardownCompleted,
+};
 use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
 };
 use crate::init::EnvironmentLoaded;
-use crate::protocol::{Command, Event, PromptStrategyId};
+use crate::protocol::{ChatEntry, Command, Event, PromptStrategyId};
 
 /// Session lifecycle and persistence actor.
 ///
@@ -73,6 +79,10 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<PushChatEntry>();
         ctx.subscribe_command::<SendMessage>();
         ctx.subscribe_command::<SessionLoadCompleted>();
+
+        // Lifecycle command subscriptions.
+        ctx.subscribe_command::<RunSessionSetup>();
+        ctx.subscribe_command::<RunSessionTeardown>();
 
         // Event subscriptions.
         ctx.subscribe_event::<PromptAssembled>();
@@ -112,6 +122,10 @@ impl Actor for SessionPersistenceActor {
             ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx).await,
             _ => {}
         }
+    }
+
+    async fn on_shutdown(&mut self, _ctx: &ActorContext) {
+        self.run_pending_teardowns().await;
     }
 }
 
@@ -159,6 +173,12 @@ impl SessionPersistenceActor {
             Command::SendMessage(payload) => Self::handle_send_message(payload, ctx),
             Command::SessionLoadCompleted(payload) => {
                 self.handle_session_load_completed(payload, ctx).await;
+            }
+            Command::RunSessionSetup(payload) => {
+                self.handle_run_session_setup(payload, ctx).await;
+            }
+            Command::RunSessionTeardown(payload) => {
+                self.handle_run_session_teardown(payload, ctx).await;
             }
             // Commands NOT subscribed to — these should not arrive.
             Command::AssemblePrompt(..)
@@ -256,8 +276,197 @@ impl SessionPersistenceActor {
             if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
                 session_id,
                 strategy_id,
-            })) {
-                tracing::warn!(err = ?e, "session-actor failed to emit SwitchPromptStrategy on startup");
+            })) {}
+        }
+    }
+
+    /// RunSessionSetup: execute the lifecycle setup command asynchronously.
+    ///
+    /// On success, sets the session's CWD to the command's output.
+    /// On failure, sets the default CWD and pushes an error entry.
+    async fn handle_run_session_setup(&self, payload: &RunSessionSetup, ctx: &ActorContext) {
+        let result = run_lifecycle_command(&payload.command).await;
+
+        match result {
+            Ok(cwd) => {
+                let mut state = self.state.write();
+                if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+                    session.set_cwd(cwd.clone());
+                }
+                drop(state);
+
+                if let Err(e) =
+                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+                        session_id: payload.session_id.clone(),
+                        cwd,
+                        error: None,
+                    }))
+                {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
+                }
+            }
+            Err(report) => {
+                let error_msg = format!("{report:#?}");
+                let default_cwd = {
+                    let mut state = self.state.write();
+                    let default = state.session.default_cwd.clone();
+                    if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+                        session.set_cwd(default.clone());
+                        session.push_entry(ChatEntry::error(&error_msg));
+                    }
+                    default
+                };
+
+                if let Err(e) =
+                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+                        session_id: payload.session_id.clone(),
+                        cwd: default_cwd,
+                        error: Some(error_msg),
+                    }))
+                {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
+                }
+            }
+        }
+    }
+
+    /// RunSessionTeardown: execute the lifecycle teardown command asynchronously.
+    ///
+    /// On success, removes the session from the map and switches to another.
+    /// On failure, pushes an error entry and keeps the session open.
+    async fn handle_run_session_teardown(&self, payload: &RunSessionTeardown, ctx: &ActorContext) {
+        let result = run_lifecycle_command(&payload.command).await;
+
+        match result {
+            Ok(_cwd) => {
+                // Teardown succeeded — remove session and switch active.
+                {
+                    let mut state = self.state.write();
+                    state.session.sessions.remove(&payload.session_id);
+                    if state.session.sessions.is_empty() {
+                        let model = state
+                            .frontend
+                            .preferences
+                            .last_model
+                            .clone()
+                            .unwrap_or_else(|| {
+                                crate::feat::provider_infra::NO_PROVIDER_ID.to_owned()
+                            });
+                        let strategy = state
+                            .frontend
+                            .preferences
+                            .last_strategy
+                            .as_deref()
+                            .map_or_else(
+                                crate::protocol::PromptStrategyId::passthrough,
+                                crate::protocol::PromptStrategyId::new,
+                            );
+                        let new_session = ChatSessionState::new_with_profile(
+                            crate::feat::session::profile::SessionProfile::from_config(
+                                model, strategy,
+                            ),
+                        );
+                        let new_id = new_session.session_id().clone();
+                        state.session.sessions.insert(new_id.clone(), new_session);
+                        state.session.active_session = new_id;
+                    } else if state.session.active_session == payload.session_id {
+                        let next_id = state
+                            .session
+                            .sessions
+                            .keys()
+                            .next()
+                            .expect("sessions is non-empty")
+                            .clone();
+                        state.session.active_session = next_id;
+                    }
+                }
+
+                if let Err(e) =
+                    ctx.send_event(Event::SessionTeardownCompleted(SessionTeardownCompleted {
+                        session_id: payload.session_id.clone(),
+                        error: None,
+                    }))
+                {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
+                }
+            }
+            Err(report) => {
+                let error_msg = format!("{report:#?}");
+                {
+                    let mut state = self.state.write();
+                    if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+                        session.push_entry(ChatEntry::error(&error_msg));
+                    }
+                }
+
+                if let Err(e) =
+                    ctx.send_event(Event::SessionTeardownCompleted(SessionTeardownCompleted {
+                        session_id: payload.session_id.clone(),
+                        error: Some(error_msg),
+                    }))
+                {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
+                }
+            }
+        }
+    }
+
+    /// Runs teardown commands for all open sessions that have a lifecycle with teardown.
+    ///
+    /// Called during coordinated shutdown. Runs commands sequentially —
+    /// teardown order matters (each must complete before the next starts).
+    async fn run_pending_teardowns(&self) {
+        use crate::feat::session_lifecycle::command_template::CommandTemplate;
+
+        let teardown_jobs: Vec<(crate::protocol::SessionId, String, String)> = {
+            let state = self.state.read();
+            let mut jobs = Vec::new();
+            for (id, session) in &state.session.sessions {
+                let Some(lifecycle_name) = session.lifecycle_name() else {
+                    continue;
+                };
+                let teardown_cmd = state
+                    .frontend
+                    .preferences
+                    .session_lifecycles
+                    .iter()
+                    .find(|l| l.name == lifecycle_name)
+                    .and_then(|l| l.teardown_command.clone());
+                let Some(teardown_cmd) = teardown_cmd else {
+                    continue;
+                };
+                let args = session.lifecycle_args().to_vec();
+                let template = CommandTemplate::parse(&teardown_cmd);
+                let rendered = if args.is_empty() {
+                    teardown_cmd
+                } else {
+                    template.render(&args)
+                };
+                jobs.push((id.clone(), lifecycle_name.to_owned(), rendered));
+            }
+            jobs
+        };
+
+        for (session_id, lifecycle_name, command) in teardown_jobs {
+            tracing::info!(
+                session_id = %session_id,
+                lifecycle = %lifecycle_name,
+                "running teardown during shutdown"
+            );
+            match run_lifecycle_command(&command).await {
+                Ok(_cwd) => {
+                    tracing::info!(
+                        session_id = %session_id,
+                        "teardown completed during shutdown"
+                    );
+                }
+                Err(report) => {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        err = ?report,
+                        "teardown failed during shutdown"
+                    );
+                }
             }
         }
     }

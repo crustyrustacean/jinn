@@ -63,6 +63,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             state.frontend.fork_show_user = true;
             state.frontend.fork_show_assistant = true;
         }
+        PickerKind::SessionLifecycle => {
+            state.frontend.session_lifecycle_picker.reset();
+        }
     }
 
     match kind {
@@ -92,6 +95,11 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             let entries = build_fork_entries(state);
             state.frontend.all_fork_entries.clone_from(&entries);
             state.frontend.fork_picker.set_items(entries);
+            IntentResult::empty()
+        }
+        PickerKind::SessionLifecycle => {
+            // Populate from user preferences + implicit blank lifecycle.
+            load_lifecycle_picker_entries(state);
             IntentResult::empty()
         }
     }
@@ -170,6 +178,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Persona) => (confirm_persona(state), None),
         Some(PickerKind::Theme) => (confirm_theme(state), None),
         Some(PickerKind::SessionFork) => (confirm_session_fork(state), None),
+        Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         None => (IntentResult::empty(), None),
     }
 }
@@ -434,4 +443,90 @@ fn apply_fork_filters(state: &mut AppState) {
         .cloned()
         .collect();
     state.frontend.fork_picker.set_items(filtered);
+}
+
+/// Populates the lifecycle picker entries from user preferences.
+///
+/// Always includes the implicit blank lifecycle (no commands, uses default CWD)
+/// as the first entry, followed by all lifecycles defined in `nullslop.toml`.
+fn load_lifecycle_picker_entries(state: &mut AppState) {
+    use crate::feat::session_lifecycle::command_template::CommandTemplate;
+    use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
+
+    let mut entries = Vec::new();
+
+    let theme = state.frontend.theme.clone();
+
+    // Always include the implicit blank lifecycle.
+    entries.push(SessionLifecycleEntry {
+        name: "blank".to_owned(),
+        description: Some("New empty session".to_owned()),
+        has_args: false,
+        theme: theme.clone(),
+    });
+
+    // Add lifecycles from preferences.
+    for lifecycle in &state.frontend.preferences.session_lifecycles {
+        let has_args = lifecycle
+            .setup_command
+            .as_ref()
+            .map_or(false, |cmd| CommandTemplate::parse(cmd).has_params());
+        entries.push(SessionLifecycleEntry {
+            name: lifecycle.name.clone(),
+            description: lifecycle.description.clone(),
+            has_args,
+            theme: theme.clone(),
+        });
+    }
+
+    state.frontend.session_lifecycle_picker.set_items(entries);
+}
+
+/// Confirms the selected session lifecycle.
+///
+/// If the lifecycle has args, the arg input popup would open (Phase 6).
+/// For now, directly triggers setup with empty args (lifecycles without args)
+/// or with empty args as a placeholder.
+fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.session_lifecycle_picker.selected_item() else {
+        return IntentResult::empty();
+    };
+
+    let lifecycle_name = entry.name.clone();
+    state.frontend.scope_stack.pop();
+
+    if entry.has_args {
+        // Save context and open the arg input popup.
+        let template_display = state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .iter()
+            .find(|l| l.name == lifecycle_name)
+            .and_then(|l| l.setup_command.as_ref())
+            .map(|cmd| {
+                crate::feat::session_lifecycle::command_template::CommandTemplate::parse(cmd)
+                    .display()
+            })
+            .unwrap_or_default();
+
+        state.frontend.arg_input = crate::common::app_state::ArgInputState {
+            lifecycle_name,
+            template_display,
+            input: String::new(),
+            cursor_pos: 0,
+        };
+        state
+            .frontend
+            .scope_stack
+            .push(crate::common::app_state::FocusScope::ArgInput);
+        return IntentResult::empty();
+    }
+
+    // No args — proceed directly.
+    crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
+        state,
+        &lifecycle_name,
+        &[],
+    )
 }

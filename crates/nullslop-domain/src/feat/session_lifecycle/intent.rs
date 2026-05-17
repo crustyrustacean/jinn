@@ -1,0 +1,595 @@
+//! Session lifecycle intent handlers — setup, close, and arg input confirmation.
+//!
+//! These handlers bridge the Intent-driven architecture with the session lifecycle
+//! system. The IntentHandler calls these functions directly; they mutate `AppState`
+//! and return `IntentResult` with commands for the actor system.
+
+use crate::common::app_state::AppState;
+use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+use crate::feat::provider_infra::NO_PROVIDER_ID;
+use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::profile::SessionProfile;
+use crate::feat::session_lifecycle::command_template::CommandTemplate;
+use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
+use crate::protocol::{Command, IntentResult, PromptStrategyId, SessionId};
+
+/// Handle `Intent::SessionLifecycleSetup`.
+///
+/// Creates a new session from the named lifecycle. If the lifecycle has a
+/// `setup_command`, emits `Command::RunSessionSetup` for async execution.
+/// If no setup command (blank or blank-like lifecycle), creates the session
+/// with the default CWD immediately.
+pub fn handle_session_lifecycle_setup(
+    state: &mut AppState,
+    lifecycle_name: &str,
+    args: &[String],
+) -> IntentResult {
+    // Extract setup command before mutating state (borrow checker).
+    let setup_command = find_lifecycle(state, lifecycle_name).and_then(|l| l.setup_command.clone());
+
+    let model = state
+        .frontend
+        .preferences
+        .last_model
+        .clone()
+        .unwrap_or_else(|| NO_PROVIDER_ID.to_owned());
+    let strategy = state
+        .frontend
+        .preferences
+        .last_strategy
+        .as_deref()
+        .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
+
+    let mut new_session =
+        ChatSessionState::new_with_profile(SessionProfile::from_config(model, strategy));
+    let new_id = new_session.session_id().clone();
+
+    // Set lifecycle metadata on the session core.
+    new_session.set_lifecycle_name(if lifecycle_name.is_empty() {
+        None
+    } else {
+        Some(lifecycle_name.to_owned())
+    });
+    new_session.set_lifecycle_args(args.to_vec());
+
+    state.session.sessions.insert(new_id.clone(), new_session);
+    state.session.active_session = new_id.clone();
+    state.frontend.scope_stack.clear_overlays();
+    state
+        .frontend
+        .scope_stack
+        .push(crate::common::app_state::FocusScope::Input);
+
+    // If the lifecycle has a setup_command, emit it for async execution.
+    if let Some(ref setup_cmd) = setup_command {
+        let template = CommandTemplate::parse(setup_cmd);
+        let rendered = if args.is_empty() {
+            setup_cmd.to_owned()
+        } else {
+            template.render(args)
+        };
+
+        return IntentResult::with_commands(vec![Command::RunSessionSetup(RunSessionSetup {
+            session_id: new_id,
+            command: rendered,
+            args: args.to_vec(),
+        })]);
+    }
+
+    // No setup command — use default CWD immediately.
+    let default_cwd = state.session.default_cwd.clone();
+    state.session_mut(&new_id).set_cwd(default_cwd);
+
+    IntentResult::empty()
+}
+
+/// Handle `Intent::SessionClose`.
+///
+/// Reads the session's lifecycle. If it has a teardown command,
+/// emits `Command::RunSessionTeardown` for async execution. If no teardown
+/// (blank lifecycle or no teardown_command), removes the session immediately.
+///
+/// `session_id` is the session to close. If `None`, closes the active session.
+pub fn handle_session_close(state: &mut AppState, session_id: Option<&SessionId>) -> IntentResult {
+    let closing_id = session_id
+        .cloned()
+        .unwrap_or_else(|| state.session.active_session.clone());
+
+    let (teardown_command, lifecycle_args) = {
+        let session = state.session.sessions.get(&closing_id);
+        let Some(session) = session else {
+            return IntentResult::empty();
+        };
+        let lifecycle_name = session.lifecycle_name().map(String::from);
+        let args = session.lifecycle_args().to_vec();
+        // Clone teardown_command from preferences (separate borrow).
+        let teardown = lifecycle_name.as_deref().and_then(|name| {
+            state
+                .frontend
+                .preferences
+                .session_lifecycles
+                .iter()
+                .find(|l| l.name == name)
+                .and_then(|l| l.teardown_command.clone())
+        });
+        (teardown, args)
+    };
+
+    if let Some(ref teardown_cmd) = teardown_command {
+        let template = CommandTemplate::parse(teardown_cmd);
+        let rendered = if lifecycle_args.is_empty() {
+            teardown_cmd.to_owned()
+        } else {
+            template.render(&lifecycle_args)
+        };
+
+        return IntentResult::with_commands(vec![Command::RunSessionTeardown(
+            RunSessionTeardown {
+                session_id: closing_id,
+                command: rendered,
+                args: lifecycle_args,
+            },
+        )]);
+    }
+
+    // No teardown — remove session immediately.
+    remove_session_and_switch(state, &closing_id);
+
+    IntentResult::empty()
+}
+
+/// Handle `Intent::ArgInputConfirm`.
+///
+/// Splits the arg input by whitespace, pops the ArgInput scope,
+/// and delegates to `handle_session_lifecycle_setup` with the parsed args.
+pub fn handle_arg_input_confirm(state: &mut AppState) -> IntentResult {
+    let arg_state = &state.frontend.arg_input;
+    let lifecycle_name = arg_state.lifecycle_name.clone();
+    let args: Vec<String> = if arg_state.input.trim().is_empty() {
+        vec![]
+    } else {
+        arg_state
+            .input
+            .split_whitespace()
+            .map(String::from)
+            .collect()
+    };
+
+    // Pop ArgInput scope.
+    state.frontend.scope_stack.pop();
+    // Clear arg input state.
+    state.frontend.arg_input = crate::common::app_state::ArgInputState::default();
+
+    handle_session_lifecycle_setup(state, &lifecycle_name, &args)
+}
+
+/// Handle character insertion in the arg input popup.
+pub fn handle_arg_input_insert_char(state: &mut AppState, ch: char) -> IntentResult {
+    let arg = &mut state.frontend.arg_input;
+    arg.input.insert(arg.cursor_pos, ch);
+    arg.cursor_pos += ch.len_utf8();
+    IntentResult::empty()
+}
+
+/// Handle grapheme deletion in the arg input popup.
+pub fn handle_arg_input_delete(state: &mut AppState) -> IntentResult {
+    use unicode_segmentation::UnicodeSegmentation;
+    let arg = &mut state.frontend.arg_input;
+    if arg.cursor_pos > 0 {
+        let prev = arg.input[..arg.cursor_pos]
+            .grapheme_indices(true)
+            .last()
+            .map(|(i, _)| i);
+        if let Some(prev_idx) = prev {
+            arg.input.drain(prev_idx..arg.cursor_pos);
+            arg.cursor_pos = prev_idx;
+        }
+    }
+    IntentResult::empty()
+}
+
+/// Handle cursor left in the arg input popup.
+pub fn handle_arg_input_cursor_left(state: &mut AppState) -> IntentResult {
+    use unicode_segmentation::UnicodeSegmentation;
+    let arg = &mut state.frontend.arg_input;
+    if arg.cursor_pos > 0 {
+        let prev = arg.input[..arg.cursor_pos]
+            .grapheme_indices(true)
+            .last()
+            .map(|(i, _)| i);
+        if let Some(prev_idx) = prev {
+            arg.cursor_pos = prev_idx;
+        }
+    }
+    IntentResult::empty()
+}
+
+/// Handle cursor right in the arg input popup.
+pub fn handle_arg_input_cursor_right(state: &mut AppState) -> IntentResult {
+    use unicode_segmentation::UnicodeSegmentation;
+    let arg = &mut state.frontend.arg_input;
+    if arg.cursor_pos < arg.input.len() {
+        let next = arg.input[arg.cursor_pos..]
+            .grapheme_indices(true)
+            .nth(1)
+            .map(|(i, _)| arg.cursor_pos + i);
+        if let Some(next_idx) = next {
+            arg.cursor_pos = next_idx;
+        }
+    }
+    IntentResult::empty()
+}
+
+/// Look up a lifecycle by name in the user preferences.
+fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLifecycle> {
+    state
+        .frontend
+        .preferences
+        .session_lifecycles
+        .iter()
+        .find(|l| l.name == name)
+}
+
+/// Remove a session from the map and switch to the next available session.
+/// If no sessions remain, creates a new blank session.
+fn remove_session_and_switch(state: &mut AppState, closing_id: &SessionId) {
+    state.session.sessions.remove(closing_id);
+
+    if state.session.sessions.is_empty() {
+        // Last session — create a new one.
+        let model = state
+            .frontend
+            .preferences
+            .last_model
+            .clone()
+            .unwrap_or_else(|| NO_PROVIDER_ID.to_owned());
+        let strategy = state
+            .frontend
+            .preferences
+            .last_strategy
+            .as_deref()
+            .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
+        let new_session =
+            ChatSessionState::new_with_profile(SessionProfile::from_config(model, strategy));
+        let new_id = new_session.session_id().clone();
+        state.session.sessions.insert(new_id.clone(), new_session);
+        state.session.active_session = new_id;
+    } else {
+        // Switch to the first remaining session.
+        let next_id = state
+            .session
+            .sessions
+            .keys()
+            .next()
+            .expect("sessions is non-empty")
+            .clone();
+        state.session.active_session = next_id;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::app_state::AppState;
+    use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+    use crate::protocol::ChatEntry;
+
+    #[rstest::rstest]
+    fn session_lifecycle_setup_with_blank_creates_session() {
+        // Given default state (no lifecycles configured).
+        let mut state = AppState::default();
+        let old_id = state.session.active_session.clone();
+
+        // When handling SessionLifecycleSetup with blank lifecycle.
+        let result = handle_session_lifecycle_setup(&mut state, "", &[]);
+
+        // Then a new session is created.
+        assert_ne!(state.session.active_session, old_id);
+        // And no commands emitted (no setup command).
+        assert!(result.commands.is_empty());
+        // And the session has no lifecycle name.
+        assert!(state.active_session().lifecycle_name().is_none());
+        // And the session has the default CWD.
+        assert_eq!(state.active_session().cwd(), &state.session.default_cwd);
+    }
+
+    #[rstest::rstest]
+    fn session_lifecycle_setup_with_lifecycle_emits_command() {
+        // Given a state with a lifecycle that has a setup_command.
+        let mut state = AppState::default();
+        let old_id = state.session.active_session.clone();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: None,
+                setup_command: Some("echo /tmp/workdir".to_owned()),
+                teardown_command: None,
+            });
+
+        // When handling SessionLifecycleSetup.
+        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
+
+        // Then a new session is created.
+        assert_ne!(state.session.active_session, old_id);
+        // And the session has the lifecycle name.
+        assert_eq!(
+            state.active_session().lifecycle_name(),
+            Some("fossil branch")
+        );
+        // And a RunSessionSetup command is emitted.
+        assert_eq!(result.commands.len(), 1);
+        assert!(matches!(
+            &result.commands[0],
+            Command::RunSessionSetup(RunSessionSetup {
+                command,
+                ..
+            }) if command == "echo /tmp/workdir"
+        ));
+    }
+
+    #[rstest::rstest]
+    fn session_lifecycle_setup_with_args_renders_command() {
+        // Given a lifecycle with $1 in the setup_command.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: None,
+                setup_command: Some("script.sh $1".to_owned()),
+                teardown_command: None,
+            });
+
+        // When handling SessionLifecycleSetup with args.
+        let result =
+            handle_session_lifecycle_setup(&mut state, "fossil branch", &["my-branch".to_owned()]);
+
+        // Then the command is rendered with the arg.
+        assert!(matches!(
+            &result.commands[0],
+            Command::RunSessionSetup(RunSessionSetup {
+                command,
+                args,
+                ..
+            }) if command == "script.sh my-branch" && args == &["my-branch".to_owned()]
+        ));
+        // And the session has the args stored.
+        assert_eq!(
+            state.active_session().lifecycle_args(),
+            &["my-branch".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn session_lifecycle_setup_clears_overlays_and_pushes_input() {
+        // Given a state with a picker overlay.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(crate::common::app_state::FocusScope::Picker {
+                kind: crate::protocol::PickerKind::Provider,
+            });
+
+        // When handling SessionLifecycleSetup.
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
+
+        // Then overlays are cleared and Input scope is pushed.
+        assert!(matches!(
+            state.frontend.scope_stack.current(),
+            crate::common::app_state::FocusScope::Input
+        ));
+    }
+
+    #[rstest::rstest]
+    fn session_close_without_lifecycle_removes_immediately() {
+        // Given a state with two sessions.
+        let mut state = AppState::default();
+        let second_session = ChatSessionState::new();
+        let second_id = second_session.session_id().clone();
+        state
+            .session
+            .sessions
+            .insert(second_id.clone(), second_session);
+        state.session.active_session = second_id.clone();
+
+        // When handling SessionClose.
+        let result = handle_session_close(&mut state, None);
+
+        // Then the session is removed.
+        assert!(!state.session.sessions.contains_key(&second_id));
+        // And no commands emitted (blank lifecycle).
+        assert!(result.commands.is_empty());
+        // And active session switched.
+        assert_ne!(state.session.active_session, second_id);
+    }
+
+    #[rstest::rstest]
+    fn session_close_with_teardown_emits_command() {
+        // Given a session with a lifecycle that has a teardown_command.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: None,
+                setup_command: Some("echo /tmp/workdir".to_owned()),
+                teardown_command: Some("cleanup.sh $1".to_owned()),
+            });
+        let session_id = state.session.active_session.clone();
+        state
+            .active_session_mut()
+            .set_lifecycle_name(Some("fossil branch".to_owned()));
+        state
+            .active_session_mut()
+            .set_lifecycle_args(vec!["my-branch".to_owned()]);
+
+        // When handling SessionClose.
+        let result = handle_session_close(&mut state, None);
+
+        // Then the session is NOT removed yet (awaiting teardown).
+        assert!(state.session.sessions.contains_key(&session_id));
+        // And a RunSessionTeardown command is emitted.
+        assert_eq!(result.commands.len(), 1);
+        assert!(matches!(
+            &result.commands[0],
+            Command::RunSessionTeardown(RunSessionTeardown {
+                command,
+                args,
+                ..
+            }) if command == "cleanup.sh my-branch" && args == &["my-branch".to_owned()]
+        ));
+    }
+
+    #[rstest::rstest]
+    fn session_close_last_session_creates_new_one() {
+        // Given a state with only one session.
+        let mut state = AppState::default();
+        assert_eq!(state.session.sessions.len(), 1);
+
+        // When handling SessionClose.
+        let _result = handle_session_close(&mut state, None);
+
+        // Then a new session is created.
+        assert_eq!(state.session.sessions.len(), 1);
+    }
+
+    #[rstest::rstest]
+    fn session_new_delegates_to_blank_lifecycle() {
+        // Given default state.
+        let mut state = AppState::default();
+        let old_id = state.session.active_session.clone();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("old"));
+
+        // When handling SessionNew (delegates to blank lifecycle setup).
+        let result = crate::feat::session::intent::handle_session_new(&mut state);
+
+        // Then a new session is created (same behavior as before).
+        assert_ne!(state.session.active_session, old_id);
+        assert!(state.active_session().history().is_empty());
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn arg_input_confirm_splits_input_into_args() {
+        // Given an arg input state with text.
+        let mut state = AppState::default();
+        state.frontend.arg_input.lifecycle_name = "fossil branch".to_owned();
+        state.frontend.arg_input.input = "my-branch target-dir".to_owned();
+        state.frontend.arg_input.cursor_pos = state.frontend.arg_input.input.len();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: None,
+                setup_command: Some("script.sh $1 $2".to_owned()),
+                teardown_command: None,
+            });
+        let old_id = state.session.active_session.clone();
+
+        // When confirming arg input.
+        let result = handle_arg_input_confirm(&mut state);
+
+        // Then a new session is created with the args.
+        assert_ne!(state.session.active_session, old_id);
+        assert_eq!(
+            state.active_session().lifecycle_args(),
+            &["my-branch".to_owned(), "target-dir".to_owned()]
+        );
+        assert!(matches!(
+            &result.commands[0],
+            Command::RunSessionSetup(RunSessionSetup {
+                command,
+                args,
+                ..
+            }) if command == "script.sh my-branch target-dir"
+                && args == &["my-branch".to_owned(), "target-dir".to_owned()]
+        ));
+        // And arg input state is cleared.
+        assert!(state.frontend.arg_input.lifecycle_name.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn arg_input_confirm_with_empty_input_passes_no_args() {
+        // Given an arg input state with empty input.
+        let mut state = AppState::default();
+        state.frontend.arg_input.lifecycle_name = "test".to_owned();
+        state.frontend.arg_input.input = String::new();
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: Some("script.sh $1".to_owned()),
+                teardown_command: None,
+            });
+
+        // When confirming arg input.
+        let result = handle_arg_input_confirm(&mut state);
+
+        // Then the command is rendered with empty args.
+        assert!(matches!(
+            &result.commands[0],
+            Command::RunSessionSetup(RunSessionSetup { args, .. } ) if args.is_empty()
+        ));
+    }
+
+    #[rstest::rstest]
+    fn arg_input_insert_char_appends_to_input() {
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = String::new();
+        state.frontend.arg_input.cursor_pos = 0;
+
+        let _result = handle_arg_input_insert_char(&mut state, 'a');
+
+        assert_eq!(state.frontend.arg_input.input, "a");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_delete_removes_last_grapheme() {
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 3;
+
+        let _result = handle_arg_input_delete(&mut state);
+
+        assert_eq!(state.frontend.arg_input.input, "ab");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_cursor_left_moves_cursor() {
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 3;
+
+        let _result = handle_arg_input_cursor_left(&mut state);
+
+        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_cursor_right_moves_cursor() {
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 0;
+
+        let _result = handle_arg_input_cursor_right(&mut state);
+
+        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+    }
+}

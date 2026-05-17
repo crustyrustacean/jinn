@@ -91,6 +91,7 @@ mod tests {
             last_strategy: Some("sliding_window".to_owned()),
             tool_entry_max_lines: None,
             theme_name: None,
+            session_lifecycles: vec![],
         };
         actor
             .handle(
@@ -123,6 +124,7 @@ mod tests {
             last_strategy: None,
             tool_entry_max_lines: None,
             theme_name: None,
+            session_lifecycles: vec![],
         };
         actor
             .handle(
@@ -139,6 +141,7 @@ mod tests {
             last_strategy: Some("sliding_window".to_owned()),
             tool_entry_max_lines: None,
             theme_name: None,
+            session_lifecycles: vec![],
         };
         actor
             .handle(

@@ -295,6 +295,7 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope, active_tab: ActiveTa
         FocusScope::Picker { .. } => Scope::Picker,
         FocusScope::Input => Scope::Input,
         FocusScope::Sidebar => Scope::Sidebar,
+        FocusScope::ArgInput => Scope::ArgInput,
         FocusScope::Normal => match active_tab {
             ActiveTab::Dashboard => Scope::Dashboard,
             ActiveTab::Chat => Scope::Normal,

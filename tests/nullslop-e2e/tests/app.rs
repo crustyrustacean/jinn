@@ -252,14 +252,25 @@ impl AppWorld {
     }
 
     /// Runs graceful coordinated shutdown of the actor system.
-    #[allow(dead_code)]
+    ///
+    /// Spawns a dedicated thread to avoid "Cannot block the current thread
+    /// from within a runtime" panics from coordinated_shutdown's blocking_recv.
     pub fn graceful_shutdown(&mut self) {
-        nullslop_domain::coordinated_shutdown(
-            self.app.actor_host.backend(),
-            &self.app.core.state,
-            &self.handle,
-            nullslop_domain::SHUTDOWN_TIMEOUT,
-        );
+        let actor_host = self.app.actor_host.clone();
+        let state = self.app.core.state.clone();
+        let handle = self.handle.clone();
+
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        std::thread::spawn(move || {
+            nullslop_domain::coordinated_shutdown(
+                actor_host.backend(),
+                &state,
+                &handle,
+                nullslop_domain::SHUTDOWN_TIMEOUT,
+            );
+            let _ = tx.send(());
+        });
+        rx.recv().expect("shutdown thread completed");
     }
 }
 
