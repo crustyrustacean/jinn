@@ -508,3 +508,67 @@ fn render_sorts_entries_by_position() {
         "REL entry should appear before BOT entry"
     );
 }
+
+// --- SessionNew section restriction tests ---
+
+#[rstest::rstest]
+fn session_new_noop_when_sidebar_persona_focused() {
+    // Given a state in Sidebar scope with Persona section focused.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Sidebar);
+    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    let old_id = state.session.active_session.clone();
+
+    // When handling SessionNew via IntentHandler.
+    let result = crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
+
+    // Then no new session is created.
+    assert_eq!(state.session.active_session, old_id);
+    assert!(result.commands.is_empty());
+}
+
+#[rstest::rstest]
+fn session_new_noop_when_sidebar_pins_focused() {
+    // Given a state in Sidebar scope with Pins section focused.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Sidebar);
+    state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
+    let old_id = state.session.active_session.clone();
+
+    // When handling SessionNew via IntentHandler.
+    let result = crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
+
+    // Then no new session is created.
+    assert_eq!(state.session.active_session, old_id);
+    assert!(result.commands.is_empty());
+}
+
+#[rstest::rstest]
+fn session_new_works_when_sidebar_sessions_focused() {
+    // Given a state in Sidebar scope with Sessions section focused.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Sidebar);
+    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    let old_id = state.session.active_session.clone();
+
+    // When handling SessionNew via IntentHandler.
+    let result = crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
+
+    // Then a new session is created.
+    assert_ne!(state.session.active_session, old_id);
+    assert!(result.commands.is_empty());
+}
+
+#[rstest::rstest]
+fn session_new_works_when_not_in_sidebar() {
+    // Given a state in Normal scope (not sidebar).
+    let mut state = AppState::default();
+    let old_id = state.session.active_session.clone();
+
+    // When handling SessionNew via IntentHandler.
+    let _result =
+        crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
+
+    // Then a new session is created (no section restriction outside sidebar).
+    assert_ne!(state.session.active_session, old_id);
+}
