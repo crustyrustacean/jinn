@@ -165,7 +165,10 @@ fn format_lifecycle_error(err: &LifecycleCommandError) -> String {
         }
         LifecycleCommandError::NoOutput => "Command produced no output".to_owned(),
         LifecycleCommandError::InvalidPath { path } => {
-            format!("Path does not exist or cannot be resolved: {}", path.display())
+            format!(
+                "Path does not exist or cannot be resolved: {}",
+                path.display()
+            )
         }
         LifecycleCommandError::NotADirectory { path } => {
             format!("Path is not a directory: {}", path.display())
@@ -625,7 +628,9 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod tests {
-    use super::{no_output_info, setup_complete_msg, setup_running_msg, strip_ansi, teardown_running_msg};
+    use super::{
+        no_output_info, setup_complete_msg, setup_running_msg, strip_ansi, teardown_running_msg,
+    };
     use crate::protocol::ChatEntryKind;
     use ratatui::style::Color;
     use std::path::Path;

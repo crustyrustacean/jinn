@@ -238,6 +238,71 @@ impl CommandTemplate {
     }
 }
 
+/// Parse a user input string into arguments, respecting double quotes and backslash escapes.
+///
+/// Rules:
+/// - Outside quotes, whitespace separates tokens.
+/// - Inside `"..."`, everything (including spaces) is one token; the quotes are stripped.
+/// - Backslash escapes: `\"` → `"`, `\\` → `\`, `\x` → `x` for any other char.
+/// - An unterminated quote treats the remaining input as the content of the quote.
+///
+/// # Examples
+///
+/// ```text
+/// foo bar        → ["foo", "bar"]
+/// "foo bar"      → ["foo bar"]
+/// a "b c" d      → ["a", "b c", "d"]
+/// foo\"bar       → ["foo\"bar"]
+/// ```
+#[must_use]
+pub fn parse_quoted_args(input: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if in_quotes {
+            if ch == '\\' {
+                // Backslash escape inside quotes: next char is literal.
+                if let Some(escaped) = chars.next() {
+                    current.push(escaped);
+                } else {
+                    // Trailing backslash — treat as literal.
+                    current.push('\\');
+                }
+            } else if ch == '"' {
+                // End of quoted section.
+                in_quotes = false;
+            } else {
+                current.push(ch);
+            }
+        } else if ch == '\\' {
+            // Backslash escape outside quotes.
+            if let Some(escaped) = chars.next() {
+                current.push(escaped);
+            } else {
+                current.push('\\');
+            }
+        } else if ch == '"' {
+            in_quotes = true;
+        } else if ch.is_whitespace() {
+            if !current.is_empty() {
+                args.push(current.clone());
+                current.clear();
+            }
+        } else {
+            current.push(ch);
+        }
+    }
+
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    args
+}
+
 impl fmt::Display for CommandTemplate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.display())
@@ -590,5 +655,184 @@ mod tests {
 
         // Then no panic — missing params replaced with empty.
         assert_eq!(result, "script.sh  ");
+    }
+
+    // --- Quoted arg parsing ---
+
+    #[rstest::rstest]
+    fn parse_quoted_args_empty_input() {
+        assert_eq!(parse_quoted_args(""), Vec::<String>::new());
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_whitespace_only() {
+        assert_eq!(parse_quoted_args("   "), Vec::<String>::new());
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_unquoted_single() {
+        assert_eq!(parse_quoted_args("foo"), vec!["foo".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_unquoted_multiple() {
+        assert_eq!(
+            parse_quoted_args("foo bar baz"),
+            vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_quoted_single() {
+        assert_eq!(parse_quoted_args("\"foo bar\""), vec!["foo bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_quoted_preserves_internal_spaces() {
+        assert_eq!(
+            parse_quoted_args("\"hello   world\""),
+            vec!["hello   world".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_mixed_quoted_and_unquoted() {
+        assert_eq!(
+            parse_quoted_args("a \"b c\" d"),
+            vec!["a".to_owned(), "b c".to_owned(), "d".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_quoted_at_start() {
+        assert_eq!(
+            parse_quoted_args("\"foo bar\" baz"),
+            vec!["foo bar".to_owned(), "baz".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_quoted_at_end() {
+        assert_eq!(
+            parse_quoted_args("foo \"bar baz\""),
+            vec!["foo".to_owned(), "bar baz".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_adjacent_quoted_tokens() {
+        assert_eq!(
+            parse_quoted_args("\"foo\"\"bar\""),
+            vec!["foobar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_empty_quotes() {
+        assert_eq!(parse_quoted_args("\"\""), Vec::<String>::new());
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_empty_quotes_between_tokens() {
+        assert_eq!(
+            parse_quoted_args("foo \"\" bar"),
+            vec!["foo".to_owned(), "bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_unterminated_quote() {
+        // Unterminated quote captures the rest as the token content.
+        assert_eq!(parse_quoted_args("\"foo bar"), vec!["foo bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_unterminated_quote_with_spaces() {
+        // Unterminated quote: everything after " is one token.
+        assert_eq!(
+            parse_quoted_args("\"foo bar baz"),
+            vec!["foo bar baz".to_owned()]
+        );
+    }
+
+    // --- Backslash escape tests ---
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_quote_outside_quotes() {
+        // Input: foo\"bar → parser sees \" as escaped quote → foo"bar
+        assert_eq!(parse_quoted_args("foo\\\"bar"), vec!["foo\"bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_quote_inside_quotes() {
+        assert_eq!(
+            parse_quoted_args("\"foo\\\"bar\""),
+            vec!["foo\"bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_backslash_outside_quotes() {
+        assert_eq!(parse_quoted_args("foo\\\\bar"), vec!["foo\\bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_backslash_inside_quotes() {
+        assert_eq!(
+            parse_quoted_args("\"foo\\\\bar\""),
+            vec!["foo\\bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_other_char() {
+        // \\n → n (we don't interpret escape sequences, just strip the backslash).
+        assert_eq!(parse_quoted_args("foo\\nbar"), vec!["foonbar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_trailing_backslash_outside_quotes() {
+        // Trailing backslash at end of input — treat as literal.
+        assert_eq!(parse_quoted_args("foo\\"), vec!["foo\\".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_trailing_backslash_inside_quotes() {
+        // Trailing backslash at end of input inside quotes — treat as literal.
+        assert_eq!(parse_quoted_args("\"foo\\"), vec!["foo\\".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_space_outside_quotes() {
+        assert_eq!(parse_quoted_args("foo\\ bar"), vec!["foo bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_complex_mixed() {
+        // Complex input mixing quotes, escapes, and unquoted tokens.
+        assert_eq!(
+            parse_quoted_args("branch \"my feature\" target\\ dir"),
+            vec![
+                "branch".to_owned(),
+                "my feature".to_owned(),
+                "target dir".to_owned(),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_multiple_spaces_between_tokens() {
+        assert_eq!(
+            parse_quoted_args("foo    bar"),
+            vec!["foo".to_owned(), "bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_leading_and_trailing_whitespace() {
+        assert_eq!(
+            parse_quoted_args("  foo bar  "),
+            vec!["foo".to_owned(), "bar".to_owned()]
+        );
     }
 }
