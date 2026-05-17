@@ -1525,3 +1525,24 @@ fn serde_defaults_lifecycle_fields_when_missing() {
     assert!(back.lifecycle_name().is_none());
     assert!(back.lifecycle_args().is_empty());
 }
+
+// --- is_empty tests ---
+
+#[rstest::rstest]
+fn is_empty_true_for_new_session() {
+    // Given a newly created session.
+    let session = ChatSessionState::new();
+
+    // Then it is empty.
+    assert!(session.is_empty());
+}
+
+#[rstest::rstest]
+fn is_empty_false_after_pushing_entry() {
+    // Given a new session with one entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+
+    // Then it is not empty.
+    assert!(!session.is_empty());
+}
