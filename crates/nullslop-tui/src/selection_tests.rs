@@ -290,7 +290,7 @@ fn last_line_stops_at_focus_x() {
 }
 
 #[rstest::rstest]
-fn backward_selection_first_line_uses_anchor() {
+fn backward_selection_matches_forward_behavior() {
     // Given a buffer with text on rows 1-3.
     let area = Rect::new(0, 0, 10, 5);
     let mut buffer = Buffer::empty(area);
@@ -323,14 +323,14 @@ fn backward_selection_first_line_uses_anchor() {
     // When extracting text.
     let text = state.extract_text(&buffer).expect("should return text");
 
-    // Then rows are iterated top to bottom:
-    // y=1: focus.1 == 1, so last line: bounds.x=0 to focus_x=1 → "AB"
-    // y=2: middle: bounds.x=0 to last_nonws → "FGHIJ"
-    // y=3: anchor.1 == 3, so first line: anchor_x=3 to last_nonws → "NO"
+    // Then the result matches the equivalent forward selection.
+    // Top row (y=1) has "ABCDE": from top_x=1 to last nonws → "BCDE"
+    // Middle row (y=2) has "FGHIJ": from bounds.x=0 to last nonws → "FGHIJ"
+    // Bottom row (y=3) has "KLMNO": from bounds.x=0 to bot_x=3 → "KLMN"
     let lines: Vec<&str> = text.split('\n').collect();
-    assert_eq!(lines[0], "AB");
+    assert_eq!(lines[0], "BCDE");
     assert_eq!(lines[1], "FGHIJ");
-    assert_eq!(lines[2], "NO");
+    assert_eq!(lines[2], "KLMN");
 }
 
 #[rstest::rstest]
@@ -357,6 +357,54 @@ fn single_line_selection_is_column_based() {
 
     // Then only the columns between anchor_x and focus_x are selected.
     assert_eq!(text, "BCD");
+}
+
+#[rstest::rstest]
+fn backward_selection_extracts_same_text_as_forward() {
+    // Given a buffer with text on rows 1-3.
+    let area = Rect::new(0, 0, 10, 5);
+    let mut buffer = Buffer::empty(area);
+    for (i, ch) in "ABCDE".chars().enumerate() {
+        buffer
+            .cell_mut((i as u16, 1))
+            .unwrap()
+            .set_symbol(&ch.to_string());
+    }
+    for (i, ch) in "FGHIJ".chars().enumerate() {
+        buffer
+            .cell_mut((i as u16, 2))
+            .unwrap()
+            .set_symbol(&ch.to_string());
+    }
+    for (i, ch) in "KLMNO".chars().enumerate() {
+        buffer
+            .cell_mut((i as u16, 3))
+            .unwrap()
+            .set_symbol(&ch.to_string());
+    }
+
+    // And two selections covering the same rows but in opposite directions.
+    let forward = SelectionState::Active {
+        anchor: (1, 1),
+        focus: (3, 3),
+        bounds: area,
+    };
+    let backward = SelectionState::Active {
+        anchor: (3, 3),
+        focus: (1, 1),
+        bounds: area,
+    };
+
+    // When extracting text from both.
+    let forward_text = forward
+        .extract_text(&buffer)
+        .expect("forward should return text");
+    let backward_text = backward
+        .extract_text(&buffer)
+        .expect("backward should return text");
+
+    // Then the extracted text is identical regardless of drag direction.
+    assert_eq!(forward_text, backward_text);
 }
 
 // --- SelectableRects tests ---

@@ -243,14 +243,23 @@ mod tests {
     async fn setup_canonicalizes_relative_path_to_absolute() {
         // Given a real subdirectory of the current working directory.
         let dir = tempfile::tempdir_in(".").expect("temp dir in cwd");
-        let dir_name = dir.path().file_name().expect("dir name").to_string_lossy().to_string();
+        let dir_name = dir
+            .path()
+            .file_name()
+            .expect("dir name")
+            .to_string_lossy()
+            .to_string();
         let expected = std::fs::canonicalize(dir.path()).expect("canonicalize");
 
         // When running the setup command with a relative path.
         let result = run_setup_command(&format!("echo './{dir_name}'")).await;
 
         // Then the result is the canonicalized absolute path.
-        assert!(result.is_ok(), "expected Ok, got Err: {:?}", result.unwrap_err());
+        assert!(
+            result.is_ok(),
+            "expected Ok, got Err: {:?}",
+            result.unwrap_err()
+        );
         assert_eq!(result.unwrap(), expected);
     }
 
@@ -293,7 +302,10 @@ mod tests {
             .expect("downcast");
         match err {
             LifecycleCommandError::NotADirectory { path } => {
-                assert_eq!(path, &std::fs::canonicalize(&file_path).expect("canonicalize"));
+                assert_eq!(
+                    path,
+                    &std::fs::canonicalize(&file_path).expect("canonicalize")
+                );
             }
             other => panic!("expected NotADirectory, got {other:?}"),
         }

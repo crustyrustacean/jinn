@@ -8,10 +8,10 @@ use crate::selection::{SelectionState, find_last_nonws_in_row};
 /// Applies line-based selection highlight to the buffer.
 ///
 /// Row classification:
-/// - **Single line** (anchor_y == focus_y): column-based highlight from min(ax,fx) to max(ax,fx).
-/// - **First line** (anchor row): from anchor_x to last non-whitespace char.
-/// - **Middle lines**: from bounds.x to last non-whitespace char.
-/// - **Last line** (focus row): from bounds.x to focus_x.
+/// - **Single line** (top_y == bot_y): column-based highlight from min(ax,fx) to max(ax,fx).
+/// - **Top row**: from top_x to last non-whitespace char.
+/// - **Middle rows**: from bounds.x to last non-whitespace char.
+/// - **Bottom row**: from bounds.x to bot_x.
 ///
 /// For first and middle rows, the highlight extends from start_x to the last
 /// non-whitespace character — internal spaces between words are included.
@@ -40,6 +40,13 @@ pub(super) fn apply_selection_highlight(app: &TuiApp, buf: &mut Buffer) {
     let top_y = anchor.1.min(focus.1).max(bounds.y);
     let bot_y = anchor.1.max(focus.1).min(bounds.bottom().saturating_sub(1));
 
+    // Resolve which point is on the top vs bottom row.
+    let (top_x, bot_x) = if anchor.1 <= focus.1 {
+        (anchor_x, focus_x)
+    } else {
+        (focus_x, anchor_x)
+    };
+
     // Extract theme colors once to avoid acquiring a read lock per cell.
     let (sel_fg, sel_bg) = {
         let state = app.core.state.read();
@@ -53,13 +60,13 @@ pub(super) fn apply_selection_highlight(app: &TuiApp, buf: &mut Buffer) {
         let (start_x, end_x) = if top_y == bot_y {
             // Single line — column selection.
             (anchor_x.min(focus_x), anchor_x.max(focus_x))
-        } else if y == anchor.1 {
-            // First line — from anchor_x to last non-whitespace.
-            let end = find_last_nonws_in_row(buf, y, anchor_x, bounds_right).unwrap_or(anchor_x);
-            (anchor_x, end)
-        } else if y == focus.1 {
-            // Last line — from bounds.x to focus_x.
-            (bounds.x, focus_x)
+        } else if y == top_y {
+            // Top row — from top_x to last non-whitespace.
+            let end = find_last_nonws_in_row(buf, y, top_x, bounds_right).unwrap_or(top_x);
+            (top_x, end)
+        } else if y == bot_y {
+            // Bottom row — from bounds.x to bot_x.
+            (bounds.x, bot_x)
         } else {
             // Middle line — from bounds.x to last non-whitespace.
             let end = find_last_nonws_in_row(buf, y, bounds.x, bounds_right).unwrap_or(bounds.x);
@@ -309,5 +316,92 @@ mod tests {
         let cyan_cell = buf.cell((4, 3)).expect("cyan cell");
         assert_eq!(cyan_cell.fg, Color::Reset); // was bg
         assert_eq!(cyan_cell.bg, Color::Cyan); // was fg
+    }
+
+    #[rstest::rstest]
+    fn backward_selection_highlights_same_cells_as_forward() {
+        // Given a buffer with colored cells on rows 1-3.
+        let area = Rect::new(0, 0, 10, 5);
+        let forward_buf = {
+            let mut buf = ratatui::buffer::Buffer::empty(area);
+            for (i, ch) in "ABCDE".chars().enumerate() {
+                buf.cell_mut((i as u16, 1))
+                    .unwrap()
+                    .set_symbol(&ch.to_string());
+                buf.cell_mut((i as u16, 1)).unwrap().set_fg(Color::Yellow);
+            }
+            for (i, ch) in "FGHIJ".chars().enumerate() {
+                buf.cell_mut((i as u16, 2))
+                    .unwrap()
+                    .set_symbol(&ch.to_string());
+                buf.cell_mut((i as u16, 2)).unwrap().set_fg(Color::Yellow);
+            }
+            for (i, ch) in "KLMNO".chars().enumerate() {
+                buf.cell_mut((i as u16, 3))
+                    .unwrap()
+                    .set_symbol(&ch.to_string());
+                buf.cell_mut((i as u16, 3)).unwrap().set_fg(Color::Yellow);
+            }
+            buf
+        };
+        let backward_buf = {
+            let mut buf = ratatui::buffer::Buffer::empty(area);
+            for (i, ch) in "ABCDE".chars().enumerate() {
+                buf.cell_mut((i as u16, 1))
+                    .unwrap()
+                    .set_symbol(&ch.to_string());
+                buf.cell_mut((i as u16, 1)).unwrap().set_fg(Color::Yellow);
+            }
+            for (i, ch) in "FGHIJ".chars().enumerate() {
+                buf.cell_mut((i as u16, 2))
+                    .unwrap()
+                    .set_symbol(&ch.to_string());
+                buf.cell_mut((i as u16, 2)).unwrap().set_fg(Color::Yellow);
+            }
+            for (i, ch) in "KLMNO".chars().enumerate() {
+                buf.cell_mut((i as u16, 3))
+                    .unwrap()
+                    .set_symbol(&ch.to_string());
+                buf.cell_mut((i as u16, 3)).unwrap().set_fg(Color::Yellow);
+            }
+            buf
+        };
+
+        // And forward and backward selections covering the same endpoints.
+        let mut forward_app = render_test_app();
+        forward_app.selection = SelectionState::Active {
+            anchor: (1, 1),
+            focus: (3, 3),
+            bounds: area,
+        };
+        let mut backward_app = render_test_app();
+        backward_app.selection = SelectionState::Active {
+            anchor: (3, 3),
+            focus: (1, 1),
+            bounds: area,
+        };
+
+        // When applying selection highlight to both buffers.
+        let mut forward_buf = forward_buf;
+        apply_selection_highlight(&forward_app, &mut forward_buf);
+        let mut backward_buf = backward_buf;
+        apply_selection_highlight(&backward_app, &mut backward_buf);
+
+        // Then every cell has the same colors in both buffers.
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let fwd = forward_buf.cell((x, y)).expect("forward cell");
+                let bwd = backward_buf.cell((x, y)).expect("backward cell");
+                assert_eq!(
+                    (fwd.fg, fwd.bg),
+                    (bwd.fg, bwd.bg),
+                    "Mismatch at ({x}, {y}): forward ({}, {}) vs backward ({}, {})",
+                    fwd.fg,
+                    fwd.bg,
+                    bwd.fg,
+                    bwd.bg
+                );
+            }
+        }
     }
 }
