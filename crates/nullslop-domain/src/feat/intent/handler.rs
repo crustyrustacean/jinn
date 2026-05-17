@@ -110,6 +110,14 @@ impl IntentHandler {
             {
                 feat::session_lifecycle::intent::handle_arg_input_cursor_right(state)
             }
+            Intent::DeleteGraphemeForward
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::ArgInput
+                ) =>
+            {
+                feat::session_lifecycle::intent::handle_arg_input_delete_forward(state)
+            }
             Intent::EnterNormalMode
                 if matches!(
                     state.frontend.scope_stack.current(),
