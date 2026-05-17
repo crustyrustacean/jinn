@@ -131,6 +131,12 @@ fn format_lifecycle_error(err: &LifecycleCommandError) -> String {
             parts.join("\n\n")
         }
         LifecycleCommandError::NoOutput => "Command produced no output".to_owned(),
+        LifecycleCommandError::InvalidPath { path } => {
+            format!("Path does not exist or cannot be resolved: {}", path.display())
+        }
+        LifecycleCommandError::NotADirectory { path } => {
+            format!("Path is not a directory: {}", path.display())
+        }
         LifecycleCommandError::ExecutionFailed => "Failed to execute command".to_owned(),
     }
 }
