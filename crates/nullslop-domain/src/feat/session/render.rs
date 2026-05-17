@@ -43,9 +43,7 @@ pub fn render_session_fork_picker(frame: &mut Frame<'_>, area: Rect, state: &App
 
     let count = state.frontend.fork_picker.items().len();
     let footer = Line::styled(
-        format!(
-            "{filter_text} ({count} entries) | CTRL+U user · CTRL+A assistant"
-        ),
+        format!("{filter_text} ({count} entries) | CTRL+U user · CTRL+A assistant"),
         Style::default().fg(Color::Rgb(255, 165, 0)),
     );
     let widget = SelectionWidget::new(&state.frontend.fork_picker)

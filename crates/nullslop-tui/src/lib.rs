@@ -28,7 +28,13 @@ pub use run::{TuiRunError, run};
 pub use scope::Scope;
 
 #[cfg(test)]
+mod app_tests;
+
+#[cfg(test)]
 mod keymap_tests;
 
 #[cfg(test)]
 mod render_tests;
+
+#[cfg(test)]
+mod selection_tests;

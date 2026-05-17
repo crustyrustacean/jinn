@@ -8,6 +8,8 @@
 mod migrator;
 mod service;
 mod sqlite;
+#[cfg(test)]
+mod sqlite_tests;
 
 pub use service::SessionStoreService;
 pub use sqlite::{PoolConfig, SqliteSessionStore};
