@@ -82,6 +82,8 @@ pub struct Theme {
     // Scroll indicator
     /// Scroll indicator background.
     pub scroll_indicator_bg: Color,
+    /// Sidebar resize mode border color.
+    pub sidebar_resize_accent: Color,
 }
 
 /// TOML-serializable theme file with optional fields.
@@ -150,6 +152,8 @@ pub struct ThemeFile {
 
     #[serde(default)]
     pub scroll_indicator_bg: Option<ThemeColor>,
+    #[serde(default)]
+    pub sidebar_resize_accent: Option<ThemeColor>,
 }
 
 impl ThemeFile {
@@ -249,6 +253,10 @@ impl ThemeFile {
                 fallback.scroll_indicator_bg,
                 super::color::ThemeColor::inner,
             ),
+            sidebar_resize_accent: self.sidebar_resize_accent.map_or(
+                fallback.sidebar_resize_accent,
+                super::color::ThemeColor::inner,
+            ),
         }
     }
 
@@ -338,6 +346,9 @@ impl ThemeFile {
             scroll_indicator_bg: self
                 .scroll_indicator_bg
                 .map_or(Color::Reset, super::color::ThemeColor::inner),
+            sidebar_resize_accent: self
+                .sidebar_resize_accent
+                .map_or(Color::Reset, super::color::ThemeColor::inner),
         }
     }
 }
@@ -376,6 +387,7 @@ mod tests {
             age_fresh: None,
             age_stale: None,
             scroll_indicator_bg: None,
+            sidebar_resize_accent: None,
         };
 
         // When resolving.
@@ -386,6 +398,7 @@ mod tests {
         assert_eq!(theme.focus_accent, default.focus_accent);
         assert_eq!(theme.muted_text, default.muted_text);
         assert_eq!(theme.gutter_bg, default.gutter_bg);
+        assert_eq!(theme.sidebar_resize_accent, default.sidebar_resize_accent);
     }
 
     #[rstest::rstest]
@@ -418,6 +431,7 @@ mod tests {
             age_fresh: None,
             age_stale: None,
             scroll_indicator_bg: None,
+            sidebar_resize_accent: None,
         };
 
         // When resolving.
@@ -475,6 +489,7 @@ mod tests {
             age_fresh: Some(ThemeColor(Color::LightGreen)),
             age_stale: Some(ThemeColor(Color::Red)),
             scroll_indicator_bg: Some(ThemeColor(Color::Black)),
+            sidebar_resize_accent: Some(ThemeColor(Color::Green)),
         };
 
         // When serializing to TOML and back.

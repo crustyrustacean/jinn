@@ -5,6 +5,7 @@
 # Borders & focus
 focus_accent = "yellow"
 border_unfocused = "darkgray"
+sidebar_resize_accent = "green"
 
 # Text
 primary_text = [220, 220, 220]

@@ -177,6 +177,8 @@ pub enum FocusScope {
     Picker { kind: PickerKind },
     /// Arg input popup — collecting positional args for a lifecycle command.
     ArgInput,
+    /// Sidebar resize mode — adjusting sidebar width with h/l keys.
+    SidebarResize,
 }
 
 impl FocusScope {
@@ -184,7 +186,7 @@ impl FocusScope {
     #[must_use]
     pub fn mode(&self) -> Mode {
         match self {
-            Self::Normal | Self::Sidebar => Mode::Normal,
+            Self::Normal | Self::Sidebar | Self::SidebarResize => Mode::Normal,
             Self::Input => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
             Self::ArgInput => Mode::Input,
@@ -200,6 +202,7 @@ impl std::fmt::Display for FocusScope {
             Self::Sidebar => write!(f, "Sidebar"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
+            Self::SidebarResize => write!(f, "SidebarResize"),
         }
     }
 }
@@ -430,6 +433,10 @@ pub struct FrontendState {
     /// Arg input popup state — active when `FocusScope::ArgInput` is on the scope stack.
     /// OWNER: IntentHandler (arg input editing, confirmation).
     pub arg_input: ArgInputState,
+
+    /// Sidebar width in columns, synced from preferences.
+    /// OWNER: PreferencesStateSyncActor (on PreferencesUpdated).
+    pub sidebar_width: u16,
 }
 
 impl Default for FrontendState {
@@ -463,6 +470,7 @@ impl Default for FrontendState {
             themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
             arg_input: ArgInputState::default(),
+            sidebar_width: 30,
         }
     }
 }
