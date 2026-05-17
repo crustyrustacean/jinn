@@ -113,13 +113,17 @@ impl SessionPersistenceActor {
         event: &StreamCompleted,
         ctx: &ActorContext,
     ) {
-        let should_save = event.reason == StreamCompletedReason::Finished;
+        let should_save = event.reason == StreamCompletedReason::Finished
+            || event.reason == StreamCompletedReason::Error;
         let drained_entries: Vec<ChatEntry>;
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
             if event.reason == StreamCompletedReason::Canceled {
                 session.push_entry(ChatEntry::error("Cancelled"));
+            } else if event.reason == StreamCompletedReason::Error {
+                // Error entry is pushed by the LLM actor via PushChatEntry before
+                // emitting StreamCompleted(Error). Nothing to push here.
             } else if let Some(ref content) = event.assistant_content {
                 let output_tokens = self.counter.count(content) as u32;
                 // Finalize the last record if one exists (i.e., PromptAssembled fired first).
@@ -136,7 +140,8 @@ impl SessionPersistenceActor {
                 session.begin_sending();
             }
 
-            // Drain queue on Finished — the turn has ended.
+            // Drain queue only on Finished — the turn has ended successfully.
+            // Error and Canceled do not drain queued messages.
             drained_entries = if event.reason == StreamCompletedReason::Finished {
                 session.drain_queue().into_iter().collect()
             } else {

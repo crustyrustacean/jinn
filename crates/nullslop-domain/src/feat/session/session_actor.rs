@@ -635,7 +635,12 @@ mod tests {
     use super::{
         no_output_info, setup_complete_msg, setup_running_msg, strip_ansi, teardown_running_msg,
     };
-    use crate::protocol::ChatEntryKind;
+    use crate::common::actor::{ActorContext, RecordingSink};
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
+    use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+    use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
+    use crate::protocol::{ChatEntry, ChatEntryKind};
     use ratatui::style::Color;
     use std::path::Path;
 
@@ -794,5 +799,87 @@ mod tests {
         assert!(span.content.contains("⚙️"));
         assert!(span.content.contains("Running teardown script"));
         assert_eq!(span.style.fg, Some(Color::Yellow));
+    }
+
+    // --- StreamCompleted(Error) handler tests ---
+
+    fn test_actor() -> super::SessionPersistenceActor {
+        super::SessionPersistenceActor {
+            state: State::new(AppState::default()),
+            services: None,
+            store: None,
+            counter: TiktokenCounter::o200k_base(),
+        }
+    }
+
+    fn test_context() -> (std::sync::Arc<RecordingSink>, ActorContext) {
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("test-session-actor", sink.clone());
+        (sink, ctx)
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_error_reason_finishes_streaming() {
+        // Given a session actor with a session in streaming state.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            assert!(session.is_streaming());
+            state.session.active_session.clone()
+        };
+
+        // When handling StreamCompleted with Error reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session is no longer streaming.
+        let state = actor.state.read();
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
+        assert!(!session.is_streaming());
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_error_reason_does_not_drain_queue() {
+        // Given a session actor with a session in streaming state and a queued message.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.enqueue_message(ChatEntry::user("queued message"));
+            assert_eq!(session.queue_len(), 1);
+            state.session.active_session.clone()
+        };
+
+        // When handling StreamCompleted with Error reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the queued message is still in the queue.
+        let state = actor.state.read();
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
+        assert_eq!(session.queue_len(), 1);
     }
 }
