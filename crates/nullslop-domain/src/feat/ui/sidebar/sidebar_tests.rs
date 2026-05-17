@@ -4,8 +4,8 @@ use ratatui::style::Color;
 
 use crate::common::app_state::AppState;
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::ui::sidebar::intent::handle_sidebar_focus;
 use crate::feat::ui::sidebar::pins::PinsSection;
-use crate::feat::ui::sidebar::pins::pins_section::handle_sidebar_focus;
 use crate::feat::ui::sidebar::section_trait::SidebarIntent;
 use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 use crate::feat::ui::sidebar::sidebar::{Sidebar, jump_to_section, navigate_sidebar};
