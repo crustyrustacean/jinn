@@ -141,43 +141,6 @@ impl SidebarSection for PinsSection {
 // Intent handler functions (called by IntentHandler)
 // ---------------------------------------------------------------------------
 
-/// Handles `SidebarFocus` — enters sidebar scope.
-///
-/// Defaults focus to the Persona section (topmost section).
-pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
-    use crate::common::app_state::FocusScope;
-    use crate::feat::ui::sidebar::section_trait::{EnterFrom, SidebarSectionId};
-
-    state.frontend.scope_stack.push(FocusScope::Sidebar);
-
-    // If a section already has cursor state, restore it.
-    let has_existing_cursor = state.frontend.persona_section.cursor.is_some()
-        || state.frontend.pins.selected_id().is_some()
-        || state.frontend.sessions_section.selected_index.is_some();
-
-    if !has_existing_cursor {
-        // First entry — default to Persona at top.
-        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
-        crate::feat::ui::sidebar::persona_section::receive_cursor(state, EnterFrom::Top);
-    }
-
-    IntentResult::empty()
-}
-
-/// Handles `SidebarLeave` — pops back to previous scope.
-///
-/// If the session is busy, activates the cancel stream confirmation prompt
-/// instead of immediately leaving.
-pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
-    if !state.active_session().is_idle() {
-        // Session is busy — show cancel confirmation prompt.
-        state.frontend.cancel_stream_prompt = true;
-    }
-    // Preserve cursor positions — they'll be restored on re-entry.
-    state.frontend.scope_stack.pop();
-    IntentResult::empty()
-}
-
 /// Handles `SidebarPersonaEdit` — opens the persona picker when persona section is focused.
 ///
 /// No-op if the pins section is focused.

@@ -61,11 +61,11 @@ impl IntentHandler {
         state.frontend.tui_signals.clear();
 
         // Cancel stream prompt intercept: if the prompt is showing,
-        // ESC (NormalEscape or SidebarLeave) confirms the cancel;
+        // ESC (NormalEscape) confirms the cancel;
         // any other intent dismisses the prompt and continues processing.
         if state.frontend.cancel_stream_prompt {
             state.frontend.cancel_stream_prompt = false;
-            if matches!(intent, Intent::NormalEscape | Intent::SidebarLeave) {
+            if matches!(intent, Intent::NormalEscape) {
                 // Second ESC — cancel the stream.
                 let session_id = state.session.active_session.clone();
                 state.active_session_mut().cancel_stream_and_drain();
@@ -211,12 +211,8 @@ impl IntentHandler {
             Intent::DashboardSelectLast => feat::dashboard::intent::handle_select_last(state),
 
             // --- Sidebar ---
-            Intent::SidebarFocus => {
-                feat::ui::sidebar::pins::pins_section::handle_sidebar_focus(state)
-            }
-            Intent::SidebarLeave => {
-                feat::ui::sidebar::pins::pins_section::handle_sidebar_leave(state)
-            }
+            Intent::SidebarFocus => feat::ui::sidebar::intent::handle_sidebar_focus(state),
+            Intent::SidebarLeave => feat::ui::sidebar::intent::handle_sidebar_leave(state),
             Intent::SidebarMoveDown => {
                 feat::ui::sidebar::navigate_sidebar(
                     &feat::ui::sidebar::SidebarIntent::MoveDown,
