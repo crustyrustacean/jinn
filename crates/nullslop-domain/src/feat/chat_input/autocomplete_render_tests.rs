@@ -2,6 +2,7 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::AutocompleteMatch;
+use crate::feat::chat_input::AutocompleteTrigger;
 use nullslop_testutil::setup_term;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier};
@@ -23,9 +24,11 @@ fn state_with_autocomplete(
         .replace_all(buffer_text.to_owned());
     // Position cursor after the buffer text.
     // Note: cursor must be at the end for autocomplete to be consistent.
-    state
-        .active_chat_input_mut()
-        .activate_autocomplete(token_start, matches);
+    state.active_chat_input_mut().activate_autocomplete(
+        token_start,
+        AutocompleteTrigger::Hash,
+        matches,
+    );
     state
 }
 
@@ -291,5 +294,69 @@ fn render_autocomplete_popup_does_not_render_when_inactive() {
         cell.symbol(),
         " ",
         "no popup content should appear when autocomplete is inactive"
+    );
+}
+
+#[rstest::rstest]
+fn render_slash_command_popup_shows_commands() {
+    // Given an AppState with slash autocomplete active.
+    let matches = vec![AutocompleteMatch {
+        name: "new".to_owned(),
+        description: "Create a new session".to_owned(),
+    }];
+    let mut state = AppState::default();
+    state.active_chat_input_mut().replace_all("/".to_owned());
+    state
+        .active_chat_input_mut()
+        .activate_autocomplete(0, AutocompleteTrigger::Slash, matches);
+
+    let (mut terminal, _area) = setup_term(80, 24);
+    let input_area = Rect::new(0, 20, 80, 4);
+
+    terminal
+        .draw(|frame| {
+            render_autocomplete_popup(frame, input_area, &state);
+        })
+        .unwrap();
+
+    // Then the popup shows the slash command.
+    let buffer = terminal.backend().buffer().clone();
+    let popup_top = 20 - 3; // 1 match + 2 borders
+    let line = buffer_line(&buffer, popup_top + 1, 1, 60);
+    assert!(
+        line.contains("new"),
+        "should show 'new' command, got: {line}"
+    );
+    assert!(
+        line.contains("Create a new session"),
+        "should show description, got: {line}"
+    );
+}
+
+#[rstest::rstest]
+fn render_slash_command_popup_shows_no_commands_message() {
+    // Given an AppState with slash autocomplete active but 0 matches.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().replace_all("/xyz".to_owned());
+    state
+        .active_chat_input_mut()
+        .activate_autocomplete(0, AutocompleteTrigger::Slash, vec![]);
+
+    let (mut terminal, _area) = setup_term(80, 24);
+    let input_area = Rect::new(0, 20, 80, 4);
+
+    terminal
+        .draw(|frame| {
+            render_autocomplete_popup(frame, input_area, &state);
+        })
+        .unwrap();
+
+    // Then the popup shows "<no commands found>".
+    let buffer = terminal.backend().buffer().clone();
+    let popup_top = 20 - 3; // 1 content + 2 borders
+    let line = buffer_line(&buffer, popup_top + 1, 1, 60);
+    assert!(
+        line.contains("<no commands found>"),
+        "should show no commands message, got: {line}"
     );
 }

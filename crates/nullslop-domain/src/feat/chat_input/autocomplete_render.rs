@@ -1,6 +1,7 @@
-//! Autocomplete popup rendering — renders the prompt template autocomplete overlay.
+//! Autocomplete popup rendering — renders the prompt template and slash command autocomplete overlay.
 
 use crate::common::app_state::AppState;
+use crate::feat::chat_input::AutocompleteTrigger;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -15,14 +16,16 @@ pub const AUTOCOMPLETE_MIN_WIDTH: u16 = 20;
 pub const AUTOCOMPLETE_MAX_WIDTH_FRAC: f32 = 0.60;
 /// Separator between name and description.
 pub const AUTOCOMPLETE_NAME_DESC_SEP: &str = " — ";
-/// Text shown when no matches found.
-pub const AUTOCOMPLETE_NO_MATCHES: &str = "<no prompts found>";
+/// Text shown when no prompt template matches found.
+const NO_PROMPTS_FOUND: &str = "<no prompts found>";
+/// Text shown when no slash command matches found.
+const NO_COMMANDS_FOUND: &str = "<no commands found>";
 
 /// Renders the autocomplete popup overlay above the input box.
 ///
 /// The popup is a transient visual element — not a `UiElement`. It reads autocomplete
 /// state directly from `AppState` and renders a bordered box with match entries.
-/// The popup is horizontally anchored at the `#` token's screen column and sits
+/// The popup is horizontally anchored at the trigger token's screen column and sits
 /// directly above the input box.
 pub fn render_autocomplete_popup(frame: &mut Frame<'_>, input_area: Rect, state: &AppState) {
     let input = state.active_chat_input();
@@ -46,8 +49,13 @@ pub fn render_autocomplete_popup(frame: &mut Frame<'_>, input_area: Rect, state:
         .max(AUTOCOMPLETE_MIN_WIDTH)
         .min(term_width);
 
+    let no_matches_text = match ac.trigger() {
+        AutocompleteTrigger::Hash => NO_PROMPTS_FOUND,
+        AutocompleteTrigger::Slash => NO_COMMANDS_FOUND,
+    };
+
     let content_width: u16 = if matches.is_empty() {
-        AUTOCOMPLETE_NO_MATCHES
+        no_matches_text
             .len()
             .try_into()
             .unwrap_or(AUTOCOMPLETE_MIN_WIDTH)
@@ -91,10 +99,7 @@ pub fn render_autocomplete_popup(frame: &mut Frame<'_>, input_area: Rect, state:
 
     // Render content.
     if matches.is_empty() {
-        let line = Line::styled(
-            AUTOCOMPLETE_NO_MATCHES,
-            Style::default().fg(Color::DarkGray),
-        );
+        let line = Line::styled(no_matches_text, Style::default().fg(Color::DarkGray));
         let paragraph = Paragraph::new(line);
         frame.render_widget(paragraph, inner);
     } else {
