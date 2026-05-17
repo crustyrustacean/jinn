@@ -44,6 +44,10 @@ pub struct UserPreferences {
     /// Corresponds to a file in `~/.config/nullslop/themes/<name>.toml`.
     #[serde(default)]
     pub theme_name: Option<String>,
+    /// The name of the active persona. `None` means use the default (`coding-assistant`).
+    /// Corresponds to a file in `~/.config/nullslop/personas/<name>.md`.
+    #[serde(default)]
+    pub persona_name: Option<String>,
 }
 
 /// Returns the path to the user preferences file.
@@ -168,6 +172,7 @@ mod tests {
             last_strategy: Some("sliding_window".to_owned()),
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
 
         // When saving and reloading.
@@ -228,6 +233,7 @@ last_strategy = "sliding_window""#,
             last_strategy: None,
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
 
         // When saving.
@@ -247,6 +253,7 @@ last_strategy = "sliding_window""#,
             last_strategy: None,
             tool_entry_max_lines: Some(10),
             theme_name: None,
+            persona_name: None,
         };
 
         // When saving and reloading.

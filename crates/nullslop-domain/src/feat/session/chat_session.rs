@@ -272,6 +272,16 @@ impl ChatSessionState {
         &mut self.ui.chat_input
     }
 
+    /// The session's persona name.
+    pub fn persona_name(&self) -> &str {
+        &self.core.profile.persona_name
+    }
+
+    /// Set the session's persona name.
+    pub fn set_persona_name(&mut self, name: String) {
+        self.core.profile.persona_name = name;
+    }
+
     /// Read-only access to the conversation history.
     pub fn history(&self) -> &[ChatEntry] {
         &self.core.history

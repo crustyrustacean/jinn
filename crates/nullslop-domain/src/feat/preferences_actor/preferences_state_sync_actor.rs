@@ -59,6 +59,19 @@ impl Actor for PreferencesStateSyncActor {
                         tracing::warn!(err = ?e, "failed to reload theme, keeping current");
                     }
                 }
+
+                // Sync active_persona when persona_name changes in preferences.
+                if let Some(ref persona_name) = payload.preferences.persona_name {
+                    let found = state
+                        .context
+                        .personas
+                        .iter()
+                        .find(|p| p.name == *persona_name)
+                        .cloned();
+                    if let Some(persona) = found {
+                        state.context.active_persona = Some(persona);
+                    }
+                }
             }
             ActorEnvelope::Command(_) | ActorEnvelope::Event(_) | ActorEnvelope::System(_) => {}
         }
@@ -102,6 +115,7 @@ mod tests {
             last_strategy: Some("sliding_window".to_owned()),
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
         actor
             .handle(
@@ -134,6 +148,7 @@ mod tests {
             last_strategy: None,
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
         actor
             .handle(
@@ -150,6 +165,7 @@ mod tests {
             last_strategy: Some("sliding_window".to_owned()),
             tool_entry_max_lines: None,
             theme_name: None,
+            persona_name: None,
         };
         actor
             .handle(

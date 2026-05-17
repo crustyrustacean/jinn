@@ -174,6 +174,7 @@ mod tests {
                 last_strategy: None,
                 tool_entry_max_lines: None,
                 theme_name: None,
+            persona_name: None,
             })
             .expect("save prefs");
 

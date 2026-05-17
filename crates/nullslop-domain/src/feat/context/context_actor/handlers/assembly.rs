@@ -163,7 +163,19 @@ impl PromptAssemblyActor {
                 .get(&session_id)
                 .map_or_else(|| std::path::PathBuf::from("."), |s| s.cwd().to_path_buf());
             let context_files = load_project_context_files(&cwd);
-            let persona = guard.context.active_persona.as_ref();
+            // Look up persona from this session's profile, not the global default.
+            // Falls back to coding-assistant if the session's persona name is not found.
+            let persona = guard
+                .session
+                .sessions
+                .get(&session_id)
+                .and_then(|s| {
+                    let name = s.persona_name();
+                    guard.context.personas.iter().find(|p| p.name == name)
+                })
+                .or_else(|| {
+                    guard.context.personas.iter().find(|p| p.name == "coding-assistant")
+                });
             build_env_context(persona, &context_files, &cwd)
         };
 
