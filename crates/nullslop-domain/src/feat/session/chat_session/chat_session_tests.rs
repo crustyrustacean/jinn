@@ -1,3 +1,4 @@
+use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId};
 use std::path::PathBuf;
 
@@ -1524,4 +1525,138 @@ fn serde_defaults_lifecycle_fields_when_missing() {
     // Then lifecycle fields default to None/empty.
     assert!(back.lifecycle_name().is_none());
     assert!(back.lifecycle_args().is_empty());
+}
+
+// --- Streaming tool result tests ---
+
+#[test]
+fn begin_tool_result_creates_pending_entry() {
+    // Given a default session.
+    let mut session = ChatSessionState::new();
+
+    // When beginning a tool result.
+    session.begin_tool_result("call_1", "bash");
+
+    // Then the history has a pending ToolResult entry.
+    assert_eq!(session.history().len(), 1);
+    let entry = &session.history()[0];
+    match &entry.kind {
+        ChatEntryKind::ToolResult {
+            id,
+            name,
+            content,
+            status,
+        } => {
+            assert_eq!(id, "call_1");
+            assert_eq!(name, "bash");
+            assert!(content.is_empty());
+            assert_eq!(*status, ToolResultStatus::Pending);
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+#[test]
+fn begin_tool_result_tracks_history_index() {
+    // Given a session with one entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+
+    // When beginning a tool result.
+    session.begin_tool_result("call_1", "bash");
+
+    // Then the tracking index points to the second entry.
+    assert!(session
+        .core
+        .ephemeral
+        .streaming_tool_result_indices
+        .contains_key("call_1"));
+    assert_eq!(session.core.ephemeral.streaming_tool_result_indices["call_1"], 1);
+}
+
+#[test]
+fn append_tool_result_output_appends_to_pending_entry() {
+    // Given a session with a pending tool result.
+    let mut session = ChatSessionState::new();
+    session.begin_tool_result("call_1", "bash");
+
+    // When appending output.
+    session.append_tool_result_output("call_1", "line 1\n");
+    session.append_tool_result_output("call_1", "line 2\n");
+
+    // Then the entry content has both outputs.
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult { content, .. } => {
+            assert_eq!(content, "line 1\nline 2\n");
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+#[test]
+fn append_tool_result_output_ignores_unknown_call_id() {
+    // Given a session with no pending tool result.
+    let mut session = ChatSessionState::new();
+
+    // When appending output for an unknown call ID.
+    // Then it does not panic (defensive).
+    session.append_tool_result_output("unknown", "output");
+    assert!(session.history().is_empty());
+}
+
+#[test]
+fn finalize_tool_result_completes_pending_entry() {
+    // Given a session with a pending tool result.
+    let mut session = ChatSessionState::new();
+    session.begin_tool_result("call_1", "bash");
+    session.append_tool_result_output("call_1", "building...\n");
+
+    // When finalizing with success.
+    session.finalize_tool_result("call_1", "bash", "final output", true);
+
+    // Then the entry is updated with final content and Success status.
+    assert_eq!(session.history().len(), 1);
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            content,
+            status,
+            ..
+        } => {
+            assert_eq!(content, "final output");
+            assert_eq!(*status, ToolResultStatus::Success);
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+    // And the tracking index is removed.
+    assert!(!session
+        .core
+        .ephemeral
+        .streaming_tool_result_indices
+        .contains_key("call_1"));
+}
+
+#[test]
+fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
+    // Given a session with no pending tool result.
+    let mut session = ChatSessionState::new();
+
+    // When finalizing for a tool that never streamed.
+    session.finalize_tool_result("call_1", "bash", "output", true);
+
+    // Then a new entry is pushed.
+    assert_eq!(session.history().len(), 1);
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            id,
+            name,
+            content,
+            status,
+        } => {
+            assert_eq!(id, "call_1");
+            assert_eq!(name, "bash");
+            assert_eq!(content, "output");
+            assert_eq!(*status, ToolResultStatus::Success);
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
 }

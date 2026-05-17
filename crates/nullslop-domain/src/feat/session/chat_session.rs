@@ -51,6 +51,9 @@ pub struct SessionCoreEphemeral {
     /// Updated when PromptAssembled fires. Not persisted across restarts.
     /// OWNER: session-actor.
     pub(crate) cached_context_size: Option<u32>,
+    /// Maps tool_call_id to history index for pending streaming ToolResult entries.
+    /// OWNER: session-actor.
+    pub(crate) streaming_tool_result_indices: HashMap<String, usize>,
 }
 
 // Core session state — owned by session-actor and context-actor.
@@ -478,6 +481,7 @@ impl ChatSessionState {
         self.core.ephemeral.streaming_entry_index = None;
         self.core.ephemeral.streaming_tool_call_indices.clear();
         self.core.ephemeral.streaming_thinking_entry_index = None;
+        self.core.ephemeral.streaming_tool_result_indices.clear();
     }
 
     /// Cancel streaming and drain queued messages back to the input buffer.
@@ -575,6 +579,100 @@ impl ChatSessionState {
         }
         // If not found (shouldn't happen), push a new entry.
         self.push_entry(ChatEntry::tool_call(id, name, arguments));
+    }
+
+    // --- Streaming tool result ---
+
+    /// Create a pending ToolResult entry when a streaming tool starts executing.
+    ///
+    /// Creates the entry with `ToolResultStatus::Pending` and empty content,
+    /// then tracks its history index for later content appends.
+    pub fn begin_tool_result(&mut self, tool_call_id: &str, name: &str) {
+        let entry = ChatEntry::tool_result(
+            tool_call_id,
+            name,
+            "",
+            crate::feat::session::tool_result_status::ToolResultStatus::Pending,
+        );
+        let history_index = self.push_entry(entry);
+        self.core
+            .ephemeral
+            .streaming_tool_result_indices
+            .insert(tool_call_id.to_owned(), history_index);
+    }
+
+    /// Append incremental output to a pending ToolResult entry.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no pending entry exists for the given `tool_call_id`.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "index comes from begin_tool_result which always returns a valid index"
+    )]
+    pub fn append_tool_result_output(&mut self, tool_call_id: &str, output: &str) {
+        let Some(&history_index) = self
+            .core
+            .ephemeral
+            .streaming_tool_result_indices
+            .get(tool_call_id)
+        else {
+            return;
+        };
+        if let ChatEntryKind::ToolResult {
+            ref mut content,
+            ..
+        } = self.core.history[history_index].kind
+        {
+            content.push_str(output);
+        }
+    }
+
+    /// Finalize a pending ToolResult entry with the final content and status.
+    ///
+    /// If a pending entry exists, updates it with the final content and
+    /// success/failure status. If no pending entry exists (non-streaming tool),
+    /// pushes a new completed entry.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "index comes from begin_tool_result which always returns a valid index"
+    )]
+    pub fn finalize_tool_result(
+        &mut self,
+        tool_call_id: &str,
+        name: &str,
+        content: &str,
+        success: bool,
+    ) {
+        let status = if success {
+            crate::feat::session::tool_result_status::ToolResultStatus::Success
+        } else {
+            crate::feat::session::tool_result_status::ToolResultStatus::Failure
+        };
+
+        if let Some(history_index) = self
+            .core
+            .ephemeral
+            .streaming_tool_result_indices
+            .remove(tool_call_id)
+        {
+            // Finalize existing pending entry.
+            let entry = &mut self.core.history[history_index];
+            match &mut entry.kind {
+                ChatEntryKind::ToolResult {
+                    content: entry_content,
+                    status: entry_status,
+                    ..
+                } => {
+                    *entry_content = content.to_owned();
+                    *entry_status = status;
+                }
+                _ => {}
+            }
+        } else {
+            // Non-streaming tool — push a new completed entry.
+            self.push_entry(ChatEntry::tool_result(tool_call_id, name, content, status));
+        }
     }
 
     // --- Queue ---

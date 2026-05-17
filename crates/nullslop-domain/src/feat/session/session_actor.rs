@@ -45,7 +45,8 @@ use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownCompleted,
 };
 use crate::feat::tools_actor::protocol::event::{
-    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
+    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolExecutionOutput,
+    ToolExecutionStarted, ToolUseStarted,
 };
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{ChatEntry, Command, Event, PromptStrategyId};
@@ -205,6 +206,8 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<ToolCallReceived>();
         ctx.subscribe_event::<ToolCallStreaming>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
+        ctx.subscribe_event::<ToolExecutionStarted>();
+        ctx.subscribe_event::<ToolExecutionOutput>();
         ctx.subscribe_event::<crate::feat::context::protocol::event::ChatEntryPinChanged>();
         ctx.subscribe_event::<ModelsRefreshed>();
         ctx.subscribe_event::<EnvironmentLoaded>();
@@ -254,6 +257,12 @@ impl SessionPersistenceActor {
             Event::ToolCallStreaming(payload) => self.on_tool_call_streaming(payload),
             Event::ToolExecutionCompleted(payload) => {
                 self.on_tool_execution_completed(payload).await;
+            }
+            Event::ToolExecutionStarted(payload) => {
+                self.on_tool_execution_started(payload);
+            }
+            Event::ToolExecutionOutput(payload) => {
+                self.on_tool_execution_output(payload);
             }
             Event::ModelsRefreshed(payload) => {
                 self.on_models_refreshed(payload);

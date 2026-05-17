@@ -1,11 +1,16 @@
 //! Bash built-in tool — executes shell commands.
 //!
-//! Spawns a shell process, captures stdout + stderr, and returns the combined
-//! output. Supports optional timeout and CWD resolution.
+//! Spawns a shell process with piped stdout/stderr, streaming output
+//! line-by-line via `ToolExecutionOutput` events. Falls back to a
+//! non-streaming path when the message sink is unavailable.
 
 use std::fmt::Write as _;
+use std::process::Stdio;
 
+use crate::common::actor::message_sink::MessageSink;
+use crate::feat::tools_actor::protocol::event::{ToolExecutionOutput, ToolExecutionStarted};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
+use crate::protocol::{Event, SessionId};
 
 use super::BoxedToolFuture;
 
@@ -53,99 +58,253 @@ fn parse_args(raw: &str) -> Result<(String, Option<u64>), serde_json::Error> {
     Ok((command, timeout))
 }
 
-/// Executes the `bash` built-in tool.
+/// Maximum lines to keep in accumulated output (truncation from top).
+const MAX_LINES: usize = 2000;
+/// Maximum bytes to keep in accumulated output (truncation from top).
+const MAX_BYTES: usize = 50 * 1024;
+
+/// Truncates accumulated output to stay within line and byte limits.
+/// Removes from the front, keeping the most recent output.
+fn truncate_output(content: &str) -> String {
+    let lines: Vec<&str> = content.split('\n').collect();
+    let mut result = if lines.len() > MAX_LINES {
+        lines[lines.len() - MAX_LINES..].join("\n")
+    } else {
+        content.to_owned()
+    };
+
+    if result.len() > MAX_BYTES {
+        let start = result.len() - MAX_BYTES;
+        result = result[start..].to_owned();
+    }
+
+    result
+}
+
+/// Emits a streaming tool event if both sink and session_id are available.
+fn emit_stream_event(
+    sink: Option<&std::sync::Arc<dyn MessageSink>>,
+    session_id: Option<&SessionId>,
+    event: Event,
+) {
+    if let (Some(sink), Some(_)) = (sink, session_id)
+        && let Err(e) = sink.send_event(event)
+    {
+        tracing::warn!(err = ?e, "bash: failed to emit streaming event");
+    }
+}
+
+/// Creates an error [`ToolResult`] with the given fields and `success: false`.
+fn error_tool_result(tool_call_id: String, name: String, content: String) -> ToolResult {
+    ToolResult {
+        tool_call_id,
+        name,
+        content,
+        success: false,
+    }
+}
+
+/// Formats the final [`ToolResult`] from the process exit status and accumulated output.
+fn format_exit_result(
+    exit_result: &Result<std::process::ExitStatus, std::io::Error>,
+    accumulated: String,
+    tool_call_id: String,
+    tool_name: String,
+) -> ToolResult {
+    let mut content = accumulated;
+    let success = match exit_result {
+        Ok(status) => status.success(),
+        Err(_) => false,
+    };
+
+    if !success {
+        if !content.is_empty() && !content.ends_with('\n') {
+            content.push('\n');
+        }
+        let _ = write!(
+            content,
+            "Command exited with code {}",
+            exit_result
+                .as_ref()
+                .ok()
+                .and_then(std::process::ExitStatus::code)
+                .map_or_else(
+                    || "unknown (signal)".to_owned(),
+                    |c: i32| c.to_string()
+                )
+        );
+    }
+
+    let content = truncate_output(&content);
+
+    ToolResult {
+        tool_call_id,
+        name: tool_name,
+        content,
+        success,
+    }
+}
+
+/// Reads stdout/stderr concurrently, emitting streaming events, then waits for the child to exit.
+///
+/// Lines are appended to `accumulated` and streamed via [`emit_stream_event`].
+/// Large outputs are truncated in-place when they exceed `2 * MAX_BYTES`.
+async fn read_child_output_and_wait(
+    child: &mut tokio::process::Child,
+    stdout: tokio::process::ChildStdout,
+    stderr: tokio::process::ChildStderr,
+    accumulated: &mut String,
+    sink: Option<&std::sync::Arc<dyn MessageSink>>,
+    session_id: Option<&SessionId>,
+    tool_call_id: &str,
+) -> Result<std::process::ExitStatus, std::io::Error> {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+    let stdout_reader = tokio::io::BufReader::new(stdout);
+    let stderr_reader = tokio::io::BufReader::new(stderr);
+
+    let stdout_handle = {
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            use tokio::io::AsyncBufReadExt;
+            let mut lines = stdout_reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if tx.send(line).is_err() {
+                    break;
+                }
+            }
+        })
+    };
+
+    let stderr_handle = {
+        let tx_clone = tx.clone();
+        tokio::spawn(async move {
+            use tokio::io::AsyncBufReadExt;
+            let mut lines = stderr_reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if tx_clone.send(line).is_err() {
+                    break;
+                }
+            }
+        })
+    };
+
+    // Drop the sender so the receiver knows when both are done.
+    drop(tx);
+
+    // Receive lines and emit events.
+    while let Some(line) = rx.recv().await {
+        accumulated.push_str(&line);
+        accumulated.push('\n');
+
+        emit_stream_event(
+            sink,
+            session_id,
+            Event::ToolExecutionOutput(ToolExecutionOutput {
+                session_id: session_id.cloned().unwrap_or_default(),
+                tool_call_id: tool_call_id.to_owned(),
+                output: format!("{line}\n"),
+            }),
+        );
+
+        if accumulated.len() > MAX_BYTES * 2 {
+            let truncated = truncate_output(accumulated);
+            *accumulated = truncated;
+        }
+    }
+
+    // Wait for both readers to finish.
+    let _ = stdout_handle.await;
+    let _ = stderr_handle.await;
+
+    // Wait for process exit.
+    child.wait().await
+}
+
+/// Executes the `bash` built-in tool with streaming output.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let (command, per_call_timeout) = match parse_args(&call.arguments) {
             Ok(v) => v,
             Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to parse arguments: {e}"),
-                    success: false,
-                };
+                return error_tool_result(call.id, call.name, format!("failed to parse arguments: {e}"));
             }
         };
 
         if command.is_empty() {
-            return ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: "command is empty".to_owned(),
-                success: false,
-            };
+            return error_tool_result(call.id, call.name, "command is empty".to_owned());
         }
 
         let shell = shell_path();
         let cwd = ctx.cwd.clone();
 
-        let output = tokio::process::Command::new(&shell)
+        // Emit ToolExecutionStarted if we have a sink and session_id.
+        emit_stream_event(
+            ctx.sink.as_ref(),
+            ctx.session_id.as_ref(),
+            Event::ToolExecutionStarted(ToolExecutionStarted {
+                session_id: ctx.session_id.clone().unwrap_or_default(),
+                tool_call_id: call.id.clone(),
+                name: call.name.clone(),
+            }),
+        );
+
+        let spawn_result = tokio::process::Command::new(&shell)
             .arg("-c")
             .arg(&command)
             .current_dir(&cwd)
-            .output();
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
 
-        // Use the per-call timeout if provided, otherwise fall back to context timeout.
-        let timeout_dur = per_call_timeout
-            .map(std::time::Duration::from_secs)
-            .or(ctx.timeout);
-
-        let result = match timeout_dur {
-            Some(dur) => match tokio::time::timeout(dur, output).await {
-                Ok(Ok(out)) => Ok(out),
-                Ok(Err(e)) => Err(format!("failed to execute command: {e}")),
-                Err(_) => Err(format!("command timed out after {}s", dur.as_secs())),
-            },
-            None => match output.await {
-                Ok(out) => Ok(out),
-                Err(e) => Err(format!("failed to execute command: {e}")),
-            },
+        let mut child = match spawn_result {
+            Ok(child) => child,
+            Err(e) => {
+                return error_tool_result(call.id, call.name, format!("failed to execute command: {e}"));
+            }
         };
 
-        match result {
-            Ok(out) => {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                let mut content = String::new();
-                if !stdout.is_empty() {
-                    content.push_str(&stdout);
-                }
-                if !stderr.is_empty() {
-                    if !content.is_empty() && !content.ends_with('\n') {
-                        content.push('\n');
-                    }
-                    content.push_str(&stderr);
-                }
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let stderr = child.stderr.take().expect("stderr was piped");
 
-                let success = out.status.success();
-                if !success {
-                    if !content.is_empty() && !content.ends_with('\n') {
-                        content.push('\n');
-                    }
-                    let _ = write!(
-                        content,
-                        "Command exited with code {}",
-                        out.status
-                            .code()
-                            .map_or_else(|| "unknown (signal)".to_owned(), |c| c.to_string())
-                    );
-                }
+        // Read stdout and stderr concurrently using tokio async IO.
+        let mut accumulated = String::new();
 
-                ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content,
-                    success,
-                }
-            }
-            Err(msg) => ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: msg,
-                success: false,
-            },
-        }
+        let read_fut = read_child_output_and_wait(
+            &mut child,
+            stdout,
+            stderr,
+            &mut accumulated,
+            ctx.sink.as_ref(),
+            ctx.session_id.as_ref(),
+            &call.id,
+        );
+
+        // Apply timeout to the entire read+wait sequence.
+        let exit_result: Result<std::process::ExitStatus, std::io::Error> =
+            match per_call_timeout
+                .map(std::time::Duration::from_secs)
+                .or(ctx.timeout)
+            {
+                Some(dur) => match tokio::time::timeout(dur, read_fut).await {
+                    Ok(Ok(status)) => Ok(status),
+                    Ok(Err(e)) => {
+                        return error_tool_result(call.id, call.name, format!("failed to wait for process: {e}"));
+                    }
+                    Err(_) => {
+                        // Timeout — kill the process.
+                        let _ = child.kill().await;
+                        return error_tool_result(
+                            call.id,
+                            call.name,
+                            format!("command timed out after {}s", dur.as_secs()),
+                        );
+                    }
+                },
+                None => read_fut.await,
+            };
+
+        format_exit_result(&exit_result, accumulated, call.id, call.name)
     })
 }
 
@@ -161,6 +320,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
         }
     }
 
@@ -239,6 +399,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
         };
 
         let call = ToolCall {

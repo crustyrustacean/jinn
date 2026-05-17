@@ -45,6 +45,7 @@ mod tests {
             ("tool_block_fg", theme.tool_block_fg),
             ("tool_success_bg", theme.tool_success_bg),
             ("tool_failure_bg", theme.tool_failure_bg),
+            ("tool_pending_bg", theme.tool_pending_bg),
             ("truncation_fg", theme.truncation_fg),
             ("picker_active_marker", theme.picker_active_marker),
             ("picker_selected_bg", theme.picker_selected_bg),
