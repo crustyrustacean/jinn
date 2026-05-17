@@ -1,0 +1,283 @@
+use crate::common::app_state::*;
+use crate::protocol::{ChatEntry, Mode, PickerKind, SessionId};
+
+#[rstest::rstest]
+fn push_entry_adds_to_history() {
+    // Given a new AppState.
+    let mut data = AppState::default();
+    let entry = ChatEntry::user("hello");
+
+    // When pushing an entry via the active session.
+    let index = data.active_session_mut().push_entry(entry);
+
+    // Then the index is 0 and history has one entry.
+    assert_eq!(index, 0);
+    assert_eq!(data.active_session().history().len(), 1);
+}
+
+// --- StatusNotification tests ---
+
+#[rstest::rstest]
+fn set_status_notification_stores_message() {
+    // Given a default FrontendState.
+    let mut state = FrontendState::default();
+
+    // When setting a notification.
+    state.set_status_notification("Copied to clipboard");
+
+    // Then active_status_notification returns the message.
+    assert_eq!(
+        state.active_status_notification(),
+        Some("Copied to clipboard")
+    );
+}
+
+#[rstest::rstest]
+fn active_status_notification_returns_none_when_unset() {
+    // Given a default FrontendState.
+    let state = FrontendState::default();
+
+    // When checking for an active notification.
+    // Then it returns None.
+    assert_eq!(state.active_status_notification(), None);
+}
+
+#[rstest::rstest]
+fn clear_expired_notification_removes_when_old() {
+    // Given a FrontendState with a manually constructed expired notification.
+    let mut state = FrontendState {
+        status_notification: Some(StatusNotification {
+            message: "old".to_owned(),
+            // Created 10 seconds ago — expired.
+            created_at: std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(10))
+                .unwrap(),
+        }),
+        ..Default::default()
+    };
+
+    // When clearing expired notifications.
+    state.clear_expired_notification();
+
+    // Then the notification is removed.
+    assert!(state.status_notification.is_none());
+}
+
+#[rstest::rstest]
+fn clear_expired_notification_keeps_when_fresh() {
+    // Given a FrontendState with a fresh notification.
+    let mut state = FrontendState::default();
+    state.set_status_notification("fresh");
+
+    // When clearing expired notifications.
+    state.clear_expired_notification();
+
+    // Then the notification is still present.
+    assert!(state.status_notification.is_some());
+}
+
+// --- ScopeStack tests ---
+
+#[rstest::rstest]
+fn default_creates_normal_base() {
+    // Given a default ScopeStack.
+    let stack = ScopeStack::default();
+
+    // Then the current scope is Normal.
+    assert_eq!(stack.current(), &FocusScope::Normal);
+}
+
+#[rstest::rstest]
+fn push_and_pop_round_trip() {
+    // Given a default ScopeStack.
+    let mut stack = ScopeStack::default();
+
+    // When pushing Input.
+    stack.push(FocusScope::Input);
+
+    // Then current is Input.
+    assert_eq!(stack.current(), &FocusScope::Input);
+
+    // When popping.
+    let popped = stack.pop();
+
+    // Then we get Input back and current is Normal.
+    assert_eq!(popped, Some(FocusScope::Input));
+    assert_eq!(stack.current(), &FocusScope::Normal);
+}
+
+#[rstest::rstest]
+fn pop_on_base_returns_none() {
+    // Given a default ScopeStack (only base).
+    let mut stack = ScopeStack::default();
+
+    // When popping the base.
+    let popped = stack.pop();
+
+    // Then nothing is returned.
+    assert!(popped.is_none());
+    // And the base scope remains.
+    assert_eq!(stack.current(), &FocusScope::Normal);
+}
+
+#[rstest::rstest]
+fn parent_returns_none_on_base() {
+    // Given a default ScopeStack (only base).
+    let stack = ScopeStack::default();
+
+    // Then parent is None.
+    assert!(stack.parent().is_none());
+}
+
+#[rstest::rstest]
+fn parent_returns_previous_after_push() {
+    // Given a ScopeStack with Input pushed.
+    let mut stack = ScopeStack::default();
+    stack.push(FocusScope::Input);
+
+    // Then parent is Normal.
+    assert_eq!(stack.parent(), Some(&FocusScope::Normal));
+}
+
+#[rstest::rstest]
+fn clear_overlays_returns_to_base() {
+    // Given a ScopeStack with multiple overlays.
+    let mut stack = ScopeStack::default();
+    stack.push(FocusScope::Input);
+    stack.push(FocusScope::Picker {
+        kind: PickerKind::Provider,
+    });
+
+    // When clearing overlays.
+    stack.clear_overlays();
+
+    // Then current is Normal.
+    assert_eq!(stack.current(), &FocusScope::Normal);
+    assert_eq!(stack.len(), 1);
+}
+
+#[rstest::rstest]
+fn is_picker_returns_true_when_picker_active() {
+    // Given a ScopeStack with Picker on top.
+    let mut stack = ScopeStack::default();
+    stack.push(FocusScope::Picker {
+        kind: PickerKind::Session,
+    });
+
+    // Then is_picker is true.
+    assert!(stack.is_picker());
+}
+
+#[rstest::rstest]
+fn is_picker_returns_false_when_input_active() {
+    // Given a ScopeStack with Input on top.
+    let mut stack = ScopeStack::default();
+    stack.push(FocusScope::Input);
+
+    // Then is_picker is false.
+    assert!(!stack.is_picker());
+}
+
+#[rstest::rstest]
+fn picker_kind_returns_kind_when_picker_active() {
+    // Given a ScopeStack with Picker(Provider) on top.
+    let mut stack = ScopeStack::default();
+    stack.push(FocusScope::Picker {
+        kind: PickerKind::Provider,
+    });
+
+    // Then picker_kind returns Provider.
+    assert_eq!(stack.picker_kind(), Some(&PickerKind::Provider));
+}
+
+#[rstest::rstest]
+fn picker_kind_returns_none_when_not_picker() {
+    // Given a default ScopeStack.
+    let stack = ScopeStack::default();
+
+    // Then picker_kind is None.
+    assert!(stack.picker_kind().is_none());
+}
+
+#[rstest::rstest]
+fn is_sidebar_returns_true_when_sidebar_active() {
+    // Given a ScopeStack with Sidebar on top.
+    let mut stack = ScopeStack::default();
+    stack.push(FocusScope::Sidebar);
+
+    // Then is_sidebar is true.
+    assert!(stack.is_sidebar());
+}
+
+#[rstest::rstest]
+fn is_sidebar_returns_false_when_normal() {
+    // Given a default ScopeStack.
+    let stack = ScopeStack::default();
+
+    // Then is_sidebar is false.
+    assert!(!stack.is_sidebar());
+}
+
+// --- FocusScope::mode() parameterized ---
+
+#[rstest::rstest]
+#[case(FocusScope::Normal, Mode::Normal)]
+#[case(FocusScope::Input, Mode::Input)]
+#[case(FocusScope::Sidebar, Mode::Normal)]
+#[case(FocusScope::Picker { kind: PickerKind::Provider }, Mode::Picker)]
+fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
+    // Given a FocusScope variant.
+    // When calling mode().
+    // Then it returns the expected Mode.
+    assert_eq!(scope.mode(), expected);
+}
+
+// --- FocusScope::Display ---
+
+#[rstest::rstest]
+#[case(FocusScope::Normal, "Normal")]
+#[case(FocusScope::Input, "Input")]
+#[case(FocusScope::Sidebar, "Sidebar")]
+#[case(FocusScope::Picker { kind: PickerKind::Provider }, "Picker(models)")]
+fn focus_scope_display(#[case] scope: FocusScope, #[case] expected: &str) {
+    // Given a FocusScope variant.
+    // When formatting as Display.
+    // Then it produces the expected string.
+    assert_eq!(scope.to_string(), expected);
+}
+
+// --- session_mut_or_create CWD ---
+
+#[rstest::rstest]
+fn session_mut_or_create_sets_cwd_from_default_cwd() {
+    // Given an AppState with a custom default CWD.
+    let mut state = AppState::default();
+    state.session.default_cwd = std::path::PathBuf::from("/custom/cwd");
+
+    let session_id = SessionId::new();
+
+    // When creating a session via session_mut_or_create.
+    let session = state.session_mut_or_create(&session_id);
+
+    // Then the session's CWD is the default CWD.
+    assert_eq!(session.cwd(), std::path::Path::new("/custom/cwd"));
+}
+
+#[rstest::rstest]
+fn session_mut_or_create_does_not_overwrite_existing_session_cwd() {
+    // Given an AppState with a session that has a specific CWD.
+    let mut state = AppState::default();
+    state.session.default_cwd = std::path::PathBuf::from("/new/default");
+
+    let session_id = SessionId::new();
+    {
+        let session = state.session_mut_or_create(&session_id);
+        session.set_cwd(std::path::PathBuf::from("/existing/cwd"));
+    }
+
+    // When accessing the same session via session_mut_or_create.
+    let session = state.session_mut_or_create(&session_id);
+
+    // Then the CWD is unchanged.
+    assert_eq!(session.cwd(), std::path::Path::new("/existing/cwd"));
+}

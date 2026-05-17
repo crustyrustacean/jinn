@@ -22,6 +22,8 @@ pub mod protocol;
 pub mod render;
 pub mod session_actor;
 pub mod token_stats;
+#[cfg(test)]
+mod token_stats_tests;
 pub mod validator;
 
 pub use chat_session::{ChatSessionState, SessionCore, SessionUi};
@@ -107,10 +109,10 @@ mod welcome_tests {
 
         // Then it mentions all key shortcuts.
         let text = entry.text();
-        assert!(text.contains("i"), "should mention i");
+        assert!(text.contains('i'), "should mention i");
         assert!(text.contains("Ctrl+J"), "should mention Ctrl+J");
-        assert!(text.contains("?"), "should mention ?");
-        assert!(text.contains("q"), "should mention q");
+        assert!(text.contains('?'), "should mention ?");
+        assert!(text.contains('q'), "should mention q");
         assert!(text.contains("Ctrl+K"), "should mention Ctrl+K");
         assert!(text.contains("Ctrl+L"), "should mention Ctrl+L");
         assert!(text.contains("ESC"), "should mention ESC");

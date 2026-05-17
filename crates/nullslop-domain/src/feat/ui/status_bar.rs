@@ -6,6 +6,9 @@
 pub mod element;
 pub mod turn_counter;
 
+#[cfg(test)]
+mod element_tests;
+
 pub use element::StatusBarElement;
 
 use crate::common::AppUiRegistry;

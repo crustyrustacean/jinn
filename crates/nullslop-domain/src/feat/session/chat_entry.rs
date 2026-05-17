@@ -520,12 +520,13 @@ impl ChatEntry {
         std::mem::discriminant(&self.kind).hash(&mut hasher);
         match &self.kind {
             ChatEntryKind::User { display, .. } => display.hash(&mut hasher),
-            ChatEntryKind::System(t) => t.hash(&mut hasher),
-            ChatEntryKind::Error(t) => t.hash(&mut hasher),
-            ChatEntryKind::Assistant(t) => t.hash(&mut hasher),
+            ChatEntryKind::System(t)
+            | ChatEntryKind::Error(t)
+            | ChatEntryKind::Assistant(t)
+            | ChatEntryKind::Thinking(t) => t.hash(&mut hasher),
+            ChatEntryKind::Info(lines) => lines_to_plain_text(lines).hash(&mut hasher),
             ChatEntryKind::Actor { text, .. } => text.hash(&mut hasher),
             ChatEntryKind::Table(data) => data.to_plain_text().hash(&mut hasher),
-            ChatEntryKind::Thinking(t) => t.hash(&mut hasher),
             ChatEntryKind::ToolCall {
                 name, arguments, ..
             } => {
@@ -546,13 +547,13 @@ impl ChatEntry {
                 name.hash(&mut hasher);
                 content.hash(&mut hasher);
             }
-            ChatEntryKind::Info(lines) => lines_to_plain_text(lines).hash(&mut hasher),
         }
         hasher.finish()
     }
 }
 
 impl Serialize for ChatEntryKind {
+    #[allow(clippy::too_many_lines)]
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
         match self {
@@ -693,6 +694,7 @@ impl Serialize for ChatEntryKind {
 }
 
 impl<'de> Deserialize<'de> for ChatEntryKind {
+    #[allow(clippy::too_many_lines)]
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::de::{self, MapAccess, Visitor};
         use std::fmt;
@@ -706,6 +708,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                 formatter.write_str("a ChatEntryKind map")
             }
 
+            #[allow(clippy::too_many_lines)]
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
                 let key: String = map
                     .next_key()?

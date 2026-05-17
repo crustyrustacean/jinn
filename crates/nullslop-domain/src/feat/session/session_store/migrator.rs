@@ -176,13 +176,6 @@ mod tests {
 
     #[test]
     fn run_migrations_creates_tracking_table() {
-        // Given a fresh database.
-        let (_dir, mut conn) = make_conn();
-
-        // When running migrations.
-        run_migrations(&mut conn);
-
-        // Then the _migrations table has 3 entries.
         #[derive(QueryableByName)]
         struct MigrationRow {
             #[diesel(sql_type = diesel::sql_types::Integer)]
@@ -190,6 +183,14 @@ mod tests {
             #[diesel(sql_type = diesel::sql_types::Text)]
             name: String,
         }
+
+        // Given a fresh database.
+        let (_dir, mut conn) = make_conn();
+
+        // When running migrations.
+        run_migrations(&mut conn);
+
+        // Then the _migrations table has 3 entries.
 
         let rows: Vec<MigrationRow> =
             sql_query("SELECT version, name FROM _migrations ORDER BY version")
@@ -207,6 +208,12 @@ mod tests {
 
     #[test]
     fn re_running_migrations_is_noop() {
+        #[derive(QueryableByName)]
+        struct CountRow {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            count: i64,
+        }
+
         // Given a database with migrations already applied.
         let (_dir, mut conn) = make_conn();
         run_migrations(&mut conn);
@@ -215,11 +222,6 @@ mod tests {
         run_migrations(&mut conn);
 
         // Then no duplicate entries are added.
-        #[derive(QueryableByName)]
-        struct CountRow {
-            #[diesel(sql_type = diesel::sql_types::BigInt)]
-            count: i64,
-        }
 
         let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM _migrations")
             .load(&mut conn)
@@ -230,6 +232,12 @@ mod tests {
 
     #[test]
     fn fresh_database_has_all_tables() {
+        #[derive(QueryableByName)]
+        struct TableRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            name: String,
+        }
+
         // Given a fresh database.
         let (_dir, mut conn) = make_conn();
 
@@ -237,11 +245,6 @@ mod tests {
         run_migrations(&mut conn);
 
         // Then all expected tables exist.
-        #[derive(QueryableByName)]
-        struct TableRow {
-            #[diesel(sql_type = diesel::sql_types::Text)]
-            name: String,
-        }
 
         let tables: Vec<TableRow> =
             sql_query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")

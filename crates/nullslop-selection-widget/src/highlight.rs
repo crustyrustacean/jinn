@@ -39,10 +39,6 @@ pub fn highlight_style(highlight_bg: Color) -> Style {
 ///
 /// Does not panic; string slicing is safe because `byte_off` comes from
 /// `char_indices()`, which always yields valid UTF-8 boundaries.
-#[expect(
-    clippy::string_slice,
-    reason = "byte_off comes from char_indices(), always a valid UTF-8 boundary"
-)]
 pub fn highlight_text<'a>(
     text: &str,
     base_style: Style,

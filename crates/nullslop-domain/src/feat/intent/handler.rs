@@ -165,27 +165,30 @@ impl IntentHandler {
             }
             Intent::SidebarMoveDown => {
                 feat::ui::sidebar::navigate_sidebar(
-                    feat::ui::sidebar::SidebarIntent::MoveDown,
+                    &feat::ui::sidebar::SidebarIntent::MoveDown,
                     state,
                 );
                 IntentResult::empty()
             }
             Intent::SidebarMoveUp => {
                 feat::ui::sidebar::navigate_sidebar(
-                    feat::ui::sidebar::SidebarIntent::MoveUp,
+                    &feat::ui::sidebar::SidebarIntent::MoveUp,
                     state,
                 );
                 IntentResult::empty()
             }
             Intent::SidebarSectionNext => {
                 feat::ui::sidebar::jump_to_section(
-                    feat::ui::sidebar::SidebarIntent::MoveDown,
+                    &feat::ui::sidebar::SidebarIntent::MoveDown,
                     state,
                 );
                 IntentResult::empty()
             }
             Intent::SidebarSectionPrev => {
-                feat::ui::sidebar::jump_to_section(feat::ui::sidebar::SidebarIntent::MoveUp, state);
+                feat::ui::sidebar::jump_to_section(
+                    &feat::ui::sidebar::SidebarIntent::MoveUp,
+                    state,
+                );
                 IntentResult::empty()
             }
             Intent::PinsUnpin => feat::ui::sidebar::pins::pins_section::handle_pins_unpin(state),

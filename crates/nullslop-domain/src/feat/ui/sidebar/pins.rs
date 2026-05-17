@@ -7,3 +7,6 @@ pub mod validator;
 pub use pins_section::PinsSection;
 pub use pins_section::{navigate, receive_cursor};
 pub use state::PinsState;
+
+#[cfg(test)]
+mod pins_section_tests;
