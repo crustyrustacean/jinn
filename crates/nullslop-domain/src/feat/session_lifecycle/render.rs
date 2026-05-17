@@ -124,7 +124,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         let block = Block::default()
             .title(" Session Lifecycle Args ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.focus_accent));
+            .border_style(Style::default().fg(theme.border_unfocused));
         frame.render_widget(Clear, popup_area);
         frame.render_widget(block, popup_area);
         return;
@@ -132,13 +132,13 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 
     let title = Line::from(Span::styled(
         " Session Lifecycle Args ",
-        Style::default().fg(theme.focus_accent),
+        Style::default().fg(theme.border_unfocused),
     ));
 
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.focus_accent));
+        .border_style(Style::default().fg(theme.border_unfocused));
 
     // Clear background before rendering the popup borders.
     frame.render_widget(Clear, popup_area);
@@ -461,7 +461,7 @@ mod tests {
             );
         }
 
-        // Second line: "&& echo world"
+        // Second line: "  && echo world"
         let line2_y = popup_area.y + 2;
         if line2_y < buffer.area().height {
             let row_text: String = (inner_x..inner_x + 20)
