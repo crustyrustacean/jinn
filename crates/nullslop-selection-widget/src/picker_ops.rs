@@ -11,6 +11,11 @@ pub trait PickerOps {
     /// Appends a character to the filter at the cursor position.
     fn insert_char(&mut self, ch: char);
 
+    /// Bulk inserts text into the filter at the cursor position.
+    ///
+    /// Newlines are stripped — the picker filter is a single line.
+    fn insert_text(&mut self, text: &str);
+
     /// Removes the character before the cursor.
     fn backspace(&mut self);
 
@@ -30,6 +35,10 @@ pub trait PickerOps {
 impl<T: crate::PickerItem> PickerOps for crate::SelectionState<T> {
     fn insert_char(&mut self, ch: char) {
         crate::SelectionState::insert_char(self, ch);
+    }
+
+    fn insert_text(&mut self, text: &str) {
+        crate::SelectionState::insert_text(self, text);
     }
 
     fn backspace(&mut self) {

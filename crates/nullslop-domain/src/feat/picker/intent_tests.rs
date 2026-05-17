@@ -815,3 +815,41 @@ fn toggling_user_filter_twice_restores_entries() {
     assert!(state.frontend.fork_show_user);
     assert_eq!(state.frontend.fork_picker.items().len(), 2);
 }
+
+// --- Paste ---
+
+#[rstest::rstest]
+fn handle_picker_paste_inserts_text_into_filter() {
+    use super::intent::handle_picker_paste;
+
+    // Given an active provider picker.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Picker {
+        kind: PickerKind::Provider,
+    });
+    state.provider.provider_picker.set_items(vec![]);
+
+    // When pasting "hello".
+    handle_picker_paste(&mut state, "hello");
+
+    // Then the filter contains "hello".
+    assert_eq!(state.provider.provider_picker.filter(), "hello");
+}
+
+#[rstest::rstest]
+fn handle_picker_paste_strips_newlines() {
+    use super::intent::handle_picker_paste;
+
+    // Given an active provider picker.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Picker {
+        kind: PickerKind::Provider,
+    });
+    state.provider.provider_picker.set_items(vec![]);
+
+    // When pasting "hello\nworld".
+    handle_picker_paste(&mut state, "hello\nworld");
+
+    // Then newlines are stripped from the filter.
+    assert_eq!(state.provider.provider_picker.filter(), "helloworld");
+}
