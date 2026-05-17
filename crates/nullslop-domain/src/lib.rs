@@ -136,6 +136,6 @@ pub use feat::session::protocol::session_new::SessionNew;
 pub use feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
 pub use feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolUseStarted, ToolsRegistered,
+    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered,
 };
 pub use feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
