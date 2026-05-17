@@ -55,7 +55,11 @@ impl Sidebar {
         frame.render_widget(background, area);
 
         // Pre-compute all section heights so we don't fight the borrow checker.
-        let heights: Vec<u16> = self.sections.iter().map(|s| s.content_height(state)).collect();
+        let heights: Vec<u16> = self
+            .sections
+            .iter()
+            .map(|s| s.content_height(state))
+            .collect();
         let n = self.sections.len();
 
         // Render all sections except the last top-down.

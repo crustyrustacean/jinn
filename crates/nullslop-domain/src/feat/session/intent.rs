@@ -30,7 +30,10 @@ pub fn handle_session_new(state: &mut AppState) -> IntentResult {
     state.session.sessions.insert(new_id.clone(), new_session);
     state.session.active_session = new_id;
     state.frontend.scope_stack.clear_overlays();
-    state.frontend.scope_stack.push(crate::common::app_state::FocusScope::Input);
+    state
+        .frontend
+        .scope_stack
+        .push(crate::common::app_state::FocusScope::Input);
 
     IntentResult::empty()
 }

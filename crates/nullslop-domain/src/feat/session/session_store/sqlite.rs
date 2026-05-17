@@ -21,9 +21,11 @@ use error_stack::{Report, ResultExt as _};
 use tokio::task::spawn_blocking;
 
 use crate::common::app_info::APP_NAME;
+use crate::feat::session::SessionUi;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
-use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::chat_session::{ChatSessionState, SessionCore, SessionCoreEphemeral};
 use crate::feat::session::session_summary::SessionSummary;
+use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntryId, SessionId};
 
 use super::{SessionStore, SessionStoreError};
@@ -33,7 +35,8 @@ use super::{SessionStore, SessionStoreError};
 const _V0_UP: &str =
     include_str!("../../../../migrations/00000000000000_create_initial_schema/up.sql");
 const _V1_UP: &str = include_str!("../../../../migrations/00000000000001_add_cwd_column/up.sql");
-const _V2_UP: &str = include_str!("../../../../migrations/00000000000002_add_created_at_column/up.sql");
+const _V2_UP: &str =
+    include_str!("../../../../migrations/00000000000002_add_created_at_column/up.sql");
 
 /// Runs all pending migrations on a bootstrap connection.
 ///
@@ -93,10 +96,9 @@ fn run_migrations(conn: &mut SqliteConnection) {
         .execute(conn);
 
     // v2: add created_at column
-    let _ = diesel::sql_query(
-        "ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
-    )
-    .execute(conn);
+    let _ =
+        diesel::sql_query("ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+            .execute(conn);
 }
 
 /// Configuration for the SQLite connection pool.
@@ -388,6 +390,122 @@ struct NewTokenLedgerRow {
     tokens_received: i32,
 }
 
+// ── Conversions ──────────────────────────────────────────────────────────
+
+impl TryFrom<&ChatSessionState> for NewSessionRow {
+    type Error = Report<SessionStoreError>;
+
+    #[deny(unused_variables)]
+    fn try_from(session: &ChatSessionState) -> Result<Self, Self::Error> {
+        // Exhaustive destructuring — adding a field to SessionCore
+        // without updating this pattern is a compile error.
+        let ChatSessionState {
+            core:
+                SessionCore {
+                    session_id,
+                    title,
+                    updated_at,
+                    created_at,
+                    history: _history,
+                    profile,
+                    cwd,
+                    token_ledger: _ledger,
+                    parent_session,
+                    cached_context_size: _cached_context_size,
+                    strategy_state,
+                    blobs,
+                    ephemeral: _ephemeral,
+                },
+            ui: _ui,
+        } = session;
+
+        Ok(Self {
+            id: session_id.to_string(),
+            title: title.clone(),
+            updated_at: updated_at.to_string(),
+            created_at: created_at.to_string(),
+            profile: serde_json::to_string(profile)
+                .change_context(SessionStoreError)
+                .attach("failed to serialize profile")?,
+            strategy_state: serde_json::to_string(strategy_state)
+                .change_context(SessionStoreError)
+                .attach("failed to serialize strategy_state")?,
+            blobs: serde_json::to_string(blobs)
+                .change_context(SessionStoreError)
+                .attach("failed to serialize blobs")?,
+            parent_session: parent_session.as_ref().map(|p| p.to_string()),
+            cwd: cwd.to_string_lossy().to_string(),
+        })
+    }
+}
+
+/// Carries all data needed to reconstruct a full [`ChatSessionState`] from the database.
+struct SessionLoadContext {
+    row: SessionRow,
+    entries: Vec<ChatEntry>,
+    ledger: Vec<TokenRecord>,
+}
+
+impl TryFrom<SessionLoadContext> for ChatSessionState {
+    type Error = Report<SessionStoreError>;
+
+    #[deny(unused_variables)]
+    fn try_from(ctx: SessionLoadContext) -> Result<Self, Self::Error> {
+        // Exhaustive destructuring of SessionRow — adding a column to the
+        // sessions table without updating this pattern is a compile error.
+        let SessionRow {
+            id,
+            title,
+            updated_at,
+            created_at,
+            profile,
+            strategy_state,
+            blobs,
+            parent_session,
+            cwd,
+        } = ctx.row;
+
+        let profile = serde_json::from_str(&profile)
+            .change_context(SessionStoreError)
+            .attach("failed to deserialize profile")?;
+        let strategy_state = serde_json::from_str(&strategy_state)
+            .change_context(SessionStoreError)
+            .attach("failed to deserialize strategy_state")?;
+        let blobs = serde_json::from_str(&blobs)
+            .change_context(SessionStoreError)
+            .attach("failed to deserialize blobs")?;
+        let updated_at = updated_at
+            .parse()
+            .change_context(SessionStoreError)
+            .attach("failed to parse updated_at")?;
+        let created_at = created_at
+            .parse()
+            .change_context(SessionStoreError)
+            .attach("failed to parse created_at")?;
+
+        // Build ChatSessionState with all fields explicitly set.
+        // Every destructured binding from SessionRow is used here.
+        Ok(ChatSessionState {
+            core: SessionCore {
+                session_id: SessionId::from(id.unwrap_or_default()),
+                title,
+                updated_at,
+                created_at,
+                history: ctx.entries,
+                profile,
+                cwd: std::path::PathBuf::from(cwd),
+                token_ledger: ctx.ledger,
+                parent_session: parent_session.map(SessionId::from),
+                cached_context_size: None,
+                strategy_state,
+                blobs,
+                ephemeral: SessionCoreEphemeral::default(),
+            },
+            ui: SessionUi::default(),
+        })
+    }
+}
+
 // ── Blocking implementations ─────────────────────────────────────────────
 
 /// Saves a complete session in a single transaction.
@@ -399,38 +517,15 @@ fn save_blocking(
     conn: &mut SqliteConnection,
     session: &ChatSessionState,
 ) -> Result<(), Report<SessionStoreError>> {
-    let session_id_str = session.session_id().to_string();
-    let title = session.title().unwrap_or("Untitled Session");
-    let updated_at = session.updated_at().to_string();
-    let created_at = session.created_at().to_string();
-    let profile_json = serde_json::to_string(session.profile())
-        .change_context(SessionStoreError)
-        .attach("failed to serialize profile")?;
-    let strategy_state_json = serde_json::to_string(session.strategy_state())
-        .change_context(SessionStoreError)
-        .attach("failed to serialize strategy_state")?;
-    let blobs_json = serde_json::to_string(session.blobs())
-        .change_context(SessionStoreError)
-        .attach("failed to serialize blobs")?;
-    let parent_session_str = session.parent_session().as_ref().map(|p| p.to_string());
-    let cwd_str = session.cwd().to_string_lossy().to_string();
+    let row = NewSessionRow::try_from(session)?;
+    let session_id_str = row.id.clone();
 
     conn.transaction::<_, diesel::result::Error, _>(|txn| {
         use crate::schema::{entries, session_entries, sessions, token_ledger};
 
         // Upsert session metadata.
         insert_into(sessions::table)
-            .values(&NewSessionRow {
-                id: session_id_str.clone(),
-                title: Some(title.to_owned()),
-                updated_at: updated_at.clone(),
-                created_at: created_at.clone(),
-                profile: profile_json.clone(),
-                strategy_state: strategy_state_json.clone(),
-                blobs: blobs_json.clone(),
-                parent_session: parent_session_str.clone(),
-                cwd: cwd_str.clone(),
-            })
+            .values(&row)
             .on_conflict(sessions::dsl::id)
             .do_update()
             .set((
@@ -599,7 +694,6 @@ fn load_session_blocking(
         .change_context(SessionStoreError)
         .attach("failed to query token ledger")?;
 
-    use crate::feat::session::token_stats::TokenRecord;
     let ledger: Vec<TokenRecord> = ledger_rows
         .into_iter()
         .map(|row| TokenRecord {
@@ -612,45 +706,12 @@ fn load_session_blocking(
         })
         .collect();
 
-    // Reconstruct ChatSessionState.
-    let mut session = ChatSessionState::new();
-    session.set_session_id(session_id.clone());
-    session.set_title(meta.title.unwrap_or_default());
-    session.restore_history(entries);
-    session.restore_token_ledger(ledger);
-
-    // Restore profile.
-    let profile: crate::feat::session::profile::SessionProfile =
-        serde_json::from_str(&meta.profile).unwrap_or_default();
-    *session.profile_mut() = profile;
-
-    // Restore strategy state.
-    let strategy_state: std::collections::HashMap<
-        crate::protocol::PromptStrategyId,
-        crate::feat::context::strategy::types::StrategyState,
-    > = serde_json::from_str(&meta.strategy_state).unwrap_or_default();
-    *session.strategy_state_mut() = strategy_state;
-
-    // Restore parent session.
-    let parent = meta.parent_session.map(SessionId::from);
-    session.restore_parent_session(parent);
-
-    // Restore updated_at from persisted value.
-    let updated_at: jiff::Timestamp = meta
-        .updated_at
-        .parse()
-        .unwrap_or_else(|_| jiff::Timestamp::now());
-    session.restore_updated_at(updated_at);
-
-    // Restore created_at from persisted value.
-    let created_at: jiff::Timestamp = meta
-        .created_at
-        .parse()
-        .unwrap_or_else(|_| jiff::Timestamp::now());
-    session.restore_created_at(created_at);
-
-    // Restore cwd.
-    session.set_cwd(std::path::PathBuf::from(&meta.cwd));
+    // Reconstruct ChatSessionState via exhaustive destructuring.
+    let session = ChatSessionState::try_from(SessionLoadContext {
+        row: meta,
+        entries,
+        ledger,
+    })?;
 
     Ok(Some(session))
 }
@@ -712,7 +773,7 @@ fn fork_blocking(
                 id: new_id_str.clone(),
                 title: source_meta.title,
                 updated_at: now.clone(),
-                created_at: now,              // fresh created_at — it's a new session
+                created_at: now, // fresh created_at — it's a new session
                 profile: source_meta.profile,
                 strategy_state: source_meta.strategy_state,
                 blobs: source_meta.blobs,
