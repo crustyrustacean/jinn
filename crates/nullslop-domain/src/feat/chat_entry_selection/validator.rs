@@ -16,33 +16,35 @@ pub fn validate_chat_entry_select_prev(_state: &AppState) {}
 
 // --- Fallible validators ---
 
-/// Errors from validating an ExpandToolResult intent.
+/// Errors from validating an ExpandToolEntry intent.
 #[derive(Debug, Error)]
 #[error(debug)]
-pub enum ExpandToolResultError {
+pub enum ExpandToolEntryError {
     /// No chat entry is currently selected.
     NoSelection,
-    /// The selected entry is not a tool result.
-    NotToolResult,
+    /// The selected entry is not a tool entry (tool call or tool result).
+    NotToolEntry,
 }
 
-/// Validates the ExpandToolResult intent.
+/// Validates the ExpandToolEntry intent.
 ///
-/// Returns an error if no entry is selected or the selected entry is not a tool result.
+/// Returns an error if no entry is selected or the selected entry is not a tool entry
+/// (tool call or tool result).
 ///
 /// # Errors
 ///
-/// Returns an error if no entry is selected or the selected entry is not a tool result.
-pub fn validate_expand_tool_result(state: &AppState) -> Result<(), ExpandToolResultError> {
+/// Returns an error if no entry is selected or the selected entry is not a tool entry.
+pub fn validate_expand_tool_entry(state: &AppState) -> Result<(), ExpandToolEntryError> {
     let selected = state
         .active_session()
         .selected_entry()
-        .ok_or(ExpandToolResultError::NoSelection)?;
+        .ok_or(ExpandToolEntryError::NoSelection)?;
     if !matches!(
         selected.kind,
-        crate::protocol::ChatEntryKind::ToolResult { .. }
+        crate::protocol::ChatEntryKind::ToolCall { .. }
+            | crate::protocol::ChatEntryKind::ToolResult { .. }
     ) {
-        return Err(ExpandToolResultError::NotToolResult);
+        return Err(ExpandToolEntryError::NotToolEntry);
     }
     Ok(())
 }
@@ -95,7 +97,7 @@ mod tests {
         let mut state = AppState::default();
         state
             .active_session_mut()
-            .push_entry(ChatEntry::info("welcome"));
+            .push_entry(ChatEntry::info(vec![ratatui::text::Line::from("welcome")]));
         state.active_session_mut().select_next_entry();
 
         // When validating pin selected.
@@ -128,7 +130,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn expand_tool_result_succeeds_with_selected_tool_result() {
+    fn expand_tool_entry_succeeds_with_selected_tool_result() {
         // Given a state with a selected tool result entry.
         let mut state = AppState::default();
         state
@@ -136,39 +138,57 @@ mod tests {
             .push_entry(ChatEntry::tool_result("id", "bash", "output", true));
         state.active_session_mut().select_next_entry();
 
-        // When validating expand tool result.
-        let result = validate_expand_tool_result(&state);
+        // When validating expand tool entry.
+        let result = validate_expand_tool_entry(&state);
 
         // Then it succeeds.
         assert!(result.is_ok());
     }
 
     #[rstest::rstest]
-    fn expand_tool_result_fails_with_no_selection() {
-        // Given a state with empty history (no selection possible).
-        let state = AppState::default();
+    fn expand_tool_entry_succeeds_with_selected_tool_call() {
+        // Given a state with a selected tool call entry.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::tool_call(
+            "id",
+            "bash",
+            "{\"cmd\": true}",
+        ));
+        state.active_session_mut().select_next_entry();
 
-        // When validating expand tool result.
-        let result = validate_expand_tool_result(&state);
+        // When validating expand tool entry.
+        let result = validate_expand_tool_entry(&state);
 
-        // Then it returns NoSelection error.
-        assert!(matches!(result, Err(ExpandToolResultError::NoSelection)));
+        // Then it succeeds.
+        assert!(result.is_ok());
     }
 
     #[rstest::rstest]
-    fn expand_tool_result_fails_with_non_tool_result_entry() {
-        // Given a state with a selected user entry (not a tool result).
+    fn expand_tool_entry_fails_with_no_selection() {
+        // Given a state with empty history (no selection possible).
+        let state = AppState::default();
+
+        // When validating expand tool entry.
+        let result = validate_expand_tool_entry(&state);
+
+        // Then it returns NoSelection error.
+        assert!(matches!(result, Err(ExpandToolEntryError::NoSelection)));
+    }
+
+    #[rstest::rstest]
+    fn expand_tool_entry_fails_with_non_tool_entry() {
+        // Given a state with a selected user entry (not a tool entry).
         let mut state = AppState::default();
         state
             .active_session_mut()
             .push_entry(ChatEntry::user("hello"));
         state.active_session_mut().select_next_entry();
 
-        // When validating expand tool result.
-        let result = validate_expand_tool_result(&state);
+        // When validating expand tool entry.
+        let result = validate_expand_tool_entry(&state);
 
-        // Then it returns NotToolResult error.
-        assert!(matches!(result, Err(ExpandToolResultError::NotToolResult)));
+        // Then it returns NotToolEntry error.
+        assert!(matches!(result, Err(ExpandToolEntryError::NotToolEntry)));
     }
 
     #[rstest::rstest]

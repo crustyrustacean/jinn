@@ -1,10 +1,19 @@
-//! Autocomplete state for prompt-template completion.
+//! Autocomplete state for prompt-template and slash-command completion.
 //!
-//! Tracks the active autocomplete session: trigger position, selected match,
-//! and the current match list. The filter text is always derived from the
-//! buffer content to prevent cache-drift bugs.
+//! Tracks the active autocomplete session: trigger kind, trigger position,
+//! selected match, and the current match list. The filter text is always derived
+//! from the buffer content to prevent cache-drift bugs.
 
-/// Tracks an active prompt-template autocomplete session.
+/// What triggered the autocomplete session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutocompleteTrigger {
+    /// Triggered by `#` for prompt-template completion.
+    Hash,
+    /// Triggered by `/` at position 0 for slash-command completion.
+    Slash,
+}
+
+/// Tracks an active autocomplete session.
 ///
 /// Lives inside [`ChatInputBoxState`](super::chat_input_box::ChatInputBoxState) as `Option<AutocompleteState>`.
 /// `None` means autocomplete is not active.
@@ -14,7 +23,9 @@
 /// cache-drift bugs.
 #[derive(Debug, Clone)]
 pub struct AutocompleteState {
-    /// Grapheme index where the `#` trigger character sits in the input buffer.
+    /// What triggered this autocomplete session.
+    pub(super) trigger: AutocompleteTrigger,
+    /// Grapheme index where the trigger character (`#` or `/`) sits in the input buffer.
     pub(super) token_start: usize,
     /// Index of the currently highlighted match (0 = first in the list).
     /// The list is ordered least-relevant (index 0) to most-relevant (last index).
@@ -25,7 +36,13 @@ pub struct AutocompleteState {
 }
 
 impl AutocompleteState {
-    /// Returns the grapheme index of the `#` trigger.
+    /// Returns the trigger kind for this autocomplete session.
+    #[must_use]
+    pub fn trigger(&self) -> AutocompleteTrigger {
+        self.trigger
+    }
+
+    /// Returns the grapheme index of the trigger character.
     #[must_use]
     pub fn token_start(&self) -> usize {
         self.token_start

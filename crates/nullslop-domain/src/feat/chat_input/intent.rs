@@ -14,8 +14,10 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::AutocompleteMatch;
+use crate::feat::chat_input::AutocompleteTrigger;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
+use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::protocol::{ChatEntry, Command, IntentResult};
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -31,11 +33,17 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
     if is_autocomplete_active {
         state.active_chat_input_mut().insert_grapheme_at_cursor(ch);
 
-        match ch {
-            ' ' => {
+        let trigger = state
+            .active_chat_input()
+            .autocomplete()
+            .as_ref()
+            .map(|ac| ac.trigger());
+
+        match (ch, trigger) {
+            (' ', _) => {
                 state.active_chat_input_mut().deactivate_autocomplete();
             }
-            '#' => {
+            ('#', Some(AutocompleteTrigger::Hash)) => {
                 let Some(token_start) = state.active_chat_input().autocomplete_token_start() else {
                     return IntentResult::empty();
                 };
@@ -61,7 +69,8 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
                     .active_chat_input()
                     .autocomplete_filter()
                     .unwrap_or_default();
-                let matches = compute_matches(&state.context.prompt_templates, &filter);
+                let matches =
+                    compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
                 state
                     .active_chat_input_mut()
                     .update_autocomplete_matches(matches);
@@ -70,15 +79,32 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
     } else {
         state.active_chat_input_mut().insert_grapheme_at_cursor(ch);
 
-        if ch == '#' {
-            let input = state.active_chat_input();
-            if is_valid_trigger_position(input) {
-                let token_start = input.cursor_pos() - 1;
-                let matches = compute_matches(&state.context.prompt_templates, "");
-                state
-                    .active_chat_input_mut()
-                    .activate_autocomplete(token_start, matches);
+        match ch {
+            '#' => {
+                let input = state.active_chat_input();
+                if is_valid_hash_trigger_position(input) {
+                    let token_start = input.cursor_pos() - 1;
+                    let matches = compute_matches(&state.context.prompt_templates, "");
+                    state.active_chat_input_mut().activate_autocomplete(
+                        token_start,
+                        AutocompleteTrigger::Hash,
+                        matches,
+                    );
+                }
             }
+            '/' => {
+                let input = state.active_chat_input();
+                if is_valid_slash_trigger_position(input) {
+                    let token_start = input.cursor_pos() - 1;
+                    let matches = compute_slash_matches("");
+                    state.active_chat_input_mut().activate_autocomplete(
+                        token_start,
+                        AutocompleteTrigger::Slash,
+                        matches,
+                    );
+                }
+            }
+            _ => {}
         }
     }
 
@@ -109,7 +135,12 @@ pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
             .active_chat_input()
             .autocomplete_filter()
             .unwrap_or_default();
-        let matches = compute_matches(&state.context.prompt_templates, &filter);
+        let trigger = state
+            .active_chat_input()
+            .autocomplete()
+            .as_ref()
+            .map(|ac| ac.trigger());
+        let matches = compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
         state
             .active_chat_input_mut()
             .update_autocomplete_matches(matches);
@@ -142,7 +173,13 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
                     .active_chat_input()
                     .autocomplete_filter()
                     .unwrap_or_default();
-                let matches = compute_matches(&state.context.prompt_templates, &filter);
+                let trigger = state
+                    .active_chat_input()
+                    .autocomplete()
+                    .as_ref()
+                    .map(|ac| ac.trigger());
+                let matches =
+                    compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
                 state
                     .active_chat_input_mut()
                     .update_autocomplete_matches(matches);
@@ -158,10 +195,11 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
 
 // --- Submission ---
 
-/// Handles `SubmitMessage` — confirms autocomplete if active, otherwise submits the message.
+/// Handles `SubmitMessage` — confirms autocomplete if active, executes slash commands,
+/// or submits the message as chat input.
 pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
     if state.active_chat_input().autocomplete().is_some() {
-        return handle_autocomplete_confirm(state);
+        return handle_submit_message_with_autocomplete(state);
     }
 
     if validator::validate_submit_message(state).is_err() {
@@ -169,6 +207,18 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
     }
 
     let display = state.active_chat_input().text().to_owned();
+
+    // Check for slash command execution.
+    if let Some(command_name) = display.strip_prefix('/') {
+        // Extract the first word after / (command name, ignoring arguments).
+        let cmd = command_name.split_whitespace().next().unwrap_or("");
+        if let Some(cmd) = SlashCommand::lookup(cmd) {
+            state.active_chat_input_mut().reset();
+            return execute_slash_command(cmd, state);
+        }
+        // Unknown /command — fall through to normal message.
+    }
+
     let session_id = state.session.active_session.clone();
     let expanded = crate::feat::context::prompt_template::expand_tokens(
         &display,
@@ -180,6 +230,71 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
         session_id,
         entry: ChatEntry::user_expanded(display, expanded),
     })])
+}
+
+/// Handles Enter when autocomplete is active — completes the selection and submits.
+///
+/// For `Hash` trigger: completes the name into the buffer, then submits as a
+/// normal chat message (the completed name is just text in the message).
+/// For `Slash` trigger: completes the command name, then re-checks for slash
+/// command execution.
+fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult {
+    let trigger = state
+        .active_chat_input()
+        .autocomplete()
+        .as_ref()
+        .map(|ac| ac.trigger());
+
+    // Complete the selection.
+    if let Some(selected) = state.active_chat_input().autocomplete_selected() {
+        let name = selected.name.clone();
+        state.active_chat_input_mut().complete_autocomplete(&name);
+    }
+    state.active_chat_input_mut().deactivate_autocomplete();
+
+    // Now submit based on what we completed.
+    if validator::validate_submit_message(state).is_err() {
+        return IntentResult::empty();
+    }
+
+    let display = state.active_chat_input().text().to_owned();
+
+    match trigger {
+        Some(AutocompleteTrigger::Slash) => {
+            // Check for slash command execution after completion.
+            if let Some(command_name) = display.strip_prefix('/') {
+                let cmd = command_name.split_whitespace().next().unwrap_or("");
+                if let Some(cmd) = SlashCommand::lookup(cmd) {
+                    state.active_chat_input_mut().reset();
+                    return execute_slash_command(cmd, state);
+                }
+            }
+            // Fall through to normal submit.
+        }
+        Some(AutocompleteTrigger::Hash) => {
+            // The completed hash template name is just text — submit normally.
+        }
+        _ => {}
+    }
+
+    let session_id = state.session.active_session.clone();
+    let expanded = crate::feat::context::prompt_template::expand_tokens(
+        &display,
+        &state.context.prompt_templates,
+    );
+    state.active_chat_input_mut().reset();
+
+    IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
+        session_id,
+        entry: ChatEntry::user_expanded(display, expanded),
+    })])
+}
+
+/// Executes a slash command.
+fn execute_slash_command(command: SlashCommand, state: &mut AppState) -> IntentResult {
+    match command {
+        SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
+    }
 }
 
 // --- Autocomplete ---
@@ -194,7 +309,13 @@ pub fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
                 .active_chat_input()
                 .autocomplete_filter()
                 .unwrap_or_default();
-            let matches = compute_matches(&state.context.prompt_templates, &filter);
+            let trigger = state
+                .active_chat_input()
+                .autocomplete()
+                .as_ref()
+                .map(|ac| ac.trigger());
+            let matches =
+                compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
             state
                 .active_chat_input_mut()
                 .update_autocomplete_matches(matches);
@@ -325,12 +446,19 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
 // --- Helpers ---
 
 /// Checks whether the `#` at the cursor is in a valid position to trigger autocomplete.
-fn is_valid_trigger_position(input: &ChatInputBoxState) -> bool {
+fn is_valid_hash_trigger_position(input: &ChatInputBoxState) -> bool {
     let dollar_pos = input.cursor_pos() - 1;
     if dollar_pos == 0 {
         return true;
     }
     input.grapheme_at(dollar_pos - 1) == Some(" ")
+}
+
+/// Checks whether the `/` at the cursor is in a valid position to trigger slash autocomplete.
+///
+/// Valid only at position 0 (start of buffer).
+fn is_valid_slash_trigger_position(input: &ChatInputBoxState) -> bool {
+    input.cursor_pos() == 1 && input.text().starts_with('/')
 }
 
 /// Returns true if the cursor has moved before the autocomplete token start, requiring deactivation.
@@ -353,12 +481,51 @@ fn compute_matches(store: &PromptTemplateStore, filter: &str) -> Vec<Autocomplet
         .collect()
 }
 
+/// Computes matches for the active autocomplete based on its trigger kind.
+fn compute_updated_matches(
+    store: &PromptTemplateStore,
+    trigger: Option<AutocompleteTrigger>,
+    filter: &str,
+) -> Vec<AutocompleteMatch> {
+    match trigger {
+        Some(AutocompleteTrigger::Slash) => compute_slash_matches(filter),
+        _ => compute_matches(store, filter),
+    }
+}
+
+/// Performs a fuzzy search against the slash command registry.
+fn compute_slash_matches(filter: &str) -> Vec<AutocompleteMatch> {
+    let filter_lower = filter.to_lowercase();
+    let entries = SlashCommand::all_entries();
+    entries
+        .into_iter()
+        .filter(|e| {
+            if filter_lower.is_empty() {
+                return true;
+            }
+            let name_lower = e.name.to_lowercase();
+            // Simple fuzzy: check if all filter chars appear in order in the name.
+            let mut filter_chars = filter_lower.chars().peekable();
+            for c in name_lower.chars() {
+                if Some(c) == filter_chars.peek().copied() {
+                    filter_chars.next();
+                }
+            }
+            filter_chars.peek().is_none()
+        })
+        .map(|e| AutocompleteMatch {
+            name: e.name,
+            description: e.description,
+        })
+        .collect()
+}
+
 /// Scans the buffer to detect if the cursor sits inside a `#token` region.
 ///
 /// Returns `Some((token_start, filter_text))` if the cursor is within a valid
 /// token, where `token_start` is the grapheme index of the `#` and `filter_text`
 /// is the text between `#+1` and the cursor position.
-fn find_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String)> {
+fn find_hash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String)> {
     use unicode_segmentation::UnicodeSegmentation as _;
 
     let cursor = input.cursor_pos();
@@ -405,18 +572,72 @@ fn find_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String)> {
     }
 }
 
-/// Attempts to re-activate autocomplete if the cursor sits inside a `#token` region.
+/// Scans the buffer to detect if the cursor sits inside a `/command` region at position 0.
+///
+/// Returns `Some((token_start, filter_text))` if the buffer starts with `/` and the
+/// cursor is within the token, where `token_start` is 0 and `filter_text` is the text
+/// between position 1 and the cursor.
+fn find_slash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String)> {
+    use unicode_segmentation::UnicodeSegmentation as _;
+
+    if !input.text().starts_with('/') {
+        return None;
+    }
+
+    let cursor = input.cursor_pos();
+    let graphemes: Vec<&str> = input.text().graphemes(true).collect();
+    let len = graphemes.len();
+
+    // The token extends from 1 to the next whitespace or end.
+    let mut token_end = 1;
+    while token_end < len {
+        let g = graphemes.get(token_end);
+        if g.is_none() || g.is_some_and(|c| c.trim().is_empty()) {
+            break;
+        }
+        token_end += 1;
+    }
+
+    // The cursor must be >= 0 and <= token_end.
+    if cursor <= token_end {
+        let filter: String = graphemes
+            .get(1..cursor)
+            .map(|s| s.join(""))
+            .unwrap_or_default();
+        return Some((0, filter));
+    }
+    None
+}
+
+/// Attempts to re-activate autocomplete if the cursor sits inside a token region.
+///
+/// Checks for both `#token` and `/command` regions.
 fn try_reactivate_autocomplete(state: &mut AppState) {
     if state.active_chat_input().autocomplete().is_some() {
         return;
     }
-    let Some((token_start, filter)) = find_token_at_cursor(state.active_chat_input()) else {
+
+    // Try slash command token first (position 0).
+    if let Some((token_start, filter)) = find_slash_token_at_cursor(state.active_chat_input()) {
+        let matches = compute_slash_matches(&filter);
+        state.active_chat_input_mut().activate_autocomplete(
+            token_start,
+            AutocompleteTrigger::Slash,
+            matches,
+        );
+        return;
+    }
+
+    // Try hash token.
+    let Some((token_start, filter)) = find_hash_token_at_cursor(state.active_chat_input()) else {
         return;
     };
     let matches = compute_matches(&state.context.prompt_templates, &filter);
-    state
-        .active_chat_input_mut()
-        .activate_autocomplete(token_start, matches);
+    state.active_chat_input_mut().activate_autocomplete(
+        token_start,
+        AutocompleteTrigger::Hash,
+        matches,
+    );
 }
 
 #[cfg(test)]
@@ -499,8 +720,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn submit_message_confirms_autocomplete_when_active() {
-        // Given a state with text and autocomplete active.
+    fn submit_message_completes_and_submits_when_hash_autocomplete_active() {
+        // Given a state with text and hash autocomplete active.
         let mut state = AppState::default();
         state.active_chat_input_mut().insert_text("#cod");
         let matches = vec![AutocompleteMatch {
@@ -509,16 +730,21 @@ mod tests {
         }];
         state
             .active_chat_input_mut()
-            .activate_autocomplete(0, matches);
+            .activate_autocomplete(0, AutocompleteTrigger::Hash, matches);
 
         // When handling SubmitMessage.
         let result = super::handle_submit_message(&mut state);
 
-        // Then the autocomplete is confirmed (not a message submit).
-        // The text should now be "#code-review" after completion.
-        assert_eq!(state.active_chat_input().text(), "#code-review");
-        // And no EnqueueUserMessage command was emitted.
-        assert!(result.commands.is_empty());
+        // Then the autocomplete is completed and the message is submitted.
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::EnqueueUserMessage(..))),
+            "Enter should complete autocomplete and submit the message"
+        );
+        // And the input buffer is cleared.
+        assert!(state.active_chat_input().is_empty());
     }
 
     #[rstest::rstest]
@@ -864,5 +1090,240 @@ mod tests {
         // Then nothing happens.
         assert!(!state.frontend.cancel_stream_prompt);
         assert!(result.commands.is_empty());
+    }
+
+    // --- Slash command autocomplete tests ---
+
+    #[rstest::rstest]
+    fn slash_at_position_0_triggers_autocomplete() {
+        // Given a default AppState.
+        let mut state = AppState::default();
+
+        // When handling InsertChar('/').
+        let result = super::handle_insert_char('/', &mut state);
+
+        // Then autocomplete is active with Slash trigger.
+        let ac = state.active_chat_input().autocomplete();
+        assert!(
+            ac.is_some(),
+            "autocomplete should be active after '/' at position 0"
+        );
+        assert_eq!(ac.as_ref().unwrap().trigger(), AutocompleteTrigger::Slash);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn slash_does_not_trigger_with_content() {
+        // Given a state with "hello" in the buffer.
+        let mut state = AppState::default();
+        state.active_chat_input_mut().insert_text("hello");
+
+        // When handling InsertChar('/').
+        let result = super::handle_insert_char('/', &mut state);
+
+        // Then autocomplete is NOT active.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "autocomplete should NOT trigger when buffer has content"
+        );
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn slash_autocomplete_shows_new_command() {
+        // Given a state where '/' was typed at position 0.
+        let mut state = AppState::default();
+        super::handle_insert_char('/', &mut state);
+
+        // Then the autocomplete popup has the /new command.
+        let ac = state.active_chat_input().autocomplete().as_ref().unwrap();
+        let names: Vec<&str> = ac.matches().iter().map(|m| m.name.as_str()).collect();
+        assert!(
+            names.contains(&"new"),
+            "expected 'new' in matches, got: {names:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn slash_autocomplete_filters_on_typing() {
+        // Given a state with '/n' typed.
+        let mut state = AppState::default();
+        super::handle_insert_char('/', &mut state);
+        super::handle_insert_char('n', &mut state);
+
+        // Then the autocomplete filter matches 'n'.
+        let filter = state
+            .active_chat_input()
+            .autocomplete_filter()
+            .unwrap_or_default();
+        assert_eq!(filter, "n");
+
+        // And the new command is still in the matches.
+        let ac = state.active_chat_input().autocomplete().as_ref().unwrap();
+        let names: Vec<&str> = ac.matches().iter().map(|m| m.name.as_str()).collect();
+        assert!(names.contains(&"new"), "'new' should match filter 'n'");
+    }
+
+    #[rstest::rstest]
+    fn slash_autocomplete_tab_completes_name() {
+        // Given a state with slash autocomplete active.
+        let mut state = AppState::default();
+        super::handle_insert_char('/', &mut state);
+
+        // When confirming autocomplete (Tab).
+        let result = super::handle_autocomplete_confirm(&mut state);
+
+        // Then the buffer contains "/new".
+        assert_eq!(state.active_chat_input().text(), "/new");
+        // And no commands were emitted (autocomplete confirm doesn't execute).
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn slash_autocomplete_dismisses_on_space() {
+        // Given a state with slash autocomplete active.
+        let mut state = AppState::default();
+        super::handle_insert_char('/', &mut state);
+
+        // When pressing space.
+        super::handle_insert_char(' ', &mut state);
+
+        // Then autocomplete is dismissed.
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "autocomplete should be dismissed on space"
+        );
+    }
+
+    #[rstest::rstest]
+    fn slash_autocomplete_reactivates_on_cursor_reentry() {
+        // Given a state with "/ne " (autocomplete dismissed by space).
+        let mut state = AppState::default();
+        super::handle_insert_char('/', &mut state);
+        super::handle_insert_char('n', &mut state);
+        super::handle_insert_char('e', &mut state);
+        super::handle_insert_char(' ', &mut state);
+        assert!(state.active_chat_input().autocomplete().is_none());
+
+        // When moving cursor left back to 'e'.
+        state.active_chat_input_mut().move_cursor_left(); // on space
+        state.active_chat_input_mut().move_cursor_left(); // on 'e'
+        let result = super::handle_move_cursor_left(&mut state); // on 'n'
+
+        // Then autocomplete is re-activated.
+        assert!(
+            state.active_chat_input().autocomplete().is_some(),
+            "autocomplete should reactivate when cursor re-enters /token"
+        );
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn slash_autocomplete_does_not_reactivate_after_cursor_leaves_token() {
+        // Given a state with "a /ne" and cursor at end.
+        let mut state = AppState::default();
+        state.active_chat_input_mut().insert_text("a /ne");
+
+        // When moving cursor left to the space before '/'.
+        state.active_chat_input_mut().move_cursor_left(); // 'e'
+        state.active_chat_input_mut().move_cursor_left(); // 'n'
+        state.active_chat_input_mut().move_cursor_left(); // '/'
+        let result = super::handle_move_cursor_left(&mut state); // space
+
+        // Then autocomplete is NOT active (slash was not at position 0).
+        assert!(
+            state.active_chat_input().autocomplete().is_none(),
+            "autocomplete should NOT reactivate for / not at position 0"
+        );
+        assert!(result.commands.is_empty());
+    }
+
+    // --- Slash command execution tests ---
+
+    #[rstest::rstest]
+    fn submit_new_command_creates_session() {
+        // Given a state with "/new" in the buffer (no autocomplete active).
+        let mut state = AppState::default();
+        let old_id = state.session.active_session.clone();
+        state.active_chat_input_mut().insert_text("/new");
+
+        // When handling SubmitMessage.
+        let result = super::handle_submit_message(&mut state);
+
+        // Then a new session is created.
+        assert_ne!(state.session.active_session, old_id);
+        // And the input buffer is cleared.
+        assert!(state.active_chat_input().is_empty());
+        // And no EnqueueUserMessage was emitted.
+        assert!(
+            !result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::EnqueueUserMessage(..))),
+            "/new should not enqueue a chat message"
+        );
+    }
+
+    #[rstest::rstest]
+    fn submit_unknown_slash_command_sends_as_chat() {
+        // Given a state with "/lol" in the buffer.
+        let mut state = AppState::default();
+        state.active_chat_input_mut().insert_text("/lol");
+
+        // When handling SubmitMessage.
+        let result = super::handle_submit_message(&mut state);
+
+        // Then the message is submitted as a normal chat message.
+        assert_eq!(result.commands.len(), 1);
+        assert!(
+            matches!(&result.commands[0], Command::EnqueueUserMessage(..)),
+            "unknown /command should be sent as chat"
+        );
+        // And the buffer is cleared.
+        assert!(state.active_chat_input().is_empty());
+    }
+
+    #[rstest::rstest]
+    fn tab_completes_name_without_executing() {
+        // Given a state with slash autocomplete active ("/" typed, popup showing "new").
+        let mut state = AppState::default();
+        super::handle_insert_char('/', &mut state);
+        let old_id = state.session.active_session.clone();
+
+        // When confirming autocomplete (Tab).
+        let result = super::handle_autocomplete_confirm(&mut state);
+
+        // Then the buffer contains "/new" (completed) but no session was created.
+        assert_eq!(state.active_chat_input().text(), "/new");
+        assert_eq!(
+            state.session.active_session, old_id,
+            "session should not change on Tab confirm"
+        );
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn enter_completes_and_executes_slash_command() {
+        // Given a state with slash autocomplete active ("/" typed, popup showing "new").
+        let mut state = AppState::default();
+        super::handle_insert_char('/', &mut state);
+        let old_id = state.session.active_session.clone();
+
+        // When pressing Enter (SubmitMessage with autocomplete active).
+        let result = super::handle_submit_message(&mut state);
+
+        // Then the command is completed and executed.
+        assert_ne!(
+            state.session.active_session, old_id,
+            "session should change on Enter"
+        );
+        assert!(state.active_chat_input().is_empty());
+        assert!(
+            !result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::EnqueueUserMessage(..))),
+            "/new should not enqueue a chat message"
+        );
     }
 }

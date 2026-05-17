@@ -15,8 +15,8 @@ pub struct RenderContext {
     pub _is_selected: bool,
     /// Whether this tool result entry is expanded (show all lines).
     pub is_expanded: bool,
-    /// Maximum lines before truncating tool result entries.
-    pub tool_result_max_lines: u16,
+    /// Maximum lines before truncating tool entries (tool calls and tool results).
+    pub tool_entry_max_lines: u16,
     /// The current theme colors.
     pub theme: Theme,
 }

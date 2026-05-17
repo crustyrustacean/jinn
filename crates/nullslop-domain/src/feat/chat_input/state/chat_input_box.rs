@@ -6,6 +6,7 @@
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::autocomplete::AutocompleteState;
+use super::autocomplete::AutocompleteTrigger;
 use crate::feat::chat_input::AutocompleteMatch;
 
 /// The user's in-progress message being composed in the input box.
@@ -419,17 +420,23 @@ impl ChatInputBoxState {
         self.autocomplete = None;
     }
 
-    /// Activates autocomplete at the given grapheme index (where `#` was typed).
+    /// Activates autocomplete at the given grapheme index (where `#` or `/` was typed).
     ///
     /// If `matches` is empty, `selected_index` is set to 0.
     /// If non-empty, `selected_index` defaults to the last entry (most relevant).
-    pub fn activate_autocomplete(&mut self, token_start: usize, matches: Vec<AutocompleteMatch>) {
+    pub fn activate_autocomplete(
+        &mut self,
+        token_start: usize,
+        trigger: AutocompleteTrigger,
+        matches: Vec<AutocompleteMatch>,
+    ) {
         let selected_index = if matches.is_empty() {
             0
         } else {
             matches.len() - 1
         };
         self.autocomplete = Some(AutocompleteState {
+            trigger,
             token_start,
             selected_index,
             matches,
@@ -514,7 +521,10 @@ impl ChatInputBoxState {
         Some(col) // token_start at end of buffer
     }
 
-    /// Completes the autocomplete: replaces the `#partial` region with `#name`.
+    /// Completes the autocomplete: replaces the trigger region with the completed text.
+    ///
+    /// For `Hash` trigger: replaces `#partial` with `#name`.
+    /// For `Slash` trigger: replaces `/partial` with `/name`.
     ///
     /// The region replaced is `token_start..cursor_pos` (grapheme indices).
     /// After completion, the cursor lands after the completed text,
@@ -524,7 +534,11 @@ impl ChatInputBoxState {
             return;
         };
         let token_start = ac.token_start;
-        let replacement = format!("#{name}");
+        let prefix = match ac.trigger {
+            AutocompleteTrigger::Hash => '#',
+            AutocompleteTrigger::Slash => '/',
+        };
+        let replacement = format!("{prefix}{name}");
         self.replace_grapheme_range(token_start, self.cursor_pos, &replacement);
         // Cursor is now after the replacement text.
         // Autocomplete stays active — the filter is now the exact name.

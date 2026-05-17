@@ -220,8 +220,8 @@ impl IntentHandler {
             Intent::ChatEntryPinSelected => {
                 feat::chat_entry_selection::intent::handle_pin_selected(state)
             }
-            Intent::ExpandToolResult => {
-                feat::chat_entry_selection::intent::handle_expand_tool_result(state)
+            Intent::ExpandToolEntry => {
+                feat::chat_entry_selection::intent::handle_expand_tool_entry(state)
             }
             Intent::ToggleForkUserFilter => {
                 feat::picker::intent::handle_toggle_fork_user_filter(state)

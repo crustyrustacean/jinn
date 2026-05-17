@@ -108,7 +108,7 @@ mod tests {
             content_width: 60,
             _is_selected: false,
             is_expanded: false,
-            tool_result_max_lines: 5,
+            tool_entry_max_lines: 5,
             theme: crate::feat::theme::default_theme(),
         }
     }

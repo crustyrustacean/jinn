@@ -38,17 +38,52 @@ pub use token_stats::{AggregatedTokenStats, TokenRecord, TokenStats, aggregate_s
 /// with the application. Uses [`crate::protocol::ChatEntry::info`] so the message is
 /// excluded from LLM context.
 pub fn welcome_msg() -> crate::protocol::ChatEntry {
-    crate::protocol::ChatEntry::info(
-        "Welcome to nullslop!\n\
-         \n\
-         \u{2003}i       \u{2014} enter insert mode\n\
-         \u{2003}Ctrl+J  \u{2014} enter insert mode\n\
-         \u{2003}?       \u{2014} show all shortcuts\n\
-         \u{2003}q       \u{2014} quit\n\
-         \u{2003}Ctrl+K  \u{2014} back to normal mode\n\
-         \u{2003}Ctrl+L  \u{2014} toggle sidebar\n\
-         \u{2003}ESC     \u{2014} cancel stream",
-    )
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::{Line, Span};
+
+    let muted = Style::default().fg(crate::feat::theme::default_theme().muted_text);
+    let primary = Style::default().fg(crate::feat::theme::default_theme().primary_text);
+    let bold = primary.add_modifier(Modifier::BOLD);
+
+    crate::protocol::ChatEntry::info(vec![
+        Line::from(Span::styled("Welcome to nullslop!", bold)),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("   i       ", bold),
+            Span::styled("\u{2014} ", muted),
+            Span::styled("enter insert mode", primary),
+        ]),
+        Line::from(vec![
+            Span::styled("   Ctrl+J  ", bold),
+            Span::styled("\u{2014} ", muted),
+            Span::styled("enter insert mode", primary),
+        ]),
+        Line::from(vec![
+            Span::styled("   ?       ", bold),
+            Span::styled("\u{2014} ", muted),
+            Span::styled("show all shortcuts", primary),
+        ]),
+        Line::from(vec![
+            Span::styled("   q       ", bold),
+            Span::styled("\u{2014} ", muted),
+            Span::styled("quit", primary),
+        ]),
+        Line::from(vec![
+            Span::styled("   Ctrl+K  ", bold),
+            Span::styled("\u{2014} ", muted),
+            Span::styled("back to normal mode", primary),
+        ]),
+        Line::from(vec![
+            Span::styled("   Ctrl+L  ", bold),
+            Span::styled("\u{2014} ", muted),
+            Span::styled("toggle sidebar", primary),
+        ]),
+        Line::from(vec![
+            Span::styled("   ESC     ", bold),
+            Span::styled("\u{2014} ", muted),
+            Span::styled("cancel stream", primary),
+        ]),
+    ])
 }
 
 #[cfg(test)]
