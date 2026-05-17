@@ -28,8 +28,8 @@ use crate::feat::session::session_summary::SessionSummary;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntryId, SessionId};
 
-use super::{SessionStore, SessionStoreError};
 use super::migrator;
+use super::{SessionStore, SessionStoreError};
 
 /// Configuration for the SQLite connection pool.
 ///
@@ -283,6 +283,13 @@ struct NewEntryRow {
 #[derive(Queryable)]
 #[diesel(table_name = crate::schema::session_entries)]
 struct SessionEntryRow {
+    /// Diesel `Queryable` requires this field to match the `session_entries.session_id`
+    /// column returned by `SELECT *`. The Rust code already knows the session ID from
+    /// the query filter, so this field is never read directly.
+    #[expect(
+        dead_code,
+        reason = "required by Diesel Queryable derive to match SELECT * columns"
+    )]
     session_id: String,
     entry_id: String,
     ordinal: i32,
@@ -303,7 +310,20 @@ struct NewSessionEntryRow {
 #[derive(Queryable)]
 #[diesel(table_name = crate::schema::token_ledger)]
 struct TokenLedgerRow {
+    /// Diesel `Queryable` requires this field to match the `token_ledger.id`
+    /// column returned by `SELECT *`. The auto-increment PK is not used in Rust code.
+    #[expect(
+        dead_code,
+        reason = "required by Diesel Queryable derive to match SELECT * columns"
+    )]
     id: Option<i32>,
+    /// Diesel `Queryable` requires this field to match the `token_ledger.session_id`
+    /// column returned by `SELECT *`. The Rust code already knows the session ID from
+    /// the query filter, so this field is never read directly.
+    #[expect(
+        dead_code,
+        reason = "required by Diesel Queryable derive to match SELECT * columns"
+    )]
     session_id: String,
     timestamp: String,
     tokens_sent: i32,

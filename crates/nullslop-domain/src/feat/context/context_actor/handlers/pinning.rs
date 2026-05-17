@@ -3,7 +3,7 @@
 use crate::common::actor::ActorContext;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::context::protocol::event::ChatEntryPinChanged;
-use crate::protocol::{Command, Event};
+use crate::protocol::Event;
 
 use super::super::PromptAssemblyActor;
 

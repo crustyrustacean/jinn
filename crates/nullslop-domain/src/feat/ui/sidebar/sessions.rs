@@ -137,7 +137,6 @@ pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
     scroll_to_cursor(state);
 }
 
-
 /// Activates the session under the cursor.
 ///
 /// Called when the user presses Enter in the sessions section.
