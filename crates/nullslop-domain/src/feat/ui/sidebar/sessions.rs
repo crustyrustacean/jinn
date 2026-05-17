@@ -48,10 +48,7 @@ fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         .iter()
         .map(|(id, session)| SessionEntry {
             id: id.clone(),
-            title: session
-                .title()
-                .unwrap_or("Untitled Session")
-                .to_owned(),
+            title: session.title().unwrap_or("Untitled Session").to_owned(),
             is_active: id == active_id,
             created_at: session.created_at().clone(),
             is_idle: session.is_idle(),
@@ -100,10 +97,7 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
 /// Finds the active session in the sorted list and positions the cursor there.
 pub fn receive_cursor(state: &mut AppState, _enter_from: EnterFrom) {
     let sessions = sorted_open_sessions(state);
-    let active_index = sessions
-        .iter()
-        .position(|s| s.is_active)
-        .unwrap_or(0);
+    let active_index = sessions.iter().position(|s| s.is_active).unwrap_or(0);
     state.frontend.sessions_section.selected_index = Some(active_index);
 }
 
@@ -212,10 +206,7 @@ impl SidebarSection for SessionsSection {
                         Style::default().fg(theme.primary_text),
                     )
                 } else {
-                    Span::styled(
-                        INACTIVE_PREFIX.to_owned(),
-                        Style::default(),
-                    )
+                    Span::styled(INACTIVE_PREFIX.to_owned(), Style::default())
                 };
 
                 let title_style = if is_selected {
@@ -271,7 +262,6 @@ fn truncate_str(s: &str, max_len: usize) -> String {
     result
 }
 
-
 // ---------------------------------------------------------------------------
 // Close session handler
 // ---------------------------------------------------------------------------
@@ -305,9 +295,7 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
 
     // The selected session must be idle (not streaming/sending).
     let sessions = sorted_open_sessions(state);
-    let entry = sessions
-        .get(index)
-        .ok_or(SessionCloseError::NoSelection)?;
+    let entry = sessions.get(index).ok_or(SessionCloseError::NoSelection)?;
     let session = state
         .session
         .sessions
@@ -476,10 +464,7 @@ mod tests {
     #[rstest::rstest]
     fn navigate_action_returns_moved() {
         let mut state = AppState::default();
-        let result = navigate(
-            &SidebarIntent::Action(crate::Intent::Quit),
-            &mut state,
-        );
+        let result = navigate(&SidebarIntent::Action(crate::Intent::Quit), &mut state);
         assert_eq!(result, SectionNavResult::Moved);
     }
 
@@ -584,7 +569,7 @@ mod tests {
 
     // --- Close session ---
 
-    use super::{handle_session_close, validate_session_close, SessionCloseError};
+    use super::{SessionCloseError, handle_session_close, validate_session_close};
 
     #[rstest::rstest]
     fn close_session_switches_to_next() {

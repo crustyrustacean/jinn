@@ -34,19 +34,19 @@ use crate::protocol::{
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionCoreEphemeral {
     /// Index into `history` for the entry currently receiving stream tokens.
-    streaming_entry_index: Option<usize>,
+    pub(crate) streaming_entry_index: Option<usize>,
     /// Whether an LLM stream is actively producing tokens.
-    is_streaming: bool,
+    pub(crate) is_streaming: bool,
     /// Messages waiting to be sent to the LLM, one at a time.
-    message_queue: VecDeque<crate::protocol::ChatEntry>,
+    pub(crate) message_queue: VecDeque<crate::protocol::ChatEntry>,
     /// Whether a message has been dispatched to the LLM but no tokens have arrived yet.
-    is_sending: bool,
+    pub(crate) is_sending: bool,
     /// Whether a prompt assembly request is in progress.
-    is_assembling: bool,
+    pub(crate) is_assembling: bool,
     /// Maps stream tool call index to history index for in-progress tool calls.
-    streaming_tool_call_indices: HashMap<usize, usize>,
+    pub(crate) streaming_tool_call_indices: HashMap<usize, usize>,
     /// Index into `history` for the entry currently receiving thinking tokens.
-    streaming_thinking_entry_index: Option<usize>,
+    pub(crate) streaming_thinking_entry_index: Option<usize>,
 }
 
 /// Core session state — owned by session-actor and context-actor.
@@ -65,51 +65,51 @@ fn default_cwd() -> std::path::PathBuf {
 pub struct SessionCore {
     /// Unique identifier for this session.
     /// Generated at construction. Matches the HashMap key in `SessionState.sessions`.
-    session_id: SessionId,
+    pub(crate) session_id: SessionId,
     /// Human-readable title. `None` until the first user message is sent.
     /// OWNER: session-actor (set on first user message, changeable by user).
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    title: Option<String>,
+    pub(crate) title: Option<String>,
     /// When this session was last updated. Set at construction, updated on save.
-    updated_at: Timestamp,
+    pub(crate) updated_at: Timestamp,
     /// When this session was created. Set once at construction, never mutated.
-    created_at: Timestamp,
+    pub(crate) created_at: Timestamp,
     /// All messages in this conversation.
     /// OWNER: session-actor (creates/removes entries, restores history)
-    history: Vec<ChatEntry>,
+    pub(crate) history: Vec<ChatEntry>,
     /// Per-session model and strategy selection.
     /// OWNER: provider-actor (model), context-actor (strategy via SwitchPromptStrategy command)
-    profile: SessionProfile,
+    pub(crate) profile: SessionProfile,
     /// Working directory for tool execution in this session.
     /// OWNER: IntentHandler (set on session creation and cd commands)
     #[serde(default = "default_cwd")]
-    cwd: std::path::PathBuf,
+    pub(crate) cwd: std::path::PathBuf,
     /// Token usage ledger — one immutable record per request/response pair.
     /// OWNER: session-actor (records tokens on PromptAssembled and StreamCompleted).
     #[serde(default)]
-    token_ledger: Vec<TokenRecord>,
+    pub(crate) token_ledger: Vec<TokenRecord>,
     /// Parent session ID, if this session was forked from another.
     /// `None` means this is a root session.
     /// OWNER: session-actor (set at session creation).
     #[serde(default)]
-    parent_session: Option<SessionId>,
+    pub(crate) parent_session: Option<SessionId>,
     /// Cached context size in tokens (assembled prompt size).
     /// Updated when PromptAssembled fires.
     /// OWNER: session-actor.
     #[serde(default)]
-    cached_context_size: Option<u32>,
+    pub(crate) cached_context_size: Option<u32>,
     /// Per-strategy persistent state. Keyed by strategy ID so switching
     /// strategies preserves previous state for when the user switches back.
     /// OWNER: context-actor (reads/writes during RestoreStrategyState, SwitchPromptStrategy).
     #[serde(default)]
-    strategy_state: HashMap<PromptStrategyId, StrategyState>,
+    pub(crate) strategy_state: HashMap<PromptStrategyId, StrategyState>,
     /// Generic blob storage for future subsystems.
     #[serde(default)]
-    blobs: HashMap<String, JsonValue>,
+    pub(crate) blobs: HashMap<String, JsonValue>,
     /// Runtime-only state — not persisted across restarts.
     #[serde(skip)]
-    ephemeral: SessionCoreEphemeral,
+    pub(crate) ephemeral: SessionCoreEphemeral,
 }
 
 impl Default for SessionCore {
@@ -138,38 +138,38 @@ impl Default for SessionCore {
 #[derive(Debug)]
 pub struct SessionUi {
     /// The user's in-progress message for this session.
-    chat_input: ChatInputBoxState,
+    pub(crate) chat_input: ChatInputBoxState,
     /// Number of lines to skip from the top when rendering (ratatui scroll offset).
     ///
     /// `None` means "show the bottom of the conversation" (auto-scroll).
     /// `Some(n)` means the user has manually scrolled to offset `n`.
-    scroll_offset: Option<u16>,
+    pub(crate) scroll_offset: Option<u16>,
     /// The index of the currently selected chat entry, if any.
     ///
     /// Used by j/k navigation in Normal mode for targeting entries
     /// for actions like pinning. `None` means no entry is selected.
-    selected_entry_index: Option<usize>,
+    pub(crate) selected_entry_index: Option<usize>,
     /// The maximum scroll offset computed during the last render.
     ///
     /// Used by scroll handlers to resolve the "at bottom" sentinel into
     /// a concrete offset so `scroll_up` / `scroll_down` work correctly.
     /// Uses `AtomicU16` for interior mutability since the element receives `&self`.
-    last_max_offset: AtomicU16,
+    pub(crate) last_max_offset: AtomicU16,
     /// Per-entry wrapped line ranges computed by the renderer each frame.
     ///
     /// `entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line)` in wrapped
     /// coordinate space. Used by intent handlers to determine which entries are
     /// visible in the viewport.
-    entry_line_ranges: RwLock<Vec<(u16, u16)>>,
+    pub(crate) entry_line_ranges: RwLock<Vec<(u16, u16)>>,
     /// The viewport height (render area height) set by the renderer each frame.
-    viewport_height: AtomicU16,
+    pub(crate) viewport_height: AtomicU16,
     /// Number of blank lines prepended by the renderer for bottom-alignment.
-    blank_count: AtomicU16,
+    pub(crate) blank_count: AtomicU16,
     /// The set of chat entry IDs whose tool result content is expanded.
     ///
     /// When a tool result entry is expanded, its full content is shown
     /// instead of being truncated. This is ephemeral UI state — not persisted.
-    expanded_entries: HashSet<ChatEntryId>,
+    pub(crate) expanded_entries: HashSet<ChatEntryId>,
 }
 
 impl Clone for SessionUi {
@@ -221,10 +221,10 @@ impl Default for SessionUi {
 pub struct ChatSessionState {
     /// Core domain state managed by session-actor and context-actor.
     #[serde(flatten)]
-    core: SessionCore,
+    pub(crate) core: SessionCore,
     /// UI state managed by IntentHandler.
     #[serde(skip)]
-    ui: SessionUi,
+    pub(crate) ui: SessionUi,
 }
 
 impl ChatSessionState {
