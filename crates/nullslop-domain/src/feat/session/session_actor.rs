@@ -553,6 +553,8 @@ impl SessionPersistenceActor {
                         .push(crate::common::app_state::FocusScope::Input);
                 }
 
+                self.save_active_session(&payload.session_id).await;
+
                 if let Err(e) =
                     ctx.send_event(Event::SessionTeardownCompleted(SessionTeardownCompleted {
                         session_id: payload.session_id.clone(),
