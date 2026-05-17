@@ -196,7 +196,11 @@ fn resolve_resource_paths(
 }
 
 /// Scans a directory for files with the given extension and inserts into the map by stem.
-fn scan_dir_into(map: &mut std::collections::BTreeMap<String, PathBuf>, dir: &Path, extension: &str) {
+fn scan_dir_into(
+    map: &mut std::collections::BTreeMap<String, PathBuf>,
+    dir: &Path,
+    extension: &str,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -233,8 +237,7 @@ mod tests {
         let root = tempfile::TempDir::new().expect("temp dir");
         let system_dir = root.path().join("share/themes");
         std::fs::create_dir_all(&system_dir).expect("create dir");
-        std::fs::write(system_dir.join("ocean.toml"), "focus_accent = \"blue\"")
-            .expect("write");
+        std::fs::write(system_dir.join("ocean.toml"), "focus_accent = \"blue\"").expect("write");
 
         let paths = AppPaths::new_in(root.path());
 
@@ -252,8 +255,7 @@ mod tests {
         let root = tempfile::TempDir::new().expect("temp dir");
         let user_dir = root.path().join("config/nullslop/themes");
         std::fs::create_dir_all(&user_dir).expect("create dir");
-        std::fs::write(user_dir.join("forest.toml"), "focus_accent = \"green\"")
-            .expect("write");
+        std::fs::write(user_dir.join("forest.toml"), "focus_accent = \"green\"").expect("write");
 
         let paths = AppPaths::new_in(root.path());
 
@@ -272,13 +274,11 @@ mod tests {
 
         let system_dir = root.path().join("share/themes");
         std::fs::create_dir_all(&system_dir).expect("create dir");
-        std::fs::write(system_dir.join("ocean.toml"), "focus_accent = \"blue\"")
-            .expect("write");
+        std::fs::write(system_dir.join("ocean.toml"), "focus_accent = \"blue\"").expect("write");
 
         let user_dir = root.path().join("config/nullslop/themes");
         std::fs::create_dir_all(&user_dir).expect("create dir");
-        std::fs::write(user_dir.join("ocean.toml"), "focus_accent = \"red\"")
-            .expect("write");
+        std::fs::write(user_dir.join("ocean.toml"), "focus_accent = \"red\"").expect("write");
 
         let paths = AppPaths::new_in(root.path());
 
@@ -299,13 +299,11 @@ mod tests {
 
         let system_dir = root.path().join("share/themes");
         std::fs::create_dir_all(&system_dir).expect("create dir");
-        std::fs::write(system_dir.join("ocean.toml"), "focus_accent = \"blue\"")
-            .expect("write");
+        std::fs::write(system_dir.join("ocean.toml"), "focus_accent = \"blue\"").expect("write");
 
         let user_dir = root.path().join("config/nullslop/themes");
         std::fs::create_dir_all(&user_dir).expect("create dir");
-        std::fs::write(user_dir.join("forest.toml"), "focus_accent = \"green\"")
-            .expect("write");
+        std::fs::write(user_dir.join("forest.toml"), "focus_accent = \"green\"").expect("write");
 
         let paths = AppPaths::new_in(root.path());
 
