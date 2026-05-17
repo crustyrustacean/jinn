@@ -17,12 +17,14 @@ mod autocomplete_render_tests;
 pub mod element;
 pub mod intent;
 pub mod protocol;
+pub mod slash_command;
 pub mod state;
 pub mod validator;
 
 // Re-export state types for convenience.
 pub use state::AutocompleteState;
 pub use state::ChatInputBoxState;
+pub use state::autocomplete::AutocompleteTrigger;
 
 /// A single match for the prompt template autocomplete popup.
 #[derive(Debug, Clone)]
