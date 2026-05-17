@@ -18,7 +18,7 @@ use super::types::{PromptAssembly, PromptAssemblyError, StrategyFactory};
 const DEFAULT_SLIDING_WINDOW_SIZE: usize = 5;
 
 /// Default token budget used when no configuration is provided.
-const DEFAULT_TOKEN_BUDGET: usize = 8192;
+const DEFAULT_TOKEN_BUDGET: usize = 150_000;
 
 /// The default strategy factory.
 ///
