@@ -177,7 +177,12 @@ impl PromptAssemblyActor {
         state.frontend.persona_picker.set_items(entries);
     }
 
-    /// Stores loaded personas in state and sets the first as default if none active.
+    /// Stores loaded personas in state and selects the active persona.
+    ///
+    /// Priority:
+    /// 1. Keep current `active_persona` if it still exists in the new list.
+    /// 2. Fallback to `"coding-assistant"` by name lookup.
+    /// 3. If coding-assistant not found, pick first available.
     fn on_personas_loaded(&self, payload: &PersonasLoaded) {
         if payload.error.is_some() {
             tracing::warn!(
@@ -188,8 +193,189 @@ impl PromptAssemblyActor {
         }
         let mut state = self.state.write();
         state.context.personas.clone_from(&payload.personas);
-        if state.context.active_persona.is_none() {
+
+        // Priority:
+        // 1. Honor prefs.persona_name if set and found in list.
+        // 2. Keep current active_persona if it still exists in the new list.
+        // 3. Fallback to coding-assistant by name.
+        // 4. First available.
+        let target_name = state
+            .frontend
+            .preferences
+            .persona_name
+            .as_deref()
+            .filter(|name| payload.personas.iter().any(|p| p.name == *name))
+            .or_else(|| {
+                state
+                    .context
+                    .active_persona
+                    .as_ref()
+                    .filter(|p| payload.personas.iter().any(|sp| sp.name == p.name))
+                    .map(|p| p.name.as_str())
+            })
+            .unwrap_or("coding-assistant");
+
+        let found = payload
+            .personas
+            .iter()
+            .find(|p| p.name == target_name)
+            .cloned();
+
+        if let Some(persona) = found {
+            state.context.active_persona = Some(persona);
+        } else {
+            // Edge case: coding-assistant not found either.
             state.context.active_persona = payload.personas.first().cloned();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use crate::common::actor::{Actor as _, ActorContext, MessageSink, RecordingSink};
+    use crate::common::app_state::AppState;
+    use crate::common::services::test_services::TestServices;
+    use crate::common::state::State;
+    use crate::feat::context::protocol::event::PersonasLoaded;
+    use crate::feat::persona::Persona;
+
+    use super::*;
+
+    fn make_persona(name: &str) -> Persona {
+        Persona {
+            name: name.to_owned(),
+            description: String::new(),
+            body: String::new(),
+            file_path: std::path::PathBuf::from(format!("/personas/{name}.md")),
+        }
+    }
+
+    fn create_actor() -> (PromptAssemblyActor, State) {
+        let sink: Arc<dyn MessageSink> = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("test", sink);
+        let state = State::new(AppState::default());
+        ctx.set_data(state.clone());
+        ctx.set_data(
+            Box::new(crate::feat::context::DefaultStrategyFactory)
+                as Box<dyn crate::feat::context::strategy::types::StrategyFactory>,
+        );
+        ctx.set_data(TestServices::builder().build());
+        let actor = PromptAssemblyActor::activate(&mut ctx);
+        (actor, state)
+    }
+
+    #[rstest::rstest]
+    fn on_personas_loaded_selects_coding_assistant_when_none_active() {
+        // Given a context actor with no active persona.
+        let (actor, state) = create_actor();
+        let personas = vec![make_persona("learning-tutor"), make_persona("coding-assistant")];
+        let payload = PersonasLoaded {
+            personas,
+            error: None,
+        };
+
+        // When receiving PersonasLoaded.
+        actor.on_personas_loaded(&payload);
+
+        // Then coding-assistant is selected by name, not position.
+        let guard = state.read();
+        assert_eq!(
+            guard.context.active_persona.as_ref().map(|p| p.name.as_str()),
+            Some("coding-assistant")
+        );
+    }
+
+    #[rstest::rstest]
+    fn on_personas_loaded_keeps_existing_active_persona() {
+        // Given a context actor with active persona "learning-tutor".
+        let (actor, state) = create_actor();
+        {
+            let mut guard = state.write();
+            guard.context.active_persona = Some(make_persona("learning-tutor"));
+        }
+        let personas = vec![make_persona("coding-assistant"), make_persona("learning-tutor")];
+        let payload = PersonasLoaded {
+            personas,
+            error: None,
+        };
+
+        // When receiving PersonasLoaded.
+        actor.on_personas_loaded(&payload);
+
+        // Then learning-tutor is kept (still exists in list).
+        let guard = state.read();
+        assert_eq!(
+            guard.context.active_persona.as_ref().map(|p| p.name.as_str()),
+            Some("learning-tutor")
+        );
+    }
+
+    #[rstest::rstest]
+    fn on_personas_loaded_falls_back_when_active_missing() {
+        // Given a context actor where active persona "foo" was deleted from disk.
+        let (actor, state) = create_actor();
+        {
+            let mut guard = state.write();
+            guard.context.active_persona = Some(make_persona("foo"));
+        }
+        let personas = vec![make_persona("coding-assistant")];
+        let payload = PersonasLoaded {
+            personas,
+            error: None,
+        };
+
+        // When receiving PersonasLoaded.
+        actor.on_personas_loaded(&payload);
+
+        // Then falls back to coding-assistant.
+        let guard = state.read();
+        assert_eq!(
+            guard.context.active_persona.as_ref().map(|p| p.name.as_str()),
+            Some("coding-assistant")
+        );
+    }
+
+    #[rstest::rstest]
+    fn on_personas_loaded_uses_first_when_coding_assistant_missing() {
+        // Given a context actor with no coding-assistant in the scanned list.
+        let (actor, state) = create_actor();
+        let personas = vec![make_persona("learning-tutor")];
+        let payload = PersonasLoaded {
+            personas,
+            error: None,
+        };
+
+        // When receiving PersonasLoaded.
+        actor.on_personas_loaded(&payload);
+
+        // Then first available is selected.
+        let guard = state.read();
+        assert_eq!(
+            guard.context.active_persona.as_ref().map(|p| p.name.as_str()),
+            Some("learning-tutor")
+        );
+    }
+
+    #[rstest::rstest]
+    fn on_personas_loaded_clears_active_when_list_empty() {
+        // Given a context actor with some active persona.
+        let (actor, state) = create_actor();
+        {
+            let mut guard = state.write();
+            guard.context.active_persona = Some(make_persona("foo"));
+        }
+        let payload = PersonasLoaded {
+            personas: vec![],
+            error: None,
+        };
+
+        // When receiving PersonasLoaded with empty list.
+        actor.on_personas_loaded(&payload);
+
+        // Then active_persona is None.
+        let guard = state.read();
+        assert!(guard.context.active_persona.is_none());
     }
 }

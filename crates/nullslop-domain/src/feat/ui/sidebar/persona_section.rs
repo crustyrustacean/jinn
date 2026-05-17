@@ -76,11 +76,10 @@ impl SidebarSection for PersonaSection {
             Span::raw(UNSELECTED_BORDER)
         };
 
-        let persona_name = state
-            .context
-            .active_persona
-            .as_ref()
-            .map_or("none", |p| p.name.as_str());
+        // Read persona from the active session, not the global default.
+        // This ensures the sidebar reflects the current session's persona
+        // immediately when switching between sessions.
+        let persona_name = state.active_session().persona_name();
 
         let lines = {
             let mut lines = Vec::new();
@@ -268,42 +267,39 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_shows_persona_name_when_active() {
-        // Given a PersonaSection with an active persona.
+    fn render_shows_session_persona_name() {
+        // Given a PersonaSection with a session that has a custom persona.
         let mut section = PersonaSection;
         let mut state = AppState::default();
-        state.context.active_persona = Some(Persona {
-            name: "coding-assistant".to_owned(),
-            description: "Expert coder".to_owned(),
-            body: String::new(),
-            file_path: std::path::PathBuf::from("test.md"),
-        });
+        state
+            .active_session_mut()
+            .set_persona_name("learning-tutor".to_owned());
 
         // When rendering.
         let rows = render_rows(&mut section, &state, 40, 5);
 
-        // Then the entry row contains the persona name.
+        // Then the entry row contains the session's persona name.
         let combined = rows.join("\n");
         assert!(
-            combined.contains("coding-assistant"),
-            "should contain persona name, got: {combined}"
+            combined.contains("learning-tutor"),
+            "should contain 'learning-tutor', got: {combined}"
         );
     }
 
     #[rstest::rstest]
-    fn render_shows_none_when_no_persona() {
-        // Given a PersonaSection with no active persona.
+    fn render_shows_coding_assistant_by_default() {
+        // Given a PersonaSection with default state.
         let mut section = PersonaSection;
         let state = AppState::default();
 
         // When rendering.
         let rows = render_rows(&mut section, &state, 40, 5);
 
-        // Then the entry row contains "none".
+        // Then the entry row contains "coding-assistant" (session default).
         let combined = rows.join("\n");
         assert!(
-            combined.contains("none"),
-            "should contain 'none', got: {combined}"
+            combined.contains("coding-assistant"),
+            "should contain 'coding-assistant', got: {combined}"
         );
     }
 }
