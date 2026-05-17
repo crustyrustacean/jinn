@@ -1,7 +1,9 @@
 //! Theme file discovery and loading.
 //!
-//! Scans `~/.config/nullslop/themes/*.toml` for theme files, parses them,
-//! and resolves missing fields from the default theme.
+//! Scans a themes directory for `*.toml` files, parses them, and resolves
+//! missing fields from the default theme. All functions accept an explicit
+//! `themes_dir` path — callers pass `AppPaths.themes_dir()` or
+//! `AppState.frontend.themes_dir`.
 
 use std::path::{Path, PathBuf};
 
@@ -11,35 +13,22 @@ use super::default_theme;
 use super::theme::{Theme, ThemeFile};
 use super::theme_error::ThemeError;
 
-/// Returns the path to the themes directory.
-///
-/// Uses `dirs::config_dir()` → `~/.config/nullslop/themes/`.
-#[must_use]
-pub fn themes_dir() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("nullslop")
-        .join("themes")
-}
-
-/// Discovers all theme TOML files in the themes directory.
+/// Discovers all theme TOML files in the given themes directory.
 ///
 /// Returns a list of `(name, path)` pairs, where `name` is the filename
-/// without the `.toml` extension. The themes directory is created if it
+/// without the `.toml` extension. Returns an empty list if the directory
 /// doesn't exist.
 ///
 /// # Errors
 ///
 /// Returns [`ThemeError::Io`] if the directory cannot be read.
-pub fn discover_themes() -> Result<Vec<(String, PathBuf)>, Report<ThemeError>> {
-    let dir = themes_dir();
-
-    if !dir.exists() {
+pub fn discover_themes(themes_dir: &Path) -> Result<Vec<(String, PathBuf)>, Report<ThemeError>> {
+    if !themes_dir.exists() {
         return Ok(Vec::new());
     }
 
     let mut themes = Vec::new();
-    let entries = std::fs::read_dir(&dir)
+    let entries = std::fs::read_dir(themes_dir)
         .change_context(ThemeError::Io)
         .attach("failed to read themes directory")?;
 
@@ -57,7 +46,7 @@ pub fn discover_themes() -> Result<Vec<(String, PathBuf)>, Report<ThemeError>> {
     Ok(themes)
 }
 
-/// Loads a theme by name from the themes directory.
+/// Loads a theme by name from the given themes directory.
 ///
 /// Looks for `<themes_dir>/<name>.toml`. If not found, returns
 /// [`ThemeError::NotFound`]. If found but invalid, returns
@@ -68,8 +57,8 @@ pub fn discover_themes() -> Result<Vec<(String, PathBuf)>, Report<ThemeError>> {
 /// - [`ThemeError::NotFound`] — no TOML file with that name exists.
 /// - [`ThemeError::Parse`] — TOML is malformed or contains invalid colors.
 /// - [`ThemeError::Io`] — file cannot be read.
-pub fn load_theme(name: &str) -> Result<Theme, Report<ThemeError>> {
-    let path = themes_dir().join(format!("{name}.toml"));
+pub fn load_theme(name: &str, themes_dir: &Path) -> Result<Theme, Report<ThemeError>> {
+    let path = themes_dir.join(format!("{name}.toml"));
     if !path.exists() {
         return Err(Report::new(ThemeError::NotFound)
             .attach(format!("theme file not found: {}", path.display())));
@@ -99,16 +88,30 @@ pub fn load_theme_from_file(path: &Path) -> Result<Theme, Report<ThemeError>> {
 
 /// Resolves a theme name to a `Theme`.
 ///
-/// - If `name` is `None` or `"default"`, returns the built-in default theme.
-/// - Otherwise, loads the named theme from the themes directory.
+/// - If `name` is `None` or `"default"`: tries loading `default.toml` from
+///   `themes_dir` first (allows user customization of the default). If not
+///   found, falls back to the embedded default theme.
+/// - Otherwise, loads the named theme from `themes_dir`.
 ///
 /// # Errors
 ///
 /// Propagates errors from [`load_theme`] for non-default theme names.
-pub fn resolve_theme(name: Option<&str>) -> Result<Theme, Report<ThemeError>> {
+/// For the default theme, only returns errors for parse/IO failures
+/// (not-found silently falls back to embedded).
+pub fn resolve_theme(name: Option<&str>, themes_dir: &Path) -> Result<Theme, Report<ThemeError>> {
     match name {
-        None | Some("default") => Ok(default_theme()),
-        Some(name) => load_theme(name),
+        None | Some("default") => {
+            // Try filesystem first — allows user customization.
+            match load_theme("default", themes_dir) {
+                Ok(theme) => Ok(theme),
+                Err(err) if err.downcast_ref::<ThemeError>() == Some(&ThemeError::NotFound) => {
+                    // File not found — use embedded default.
+                    Ok(default_theme())
+                }
+                Err(err) => Err(err),
+            }
+        }
+        Some(name) => load_theme(name, themes_dir),
     }
 }
 
@@ -119,34 +122,31 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn themes_dir_contains_nullslop_themes() {
-        // Given the themes directory path.
-        let dir = themes_dir();
-
-        // Then it ends with nullslop/themes.
-        assert!(dir.to_string_lossy().ends_with("nullslop/themes"));
-    }
-
-    #[rstest::rstest]
     fn discover_themes_returns_empty_for_missing_dir() {
         // Given a themes directory that doesn't exist.
-        // (The default themes dir likely doesn't exist in test environments.)
-        let result = discover_themes();
+        let dir = PathBuf::from("/nonexistent/path/themes");
 
-        // Then it returns Ok with an empty or existing list.
+        // When discovering themes.
+        let result = discover_themes(&dir);
+
+        // Then it returns Ok with an empty list.
         assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
     }
 
     #[rstest::rstest]
     fn load_theme_returns_not_found_for_missing_file() {
         // Given a theme name that doesn't exist.
-        let result = load_theme("nonexistent_theme_xyz");
+        let dir = TempDir::new().expect("temp dir");
+
+        let result = load_theme("nonexistent_theme_xyz", dir.path());
 
         // Then it returns NotFound error.
         assert!(result.is_err());
-        let err = result.unwrap_err();
         assert!(
-            err.downcast_ref::<ThemeError>()
+            result
+                .unwrap_err()
+                .downcast_ref::<ThemeError>()
                 .is_some_and(|e| matches!(e, ThemeError::NotFound)),
             "expected NotFound error"
         );
@@ -215,21 +215,43 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn resolve_theme_none_returns_default() {
-        // Given None as the theme name.
-        let theme = resolve_theme(None).expect("resolve");
+    fn resolve_theme_none_returns_default_when_no_file() {
+        // Given an empty themes directory.
+        let dir = TempDir::new().expect("temp dir");
 
-        // Then it returns the default theme.
+        // When resolving with None.
+        let theme = resolve_theme(None, dir.path()).expect("resolve");
+
+        // Then it returns the embedded default theme.
         assert_eq!(theme.focus_accent, default_theme().focus_accent);
     }
 
     #[rstest::rstest]
-    fn resolve_theme_default_string_returns_default() {
-        // Given "default" as the theme name.
-        let theme = resolve_theme(Some("default")).expect("resolve");
+    fn resolve_theme_default_string_returns_default_when_no_file() {
+        // Given an empty themes directory.
+        let dir = TempDir::new().expect("temp dir");
 
-        // Then it returns the default theme.
+        // When resolving with "default".
+        let theme = resolve_theme(Some("default"), dir.path()).expect("resolve");
+
+        // Then it returns the embedded default theme.
         assert_eq!(theme.focus_accent, default_theme().focus_accent);
+    }
+
+    #[rstest::rstest]
+    fn resolve_theme_default_loads_from_filesystem() {
+        // Given a themes directory with a custom default.toml.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("default.toml");
+        std::fs::write(&path, "focus_accent = \"red\"").expect("write");
+
+        // When resolving with "default".
+        let theme = resolve_theme(Some("default"), dir.path()).expect("resolve");
+
+        // Then it loads from the filesystem (focus_accent overridden).
+        assert_eq!(theme.focus_accent, ratatui::style::Color::Red);
+        // And other fields fall back to embedded default.
+        assert_eq!(theme.muted_text, default_theme().muted_text);
     }
 
     #[rstest::rstest]
@@ -241,28 +263,11 @@ mod tests {
         std::fs::write(dir.path().join("readme.txt"), "not a theme").expect("write");
 
         // When discovering themes.
-        let themes = discover_themes_in(dir.path());
+        let themes = discover_themes(dir.path()).expect("discover");
 
         // Then only .toml files are found, sorted by name.
         assert_eq!(themes.len(), 2);
         assert_eq!(themes[0].0, "forest");
         assert_eq!(themes[1].0, "ocean");
-    }
-
-    /// Test helper that discovers themes in a specific directory.
-    fn discover_themes_in(dir: &Path) -> Vec<(String, PathBuf)> {
-        let mut themes = Vec::new();
-        let entries = std::fs::read_dir(dir).expect("read dir");
-        for entry in entries {
-            let entry = entry.expect("entry");
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "toml")
-                && let Some(name) = path.file_stem().and_then(|s| s.to_str())
-            {
-                themes.push((name.to_owned(), path));
-            }
-        }
-        themes.sort_by(|a, b| a.0.cmp(&b.0));
-        themes
     }
 }

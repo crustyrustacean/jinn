@@ -4,6 +4,8 @@
 //! On each event, replaces `state.frontend.preferences` with the full payload.
 //! This is the ONLY actor that writes to `frontend.preferences`.
 
+use std::path::PathBuf;
+
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::theme;
@@ -16,6 +18,8 @@ use crate::protocol::Event;
 pub struct PreferencesStateSyncActor {
     /// Shared application state.
     state: State,
+    /// Path to the themes directory for theme resolution.
+    themes_dir: PathBuf,
 }
 
 impl Actor for PreferencesStateSyncActor {
@@ -33,7 +37,11 @@ impl Actor for PreferencesStateSyncActor {
             .take_data::<State>()
             .expect("PreferencesStateSyncActor requires State injection");
 
-        Self { state }
+        let themes_dir = ctx
+            .take_data::<PathBuf>()
+            .unwrap_or_else(|| crate::common::app_paths::AppPaths::default().themes_dir());
+
+        Self { state, themes_dir }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
@@ -42,7 +50,10 @@ impl Actor for PreferencesStateSyncActor {
                 let mut state = self.state.write();
                 state.frontend.preferences = payload.preferences.clone();
                 // Reload theme when theme_name changes in preferences.
-                match theme::resolve_theme(payload.preferences.theme_name.as_deref()) {
+                match theme::resolve_theme(
+                    payload.preferences.theme_name.as_deref(),
+                    &self.themes_dir,
+                ) {
                     Ok(t) => state.frontend.theme = t,
                     Err(e) => {
                         tracing::warn!(err = ?e, "failed to reload theme, keeping current");
