@@ -129,7 +129,10 @@ impl CommandTemplate {
     /// that consume one argument each. Splat consumes all remaining args.
     #[must_use]
     pub fn param_count(&self) -> usize {
-        self.params.iter().filter(|p| !matches!(p, Param::Splat)).count()
+        self.params
+            .iter()
+            .filter(|p| !matches!(p, Param::Splat))
+            .count()
     }
 
     /// Whether `$@` or `$*` was found in the command.
@@ -373,7 +376,10 @@ mod tests {
         let tmpl = CommandTemplate::parse("script.sh <foo> <bar> <foo>");
         assert_eq!(
             tmpl.params(),
-            &[Param::Named("foo".to_owned()), Param::Named("bar".to_owned())]
+            &[
+                Param::Named("foo".to_owned()),
+                Param::Named("bar".to_owned())
+            ]
         );
         assert_eq!(tmpl.param_count(), 2);
     }
@@ -389,13 +395,19 @@ mod tests {
     #[rstest::rstest]
     fn render_one_param() {
         let tmpl = CommandTemplate::parse("script.sh $1");
-        assert_eq!(tmpl.render(&["my-branch".to_owned()]), "script.sh my-branch");
+        assert_eq!(
+            tmpl.render(&["my-branch".to_owned()]),
+            "script.sh my-branch"
+        );
     }
 
     #[rstest::rstest]
     fn render_multiple_params() {
         let tmpl = CommandTemplate::parse("script.sh $1 $2");
-        assert_eq!(tmpl.render(&["foo".to_owned(), "bar".to_owned()]), "script.sh foo bar");
+        assert_eq!(
+            tmpl.render(&["foo".to_owned(), "bar".to_owned()]),
+            "script.sh foo bar"
+        );
     }
 
     #[rstest::rstest]
@@ -421,7 +433,10 @@ mod tests {
     #[rstest::rstest]
     fn render_one_named_param() {
         let tmpl = CommandTemplate::parse("script.sh <branch>");
-        assert_eq!(tmpl.render(&["my-feature".to_owned()]), "script.sh my-feature");
+        assert_eq!(
+            tmpl.render(&["my-feature".to_owned()]),
+            "script.sh my-feature"
+        );
     }
 
     #[rstest::rstest]
@@ -511,7 +526,10 @@ mod tests {
     #[rstest::rstest]
     fn render_preserves_redirection() {
         let tmpl = CommandTemplate::parse("echo $1 > output.txt");
-        assert_eq!(tmpl.render(&["hello".to_owned()]), "echo hello > output.txt");
+        assert_eq!(
+            tmpl.render(&["hello".to_owned()]),
+            "echo hello > output.txt"
+        );
     }
 
     // --- Edge cases ---
