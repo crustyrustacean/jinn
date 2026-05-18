@@ -13,6 +13,7 @@ pub mod picker;
 pub mod preferences_actor;
 pub mod provider;
 pub mod provider_infra;
+pub mod rename_session_input;
 pub mod session;
 pub mod session_lifecycle;
 pub mod sidebar_resize;

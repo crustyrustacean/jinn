@@ -52,7 +52,7 @@ fn test_app() -> TuiApp {
 
 #[rstest::rstest]
 #[case::normal_chat(nullslop_domain::FocusScope::Normal, Scope::Normal)]
-#[case::sidebar(nullslop_domain::FocusScope::Sidebar, Scope::Sidebar)]
+#[case::sidebar(nullslop_domain::FocusScope::SidebarPersona, Scope::SidebarPersona)]
 #[case::input(nullslop_domain::FocusScope::Input, Scope::Input)]
 #[case::picker(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, Scope::Picker)]
 #[case::sidebar_resize(nullslop_domain::FocusScope::SidebarResize, Scope::SidebarResize)]

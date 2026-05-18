@@ -296,9 +296,12 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
     match focus {
         FocusScope::Picker { .. } => Scope::Picker,
         FocusScope::Input => Scope::Input,
-        FocusScope::Sidebar => Scope::Sidebar,
+        FocusScope::SidebarPersona => Scope::SidebarPersona,
+        FocusScope::SidebarPins => Scope::SidebarPins,
+        FocusScope::SidebarSessions => Scope::SidebarSessions,
         FocusScope::ArgInput => Scope::ArgInput,
         FocusScope::TokenBudgetInput => Scope::TokenBudgetInput,
+        FocusScope::RenameSessionInput => Scope::RenameSessionInput,
         FocusScope::SidebarResize => Scope::SidebarResize,
         FocusScope::Normal => Scope::Normal,
     }

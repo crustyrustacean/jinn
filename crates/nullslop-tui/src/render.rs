@@ -100,6 +100,19 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             .push(nullslop_domain::feat::token_budget_input::render::token_budget_popup_rect(area));
     }
 
+    // Rename session input popup overlay (+ selectable rect).
+    if matches!(
+        state.frontend.scope_stack.current(),
+        FocusScope::RenameSessionInput
+    ) {
+        nullslop_domain::feat::rename_session_input::render::render_rename_session_input(
+            frame, area, &state,
+        );
+        rects.push(
+            nullslop_domain::feat::rename_session_input::render::rename_session_popup_rect(area),
+        );
+    }
+
     // Release the state read lock before post-render steps.
     drop(state);
 
