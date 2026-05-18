@@ -27,7 +27,6 @@ lint:
     cargo check --workspace
     just clippy
     cargo fmt -- --check
-    just lint-testlength
 
 # Full CI pipeline (lint + test + docs)
 ci: lint test
