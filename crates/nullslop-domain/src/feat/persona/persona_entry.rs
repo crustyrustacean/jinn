@@ -2,6 +2,7 @@
 
 use std::ops::Range;
 
+use crate::feat::picker::style::dim_style;
 use crate::feat::theme::Theme;
 use nullslop_selection_widget::PickerItem;
 use nullslop_selection_widget::highlight_text_with_bg;
@@ -82,13 +83,7 @@ fn render_persona_row(
         Style::default()
     };
 
-    let desc_style = if is_selected {
-        Style::default()
-            .fg(theme.muted_text)
-            .bg(theme.picker_selected_bg)
-    } else {
-        Style::default().fg(theme.muted_text)
-    };
+    let desc_style = dim_style(is_selected, theme);
 
     let name_spans = if match_indices.is_empty() {
         vec![Span::styled(format!("{name}  "), name_style)]

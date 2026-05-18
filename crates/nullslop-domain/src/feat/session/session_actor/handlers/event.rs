@@ -10,8 +10,8 @@ use crate::feat::provider::protocol::event::{
     ModelsRefreshed, StreamCompleted, StreamCompletedReason, StreamToken,
 };
 use crate::feat::tools_actor::protocol::event::{
-    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolExecutionOutput,
-    ToolExecutionStarted, ToolUseStarted,
+    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
+    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
 };
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
@@ -126,7 +126,16 @@ impl SessionPersistenceActor {
                 // Error entry is pushed by the LLM actor via PushChatEntry before
                 // emitting StreamCompleted(Error). Nothing to push here.
             } else if let Some(ref content) = event.assistant_content {
-                let output_tokens = self.counter.count(content) as u32;
+                // Count output tokens from both text content and tool call arguments.
+                // Tool call arguments (JSON) are a significant portion of the
+                // model's output but were previously not counted.
+                let mut output_tokens = self.counter.count(content) as u32;
+                if let Some(ref tool_calls) = event.tool_calls {
+                    for tc in tool_calls {
+                        output_tokens += self.counter.count(&tc.arguments) as u32;
+                        output_tokens += self.counter.count(&tc.name) as u32;
+                    }
+                }
                 // Finalize the last record if one exists (i.e., PromptAssembled fired first).
                 // If no record exists (e.g., session restored mid-stream), skip silently.
                 if !session.token_ledger().is_empty() {
@@ -236,6 +245,46 @@ impl SessionPersistenceActor {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         session.append_tool_result_output(&event.tool_call_id, &event.output);
+    }
+
+    /// All tools in a batch have finished — route the continuation through
+    /// context assembly so token counting and prompt strategy apply.
+    ///
+    /// By this point, the session history already contains `ToolCall`,
+    /// `ToolResult`, and `Assistant` entries from earlier event handlers,
+    /// and the session is already in sending state (set by `on_stream_completed`
+    /// for the `ToolUse` reason). We just need to emit `AssemblePrompt` with
+    /// the full session history.
+    pub(in crate::feat::session::session_actor) async fn on_tool_batch_completed(
+        &self,
+        event: &ToolBatchCompleted,
+        ctx: &ActorContext,
+    ) {
+        tracing::trace!(
+            session_id = ?event.session_id,
+            result_count = event.results.len(),
+            "on_tool_batch_completed"
+        );
+
+        // Read history and model, then emit AssemblePrompt.
+        // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
+        let (history, model_name) = {
+            let state = self.state.read();
+            let session = state.session(&event.session_id);
+            (session.history().to_vec(), session.profile().model.clone())
+        };
+
+        if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
+            session_id: event.session_id.clone(),
+            history,
+            tools: vec![],
+            model_name,
+        })) {
+            tracing::warn!(
+                err = ?e,
+                "session-actor failed to emit AssemblePrompt from tool batch completion"
+            );
+        }
     }
 
     /// Pushes a table entry after model refresh.
