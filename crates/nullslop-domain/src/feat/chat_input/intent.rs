@@ -341,8 +341,7 @@ pub fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
         }
         IntentResult::empty()
     } else {
-        // Fallback: switch tab when autocomplete is inactive.
-        state.frontend.active_tab = state.frontend.active_tab.next();
+        // No autocomplete active — no-op.
         IntentResult::empty()
     }
 }

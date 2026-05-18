@@ -177,7 +177,6 @@ impl AppWorld {
             suspend: Suspend::new(),
             event_task: None,
             status: AppStatus::Starting,
-            tab_manager: render::init_tab_manager(),
             selection: SelectionState::Idle,
             selectable_rects: Default::default(),
             pending_clipboard: false,
@@ -600,7 +599,6 @@ fn when_restart_app(world: &mut AppWorld) {
         suspend: Suspend::new(),
         event_task: None,
         status: AppStatus::Starting,
-        tab_manager: render::init_tab_manager(),
         selection: SelectionState::Idle,
         selectable_rects: Default::default(),
         pending_clipboard: false,
@@ -779,10 +777,8 @@ fn run_headless_script(world: &mut AppWorld, content: &str) {
     for keys in lines {
         for key in keys {
             let state_read = world.app.core.state.read();
-            let scope = nullslop_tui::app::scope_for_focus(
-                state_read.frontend.scope_stack.current(),
-                state_read.frontend.active_tab,
-            );
+            let scope =
+                nullslop_tui::app::scope_for_focus(state_read.frontend.scope_stack.current());
             drop(state_read);
             world.app.which_key.set_scope(scope);
             if let Some(intent) = world.app.which_key.handle_key(key) {

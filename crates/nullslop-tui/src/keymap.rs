@@ -9,7 +9,7 @@ use derive_more::Display;
 use nullslop_domain::Intent;
 use nullslop_domain::PickerKind;
 use nullslop_domain::feat::theme::Theme;
-use nullslop_domain::{Key, KeyEvent, TabDirection};
+use nullslop_domain::{Key, KeyEvent};
 use ratatui_which_key::CrosstermKeymapExt as _;
 use ratatui_which_key::Key as WhichKeyKey;
 use ratatui_which_key::Keymap;
@@ -63,8 +63,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("j", Intent::ChatEntrySelectNext, KeyCategory::Navigation)
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
-            .bind("<tab>", Intent::SwitchTab { direction: TabDirection::Next }, KeyCategory::Navigation)
-            .bind("<s-tab>", Intent::SwitchTab { direction: TabDirection::Prev }, KeyCategory::Navigation)
             // Input — external editor
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
             // g prefix — general commands and model management
@@ -92,26 +90,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Escape: cancel selection
             .bind("<esc>", Intent::NormalEscape, KeyCategory::General);
         })
-        // Dashboard scope: actor list navigation
-        .scope(Scope::Dashboard, |b| {
-            b
-            // General — app control
-            .bind("q", Intent::Quit, KeyCategory::General)
-            .bind("<c-c>", Intent::Quit, KeyCategory::General)
-            .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
-            .bind("<c-p>", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
-            .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
-            // Navigation — actor list
-            .bind("j", Intent::DashboardSelectDown, KeyCategory::Navigation)
-            .bind("k", Intent::DashboardSelectUp, KeyCategory::Navigation)
-            .bind("gg", Intent::DashboardSelectFirst, KeyCategory::Navigation)
-            .bind("G", Intent::DashboardSelectLast, KeyCategory::Navigation)
-            // Tab switching
-            .bind("<tab>", Intent::SwitchTab { direction: TabDirection::Next }, KeyCategory::Navigation)
-            .bind("<s-tab>", Intent::SwitchTab { direction: TabDirection::Prev }, KeyCategory::Navigation)
-            // Pane navigation
-            .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation);
-        })
         // Pinned scope: pinned entry navigation and management
         .scope(Scope::Sidebar, |b| {
             b
@@ -137,9 +115,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
             .bind("<esc>", Intent::SidebarLeave, KeyCategory::General)
-            // Tab switching
-            .bind("<tab>", Intent::SwitchTab { direction: TabDirection::Next }, KeyCategory::Navigation)
-            .bind("<s-tab>", Intent::SwitchTab { direction: TabDirection::Prev }, KeyCategory::Navigation)
             // Pane navigation — focus back to chat
             .bind("<c-h>", Intent::SidebarLeave, KeyCategory::Navigation)
             // Sidebar resize
@@ -287,7 +262,6 @@ pub fn collect_all_bindings(
     let mut entries = Vec::new();
     for scope in &[
         Scope::Normal,
-        Scope::Dashboard,
         Scope::Sidebar,
         Scope::Picker,
         Scope::Input,

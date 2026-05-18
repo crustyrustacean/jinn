@@ -1,6 +1,5 @@
 //! The [`Intent`] enum — one variant per user-initiated action.
-
-use crate::protocol::{Command, PickerKind, SessionId, TabDirection};
+use crate::protocol::{Command, PickerKind, SessionId};
 
 /// A user-initiated action.
 ///
@@ -57,11 +56,6 @@ pub enum Intent {
     ScrollToTop,
     /// Scroll to the very bottom.
     ScrollToBottom,
-    /// Switch to the next/previous tab.
-    SwitchTab {
-        /// Which direction to cycle.
-        direction: TabDirection,
-    },
     /// Open the input in an external editor.
     EditInput,
 
@@ -116,16 +110,6 @@ pub enum Intent {
     RefreshModels,
     /// Rescan the prompt templates directory.
     RescanPromptTemplates,
-
-    // --- Dashboard ---
-    /// Move the dashboard selection down.
-    DashboardSelectDown,
-    /// Move the dashboard selection up.
-    DashboardSelectUp,
-    /// Move the dashboard selection to the first entry.
-    DashboardSelectFirst,
-    /// Move the dashboard selection to the last entry.
-    DashboardSelectLast,
 
     // --- Sidebar ---
     /// Enter the sidebar scope.
@@ -231,7 +215,6 @@ impl std::fmt::Display for Intent {
             Intent::MouseScrollDown => write!(f, "mouse scroll down"),
             Intent::ScrollToTop => write!(f, "scroll to top"),
             Intent::ScrollToBottom => write!(f, "scroll to bottom"),
-            Intent::SwitchTab { direction } => write!(f, "switch tab {direction}"),
             Intent::EditInput => write!(f, "edit in $EDITOR"),
             Intent::Quit => write!(f, "quit"),
             Intent::Interrupt { .. } => write!(f, "interrupt"),
@@ -251,10 +234,6 @@ impl std::fmt::Display for Intent {
             Intent::SessionNew => write!(f, "session new"),
             Intent::RefreshModels => write!(f, "refresh models"),
             Intent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
-            Intent::DashboardSelectDown => write!(f, "dashboard select down"),
-            Intent::DashboardSelectUp => write!(f, "dashboard select up"),
-            Intent::DashboardSelectFirst => write!(f, "dashboard select first"),
-            Intent::DashboardSelectLast => write!(f, "dashboard select last"),
             Intent::SidebarFocus => write!(f, "sidebar focus"),
             Intent::SidebarLeave => write!(f, "sidebar leave"),
             Intent::SidebarMoveDown => write!(f, "sidebar move down"),

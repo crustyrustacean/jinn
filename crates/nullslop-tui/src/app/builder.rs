@@ -59,7 +59,6 @@ impl TuiAppBuilder {
         let mut ui_registry = AppUiRegistry::new();
         nullslop_domain::register_all_ui_elements(&mut ui_registry);
         nullslop_domain::feat::ui::status_bar::register(&mut ui_registry);
-        nullslop_domain::feat::dashboard::register(&mut ui_registry);
         nullslop_domain::feat::ui::chat_log::register(&mut ui_registry);
         nullslop_domain::feat::provider::register(&mut ui_registry);
         nullslop_domain::feat::chat_input::register(&mut ui_registry);
@@ -74,7 +73,6 @@ impl TuiAppBuilder {
             suspend: Suspend::new(),
             event_task: None,
             status: AppStatus::Starting,
-            tab_manager: crate::render::init_tab_manager(),
             selection: SelectionState::Idle,
             selectable_rects: SelectableRects::default(),
             pending_clipboard: false,
