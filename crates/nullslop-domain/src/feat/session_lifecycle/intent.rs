@@ -209,10 +209,8 @@ pub fn handle_session_close(state: &mut AppState, session_id: Option<&SessionId>
         )]);
     }
 
-    // No teardown — remove session immediately.
-    remove_session_and_switch(state, &closing_id);
-
-    IntentResult::empty()
+    // No teardown — remove session via command.
+    remove_session_and_switch(&closing_id)
 }
 
 /// Handle `Intent::ArgInputConfirm`.
@@ -325,45 +323,14 @@ fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLife
         .find(|l| l.name == name)
 }
 
-/// Remove a session from the map and switch to the next available session.
-/// If no sessions remain, creates a new blank session.
-fn remove_session_and_switch(state: &mut AppState, closing_id: &SessionId) {
-    state.session.sessions.remove(closing_id);
-
-    if state.session.sessions.is_empty() {
-        // Last session — create a new one.
-        let model = state
-            .frontend
-            .preferences
-            .last_model
-            .clone()
-            .unwrap_or_else(|| NO_PROVIDER_ID.to_owned());
-        let strategy = state
-            .frontend
-            .preferences
-            .last_strategy
-            .as_deref()
-            .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
-        let token_budget = state.frontend.preferences.context_token_budget.budget;
-        let new_session = ChatSessionState::new_with_profile(SessionProfile::from_config(
-            model,
-            strategy,
-            token_budget,
-        ));
-        let new_id = new_session.session_id().clone();
-        state.session.sessions.insert(new_id.clone(), new_session);
-        state.session.active_session = new_id;
-    } else {
-        // Switch to the first remaining session.
-        let next_id = state
-            .session
-            .sessions
-            .keys()
-            .next()
-            .expect("sessions is non-empty")
-            .clone();
-        state.session.active_session = next_id;
-    }
+/// Emit a `RemoveSession` command to the actor system.
+/// The session actor handles actual removal, active session switching, and emits
+/// `SessionRemoved` for the sidebar actor to clamp the cursor.
+fn remove_session_and_switch(closing_id: &SessionId) -> IntentResult {
+    use crate::feat::session::protocol::remove_session::RemoveSession;
+    IntentResult::with_commands(vec![Command::RemoveSession(RemoveSession {
+        session_id: closing_id.clone(),
+    })])
 }
 
 #[cfg(test)]
@@ -490,7 +457,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn session_close_without_lifecycle_removes_immediately() {
+    fn session_close_without_lifecycle_emits_remove_session() {
         // Given a state with two sessions.
         let mut state = AppState::default();
         let second_session = ChatSessionState::new();
@@ -504,12 +471,12 @@ mod tests {
         // When handling SessionClose.
         let result = handle_session_close(&mut state, None);
 
-        // Then the session is removed.
-        assert!(!state.session.sessions.contains_key(&second_id));
-        // And no commands emitted (blank lifecycle).
-        assert!(result.commands.is_empty());
-        // And active session switched.
-        assert_ne!(state.session.active_session, second_id);
+        // Then a RemoveSession command is emitted for the closed session.
+        assert_eq!(result.commands.len(), 1);
+        assert!(matches!(
+            &result.commands[0],
+            Command::RemoveSession(cmd) if cmd.session_id == second_id
+        ));
     }
 
     #[rstest::rstest]
@@ -552,16 +519,21 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn session_close_last_session_creates_new_one() {
+    fn session_close_last_session_emits_remove_session() {
         // Given a state with only one session.
         let mut state = AppState::default();
+        let session_id = state.session.active_session.clone();
         assert_eq!(state.session.sessions.len(), 1);
 
         // When handling SessionClose.
-        let _result = handle_session_close(&mut state, None);
+        let result = handle_session_close(&mut state, None);
 
-        // Then a new session is created.
-        assert_eq!(state.session.sessions.len(), 1);
+        // Then a RemoveSession command is emitted.
+        assert_eq!(result.commands.len(), 1);
+        assert!(matches!(
+            &result.commands[0],
+            Command::RemoveSession(cmd) if cmd.session_id == session_id
+        ));
     }
 
     #[rstest::rstest]

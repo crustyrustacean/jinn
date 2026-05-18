@@ -527,25 +527,9 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::proto
     let closing_id = sessions[index].id.clone();
 
     // Delegate to lifecycle handler.
-    let result =
-        crate::feat::session_lifecycle::intent::handle_session_close(state, Some(&closing_id));
-
-    // If no teardown command ran, the session was already removed.
-    // Adjust cursor for immediate removal.
-    if !state.session.sessions.contains_key(&closing_id) {
-        if state.session.sessions.is_empty() {
-            // Handled by remove_session_and_switch — cursor stays at 0.
-            state.frontend.sessions_section.selected_index = Some(0);
-        } else {
-            let remaining = sorted_open_sessions(state);
-            let clamped = index.min(remaining.len() - 1);
-            state.frontend.sessions_section.selected_index = Some(clamped);
-        }
-        scroll_to_cursor(state);
-    }
-    // If teardown is running, cursor adjustment happens when SessionTeardownCompleted fires.
-
-    result
+    // If no teardown command ran, a RemoveSession command is emitted and
+    // the sidebar actor will clamp the cursor when SessionRemoved fires.
+    crate::feat::session_lifecycle::intent::handle_session_close(state, Some(&closing_id))
 }
 
 /// Handles `SidebarSessionNewWithLifecycle` — opens the lifecycle picker
