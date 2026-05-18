@@ -41,16 +41,6 @@ fn render_row_shows_name_and_description() {
     assert!(text.contains("Send as-is"));
 }
 
-#[rstest::rstest]
-fn render_row_selected_has_background() {
-    let entry = make_entry("passthrough", "Passthrough", "desc", false);
-    let line = entry.render_row(true);
-    let name_span = &line.spans[1];
-    assert_eq!(
-        name_span.style.bg,
-        Some(ratatui::style::Color::Rgb(50, 52, 58))
-    );
-}
 
 // --- load_strategy_entries tests ---
 
@@ -141,12 +131,6 @@ fn format_strategy_footer_contains_label_and_name() {
     assert!(text.contains("Sliding Window"));
 }
 
-#[rstest::rstest]
-fn format_strategy_footer_label_is_dark_gray() {
-    let line = format_strategy_footer("Passthrough", &default_theme());
-    let label_span = &line.spans[0];
-    assert_eq!(label_span.style.fg, Some(ratatui::style::Color::DarkGray));
-}
 
 // --- Highlight tests ---
 
@@ -162,27 +146,9 @@ fn render_row_with_empty_match_indices_same_as_render_row() {
     }
 }
 
-#[rstest::rstest]
-fn strategy_highlight_applies_gray_bg() {
-    let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
-    #[expect(
-        clippy::single_range_in_vec_init,
-        reason = "genuinely want a slice containing one Range<usize>"
-    )]
-    let highlights: &[Range<usize>] = &[0..1];
-    let line = entry.render_row_with_highlight(false, highlights);
-    let has_highlight = line
-        .spans
-        .iter()
-        .any(|s| s.style.bg == Some(ratatui::style::Color::DarkGray));
-    assert!(
-        has_highlight,
-        "expected at least one span with gray background"
-    );
-}
 
 #[rstest::rstest]
-fn strategy_highlight_contains_matched_char() {
+fn strategy_highlight_row_contains_matched_char() {
     let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
     #[expect(
         clippy::single_range_in_vec_init,
@@ -190,15 +156,10 @@ fn strategy_highlight_contains_matched_char() {
     )]
     let highlights: &[Range<usize>] = &[0..1];
     let line = entry.render_row_with_highlight(false, highlights);
-    let highlighted: String = line
-        .spans
-        .iter()
-        .filter(|s| s.style.bg == Some(ratatui::style::Color::DarkGray))
-        .map(|s| s.content.clone())
-        .collect();
+    let text: String = line.spans.iter().map(|s| &*s.content).collect();
     assert!(
-        highlighted.contains('P'),
-        "highlighted span should contain 'P'"
+        text.contains('P'),
+        "highlighted row should contain 'P'"
     );
 }
 

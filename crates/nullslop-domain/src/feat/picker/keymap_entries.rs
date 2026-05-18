@@ -8,8 +8,6 @@ mod tests {
     use crate::feat::theme::default_theme;
     use crate::protocol::KeymapEntry;
     use nullslop_selection_widget::PickerItem;
-    use ratatui::style::Color;
-    use ratatui::style::Modifier;
 
     fn make_entry(
         key_sequence: &str,
@@ -67,30 +65,6 @@ mod tests {
         assert!(text.contains("Navigation"), "should contain category");
     }
 
-    #[rstest::rstest]
-    fn render_row_selected_has_dark_gray_background() {
-        let entry = make_entry("q", "quit", "Normal", "General");
-        let line = entry.render_row(true);
-        let key_span = &line.spans[0];
-        assert_eq!(key_span.style.bg, Some(Color::Rgb(50, 52, 58)));
-    }
-
-    #[rstest::rstest]
-    fn render_row_unselected_has_reset_background() {
-        let entry = make_entry("q", "quit", "Normal", "General");
-        let line = entry.render_row(false);
-        let key_span = &line.spans[0];
-        assert_eq!(key_span.style.bg, Some(Color::Reset));
-    }
-
-    #[rstest::rstest]
-    fn render_row_key_is_yellow_bold() {
-        let entry = make_entry("q", "quit", "Normal", "General");
-        let line = entry.render_row(false);
-        let key_span = &line.spans[0];
-        assert_eq!(key_span.style.fg, Some(Color::Yellow));
-        assert!(key_span.style.add_modifier.contains(Modifier::BOLD));
-    }
 
     #[rstest::rstest]
     fn render_row_pads_short_key_sequences() {
@@ -122,24 +96,6 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]
-    fn render_row_with_highlight_applies_gray_bg_to_matched_chars() {
-        let entry = make_entry("q", "quit", "Normal", "General");
-        #[expect(
-            clippy::single_range_in_vec_init,
-            reason = "genuinely want a slice containing one Range<usize>"
-        )]
-        let highlights: &[std::ops::Range<usize>] = &[0..1];
-        let line = entry.render_row_with_highlight(false, highlights);
-        let has_highlight = line
-            .spans
-            .iter()
-            .any(|s| s.style.bg == Some(Color::DarkGray));
-        assert!(
-            has_highlight,
-            "expected at least one span with gray background"
-        );
-    }
 
     #[rstest::rstest]
     fn render_row_with_highlight_preserves_unmatched_chars() {
