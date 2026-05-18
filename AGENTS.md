@@ -483,6 +483,7 @@ This project uses **Fossil** for version control.
 - `fossil status` — check working tree status
 - `fossil diff` — view unstaged changes
 - `fossil timeline` — view commit history
+- `fossil merge trunk` — sync latest changes with your branch
 
 ### Build & Test Commands
 
