@@ -668,8 +668,8 @@ impl AppState {
     /// Returns mutable access to a session by ID, creating it if missing.
     ///
     /// Used by streaming handlers that receive tokens from actors
-    /// (e.g. workflow executor) which may create new session IDs
-    /// not yet present in the sessions map.
+    /// which may create new session IDs not yet present in the
+    /// sessions map.
     pub fn session_mut_or_create(&mut self, id: &SessionId) -> &mut ChatSessionState {
         let default_cwd = self.session.default_cwd.clone();
         self.session.sessions.entry(id.clone()).or_insert_with(|| {
