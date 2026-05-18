@@ -3,9 +3,9 @@
 //! Format:
 //! ```text
 //! <name>
-//! <content line 1>
-//! <content line 2>
-//! ---(N more lines)---
+//! ---(N lines hidden above)---
+//! <content line N-1>
+//! <content line N>
 //! ```
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
@@ -46,15 +46,15 @@ pub fn to_lines(
     } else {
         let max = ctx.tool_entry_max_lines as usize;
         let remaining = all_lines.len() - max;
-        for line_text in &all_lines[..max] {
-            lines.push(Line::from(Span::styled((*line_text).to_owned(), style)));
-        }
-        // Truncation indicator line.
+        // Truncation indicator line (shown above the tail content).
         let truncation_style = Style::default().fg(ctx.theme.truncation_fg).bg(bg);
         lines.push(Line::from(Span::styled(
-            format!("---({remaining} more lines)---"),
+            format!("---({remaining} lines hidden above)---"),
             truncation_style,
         )));
+        for line_text in &all_lines[remaining..] {
+            lines.push(Line::from(Span::styled((*line_text).to_owned(), style)));
+        }
     }
 
     // Content-level truncation indicator (output was truncated by the tools actor).
@@ -130,11 +130,11 @@ mod tests {
         let has_indicator = lines.iter().any(|line| {
             line.spans
                 .iter()
-                .any(|s| s.content.contains("---(5 more lines)---"))
+                .any(|s| s.content.contains("---(5 lines hidden above)---"))
         });
         assert!(
             has_indicator,
-            "truncated tool result should contain '---(5 more lines)---'"
+            "truncated tool result should contain '---(5 lines hidden above)---'"
         );
     }
 
@@ -159,10 +159,12 @@ mod tests {
             "expanded tool result should contain 'line 10'"
         );
 
-        // And no line contains "more lines".
-        let has_indicator = lines
-            .iter()
-            .any(|line| line.spans.iter().any(|s| s.content.contains("more lines")));
+        // And no line contains the truncation indicator.
+        let has_indicator = lines.iter().any(|line| {
+            line.spans
+                .iter()
+                .any(|s| s.content.contains("lines hidden above"))
+        });
         assert!(
             !has_indicator,
             "expanded tool result should not show truncation indicator"
@@ -178,10 +180,12 @@ mod tests {
         // When converting to lines.
         let lines = to_lines("bash", &content, ToolResultStatus::Success, None, &ctx);
 
-        // Then no line contains "more lines".
-        let has_indicator = lines
-            .iter()
-            .any(|line| line.spans.iter().any(|s| s.content.contains("more lines")));
+        // Then no line contains the truncation indicator.
+        let has_indicator = lines.iter().any(|line| {
+            line.spans
+                .iter()
+                .any(|s| s.content.contains("lines hidden above"))
+        });
         assert!(!has_indicator, "short tool result should not be truncated");
     }
 
@@ -402,6 +406,57 @@ mod tests {
             has_indicator,
             "content-truncated indicator should appear even when expanded"
         );
+    }
+
+    #[rstest::rstest]
+    fn truncated_tool_result_shows_last_lines() {
+        // Given a 10-line tool result with max_lines=5, not expanded.
+        let ctx = render_context(5, false);
+        let content = (1..=10)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // When converting to lines.
+        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, &ctx);
+
+        // Then the last 5 lines (6-10) are visible.
+        let all_text: String = lines
+            .iter()
+            .flat_map(|line| line.spans.iter().map(|s| s.content.clone()))
+            .collect();
+        for i in 6..=10 {
+            assert!(
+                all_text.contains(&format!("line {i}")),
+                "truncated tool result should contain 'line {i}'"
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    fn truncated_tool_result_hides_first_lines() {
+        // Given a 10-line tool result with max_lines=5, not expanded.
+        let ctx = render_context(5, false);
+        let content = (1..=10)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // When converting to lines.
+        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, &ctx);
+
+        // Then the first 5 lines (1-5) are not visible.
+        let all_text: String = lines
+            .iter()
+            .flat_map(|line| line.spans.iter().map(|s| s.content.clone()))
+            .collect();
+        for i in 1..=5 {
+            assert!(
+                !all_text.contains(&format!("line {i}\n"))
+                    && !all_text.ends_with(&format!("line {i}")),
+                "truncated tool result should not contain 'line {i}'"
+            );
+        }
     }
 
     #[rstest::rstest]
