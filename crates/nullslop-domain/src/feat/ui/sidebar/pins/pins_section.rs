@@ -7,11 +7,11 @@
 use crate::common::app_state::AppState;
 use crate::common::app_state::pin_sort_key;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
+use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::theme::Theme;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
-use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::{
     ChatEntryId, ChatEntryKind, Command, IntentResult, PickerKind, PinPosition, SessionId,
 };
@@ -288,7 +288,11 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
             status,
             ..
         } => {
-            let icon = if *status == ToolResultStatus::Success { "\u{2705}" } else { "\u{274c}" };
+            let icon = if *status == ToolResultStatus::Success {
+                "\u{2705}"
+            } else {
+                "\u{274c}"
+            };
             (
                 "",
                 format!(

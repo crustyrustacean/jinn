@@ -127,12 +127,13 @@ impl UiElement<AppState> for StatusBarElement {
             }
         }
 
-        let strategy_display = if state.active_session().active_strategy().as_str() == "token_budget" {
-            let budget = state.active_session().profile().token_budget;
-            format!("Token Budget: {}", format_budget(budget))
-        } else {
-            strategy.to_string()
-        };
+        let strategy_display =
+            if state.active_session().active_strategy().as_str() == "token_budget" {
+                let budget = state.active_session().profile().token_budget;
+                format!("Token Budget: {}", format_budget(budget))
+            } else {
+                strategy.to_string()
+            };
 
         let left = if pinned_count > 0 {
             format!("({strategy_display})\u{1f4cc}{pinned_count} {token_info}")

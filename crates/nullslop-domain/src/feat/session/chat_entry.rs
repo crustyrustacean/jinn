@@ -574,6 +574,7 @@ impl ChatEntry {
                 name,
                 content,
                 status,
+                truncation,
                 ..
             } => {
                 name.hash(&mut hasher);
@@ -584,6 +585,9 @@ impl ChatEntry {
                 if *status != ToolResultStatus::Pending {
                     content.hash(&mut hasher);
                 }
+                // Include truncation presence so the line count cache
+                // invalidates when the indicator line is added or removed.
+                truncation.is_some().hash(&mut hasher);
             }
             ChatEntryKind::Skill { name, content, .. } => {
                 name.hash(&mut hasher);
@@ -847,8 +851,8 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                                 truncation: data.truncation,
                             })
                             .or_else(|_| {
-                                serde_json::from_value::<ToolResultDataOld>(value).map(
-                                    |data| ChatEntryKind::ToolResult {
+                                serde_json::from_value::<ToolResultDataOld>(value).map(|data| {
+                                    ChatEntryKind::ToolResult {
                                         id: data.id,
                                         name: data.name,
                                         content: data.content,
@@ -859,10 +863,12 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                                         },
                                         full_content: None,
                                         truncation: None,
-                                    },
-                                )
+                                    }
+                                })
                             })
-                            .map_err(|e| de::Error::custom(format!("failed to deserialize ToolResult: {e}")))?;
+                            .map_err(|e| {
+                                de::Error::custom(format!("failed to deserialize ToolResult: {e}"))
+                            })?;
                         Ok(result)
                     }
                     "Skill" => {
