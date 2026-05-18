@@ -1232,4 +1232,192 @@ mod tests {
         });
         assert!(found, "expected SessionTeardownCompleted with error");
     }
+
+    // --- RemoveSession handler tests ---
+
+    #[tokio::test]
+    async fn remove_session_removes_session_from_hashmap() {
+        // Given a session actor with two sessions.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let second = ChatSessionState::new();
+        let second_id = second.session_id().clone();
+        {
+            let mut state = actor.state.write();
+            state.session.sessions.insert(second_id.clone(), second);
+        }
+
+        // When handling RemoveSession for the second session.
+        actor.handle_remove_session(
+            &crate::feat::session::protocol::remove_session::RemoveSession {
+                session_id: second_id.clone(),
+            },
+            &ctx,
+        );
+
+        // Then the second session is removed.
+        let state = actor.state.read();
+        assert!(!state.session.sessions.contains_key(&second_id));
+        // And the first session still exists.
+        assert_eq!(state.session.sessions.len(), 1);
+        drop(state);
+
+        // And SessionRemoved is emitted.
+        let events = sink.events();
+        let found = events.iter().any(|e| {
+            matches!(
+                e,
+                crate::protocol::Event::SessionRemoved(
+                    crate::feat::session::protocol::session_removed::SessionRemoved {
+                        session_id: sid,
+                    }
+                ) if sid == &second_id
+            )
+        });
+        assert!(found, "expected SessionRemoved event");
+    }
+
+    #[tokio::test]
+    async fn remove_session_creates_new_session_when_last_removed() {
+        // Given a session actor with only one session.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let only_id = {
+            let state = actor.state.read();
+            state.session.active_session.clone()
+        };
+
+        // When handling RemoveSession for the only session.
+        actor.handle_remove_session(
+            &crate::feat::session::protocol::remove_session::RemoveSession {
+                session_id: only_id.clone(),
+            },
+            &ctx,
+        );
+
+        // Then the only session is removed and a new one is created.
+        let state = actor.state.read();
+        assert!(!state.session.sessions.contains_key(&only_id));
+        assert_eq!(state.session.sessions.len(), 1);
+        assert_ne!(state.session.active_session, only_id);
+        drop(state);
+
+        // And SessionRemoved is emitted.
+        let events = sink.events();
+        let found = events.iter().any(|e| {
+            matches!(
+                e,
+                crate::protocol::Event::SessionRemoved(
+                    crate::feat::session::protocol::session_removed::SessionRemoved {
+                        session_id: sid,
+                    }
+                ) if sid == &only_id
+            )
+        });
+        assert!(found, "expected SessionRemoved event");
+    }
+
+    #[tokio::test]
+    async fn remove_session_switches_active_when_active_is_removed() {
+        // Given a session actor with two sessions, active is the second.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let second = ChatSessionState::new();
+        let second_id = second.session_id().clone();
+        {
+            let mut state = actor.state.write();
+            state.session.sessions.insert(second_id.clone(), second);
+            state.session.active_session = second_id.clone();
+        }
+
+        // When handling RemoveSession for the active session.
+        actor.handle_remove_session(
+            &crate::feat::session::protocol::remove_session::RemoveSession {
+                session_id: second_id.clone(),
+            },
+            &ctx,
+        );
+
+        // Then active session is switched to the remaining one.
+        let state = actor.state.read();
+        assert_ne!(state.session.active_session, second_id);
+        assert_eq!(state.session.sessions.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn remove_session_emits_session_removed_event() {
+        // Given a session actor with two sessions.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let second = ChatSessionState::new();
+        let second_id = second.session_id().clone();
+        {
+            let mut state = actor.state.write();
+            state.session.sessions.insert(second_id.clone(), second);
+        }
+
+        // When handling RemoveSession.
+        actor.handle_remove_session(
+            &crate::feat::session::protocol::remove_session::RemoveSession {
+                session_id: second_id.clone(),
+            },
+            &ctx,
+        );
+
+        // Then exactly one SessionRemoved event is emitted for the correct session.
+        let events = sink.events();
+        let count = events
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e,
+                    crate::protocol::Event::SessionRemoved(
+                        crate::feat::session::protocol::session_removed::SessionRemoved {
+                            session_id: sid,
+                        }
+                    ) if sid == &second_id
+                )
+            })
+            .count();
+        assert_eq!(count, 1, "expected exactly one SessionRemoved event");
+    }
+
+    #[tokio::test]
+    async fn remove_session_is_noop_if_session_does_not_exist() {
+        // Given a session actor with one session.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let fake_id = crate::protocol::SessionId::new();
+        let original_len = {
+            let state = actor.state.read();
+            state.session.sessions.len()
+        };
+
+        // When handling RemoveSession for a nonexistent session.
+        actor.handle_remove_session(
+            &crate::feat::session::protocol::remove_session::RemoveSession {
+                session_id: fake_id.clone(),
+            },
+            &ctx,
+        );
+
+        // Then nothing changes.
+        let state = actor.state.read();
+        assert_eq!(state.session.sessions.len(), original_len);
+        drop(state);
+
+        // And no SessionRemoved event is emitted.
+        let events = sink.events();
+        let found = events.iter().any(|e| {
+            matches!(
+                e,
+                crate::protocol::Event::SessionRemoved(
+                    crate::feat::session::protocol::session_removed::SessionRemoved {
+                        session_id: sid,
+                    }
+                ) if sid == &fake_id
+            )
+        });
+        assert!(!found, "did not expect SessionRemoved for nonexistent session");
+    }
 }
