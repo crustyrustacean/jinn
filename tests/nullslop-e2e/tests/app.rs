@@ -720,6 +720,8 @@ async fn when_submit_tool_execution_completed(world: &mut AppWorld) {
                 name: "test_tool".to_owned(),
                 content: "ok".to_owned(),
                 success: true,
+                full_content: None,
+                truncation: None,
             },
         },
     ));

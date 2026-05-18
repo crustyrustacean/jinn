@@ -114,6 +114,14 @@ pub struct UserPreferences {
     /// New sessions inherit `budget` as their default.
     #[serde(default)]
     pub context_token_budget: ContextTokenBudgetConfig,
+    /// Maximum number of lines for tool output before truncation.
+    /// `None` means use the built-in default (2000 lines).
+    #[serde(default)]
+    pub max_tool_output_lines: Option<usize>,
+    /// Maximum size in bytes for tool output before truncation.
+    /// `None` means use the built-in default (50KB).
+    #[serde(default)]
+    pub max_tool_output_bytes: Option<usize>,
 }
 
 /// Returns the path to the user preferences file.
@@ -242,6 +250,8 @@ mod tests {
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
 
         // When saving and reloading.
@@ -306,6 +316,8 @@ last_strategy = "sliding_window""#,
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
 
         // When saving.
@@ -329,6 +341,8 @@ last_strategy = "sliding_window""#,
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
 
         // When saving and reloading.
@@ -360,6 +374,8 @@ last_strategy = "sliding_window""#,
             }],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
 
         // When saving and reloading.
@@ -397,6 +413,8 @@ last_strategy = "sliding_window""#,
             session_lifecycles: vec![],
             sidebar_width: Some(25),
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -465,6 +483,8 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: ContextTokenBudgetConfig { budget: 200_000 },
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
 
         // When saving and reloading.

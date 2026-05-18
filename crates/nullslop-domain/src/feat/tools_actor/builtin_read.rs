@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
+use super::truncation::{truncate_head, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES, format_size};
+
 use super::BoxedToolFuture;
 
 /// Returns the tool definition for the `read` built-in tool.
@@ -16,7 +18,8 @@ pub fn definition() -> ToolDefinition {
         name: "read".to_owned(),
         description: "Read the contents of a file. Supports text files and images \
             (jpg, png, gif, webp). For text files, output is truncated to 2000 lines \
-            or 50KB (whichever is hit first). Use offset/limit for large files."
+            or 50KB (whichever is hit first). Use offset/limit for large files. \
+            When truncated, a notice shows which lines were kept and the next offset to use."
             .to_owned(),
         prompt_snippet: Some("Read file contents".to_owned()),
         prompt_guidelines: vec!["Use read to examine files instead of cat or sed.".to_owned()],
@@ -62,6 +65,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: format!("failed to parse arguments: {e}"),
                     success: false,
+                    full_content: None,
+                    truncation: None,
                 };
             }
         };
@@ -76,17 +81,54 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: format!("failed to read file '{}': {e}", resolved.display()),
                     success: false,
+                    full_content: None,
+                    truncation: None,
                 };
             }
         };
 
-        let result = apply_offset_limit(&content, offset, limit);
+        let sliced = apply_offset_limit(&content, offset, limit);
 
-        ToolResult {
-            tool_call_id: call.id,
-            name: call.name,
-            content: result,
-            success: true,
+        // Apply head-truncation to the result.
+        let total_file_lines = content.lines().count();
+        let start_line = offset.map_or(1, |o| o.max(1));
+        let max_lines = ctx.max_output_lines.unwrap_or(DEFAULT_MAX_LINES);
+        let max_bytes = ctx.max_output_bytes.unwrap_or(DEFAULT_MAX_BYTES);
+        let truncation_result = truncate_head(&sliced, max_lines, max_bytes);
+
+        if truncation_result.truncated {
+            let meta = truncation_result.meta.expect("meta present when truncated");
+            let end_line_display = start_line + meta.output_lines - 1;
+            let next_offset = end_line_display + 1;
+            let notice = if meta.truncated_by == nullslop_provider::tool_types::TruncatedBy::Bytes {
+                format!(
+                    "\n\n[Showing lines {start_line}-{end_line_display} of {total_file_lines} ({} limit). Use offset={next_offset} to continue.]",
+                    format_size(max_bytes)
+                )
+            } else {
+                format!(
+                    "\n\n[Showing lines {start_line}-{end_line_display} of {total_file_lines}. Use offset={next_offset} to continue.]"
+                )
+            };
+            let mut output = truncation_result.content;
+            output.push_str(&notice);
+            ToolResult {
+                tool_call_id: call.id,
+                name: call.name,
+                content: output,
+                success: true,
+                full_content: Some(sliced),
+                truncation: Some(meta),
+            }
+        } else {
+            ToolResult {
+                tool_call_id: call.id,
+                name: call.name,
+                content: sliced,
+                success: true,
+                full_content: None,
+                truncation: None,
+            }
         }
     })
 }

@@ -12,7 +12,7 @@ mod openai_compat;
 mod sample;
 mod service;
 mod stream_event;
-mod tool_types;
+pub mod tool_types;
 
 // Custom provider implementations (not OpenAI-compatible).
 pub mod anthropic;

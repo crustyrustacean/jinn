@@ -10,6 +10,8 @@ fn test_ctx() -> ToolContext {
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
         sink: None,
+        max_output_lines: None,
+        max_output_bytes: None,
     }
 }
 
@@ -227,6 +229,8 @@ async fn execute_resolves_relative_path() {
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
         sink: None,
+        max_output_lines: None,
+        max_output_bytes: None,
     };
 
     let call = ToolCall {
