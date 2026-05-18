@@ -9,8 +9,8 @@ use std::io::{self, Stdout};
 
 use crossterm::{
     event::{
-        DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
@@ -44,6 +44,10 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
     execute!(stdout, EnterAlternateScreen)
         .change_context(TuiRunError)
         .attach("failed to enter alternate screen")?;
+
+    execute!(stdout, EnableBracketedPaste)
+        .change_context(TuiRunError)
+        .attach("failed to enable bracketed paste")?;
 
     let mouse_selection = app.config.mouse_selection;
 
@@ -91,6 +95,9 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
     // Restore terminal.
     if let Err(e) = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags) {
         tracing::error!(err = ?e, "failed to pop keyboard enhancement flags");
+    }
+    if let Err(e) = execute!(terminal.backend_mut(), DisableBracketedPaste) {
+        tracing::error!(err = ?e, "failed to disable bracketed paste");
     }
     if mouse_selection && let Err(e) = execute!(terminal.backend_mut(), DisableMouseCapture) {
         tracing::error!(err = ?e, "failed to disable mouse capture");
