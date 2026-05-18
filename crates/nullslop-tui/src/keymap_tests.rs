@@ -892,6 +892,35 @@ fn sidebar_c_produces_sidebar_persona_edit() {
 }
 
 #[rstest::rstest]
+fn input_ctrl_j_produces_insert_newline() {
+    // Given the keymap.
+    let keymap = init();
+
+    // When looking up '<c-j>' in Input scope.
+    let ctrl_j = KeyEvent {
+        key: Key::Char('j'),
+        modifiers: Modifiers::ctrl(),
+    };
+    let node = keymap.get_node_at_path(&[ctrl_j]);
+
+    // Then it's a leaf with InsertChar { '\n' } for Input scope.
+    assert!(node.is_some());
+    if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
+        let entry = entries.iter().find(|e| e.scope == Scope::Input);
+        assert!(
+            entry.is_some(),
+            "'<c-j>' should be bound in Input scope"
+        );
+        assert!(
+            matches!(&entry.unwrap().action, Intent::InsertChar { ch } if *ch == '\n'),
+            "expected InsertChar {{ ch: '\\n' }}"
+        );
+    } else {
+        panic!("Expected leaf node for '<c-j>'");
+    }
+}
+
+#[rstest::rstest]
 fn sidebar_e_is_not_sidebar_persona_edit() {
     // Given the keymap.
     let keymap = init();
