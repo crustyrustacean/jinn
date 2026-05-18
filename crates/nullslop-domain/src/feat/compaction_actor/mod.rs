@@ -19,13 +19,14 @@ use wherror::Error;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
+use crate::feat::compaction_actor::protocol::command::{BeginCompaction, CompactionResult, EndCompaction};
 use crate::feat::compaction_actor::serializer::serialize_entries_for_compaction;
 use crate::feat::context::strategy::compaction_prompt::load_compaction_prompt;
 use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 use crate::feat::provider::protocol::event::StreamCompleted;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
-use crate::protocol::{ChatEntryId, Command, Event};
+use crate::protocol::{Command, Event};
 
 /// Errors during compaction.
 #[derive(Debug, Error)]
@@ -84,10 +85,16 @@ impl Actor for CompactionActor {
 
 impl CompactionActor {
     /// Handle a `CompactContext` command.
+    ///
+    /// Orchestrates the compaction flow by emitting commands to the session actor:
+    /// 1. `BeginCompaction` — marks entries ignored, sets phase to Compacting
+    /// 2. LLM call for summarization
+    /// 3. `EndCompaction` — inserts result entry, sets phase to Idle
+    /// 4. `CompactionCompleted` event — signals persistence
     async fn handle_compact_context(&self, cmd: &CompactContext, ctx: &ActorContext) {
         tracing::info!(session_id = %cmd.session_id, "starting context compaction");
 
-        let result = self.perform_compaction(cmd).await;
+        let result = self.perform_compaction(cmd, ctx).await;
 
         match result {
             Ok(entries_compacted) => {
@@ -107,6 +114,12 @@ impl CompactionActor {
                     error = %e,
                     "context compaction failed"
                 );
+                // Emit EndCompaction with error so the session actor resets phase.
+                let _ = ctx.send_command(Command::EndCompaction(EndCompaction {
+                    session_id: cmd.session_id.clone(),
+                    result: None,
+                    error: Some(format!("{e:#}")),
+                }));
                 // Emit completion with 0 to unblock any waiting logic.
                 let _ = ctx.send_event(Event::CompactionCompleted(CompactionCompleted {
                     session_id: cmd.session_id.clone(),
@@ -130,10 +143,20 @@ impl CompactionActor {
 
         let (should_compact, session_id) = {
             let state = self.state.read();
-            let config = &state.frontend.preferences.compaction;
-            let token_budget = state.frontend.preferences.context_token_budget.budget;
             let session_id = payload.session_id.clone();
             let session = state.session(&session_id);
+
+            // Don't auto-trigger if already compacting.
+            if session.is_compacting() {
+                tracing::debug!(
+                    session_id = ?session_id,
+                    "skipping auto-compaction: session is already compacting"
+                );
+                return;
+            }
+
+            let config = &state.frontend.preferences.compaction;
+            let token_budget = state.frontend.preferences.context_token_budget.budget;
 
             let estimator = CharRatioEstimator;
             let total_tokens: usize = session
@@ -145,6 +168,14 @@ impl CompactionActor {
             #[allow(clippy::cast_precision_loss)]
             let threshold_tokens = (config.threshold * token_budget as f64) as usize;
             let should = total_tokens > threshold_tokens;
+
+            tracing::debug!(
+                session_id = ?session_id,
+                total_tokens,
+                threshold_tokens,
+                should,
+                "auto-compaction threshold evaluation"
+            );
 
             if should {
                 tracing::info!(
@@ -164,10 +195,14 @@ impl CompactionActor {
     }
 
     /// Perform the compaction algorithm.
+    ///
+    /// This method only reads state — all writes go through commands
+    /// emitted to the session actor.
     #[allow(clippy::too_many_lines)]
     async fn perform_compaction(
         &self,
         cmd: &CompactContext,
+        ctx: &ActorContext,
     ) -> Result<usize, error_stack::Report<CompactionError>> {
         // Read config and session state.
         let (config, model_name, history_len) = {
@@ -183,17 +218,17 @@ impl CompactionActor {
             return Ok(0);
         }
 
-        // Step 1: Find start boundary, cut point, gather entries, mark ignored.
+        // Step 1: Read-only — find start boundary, cut point, gather entries.
         let gathered = {
-            let mut state = self.state.write();
-            let session = state.session_mut(&cmd.session_id);
+            let state = self.state.read();
+            let session = state.session(&cmd.session_id);
 
             let history = session.history();
 
             // Find the start boundary: index after the last Compaction entry.
             let start_index = history
                 .iter()
-                .rposition(super::session::chat_entry::ChatEntry::is_compaction)
+                .rposition(ChatEntry::is_compaction)
                 .map_or(0, |i| i + 1);
 
             // Find cut point: walk backwards accumulating tokens.
@@ -226,7 +261,7 @@ impl CompactionActor {
                 return Ok(0);
             }
 
-            // Serialize before marking as ignored.
+            // Serialize entries for the LLM prompt.
             let entries_to_serialize: Vec<ChatEntry> = gathered_indices
                 .iter()
                 .map(|&i| history[i].clone())
@@ -245,15 +280,13 @@ impl CompactionActor {
                 None
             };
 
-            // Mark all gathered entries as ignored.
-            let entries_compacted = gathered_indices.len();
-            session.mark_entries_ignored(&gathered_indices);
-
             // Determine boundary insertion point: right after the last gathered entry.
             let boundary_index = gathered_indices
                 .last()
                 .expect("gathered_indices is non-empty")
                 + 1;
+
+            let entries_compacted = gathered_indices.len();
 
             (
                 serialized,
@@ -261,13 +294,26 @@ impl CompactionActor {
                 entries_compacted,
                 tokens_before,
                 boundary_index,
+                gathered_indices,
             )
         };
 
-        let (serialized, previous_summary, entries_compacted, tokens_before, boundary_index) =
-            gathered;
+        let (
+            serialized,
+            previous_summary,
+            entries_compacted,
+            tokens_before,
+            boundary_index,
+            gathered_indices,
+        ) = gathered;
 
-        // Step 2: Call LLM for summarization.
+        // Step 2: Emit BeginCompaction — session actor marks entries ignored, sets phase.
+        let _ = ctx.send_command(Command::BeginCompaction(BeginCompaction {
+            session_id: cmd.session_id.clone(),
+            gathered_indices,
+        }));
+
+        // Step 3: Call LLM for summarization.
         let summary = self
             .generate_summary(
                 &serialized,
@@ -277,31 +323,18 @@ impl CompactionActor {
             )
             .await?;
 
-        // Step 3: Insert Compaction entry and push System entry.
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut(&cmd.session_id);
-
-            let compaction_entry = ChatEntry {
-                id: ChatEntryId::new(),
-                timestamp: jiff::Timestamp::now(),
-                kind: ChatEntryKind::Compaction {
-                    summary,
-                    tokens_before,
-                    entries_compacted,
-                    model_used: model_name.clone(),
-                },
-                pin_position: None,
-                ignored: false,
-            };
-
-            session.insert_entry_at(boundary_index, compaction_entry);
-
-            // Push a system message about the compaction.
-            session.push_entry(ChatEntry::system(format!(
-                "Context was compacted. {entries_compacted} messages were summarized."
-            )));
-        }
+        // Step 4: Emit EndCompaction — session actor inserts entry, sets phase to Idle.
+        let _ = ctx.send_command(Command::EndCompaction(EndCompaction {
+            session_id: cmd.session_id.clone(),
+            result: Some(CompactionResult {
+                summary,
+                entries_compacted,
+                tokens_before,
+                model_used: model_name.clone(),
+                boundary_index,
+            }),
+            error: None,
+        }));
 
         Ok(entries_compacted)
     }

@@ -51,11 +51,14 @@ impl SessionPersistenceActor {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
-            if session.is_assembling() {
-                session.finish_assembling();
-            }
             if session.is_sending() {
-                session.finish_sending();
+                // Sending → Streaming transition.
+                // Don't call finish_sending() here — begin_streaming() handles
+                // the Sending → Streaming transition directly.
+                session.begin_streaming();
+            } else if session.is_assembling() {
+                session.finish_assembling();
+                session.begin_sending();
             }
 
             session.push_token_record(crate::feat::session::token_stats::TokenRecord {
@@ -94,7 +97,11 @@ impl SessionPersistenceActor {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         if !session.is_streaming() {
-            session.begin_streaming();
+            // Defensive: stream token arrived without PromptAssembled.
+            // Only valid from Sending phase.
+            if session.is_sending() {
+                session.begin_streaming();
+            }
         }
         if event.is_thinking {
             if session.streaming_thinking_entry_index().is_none() {

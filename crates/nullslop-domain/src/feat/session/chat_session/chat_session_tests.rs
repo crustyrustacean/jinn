@@ -102,7 +102,7 @@ fn cancel_streaming_keeps_partial_text() {
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "begin_streaming called while already streaming")]
+#[should_panic(expected = "begin_streaming called while not in Sending or Idle")]
 fn begin_streaming_twice_panics() {
     // Given a session that is already streaming.
     let mut session = ChatSessionState::new();
@@ -392,7 +392,7 @@ fn begin_sending_sets_is_sending() {
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "begin_sending called while already sending or streaming")]
+#[should_panic(expected = "begin_sending called while not idle")]
 fn begin_sending_panics_when_already_sending() {
     // Given a session that is already sending.
     let mut session = ChatSessionState::new();
@@ -404,7 +404,7 @@ fn begin_sending_panics_when_already_sending() {
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "begin_sending called while already sending or streaming")]
+#[should_panic(expected = "begin_sending called while not idle")]
 fn begin_sending_panics_when_streaming() {
     // Given a session that is streaming.
     let mut session = ChatSessionState::new();
@@ -429,7 +429,7 @@ fn finish_sending_clears_flag() {
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "finish_sending called while not sending")]
+#[should_panic(expected = "finish_sending called while not sending (current")]
 fn finish_sending_panics_when_not_sending() {
     // Given a session that is not sending.
     let mut session = ChatSessionState::new();
@@ -471,67 +471,38 @@ fn is_idle_false_when_streaming() {
 }
 
 #[rstest::rstest]
-fn cancel_streaming_clears_is_streaming() {
-    // Given a session that was sending before streaming started.
+fn cancel_streaming_returns_to_idle() {
+    // Given a session in streaming phase.
     let mut session = ChatSessionState::new();
     session.begin_sending();
-    session.core.ephemeral.is_streaming = true;
+    session.begin_streaming();
     assert!(session.is_streaming());
 
     // When cancelling streaming.
     session.cancel_streaming();
 
-    // Then is_streaming is cleared.
+    // Then the session is idle.
+    assert!(session.is_idle());
     assert!(!session.is_streaming());
-}
-
-#[rstest::rstest]
-fn cancel_streaming_clears_is_sending() {
-    // Given a session that was sending before streaming started.
-    let mut session = ChatSessionState::new();
-    session.begin_sending();
-    session.core.ephemeral.is_streaming = true;
-    assert!(session.is_sending());
-
-    // When cancelling streaming.
-    session.cancel_streaming();
-
-    // Then is_sending is cleared.
     assert!(!session.is_sending());
 }
 
 #[rstest::rstest]
-fn finish_streaming_clears_is_sending() {
-    // Given a session that was sending before streaming started.
+fn finish_streaming_returns_to_idle() {
+    // Given a session in streaming phase with an assistant entry.
     let mut session = ChatSessionState::new();
     session.begin_sending();
-    // Manually set is_streaming to simulate the transition.
-    session.core.ephemeral.is_streaming = true;
+    session.begin_streaming();
     session.core.ephemeral.streaming_entry_index =
         Some(session.push_entry(ChatEntry::assistant("")));
 
     // When finishing streaming.
     session.finish_streaming(true);
 
-    // Then is_sending is cleared.
-    assert!(!session.is_sending());
-}
-
-#[rstest::rstest]
-fn finish_streaming_clears_is_streaming() {
-    // Given a session that was sending before streaming started.
-    let mut session = ChatSessionState::new();
-    session.begin_sending();
-    // Manually set is_streaming to simulate the transition.
-    session.core.ephemeral.is_streaming = true;
-    session.core.ephemeral.streaming_entry_index =
-        Some(session.push_entry(ChatEntry::assistant("")));
-
-    // When finishing streaming.
-    session.finish_streaming(true);
-
-    // Then is_streaming is cleared.
+    // Then the session is idle.
+    assert!(session.is_idle());
     assert!(!session.is_streaming());
+    assert!(!session.is_sending());
 }
 
 // --- Tool call streaming tests ---
@@ -1746,4 +1717,57 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
         }
         other => panic!("expected ToolResult, got {other:?}"),
     }
+}
+
+#[rstest::rstest]
+fn begin_compacting_transitions_to_compacting_phase() {
+    // Given an idle session.
+    let mut session = ChatSessionState::new();
+    assert!(session.is_idle());
+
+    // When beginning compaction.
+    session.begin_compacting();
+
+    // Then the session is in Compacting phase.
+    assert!(session.is_compacting());
+    assert!(!session.is_idle());
+}
+
+#[rstest::rstest]
+fn finish_compacting_returns_to_idle() {
+    // Given a session in Compacting phase.
+    let mut session = ChatSessionState::new();
+    session.begin_compacting();
+    assert!(session.is_compacting());
+
+    // When finishing compaction.
+    session.finish_compacting();
+
+    // Then the session is idle.
+    assert!(session.is_idle());
+    assert!(!session.is_compacting());
+}
+
+#[rstest::rstest]
+#[should_panic(expected = "begin_compacting called while not idle")]
+fn begin_compacting_panics_when_already_compacting() {
+    // Given a session already compacting.
+    let mut session = ChatSessionState::new();
+    session.begin_compacting();
+
+    // When calling begin_compacting again.
+    // Then it panics.
+    session.begin_compacting();
+}
+
+#[rstest::rstest]
+#[should_panic(expected = "begin_compacting called while not idle")]
+fn begin_compacting_panics_when_streaming() {
+    // Given a session that is streaming.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+
+    // When calling begin_compacting.
+    // Then it panics.
+    session.begin_compacting();
 }

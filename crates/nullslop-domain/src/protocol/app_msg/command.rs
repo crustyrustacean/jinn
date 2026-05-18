@@ -17,7 +17,7 @@ use crate::common::actor::protocol::command::ProceedWithShutdown;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
-use crate::feat::compaction_actor::protocol::command::CompactContext;
+use crate::feat::compaction_actor::protocol::command::{BeginCompaction, CompactContext, EndCompaction};
 use crate::feat::context::protocol::command::{
     AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
     RescanPersonas, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
@@ -113,6 +113,10 @@ pub enum Command {
     RunSessionTeardown(RunSessionTeardown),
     /// Compact the conversation context for a session.
     CompactContext(CompactContext),
+    /// Begin a context compaction — marks entries ignored, sets phase to Compacting.
+    BeginCompaction(BeginCompaction),
+    /// End a context compaction — inserts result entry, sets phase to Idle.
+    EndCompaction(EndCompaction),
     /// Remove a session from the sessions map.
     RemoveSession(RemoveSession),
 }
@@ -156,6 +160,8 @@ impl Command {
             Self::RunSessionSetup(..) => Some(RunSessionSetup::NAME),
             Self::RunSessionTeardown(..) => Some(RunSessionTeardown::NAME),
             Self::CompactContext(..) => Some(CompactContext::NAME),
+            Self::BeginCompaction(..) => Some(BeginCompaction::NAME),
+            Self::EndCompaction(..) => Some(EndCompaction::NAME),
             Self::RemoveSession(..) => Some(RemoveSession::NAME),
         }
     }
@@ -241,6 +247,12 @@ impl std::fmt::Display for Command {
             }
             Command::CompactContext(payload) => {
                 write!(f, "compact context for {}", payload.session_id)
+            }
+            Command::BeginCompaction(payload) => {
+                write!(f, "begin compaction for {}", payload.session_id)
+            }
+            Command::EndCompaction(payload) => {
+                write!(f, "end compaction for {}", payload.session_id)
             }
             Command::RemoveSession(payload) => {
                 write!(f, "remove session {}", payload.session_id)

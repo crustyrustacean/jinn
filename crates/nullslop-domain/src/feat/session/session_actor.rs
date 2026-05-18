@@ -212,6 +212,10 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<RunSessionTeardown>();
         ctx.subscribe_command::<RemoveSession>();
 
+        // Compaction command subscriptions.
+        ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>();
+        ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::EndCompaction>();
+
         // Event subscriptions.
         ctx.subscribe_event::<PromptAssembled>();
         ctx.subscribe_event::<StreamToken>();
@@ -322,6 +326,12 @@ impl SessionPersistenceActor {
             }
             Command::RemoveSession(payload) => {
                 self.handle_remove_session(payload, ctx);
+            }
+            Command::BeginCompaction(payload) => {
+                self.handle_begin_compaction(payload);
+            }
+            Command::EndCompaction(payload) => {
+                self.handle_end_compaction(payload).await;
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::AssemblePrompt(..)
@@ -1609,5 +1619,107 @@ mod tests {
             .expect("session exists");
         let last = session.history().last().expect("has an entry");
         assert!(matches!(&last.kind, ChatEntryKind::Info(..)));
+    }
+
+    // --- Compaction handler tests ---
+
+    #[tokio::test]
+    async fn begin_compaction_sets_compacting_phase_and_pushes_system_entry() {
+        // Given a session actor with a session.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session.clone()
+        };
+
+        // When handling BeginCompaction.
+        actor.handle_begin_compaction(
+            &crate::feat::compaction_actor::protocol::command::BeginCompaction {
+                session_id: session_id.clone(),
+                gathered_indices: vec![0, 1],
+            },
+        );
+
+        // Then the session is in Compacting phase.
+        let state = actor.state.read();
+        let session = state.session.sessions.get(&session_id).expect("session exists");
+        assert!(session.is_compacting());
+        assert!(!session.is_idle());
+        drop(state);
+    }
+
+    #[tokio::test]
+    async fn end_compaction_on_success_inserts_entry_and_resets_phase() {
+        // Given a session actor with a session in Compacting phase.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("old message"));
+            session.begin_compacting();
+            state.session.active_session.clone()
+        };
+
+        // When handling EndCompaction with a successful result.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: Some(
+                        crate::feat::compaction_actor::protocol::command::CompactionResult {
+                            summary: "summarized".to_owned(),
+                            entries_compacted: 1,
+                            tokens_before: 100,
+                            model_used: "test/model".to_owned(),
+                            boundary_index: 1,
+                        },
+                    ),
+                    error: None,
+                },
+            )
+            .await;
+
+        // Then the session is idle and has the compaction entry.
+        let state = actor.state.read();
+        let session = state.session.sessions.get(&session_id).expect("session exists");
+        assert!(session.is_idle());
+        // The history should have: user entry, compaction entry, system entry.
+        assert!(session.history().iter().any(|e| e.is_compaction()));
+        assert!(session
+            .history()
+            .iter()
+            .any(|e| matches!(&e.kind, ChatEntryKind::System(t) if t.contains("Context was compacted"))));
+    }
+
+    #[tokio::test]
+    async fn end_compaction_on_failure_pushes_error_entry_and_resets_phase() {
+        // Given a session actor with a session in Compacting phase.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            state.active_session_mut().begin_compacting();
+            state.session.active_session.clone()
+        };
+
+        // When handling EndCompaction with an error.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: None,
+                    error: Some("LLM call failed".to_owned()),
+                },
+            )
+            .await;
+
+        // Then the session is idle and has an error entry.
+        let state = actor.state.read();
+        let session = state.session.sessions.get(&session_id).expect("session exists");
+        assert!(session.is_idle());
+        let last = session.history().last().expect("has an entry");
+        assert!(matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("Compaction failed")));
     }
 }
