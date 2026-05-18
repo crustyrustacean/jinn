@@ -36,7 +36,9 @@ use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use crate::feat::session::protocol::remove_session::RemoveSession;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::feat::session::protocol::session_removed::SessionRemoved;
 use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 use crate::feat::session_lifecycle::command_runner::run_setup_command;
 use crate::feat::session_lifecycle::command_runner::run_teardown_command;
@@ -197,6 +199,7 @@ impl Actor for SessionPersistenceActor {
         // Lifecycle command subscriptions.
         ctx.subscribe_command::<RunSessionSetup>();
         ctx.subscribe_command::<RunSessionTeardown>();
+        ctx.subscribe_command::<RemoveSession>();
 
         // Event subscriptions.
         ctx.subscribe_event::<PromptAssembled>();
@@ -306,6 +309,9 @@ impl SessionPersistenceActor {
             Command::RunSessionTeardown(payload) => {
                 self.handle_run_session_teardown(payload, ctx).await;
             }
+            Command::RemoveSession(payload) => {
+                self.handle_remove_session(payload, ctx);
+            }
             // Commands NOT subscribed to - these should not arrive.
             Command::AssemblePrompt(..)
             | Command::SendToLlmProvider(..)
@@ -328,8 +334,7 @@ impl SessionPersistenceActor {
             | Command::RescanPersonas(..)
             | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)
-            | Command::CompactContext(..)
-            | Command::RemoveSession(..) => {}
+            | Command::CompactContext(..) => {}
         }
     }
 
@@ -553,6 +558,14 @@ impl SessionPersistenceActor {
                 {
                     tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
                 }
+
+                if let Err(e) =
+                    ctx.send_event(Event::SessionRemoved(SessionRemoved {
+                        session_id: payload.session_id.clone(),
+                    }))
+                {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionRemoved");
+                }
             }
             Err(report) => {
                 let error_msg =
@@ -579,6 +592,66 @@ impl SessionPersistenceActor {
                     tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
                 }
             }
+        }
+    }
+
+    /// RemoveSession: remove a session from the map, create a new one if empty,
+    /// switch active if needed, and emit `SessionRemoved`.
+    fn handle_remove_session(&self, payload: &RemoveSession, ctx: &ActorContext) {
+        // No-op if the session doesn't exist.
+        if !self.state.read().session.sessions.contains_key(&payload.session_id) {
+            return;
+        }
+
+        {
+            let mut state = self.state.write();
+            state.session.sessions.remove(&payload.session_id);
+
+            if state.session.sessions.is_empty() {
+                let model = state
+                    .frontend
+                    .preferences
+                    .last_model
+                    .clone()
+                    .unwrap_or_else(|| {
+                        crate::feat::provider_infra::NO_PROVIDER_ID.to_owned()
+                    });
+                let strategy = state
+                    .frontend
+                    .preferences
+                    .last_strategy
+                    .as_deref()
+                    .map_or_else(
+                        PromptStrategyId::passthrough,
+                        PromptStrategyId::new,
+                    );
+                let token_budget = state.frontend.preferences.context_token_budget.budget;
+                let new_session = ChatSessionState::new_with_profile(
+                    crate::feat::session::profile::SessionProfile::from_config(
+                        model,
+                        strategy,
+                        token_budget,
+                    ),
+                );
+                let new_id = new_session.session_id().clone();
+                state.session.sessions.insert(new_id.clone(), new_session);
+                state.session.active_session = new_id;
+            } else if state.session.active_session == payload.session_id {
+                let next_id = state
+                    .session
+                    .sessions
+                    .keys()
+                    .next()
+                    .expect("sessions is non-empty")
+                    .clone();
+                state.session.active_session = next_id;
+            }
+        }
+
+        if let Err(e) = ctx.send_event(Event::SessionRemoved(SessionRemoved {
+            session_id: payload.session_id.clone(),
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit SessionRemoved");
         }
     }
 
