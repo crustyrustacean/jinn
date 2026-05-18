@@ -30,7 +30,7 @@ truncation_fg = [83, 83, 83]
 # Picker
 picker_active_marker = "green"
 picker_selected_bg = [50, 52, 58]
-picker_highlight_bg = "darkgray"
+picker_highlight_bg = [68, 71, 80]
 
 # Tab bar
 tab_active_fg = "black"

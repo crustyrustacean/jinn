@@ -1,5 +1,5 @@
 +++
-name = "meta-prompt-generator"
+name = "metaprompt"
 description = "Create prompts for tasks"
 +++
 
