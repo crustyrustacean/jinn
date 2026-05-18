@@ -6,12 +6,13 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
+use crate::feat::compaction_actor::protocol::command::{BeginCompaction, EndCompaction};
 use crate::feat::context::protocol::command::{
     AssemblePrompt, RestoreStrategyState, SwitchPromptStrategy,
 };
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, Command, Event};
 
 use super::super::SessionPersistenceActor;
 
@@ -292,5 +293,63 @@ impl SessionPersistenceActor {
                 state.session.clear_load();
             }
         }
+    }
+
+    /// BeginCompaction: set phase to Compacting, push "Starting..." system entry,
+    /// mark gathered entries as ignored.
+    pub(in crate::feat::session::session_actor) fn handle_begin_compaction(
+        &self,
+        payload: &BeginCompaction,
+    ) {
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&payload.session_id);
+        session.begin_compacting();
+        session.push_entry(ChatEntry::system("Starting context compaction..."));
+        if !payload.gathered_indices.is_empty() {
+            session.mark_entries_ignored(&payload.gathered_indices);
+        }
+    }
+
+    /// EndCompaction: insert compaction entry or error entry, set phase to Idle,
+    /// and persist.
+    pub(in crate::feat::session::session_actor) async fn handle_end_compaction(
+        &self,
+        payload: &EndCompaction,
+    ) {
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+
+            match &payload.result {
+                Some(result) => {
+                    let compaction_entry = ChatEntry {
+                        id: ChatEntryId::new(),
+                        timestamp: jiff::Timestamp::now(),
+                        kind: ChatEntryKind::Compaction {
+                            summary: result.summary.clone(),
+                            tokens_before: result.tokens_before,
+                            entries_compacted: result.entries_compacted,
+                            model_used: result.model_used.clone(),
+                        },
+                        pin_position: None,
+                        ignored: false,
+                    };
+                    session.insert_entry_at(result.boundary_index, compaction_entry);
+                    session.push_entry(ChatEntry::system(format!(
+                        "Context was compacted. {} messages were summarized.",
+                        result.entries_compacted
+                    )));
+                }
+                None => {
+                    let error_msg = payload.error.as_deref().unwrap_or("Unknown error");
+                    session.push_entry(ChatEntry::error(format!(
+                        "Compaction failed: {error_msg}"
+                    )));
+                }
+            }
+            session.finish_compacting();
+        }
+
+        self.save_active_session(&payload.session_id).await;
     }
 }

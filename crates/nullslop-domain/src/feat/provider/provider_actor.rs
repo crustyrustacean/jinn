@@ -118,6 +118,8 @@ impl ProviderActor {
             | Command::RunSessionSetup(..)
             | Command::RunSessionTeardown(..)
             | Command::CompactContext(..)
+            | Command::BeginCompaction(..)
+            | Command::EndCompaction(..)
             | Command::RemoveSession(..) => {}
         }
     }

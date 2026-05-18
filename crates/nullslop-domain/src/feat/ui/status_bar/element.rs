@@ -167,7 +167,16 @@ impl UiElement<AppState> for StatusBarElement {
         frame.render_widget(strategy_widget, info_area);
 
         let notification = state.frontend.active_status_notification();
-        let right_spans = if let Some(msg) = notification {
+        let right_spans = if state.active_session().is_compacting() {
+            // Show "Compacting..." prominently when session is in Compacting phase.
+            vec![
+                Span::styled(
+                    "Compacting...",
+                    Style::default().fg(state.frontend.theme.warning),
+                ),
+                Span::styled(format!("  {model}"), style),
+            ]
+        } else if let Some(msg) = notification {
             vec![
                 Span::styled(msg, Style::default().fg(state.frontend.theme.success)),
                 Span::styled(format!("  {model}"), style),

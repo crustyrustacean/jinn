@@ -27,22 +27,38 @@ use crate::protocol::{
 
 /// Ephemeral session state — lost on application restart.
 ///
+/// The current phase of a chat session's lifecycle.
+///
+/// Phases are mutually exclusive — a session is in exactly one phase at a time.
+/// Transitions are enforced by the `begin_*`/`finish_*` methods with assertions
+/// that document the valid state machine edges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum SessionPhase {
+    /// Session is completely idle — not sending, streaming, assembling, or compacting.
+    #[default]
+    Idle,
+    /// A prompt assembly request is in progress.
+    Assembling,
+    /// A message has been dispatched to the LLM but no tokens have arrived yet.
+    Sending,
+    /// LLM tokens are actively streaming into the session.
+    Streaming,
+    /// Context compaction is in progress.
+    Compacting,
+}
+
 /// Groups runtime-only fields that are specific to the current running instance
 /// and have no meaning across restarts (stream indices, queues, in-progress flags).
 /// The entire struct is skipped during serialization so individual fields cannot
 /// be accidentally excluded from persistence.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionCoreEphemeral {
+    /// The current session phase (idle, sending, streaming, assembling, compacting).
+    pub(crate) phase: SessionPhase,
     /// Index into `history` for the entry currently receiving stream tokens.
     pub(crate) streaming_entry_index: Option<usize>,
-    /// Whether an LLM stream is actively producing tokens.
-    pub(crate) is_streaming: bool,
     /// Messages waiting to be sent to the LLM, one at a time.
     pub(crate) message_queue: VecDeque<crate::protocol::ChatEntry>,
-    /// Whether a message has been dispatched to the LLM but no tokens have arrived yet.
-    pub(crate) is_sending: bool,
-    /// Whether a prompt assembly request is in progress.
-    pub(crate) is_assembling: bool,
     /// Maps stream tool call index to history index for in-progress tool calls.
     pub(crate) streaming_tool_call_indices: HashMap<usize, usize>,
     /// Index into `history` for the entry currently receiving thinking tokens.
@@ -406,7 +422,8 @@ impl ChatSessionState {
     /// `begin_tool_call`, or `cancel_streaming`. No-op if the entry
     /// already exists or the session is not streaming.
     fn ensure_assistant_entry(&mut self) {
-        if self.core.ephemeral.streaming_entry_index.is_some() || !self.core.ephemeral.is_streaming
+        if self.core.ephemeral.streaming_entry_index.is_some()
+            || !matches!(self.core.ephemeral.phase, SessionPhase::Streaming)
         {
             return;
         }
@@ -430,10 +447,11 @@ impl ChatSessionState {
     /// before starting a new one.
     pub fn begin_streaming(&mut self) {
         assert!(
-            !self.core.ephemeral.is_streaming,
-            "begin_streaming called while already streaming"
+            matches!(self.core.ephemeral.phase, SessionPhase::Sending | SessionPhase::Idle),
+            "begin_streaming called while not in Sending or Idle phase (current: {:?})",
+            self.core.ephemeral.phase
         );
-        self.core.ephemeral.is_streaming = true;
+        self.core.ephemeral.phase = SessionPhase::Streaming;
     }
 
     /// Append a token to the streaming assistant entry.
@@ -460,8 +478,9 @@ impl ChatSessionState {
         S: AsRef<str>,
     {
         assert!(
-            self.core.ephemeral.is_streaming,
-            "append_stream_token called while not streaming"
+            matches!(self.core.ephemeral.phase, SessionPhase::Streaming),
+            "append_stream_token called while not streaming (current: {:?})",
+            self.core.ephemeral.phase
         );
         self.ensure_assistant_entry();
         let index = self
@@ -491,8 +510,9 @@ impl ChatSessionState {
     /// Panics if the session is not streaming, or if thinking has already begun.
     pub fn begin_thinking(&mut self) {
         assert!(
-            self.core.ephemeral.is_streaming,
-            "begin_thinking called while not streaming"
+            matches!(self.core.ephemeral.phase, SessionPhase::Streaming),
+            "begin_thinking called while not streaming (current: {:?})",
+            self.core.ephemeral.phase
         );
         assert!(
             self.core.ephemeral.streaming_thinking_entry_index.is_none(),
@@ -546,8 +566,7 @@ impl ChatSessionState {
         if preserve_assistant {
             self.ensure_assistant_entry();
         }
-        self.core.ephemeral.is_streaming = false;
-        self.core.ephemeral.is_sending = false; // defensive: clear both on finish
+        self.core.ephemeral.phase = SessionPhase::Idle;
         self.core.ephemeral.streaming_entry_index = None;
         self.core.ephemeral.streaming_tool_call_indices.clear();
         self.core.ephemeral.streaming_thinking_entry_index = None;
@@ -559,8 +578,7 @@ impl ChatSessionState {
     /// If no entry was created (stream cancelled before any tokens), just clears flags.
     pub fn cancel_streaming(&mut self) {
         self.ensure_assistant_entry();
-        self.core.ephemeral.is_streaming = false;
-        self.core.ephemeral.is_sending = false; // defensive: clear both on cancel
+        self.core.ephemeral.phase = SessionPhase::Idle;
         self.core.ephemeral.streaming_entry_index = None;
         self.core.ephemeral.streaming_tool_call_indices.clear();
         self.core.ephemeral.streaming_thinking_entry_index = None;
@@ -590,7 +608,7 @@ impl ChatSessionState {
 
     /// Whether an LLM stream is actively producing tokens.
     pub fn is_streaming(&self) -> bool {
-        self.core.ephemeral.is_streaming
+        matches!(self.core.ephemeral.phase, SessionPhase::Streaming)
     }
 
     // --- Tool call streaming ---
@@ -814,12 +832,11 @@ impl ChatSessionState {
     /// Panics if already sending, streaming, or assembling.
     pub fn begin_assembling(&mut self) {
         assert!(
-            !self.core.ephemeral.is_sending
-                && !self.core.ephemeral.is_streaming
-                && !self.core.ephemeral.is_assembling,
-            "begin_assembling called while already busy"
+            matches!(self.core.ephemeral.phase, SessionPhase::Idle),
+            "begin_assembling called while not idle (current: {:?})",
+            self.core.ephemeral.phase
         );
-        self.core.ephemeral.is_assembling = true;
+        self.core.ephemeral.phase = SessionPhase::Assembling;
     }
 
     /// Clear the assembling flag (called when prompt assembly completes).
@@ -829,15 +846,16 @@ impl ChatSessionState {
     /// Panics if called while not in the assembling state.
     pub fn finish_assembling(&mut self) {
         assert!(
-            self.core.ephemeral.is_assembling,
-            "finish_assembling called while not assembling"
+            matches!(self.core.ephemeral.phase, SessionPhase::Assembling),
+            "finish_assembling called while not assembling (current: {:?})",
+            self.core.ephemeral.phase
         );
-        self.core.ephemeral.is_assembling = false;
+        self.core.ephemeral.phase = SessionPhase::Idle;
     }
 
     /// Whether a prompt assembly is in progress.
     pub fn is_assembling(&self) -> bool {
-        self.core.ephemeral.is_assembling
+        matches!(self.core.ephemeral.phase, SessionPhase::Assembling)
     }
 
     /// Switch the active prompt strategy for this session.
@@ -880,10 +898,11 @@ impl ChatSessionState {
     /// the caller must ensure the session is idle before dispatching.
     pub fn begin_sending(&mut self) {
         assert!(
-            !self.core.ephemeral.is_sending && !self.core.ephemeral.is_streaming,
-            "begin_sending called while already sending or streaming"
+            matches!(self.core.ephemeral.phase, SessionPhase::Idle),
+            "begin_sending called while not idle (current: {:?})",
+            self.core.ephemeral.phase
         );
-        self.core.ephemeral.is_sending = true;
+        self.core.ephemeral.phase = SessionPhase::Sending;
     }
 
     /// Clear the sending flag (called when the first stream token arrives).
@@ -893,24 +912,56 @@ impl ChatSessionState {
     /// Panics if not currently sending.
     pub fn finish_sending(&mut self) {
         assert!(
-            self.core.ephemeral.is_sending,
-            "finish_sending called while not sending"
+            matches!(self.core.ephemeral.phase, SessionPhase::Sending),
+            "finish_sending called while not sending (current: {:?})",
+            self.core.ephemeral.phase
         );
-        self.core.ephemeral.is_sending = false;
+        self.core.ephemeral.phase = SessionPhase::Idle;
     }
 
     /// Whether a message has been dispatched but no tokens have arrived yet.
     pub fn is_sending(&self) -> bool {
-        self.core.ephemeral.is_sending
+        matches!(self.core.ephemeral.phase, SessionPhase::Sending)
     }
 
     // --- Combined status ---
 
     /// Whether the session is completely idle (not sending, not streaming, not assembling).
     pub fn is_idle(&self) -> bool {
-        !self.core.ephemeral.is_sending
-            && !self.core.ephemeral.is_streaming
-            && !self.core.ephemeral.is_assembling
+        matches!(self.core.ephemeral.phase, SessionPhase::Idle)
+    }
+
+    /// Whether context compaction is in progress.
+    pub fn is_compacting(&self) -> bool {
+        matches!(self.core.ephemeral.phase, SessionPhase::Compacting)
+    }
+
+    /// Mark the session as compacting.
+    ///
+    /// # Panics
+    ///
+    /// Panics if not currently idle.
+    pub fn begin_compacting(&mut self) {
+        assert!(
+            matches!(self.core.ephemeral.phase, SessionPhase::Idle),
+            "begin_compacting called while not idle (current: {:?})",
+            self.core.ephemeral.phase
+        );
+        self.core.ephemeral.phase = SessionPhase::Compacting;
+    }
+
+    /// Mark compaction as finished.
+    ///
+    /// # Panics
+    ///
+    /// Panics if not currently compacting.
+    pub fn finish_compacting(&mut self) {
+        assert!(
+            matches!(self.core.ephemeral.phase, SessionPhase::Compacting),
+            "finish_compacting called while not compacting (current: {:?})",
+            self.core.ephemeral.phase
+        );
+        self.core.ephemeral.phase = SessionPhase::Idle;
     }
 
     /// The current scroll offset (lines to skip from top).
