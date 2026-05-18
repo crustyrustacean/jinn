@@ -13,7 +13,7 @@ pub mod user_preferences_storage;
 #[cfg(test)]
 mod preferences_actor_tests;
 
-pub use user_preferences::UserPreferences;
+pub use user_preferences::{ContextTokenBudgetConfig, UserPreferences};
 pub use user_preferences_storage::{
     FilesystemUserPreferencesStorage, InMemoryUserPreferencesStorage, UserPreferencesStorageService,
 };

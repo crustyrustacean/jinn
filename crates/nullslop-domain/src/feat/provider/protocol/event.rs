@@ -17,6 +17,8 @@ pub enum StreamCompletedReason {
     Canceled,
     /// The stream stopped because the model requested tool use.
     ToolUse,
+    /// The stream failed due to a provider error.
+    Error,
 }
 
 /// Streaming response completed for a session.
@@ -74,8 +76,8 @@ pub struct ProviderSwitched {
 pub struct ModelsRefreshed {
     /// The session that triggered the refresh (for routing the result back).
     pub session_id: SessionId,
-    /// Provider name to list of discovered models.
-    pub results: std::collections::HashMap<String, Vec<String>>,
+    /// Provider name to list of discovered model metadata.
+    pub results: std::collections::HashMap<String, Vec<nullslop_provider::ModelInfo>>,
     /// Provider name to error message for providers that failed.
     pub errors: std::collections::HashMap<String, String>,
 }

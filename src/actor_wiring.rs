@@ -191,18 +191,6 @@ pub fn create_core_with_actor_host(
 
     // ── Domain actors ────────────────────────────────────────────────────
 
-    // Echo actor.
-    let echo_result = spawn::<nullslop_domain::feat::echo_actor::EchoActor>(
-        "echo",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Echoes messages back");
-        },
-    );
-
     // LLM streaming actor.
     let llm_result = spawn::<nullslop_domain::feat::llm_actor::LlmActor>(
         "llm-streaming",
@@ -348,7 +336,6 @@ pub fn create_core_with_actor_host(
             provider_init_result,
             prefs_result,
             prefs_sync_result,
-            echo_result,
             llm_result,
             discover_result,
             orch_result,

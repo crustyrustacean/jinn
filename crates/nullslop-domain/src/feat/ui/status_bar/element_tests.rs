@@ -552,3 +552,183 @@ fn render_shows_tilde_substitution_for_path_under_home() {
         "expected ~/projects/my-app in cwd line, got: {row0}"
     );
 }
+
+// --- Context limit display tests ---
+
+#[rstest::rstest]
+fn render_shows_context_limit_with_usage_and_percentage() {
+    // Given a session with a cached context size and a model cache with context_length.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("openrouter/anthropic/claude-sonnet-4".to_owned());
+    state.active_session_mut().push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 5000,
+        tokens_received: 0,
+    });
+    state.active_session_mut().set_context_size(5000);
+
+    // And a model cache with context_length for the active model.
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert(
+        "openrouter".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "anthropic/claude-sonnet-4".to_owned(),
+            context_length: Some(200000),
+        }],
+    );
+    state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    });
+
+    let (mut terminal, area) = setup_term(100, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+    // Then the status bar shows ctx with limit and percentage.
+    assert!(
+        row.contains("ctx:5.0k/200.0k (2.5%)"),
+        "expected ctx with limit and pct, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_falls_back_when_no_context_limit_in_cache() {
+    // Given a session with a cached context size but no context_length in the model cache.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state.active_session_mut().push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 5000,
+        tokens_received: 0,
+    });
+    state.active_session_mut().set_context_size(5000);
+
+    // Model cache exists but has no context_length.
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert(
+        "ollama".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "llama3".to_owned(),
+            context_length: None,
+        }],
+    );
+    state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    });
+
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then the status bar falls back to ctx without limit.
+    assert!(
+        row.contains("ctx:5.0k"),
+        "expected ctx without limit, got: {row}"
+    );
+    // And no percentage is shown.
+    assert!(!row.contains("2.5%"), "expected no percentage, got: {row}");
+}
+
+#[rstest::rstest]
+fn render_falls_back_when_no_model_cache() {
+    // Given a session with a cached context size but no model cache at all.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state.active_session_mut().push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 5000,
+        tokens_received: 0,
+    });
+    state.active_session_mut().set_context_size(5000);
+    // No model cache.
+    assert!(state.provider.model_cache.is_none());
+
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then the status bar shows ctx without limit.
+    assert!(
+        row.contains("ctx:5.0k"),
+        "expected ctx without limit, got: {row}"
+    );
+    assert!(!row.contains("%"), "expected no percentage, got: {row}");
+}
+
+// --- Token budget display tests ---
+
+#[rstest::rstest]
+fn render_shows_token_budget_when_token_budget_strategy_active() {
+    // Given a session with the token_budget strategy.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state
+        .active_session_mut()
+        .switch_strategy(crate::protocol::PromptStrategyId::token_budget());
+    state.active_session_mut().profile_mut().token_budget = 200_000;
+    let (mut terminal, area) = setup_term(100, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+    // Then the status bar shows "(Token Budget: 200k)".
+    assert!(
+        row.contains("(Token Budget: 200k)"),
+        "expected budget display, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_hides_token_budget_for_passthrough_strategy() {
+    // Given a session with the passthrough strategy (default).
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    let (mut terminal, area) = setup_term(100, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+    // Then the status bar does NOT show "Token Budget:".
+    assert!(
+        !row.contains("Token Budget:"),
+        "expected no budget display for passthrough strategy, got: {row}"
+    );
+}

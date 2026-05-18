@@ -6,6 +6,7 @@
 use error_stack::{Report, ResultExt as _};
 use reqwest::Client;
 
+use crate::ModelInfo;
 use crate::service::LlmServiceError;
 
 /// Response from Anthropic's `/v1/models` endpoint.
@@ -18,6 +19,8 @@ struct ModelsResponse {
 #[derive(Debug, serde::Deserialize)]
 struct ModelEntry {
     id: String,
+    /// Maximum context window in tokens. Anthropic returns this as `context_window`.
+    context_window: Option<u32>,
 }
 
 /// Fetch available model IDs from Anthropic.
@@ -28,7 +31,7 @@ struct ModelEntry {
 pub async fn list_models(
     client: &Client,
     api_key: &str,
-) -> Result<Vec<String>, Report<LlmServiceError>> {
+) -> Result<Vec<ModelInfo>, Report<LlmServiceError>> {
     let response = client
         .get("https://api.anthropic.com/v1/models")
         .header("x-api-key", api_key)
@@ -60,5 +63,12 @@ pub async fn list_models(
         .change_context(LlmServiceError::Provider)
         .attach("failed to parse Anthropic list_models response")?;
 
-    Ok(models.data.into_iter().map(|m| m.id).collect())
+    Ok(models
+        .data
+        .into_iter()
+        .map(|m| ModelInfo {
+            id: m.id,
+            context_length: m.context_window,
+        })
+        .collect())
 }

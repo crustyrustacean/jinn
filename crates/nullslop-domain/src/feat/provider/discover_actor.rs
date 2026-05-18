@@ -16,8 +16,8 @@ use crate::feat::provider_infra::{ApiKeysService, ModelCache, ProviderRegistrySe
 use crate::protocol::{Command, Event};
 use error_stack::Report;
 use nullslop_provider::{
-    Backend, LlmServiceError, OpenAiCompatibleService, ProviderConfig, anthropic::AnthropicService,
-    google::GoogleService,
+    Backend, LlmServiceError, ModelInfo, OpenAiCompatibleService, ProviderConfig,
+    anthropic::AnthropicService, google::GoogleService,
 };
 
 /// Error type for model discovery failures.
@@ -98,7 +98,7 @@ impl DiscoverActor {
             registry.config().providers.clone()
         };
 
-        let mut results: HashMap<String, Vec<String>> = HashMap::new();
+        let mut results: HashMap<String, Vec<ModelInfo>> = HashMap::new();
         let mut errors: HashMap<String, String> = HashMap::new();
 
         for entry in &entries {
@@ -141,7 +141,7 @@ impl DiscoverActor {
             // Build provider and call list_models.
             let api_key_str = api_key.as_deref().unwrap_or("");
 
-            let result: Result<Vec<String>, Report<LlmServiceError>> = match backend {
+            let result: Result<Vec<ModelInfo>, Report<LlmServiceError>> = match backend {
                 Backend::Anthropic => {
                     let svc = AnthropicService::new(
                         placeholder_model.clone(),

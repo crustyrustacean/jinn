@@ -89,3 +89,35 @@ pub struct ToolCallStreaming {
     /// Partial JSON string for the tool arguments (accumulated so far).
     pub partial_json: String,
 }
+
+/// A tool has started executing.
+///
+/// Emitted by the tool orchestrator when a streaming tool begins actual execution
+/// (after arguments are complete). The session actor creates a pending
+/// ToolResult entry. Only emitted for streaming tools (e.g., bash).
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("tool")]
+pub struct ToolExecutionStarted {
+    /// The session this execution belongs to.
+    pub session_id: SessionId,
+    /// The unique ID for this tool call.
+    pub tool_call_id: String,
+    /// The name of the tool being executed.
+    pub name: String,
+}
+
+/// Incremental output from a running tool.
+///
+/// Emitted by streaming tools as they produce output. Each event carries
+/// a delta (new lines), not the accumulated total. The session actor
+/// appends to the pending ToolResult entry's content.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("tool")]
+pub struct ToolExecutionOutput {
+    /// The session this output belongs to.
+    pub session_id: SessionId,
+    /// The tool call ID this output is for.
+    pub tool_call_id: String,
+    /// New output text (delta, not accumulated).
+    pub output: String,
+}

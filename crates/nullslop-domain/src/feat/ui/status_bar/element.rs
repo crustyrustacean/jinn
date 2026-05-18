@@ -38,13 +38,24 @@ fn shorten_path(path: &std::path::Path) -> String {
     absolute.display().to_string()
 }
 
-/// Format a token count in human-readable form.
+/// Format a token count in human-readable form with one decimal place.
 #[allow(clippy::cast_precision_loss)]
 fn format_tokens(count: u64) -> String {
     if count >= 1_000_000 {
         format!("{:.1}M", count as f64 / 1_000_000.0)
     } else if count >= 1_000 {
         format!("{:.1}k", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
+    }
+}
+
+/// Format a token budget as whole numbers only (e.g. `150k`, `1M`, `999`).
+fn format_budget(count: usize) -> String {
+    if count >= 1_000_000 {
+        format!("{}M", count / 1_000_000)
+    } else if count >= 1_000 {
+        format!("{}k", count / 1_000)
     } else {
         count.to_string()
     }
@@ -72,6 +83,7 @@ impl UiElement<AppState> for StatusBarElement {
         // --- Line 2: Existing info ---
         let strategy = state.active_session().active_strategy();
         let pinned_count = state.active_session().pinned_entries().len();
+        let active_model = state.active_session().profile().model.clone();
 
         // Compute aggregated token stats for the active session.
         let agg = aggregate_session_stats(&state.session.sessions, &state.session.active_session);
@@ -83,16 +95,51 @@ impl UiElement<AppState> for StatusBarElement {
             format_tokens(agg.total_received()),
         );
         if let Some(ctx_size) = state.active_session().context_size() {
-            token_info = format!("{} ctx:{}", token_info, format_tokens(u64::from(ctx_size)));
+            let ctx_used = u64::from(ctx_size);
+            let ctx_limit = state.provider.model_cache.as_ref().and_then(|cache| {
+                // active_model is "provider/model" — extract provider name.
+                let provider_name = active_model.split('/').next()?;
+                let models = cache.entries.get(provider_name)?;
+                // Find the model matching the full ID.
+                let model_suffix = &active_model[(provider_name.len() + 1)..];
+                models
+                    .iter()
+                    .find(|m| m.id == model_suffix)
+                    .and_then(|m| m.context_length)
+            });
+
+            if let Some(max_tokens) = ctx_limit {
+                let max_u64 = u64::from(max_tokens);
+                let pct = if max_u64 > 0 {
+                    format!("{:.1}%", (ctx_used as f64 / max_u64 as f64) * 100.0)
+                } else {
+                    "0.0%".to_owned()
+                };
+                token_info = format!(
+                    "{} ctx:{}/{} ({})",
+                    token_info,
+                    format_tokens(ctx_used),
+                    format_tokens(max_u64),
+                    pct
+                );
+            } else {
+                token_info = format!("{} ctx:{}", token_info, format_tokens(ctx_used));
+            }
         }
 
-        let left = if pinned_count > 0 {
-            format!("({strategy}) \u{1f4cc}{pinned_count} {token_info}")
+        let strategy_display = if state.active_session().active_strategy().as_str() == "token_budget" {
+            let budget = state.active_session().profile().token_budget;
+            format!("Token Budget: {}", format_budget(budget))
         } else {
-            format!("({strategy}) {token_info}")
+            strategy.to_string()
         };
 
-        let active_model = state.active_session().profile().model.clone();
+        let left = if pinned_count > 0 {
+            format!("({strategy_display})\u{1f4cc}{pinned_count} {token_info}")
+        } else {
+            format!("({strategy_display}) {token_info}")
+        };
+
         let model = if active_model == NO_PROVIDER_ID {
             "no model selected".to_owned()
         } else if let Some((provider, model)) = active_model.split_once('/') {

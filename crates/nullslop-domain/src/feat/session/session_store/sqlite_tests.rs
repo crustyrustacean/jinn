@@ -1,6 +1,7 @@
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::session_store::SessionStore;
 use crate::feat::session::session_store::sqlite::SqliteSessionStore;
+use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::{ChatEntry, ChatEntryKind, SessionId};
 use tempfile::TempDir;
 
@@ -329,7 +330,7 @@ async fn all_entry_kinds_round_trip() {
     session.push_entry(ChatEntry::actor("bash", "actor msg"));
     session.push_entry(ChatEntry::thinking("thinking text"));
     session.push_entry(ChatEntry::tool_call("call_1", "bash", "{\"cmd\": true}"));
-    session.push_entry(ChatEntry::tool_result("call_1", "bash", "ok", true));
+    session.push_entry(ChatEntry::tool_result("call_1", "bash", "ok", ToolResultStatus::Success));
 
     // When saving and loading.
     store.save(&session).await.expect("save");
@@ -359,7 +360,7 @@ async fn all_entry_kinds_round_trip() {
         matches!(&loaded.history()[6].kind, ChatEntryKind::ToolCall { id, name, arguments } if id == "call_1" && name == "bash" && arguments == "{\"cmd\": true}")
     );
     assert!(
-        matches!(&loaded.history()[7].kind, ChatEntryKind::ToolResult { id, name, content, success } if id == "call_1" && name == "bash" && content == "ok" && *success)
+        matches!(&loaded.history()[7].kind, ChatEntryKind::ToolResult { id, name, content, status } if id == "call_1" && name == "bash" && content == "ok" && *status == ToolResultStatus::Success)
     );
 }
 

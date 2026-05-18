@@ -29,4 +29,8 @@ pub struct ResolvedProvider {
     /// Whether this model was discovered from a remote provider at runtime
     /// (not statically listed in `providers.toml`).
     pub is_remote: bool,
+    /// Maximum context length in tokens, if known.
+    /// Sources (in priority order): manual `context_length` override in
+    /// `providers.toml`, API-discovered from model listing.
+    pub context_length: Option<u32>,
 }

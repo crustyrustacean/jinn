@@ -4,8 +4,8 @@ use crate::common::actor::ActorContext;
 use crate::feat::context::protocol::command::AssemblePrompt;
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::protocol::{
-    ChatEntry, ChatEntryKind, Event, LlmMessage, PinPosition, SessionId, ToolDefinition,
-    entries_to_messages,
+    ChatEntry, ChatEntryKind, Event, LlmMessage, PinPosition, PromptStrategyId, SessionId,
+    ToolDefinition, entries_to_messages,
 };
 
 use crate::feat::context::{
@@ -19,14 +19,45 @@ use crate::feat::skills::format::format_skills_for_prompt;
 use super::super::PromptAssemblyActor;
 
 impl PromptAssemblyActor {
-    /// Lazily initializes a passthrough strategy for unknown sessions.
+    /// Lazily initializes a strategy for sessions not yet tracked by this actor.
+    ///
+    /// Reads the session's active strategy ID and token budget from state,
+    /// then creates the appropriate strategy via the factory.
+    /// Falls back to passthrough if no factory is available.
     pub(in crate::feat::context::context_actor) fn ensure_strategy(
         &mut self,
         session_id: &SessionId,
     ) {
-        if !self.strategies.contains_key(session_id) {
+        if self.strategies.contains_key(session_id) {
+            return;
+        }
+        let Some(factory) = self.factory.as_ref() else {
             self.strategies
                 .insert(session_id.clone(), Box::new(PassthroughStrategy));
+            return;
+        };
+        let (strategy_id, token_budget) = {
+            let guard = self.state.read();
+            match guard.session.sessions.get(session_id) {
+                Some(session) => (
+                    session.active_strategy().clone(),
+                    session.profile().token_budget,
+                ),
+                None => (
+                    PromptStrategyId::passthrough(),
+                    crate::feat::session::profile::DEFAULT_TOKEN_BUDGET,
+                ),
+            }
+        };
+        match factory.create(&strategy_id, token_budget) {
+            Ok(strategy) => {
+                self.strategies.insert(session_id.clone(), strategy);
+            }
+            Err(e) => {
+                tracing::error!("ensure_strategy failed: {e:?}");
+                self.strategies
+                    .insert(session_id.clone(), Box::new(PassthroughStrategy));
+            }
         }
     }
 

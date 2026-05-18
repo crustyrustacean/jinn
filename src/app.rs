@@ -112,7 +112,11 @@ impl App {
                     )),
                 );
                 let paths = &services.paths;
-                load_prompt_templates(&core.state, &paths.prompts_dir(), &paths.system_prompts_dir());
+                load_prompt_templates(
+                    &core.state,
+                    &paths.prompts_dir(),
+                    &paths.system_prompts_dir(),
+                );
                 load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
                 // Resolve mouse selection config from environment.
@@ -161,8 +165,16 @@ impl App {
                         FilesystemUserPreferencesStorage::default_path(),
                     )),
                 );
-                load_prompt_templates(&core.state, &_services.paths.prompts_dir(), &_services.paths.system_prompts_dir());
-                load_theme(&core.state, &_services.paths.themes_dir(), &_services.paths.system_themes_dir());
+                load_prompt_templates(
+                    &core.state,
+                    &_services.paths.prompts_dir(),
+                    &_services.paths.system_prompts_dir(),
+                );
+                load_theme(
+                    &core.state,
+                    &_services.paths.themes_dir(),
+                    &_services.paths.system_themes_dir(),
+                );
                 let mut headless = HeadlessApp::new(core, actor_host, self.handle());
                 match command {
                     Some(HeadlessCommands::SendChat { message }) => {
@@ -196,10 +208,11 @@ impl Default for App {
 /// Called once after core creation. Failures are logged but not fatal —
 /// an empty store is used when both directories are missing or unreadable.
 fn load_prompt_templates(state: &State, user_dir: &Path, system_dir: &Path) {
-    let store = nullslop_domain::PromptTemplateStore::load_from_dirs(user_dir, system_dir).unwrap_or_else(|e| {
-        tracing::warn!("failed to load prompt templates: {e:?}");
-        nullslop_domain::PromptTemplateStore::new()
-    });
+    let store = nullslop_domain::PromptTemplateStore::load_from_dirs(user_dir, system_dir)
+        .unwrap_or_else(|e| {
+            tracing::warn!("failed to load prompt templates: {e:?}");
+            nullslop_domain::PromptTemplateStore::new()
+        });
     tracing::info!(count = store.len(), "loaded prompt templates");
     state.write().context.prompt_templates = store;
 }

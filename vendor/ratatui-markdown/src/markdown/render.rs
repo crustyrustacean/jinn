@@ -390,13 +390,22 @@ impl MarkdownRenderer {
                     Style::default().fg(theme.get_accent_yellow()),
                 )));
             }
-            MarkdownBlock::ListItem(text, indent) => {
+            MarkdownBlock::ListItem {
+                content: text,
+                indent,
+                ordered,
+            } => {
                 let (is_last, ancestors_are_last, index_in_group) =
                     Self::find_list_context(block_idx, blocks);
 
                 if let Some(h) = hooks {
-                    let marker =
-                        h.list_item_marker(*indent, is_last, &ancestors_are_last, index_in_group);
+                    let marker = h.list_item_marker(
+                        *indent,
+                        is_last,
+                        &ancestors_are_last,
+                        index_in_group,
+                        *ordered,
+                    );
                     if marker.is_some() || h.list_item_content(text, *indent).is_some() {
                         let marker_str = marker.unwrap_or_else(|| "\u{2022} ".to_string());
                         if let Some(custom_content) = h.list_item_content(text, *indent) {
@@ -439,9 +448,13 @@ impl MarkdownRenderer {
                     }
                 }
 
+                let default_marker = match ordered {
+                    Some(n) => format!("{n}. "),
+                    None => "\u{2022} ".to_string(),
+                };
                 let indent_str = "  ".repeat(*indent as usize);
                 let wrapped = self.wrap_text_with_inline_formatting(
-                    &format!("{}\u{2022}  {}", indent_str, text),
+                    &format!("{indent_str}{default_marker}{text}"),
                     theme,
                 );
                 lines.extend(wrapped);
@@ -521,18 +534,18 @@ impl MarkdownRenderer {
     fn find_list_context(block_idx: usize, blocks: &[MarkdownBlock]) -> (bool, Vec<bool>, usize) {
         let group_start = (0..=block_idx)
             .rev()
-            .find(|&i| !matches!(blocks.get(i), Some(MarkdownBlock::ListItem(_, _))))
+            .find(|&i| !matches!(blocks.get(i), Some(MarkdownBlock::ListItem { .. })))
             .map(|i| i + 1)
             .unwrap_or(0);
         let group_end = (block_idx..blocks.len())
-            .find(|&i| !matches!(blocks.get(i), Some(MarkdownBlock::ListItem(_, _))))
+            .find(|&i| !matches!(blocks.get(i), Some(MarkdownBlock::ListItem { .. })))
             .unwrap_or(blocks.len());
 
         let items: Vec<(usize, u8)> = blocks[group_start..group_end]
             .iter()
             .enumerate()
             .filter_map(|(i, b)| match b {
-                MarkdownBlock::ListItem(_, indent) => Some((group_start + i, *indent)),
+                MarkdownBlock::ListItem { indent, .. } => Some((group_start + i, *indent)),
                 _ => None,
             })
             .collect();

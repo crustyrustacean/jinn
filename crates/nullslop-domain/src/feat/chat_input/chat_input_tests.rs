@@ -1,6 +1,35 @@
 use super::*;
 
 #[rstest::rstest]
+fn insert_text_with_multiline_preserves_newlines() {
+    // Given a fresh state.
+    let mut state = ChatInputBoxState::new();
+
+    // When inserting "hello\nworld".
+    state.insert_text("hello\nworld");
+
+    // Then text contains the newline and cursor is at end.
+    assert_eq!(state.text(), "hello\nworld");
+    assert_eq!(state.cursor_pos(), 11);
+}
+
+#[rstest::rstest]
+fn insert_text_at_middle_position_preserves_newlines() {
+    // Given "ab" with cursor at position 1.
+    let mut state = ChatInputBoxState::new();
+    state.insert_text("ab");
+    state.move_cursor_to_start();
+    state.move_cursor_right(); // cursor at 1
+
+    // When inserting "XY\nZ".
+    state.insert_text("XY\nZ");
+
+    // Then text is "aXY\nZb" and cursor is at 6.
+    assert_eq!(state.text(), "aXY\nZb");
+    assert_eq!(state.cursor_pos(), 5); // after "aXY\nZ"
+}
+
+#[rstest::rstest]
 fn grapheme_count_returns_cluster_count() {
     // Given a state with "éNoël" inserted.
     let mut state = ChatInputBoxState::new();

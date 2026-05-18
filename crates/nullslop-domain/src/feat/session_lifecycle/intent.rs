@@ -70,6 +70,23 @@ pub fn handle_session_lifecycle_setup(
     lifecycle_name: &str,
     args: &[String],
 ) -> IntentResult {
+    // Auto-close the active session if it is empty (no history entries).
+    // This prevents ghost "Untitled Session" entries from accumulating
+    // when the user creates sessions in quick succession without sending
+    // any messages. Teardown is skipped because an empty session has no
+    // meaningful state to clean up.
+    if state.active_session().is_empty() {
+        let old_id = state.session.active_session.clone();
+        state.session.sessions.remove(&old_id);
+        // If that was the last session, we'll create a new one below.
+        // Ensure active_session points to something valid (it will be
+        // overwritten immediately, but the insert below expects the map
+        // to potentially be non-empty for the "switch" logic).
+        if let Some(next_id) = state.session.sessions.keys().next().cloned() {
+            state.session.active_session = next_id;
+        }
+    }
+
     // Extract setup command before mutating state (borrow checker).
     let setup_command = find_lifecycle(state, lifecycle_name).and_then(|l| l.setup_command.clone());
 
@@ -91,9 +108,14 @@ pub fn handle_session_lifecycle_setup(
         .as_ref()
         .map(|p| p.name.clone())
         .unwrap_or_else(|| "coding-assistant".to_owned());
+    let token_budget = state.frontend.preferences.context_token_budget.budget;
 
-    let mut new_session =
-        ChatSessionState::new_with_profile(SessionProfile::new(model, strategy, persona_name));
+    let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
+        model,
+        strategy,
+        persona_name,
+        token_budget,
+    ));
     let new_id = new_session.session_id().clone();
 
     // Set lifecycle metadata on the session core.
@@ -243,6 +265,21 @@ pub fn handle_arg_input_delete(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Handle forward delete in the arg input popup (deletes the grapheme at/after cursor).
+pub fn handle_arg_input_delete_forward(state: &mut AppState) -> IntentResult {
+    use unicode_segmentation::UnicodeSegmentation;
+    let arg = &mut state.frontend.arg_input;
+    if arg.cursor_pos < arg.input.len() {
+        let next_end = arg.input[arg.cursor_pos..]
+            .grapheme_indices(true)
+            .nth(1)
+            .map(|(i, _)| arg.cursor_pos + i)
+            .unwrap_or(arg.input.len());
+        arg.input.drain(arg.cursor_pos..next_end);
+    }
+    IntentResult::empty()
+}
+
 /// Handle cursor left in the arg input popup.
 pub fn handle_arg_input_cursor_left(state: &mut AppState) -> IntentResult {
     use unicode_segmentation::UnicodeSegmentation;
@@ -268,8 +305,9 @@ pub fn handle_arg_input_cursor_right(state: &mut AppState) -> IntentResult {
             .grapheme_indices(true)
             .nth(1)
             .map(|(i, _)| arg.cursor_pos + i);
-        if let Some(next_idx) = next {
-            arg.cursor_pos = next_idx;
+        match next {
+            Some(next_idx) => arg.cursor_pos = next_idx,
+            None => arg.cursor_pos = arg.input.len(),
         }
     }
     IntentResult::empty()
@@ -304,8 +342,12 @@ fn remove_session_and_switch(state: &mut AppState, closing_id: &SessionId) {
             .last_strategy
             .as_deref()
             .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
-        let new_session =
-            ChatSessionState::new_with_profile(SessionProfile::from_config(model, strategy));
+        let token_budget = state.frontend.preferences.context_token_budget.budget;
+        let new_session = ChatSessionState::new_with_profile(SessionProfile::from_config(
+            model,
+            strategy,
+            token_budget,
+        ));
         let new_id = new_session.session_id().clone();
         state.session.sessions.insert(new_id.clone(), new_session);
         state.session.active_session = new_id;
@@ -340,6 +382,10 @@ mod tests {
 
         // Then a new session is created.
         assert_ne!(state.session.active_session, old_id);
+        // And the old empty session was auto-closed.
+        assert!(!state.session.sessions.contains_key(&old_id));
+        // And only one session remains (the new one).
+        assert_eq!(state.session.sessions.len(), 1);
         // And no commands emitted (no setup command).
         assert!(result.commands.is_empty());
         // And the session has no lifecycle name.
@@ -650,6 +696,79 @@ mod tests {
         assert_eq!(state.frontend.arg_input.cursor_pos, 1);
     }
 
+    #[rstest::rstest]
+    fn arg_input_cursor_right_reaches_end_of_input() {
+        // Given cursor one grapheme before end.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "ab".to_owned();
+        state.frontend.arg_input.cursor_pos = 1;
+
+        // When moving right.
+        let _result = handle_arg_input_cursor_right(&mut state);
+
+        // Then cursor advances to end (input.len()).
+        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_cursor_right_at_end_stays() {
+        // Given cursor already at end.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 3;
+
+        // When moving right.
+        let _result = handle_arg_input_cursor_right(&mut state);
+
+        // Then cursor stays at end.
+        assert_eq!(state.frontend.arg_input.cursor_pos, 3);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_delete_forward_removes_char_after_cursor() {
+        // Given input "abc" with cursor at position 1 (after 'a').
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 1;
+
+        // When forward deleting.
+        let _result = handle_arg_input_delete_forward(&mut state);
+
+        // Then 'b' is removed, cursor stays at 1.
+        assert_eq!(state.frontend.arg_input.input, "ac");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_delete_forward_at_end_does_nothing() {
+        // Given input "abc" with cursor at end.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 3;
+
+        // When forward deleting.
+        let _result = handle_arg_input_delete_forward(&mut state);
+
+        // Then input is unchanged.
+        assert_eq!(state.frontend.arg_input.input, "abc");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 3);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_delete_forward_at_start_removes_first_char() {
+        // Given input "abc" with cursor at start.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 0;
+
+        // When forward deleting.
+        let _result = handle_arg_input_delete_forward(&mut state);
+
+        // Then 'a' is removed.
+        assert_eq!(state.frontend.arg_input.input, "bc");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 0);
+    }
+
     // --- Arg input validation ---
 
     #[rstest::rstest]
@@ -838,8 +957,76 @@ mod tests {
                 command,
                 args,
                 ..
-            }) if command == "script.sh my branch target"
+            }) if command == "script.sh 'my branch' target"
                 && args == &["my branch".to_owned(), "target".to_owned()]
         ));
+    }
+
+    // --- Auto-close empty session tests ---
+
+    #[rstest::rstest]
+    fn auto_close_removes_empty_active_session_on_new_session() {
+        // Given default state with a single empty session.
+        let mut state = AppState::default();
+        let old_id = state.session.active_session.clone();
+        assert!(state.active_session().is_empty());
+
+        // When creating a new session via lifecycle setup.
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
+
+        // Then the old empty session is removed.
+        assert!(!state.session.sessions.contains_key(&old_id));
+        // And only one session remains.
+        assert_eq!(state.session.sessions.len(), 1);
+    }
+
+    #[rstest::rstest]
+    fn auto_close_preserves_session_with_history() {
+        // Given an active session with history.
+        let mut state = AppState::default();
+        let old_id = state.session.active_session.clone();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+
+        // When creating a new session.
+        let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
+
+        // Then the old session is preserved.
+        assert!(state.session.sessions.contains_key(&old_id));
+        // And two sessions exist.
+        assert_eq!(state.session.sessions.len(), 2);
+        // And the new session is active.
+        assert_ne!(state.session.active_session, old_id);
+    }
+
+    #[rstest::rstest]
+    fn auto_close_replaces_last_empty_session() {
+        // Given a single empty session (app just started).
+        let mut state = AppState::default();
+        assert_eq!(state.session.sessions.len(), 1);
+
+        // When creating a new session with a lifecycle.
+        state
+            .frontend
+            .preferences
+            .session_lifecycles
+            .push(SessionLifecycle {
+                name: "fossil branch".to_owned(),
+                description: None,
+                setup_command: Some("echo /tmp/workdir".to_owned()),
+                teardown_command: None,
+            });
+        let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
+
+        // Then only the new session remains (old empty one was auto-closed).
+        assert_eq!(state.session.sessions.len(), 1);
+        // And the new session has the lifecycle name.
+        assert_eq!(
+            state.active_session().lifecycle_name(),
+            Some("fossil branch")
+        );
+        // And the setup command was emitted.
+        assert!(matches!(&result.commands[0], Command::RunSessionSetup(..)));
     }
 }
