@@ -242,6 +242,8 @@ mod tests {
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
 
         // When saving and reloading.
@@ -285,6 +287,8 @@ mod tests {
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
 
         // When saving and reloading.
@@ -311,6 +315,8 @@ mod tests {
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
         service.save(&prefs).expect("save");
 
@@ -337,6 +343,8 @@ mod tests {
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
         service.save(&prefs).expect("save");
 
@@ -350,6 +358,8 @@ mod tests {
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
         service.save(&updated).expect("save updated");
 
@@ -372,6 +382,8 @@ mod tests {
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
         service.save(&prefs).expect("save");
 

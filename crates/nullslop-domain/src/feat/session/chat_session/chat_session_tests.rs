@@ -1566,6 +1566,7 @@ fn begin_tool_result_creates_pending_entry() {
             name,
             content,
             status,
+            ..
         } => {
             assert_eq!(id, "call_1");
             assert_eq!(name, "bash");
@@ -1676,6 +1677,7 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
             name,
             content,
             status,
+            ..
         } => {
             assert_eq!(id, "call_1");
             assert_eq!(name, "bash");

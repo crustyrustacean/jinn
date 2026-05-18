@@ -86,6 +86,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: format!("failed to parse arguments: {e}"),
                     success: false,
+                    full_content: None,
+                    truncation: None,
                 };
             }
         };
@@ -96,6 +98,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 name: call.name,
                 content: "no edits provided".to_owned(),
                 success: false,
+                full_content: None,
+                truncation: None,
             };
         }
 
@@ -110,6 +114,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: format!("failed to read file '{}': {e}", resolved.display()),
                     success: false,
+                    full_content: None,
+                    truncation: None,
                 };
             }
         };
@@ -130,6 +136,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: format!("edit validation failed: {e}"),
                     success: false,
+                    full_content: None,
+                    truncation: None,
                 };
             }
         };
@@ -156,6 +164,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 name: call.name,
                 content: format!("failed to write file '{}': {e}", resolved.display()),
                 success: false,
+                full_content: None,
+                truncation: None,
             };
         }
 
@@ -169,6 +179,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 diff
             ),
             success: true,
+            full_content: None,
+            truncation: None,
         }
     })
 }

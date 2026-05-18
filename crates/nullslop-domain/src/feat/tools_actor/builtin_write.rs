@@ -57,6 +57,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: format!("failed to parse arguments: {e}"),
                     success: false,
+                    full_content: None,
+                    truncation: None,
                 };
             }
         };
@@ -75,6 +77,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     resolved.display()
                 ),
                 success: false,
+                full_content: None,
+                truncation: None,
             };
         }
 
@@ -84,12 +88,16 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 name: call.name,
                 content: format!("wrote {} bytes to {}", content.len(), resolved.display()),
                 success: true,
+                full_content: None,
+                truncation: None,
             },
             Err(e) => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,
                 content: format!("failed to write file '{}': {e}", resolved.display()),
                 success: false,
+                full_content: None,
+                truncation: None,
             },
         }
     })
@@ -123,6 +131,8 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            max_output_lines: None,
+            max_output_bytes: None,
         }
     }
 
@@ -264,6 +274,8 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            max_output_lines: None,
+            max_output_bytes: None,
         };
 
         let call = ToolCall {

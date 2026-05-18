@@ -137,6 +137,8 @@ fn tool_result_entry_has_tool_result_kind() {
             name: "echo".to_owned(),
             content: "hi".to_owned(),
             status: ToolResultStatus::Success,
+            full_content: None,
+            truncation: None,
         }
     );
 }
@@ -593,6 +595,8 @@ fn tool_result_deserializes_old_success_true_format() {
             name: "bash".to_owned(),
             content: "ok".to_owned(),
             status: ToolResultStatus::Success,
+            full_content: None,
+            truncation: None,
         }
     );
 }
@@ -613,6 +617,8 @@ fn tool_result_deserializes_old_success_false_format() {
             name: "bash".to_owned(),
             content: "err".to_owned(),
             status: ToolResultStatus::Failure,
+            full_content: None,
+            truncation: None,
         }
     );
 }

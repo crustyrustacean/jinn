@@ -41,6 +41,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: format!("failed to parse arguments: {e}"),
                     success: false,
+                    full_content: None,
+                    truncation: None,
                 };
             }
         };
@@ -51,6 +53,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 name: call.name,
                 content: "skill name must not be empty".to_owned(),
                 success: false,
+                full_content: None,
+                truncation: None,
             };
         }
 
@@ -64,6 +68,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: format!("failed to read skill '{}': {e}", skill_path.display()),
                     success: false,
+                    full_content: None,
+                    truncation: None,
                 };
             }
         };
@@ -84,6 +90,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             name: call.name,
             content: format!("Skill '{name}' loaded"),
             success: true,
+            full_content: None,
+            truncation: None,
         }
     })
 }
@@ -111,6 +119,8 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            max_output_lines: None,
+            max_output_bytes: None,
         }
     }
 
@@ -220,6 +230,8 @@ mod tests {
             session_id: Some(session_id.clone()),
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            max_output_lines: None,
+            max_output_bytes: None,
         };
 
         // When executing.
@@ -260,6 +272,8 @@ mod tests {
             session_id: Some(session_id),
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            max_output_lines: None,
+            max_output_bytes: None,
         };
 
         // When executing.

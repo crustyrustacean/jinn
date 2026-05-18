@@ -39,6 +39,10 @@ pub struct ToolContext {
     /// (e.g., bash streaming). When `None`, the tool runs silently
     /// and returns a single `ToolResult`.
     pub sink: Option<Arc<dyn MessageSink>>,
+    /// Maximum lines for tool output truncation. `None` uses built-in default.
+    pub max_output_lines: Option<usize>,
+    /// Maximum bytes for tool output truncation. `None` uses built-in default.
+    pub max_output_bytes: Option<usize>,
 }
 
 impl fmt::Debug for ToolContext {
