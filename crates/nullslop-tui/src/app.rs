@@ -299,6 +299,7 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
         FocusScope::SidebarPersona => Scope::SidebarPersona,
         FocusScope::SidebarPins => Scope::SidebarPins,
         FocusScope::SidebarSessions => Scope::SidebarSessions,
+        FocusScope::SidebarMinimap => Scope::SidebarMinimap,
         FocusScope::ArgInput => Scope::ArgInput,
         FocusScope::TokenBudgetInput => Scope::TokenBudgetInput,
         FocusScope::RenameSessionInput => Scope::RenameSessionInput,
