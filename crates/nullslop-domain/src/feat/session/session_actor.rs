@@ -562,14 +562,9 @@ impl SessionPersistenceActor {
                     };
                 {
                     let mut state = self.state.write();
-                    state.session.active_session = payload.session_id.clone();
                     if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
                         session.push_entry(ChatEntry::error(&error_msg));
                     }
-                    state
-                        .frontend
-                        .scope_stack
-                        .push(crate::common::app_state::FocusScope::Input);
                 }
 
                 self.save_active_session(&payload.session_id).await;
@@ -657,6 +652,7 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
+    use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::tools_actor::protocol::event::ToolBatchCompleted;
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChatEntry, ChatEntryKind, Command};
@@ -1023,5 +1019,143 @@ mod tests {
             "expected tokens_received > 2 (text only), got {}",
             ledger[0].tokens_received
         );
+    }
+
+    // --- Teardown failure handler tests ---
+
+    #[tokio::test]
+    async fn teardown_failure_does_not_switch_active_session() {
+        // Given a session actor with two sessions, second is targeted for teardown.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let (target_id, original_active) = {
+            let mut state = actor.state.write();
+            let original_active = state.session.active_session.clone();
+            let second = ChatSessionState::new();
+            let second_id = second.session_id().clone();
+            state.session.sessions.insert(second_id.clone(), second);
+            (second_id, original_active)
+        };
+
+        // When handling a teardown command that fails targeting the non-active session.
+        actor
+            .handle_run_session_teardown(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
+                    session_id: target_id,
+                    command: "exit 1".to_owned(),
+                    args: vec![],
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the active session is unchanged.
+        let state = actor.state.read();
+        assert_eq!(state.session.active_session, original_active);
+        drop(state);
+
+        // And SessionTeardownCompleted was emitted with error.
+        let events = sink.events();
+        let teardown_evt = events
+            .iter()
+            .find(|e| matches!(e, crate::protocol::Event::SessionTeardownCompleted(..)));
+        assert!(teardown_evt.is_some(), "expected SessionTeardownCompleted event");
+    }
+
+    #[tokio::test]
+    async fn teardown_failure_does_not_push_input_scope() {
+        // Given a session actor in Normal scope.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session.clone()
+        };
+
+        // When handling a teardown command that fails.
+        actor
+            .handle_run_session_teardown(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
+                    session_id,
+                    command: "exit 1".to_owned(),
+                    args: vec![],
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the scope stack does not have Input on it.
+        let state = actor.state.read();
+        assert!(!matches!(
+            state.frontend.scope_stack.current(),
+            crate::common::app_state::FocusScope::Input
+        ));
+    }
+
+    #[tokio::test]
+    async fn teardown_failure_pushes_error_entry_to_session() {
+        // Given a session actor with a session.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session.clone()
+        };
+
+        // When handling a teardown command that fails.
+        actor
+            .handle_run_session_teardown(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
+                    session_id: session_id.clone(),
+                    command: "exit 1".to_owned(),
+                    args: vec![],
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session has an error entry.
+        let state = actor.state.read();
+        let session = state.session.sessions.get(&session_id).expect("session exists");
+        let last = session.history().last().expect("has an entry");
+        assert!(matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("exit code")));
+    }
+
+    #[tokio::test]
+    async fn teardown_failure_emits_session_teardown_completed_with_error() {
+        // Given a session actor with a session.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session.clone()
+        };
+
+        // When handling a teardown command that fails.
+        actor
+            .handle_run_session_teardown(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
+                    session_id: session_id.clone(),
+                    command: "exit 1".to_owned(),
+                    args: vec![],
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SessionTeardownCompleted is emitted with an error message.
+        let events = sink.events();
+        let found = events.iter().any(|e| {
+            matches!(
+                e,
+                crate::protocol::Event::SessionTeardownCompleted(
+                    crate::feat::session_lifecycle::protocol::event::SessionTeardownCompleted {
+                        error: Some(..),
+                        session_id: sid,
+                    }
+                ) if sid == &session_id
+            )
+        });
+        assert!(found, "expected SessionTeardownCompleted with error");
     }
 }
