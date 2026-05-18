@@ -539,9 +539,13 @@ impl ChatSessionState {
     /// Mark streaming as finished (normal completion).
     ///
     /// Creates an empty Assistant entry if no tokens were ever appended
-    /// (e.g., a stream that ended immediately).
-    pub fn finish_streaming(&mut self) {
-        self.ensure_assistant_entry();
+    /// (e.g., a stream that ended immediately), unless `preserve_assistant`
+    /// is `false`. When `false`, the method skips `ensure_assistant_entry()`
+    /// so that error/cancel entries remain the last entry in history.
+    pub fn finish_streaming(&mut self, preserve_assistant: bool) {
+        if preserve_assistant {
+            self.ensure_assistant_entry();
+        }
         self.core.ephemeral.is_streaming = false;
         self.core.ephemeral.is_sending = false; // defensive: clear both on finish
         self.core.ephemeral.streaming_entry_index = None;
