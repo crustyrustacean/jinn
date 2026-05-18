@@ -19,6 +19,7 @@ pub fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
     );
     let widget = SelectionWidget::new(&state.frontend.session_picker)
         .title(Line::from(" Sessions "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(footer);
     widget.render(frame, area);
 }
@@ -48,6 +49,7 @@ pub fn render_session_fork_picker(frame: &mut Frame<'_>, area: Rect, state: &App
     );
     let widget = SelectionWidget::new(&state.frontend.fork_picker)
         .title(Line::from(" Fork Session "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(footer);
     widget.render(frame, area);
 }

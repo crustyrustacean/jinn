@@ -4,6 +4,7 @@ use crate::common::app_state::AppState;
 use nullslop_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 
 use super::entries;
 
@@ -19,6 +20,7 @@ pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &AppStat
     );
     let widget = SelectionWidget::new(&state.provider.provider_picker)
         .title(ratatui::text::Line::from(" Model "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(footer);
     widget.render(frame, area);
 }

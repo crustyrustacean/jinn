@@ -43,7 +43,7 @@ pub fn render_token_budget_input(frame: &mut Frame<'_>, area: Rect, state: &AppS
 
     let title = Line::from(Span::styled(
         " Token Budget ",
-        Style::default().fg(theme.border_unfocused),
+        Style::default().fg(theme.popup_title),
     ));
 
     let block = Block::default()
