@@ -784,7 +784,7 @@ fn expand_collapse_invalidates_and_rerenders() {
         let row_text: String = (2..80)
             .filter_map(|col| buffer.cell((col, row)).map(|c| c.symbol().to_owned()))
             .collect();
-        row_text.contains("more lines")
+        row_text.contains("lines hidden above")
     });
     assert!(
         has_more_lines,
