@@ -250,7 +250,7 @@ impl SessionPersistenceActor {
     /// Dispatches a bus event to the appropriate handler.
     async fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
-            Event::PromptAssembled(payload) => self.handle_prompt_assembled(payload, ctx),
+            Event::PromptAssembled(payload) => self.handle_prompt_assembled(payload, ctx).await,
             Event::StreamToken(payload) => self.on_stream_token(payload),
             Event::StreamCompleted(payload) => self.on_stream_completed(payload, ctx).await,
             Event::ToolUseStarted(payload) => self.on_tool_use_started(payload),

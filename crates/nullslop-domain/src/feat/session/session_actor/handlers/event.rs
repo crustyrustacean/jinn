@@ -23,12 +23,33 @@ use super::super::SessionPersistenceActor;
 impl SessionPersistenceActor {
     /// PromptAssembled (event): transition session from assembling to streaming,
     /// count input tokens, record in ledger, emit SendToLlmProvider.
-    pub(in crate::feat::session::session_actor) fn handle_prompt_assembled(
+    pub(in crate::feat::session::session_actor) async fn handle_prompt_assembled(
         &self,
         payload: &PromptAssembled,
         ctx: &crate::common::actor::ActorContext,
     ) {
-        let input_tokens: usize;
+        // Count tokens in all assembled messages (CPU-bound — offload to blocking thread).
+        let messages = payload.messages.clone();
+        let counter = self.counter.clone();
+        let input_tokens: usize = tokio::task::spawn_blocking(move || {
+            messages
+                .iter()
+                .map(|msg| match msg {
+                    crate::protocol::LlmMessage::System { content }
+                    | crate::protocol::LlmMessage::User { content } => counter.count(content),
+                    crate::protocol::LlmMessage::Assistant { content, .. }
+                    | crate::protocol::LlmMessage::Tool { content, .. } => {
+                        counter.count(content)
+                    }
+                })
+                .sum()
+        })
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(err = ?e, "spawn_blocking panicked during token counting");
+            0
+        });
+
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
@@ -38,20 +59,6 @@ impl SessionPersistenceActor {
             if session.is_sending() {
                 session.finish_sending();
             }
-
-            // Count tokens in all assembled messages.
-            input_tokens = payload
-                .messages
-                .iter()
-                .map(|msg| match msg {
-                    crate::protocol::LlmMessage::System { content }
-                    | crate::protocol::LlmMessage::User { content } => self.counter.count(content),
-                    crate::protocol::LlmMessage::Assistant { content, .. }
-                    | crate::protocol::LlmMessage::Tool { content, .. } => {
-                        self.counter.count(content)
-                    }
-                })
-                .sum();
 
             session.push_token_record(crate::feat::session::token_stats::TokenRecord {
                 timestamp: jiff::Timestamp::now(),
@@ -116,6 +123,42 @@ impl SessionPersistenceActor {
     ) {
         let should_save = event.reason == StreamCompletedReason::Finished
             || event.reason == StreamCompletedReason::Error;
+
+        // Count output tokens off the async thread (CPU-bound — offload to blocking thread).
+        // Count both text content and tool call arguments (JSON) which are a
+        // significant portion of the model's output.
+        let output_tokens: Option<tokio::task::JoinHandle<u32>> =
+            if event.reason != StreamCompletedReason::Canceled
+                && event.reason != StreamCompletedReason::Error
+            {
+                event.assistant_content.as_ref().map(|content| {
+                    let content = content.clone();
+                    let tool_calls = event.tool_calls.clone();
+                    let counter = self.counter.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let mut tokens = counter.count(&content) as u32;
+                        if let Some(tool_calls) = tool_calls {
+                            for tc in &tool_calls {
+                                tokens += counter.count(&tc.arguments) as u32;
+                                tokens += counter.count(&tc.name) as u32;
+                            }
+                        }
+                        tokens
+                    })
+                })
+            } else {
+                None
+            };
+
+        // Await token counting outside the lock.
+        let output_tokens: Option<u32> = match output_tokens {
+            Some(handle) => Some(handle.await.unwrap_or_else(|e| {
+                tracing::warn!(err = ?e, "spawn_blocking panicked during output token counting");
+                0
+            })),
+            None => None,
+        };
+
         let drained_entries: Vec<ChatEntry>;
         {
             let mut state = self.state.write();
@@ -125,17 +168,7 @@ impl SessionPersistenceActor {
             } else if event.reason == StreamCompletedReason::Error {
                 // Error entry is pushed by the LLM actor via PushChatEntry before
                 // emitting StreamCompleted(Error). Nothing to push here.
-            } else if let Some(ref content) = event.assistant_content {
-                // Count output tokens from both text content and tool call arguments.
-                // Tool call arguments (JSON) are a significant portion of the
-                // model's output but were previously not counted.
-                let mut output_tokens = self.counter.count(content) as u32;
-                if let Some(ref tool_calls) = event.tool_calls {
-                    for tc in tool_calls {
-                        output_tokens += self.counter.count(&tc.arguments) as u32;
-                        output_tokens += self.counter.count(&tc.name) as u32;
-                    }
-                }
+            } else if let Some(output_tokens) = output_tokens {
                 // Finalize the last record if one exists (i.e., PromptAssembled fired first).
                 // If no record exists (e.g., session restored mid-stream), skip silently.
                 if !session.token_ledger().is_empty() {
