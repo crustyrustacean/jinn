@@ -12,8 +12,10 @@ const DEFAULT_TOML: &str = include_str!("../../../../../themes/default.toml");
 /// caching. Changing `themes/default.toml` changes the default appearance
 /// of the application.
 ///
-/// Uses [`ThemeFile::resolve_standalone`] to avoid calling back into this
-/// function (which would be infinite recursion via [`ThemeFile::resolve`]).
+/// # Panics
+///
+/// Panics if the embedded `default.toml` is not valid TOML or does not
+/// produce a valid theme. This is a compile-time bug.
 #[must_use]
 pub fn default_theme() -> Theme {
     let file: ThemeFile = toml::from_str(DEFAULT_TOML)
