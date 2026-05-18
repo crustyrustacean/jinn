@@ -346,6 +346,7 @@ struct TokenLedgerRow {
     timestamp: String,
     tokens_sent: i32,
     tokens_received: i32,
+    cost: Option<f64>,
 }
 
 /// Insert model for the `token_ledger` table.
@@ -356,6 +357,7 @@ struct NewTokenLedgerRow {
     timestamp: String,
     tokens_sent: i32,
     tokens_received: i32,
+    cost: Option<f64>,
 }
 
 // ── Conversions ──────────────────────────────────────────────────────────
@@ -564,6 +566,7 @@ fn save_blocking(
                     timestamp: record.timestamp.to_string(),
                     tokens_sent: record.tokens_sent as i32,
                     tokens_received: record.tokens_received as i32,
+                    cost: record.cost,
                 })
                 .execute(txn)?;
         }
@@ -683,6 +686,7 @@ fn load_session_blocking(
                 .unwrap_or_else(|_| jiff::Timestamp::now()),
             tokens_sent: row.tokens_sent as u32,
             tokens_received: row.tokens_received as u32,
+            cost: row.cost,
         })
         .collect();
 

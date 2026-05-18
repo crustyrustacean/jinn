@@ -92,9 +92,8 @@ pub async fn run_setup_command(command: &str) -> Result<PathBuf, Report<Lifecycl
 
     let last_line = stdout
         .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .last()
+        .map(str::trim)
+        .rfind(|line| !line.is_empty())
         .ok_or_else(|| Report::new(LifecycleCommandError::NoOutput))?;
 
     let raw_path = PathBuf::from(last_line);

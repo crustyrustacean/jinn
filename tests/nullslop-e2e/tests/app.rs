@@ -52,7 +52,6 @@ use nullslop_tui::Scope;
 use nullslop_tui::TuiApp;
 use nullslop_tui::app::WhichKeyInstance;
 use nullslop_tui::config::TuiConfig;
-use nullslop_tui::render;
 use nullslop_tui::selection::SelectionState;
 use nullslop_tui::suspend::Suspend;
 
@@ -254,6 +253,7 @@ impl AppWorld {
     ///
     /// Spawns a dedicated thread to avoid "Cannot block the current thread
     /// from within a runtime" panics from coordinated_shutdown's blocking_recv.
+    #[allow(dead_code)]
     pub fn graceful_shutdown(&mut self) {
         let actor_host = self.app.actor_host.clone();
         let state = self.app.core.state.clone();
@@ -657,6 +657,7 @@ async fn when_submit_stream_completed(world: &mut AppWorld, reason: String) {
         reason: parsed_reason,
         assistant_content: None,
         tool_calls: None,
+        cost: None,
     }));
     // Give the actor system time to process.
     tokio::time::sleep(Duration::from_millis(50)).await;

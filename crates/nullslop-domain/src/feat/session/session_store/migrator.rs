@@ -44,6 +44,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) {
         migrate_v3(conn);
         record_version(conn, 3, "add_ignored_to_session_entries");
     }
+    if current < 4 {
+        migrate_v4(conn);
+        record_version(conn, 4, "add_cost_to_token_ledger");
+    }
 }
 
 // ── Tracking table ───────────────────────────────────────────────────────
@@ -172,6 +176,15 @@ fn migrate_v3(conn: &mut SqliteConnection) {
         .expect("v3: add ignored column to session_entries");
 }
 
+/// v4: Add `cost` column to token_ledger.
+///
+/// Tracks per-request cost in USD as reported by the provider (e.g. OpenRouter).
+fn migrate_v4(conn: &mut SqliteConnection) {
+    sql_query("ALTER TABLE token_ledger ADD COLUMN cost DOUBLE")
+        .execute(conn)
+        .expect("v4: add cost column to token_ledger");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,7 +224,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 4);
+        assert_eq!(rows.len(), 5);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -220,6 +233,8 @@ mod tests {
         assert_eq!(rows[2].name, "add_created_at_column");
         assert_eq!(rows[3].version, 3);
         assert_eq!(rows[3].name, "add_ignored_to_session_entries");
+        assert_eq!(rows[4].version, 4);
+        assert_eq!(rows[4].name, "add_cost_to_token_ledger");
     }
 
     #[test]
@@ -243,7 +258,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 4);
+        assert_eq!(rows[0].count, 5);
     }
 
     #[test]

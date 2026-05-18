@@ -183,6 +183,7 @@ impl LlmActor {
                             reason: StreamCompletedReason::Error,
                             assistant_content: None,
                             tool_calls: None,
+                            cost: None,
                         }));
                         return;
                     }
@@ -214,6 +215,7 @@ impl LlmActor {
                         reason: StreamCompletedReason::Error,
                         assistant_content: None,
                         tool_calls: None,
+                        cost: None,
                     }));
                     return;
                 }
@@ -232,6 +234,7 @@ impl LlmActor {
                         reason: StreamCompletedReason::Error,
                         assistant_content: None,
                         tool_calls: None,
+                        cost: None,
                     }));
                     return;
                 }
@@ -313,13 +316,14 @@ impl LlmActor {
                                 tool_call,
                             }));
                         }
-                        StreamEvent::Done { stop_reason } => {
+                        StreamEvent::Done { stop_reason, usage } => {
                             tracing::trace!(
                                 session_id = ?sid,
                                 stop_reason = %stop_reason,
                                 tool_call_count = accumulated_tool_calls.len(),
                                 "stream Done"
                             );
+                            let cost = usage.as_ref().and_then(|u| u.cost);
                             if stop_reason == StopReason::ToolUse {
                                 // Emit ExecuteToolBatch for the orchestrator.
                                 let _ = sink.send_command(Command::ExecuteToolBatch(
@@ -338,6 +342,7 @@ impl LlmActor {
                                     reason: StreamCompletedReason::ToolUse,
                                     assistant_content: Some(accumulated_text.clone()),
                                     tool_calls: Some(accumulated_tool_calls.clone()),
+                                    cost,
                                 }));
                             } else {
                                 // Normal end_turn — emit StreamCompleted.
@@ -346,6 +351,7 @@ impl LlmActor {
                                     reason: StreamCompletedReason::Finished,
                                     assistant_content: Some(accumulated_text.clone()),
                                     tool_calls: None,
+                                    cost,
                                 }));
                             }
                         }
@@ -361,6 +367,7 @@ impl LlmActor {
                             reason: StreamCompletedReason::Error,
                             assistant_content: None,
                             tool_calls: None,
+                            cost: None,
                         }));
                         break;
                     }
@@ -425,15 +432,15 @@ impl LlmActor {
     /// Cancels the active stream for a session and emits a completion event.
     fn cancel_stream(&mut self, session_id: &SessionId, ctx: &ActorContext) {
         // If there's an active session, cancel any pending tool batches.
-        if self.sessions.contains_key(session_id) {
-            if let Err(e) = ctx.send_command(Command::CancelToolBatch(CancelToolBatch {
+        if self.sessions.contains_key(session_id)
+            && let Err(e) = ctx.send_command(Command::CancelToolBatch(CancelToolBatch {
                 session_id: session_id.clone(),
-            })) {
-                tracing::warn!(
-                    err = ?e,
-                    "failed to emit CancelToolBatch during stream cancellation"
-                );
-            }
+            }))
+        {
+            tracing::warn!(
+                err = ?e,
+                "failed to emit CancelToolBatch during stream cancellation"
+            );
         }
 
         if let Some(handle) = self.tasks.remove(session_id) {
@@ -452,6 +459,7 @@ impl LlmActor {
                 reason: StreamCompletedReason::Canceled,
                 assistant_content: None,
                 tool_calls: None,
+                cost: None,
             }));
         }
     }
@@ -467,7 +475,7 @@ impl LlmActor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::actor::{ActorContext, RecordingSink};
+
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::provider_infra::LlmServiceFactoryService;
@@ -499,6 +507,7 @@ mod tests {
             reason: StreamCompletedReason::Error,
             assistant_content: None,
             tool_calls: None,
+            cost: None,
         };
         actor.handle_stream_completed(&payload);
 

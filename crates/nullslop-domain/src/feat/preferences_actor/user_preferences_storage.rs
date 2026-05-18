@@ -215,7 +215,9 @@ impl std::fmt::Debug for dyn UserPreferencesStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ContextTokenBudgetConfig;
     use crate::common::app_info::PREFS_FILE_NAME;
+    use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
@@ -241,10 +243,10 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
 
         // When saving and reloading.
@@ -287,10 +289,10 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
 
         // When saving and reloading.
@@ -316,10 +318,10 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -345,10 +347,10 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -361,10 +363,10 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -386,10 +388,10 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
         service.save(&prefs).expect("save");
 
