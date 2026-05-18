@@ -5,7 +5,7 @@
 # Borders & focus
 focus_accent = "yellow"
 border_unfocused = "darkgray"
-popup_title = "yellow"
+popup_title = "green"
 sidebar_resize_accent = "green"
 
 # Text

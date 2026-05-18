@@ -1,0 +1,3 @@
+-- SQLite doesn't support DROP COLUMN before 3.35.0.
+-- Diesel handles this via recreate-table if needed.
+-- For rollback, the cost column will remain but be ignored by old code.

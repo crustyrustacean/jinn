@@ -5,6 +5,7 @@
 # Borders & focus
 focus_accent = "#c4a7e7"       # Purple
 border_unfocused = "#44474e"   # dark gray
+popup_title = "#a9d89d"        # matches picker_active_marker
 
 # Text
 primary_text = "#e2e2e3"       # foreground
