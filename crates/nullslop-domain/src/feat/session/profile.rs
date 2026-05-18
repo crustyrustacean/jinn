@@ -13,9 +13,16 @@ use crate::protocol::PromptStrategyId;
 /// Default persona name used when none is explicitly set.
 const DEFAULT_PERSONA_NAME: &str = "coding-assistant";
 
+/// Default token budget for the token-budget strategy.
+pub const DEFAULT_TOKEN_BUDGET: usize = 150_000;
+
 /// Serde default for `persona_name` — ensures old serialized sessions deserialize correctly.
 fn default_persona_name() -> String {
     DEFAULT_PERSONA_NAME.to_owned()
+}
+
+fn default_token_budget() -> usize {
+    DEFAULT_TOKEN_BUDGET
 }
 
 /// Per-session model, strategy, and persona selection.
@@ -35,6 +42,11 @@ pub struct SessionProfile {
     /// Old serialized sessions without this field deserialize to the default.
     #[serde(default = "default_persona_name")]
     pub persona_name: String,
+    /// The token budget for the token-budget strategy. Inherited from global config
+    /// on session creation. Old serialized sessions without this field deserialize
+    /// to the default (150_000).
+    #[serde(default = "default_token_budget")]
+    pub token_budget: usize,
 }
 
 impl Default for SessionProfile {
@@ -43,26 +55,34 @@ impl Default for SessionProfile {
             model: NO_PROVIDER_ID.to_owned(),
             strategy: PromptStrategyId::passthrough(),
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
+            token_budget: DEFAULT_TOKEN_BUDGET,
         }
     }
 }
 
 impl SessionProfile {
     /// Creates a profile seeded from config values.
-    pub fn from_config(model: String, strategy: PromptStrategyId) -> Self {
+    pub fn from_config(model: String, strategy: PromptStrategyId, token_budget: usize) -> Self {
         Self {
             model,
             strategy,
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
+            token_budget,
         }
     }
 
     /// Creates a profile with all fields specified.
-    pub fn new(model: String, strategy: PromptStrategyId, persona_name: String) -> Self {
+    pub fn new(
+        model: String,
+        strategy: PromptStrategyId,
+        persona_name: String,
+        token_budget: usize,
+    ) -> Self {
         Self {
             model,
             strategy,
             persona_name,
+            token_budget,
         }
     }
 }
@@ -87,10 +107,12 @@ mod tests {
         let profile = SessionProfile::from_config(
             "ollama/llama3".to_owned(),
             PromptStrategyId::sliding_window(),
+            200_000,
         );
 
         // Then the profile uses those values.
         assert_eq!(profile.model, "ollama/llama3");
         assert_eq!(profile.strategy, PromptStrategyId::sliding_window());
+        assert_eq!(profile.token_budget, 200_000);
     }
 }

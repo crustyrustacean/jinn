@@ -17,9 +17,6 @@ use super::types::{PromptAssembly, PromptAssemblyError, StrategyFactory};
 /// Default sliding window size used when no configuration is provided.
 const DEFAULT_SLIDING_WINDOW_SIZE: usize = 5;
 
-/// Default token budget used when no configuration is provided.
-const DEFAULT_TOKEN_BUDGET: usize = 150_000;
-
 /// The default strategy factory.
 ///
 /// Creates strategies by their [`PromptStrategyId`]:
@@ -31,6 +28,7 @@ impl StrategyFactory for DefaultStrategyFactory {
     fn create(
         &self,
         id: &PromptStrategyId,
+        token_budget: usize,
     ) -> Result<Box<dyn PromptAssembly>, Report<PromptAssemblyError>> {
         if id == &PromptStrategyId::passthrough() {
             Ok(Box::new(PassthroughStrategy))
@@ -40,12 +38,12 @@ impl StrategyFactory for DefaultStrategyFactory {
             )))
         } else if id == &PromptStrategyId::token_budget() {
             Ok(Box::new(TokenBudgetStrategy::new(
-                DEFAULT_TOKEN_BUDGET,
+                token_budget,
                 Box::new(CharRatioEstimator),
             )))
         } else if id == &PromptStrategyId::compaction() {
             Ok(Box::new(CompactionStrategy::new(
-                DEFAULT_TOKEN_BUDGET,
+                token_budget,
                 Box::new(CharRatioEstimator),
             )))
         } else {
@@ -60,13 +58,15 @@ impl StrategyFactory for DefaultStrategyFactory {
 
 #[cfg(test)]
 mod tests {
+    use crate::feat::session::profile::DEFAULT_TOKEN_BUDGET;
+
     use super::*;
 
     #[rstest::rstest]
     fn factory_creates_passthrough() {
         let factory = DefaultStrategyFactory;
         let strategy = factory
-            .create(&PromptStrategyId::passthrough())
+            .create(&PromptStrategyId::passthrough(), DEFAULT_TOKEN_BUDGET)
             .expect("create");
         assert_eq!(strategy.name(), "passthrough");
     }
@@ -75,7 +75,7 @@ mod tests {
     fn factory_creates_sliding_window() {
         let factory = DefaultStrategyFactory;
         let strategy = factory
-            .create(&PromptStrategyId::sliding_window())
+            .create(&PromptStrategyId::sliding_window(), DEFAULT_TOKEN_BUDGET)
             .expect("create");
         assert_eq!(strategy.name(), "sliding_window");
     }
@@ -84,7 +84,7 @@ mod tests {
     fn factory_creates_token_budget() {
         let factory = DefaultStrategyFactory;
         let strategy = factory
-            .create(&PromptStrategyId::token_budget())
+            .create(&PromptStrategyId::token_budget(), DEFAULT_TOKEN_BUDGET)
             .expect("create");
         assert_eq!(strategy.name(), "token_budget");
     }
@@ -93,7 +93,7 @@ mod tests {
     fn factory_creates_compaction() {
         let factory = DefaultStrategyFactory;
         let strategy = factory
-            .create(&PromptStrategyId::compaction())
+            .create(&PromptStrategyId::compaction(), DEFAULT_TOKEN_BUDGET)
             .expect("create");
         assert_eq!(strategy.name(), "compaction");
     }
@@ -101,7 +101,7 @@ mod tests {
     #[rstest::rstest]
     fn factory_rejects_unknown_strategy() {
         let factory = DefaultStrategyFactory;
-        let result = factory.create(&PromptStrategyId::new("nonexistent"));
+        let result = factory.create(&PromptStrategyId::new("nonexistent"), DEFAULT_TOKEN_BUDGET);
         assert!(result.is_err());
     }
 

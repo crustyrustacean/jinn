@@ -184,13 +184,13 @@ impl LlmActor {
                         let sid = session_id.clone();
                         let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
                             session_id: sid.clone(),
-                            entry: ChatEntry::system(format!(
-                                "LLM factory creation failed for {pid}"
+                            entry: ChatEntry::error(format!(
+                                "LLM factory creation failed for {pid}: {e:?}"
                             )),
                         }));
                         let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
                             session_id: sid,
-                            reason: StreamCompletedReason::Finished,
+                            reason: StreamCompletedReason::Error,
                             assistant_content: None,
                             tool_calls: None,
                         }));
@@ -217,11 +217,11 @@ impl LlmActor {
                     tracing::error!(err = ?e, "failed to create LLM service");
                     let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
                         session_id: sid.clone(),
-                        entry: ChatEntry::system("LLM service creation failed"),
+                        entry: ChatEntry::error(format!("LLM service creation failed: {e:?}")),
                     }));
                     let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
                         session_id: sid,
-                        reason: StreamCompletedReason::Finished,
+                        reason: StreamCompletedReason::Error,
                         assistant_content: None,
                         tool_calls: None,
                     }));
@@ -238,11 +238,11 @@ impl LlmActor {
                     tracing::error!(err = ?e, "failed to start LLM stream");
                     let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
                         session_id: sid.clone(),
-                        entry: ChatEntry::system(format!("LLM stream error: {e:?}")),
+                        entry: ChatEntry::error(format!("LLM stream error: {e:?}")),
                     }));
                     let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
                         session_id: sid,
-                        reason: StreamCompletedReason::Finished,
+                        reason: StreamCompletedReason::Error,
                         assistant_content: None,
                         tool_calls: None,
                     }));
@@ -363,6 +363,16 @@ impl LlmActor {
                     },
                     Err(e) => {
                         tracing::error!(err = ?e, "LLM stream error");
+                        let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                            session_id: sid.clone(),
+                            entry: ChatEntry::error(format!("LLM stream error: {e:?}")),
+                        }));
+                        let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                            session_id: sid,
+                            reason: StreamCompletedReason::Error,
+                            assistant_content: None,
+                            tool_calls: None,
+                        }));
                         break;
                     }
                 }
@@ -406,21 +416,22 @@ impl LlmActor {
                     "handle_stream_completed"
                 );
             }
-            StreamCompletedReason::Finished => {
+            StreamCompletedReason::Error | StreamCompletedReason::Finished => {
                 // Defensive guard: if the session is awaiting tool results, a
                 // duplicate Done from the provider should not remove the session.
                 if session.state == SessionState::AwaitingToolResults {
                     tracing::warn!(
                         session_id = ?payload.session_id,
                         state = ?session.state,
-                        "received StreamCompleted(Finished) while awaiting tool results — ignoring duplicate Done"
+                        "received StreamCompleted({:?}) while awaiting tool results — ignoring",
+                        payload.reason
                     );
                     return;
                 }
                 // Clean up the completed session.
                 tracing::trace!(
                     session_id = ?payload.session_id,
-                    reason = "Finished",
+                    reason = ?payload.reason,
                     "handle_stream_completed — removing session"
                 );
                 self.sessions.remove(&payload.session_id);
@@ -540,5 +551,48 @@ impl LlmActor {
         for handle in self.tasks.values() {
             handle.abort();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::actor::{ActorContext, RecordingSink};
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
+    use crate::feat::provider_infra::LlmServiceFactoryService;
+    use nullslop_provider::FakeLlmServiceFactory;
+
+    fn test_llm_actor() -> LlmActor {
+        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])));
+        LlmActor {
+            factory,
+            services: None,
+            state: State::new(AppState::default()),
+            tasks: HashMap::new(),
+            sessions: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn handle_stream_completed_error_reason_removes_session() {
+        // Given an LLM actor with a streaming session.
+        let mut actor = test_llm_actor();
+        let session_id = SessionId::new();
+        actor
+            .sessions
+            .insert(session_id.clone(), SessionData::new(vec![]));
+
+        // When handling StreamCompleted with Error reason.
+        let payload = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+        };
+        actor.handle_stream_completed(&payload);
+
+        // Then the session is removed from the sessions map.
+        assert!(actor.sessions.is_empty());
     }
 }

@@ -78,6 +78,7 @@ pub use feat::session::no_api_keys_msg;
 pub use feat::session::welcome_msg;
 
 // Re-export preferences types
+pub use feat::preferences_actor::ContextTokenBudgetConfig;
 pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
 pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
 pub use feat::preferences_actor::UserPreferences;
@@ -136,6 +137,6 @@ pub use feat::session::protocol::session_new::SessionNew;
 pub use feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
 pub use feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolUseStarted, ToolsRegistered,
+    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered,
 };
 pub use feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};

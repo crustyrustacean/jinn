@@ -443,8 +443,13 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
                     crate::protocol::PromptStrategyId::passthrough,
                     crate::protocol::PromptStrategyId::new,
                 );
+            let token_budget = state.frontend.preferences.context_token_budget.budget;
             crate::feat::session::chat_session::ChatSessionState::new_with_profile(
-                crate::feat::session::profile::SessionProfile::from_config(model, strategy),
+                crate::feat::session::profile::SessionProfile::from_config(
+                    model,
+                    strategy,
+                    token_budget,
+                ),
             )
         };
         let new_id = new_session.session_id().clone();

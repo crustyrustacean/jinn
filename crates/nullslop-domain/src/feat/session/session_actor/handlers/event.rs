@@ -10,7 +10,8 @@ use crate::feat::provider::protocol::event::{
     ModelsRefreshed, StreamCompleted, StreamCompletedReason, StreamToken,
 };
 use crate::feat::tools_actor::protocol::event::{
-    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
+    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolExecutionOutput,
+    ToolExecutionStarted, ToolUseStarted,
 };
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
@@ -113,13 +114,17 @@ impl SessionPersistenceActor {
         event: &StreamCompleted,
         ctx: &ActorContext,
     ) {
-        let should_save = event.reason == StreamCompletedReason::Finished;
+        let should_save = event.reason == StreamCompletedReason::Finished
+            || event.reason == StreamCompletedReason::Error;
         let drained_entries: Vec<ChatEntry>;
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
             if event.reason == StreamCompletedReason::Canceled {
                 session.push_entry(ChatEntry::error("Cancelled"));
+            } else if event.reason == StreamCompletedReason::Error {
+                // Error entry is pushed by the LLM actor via PushChatEntry before
+                // emitting StreamCompleted(Error). Nothing to push here.
             } else if let Some(ref content) = event.assistant_content {
                 let output_tokens = self.counter.count(content) as u32;
                 // Finalize the last record if one exists (i.e., PromptAssembled fired first).
@@ -136,7 +141,8 @@ impl SessionPersistenceActor {
                 session.begin_sending();
             }
 
-            // Drain queue on Finished — the turn has ended.
+            // Drain queue only on Finished — the turn has ended successfully.
+            // Error and Canceled do not drain queued messages.
             drained_entries = if event.reason == StreamCompletedReason::Finished {
                 session.drain_queue().into_iter().collect()
             } else {
@@ -200,14 +206,34 @@ impl SessionPersistenceActor {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
-            session.push_entry(ChatEntry::tool_result(
+            session.finalize_tool_result(
                 &event.result.tool_call_id,
                 &event.result.name,
                 &event.result.content,
                 event.result.success,
-            ));
+            );
         }
         self.save_active_session(&event.session_id).await;
+    }
+
+    /// Creates a pending ToolResult entry when a streaming tool starts executing.
+    pub(in crate::feat::session::session_actor) fn on_tool_execution_started(
+        &self,
+        event: &ToolExecutionStarted,
+    ) {
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&event.session_id);
+        session.begin_tool_result(&event.tool_call_id, &event.name);
+    }
+
+    /// Appends incremental output to a pending ToolResult entry.
+    pub(in crate::feat::session::session_actor) fn on_tool_execution_output(
+        &self,
+        event: &ToolExecutionOutput,
+    ) {
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&event.session_id);
+        session.append_tool_result_output(&event.tool_call_id, &event.output);
     }
 
     /// Pushes a table entry after model refresh.

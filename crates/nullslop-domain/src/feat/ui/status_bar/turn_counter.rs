@@ -9,6 +9,9 @@
 
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 
+#[cfg(test)]
+use crate::feat::session::tool_result_status::ToolResultStatus;
+
 /// Computes the number of conversation turns in the given chat history.
 ///
 /// A user entry always counts as a turn. An assistant entry counts as a turn
@@ -83,7 +86,7 @@ mod tests {
             ChatEntry::user("list files"),
             ChatEntry::assistant("let me check"),
             ChatEntry::tool_call("id-1", "bash", r#"{"command":"ls"}"#),
-            ChatEntry::tool_result("id-1", "bash", "file1.txt\nfile2.txt", true),
+            ChatEntry::tool_result("id-1", "bash", "file1.txt\nfile2.txt", ToolResultStatus::Success),
             ChatEntry::assistant("here are the files"),
         ];
 
@@ -129,10 +132,10 @@ mod tests {
             ChatEntry::user("fix the bug"),
             ChatEntry::assistant("let me read the file"),
             ChatEntry::tool_call("id-1", "bash", r#"{"command":"cat main.rs"}"#),
-            ChatEntry::tool_result("id-1", "bash", "fn main() {}", true),
+            ChatEntry::tool_result("id-1", "bash", "fn main() {}", ToolResultStatus::Success),
             ChatEntry::assistant("now I'll edit it"),
             ChatEntry::tool_call("id-2", "bash", r#"{"command":"sed ..."}"#),
-            ChatEntry::tool_result("id-2", "bash", "done", true),
+            ChatEntry::tool_result("id-2", "bash", "done", ToolResultStatus::Success),
             ChatEntry::assistant("the bug is fixed"),
         ];
 

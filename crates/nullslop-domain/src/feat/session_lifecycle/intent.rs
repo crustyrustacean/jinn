@@ -108,9 +108,14 @@ pub fn handle_session_lifecycle_setup(
         .as_ref()
         .map(|p| p.name.clone())
         .unwrap_or_else(|| "coding-assistant".to_owned());
+    let token_budget = state.frontend.preferences.context_token_budget.budget;
 
-    let mut new_session =
-        ChatSessionState::new_with_profile(SessionProfile::new(model, strategy, persona_name));
+    let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
+        model,
+        strategy,
+        persona_name,
+        token_budget,
+    ));
     let new_id = new_session.session_id().clone();
 
     // Set lifecycle metadata on the session core.
@@ -337,8 +342,12 @@ fn remove_session_and_switch(state: &mut AppState, closing_id: &SessionId) {
             .last_strategy
             .as_deref()
             .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
-        let new_session =
-            ChatSessionState::new_with_profile(SessionProfile::from_config(model, strategy));
+        let token_budget = state.frontend.preferences.context_token_budget.budget;
+        let new_session = ChatSessionState::new_with_profile(SessionProfile::from_config(
+            model,
+            strategy,
+            token_budget,
+        ));
         let new_id = new_session.session_id().clone();
         state.session.sessions.insert(new_id.clone(), new_session);
         state.session.active_session = new_id;

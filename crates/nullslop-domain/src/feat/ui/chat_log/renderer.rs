@@ -400,9 +400,9 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, ctx: &RenderContext) -> Ve
         ChatEntryKind::ToolResult {
             name,
             content,
-            success,
+            status,
             ..
-        } => tool_result::to_lines(name, content, *success, ctx),
+        } => tool_result::to_lines(name, content, *status, ctx),
         ChatEntryKind::Table(data) => table::to_lines(data, ctx),
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
         ChatEntryKind::Skill { name, content, .. } => skill::to_lines(name, content, ctx),

@@ -1,4 +1,5 @@
 use crate::feat::provider::entries_to_messages::entries_to_messages;
+use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::{ChatEntry, LlmMessage, PinPosition};
 
 #[rstest::rstest]
@@ -122,7 +123,7 @@ fn entries_to_messages_attaches_tool_calls_to_assistant() {
 #[rstest::rstest]
 fn entries_to_messages_converts_tool_result_entries() {
     // Given a tool result entry.
-    let entries = vec![ChatEntry::tool_result("call_1", "echo", "hi", true)];
+    let entries = vec![ChatEntry::tool_result("call_1", "echo", "hi", ToolResultStatus::Success)];
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);
@@ -146,7 +147,7 @@ fn tool_loop_produces_four_messages() {
         ChatEntry::user("what time is it?"),
         ChatEntry::assistant(""),
         ChatEntry::tool_call("call_1", "get_time", "{}"),
-        ChatEntry::tool_result("call_1", "get_time", "12:00", true),
+        ChatEntry::tool_result("call_1", "get_time", "12:00", ToolResultStatus::Success),
         ChatEntry::assistant("It's 12:00!"),
     ];
 
@@ -183,7 +184,7 @@ fn system_entries_skipped_between_tools() {
         ChatEntry::tool_call("call_1", "echo", "{}"),
         ChatEntry::system("some status"),
         ChatEntry::actor("actor-x", "doing work"),
-        ChatEntry::tool_result("call_1", "echo", "ok", true),
+        ChatEntry::tool_result("call_1", "echo", "ok", ToolResultStatus::Success),
     ];
 
     // When converting to messages.

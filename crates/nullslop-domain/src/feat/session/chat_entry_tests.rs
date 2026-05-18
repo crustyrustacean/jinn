@@ -1,6 +1,7 @@
 use ratatui::text::Line;
 
 use super::chat_entry::*;
+use super::tool_result_status::ToolResultStatus;
 
 #[rstest::rstest]
 fn chat_entry_id_is_unique() {
@@ -126,7 +127,7 @@ fn tool_result_entry_has_tool_result_kind() {
     let content = "hi";
 
     // When creating a tool result entry.
-    let entry = ChatEntry::tool_result(id, name, content, true);
+    let entry = ChatEntry::tool_result(id, name, content, ToolResultStatus::Success);
 
     // Then kind is ToolResult with correct fields.
     assert_eq!(
@@ -135,7 +136,7 @@ fn tool_result_entry_has_tool_result_kind() {
             id: "call_123".to_owned(),
             name: "echo".to_owned(),
             content: "hi".to_owned(),
-            success: true,
+            status: ToolResultStatus::Success,
         }
     );
 }
@@ -148,7 +149,7 @@ fn tool_result_entry_has_tool_result_kind() {
 #[case::assistant(ChatEntry::assistant("a"))]
 #[case::actor(ChatEntry::actor("src", "t"))]
 #[case::tool_call(ChatEntry::tool_call("id", "name", "args"))]
-#[case::tool_result(ChatEntry::tool_result("id", "name", "content", true))]
+#[case::tool_result(ChatEntry::tool_result("id", "name", "content", ToolResultStatus::Success))]
 #[case::skill(ChatEntry::skill("name", "/path", "content"))]
 #[case::info(ChatEntry::info(vec![Line::from("info")]))]
 fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
@@ -466,7 +467,7 @@ fn assistant_entry_is_pinnable() {
 #[rstest::rstest]
 fn tool_result_entry_is_pinnable() {
     // Given a tool result entry.
-    let entry = ChatEntry::tool_result("id", "bash", "output", true);
+    let entry = ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Success);
 
     // Then it is pinnable.
     assert!(entry.is_pinnable());
@@ -533,4 +534,105 @@ fn tool_call_entry_is_not_pinnable() {
 
     // Then it is not pinnable.
     assert!(!entry.is_pinnable());
+}
+
+// --- ToolResultStatus serialization tests ---
+
+#[rstest::rstest]
+fn tool_result_status_pending_serializes() {
+    // Given a ToolResult entry with Pending status.
+    let entry = ChatEntry::tool_result("id", "bash", "", ToolResultStatus::Pending);
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the status is preserved.
+    assert_eq!(back.kind, entry.kind);
+}
+
+#[rstest::rstest]
+fn tool_result_status_success_serializes() {
+    // Given a ToolResult entry with Success status.
+    let entry = ChatEntry::tool_result("id", "bash", "ok", ToolResultStatus::Success);
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the status is preserved.
+    assert_eq!(back.kind, entry.kind);
+}
+
+#[rstest::rstest]
+fn tool_result_status_failure_serializes() {
+    // Given a ToolResult entry with Failure status.
+    let entry = ChatEntry::tool_result("id", "bash", "err", ToolResultStatus::Failure);
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&entry).expect("serialize");
+    let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the status is preserved.
+    assert_eq!(back.kind, entry.kind);
+}
+
+#[rstest::rstest]
+fn tool_result_deserializes_old_success_true_format() {
+    // Given JSON in the old format with success: true.
+    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"ToolResult":{"id":"call_1","name":"bash","content":"ok","success":true}}}"#;
+
+    // When deserializing.
+    let entry: ChatEntry = serde_json::from_str(json).expect("deserialize");
+
+    // Then it maps to Success status.
+    assert_eq!(
+        entry.kind,
+        ChatEntryKind::ToolResult {
+            id: "call_1".to_owned(),
+            name: "bash".to_owned(),
+            content: "ok".to_owned(),
+            status: ToolResultStatus::Success,
+        }
+    );
+}
+
+#[rstest::rstest]
+fn tool_result_deserializes_old_success_false_format() {
+    // Given JSON in the old format with success: false.
+    let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2024-01-01T00:00:00Z","kind":{"ToolResult":{"id":"call_1","name":"bash","content":"err","success":false}}}"#;
+
+    // When deserializing.
+    let entry: ChatEntry = serde_json::from_str(json).expect("deserialize");
+
+    // Then it maps to Failure status.
+    assert_eq!(
+        entry.kind,
+        ChatEntryKind::ToolResult {
+            id: "call_1".to_owned(),
+            name: "bash".to_owned(),
+            content: "err".to_owned(),
+            status: ToolResultStatus::Failure,
+        }
+    );
+}
+
+#[rstest::rstest]
+fn pending_tool_result_fingerprint_excludes_content() {
+    // Given two pending ToolResult entries with different content.
+    let entry1 = ChatEntry::tool_result("id", "bash", "line1", ToolResultStatus::Pending);
+    let entry2 = ChatEntry::tool_result("id", "bash", "line1\nline2", ToolResultStatus::Pending);
+
+    // Then their fingerprints are identical (content excluded for pending).
+    assert_eq!(entry1.content_fingerprint(), entry2.content_fingerprint());
+}
+
+#[rstest::rstest]
+fn completed_tool_result_fingerprint_includes_content() {
+    // Given two completed ToolResult entries with different content.
+    let entry1 = ChatEntry::tool_result("id", "bash", "line1", ToolResultStatus::Success);
+    let entry2 = ChatEntry::tool_result("id", "bash", "line1\nline2", ToolResultStatus::Success);
+
+    // Then their fingerprints differ (content included for completed).
+    assert_ne!(entry1.content_fingerprint(), entry2.content_fingerprint());
 }

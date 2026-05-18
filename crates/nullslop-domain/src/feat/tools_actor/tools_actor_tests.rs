@@ -63,7 +63,7 @@ fn find_execution_completed(events: &[Event]) -> Vec<&ToolExecutionCompleted> {
 #[tokio::test]
 async fn activate_registers_get_time_tool() {
     // Given a fresh actor context with state.
-    let (_sink, mut ctx) = default_test_ctx();
+    let (sink, mut ctx) = default_test_ctx();
 
     // When activating the actor.
     let actor = ToolOrchestratorActor::activate(&mut ctx);
@@ -76,7 +76,7 @@ async fn activate_registers_get_time_tool() {
 #[tokio::test]
 async fn activate_registers_read_tool() {
     // Given a fresh actor context with state.
-    let (_sink, mut ctx) = default_test_ctx();
+    let (sink, mut ctx) = default_test_ctx();
 
     // When activating the actor.
     let actor = ToolOrchestratorActor::activate(&mut ctx);
@@ -89,7 +89,7 @@ async fn activate_registers_read_tool() {
 #[tokio::test]
 async fn activate_registers_write_tool() {
     // Given a fresh actor context with state.
-    let (_sink, mut ctx) = default_test_ctx();
+    let (sink, mut ctx) = default_test_ctx();
 
     // When activating the actor.
     let actor = ToolOrchestratorActor::activate(&mut ctx);
@@ -249,6 +249,7 @@ async fn execute_builtin_get_time_tool() {
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
+        sink: None,
     };
 
     // When executing the get_time tool.
@@ -282,6 +283,7 @@ async fn execute_builtin_read_tool() {
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
+        sink: None,
     };
 
     // When executing the read tool.
@@ -309,6 +311,7 @@ async fn execute_builtin_read_tool_returns_error_on_missing_file() {
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
+        sink: None,
     };
 
     // When executing the read tool.
@@ -641,6 +644,7 @@ async fn write_tool_returns_success() {
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
+        sink: None,
     };
 
     // When executing the write tool.
@@ -674,6 +678,7 @@ async fn write_tool_creates_file_with_content() {
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
+        sink: None,
     };
 
     // When executing the write tool.
@@ -706,6 +711,7 @@ async fn write_tool_creates_parent_dirs_and_file() {
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
+        sink: None,
     };
 
     // When executing the write tool.
@@ -742,6 +748,7 @@ async fn write_tool_overwrites_existing_file() {
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
+        sink: None,
     };
 
     // When executing the write tool.
@@ -768,6 +775,7 @@ async fn write_tool_returns_error_on_bad_json() {
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
+        sink: None,
     };
 
     // When executing the write tool.
@@ -811,7 +819,7 @@ async fn tool_execution_completed_for_unknown_session_is_ignored() {
 #[tokio::test]
 async fn build_tool_context_reads_session_cwd() {
     // Given an activated actor with a session that has a specific CWD.
-    let (_sink, mut ctx) = default_test_ctx();
+    let (sink, mut ctx) = default_test_ctx();
     let actor = ToolOrchestratorActor::activate(&mut ctx);
 
     let session_id = {
@@ -822,7 +830,7 @@ async fn build_tool_context_reads_session_cwd() {
     };
 
     // When building tool context for that session.
-    let tool_ctx = actor.build_tool_context(&session_id);
+    let tool_ctx = actor.build_tool_context(&session_id, sink.clone());
 
     // Then the CWD matches the session's CWD.
     assert_eq!(tool_ctx.cwd, PathBuf::from("/custom/cwd"));
@@ -832,12 +840,12 @@ async fn build_tool_context_reads_session_cwd() {
 #[tokio::test]
 async fn build_tool_context_returns_default_cwd_for_unknown_session() {
     // Given an activated actor.
-    let (_sink, mut ctx) = default_test_ctx();
+    let (sink, mut ctx) = default_test_ctx();
     let actor = ToolOrchestratorActor::activate(&mut ctx);
 
     // When building tool context for an unknown session.
     let unknown_session = SessionId::new();
-    let tool_ctx = actor.build_tool_context(&unknown_session);
+    let tool_ctx = actor.build_tool_context(&unknown_session, sink.clone());
 
     // Then the CWD falls back to default_cwd (which is "/" by default).
     assert_eq!(tool_ctx.cwd, PathBuf::from("/"));
@@ -954,7 +962,7 @@ async fn cancel_tool_batch_for_unknown_session_is_noop() {
 #[tokio::test]
 async fn build_tool_context_uses_session_default_cwd_when_not_overridden() {
     // Given an activated actor with a session using the default CWD (".").
-    let (_sink, mut ctx) = default_test_ctx();
+    let (sink, mut ctx) = default_test_ctx();
     let actor = ToolOrchestratorActor::activate(&mut ctx);
 
     let session_id = {
@@ -965,7 +973,7 @@ async fn build_tool_context_uses_session_default_cwd_when_not_overridden() {
     };
 
     // When building tool context for that session.
-    let tool_ctx = actor.build_tool_context(&session_id);
+    let tool_ctx = actor.build_tool_context(&session_id, sink.clone());
 
     // Then the session cwd is used ("." from default).
     assert_eq!(tool_ctx.cwd, PathBuf::from("."));
