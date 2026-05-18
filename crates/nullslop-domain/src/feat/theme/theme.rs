@@ -18,6 +18,8 @@ pub struct Theme {
     pub focus_accent: Color,
     /// Unfocused/inactive border color.
     pub border_unfocused: Color,
+    /// Popup window title color.
+    pub popup_title: Color,
 
     // Text
     /// Primary content text color (assistant messages, user messages, values).
@@ -98,6 +100,8 @@ pub struct ThemeFile {
     pub focus_accent: Option<ThemeColor>,
     #[serde(default)]
     pub border_unfocused: Option<ThemeColor>,
+    #[serde(default)]
+    pub popup_title: Option<ThemeColor>,
 
     #[serde(default)]
     pub primary_text: Option<ThemeColor>,
@@ -182,6 +186,9 @@ impl ThemeFile {
             border_unfocused: self
                 .border_unfocused
                 .map_or(fallback.border_unfocused, super::color::ThemeColor::inner),
+            popup_title: self
+                .popup_title
+                .map_or(fallback.popup_title, super::color::ThemeColor::inner),
             primary_text: self
                 .primary_text
                 .map_or(fallback.primary_text, super::color::ThemeColor::inner),
@@ -281,6 +288,9 @@ impl ThemeFile {
             border_unfocused: self
                 .border_unfocused
                 .map_or(Color::Reset, super::color::ThemeColor::inner),
+            popup_title: self
+                .popup_title
+                .map_or(Color::Reset, super::color::ThemeColor::inner),
             primary_text: self
                 .primary_text
                 .map_or(Color::Reset, super::color::ThemeColor::inner),
@@ -373,6 +383,7 @@ mod tests {
         let file = ThemeFile {
             focus_accent: None,
             border_unfocused: None,
+            popup_title: None,
             primary_text: None,
             muted_text: None,
             error_text: None,
@@ -408,6 +419,7 @@ mod tests {
         // Then all fields match the default theme.
         assert_eq!(theme.focus_accent, default.focus_accent);
         assert_eq!(theme.muted_text, default.muted_text);
+        assert_eq!(theme.popup_title, default.popup_title);
         assert_eq!(theme.gutter_bg, default.gutter_bg);
         assert_eq!(theme.sidebar_resize_accent, default.sidebar_resize_accent);
     }
@@ -418,6 +430,7 @@ mod tests {
         let file = ThemeFile {
             focus_accent: Some(ThemeColor(ratatui::style::Color::Red)),
             border_unfocused: None,
+            popup_title: None,
             primary_text: None,
             muted_text: None,
             error_text: None,
@@ -503,6 +516,7 @@ mod tests {
             age_stale: Some(ThemeColor(Color::Red)),
             scroll_indicator_bg: Some(ThemeColor(Color::Black)),
             sidebar_resize_accent: Some(ThemeColor(Color::Green)),
+            popup_title: Some(ThemeColor(Color::Yellow)),
         };
 
         // When serializing to TOML and back.
