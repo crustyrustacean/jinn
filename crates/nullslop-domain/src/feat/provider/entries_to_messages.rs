@@ -23,6 +23,12 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
     let mut messages = Vec::new();
 
     for entry in entries {
+        // Defensive: skip ignored entries that are not pinned.
+        // The assembly handler pre-filters, but this prevents bugs
+        // if entries_to_messages is called from other contexts.
+        if entry.ignored && !entry.is_pinned() {
+            continue;
+        }
         match &entry.kind {
             ChatEntryKind::User { expanded, .. } => {
                 messages.push(LlmMessage::User {
@@ -92,8 +98,15 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             | ChatEntryKind::Error(_)
             | ChatEntryKind::Thinking(_)
             | ChatEntryKind::Info(_) => {}
-            // TODO(Phase 2): Compaction entries should produce a System message with the summary.
-            ChatEntryKind::Compaction { .. } => {}
+            // Compaction entries produce a User message wrapping the summary.
+            // The summary replaces all ignored entries before this point.
+            ChatEntryKind::Compaction { summary, .. } => {
+                messages.push(LlmMessage::User {
+                    content: format!(
+                        "The conversation history before this point was compacted into the following summary:\n\n<summary>\n{summary}\n</summary>"
+                    ),
+                });
+            }
             // Skill entries produce System messages with the skill XML format.
             // Skills are always pinned, so they always produce a message.
             ChatEntryKind::Skill {

@@ -513,6 +513,15 @@ impl ChatEntry {
         self
     }
 
+    /// Set the ignored flag on this entry, returning the modified entry.
+    ///
+    /// Used as a builder: `ChatEntry::user("hello").with_ignored(true)`
+    #[must_use]
+    pub fn with_ignored(mut self, ignored: bool) -> Self {
+        self.ignored = ignored;
+        self
+    }
+
     /// Whether this entry is pinned to the context.
     pub fn is_pinned(&self) -> bool {
         self.pin_position.is_some()
