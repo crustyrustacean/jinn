@@ -63,26 +63,26 @@ where
     // Try the new format first (Vec<ModelInfo>).
     let value = serde_json::Value::deserialize(deserializer)?;
 
-    let map: HashMap<String, Vec<ModelInfo>> = match serde_json::from_value(value.clone()) {
-        Ok(m) => m,
-        Err(_) => {
-            // Fall back to legacy format (Vec<String>).
-            let legacy: HashMap<String, Vec<String>> = serde_json::from_value(value)
-                .map_err(|e| Error::custom(format!("failed to parse model entries: {e}")))?;
-            legacy
-                .into_iter()
-                .map(|(k, ids)| {
-                    let infos = ids
-                        .into_iter()
-                        .map(|id| ModelInfo {
-                            id,
-                            context_length: None,
-                        })
-                        .collect();
-                    (k, infos)
-                })
-                .collect()
-        }
+    let map: HashMap<String, Vec<ModelInfo>> = if let Ok(m) = serde_json::from_value(value.clone())
+    {
+        m
+    } else {
+        // Fall back to legacy format (Vec<String>).
+        let legacy: HashMap<String, Vec<String>> = serde_json::from_value(value)
+            .map_err(|e| Error::custom(format!("failed to parse model entries: {e}")))?;
+        legacy
+            .into_iter()
+            .map(|(k, ids)| {
+                let infos = ids
+                    .into_iter()
+                    .map(|id| ModelInfo {
+                        id,
+                        context_length: None,
+                    })
+                    .collect();
+                (k, infos)
+            })
+            .collect()
     };
 
     Ok(map)
@@ -118,16 +118,15 @@ impl ModelCache {
             .attach("failed to read model cache file")?;
 
         // Try new format first, fall back to legacy deserializer.
-        let cache: Self = match serde_json::from_str(&content) {
-            Ok(c) => c,
-            Err(_) => {
-                let legacy: LegacyModelCache = serde_json::from_str(&content)
-                    .change_context(ModelCacheError)
-                    .attach("failed to parse model cache file")?;
-                Self {
-                    entries: legacy.entries,
-                    last_updated_at: legacy.last_updated_at,
-                }
+        let cache: Self = if let Ok(c) = serde_json::from_str(&content) {
+            c
+        } else {
+            let legacy: LegacyModelCache = serde_json::from_str(&content)
+                .change_context(ModelCacheError)
+                .attach("failed to parse model cache file")?;
+            Self {
+                entries: legacy.entries,
+                last_updated_at: legacy.last_updated_at,
             }
         };
 

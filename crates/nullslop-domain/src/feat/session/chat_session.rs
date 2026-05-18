@@ -359,15 +359,15 @@ impl ChatSessionState {
         let clamped = index.min(self.core.history.len());
         self.core.history.insert(clamped, entry);
         // Shift tracking indices that point to entries at or after the insertion point.
-        if let Some(ref mut i) = self.core.ephemeral.streaming_entry_index {
-            if *i >= clamped {
-                *i += 1;
-            }
+        if let Some(ref mut i) = self.core.ephemeral.streaming_entry_index
+            && *i >= clamped
+        {
+            *i += 1;
         }
-        if let Some(ref mut i) = self.core.ephemeral.streaming_thinking_entry_index {
-            if *i >= clamped {
-                *i += 1;
-            }
+        if let Some(ref mut i) = self.core.ephemeral.streaming_thinking_entry_index
+            && *i >= clamped
+        {
+            *i += 1;
         }
         for i in self
             .core
@@ -384,7 +384,7 @@ impl ChatSessionState {
             .ephemeral
             .streaming_tool_call_indices
             .keys()
-            .cloned()
+            .copied()
             .collect::<Vec<_>>()
         {
             if let Some(v) = self
@@ -392,10 +392,9 @@ impl ChatSessionState {
                 .ephemeral
                 .streaming_tool_call_indices
                 .get_mut(&key)
+                && *v >= clamped
             {
-                if *v >= clamped {
-                    *v += 1;
-                }
+                *v += 1;
             }
         }
         clamped
@@ -751,7 +750,7 @@ impl ChatSessionState {
                     truncation: entry_truncation,
                     ..
                 } => {
-                    *entry_content = content.to_owned();
+                    content.clone_into(entry_content);
                     *entry_status = status;
                     *entry_full_content = full_content;
                     *entry_truncation = truncation;

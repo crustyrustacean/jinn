@@ -52,7 +52,6 @@ pub fn to_lines(
 
 #[cfg(test)]
 mod tests {
-    use ratatui::style::Color;
 
     use super::*;
     use crate::feat::theme::default_theme;

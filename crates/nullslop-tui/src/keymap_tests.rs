@@ -770,6 +770,7 @@ fn ctrl_p_produces_open_picker_keymap_in_picker_scope() {
     }
 }
 
+#[test]
 fn leader_sk_produces_open_picker_keymap() {
     // Given the keymap.
     let keymap = init();
