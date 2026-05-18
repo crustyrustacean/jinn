@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use nullslop_domain::feat::ui::sidebar::Sidebar;
 use nullslop_domain::{
-    ActiveTab, ActorHostService, AppCore, AppState, AppUiRegistry, FakeActorHost, Intent,
-    PickerKind, Services, State,
+    ActorHostService, AppCore, AppState, AppUiRegistry, FakeActorHost, Intent, PickerKind,
+    Services, State,
 };
 use ratatui::layout::Rect;
 
@@ -12,10 +12,8 @@ use crate::app::{WhichKeyInstance, scope_for_focus};
 use crate::config::TuiConfig;
 use crate::keymap;
 use crate::msg::Msg;
-use crate::render;
 use crate::scope::Scope;
 use crate::selection::{SelectableRects, SelectionState};
-use crate::suspend::Suspend;
 use crate::{AppStatus, MsgHandler, TuiApp};
 
 /// Creates a minimal `TuiApp` for testing.
@@ -37,10 +35,9 @@ fn test_app() -> TuiApp {
         ui_registry,
         events: MsgHandler::new(),
         which_key: WhichKeyInstance::new(keymap::init(), Scope::Normal),
-        suspend: Suspend::new(),
+        suspend: crate::suspend::Suspend::new(),
         event_task: None,
         status: AppStatus::Starting,
-        tab_manager: render::init_tab_manager(),
         selection: SelectionState::Idle,
         selectable_rects: SelectableRects::default(),
         pending_clipboard: false,
@@ -54,33 +51,19 @@ fn test_app() -> TuiApp {
 }
 
 #[rstest::rstest]
-#[case::normal_chat(nullslop_domain::FocusScope::Normal, ActiveTab::Chat, Scope::Normal)]
-#[case::normal_dashboard(
-    nullslop_domain::FocusScope::Normal,
-    ActiveTab::Dashboard,
-    Scope::Dashboard
-)]
-#[case::sidebar(
-    nullslop_domain::FocusScope::SidebarPersona,
-    ActiveTab::Chat,
-    Scope::SidebarPersona
-)]
-#[case::input(nullslop_domain::FocusScope::Input, ActiveTab::Chat, Scope::Input)]
-#[case::picker(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, ActiveTab::Chat, Scope::Picker)]
-#[case::sidebar_resize(
-    nullslop_domain::FocusScope::SidebarResize,
-    ActiveTab::Chat,
-    Scope::SidebarResize
-)]
+#[case::normal_chat(nullslop_domain::FocusScope::Normal, Scope::Normal)]
+#[case::sidebar(nullslop_domain::FocusScope::SidebarPersona, Scope::SidebarPersona)]
+#[case::input(nullslop_domain::FocusScope::Input, Scope::Input)]
+#[case::picker(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, Scope::Picker)]
+#[case::sidebar_resize(nullslop_domain::FocusScope::SidebarResize, Scope::SidebarResize)]
 fn scope_for_focus_maps_correctly(
     #[case] focus: nullslop_domain::FocusScope,
-    #[case] tab: ActiveTab,
     #[case] expected: Scope,
 ) {
-    // Given a focus scope and active tab.
+    // Given a focus scope.
     // When mapping to a keymap scope.
     // Then the expected scope is returned.
-    assert_eq!(scope_for_focus(&focus, tab), expected);
+    assert_eq!(scope_for_focus(&focus), expected);
 }
 
 #[rstest::rstest]
@@ -243,10 +226,9 @@ fn mouse_events_not_handled_when_mouse_selection_disabled() {
         ui_registry,
         events: MsgHandler::new(),
         which_key: WhichKeyInstance::new(keymap::init(), Scope::Normal),
-        suspend: Suspend::new(),
+        suspend: crate::suspend::Suspend::new(),
         event_task: None,
         status: AppStatus::Starting,
-        tab_manager: render::init_tab_manager(),
         selection: SelectionState::Idle,
         selectable_rects: SelectableRects::default(),
         pending_clipboard: false,

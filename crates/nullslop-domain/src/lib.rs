@@ -95,7 +95,6 @@ pub use common::services::strategy_registry;
 
 // Re-export protocol types at crate root
 pub use protocol::entries_to_messages;
-pub use protocol::{ActiveTab, TabDirection};
 pub use protocol::{
     ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, Event, Intent, IntentResult,
     Key, KeyEvent, Mode, Modifiers, PickerKind, PinPosition, PromptTemplate,

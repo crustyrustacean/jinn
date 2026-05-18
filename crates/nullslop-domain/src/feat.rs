@@ -3,7 +3,6 @@
 pub mod chat_entry_selection;
 pub mod chat_input;
 pub mod context;
-pub mod dashboard;
 pub mod global;
 pub mod intent;
 pub mod llm_actor;

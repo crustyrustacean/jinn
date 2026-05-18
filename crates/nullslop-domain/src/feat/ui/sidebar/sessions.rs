@@ -4,6 +4,8 @@
 //! into memory. The active session (currently displayed) is highlighted with
 //! a `▸` prefix. Navigating with j/k immediately switches the active session.
 
+use std::time::{Duration, Instant};
+
 use crate::common::app_state::AppState;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
@@ -21,6 +23,8 @@ const ACTIVE_PREFIX: &str = "▸ ";
 const INACTIVE_PREFIX: &str = "  ";
 /// Maximum number of session entries visible at once.
 const MAX_VISIBLE_SESSIONS: usize = 15;
+/// Minimum time between animation frame advances.
+const ANIMATION_INTERVAL: Duration = Duration::from_millis(80);
 
 /// Sessions section cursor state — stored on `FrontendState`.
 ///
@@ -170,16 +174,35 @@ pub fn handle_session_activate(state: &mut AppState) {
 /// The open sessions sidebar section.
 ///
 /// Renders all sessions loaded into memory with the active session highlighted.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SessionsSection {
     /// Animation state for the working indicator.
     throbber_state: ThrobberState,
+    /// Timestamp of the last animation frame advance.
+    last_animation_step: Instant,
+}
+
+impl Default for SessionsSection {
+    fn default() -> Self {
+        Self {
+            throbber_state: ThrobberState::default(),
+            last_animation_step: Instant::now(),
+        }
+    }
 }
 
 impl SessionsSection {
     /// Creates a new sessions section.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Advances the animation frame if enough time has elapsed.
+    fn maybe_advance_animation(&mut self) {
+        if self.last_animation_step.elapsed() >= ANIMATION_INTERVAL {
+            self.throbber_state.calc_next();
+            self.last_animation_step = Instant::now();
+        }
     }
 }
 
@@ -282,8 +305,8 @@ impl SidebarSection for SessionsSection {
                 ]));
             }
 
-            // Advance animation for next frame.
-            self.throbber_state.calc_next();
+            // Advance animation only when enough time has elapsed.
+            self.maybe_advance_animation();
 
             // Scroll indicators.
             let lines_above = scroll_offset;

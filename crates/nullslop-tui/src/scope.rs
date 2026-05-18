@@ -12,8 +12,6 @@
 pub enum Scope {
     /// Normal mode — navigation and commands.
     Normal,
-    /// Dashboard mode — actor list navigation.
-    Dashboard,
     /// Sidebar — Persona section.
     SidebarPersona,
     /// Sidebar — Pins section.
@@ -36,7 +34,6 @@ impl std::fmt::Display for Scope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Normal => write!(f, "Normal"),
-            Self::Dashboard => write!(f, "Dashboard"),
             Self::SidebarPersona => write!(f, "SidebarPersona"),
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
@@ -55,7 +52,6 @@ impl std::str::FromStr for Scope {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Normal" => Ok(Self::Normal),
-            "Dashboard" => Ok(Self::Dashboard),
             "SidebarPersona" => Ok(Self::SidebarPersona),
             "SidebarPins" => Ok(Self::SidebarPins),
             "SidebarSessions" => Ok(Self::SidebarSessions),

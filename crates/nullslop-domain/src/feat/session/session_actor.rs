@@ -45,8 +45,8 @@ use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownCompleted,
 };
 use crate::feat::tools_actor::protocol::event::{
-    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolExecutionOutput,
-    ToolExecutionStarted, ToolUseStarted,
+    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
+    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
 };
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{ChatEntry, Command, Event, PromptStrategyId};
@@ -206,6 +206,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<ToolCallReceived>();
         ctx.subscribe_event::<ToolCallStreaming>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
+        ctx.subscribe_event::<ToolBatchCompleted>();
         ctx.subscribe_event::<ToolExecutionStarted>();
         ctx.subscribe_event::<ToolExecutionOutput>();
         ctx.subscribe_event::<crate::feat::context::protocol::event::ChatEntryPinChanged>();
@@ -257,6 +258,9 @@ impl SessionPersistenceActor {
             Event::ToolCallStreaming(payload) => self.on_tool_call_streaming(payload),
             Event::ToolExecutionCompleted(payload) => {
                 self.on_tool_execution_completed(payload).await;
+            }
+            Event::ToolBatchCompleted(payload) => {
+                self.on_tool_batch_completed(payload, ctx).await;
             }
             Event::ToolExecutionStarted(payload) => {
                 self.on_tool_execution_started(payload);
@@ -652,7 +656,9 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
-    use crate::protocol::{ChatEntry, ChatEntryKind};
+    use crate::feat::tools_actor::protocol::event::ToolBatchCompleted;
+    use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
+    use crate::protocol::{ChatEntry, ChatEntryKind, Command};
     use ratatui::style::Color;
     use std::path::Path;
 
@@ -893,5 +899,124 @@ mod tests {
             .get(&session_id)
             .expect("session exists");
         assert_eq!(session.queue_len(), 1);
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_emits_assemble_prompt() {
+        // Given a session with tool call and result entries in history.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("list files"));
+            session.push_entry(ChatEntry::assistant("checking"));
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+            session.push_entry(ChatEntry::assistant("here are the files"));
+            state.session.active_session.clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx).await;
+
+        // Then an AssemblePrompt command was emitted.
+        let commands = sink.commands();
+        let assemble = commands
+            .iter()
+            .find(|c| matches!(c, Command::AssemblePrompt(_)));
+        assert!(
+            assemble.is_some(),
+            "expected AssemblePrompt command to be emitted"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_transitions_session_to_sending() {
+        // Given a session in sending state (set by on_stream_completed for ToolUse).
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.finish_streaming();
+            session.begin_sending();
+            state.session.active_session.clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![],
+        };
+        actor.on_tool_batch_completed(&event, &ctx).await;
+
+        // Then the session is still in sending state.
+        let state = actor.state.read();
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
+        assert!(session.is_sending());
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
+        // Given a session with a token record (from PromptAssembled) in streaming state.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_token_record(crate::feat::session::token_stats::TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+            });
+            session.begin_streaming();
+            state.session.active_session.clone()
+        };
+
+        // When handling StreamCompleted(ToolUse) with tool calls.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("checking".to_owned()),
+            tool_calls: Some(vec![ToolCall {
+                id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: r#"{"command":"ls -la /very/long/path"}"#.to_owned(),
+            }]),
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the token record includes tokens from both text and tool call arguments.
+        let state = actor.state.read();
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
+        let ledger = session.token_ledger();
+        assert_eq!(ledger.len(), 1);
+        // tokens_received should be > just "checking" (2 tokens with tiktoken).
+        // It must include the tool call arguments and name.
+        assert!(
+            ledger[0].tokens_received > 2,
+            "expected tokens_received > 2 (text only), got {}",
+            ledger[0].tokens_received
+        );
     }
 }
