@@ -680,3 +680,55 @@ fn render_falls_back_when_no_model_cache() {
     );
     assert!(!row.contains("%"), "expected no percentage, got: {row}");
 }
+
+// --- Token budget display tests ---
+
+#[rstest::rstest]
+fn render_shows_token_budget_when_token_budget_strategy_active() {
+    // Given a session with the token_budget strategy.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state
+        .active_session_mut()
+        .switch_strategy(crate::protocol::PromptStrategyId::token_budget());
+    state.active_session_mut().profile_mut().token_budget = 200_000;
+    let (mut terminal, area) = setup_term(100, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+    // Then the status bar shows "(Token Budget: 200k)".
+    assert!(
+        row.contains("(Token Budget: 200k)"),
+        "expected budget display, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_hides_token_budget_for_passthrough_strategy() {
+    // Given a session with the passthrough strategy (default).
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    let (mut terminal, area) = setup_term(100, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+    // Then the status bar does NOT show "Token Budget:".
+    assert!(
+        !row.contains("Token Budget:"),
+        "expected no budget display for passthrough strategy, got: {row}"
+    );
+}

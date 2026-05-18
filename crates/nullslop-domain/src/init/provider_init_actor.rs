@@ -177,6 +177,7 @@ mod tests {
                 persona_name: None,
                 session_lifecycles: vec![],
                 sidebar_width: None,
+                context_token_budget: Default::default(),
             })
             .expect("save prefs");
 

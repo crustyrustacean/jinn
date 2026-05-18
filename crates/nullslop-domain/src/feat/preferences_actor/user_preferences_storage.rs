@@ -241,6 +241,7 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
+            context_token_budget: Default::default(),
         };
 
         // When saving and reloading.
@@ -283,6 +284,7 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
+            context_token_budget: Default::default(),
         };
 
         // When saving and reloading.
@@ -308,6 +310,7 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
+            context_token_budget: Default::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -333,6 +336,7 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
+            context_token_budget: Default::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -345,6 +349,7 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
+            context_token_budget: Default::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -366,6 +371,7 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
+            context_token_budget: Default::default(),
         };
         service.save(&prefs).expect("save");
 
