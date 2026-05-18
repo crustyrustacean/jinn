@@ -456,8 +456,11 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         state.frontend.theme = original;
     }
 
-    // Pop the scope stack — restores previous scope.
-    state.frontend.scope_stack.pop();
+    // Clear all overlay scopes — always returns to Normal.
+    // Using clear_overlays() instead of pop() ensures that ESC from Input mode
+    // always lands in Normal, even when a sidebar scope is stacked below Input
+    // (e.g., [Normal, SidebarPersona, Input] → [Normal]).
+    state.frontend.scope_stack.clear_overlays();
     IntentResult::empty()
 }
 
