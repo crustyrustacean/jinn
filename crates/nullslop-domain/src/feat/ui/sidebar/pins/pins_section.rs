@@ -303,7 +303,7 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
         ChatEntryKind::Table(_) => ("", String::new()),
         // Thinking entries are not shown in the pinned panel summary.
         ChatEntryKind::Thinking(text) => ("", truncate_str(text, 40)),
-        ChatEntryKind::Skill { name, .. } => ("\u{1f4cb} ", truncate_str(name, 40)),
+        ChatEntryKind::Skill { name, .. } => ("Skill: ", truncate_str(name, 40)),
         ChatEntryKind::Info(lines) => {
             let plain = lines
                 .iter()
