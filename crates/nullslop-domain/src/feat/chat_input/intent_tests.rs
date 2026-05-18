@@ -638,6 +638,26 @@ fn submit_unknown_slash_command_sends_as_chat() {
 }
 
 #[rstest::rstest]
+fn submit_compact_slash_command_sends_compact_context() {
+    // Given a state with "/compact" in the buffer.
+    let mut state = AppState::default();
+    let session_id = state.session.active_session.clone();
+    state.active_chat_input_mut().insert_text("/compact");
+
+    // When handling SubmitMessage.
+    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+
+    // Then a CompactContext command is dispatched.
+    assert_eq!(result.commands.len(), 1);
+    assert!(
+        matches!(&result.commands[0], Command::CompactContext(cmd) if cmd.session_id == session_id),
+        "/compact should send CompactContext command"
+    );
+    // And the buffer is cleared.
+    assert!(state.active_chat_input().is_empty());
+}
+
+#[rstest::rstest]
 fn tab_completes_name_without_executing() {
     // Given a state with slash autocomplete active ("/" typed, popup showing "new").
     let mut state = AppState::default();

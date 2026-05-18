@@ -75,6 +75,50 @@ impl Default for ContextTokenBudgetConfig {
     }
 }
 
+/// Default token threshold for auto-compaction.
+const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.7;
+
+/// Default number of recent tokens to keep during compaction.
+const DEFAULT_KEEP_RECENT_TOKENS: usize = 20_000;
+
+/// Compaction configuration.
+///
+/// Serialized as `[compaction]` in `nullslop.toml`.
+/// Controls when and how context compaction summarizes conversation history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompactionConfig {
+    /// Provider/model for compaction summarization (e.g., "anthropic/claude-sonnet-4-20250514").
+    /// Falls back to the session model if not set or if provider construction fails.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Fraction of `token_budget` at which auto-compaction triggers (0.0–1.0).
+    /// Default: 0.7 (70% of budget).
+    #[serde(default = "default_compaction_threshold")]
+    pub threshold: f64,
+    /// Number of recent tokens to keep during compaction.
+    /// Default: 20,000.
+    #[serde(default = "default_keep_recent_tokens")]
+    pub keep_recent_tokens: usize,
+}
+
+fn default_compaction_threshold() -> f64 {
+    DEFAULT_COMPACTION_THRESHOLD
+}
+
+fn default_keep_recent_tokens() -> usize {
+    DEFAULT_KEEP_RECENT_TOKENS
+}
+
+impl Default for CompactionConfig {
+    fn default() -> Self {
+        Self {
+            model: None,
+            threshold: DEFAULT_COMPACTION_THRESHOLD,
+            keep_recent_tokens: DEFAULT_KEEP_RECENT_TOKENS,
+        }
+    }
+}
+
 /// User preferences persisted in `nullslop.toml`.
 ///
 /// This file stores user behavior preferences that should survive
@@ -122,6 +166,9 @@ pub struct UserPreferences {
     /// `None` means use the built-in default (50KB).
     #[serde(default)]
     pub max_tool_output_bytes: Option<usize>,
+    /// Compaction configuration.
+    #[serde(default)]
+    pub compaction: CompactionConfig,
 }
 
 /// Returns the path to the user preferences file.
@@ -252,6 +299,7 @@ mod tests {
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
 
         // When saving and reloading.
@@ -318,6 +366,7 @@ last_strategy = "sliding_window""#,
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
 
         // When saving.
@@ -343,6 +392,7 @@ last_strategy = "sliding_window""#,
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
 
         // When saving and reloading.
@@ -376,6 +426,7 @@ last_strategy = "sliding_window""#,
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
 
         // When saving and reloading.
@@ -415,6 +466,7 @@ last_strategy = "sliding_window""#,
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -485,6 +537,7 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
             context_token_budget: ContextTokenBudgetConfig { budget: 200_000 },
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
 
         // When saving and reloading.

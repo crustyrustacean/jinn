@@ -131,6 +131,8 @@ lint-testlength:
 
    for dirpath, _, filenames in os.walk(root):
        # Skip vendor directory
+       if 'target' in dirpath.split(os.sep):
+           continue
        if 'vendor' in dirpath.split(os.sep):
            continue
        for fn in filenames:

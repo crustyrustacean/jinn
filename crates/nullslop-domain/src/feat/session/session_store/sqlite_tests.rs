@@ -558,3 +558,40 @@ async fn save_updates_cwd_on_existing_session() {
         .expect("should exist");
     assert_eq!(loaded.cwd(), std::path::Path::new("/new/path"));
 }
+
+#[tokio::test]
+async fn ignored_field_round_trips() {
+    // Given a session with ignored entries.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Ignored".to_owned());
+
+    session.push_entry(ChatEntry::user("normal"));
+    session.push_entry(ChatEntry::assistant("response"));
+    session.push_entry(ChatEntry::user("ignored message"));
+    session.push_entry(ChatEntry::assistant("ignored response"));
+
+    // When marking entries 2,3 as ignored.
+    session.mark_entries_ignored(&[2, 3]);
+
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then ignored flags are preserved after round-trip.
+    assert!(
+        !loaded.history()[0].ignored,
+        "entry 0 should not be ignored"
+    );
+    assert!(
+        !loaded.history()[1].ignored,
+        "entry 1 should not be ignored"
+    );
+    assert!(loaded.history()[2].ignored, "entry 2 should be ignored");
+    assert!(loaded.history()[3].ignored, "entry 3 should be ignored");
+}

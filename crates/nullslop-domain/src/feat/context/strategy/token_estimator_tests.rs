@@ -208,3 +208,32 @@ fn estimate_entry_tokens_for_info_is_zero() {
     // Then info entries contribute 0 tokens.
     assert_eq!(tokens, 0);
 }
+
+#[rstest::rstest]
+fn estimate_entry_tokens_for_ignored_entry_is_zero() {
+    // Given an ignored user entry.
+    let estimator = CharRatioEstimator;
+    let entry =
+        ChatEntry::user("a fairly long message that would normally have tokens").with_ignored(true);
+
+    // When estimating entry tokens.
+    let tokens = estimate_entry_tokens(&estimator, &entry);
+
+    // Then ignored entries contribute 0 tokens.
+    assert_eq!(tokens, 0);
+}
+
+#[rstest::rstest]
+fn estimate_entry_tokens_for_ignored_pinned_entry_is_nonzero() {
+    // Given an ignored but pinned user entry.
+    let estimator = CharRatioEstimator;
+    let entry = ChatEntry::user("a fairly long message that would normally have tokens")
+        .with_pin(PinPosition::Relative)
+        .with_ignored(true);
+
+    // When estimating entry tokens.
+    let tokens = estimate_entry_tokens(&estimator, &entry);
+
+    // Then pin overrides ignored — tokens are still counted.
+    assert!(tokens > 0);
+}
