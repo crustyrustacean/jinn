@@ -330,7 +330,12 @@ async fn all_entry_kinds_round_trip() {
     session.push_entry(ChatEntry::actor("bash", "actor msg"));
     session.push_entry(ChatEntry::thinking("thinking text"));
     session.push_entry(ChatEntry::tool_call("call_1", "bash", "{\"cmd\": true}"));
-    session.push_entry(ChatEntry::tool_result("call_1", "bash", "ok", ToolResultStatus::Success));
+    session.push_entry(ChatEntry::tool_result(
+        "call_1",
+        "bash",
+        "ok",
+        ToolResultStatus::Success,
+    ));
 
     // When saving and loading.
     store.save(&session).await.expect("save");

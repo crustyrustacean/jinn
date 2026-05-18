@@ -232,7 +232,12 @@ mod tests {
         let mut state = AppState::default();
         state
             .active_session_mut()
-            .push_entry(ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Success));
+            .push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                "output",
+                ToolResultStatus::Success,
+            ));
         state.active_session_mut().select_next_entry();
         let entry_id = state.active_session().selected_entry_id().unwrap().clone();
 
@@ -250,7 +255,12 @@ mod tests {
         let mut state = AppState::default();
         state
             .active_session_mut()
-            .push_entry(ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Success));
+            .push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                "output",
+                ToolResultStatus::Success,
+            ));
         state.active_session_mut().select_next_entry();
         let entry_id = state.active_session().selected_entry_id().unwrap().clone();
         state
@@ -270,7 +280,12 @@ mod tests {
         let mut state = AppState::default();
         state
             .active_session_mut()
-            .push_entry(ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Success));
+            .push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                "output",
+                ToolResultStatus::Success,
+            ));
 
         // When handling expand tool entry.
         let result = handle_expand_tool_entry(&mut state);

@@ -8,8 +8,8 @@
 
 use std::collections::HashMap;
 
-use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use crate::feat::session::tool_result_status::ToolResultStatus;
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 
 /// Cached wrapped line count for a single entry.
 #[derive(Debug, Clone)]

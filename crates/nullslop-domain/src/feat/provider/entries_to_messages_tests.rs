@@ -123,7 +123,12 @@ fn entries_to_messages_attaches_tool_calls_to_assistant() {
 #[rstest::rstest]
 fn entries_to_messages_converts_tool_result_entries() {
     // Given a tool result entry.
-    let entries = vec![ChatEntry::tool_result("call_1", "echo", "hi", ToolResultStatus::Success)];
+    let entries = vec![ChatEntry::tool_result(
+        "call_1",
+        "echo",
+        "hi",
+        ToolResultStatus::Success,
+    )];
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);

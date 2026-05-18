@@ -138,7 +138,12 @@ mod tests {
         let mut state = AppState::default();
         state
             .active_session_mut()
-            .push_entry(ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Success));
+            .push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                "output",
+                ToolResultStatus::Success,
+            ));
         state.active_session_mut().select_next_entry();
 
         // When validating expand tool entry.
