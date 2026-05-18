@@ -342,6 +342,20 @@ pub fn create_core_with_actor_host(
         },
     );
 
+    // Sidebar state actor — keeps sidebar cursor in sync after session removal.
+    let sidebar_state_result =
+        spawn::<nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor>(
+            "sidebar-state",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            |ctx| {
+                ctx.set_description("Manages sidebar cursor state");
+                ctx.set_data(state.clone());
+            },
+        );
+
     // ── Build actor host ─────────────────────────────────────────────────
 
     let host = InMemoryActorHost::from_actors_with_handle(
@@ -361,6 +375,7 @@ pub fn create_core_with_actor_host(
             persona_scan_result,
             prov_result,
             compaction_result,
+            sidebar_state_result,
         ],
         handle.clone(),
         shutdown_tracker,

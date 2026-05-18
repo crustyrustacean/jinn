@@ -14,6 +14,7 @@ pub mod pins;
 pub mod section_trait;
 pub mod sessions;
 pub mod sidebar;
+pub mod sidebar_state_actor;
 pub mod state;
 
 #[cfg(test)]
