@@ -191,7 +191,12 @@ mod tests {
         let ctx = render_context(5, false);
 
         // When converting to lines.
-        let lines = to_lines("bash", r"line one\nline two\nline three", ToolResultStatus::Success, &ctx);
+        let lines = to_lines(
+            "bash",
+            r"line one\nline two\nline three",
+            ToolResultStatus::Success,
+            &ctx,
+        );
 
         // Then the result has multiple lines (name + 3 content lines = 4).
         assert_eq!(
@@ -221,11 +226,15 @@ mod tests {
         let lines = to_lines("bash", "", ToolResultStatus::Pending, &ctx);
 
         // Then the lines use the pending background color.
-        assert!(!lines.is_empty(), "pending tool result should produce lines");
+        assert!(
+            !lines.is_empty(),
+            "pending tool result should produce lines"
+        );
         for line in &lines {
-            let has_pending_bg = line.spans.iter().any(|s| {
-                matches!(s.style.bg, Some(color) if color == theme.tool_pending_bg)
-            });
+            let has_pending_bg = line
+                .spans
+                .iter()
+                .any(|s| matches!(s.style.bg, Some(color) if color == theme.tool_pending_bg));
             if has_pending_bg {
                 return;
             }

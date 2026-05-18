@@ -244,12 +244,12 @@ struct SessionRow {
     id: Option<String>,
     title: Option<String>,
     updated_at: String,
-    created_at: String,
     profile: String,
     strategy_state: String,
     blobs: String,
     parent_session: Option<String>,
     cwd: String,
+    created_at: String,
 }
 
 /// Insert model for the `sessions` table.
@@ -300,6 +300,7 @@ struct SessionEntryRow {
     entry_id: String,
     ordinal: i32,
     pin_position: Option<String>,
+    ignored: bool,
 }
 
 /// Insert model for the `session_entries` table.
@@ -310,6 +311,7 @@ struct NewSessionEntryRow {
     entry_id: String,
     ordinal: i32,
     pin_position: Option<String>,
+    ignored: bool,
 }
 
 /// Reading model for the `token_ledger` table.
@@ -539,6 +541,7 @@ fn save_blocking(
                     entry_id: entry_id_str,
                     ordinal: ordinal as i32,
                     pin_position: pin_str,
+                    ignored: entry.ignored,
                 })
                 .execute(txn)?;
         }
@@ -649,6 +652,7 @@ fn load_session_blocking(
                     .unwrap_or_else(|_| jiff::Timestamp::now()),
                 kind,
                 pin_position,
+                ignored: junction.ignored,
             }
         })
         .collect();
@@ -761,6 +765,7 @@ fn fork_blocking(
                     entry_id: row.entry_id,
                     ordinal: row.ordinal,
                     pin_position: row.pin_position,
+                    ignored: row.ignored,
                 })
                 .execute(txn)?;
         }

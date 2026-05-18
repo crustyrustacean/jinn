@@ -632,8 +632,7 @@ impl ChatSessionState {
             return;
         };
         if let ChatEntryKind::ToolResult {
-            ref mut content,
-            ..
+            ref mut content, ..
         } = self.core.history[history_index].kind
         {
             content.push_str(output);

@@ -65,6 +65,8 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
                 0
             }
         }
+        // Compaction entries carry an LLM-generated summary that replaces compacted history.
+        ChatEntryKind::Compaction { summary, .. } => estimator.estimate(summary),
     }
 }
 

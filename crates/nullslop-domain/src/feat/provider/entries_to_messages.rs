@@ -92,6 +92,8 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             | ChatEntryKind::Error(_)
             | ChatEntryKind::Thinking(_)
             | ChatEntryKind::Info(_) => {}
+            // TODO(Phase 2): Compaction entries should produce a System message with the summary.
+            ChatEntryKind::Compaction { .. } => {}
             // Skill entries produce System messages with the skill XML format.
             // Skills are always pinned, so they always produce a message.
             ChatEntryKind::Skill {

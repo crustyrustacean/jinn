@@ -1587,12 +1587,17 @@ fn begin_tool_result_tracks_history_index() {
     session.begin_tool_result("call_1", "bash");
 
     // Then the tracking index points to the second entry.
-    assert!(session
-        .core
-        .ephemeral
-        .streaming_tool_result_indices
-        .contains_key("call_1"));
-    assert_eq!(session.core.ephemeral.streaming_tool_result_indices["call_1"], 1);
+    assert!(
+        session
+            .core
+            .ephemeral
+            .streaming_tool_result_indices
+            .contains_key("call_1")
+    );
+    assert_eq!(
+        session.core.ephemeral.streaming_tool_result_indices["call_1"],
+        1
+    );
 }
 
 #[test]
@@ -1602,17 +1607,24 @@ fn append_tool_result_output_appends_to_pending_entry() {
     session.begin_tool_result("call_1", "bash");
 
     // When appending output.
-    session.append_tool_result_output("call_1", "line 1
-");
-    session.append_tool_result_output("call_1", "line 2
-");
+    session.append_tool_result_output(
+        "call_1", "line 1
+",
+    );
+    session.append_tool_result_output(
+        "call_1", "line 2
+",
+    );
 
     // Then the entry content has both outputs.
     match &session.history()[0].kind {
         ChatEntryKind::ToolResult { content, .. } => {
-            assert_eq!(content, "line 1
+            assert_eq!(
+                content,
+                "line 1
 line 2
-");
+"
+            );
         }
         other => panic!("expected ToolResult, got {other:?}"),
     }
@@ -1634,8 +1646,11 @@ fn finalize_tool_result_completes_pending_entry() {
     // Given a session with a pending tool result.
     let mut session = ChatSessionState::new();
     session.begin_tool_result("call_1", "bash");
-    session.append_tool_result_output("call_1", "building...
-");
+    session.append_tool_result_output(
+        "call_1",
+        "building...
+",
+    );
 
     // When finalizing with success.
     session.finalize_tool_result("call_1", "bash", "final output", true);
@@ -1644,9 +1659,7 @@ fn finalize_tool_result_completes_pending_entry() {
     assert_eq!(session.history().len(), 1);
     match &session.history()[0].kind {
         ChatEntryKind::ToolResult {
-            content,
-            status,
-            ..
+            content, status, ..
         } => {
             assert_eq!(content, "final output");
             assert_eq!(*status, ToolResultStatus::Success);
@@ -1654,11 +1667,13 @@ fn finalize_tool_result_completes_pending_entry() {
         other => panic!("expected ToolResult, got {other:?}"),
     }
     // And the tracking index is removed.
-    assert!(!session
-        .core
-        .ephemeral
-        .streaming_tool_result_indices
-        .contains_key("call_1"));
+    assert!(
+        !session
+            .core
+            .ephemeral
+            .streaming_tool_result_indices
+            .contains_key("call_1")
+    );
 }
 
 #[test]
