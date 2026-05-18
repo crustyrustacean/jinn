@@ -38,13 +38,24 @@ fn shorten_path(path: &std::path::Path) -> String {
     absolute.display().to_string()
 }
 
-/// Format a token count in human-readable form.
+/// Format a token count in human-readable form with one decimal place.
 #[allow(clippy::cast_precision_loss)]
 fn format_tokens(count: u64) -> String {
     if count >= 1_000_000 {
         format!("{:.1}M", count as f64 / 1_000_000.0)
     } else if count >= 1_000 {
         format!("{:.1}k", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
+    }
+}
+
+/// Format a token budget as whole numbers only (e.g. `150k`, `1M`, `999`).
+fn format_budget(count: usize) -> String {
+    if count >= 1_000_000 {
+        format!("{}M", count / 1_000_000)
+    } else if count >= 1_000 {
+        format!("{}k", count / 1_000)
     } else {
         count.to_string()
     }
@@ -116,16 +127,17 @@ impl UiElement<AppState> for StatusBarElement {
             }
         }
 
-        let mut budget_info = String::new();
-        if state.active_session().active_strategy().as_str() == "token_budget" {
+        let strategy_display = if state.active_session().active_strategy().as_str() == "token_budget" {
             let budget = state.active_session().profile().token_budget;
-            budget_info = format!(" budget:{}", format_tokens(budget as u64));
-        }
+            format!("Token Budget: {}", format_budget(budget))
+        } else {
+            strategy.to_string()
+        };
 
         let left = if pinned_count > 0 {
-            format!("({strategy})\u{1f4cc}{pinned_count} {token_info}{budget_info}")
+            format!("({strategy_display})\u{1f4cc}{pinned_count} {token_info}")
         } else {
-            format!("({strategy}) {token_info}{budget_info}")
+            format!("({strategy_display}) {token_info}")
         };
 
         let model = if active_model == NO_PROVIDER_ID {
