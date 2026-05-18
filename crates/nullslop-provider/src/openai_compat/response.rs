@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use crate::StreamEvent;
-use crate::stream_event::StopReason;
+use crate::stream_event::{StopReason, StreamUsage};
 use crate::tool_types::ToolCall;
 
 /// State tracked per tool call index during streaming.
@@ -158,8 +158,33 @@ impl StreamResponseParser {
                         other => StopReason::Other(other.to_string()),
                     };
 
-                    results.push(StreamEvent::Done { stop_reason });
+                    results.push(StreamEvent::Done {
+                        stop_reason,
+                        usage: None,
+                    });
                     self.done_emitted = true;
+                }
+            }
+        }
+
+        // If we emitted a Done event, try to enrich it with usage data from the top-level object.
+        // OpenRouter sends `usage` alongside `choices` in the finish_reason chunk.
+        if let Some(done_event) = results
+            .iter_mut()
+            .find(|e| matches!(e, StreamEvent::Done { .. }))
+        {
+            if let Some(usage_val) = chunk.get("usage") {
+                let usage = StreamUsage {
+                    prompt_tokens: usage_val
+                        .get("prompt_tokens")
+                        .and_then(serde_json::Value::as_u64),
+                    completion_tokens: usage_val
+                        .get("completion_tokens")
+                        .and_then(serde_json::Value::as_u64),
+                    cost: usage_val.get("cost").and_then(|v| v.as_f64()),
+                };
+                if let StreamEvent::Done { usage: u, .. } = done_event {
+                    *u = Some(usage);
                 }
             }
         }
@@ -206,7 +231,10 @@ impl StreamResponseParser {
             StopReason::EndTurn
         };
 
-        results.push(StreamEvent::Done { stop_reason });
+        results.push(StreamEvent::Done {
+            stop_reason,
+            usage: None,
+        });
         self.done_emitted = true;
         results
     }
@@ -289,12 +317,13 @@ mod tests {
         let events = parse_single(json);
 
         assert_eq!(events.len(), 1);
-        assert_eq!(
-            events[0],
+        assert!(matches!(
+            &events[0],
             StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
+                usage: None
             }
-        );
+        ));
     }
 
     #[rstest::rstest]
@@ -321,7 +350,8 @@ mod tests {
         assert!(matches!(
             &events[1],
             StreamEvent::Done {
-                stop_reason: StopReason::ToolUse
+                stop_reason: StopReason::ToolUse,
+                ..
             }
         ));
     }
@@ -345,12 +375,13 @@ mod tests {
         let events = parser.handle_done();
 
         assert_eq!(events.len(), 1);
-        assert_eq!(
-            events[0],
+        assert!(matches!(
+            &events[0],
             StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
+                usage: None
             }
-        );
+        ));
     }
 
     #[rstest::rstest]
@@ -392,6 +423,7 @@ mod tests {
             &events[1],
             StreamEvent::Done {
                 stop_reason: StopReason::ToolUse,
+                ..
             }
         ));
     }

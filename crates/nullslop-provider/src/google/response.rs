@@ -8,7 +8,7 @@
 //! Function calls: `candidates[0].content.parts[0].functionCall`
 
 use crate::StreamEvent;
-use crate::stream_event::StopReason;
+use crate::stream_event::{StopReason, StreamUsage};
 use crate::tool_types::ToolCall;
 
 /// Stateful parser for Google Gemini streaming responses.
@@ -99,12 +99,23 @@ impl GeminiStreamParser {
             .and_then(|f| f.as_str())
             .unwrap_or("");
 
+        // Extract usage metadata.
+        let usage = response.get("usageMetadata").map(|meta| StreamUsage {
+            prompt_tokens: meta
+                .get("promptTokenCount")
+                .and_then(serde_json::Value::as_u64),
+            completion_tokens: meta
+                .get("completionTokenCount")
+                .and_then(serde_json::Value::as_u64),
+            cost: None,
+        });
+
         if !finish_reason.is_empty() && !self.done_emitted {
             let stop_reason = match finish_reason {
                 "STOP" => StopReason::EndTurn,
                 _ => StopReason::Other(finish_reason.to_owned()),
             };
-            results.push(StreamEvent::Done { stop_reason });
+            results.push(StreamEvent::Done { stop_reason, usage });
             self.done_emitted = true;
         }
 
@@ -119,6 +130,7 @@ impl GeminiStreamParser {
         self.done_emitted = true;
         vec![StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
+            usage: None,
         }]
     }
 }
@@ -196,7 +208,8 @@ mod tests {
         assert!(matches!(
             &events[0],
             StreamEvent::Done {
-                stop_reason: StopReason::EndTurn
+                stop_reason: StopReason::EndTurn,
+                ..
             }
         ));
     }

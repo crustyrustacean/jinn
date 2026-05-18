@@ -856,6 +856,7 @@ mod tests {
             reason: StreamCompletedReason::Error,
             assistant_content: None,
             tool_calls: None,
+            cost: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -889,6 +890,7 @@ mod tests {
             reason: StreamCompletedReason::Error,
             assistant_content: None,
             tool_calls: None,
+            cost: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -985,6 +987,7 @@ mod tests {
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
+                cost: None,
             });
             session.begin_streaming();
             state.session.active_session.clone()
@@ -1000,6 +1003,7 @@ mod tests {
                 name: "bash".to_owned(),
                 arguments: r#"{"command":"ls -la /very/long/path"}"#.to_owned(),
             }]),
+            cost: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 

@@ -39,6 +39,7 @@ diesel::table! {
         timestamp -> Text,
         tokens_sent -> Integer,
         tokens_received -> Integer,
+        cost -> Nullable<Double>,
     }
 }
 

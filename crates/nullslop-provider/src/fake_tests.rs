@@ -60,6 +60,7 @@ async fn fake_service_yields_text_events_and_done() {
         events[1],
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
+            usage: None,
         }
     );
 }
@@ -154,6 +155,7 @@ async fn fake_service_emits_done_with_tool_use() {
         events[4],
         StreamEvent::Done {
             stop_reason: StopReason::ToolUse,
+            usage: None,
         }
     );
 }
@@ -320,6 +322,7 @@ async fn tool_loop_emits_done_with_tool_use() {
         events[4],
         StreamEvent::Done {
             stop_reason: StopReason::ToolUse,
+            usage: None,
         }
     );
 }
@@ -369,6 +372,7 @@ async fn tool_loop_second_call_returns_text_only() {
         events[1],
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
+            usage: None,
         }
     );
 }
@@ -401,6 +405,7 @@ async fn non_trigger_produces_default_events() {
         events[1],
         StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
+            usage: None,
         }
     );
 }
@@ -465,6 +470,7 @@ async fn with_tool_calls_and_empty_tokens_yields_tool_events_only() {
         events.last(),
         Some(&StreamEvent::Done {
             stop_reason: StopReason::ToolUse,
+            usage: None,
         })
     );
 }

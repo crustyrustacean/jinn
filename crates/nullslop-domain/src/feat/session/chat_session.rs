@@ -1215,20 +1215,21 @@ impl ChatSessionState {
         self.core.token_ledger.push(record);
     }
 
-    /// Update the last token record's received count.
+    /// Update the last token record's received count and cost.
     ///
     /// Called when `StreamCompleted` arrives to finalize the pending record.
     ///
     /// # Panics
     ///
     /// Panics if the ledger is empty.
-    pub fn finalize_last_token_record(&mut self, tokens_received: u32) {
+    pub fn finalize_last_token_record(&mut self, tokens_received: u32, cost: Option<f64>) {
         let last = self
             .core
             .token_ledger
             .last_mut()
             .expect("ledger must not be empty");
         last.tokens_received = tokens_received;
+        last.cost = cost;
     }
 
     /// The parent session, if this session was forked from another.

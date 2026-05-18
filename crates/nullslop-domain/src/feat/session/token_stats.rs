@@ -30,6 +30,9 @@ pub struct TokenRecord {
     pub tokens_sent: u32,
     /// Tokens received in the response (output). 0 until the response completes.
     pub tokens_received: u32,
+    /// Cost in USD reported by the provider for this request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
 }
 
 /// Summary statistics derived from a token ledger.
@@ -57,18 +60,27 @@ impl TokenStats {
         }
         stats
     }
+
+    /// Sum of all costs in the ledger.
+    pub fn total_cost(records: &[TokenRecord]) -> f64 {
+        records.iter().filter_map(|r| r.cost).sum()
+    }
 }
 
 /// Aggregated token statistics for a session and its descendants.
 ///
 /// Used by the status bar to display `↑sent ↓received` with descendant totals.
 /// The `ctx:` value comes from the session's cached context size, not from here.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct AggregatedTokenStats {
     /// This session's own token stats.
     pub own: TokenStats,
     /// Sum of all descendant sessions' token stats.
     pub children: TokenStats,
+    /// Total cost from this session's own records.
+    pub own_cost: f64,
+    /// Total cost from all descendant sessions.
+    pub children_cost: f64,
 }
 
 impl AggregatedTokenStats {
@@ -80,6 +92,11 @@ impl AggregatedTokenStats {
     /// Total tokens received (own + children).
     pub fn total_received(&self) -> u64 {
         self.own.total_received + self.children.total_received
+    }
+
+    /// Total cost across own and children sessions.
+    pub fn total_cost(&self) -> f64 {
+        self.own_cost + self.children_cost
     }
 }
 
@@ -102,7 +119,17 @@ pub fn aggregate_session_stats<S: std::hash::BuildHasher>(
 
     let children = aggregate_children(sessions, session_id);
 
-    AggregatedTokenStats { own, children }
+    let own_cost = own_session
+        .map(|s| TokenStats::total_cost(s.token_ledger()))
+        .unwrap_or(0.0);
+    let children_cost = aggregate_children_cost(sessions, session_id);
+
+    AggregatedTokenStats {
+        own,
+        children,
+        own_cost,
+        children_cost,
+    }
 }
 
 /// Recursively sum token stats for all descendants of a session.
@@ -118,6 +145,22 @@ fn aggregate_children<S: std::hash::BuildHasher>(
             total.total_sent += child_own.total_sent + child_descendants.total_sent;
             total.total_received += child_own.total_received + child_descendants.total_received;
             total.request_count += child_own.request_count + child_descendants.request_count;
+        }
+    }
+    total
+}
+
+/// Recursively sum costs for all descendants of a session.
+fn aggregate_children_cost<S: std::hash::BuildHasher>(
+    sessions: &HashMap<SessionId, ChatSessionState, S>,
+    parent_id: &SessionId,
+) -> f64 {
+    let mut total = 0.0;
+    for (id, session) in sessions {
+        if session.parent_session().as_ref() == Some(parent_id) {
+            let own = TokenStats::total_cost(session.token_ledger());
+            let descendants = aggregate_children_cost(sessions, id);
+            total += own + descendants;
         }
     }
     total

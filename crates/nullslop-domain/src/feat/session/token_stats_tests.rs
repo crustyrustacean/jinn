@@ -25,6 +25,7 @@ fn from_ledger_sums_single_record() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 100,
         tokens_received: 50,
+        cost: None,
     }];
 
     // When deriving stats.
@@ -44,16 +45,19 @@ fn from_ledger_sums_multiple_records() {
             timestamp: jiff::Timestamp::now(),
             tokens_sent: 100,
             tokens_received: 50,
+            cost: None,
         },
         TokenRecord {
             timestamp: jiff::Timestamp::now(),
             tokens_sent: 200,
             tokens_received: 75,
+            cost: None,
         },
         TokenRecord {
             timestamp: jiff::Timestamp::now(),
             tokens_sent: 150,
             tokens_received: 60,
+            cost: None,
         },
     ];
 
@@ -82,6 +86,8 @@ fn aggregated_totals_sum_own_and_children() {
             total_received: 100,
             request_count: 2,
         },
+        own_cost: 0.01,
+        children_cost: 0.02,
     };
 
     // Then totals sum both.
@@ -115,6 +121,7 @@ fn aggregate_returns_own_stats_for_session_with_no_children() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 500,
         tokens_received: 250,
+        cost: None,
     });
 
     let mut sessions = HashMap::new();
@@ -140,6 +147,7 @@ fn aggregate_includes_child_session_stats() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 100,
         tokens_received: 50,
+        cost: None,
     });
 
     let mut child = ChatSessionState::new();
@@ -148,6 +156,7 @@ fn aggregate_includes_child_session_stats() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 200,
         tokens_received: 100,
+        cost: None,
     });
 
     let mut sessions = HashMap::new();
@@ -180,6 +189,7 @@ fn aggregate_handles_nested_children() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1000,
         tokens_received: 500,
+        cost: None,
     });
 
     let mut parent = ChatSessionState::new();
@@ -188,6 +198,7 @@ fn aggregate_handles_nested_children() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 500,
         tokens_received: 250,
+        cost: None,
     });
 
     let mut child = ChatSessionState::new();
@@ -196,6 +207,7 @@ fn aggregate_handles_nested_children() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 200,
         tokens_received: 100,
+        cost: None,
     });
 
     let mut sessions = HashMap::new();
