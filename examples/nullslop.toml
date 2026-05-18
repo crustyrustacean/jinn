@@ -1,0 +1,5 @@
+[[session_lifecycle]]
+name = "fossil branch"
+description = "Open a fossil branch in a new worktree"
+setup_command = "mkdir <branch> && cd <branch> && fossil open ../nullslop.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>"
+teardown_command = "cd <branch> && fossil update trunk && fossil merge <branch> && fossil addremove && fossil commit -m 'Merge <branch>'"
