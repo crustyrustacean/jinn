@@ -1,10 +1,10 @@
-//! LLM streaming actor with tool support.
+//! LLM streaming actor.
 //!
 //! Subscribes to [`SendToLlmProvider`] and [`CancelStream`] commands, and
-//! [`ToolBatchCompleted`], [`ToolsRegistered`], and [`StreamCompleted`] events.
-//! On send, creates an LLM service via the factory and streams tokens and tool
-//! call events back as bus commands. When the LLM requests tool use, emits
-//! [`ExecuteToolBatch`] and awaits results before continuing the conversation.
+//! [`ToolsRegistered`] and [`StreamCompleted`] events. On send, creates an
+//! LLM service via the factory and streams tokens and tool call events back
+//! as bus commands. When the LLM requests tool use, emits [`ExecuteToolBatch`]
+//! — the session actor handles the continuation via context assembly.
 
 mod session;
 
@@ -21,17 +21,18 @@ use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedRea
 use crate::feat::provider_infra::LlmServiceFactoryService;
 use crate::feat::provider_infra::StopReason;
 use crate::feat::provider_infra::StreamEvent;
-use crate::feat::tools_actor::protocol::command::{CancelToolBatch, ExecuteToolBatch};
+use crate::feat::tools_actor::protocol::command::CancelToolBatch;
+use crate::feat::tools_actor::protocol::command::ExecuteToolBatch;
 use crate::feat::tools_actor::protocol::event::{
-    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolUseStarted, ToolsRegistered,
+    ToolCallReceived, ToolCallStreaming, ToolUseStarted, ToolsRegistered,
 };
-use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition};
 use crate::protocol::{ChatEntry, Command, Event, SessionId};
 use futures::StreamExt as _;
 
 use session::{SessionData, SessionState};
 
-/// LLM streaming actor with tool support.
+/// LLM streaming actor.
 ///
 /// Holds a reference to the LLM service factory and tracks active
 /// streaming tasks and per-session state.
@@ -58,7 +59,6 @@ impl Actor for LlmActor {
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<SendToLlmProvider>();
         ctx.subscribe_command::<CancelStream>();
-        ctx.subscribe_event::<ToolBatchCompleted>();
         ctx.subscribe_event::<ToolsRegistered>();
         ctx.subscribe_event::<StreamCompleted>();
 
@@ -82,7 +82,7 @@ impl Actor for LlmActor {
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(command) => self.handle_command(&command, ctx),
-            ActorEnvelope::Event(event) => self.handle_event(&event, ctx),
+            ActorEnvelope::Event(event) => self.handle_event(&event),
             _ => {}
         }
     }
@@ -112,13 +112,10 @@ impl LlmActor {
     }
 
     /// Dispatches incoming events to the appropriate handler.
-    fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
+    fn handle_event(&mut self, event: &Event) {
         match event {
             Event::ToolsRegistered(payload) => {
                 self.handle_tools_registered(&payload.definitions);
-            }
-            Event::ToolBatchCompleted(payload) => {
-                self.handle_tool_batch_completed(payload.session_id.clone(), &payload.results, ctx);
             }
             Event::StreamCompleted(payload) => {
                 self.handle_stream_completed(payload);
@@ -158,15 +155,8 @@ impl LlmActor {
             handle.abort();
         }
 
-        // Create or reset session data.
-        // Clone messages before inserting into the session so the stream task
-        // can take ownership of its copy.
-        let messages_for_stream = messages.clone();
-        let mut session = SessionData::new(messages);
-        if provider_id.is_some() {
-            session.provider_id = provider_id.map(std::borrow::ToOwned::to_owned);
-        }
-        self.sessions.insert(session_id.clone(), session);
+        // Track the session.
+        self.sessions.insert(session_id.clone(), SessionData::new());
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
         let factory = if let Some(pid) = provider_id {
@@ -229,10 +219,7 @@ impl LlmActor {
                 }
             };
 
-            let stream = match service
-                .chat_stream_with_tools(messages_for_stream, tools)
-                .await
-            {
+            let stream = match service.chat_stream_with_tools(messages, tools).await {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to start LLM stream");
@@ -342,8 +329,10 @@ impl LlmActor {
                                     },
                                 ));
 
-                                // Emit StreamCompleted with ToolUse reason so the actor
-                                // can transition state.
+                                // Emit StreamCompleted with ToolUse reason so the session
+                                // actor can finalize output tokens. The continuation is
+                                // handled by the session actor via context assembly when
+                                // ToolBatchCompleted arrives.
                                 let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
                                     session_id: sid.clone(),
                                     reason: StreamCompletedReason::ToolUse,
@@ -387,48 +376,28 @@ impl LlmActor {
         self.tasks.insert(session_id, handle);
     }
 
-    /// Handles stream completion events to transition session state.
+    /// Handles stream completion events to clean up session state.
     ///
-    /// When the stream task sends [`StreamCompleted`] through the sink, it
-    /// arrives back on the bus and the actor receives it here. For
-    /// [`ToolUse`](StreamCompletedReason::ToolUse), the actor stores the
-    /// accumulated data and transitions to [`AwaitingToolResults`](SessionState::AwaitingToolResults).
-    /// For [`Finished`](StreamCompletedReason::Finished), the session is cleaned up.
+    /// Removes the session from tracking for [`Finished`] and [`Error`] reasons.
+    /// For [`ToolUse`], the session stays tracked until cancellation or the next
+    /// stream starts — the session actor handles the continuation.
     fn handle_stream_completed(&mut self, payload: &StreamCompleted) {
-        let Some(session) = self.sessions.get_mut(&payload.session_id) else {
+        if !self.sessions.contains_key(&payload.session_id) {
             return;
-        };
+        }
 
         match payload.reason {
             StreamCompletedReason::ToolUse => {
-                // Store accumulated data from the stream task.
-                if let Some(ref text) = payload.assistant_content {
-                    session.accumulated_text.clone_from(text);
-                }
-                if let Some(ref calls) = payload.tool_calls {
-                    session.accumulated_tool_calls.clone_from(calls);
-                }
-                session.state = SessionState::AwaitingToolResults;
+                // Session stays tracked — the continuation is handled by the
+                // session actor when ToolBatchCompleted arrives. The next
+                // start_stream call will reset this session.
                 tracing::trace!(
                     session_id = ?payload.session_id,
                     reason = "ToolUse",
-                    new_state = ?session.state,
-                    "handle_stream_completed"
+                    "handle_stream_completed — keeping session for continuation"
                 );
             }
             StreamCompletedReason::Error | StreamCompletedReason::Finished => {
-                // Defensive guard: if the session is awaiting tool results, a
-                // duplicate Done from the provider should not remove the session.
-                if session.state == SessionState::AwaitingToolResults {
-                    tracing::warn!(
-                        session_id = ?payload.session_id,
-                        state = ?session.state,
-                        "received StreamCompleted({:?}) while awaiting tool results — ignoring",
-                        payload.reason
-                    );
-                    return;
-                }
-                // Clean up the completed session.
                 tracing::trace!(
                     session_id = ?payload.session_id,
                     reason = ?payload.reason,
@@ -440,60 +409,6 @@ impl LlmActor {
                 // Already cleaned up by cancel_stream.
             }
         }
-    }
-
-    /// Handles tool batch completion by continuing the conversation with results.
-    fn handle_tool_batch_completed(
-        &mut self,
-        session_id: SessionId,
-        results: &[ToolResult],
-        ctx: &ActorContext,
-    ) {
-        let Some(session) = self.sessions.get_mut(&session_id) else {
-            tracing::warn!(
-                session_id = ?session_id,
-                "received ToolBatchCompleted for unknown session"
-            );
-            return;
-        };
-
-        if session.state != SessionState::AwaitingToolResults {
-            tracing::warn!(
-                session_id = ?session_id,
-                state = ?session.state,
-                "received ToolBatchCompleted while not awaiting tool results"
-            );
-            return;
-        }
-
-        tracing::trace!(
-            session_id = ?session_id,
-            result_count = results.len(),
-            "handle_tool_batch_completed"
-        );
-
-        // Build the assistant message with tool calls and text from the previous stream.
-        let assistant_message = LlmMessage::Assistant {
-            content: std::mem::take(&mut session.accumulated_text),
-            tool_calls: Some(std::mem::take(&mut session.accumulated_tool_calls)),
-        };
-        session.messages.push(assistant_message);
-
-        // Build tool result messages.
-        for result in results {
-            session.messages.push(LlmMessage::Tool {
-                tool_call_id: result.tool_call_id.clone(),
-                name: result.name.clone(),
-                content: result.content.clone(),
-            });
-        }
-
-        // Take the accumulated messages and start a new stream.
-        // Preserve the provider_id from the initial stream so the continuation
-        // uses the same provider instead of falling back to the global factory.
-        let provider_id = session.provider_id.clone();
-        let messages = std::mem::take(&mut session.messages);
-        self.start_stream(session_id, messages, provider_id.as_deref(), ctx);
     }
 
     /// Caches tool definitions from a [`ToolsRegistered`] event into shared state.
@@ -509,21 +424,16 @@ impl LlmActor {
 
     /// Cancels the active stream for a session and emits a completion event.
     fn cancel_stream(&mut self, session_id: &SessionId, ctx: &ActorContext) {
-        // If the session is awaiting tool results, tell the orchestrator to cancel them.
-        let awaiting_tools = self
-            .sessions
-            .get(session_id)
-            .is_some_and(|s| s.state == SessionState::AwaitingToolResults);
-
-        if awaiting_tools
-            && let Err(e) = ctx.send_command(Command::CancelToolBatch(CancelToolBatch {
+        // If there's an active session, cancel any pending tool batches.
+        if self.sessions.contains_key(session_id) {
+            if let Err(e) = ctx.send_command(Command::CancelToolBatch(CancelToolBatch {
                 session_id: session_id.clone(),
-            }))
-        {
-            tracing::warn!(
-                err = ?e,
-                "failed to emit CancelToolBatch during stream cancellation"
-            );
+            })) {
+                tracing::warn!(
+                    err = ?e,
+                    "failed to emit CancelToolBatch during stream cancellation"
+                );
+            }
         }
 
         if let Some(handle) = self.tasks.remove(session_id) {
@@ -581,7 +491,7 @@ mod tests {
         let session_id = SessionId::new();
         actor
             .sessions
-            .insert(session_id.clone(), SessionData::new(vec![]));
+            .insert(session_id.clone(), SessionData::new());
 
         // When handling StreamCompleted with Error reason.
         let payload = StreamCompleted {
