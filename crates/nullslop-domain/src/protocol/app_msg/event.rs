@@ -117,6 +117,8 @@ pub enum Event {
     SessionTeardownCompleted(SessionTeardownCompleted),
     /// Context compaction completed for a session.
     CompactionCompleted(CompactionCompleted),
+    /// A session was removed from the sessions map.
+    SessionRemoved(crate::feat::session::protocol::session_removed::SessionRemoved),
 }
 
 impl Event {
@@ -163,6 +165,7 @@ impl Event {
             Self::SessionSetupCompleted(..) => Some(SessionSetupCompleted::TYPE_NAME),
             Self::SessionTeardownCompleted(..) => Some(SessionTeardownCompleted::TYPE_NAME),
             Self::CompactionCompleted(..) => Some(CompactionCompleted::TYPE_NAME),
+            Self::SessionRemoved(..) => Some(crate::feat::session::protocol::session_removed::SessionRemoved::TYPE_NAME),
         }
     }
 }
