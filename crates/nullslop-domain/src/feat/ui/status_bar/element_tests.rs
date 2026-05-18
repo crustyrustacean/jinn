@@ -703,9 +703,9 @@ fn render_shows_token_budget_when_token_budget_strategy_active() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
-    // Then the status bar shows "budget:200.0k".
+    // Then the status bar shows "(Token Budget: 200k)".
     assert!(
-        row.contains("budget:200.0k"),
+        row.contains("(Token Budget: 200k)"),
         "expected budget display, got: {row}"
     );
 }
@@ -726,9 +726,9 @@ fn render_hides_token_budget_for_passthrough_strategy() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
-    // Then the status bar does NOT show "budget:".
+    // Then the status bar does NOT show "Token Budget:".
     assert!(
-        !row.contains("budget:"),
+        !row.contains("Token Budget:"),
         "expected no budget display for passthrough strategy, got: {row}"
     );
 }
