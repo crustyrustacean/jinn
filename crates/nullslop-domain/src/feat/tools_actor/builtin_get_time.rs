@@ -27,6 +27,8 @@ pub fn execute(call: ToolCall, _ctx: ToolContext) -> BoxedToolFuture {
             name: call.name,
             content: now.to_string(),
             success: true,
+            full_content: None,
+            truncation: None,
         }
     })
 }

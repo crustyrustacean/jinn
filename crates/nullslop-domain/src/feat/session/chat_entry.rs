@@ -198,6 +198,10 @@ pub enum ChatEntryKind {
         content: String,
         /// Execution status (pending, success, or failure).
         status: ToolResultStatus,
+        /// Full untruncated content, if truncation occurred.
+        full_content: Option<String>,
+        /// Truncation metadata, if truncation occurred.
+        truncation: Option<nullslop_provider::tool_types::TruncationMeta>,
     },
     /// A skill loaded into the session context.
     ///
@@ -384,6 +388,37 @@ impl ChatEntry {
                 name: name.into(),
                 content: content.into(),
                 status,
+                full_content: None,
+                truncation: None,
+            },
+            pin_position: None,
+        }
+    }
+
+    /// Create a new tool result entry with truncation metadata.
+    #[must_use]
+    pub fn tool_result_truncated<S1, S2>(
+        id: S1,
+        name: S2,
+        content: String,
+        full_content: String,
+        status: ToolResultStatus,
+        truncation: nullslop_provider::tool_types::TruncationMeta,
+    ) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::ToolResult {
+                id: id.into(),
+                name: name.into(),
+                content,
+                status,
+                full_content: Some(full_content),
+                truncation: Some(truncation),
             },
             pin_position: None,
         }
@@ -644,6 +679,8 @@ impl Serialize for ChatEntryKind {
                 name,
                 content,
                 status,
+                full_content,
+                truncation,
             } => {
                 #[derive(Serialize)]
                 struct ToolResultData {
@@ -651,6 +688,10 @@ impl Serialize for ChatEntryKind {
                     name: String,
                     content: String,
                     status: ToolResultStatus,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    full_content: Option<String>,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    truncation: Option<nullslop_provider::tool_types::TruncationMeta>,
                 }
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry(
@@ -660,6 +701,8 @@ impl Serialize for ChatEntryKind {
                         name: name.clone(),
                         content: content.clone(),
                         status: *status,
+                        full_content: full_content.clone(),
+                        truncation: truncation.clone(),
                     },
                 )?;
                 map.end()
@@ -772,14 +815,18 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         })
                     }
                     "ToolResult" => {
-                        // Supports both new format (status: ToolResultStatus) and
-                        // old format (success: bool) for backward compat.
+                        // Supports both new format (status: ToolResultStatus + truncation)
+                        // and old format (success: bool) for backward compat.
                         #[derive(Deserialize)]
                         struct ToolResultDataNew {
                             id: String,
                             name: String,
                             content: String,
                             status: ToolResultStatus,
+                            #[serde(default)]
+                            full_content: Option<String>,
+                            #[serde(default)]
+                            truncation: Option<nullslop_provider::tool_types::TruncationMeta>,
                         }
                         #[derive(Deserialize)]
                         struct ToolResultDataOld {
@@ -796,6 +843,8 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                                 name: data.name,
                                 content: data.content,
                                 status: data.status,
+                                full_content: data.full_content,
+                                truncation: data.truncation,
                             })
                             .or_else(|_| {
                                 serde_json::from_value::<ToolResultDataOld>(value).map(
@@ -808,6 +857,8 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                                         } else {
                                             ToolResultStatus::Failure
                                         },
+                                        full_content: None,
+                                        truncation: None,
                                     },
                                 )
                             })
