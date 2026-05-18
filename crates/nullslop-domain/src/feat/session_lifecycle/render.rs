@@ -77,7 +77,7 @@ pub fn arg_input_popup_rect(area: Rect, state: &AppState) -> Rect {
 /// descriptions and an args indicator.
 pub fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let widget = SelectionWidget::new(&state.frontend.session_lifecycle_picker)
-        .title(Line::from(" Session Lifecycle "))
+        .title(Line::from(" New Session (with scripted lifecycle) "))
         .footer(Line::from(" Enter to select, ESC to cancel "));
     widget.render(frame, area);
 }
@@ -85,7 +85,7 @@ pub fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, state:
 /// Renders the arg input popup for a lifecycle with positional parameters.
 ///
 /// Shows a centered popup with:
-/// - Title: "Session Lifecycle Args"
+/// - Title: "New Session (set script args)"
 /// - Multi-line command display split on `&&`, with parameter substitution
 ///   and syntax highlighting for placeholders/substituted values
 /// - Input line at bottom showing current text with cursor
@@ -122,7 +122,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let Some(template) = template else {
         // No template found — render minimal popup anyway.
         let block = Block::default()
-            .title(" Session Lifecycle Args ")
+            .title(" New Session (set script args) ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme.border_unfocused));
         frame.render_widget(Clear, popup_area);
@@ -131,7 +131,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     };
 
     let title = Line::from(Span::styled(
-        " Session Lifecycle Args ",
+        " New Session (set script args) ",
         Style::default().fg(theme.border_unfocused),
     ));
 
@@ -266,7 +266,7 @@ mod tests {
         let popup_area = compute_arg_input_popup_rect(area, 1);
         let title_line_y = popup_area.y;
 
-        let title_text = " Session Lifecycle Args ";
+        let title_text = " New Session (set script args) ";
         let mut found_title = false;
         for x in popup_area.x..(popup_area.x + popup_area.width).min(buffer.area().width) {
             if let Some(cell) = buffer.cell((x, title_line_y)) {
@@ -386,7 +386,7 @@ mod tests {
                 if matches!(cell_text, "┌" | "─" | "┐") {
                     continue;
                 }
-                if " Session Lifecycle Args ".contains(cell_text) {
+                if " New Session (set script args) ".contains(cell_text) {
                     found_title = true;
                     break;
                 }
