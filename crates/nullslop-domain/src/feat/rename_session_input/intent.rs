@@ -24,8 +24,10 @@ pub fn handle_rename_session_enter(state: &mut AppState) -> IntentResult {
     let title = entry.title.clone();
     let cursor_pos = title.len();
 
-    state.frontend.rename_session_input =
-        RenameSessionInputState { input: title, cursor_pos };
+    state.frontend.rename_session_input = RenameSessionInputState {
+        input: title,
+        cursor_pos,
+    };
     state
         .frontend
         .scope_stack
@@ -90,7 +92,7 @@ pub fn handle_delete(state: &mut AppState) -> IntentResult {
     if input.cursor_pos > 0 {
         let prev = input.input[..input.cursor_pos]
             .grapheme_indices(true)
-            .last()
+            .next_back()
             .map(|(i, _)| i);
         if let Some(prev_idx) = prev {
             input.input.drain(prev_idx..input.cursor_pos);
@@ -107,8 +109,7 @@ pub fn handle_delete_forward(state: &mut AppState) -> IntentResult {
         let next_end = input.input[input.cursor_pos..]
             .grapheme_indices(true)
             .nth(1)
-            .map(|(i, _)| input.cursor_pos + i)
-            .unwrap_or(input.input.len());
+            .map_or(input.input.len(), |(i, _)| input.cursor_pos + i);
         input.input.drain(input.cursor_pos..next_end);
     }
     IntentResult::empty()
@@ -120,7 +121,7 @@ pub fn handle_cursor_left(state: &mut AppState) -> IntentResult {
     if input.cursor_pos > 0 {
         let prev = input.input[..input.cursor_pos]
             .grapheme_indices(true)
-            .last()
+            .next_back()
             .map(|(i, _)| i);
         if let Some(prev_idx) = prev {
             input.cursor_pos = prev_idx;
@@ -158,14 +159,11 @@ mod tests {
         for i in 1..count {
             let session = ChatSessionState::new();
             let id = session.session_id().clone();
-            state.session.sessions.insert(
-                id,
-                {
-                    let mut s = ChatSessionState::new();
-                    s.push_entry(ChatEntry::user(format!("message for session {i}")));
-                    s
-                },
-            );
+            state.session.sessions.insert(id, {
+                let mut s = ChatSessionState::new();
+                s.push_entry(ChatEntry::user(format!("message for session {i}")));
+                s
+            });
         }
         state
     }
@@ -194,7 +192,9 @@ mod tests {
         // Given a session with a title.
         let mut state = AppState::default();
         let session_id = state.session.active_session.clone();
-        state.session_mut(&session_id).set_title("My Session".to_owned());
+        state
+            .session_mut(&session_id)
+            .set_title("My Session".to_owned());
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         state.frontend.sessions_section.selected_index = Some(0);
 
@@ -228,10 +228,7 @@ mod tests {
         // Given state in RenameSessionInput scope with input "New Title".
         let mut state = AppState::default();
         let session_id = state.session.active_session.clone();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarSessions);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         state
             .frontend
             .scope_stack
@@ -292,10 +289,7 @@ mod tests {
         state
             .session_mut(&session_id)
             .set_title("Original".to_owned());
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarSessions);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         state
             .frontend
             .scope_stack

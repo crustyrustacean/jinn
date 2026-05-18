@@ -386,7 +386,7 @@ async fn list_models_parses_context_length() {
 
     // Then context_length is parsed for each model.
     let gpt4 = models.iter().find(|m| m.id == "gpt-4").expect("gpt-4");
-    assert_eq!(gpt4.context_length, Some(128000));
+    assert_eq!(gpt4.context_length, Some(128_000));
     let gpt35 = models
         .iter()
         .find(|m| m.id == "gpt-3.5-turbo")
