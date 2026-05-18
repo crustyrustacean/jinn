@@ -211,6 +211,8 @@ impl SessionPersistenceActor {
                 &event.result.name,
                 &event.result.content,
                 event.result.success,
+                event.result.full_content.clone(),
+                event.result.truncation.clone(),
             );
         }
         self.save_active_session(&event.session_id).await;

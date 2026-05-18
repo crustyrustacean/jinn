@@ -1,9 +1,11 @@
 //! Streaming indicator element with animated throbber.
 //!
-//! Renders an animated ASCII spinner alongside "📤 Sending..." when the active
-//! session has dispatched a message but no tokens have arrived yet, "🧠 Streaming..."
+//! Renders an animated ASCII spinner alongside "Sending..." when the active
+//! session has dispatched a message but no tokens have arrived yet, "Streaming..."
 //! when tokens are arriving, and renders nothing when the session is idle.
 //! Queue count is shown when messages are waiting.
+
+use std::time::{Duration, Instant};
 
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
@@ -12,11 +14,16 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse};
 
+/// Minimum time between animation frame advances.
+const ANIMATION_INTERVAL: Duration = Duration::from_millis(80);
+
 /// Displays an animated streaming indicator when the active session is sending or streaming.
 #[derive(Debug)]
 pub struct StreamingIndicatorElement {
     /// Visual-only state for the throbber animation step.
     throbber_state: ThrobberState,
+    /// Timestamp of the last animation frame advance.
+    last_animation_step: Instant,
 }
 
 impl StreamingIndicatorElement {
@@ -24,6 +31,15 @@ impl StreamingIndicatorElement {
     pub fn new() -> Self {
         Self {
             throbber_state: ThrobberState::default(),
+            last_animation_step: Instant::now(),
+        }
+    }
+
+    /// Advances the animation frame if enough time has elapsed.
+    fn maybe_advance_animation(&mut self) {
+        if self.last_animation_step.elapsed() >= ANIMATION_INTERVAL {
+            self.throbber_state.calc_next();
+            self.last_animation_step = Instant::now();
         }
     }
 }
@@ -45,15 +61,15 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         let label = if session.is_sending() {
             if queue_len > 0 {
-                format!(" 📤 Sending... ({queue_len} queued)")
+                format!(" Sending... ({queue_len} queued)")
             } else {
-                " 📤 Sending...".to_owned()
+                " Sending...".to_owned()
             }
         } else if session.is_streaming() {
             if queue_len > 0 {
-                format!(" 🧠 Streaming... ({queue_len} queued)")
+                format!(" Streaming... ({queue_len} queued)")
             } else {
-                " 🧠 Streaming...".to_owned()
+                " Streaming...".to_owned()
             }
         } else {
             return;
@@ -68,8 +84,8 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         frame.render_stateful_widget(throbber, area, &mut self.throbber_state);
 
-        // Advance the animation step for the next frame.
-        self.throbber_state.calc_next();
+        // Advance the animation step only when enough time has elapsed.
+        self.maybe_advance_animation();
     }
 }
 

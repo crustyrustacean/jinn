@@ -10,6 +10,8 @@
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::theme::Theme;
+use crate::feat::tools_actor::truncation::format_size;
+use nullslop_provider::tool_types::TruncationMeta;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
@@ -19,6 +21,7 @@ pub fn to_lines(
     name: &str,
     content: &str,
     status: ToolResultStatus,
+    truncation: Option<&TruncationMeta>,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
     let bg = status_background(status, &ctx.theme);
@@ -54,6 +57,14 @@ pub fn to_lines(
         )));
     }
 
+    // Content-level truncation indicator (output was truncated by the tools actor).
+    // Shown even when expanded — the full content is still truncated.
+    if let Some(meta) = truncation {
+        let indicator_style = Style::default().fg(ctx.theme.focus_accent).bg(bg);
+        let label = format_content_truncation_label(meta);
+        lines.push(Line::from(Span::styled(label, indicator_style)));
+    }
+
     // Pad each line to full content width for BLOCK effect.
     for line in &mut lines {
         pad_line_to_width(line, ctx.content_width, Style::default().bg(bg));
@@ -73,6 +84,20 @@ fn status_background(status: ToolResultStatus, theme: &Theme) -> ratatui::style:
         ToolResultStatus::Success => theme.tool_success_bg,
         ToolResultStatus::Failure => theme.tool_failure_bg,
     }
+}
+
+/// Format a human-readable label for content-level truncation.
+///
+/// Shows how much of the original output is visible, e.g.:
+/// `⚠ Output truncated (500 of 2000 lines, 25.0KB of 100.0KB)`
+fn format_content_truncation_label(meta: &TruncationMeta) -> String {
+    format!(
+        "⚠ Output truncated ({} of {} lines, {} of {})",
+        meta.output_lines,
+        meta.total_lines,
+        format_size(meta.output_bytes),
+        format_size(meta.total_bytes),
+    )
 }
 
 #[cfg(test)]
@@ -101,9 +126,7 @@ mod tests {
             .join("\n");
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, ToolResultStatus::Success, &ctx);
-
-        // Then some line contains the truncation indicator.
+        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, &ctx);
         let has_indicator = lines.iter().any(|line| {
             line.spans
                 .iter()
@@ -125,7 +148,7 @@ mod tests {
             .join("\n");
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, ToolResultStatus::Success, &ctx);
+        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, &ctx);
 
         // Then some line contains "line 10".
         let has_last_line = lines
@@ -153,7 +176,7 @@ mod tests {
         let content = "line 1\nline 2\nline 3".to_owned();
 
         // When converting to lines.
-        let lines = to_lines("bash", &content, ToolResultStatus::Success, &ctx);
+        let lines = to_lines("bash", &content, ToolResultStatus::Success, None, &ctx);
 
         // Then no line contains "more lines".
         let has_indicator = lines
@@ -168,7 +191,7 @@ mod tests {
         let ctx = render_context(5, false);
 
         // When converting to lines.
-        let lines = to_lines("bash", "output", ToolResultStatus::Success, &ctx);
+        let lines = to_lines("bash", "output", ToolResultStatus::Success, None, &ctx);
 
         // Then line 1 (after padding) contains "bash".
         let name_content: String = lines[1].spans.iter().map(|s| s.content.clone()).collect();
@@ -195,6 +218,7 @@ mod tests {
             "bash",
             r"line one\nline two\nline three",
             ToolResultStatus::Success,
+            None,
             &ctx,
         );
 
@@ -223,7 +247,7 @@ mod tests {
         let theme = crate::feat::theme::default_theme();
 
         // When converting to lines.
-        let lines = to_lines("bash", "", ToolResultStatus::Pending, &ctx);
+        let lines = to_lines("bash", "", ToolResultStatus::Pending, None, &ctx);
 
         // Then the lines use the pending background color.
         assert!(
@@ -240,5 +264,163 @@ mod tests {
             }
         }
         panic!("no line uses the pending background color");
+    }
+
+    fn sample_truncation_meta() -> TruncationMeta {
+        TruncationMeta {
+            truncated_by: nullslop_provider::tool_types::TruncatedBy::Lines,
+            total_lines: 5000,
+            total_bytes: 200_000,
+            output_lines: 500,
+            output_bytes: 20_000,
+        }
+    }
+
+    #[rstest::rstest]
+    fn content_truncated_tool_result_shows_indicator() {
+        // Given a tool result with content-level truncation metadata.
+        let ctx = render_context(5, false);
+        let meta = sample_truncation_meta();
+
+        // When converting to lines.
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Success,
+            Some(&meta),
+            &ctx,
+        );
+
+        // Then some line contains the truncation indicator.
+        let has_indicator = lines.iter().any(|line| {
+            line.spans
+                .iter()
+                .any(|s| s.content.contains("⚠ Output truncated"))
+        });
+        assert!(
+            has_indicator,
+            "content-truncated tool result should show truncation indicator"
+        );
+    }
+
+    #[rstest::rstest]
+    fn content_truncated_indicator_contains_line_and_byte_counts() {
+        // Given a tool result with specific truncation metadata.
+        let ctx = render_context(5, false);
+        let meta = sample_truncation_meta();
+
+        // When converting to lines.
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Success,
+            Some(&meta),
+            &ctx,
+        );
+
+        // Then the indicator contains the expected counts.
+        let indicator_line = lines
+            .iter()
+            .find(|line| {
+                line.spans
+                    .iter()
+                    .any(|s| s.content.contains("⚠ Output truncated"))
+            })
+            .expect("should have truncation indicator");
+        let text: String = indicator_line
+            .spans
+            .iter()
+            .map(|s| s.content.clone())
+            .collect();
+        assert!(
+            text.contains("500 of 5000 lines"),
+            "indicator should show output/total lines, got: {text}"
+        );
+        assert!(
+            text.contains("19.5KB of 195.3KB"),
+            "indicator should show output/total bytes, got: {text}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn content_truncated_indicator_uses_accent_color() {
+        // Given a tool result with content-level truncation metadata.
+        let ctx = render_context(5, false);
+        let theme = crate::feat::theme::default_theme();
+        let meta = sample_truncation_meta();
+
+        // When converting to lines.
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Success,
+            Some(&meta),
+            &ctx,
+        );
+
+        // Then the indicator line uses the focus_accent color.
+        let indicator_line = lines
+            .iter()
+            .find(|line| {
+                line.spans
+                    .iter()
+                    .any(|s| s.content.contains("⚠ Output truncated"))
+            })
+            .expect("should have truncation indicator");
+        let has_accent_fg = indicator_line
+            .spans
+            .iter()
+            .any(|s| matches!(s.style.fg, Some(color) if color == theme.focus_accent));
+        assert!(
+            has_accent_fg,
+            "truncation indicator should use focus_accent color"
+        );
+    }
+
+    #[rstest::rstest]
+    fn content_truncated_indicator_shows_when_expanded() {
+        // Given a tool result with content-level truncation, expanded.
+        let ctx = render_context(5, true);
+        let meta = sample_truncation_meta();
+
+        // When converting to lines.
+        let lines = to_lines(
+            "bash",
+            "output",
+            ToolResultStatus::Success,
+            Some(&meta),
+            &ctx,
+        );
+
+        // Then the indicator still appears (content was truncated at the source).
+        let has_indicator = lines.iter().any(|line| {
+            line.spans
+                .iter()
+                .any(|s| s.content.contains("⚠ Output truncated"))
+        });
+        assert!(
+            has_indicator,
+            "content-truncated indicator should appear even when expanded"
+        );
+    }
+
+    #[rstest::rstest]
+    fn non_truncated_tool_result_has_no_content_indicator() {
+        // Given a tool result without truncation metadata.
+        let ctx = render_context(5, false);
+
+        // When converting to lines.
+        let lines = to_lines("bash", "output", ToolResultStatus::Success, None, &ctx);
+
+        // Then no line contains the content truncation indicator.
+        let has_indicator = lines.iter().any(|line| {
+            line.spans
+                .iter()
+                .any(|s| s.content.contains("⚠ Output truncated"))
+        });
+        assert!(
+            !has_indicator,
+            "non-truncated tool result should not show content truncation indicator"
+        );
     }
 }
