@@ -30,17 +30,15 @@ impl SessionPersistenceActor {
     ) {
         // Count tokens in all assembled messages (CPU-bound — offload to blocking thread).
         let messages = payload.messages.clone();
-        let counter = self.counter.clone();
+        let counter = self.counter;
         let input_tokens: usize = tokio::task::spawn_blocking(move || {
             messages
                 .iter()
                 .map(|msg| match msg {
                     crate::protocol::LlmMessage::System { content }
-                    | crate::protocol::LlmMessage::User { content } => counter.count(content),
-                    crate::protocol::LlmMessage::Assistant { content, .. }
-                    | crate::protocol::LlmMessage::Tool { content, .. } => {
-                        counter.count(content)
-                    }
+                    | crate::protocol::LlmMessage::User { content }
+                    | crate::protocol::LlmMessage::Assistant { content, .. }
+                    | crate::protocol::LlmMessage::Tool { content, .. } => counter.count(content),
                 })
                 .sum()
         })
@@ -127,28 +125,28 @@ impl SessionPersistenceActor {
         // Count output tokens off the async thread (CPU-bound — offload to blocking thread).
         // Count both text content and tool call arguments (JSON) which are a
         // significant portion of the model's output.
-        let output_tokens: Option<tokio::task::JoinHandle<u32>> =
-            if event.reason != StreamCompletedReason::Canceled
-                && event.reason != StreamCompletedReason::Error
-            {
-                event.assistant_content.as_ref().map(|content| {
-                    let content = content.clone();
-                    let tool_calls = event.tool_calls.clone();
-                    let counter = self.counter.clone();
-                    tokio::task::spawn_blocking(move || {
-                        let mut tokens = counter.count(&content) as u32;
-                        if let Some(tool_calls) = tool_calls {
-                            for tc in &tool_calls {
-                                tokens += counter.count(&tc.arguments) as u32;
-                                tokens += counter.count(&tc.name) as u32;
-                            }
+        let output_tokens: Option<tokio::task::JoinHandle<u32>> = if event.reason
+            != StreamCompletedReason::Canceled
+            && event.reason != StreamCompletedReason::Error
+        {
+            event.assistant_content.as_ref().map(|content| {
+                let content = content.clone();
+                let tool_calls = event.tool_calls.clone();
+                let counter = self.counter;
+                tokio::task::spawn_blocking(move || {
+                    let mut tokens = counter.count(&content) as u32;
+                    if let Some(tool_calls) = tool_calls {
+                        for tc in &tool_calls {
+                            tokens += counter.count(&tc.arguments) as u32;
+                            tokens += counter.count(&tc.name) as u32;
                         }
-                        tokens
-                    })
+                    }
+                    tokens
                 })
-            } else {
-                None
-            };
+            })
+        } else {
+            None
+        };
 
         // Await token counting outside the lock.
         let output_tokens: Option<u32> = match output_tokens {
@@ -175,7 +173,9 @@ impl SessionPersistenceActor {
                     session.finalize_last_token_record(output_tokens);
                 }
             }
-            session.finish_streaming();
+            let preserve_assistant = event.reason == StreamCompletedReason::Finished
+                || event.reason == StreamCompletedReason::ToolUse;
+            session.finish_streaming(preserve_assistant);
 
             // Tool use means the conversation continues — transition to sending
             // so the indicator shows activity while awaiting the followup.
@@ -288,7 +288,7 @@ impl SessionPersistenceActor {
     /// and the session is already in sending state (set by `on_stream_completed`
     /// for the `ToolUse` reason). We just need to emit `AssemblePrompt` with
     /// the full session history.
-    pub(in crate::feat::session::session_actor) async fn on_tool_batch_completed(
+    pub(in crate::feat::session::session_actor) fn on_tool_batch_completed(
         &self,
         event: &ToolBatchCompleted,
         ctx: &ActorContext,

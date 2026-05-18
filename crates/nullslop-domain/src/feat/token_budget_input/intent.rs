@@ -102,7 +102,7 @@ pub fn handle_delete(state: &mut AppState) -> IntentResult {
     if input.cursor_pos > 0 {
         let prev = input.input[..input.cursor_pos]
             .grapheme_indices(true)
-            .last()
+            .next_back()
             .map(|(i, _)| i);
         if let Some(prev_idx) = prev {
             input.input.drain(prev_idx..input.cursor_pos);
@@ -119,8 +119,7 @@ pub fn handle_delete_forward(state: &mut AppState) -> IntentResult {
         let next_end = input.input[input.cursor_pos..]
             .grapheme_indices(true)
             .nth(1)
-            .map(|(i, _)| input.cursor_pos + i)
-            .unwrap_or(input.input.len());
+            .map_or(input.input.len(), |(i, _)| input.cursor_pos + i);
         input.input.drain(input.cursor_pos..next_end);
     }
     IntentResult::empty()
@@ -132,7 +131,7 @@ pub fn handle_cursor_left(state: &mut AppState) -> IntentResult {
     if input.cursor_pos > 0 {
         let prev = input.input[..input.cursor_pos]
             .grapheme_indices(true)
-            .last()
+            .next_back()
             .map(|(i, _)| i);
         if let Some(prev_idx) = prev {
             input.cursor_pos = prev_idx;

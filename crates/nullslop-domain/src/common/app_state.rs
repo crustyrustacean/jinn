@@ -215,11 +215,10 @@ impl FocusScope {
             | Self::SidebarPins
             | Self::SidebarSessions
             | Self::SidebarResize => Mode::Normal,
-            Self::Input => Mode::Input,
+            Self::Input | Self::ArgInput | Self::TokenBudgetInput | Self::RenameSessionInput => {
+                Mode::Input
+            }
             Self::Picker { .. } => Mode::Picker,
-            Self::ArgInput => Mode::Input,
-            Self::TokenBudgetInput => Mode::Input,
-            Self::RenameSessionInput => Mode::Input,
         }
     }
 }
