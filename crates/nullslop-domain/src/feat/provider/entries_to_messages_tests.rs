@@ -527,3 +527,50 @@ fn ignored_entry_mixed_with_active_entries() {
         }
     );
 }
+
+#[rstest::rstest]
+fn message_order_after_compaction() {
+    // Given a history with: compacted entries, compaction summary, recent entries.
+    let entries = vec![
+        ChatEntry::user("old question").with_ignored(true),
+        ChatEntry::assistant("old answer").with_ignored(true),
+        ChatEntry {
+            id: crate::protocol::ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: crate::protocol::ChatEntryKind::Compaction {
+                summary: "The user asked about X and was told Y".to_owned(),
+                tokens_before: 500,
+                entries_compacted: 2,
+                model_used: "test/model".to_owned(),
+            },
+            pin_position: None,
+            ignored: false,
+        },
+        ChatEntry::user("new question"),
+        ChatEntry::assistant("new answer"),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the order is: compaction summary → new question → new answer.
+    assert_eq!(messages.len(), 3);
+    // Compaction summary as User message.
+    assert!(
+        matches!(&messages[0], LlmMessage::User { content } if content.contains("The user asked about X"))
+    );
+    // Recent entries follow.
+    assert_eq!(
+        messages[1],
+        LlmMessage::User {
+            content: "new question".into()
+        }
+    );
+    assert_eq!(
+        messages[2],
+        LlmMessage::Assistant {
+            content: "new answer".into(),
+            tool_calls: None,
+        }
+    );
+}
