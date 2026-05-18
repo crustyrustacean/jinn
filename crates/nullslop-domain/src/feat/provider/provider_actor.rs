@@ -117,7 +117,9 @@ impl ProviderActor {
             | Command::SessionForkRequested(..)
             | Command::RunSessionSetup(..)
             | Command::RunSessionTeardown(..)
-            | Command::CompactContext(..) => {}
+            | Command::CompactContext(..)
+            | Command::RemoveSession(..)
+            => {}
         }
     }
 

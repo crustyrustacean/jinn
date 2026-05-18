@@ -28,6 +28,7 @@ use crate::feat::provider::protocol::command::{
     SendMessage, SendToLlmProvider,
 };
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use crate::feat::session::protocol::remove_session::RemoveSession;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
@@ -112,6 +113,8 @@ pub enum Command {
     RunSessionTeardown(RunSessionTeardown),
     /// Compact the conversation context for a session.
     CompactContext(CompactContext),
+    /// Remove a session from the sessions map.
+    RemoveSession(RemoveSession),
 }
 
 impl Command {
@@ -153,6 +156,7 @@ impl Command {
             Self::RunSessionSetup(..) => Some(RunSessionSetup::NAME),
             Self::RunSessionTeardown(..) => Some(RunSessionTeardown::NAME),
             Self::CompactContext(..) => Some(CompactContext::NAME),
+            Self::RemoveSession(..) => Some(RemoveSession::NAME),
         }
     }
 }
@@ -237,6 +241,9 @@ impl std::fmt::Display for Command {
             }
             Command::CompactContext(payload) => {
                 write!(f, "compact context for {}", payload.session_id)
+            }
+            Command::RemoveSession(payload) => {
+                write!(f, "remove session {}", payload.session_id)
             }
         }
     }

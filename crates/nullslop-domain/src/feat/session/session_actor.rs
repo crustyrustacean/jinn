@@ -328,7 +328,8 @@ impl SessionPersistenceActor {
             | Command::RescanPersonas(..)
             | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)
-            | Command::CompactContext(..) => {}
+            | Command::CompactContext(..)
+            | Command::RemoveSession(..) => {}
         }
     }
 
