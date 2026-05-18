@@ -20,10 +20,7 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
         || state.frontend.pins.selected_id().is_some()
         || state.frontend.sessions_section.selected_index.is_some();
 
-    if !has_existing_cursor {
-        // First entry — default to Persona at top.
-        crate::feat::ui::sidebar::persona_section::receive_cursor(state, EnterFrom::Top);
-    } else {
+    if has_existing_cursor {
         // Restore to whichever section has a cursor.
         let section = if state.frontend.sessions_section.selected_index.is_some() {
             SidebarSectionId::Sessions
@@ -33,6 +30,9 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
             SidebarSectionId::Persona
         };
         state.frontend.scope_stack.set_sidebar_section(section);
+    } else {
+        // First entry — default to Persona at top.
+        crate::feat::ui::sidebar::persona_section::receive_cursor(state, EnterFrom::Top);
     }
 
     IntentResult::empty()

@@ -296,10 +296,10 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
 
         // When saving and reloading.
@@ -363,10 +363,10 @@ last_strategy = "sliding_window""#,
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
 
         // When saving.
@@ -389,10 +389,10 @@ last_strategy = "sliding_window""#,
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
 
         // When saving and reloading.
@@ -423,10 +423,10 @@ last_strategy = "sliding_window""#,
                 ),
             }],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
 
         // When saving and reloading.
@@ -463,10 +463,10 @@ last_strategy = "sliding_window""#,
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: Some(25),
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -537,7 +537,7 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
             context_token_budget: ContextTokenBudgetConfig { budget: 200_000 },
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
 
         // When saving and reloading.

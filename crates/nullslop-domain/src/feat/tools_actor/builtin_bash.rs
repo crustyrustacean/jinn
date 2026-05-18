@@ -102,13 +102,13 @@ fn error_tool_result(tool_call_id: String, name: String, content: String) -> Too
 /// Stores the full output in `full_content` when truncation occurs.
 fn format_exit_result(
     exit_result: &Result<std::process::ExitStatus, std::io::Error>,
-    accumulated: String,
+    accumulated: &str,
     tool_call_id: String,
     tool_name: String,
     max_lines: usize,
     max_bytes: usize,
 ) -> ToolResult {
-    let mut content = accumulated.clone();
+    let mut content = accumulated.to_string();
     let success = match exit_result {
         Ok(status) => status.success(),
         Err(_) => false,
@@ -345,7 +345,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         format_exit_result(
             &exit_result,
-            accumulated,
+            &accumulated,
             call.id,
             call.name,
             max_lines,

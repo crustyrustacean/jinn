@@ -3,12 +3,11 @@
 pub mod protocol;
 pub mod serializer;
 
+#[cfg(test)]
 mod mod_tests;
 
 pub use protocol::command::CompactContext;
 pub use protocol::event::CompactionCompleted;
-
-use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use futures::{StreamExt, pin_mut};
@@ -22,9 +21,7 @@ use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::compaction_actor::serializer::serialize_entries_for_compaction;
 use crate::feat::context::strategy::compaction_prompt::load_compaction_prompt;
-use crate::feat::context::strategy::token_estimator::{
-    CharRatioEstimator, TokenEstimator, estimate_entry_tokens,
-};
+use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 use crate::feat::provider::protocol::event::StreamCompleted;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
@@ -71,18 +68,16 @@ impl Actor for CompactionActor {
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::Command(cmd) => {
-                if let Command::CompactContext(ref payload) = cmd {
-                    self.handle_compact_context(payload, ctx).await;
-                }
+            ActorEnvelope::Command(Command::CompactContext(ref payload)) => {
+                self.handle_compact_context(payload, ctx).await;
             }
-            ActorEnvelope::Event(event) => {
-                if let Event::StreamCompleted(ref payload) = event {
-                    self.handle_stream_completed(payload, ctx);
-                }
+            ActorEnvelope::Event(Event::StreamCompleted(ref payload)) => {
+                self.handle_stream_completed(payload, ctx);
             }
-            ActorEnvelope::System(_) => {}
-            _ => {}
+            ActorEnvelope::Command(_)
+            | ActorEnvelope::Event(_)
+            | ActorEnvelope::System(_)
+            | ActorEnvelope::Direct(_) => {}
         }
     }
 }
@@ -147,6 +142,7 @@ impl CompactionActor {
                 .map(|e| estimate_entry_tokens(&estimator, e))
                 .sum();
 
+            #[allow(clippy::cast_precision_loss)]
             let threshold_tokens = (config.threshold * token_budget as f64) as usize;
             let should = total_tokens > threshold_tokens;
 
@@ -168,6 +164,7 @@ impl CompactionActor {
     }
 
     /// Perform the compaction algorithm.
+    #[allow(clippy::too_many_lines)]
     async fn perform_compaction(
         &self,
         cmd: &CompactContext,
@@ -196,9 +193,8 @@ impl CompactionActor {
             // Find the start boundary: index after the last Compaction entry.
             let start_index = history
                 .iter()
-                .rposition(|e| e.is_compaction())
-                .map(|i| i + 1)
-                .unwrap_or(0);
+                .rposition(super::session::chat_entry::ChatEntry::is_compaction)
+                .map_or(0, |i| i + 1);
 
             // Find cut point: walk backwards accumulating tokens.
             let estimator = CharRatioEstimator;
@@ -218,8 +214,7 @@ impl CompactionActor {
             // Gather entries from start to cut point, excluding System and Compaction.
             let mut gathered_indices: Vec<usize> = Vec::new();
             let mut tokens_before: usize = 0;
-            for i in start_index..cut_index {
-                let entry = &history[i];
+            for (i, entry) in history.iter().enumerate().take(cut_index).skip(start_index) {
                 if matches!(entry.kind, ChatEntryKind::System(_)) || entry.is_compaction() {
                     continue;
                 }

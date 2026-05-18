@@ -69,7 +69,7 @@ pub fn load_theme(
     if system_path.exists() {
         return load_theme_from_file(&system_path);
     }
-    Err(Report::new(ThemeError::NotFound).attach(format!("theme file not found: {}", name)))
+    Err(Report::new(ThemeError::NotFound).attach(format!("theme file not found: {name}")))
 }
 
 /// Loads a theme by name from a single directory.
@@ -145,6 +145,10 @@ pub fn resolve_theme(
 /// Resolves a theme from a single directory.
 ///
 /// Convenience wrapper for callers that only have one directory (e.g., tests).
+///
+/// # Errors
+///
+/// Returns an error if the theme file cannot be read or parsed.
 pub fn resolve_theme_from_dir(
     name: Option<&str>,
     themes_dir: &Path,
