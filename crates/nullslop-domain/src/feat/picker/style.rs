@@ -1,6 +1,7 @@
 //! Shared style helpers for picker entry rendering.
 
 use crate::feat::theme::Theme;
+use crate::feat::theme::contrast;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
@@ -30,12 +31,11 @@ pub fn selected_style(is_selected: bool, theme: &Theme) -> Style {
 }
 
 /// Returns a dimmed style for description text. When selected, uses muted text
-/// on the selected background.
+/// on the selected background with contrast adjustment to ensure readability.
 pub fn dim_style(is_selected: bool, theme: &Theme) -> Style {
     if is_selected {
-        Style::default()
-            .fg(theme.muted_text)
-            .bg(theme.picker_selected_bg)
+        let fg = contrast::ensure_contrast(theme.muted_text, theme.picker_selected_bg);
+        Style::default().fg(fg).bg(theme.picker_selected_bg)
     } else {
         Style::default().fg(theme.muted_text)
     }

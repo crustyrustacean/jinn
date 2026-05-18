@@ -46,7 +46,10 @@ fn render_row_selected_has_background() {
     let entry = make_entry("passthrough", "Passthrough", "desc", false);
     let line = entry.render_row(true);
     let name_span = &line.spans[1];
-    assert_eq!(name_span.style.bg, Some(ratatui::style::Color::DarkGray));
+    assert_eq!(
+        name_span.style.bg,
+        Some(ratatui::style::Color::Rgb(50, 52, 58))
+    );
 }
 
 // --- load_strategy_entries tests ---
