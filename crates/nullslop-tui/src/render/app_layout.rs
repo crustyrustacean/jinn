@@ -12,11 +12,9 @@ pub const MIN_HEIGHT: u16 = 14;
 
 /// Top-level application layout areas.
 pub struct AppLayout {
-    /// The tab bar area (1 row at top, full width).
-    pub tabs: Rect,
     /// The left column: chat + indicator + queue + input + status bar.
     pub main: Rect,
-    /// The right column: sidebar (full height below tabs).
+    /// The right column: sidebar (full height).
     pub sidebar: Rect,
     /// The vertical border between main and sidebar (1 column wide).
     pub border: Rect,
@@ -40,7 +38,6 @@ impl AppLayout {
     ///
     /// Layout structure:
     /// ```text
-    /// tabs (full width)
     /// main column | border | sidebar (full height)
     ///   content   |        |
     ///   input     |        |
@@ -53,36 +50,33 @@ impl AppLayout {
     /// `max_input_height` caps the input box height (e.g., 50% of terminal).
     #[must_use]
     pub fn new(area: Rect, input_lines: u16, max_input_height: u16, sidebar_width: u16) -> Self {
-        let [tabs, rest] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
-
         // Horizontal split: main column | border(1) | sidebar
         let sidebar_width = sidebar_width
-            .min(rest.width.saturating_sub(MIN_WIDTH))
+            .min(area.width.saturating_sub(MIN_WIDTH))
             .max(MIN_SIDEBAR_WIDTH);
         let border_width: u16 = 1;
-        let main_width = rest
+        let main_width = area
             .width
             .saturating_sub(sidebar_width)
             .saturating_sub(border_width);
 
         let main = Rect {
-            x: rest.x,
-            y: rest.y,
+            x: area.x,
+            y: area.y,
             width: main_width,
-            height: rest.height,
+            height: area.height,
         };
         let border = Rect {
-            x: rest.x + main_width,
-            y: rest.y,
+            x: area.x + main_width,
+            y: area.y,
             width: border_width,
-            height: rest.height,
+            height: area.height,
         };
         let sidebar = Rect {
-            x: rest.x + main_width + border_width,
-            y: rest.y,
+            x: area.x + main_width + border_width,
+            y: area.y,
             width: sidebar_width,
-            height: rest.height,
+            height: area.height,
         };
 
         let input_height = (1 + input_lines.max(1)).min(max_input_height);
@@ -94,7 +88,6 @@ impl AppLayout {
         .areas(main);
 
         Self {
-            tabs,
             main,
             sidebar,
             border,

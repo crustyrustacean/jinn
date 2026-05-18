@@ -1996,7 +1996,6 @@ dependencies = [
  "nullslop-testutil",
  "parking_lot",
  "ratatui",
- "ratatui-tabs",
  "ratatui-which-key",
  "rstest",
  "serde",
@@ -2678,15 +2677,6 @@ name = "ratatui-spatial-splits"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ffd4000350aea2f266b8c05ed1695a077d9f32b64ae193b9a8dd779ea188207"
-dependencies = [
- "ratatui",
-]
-
-[[package]]
-name = "ratatui-tabs"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0f59efcf6530f6db98a31b0bb3cf5e8c03a562f0b841ebd22e70feb80ee65c5"
 dependencies = [
  "ratatui",
 ]

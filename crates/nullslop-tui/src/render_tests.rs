@@ -73,9 +73,10 @@ fn picker_popup_rect_is_selectable() {
 
     // Then the picker popup rect is registered as selectable.
     let popup_rect = compute_popup_rect(Rect::new(0, 0, 80, 24));
-    // Query position (popup.x + 1, 0) — inside popup, but above the content area (y=1)
-    // so the smallest matching rect is the picker popup, not the content.
-    let found = app.selectable_rects.find_for_position(popup_rect.x + 1, 0);
+    // Query position inside popup but outside the content area (popup extends
+    // further right than the content column which ends at the border).
+    let outside_content_x = popup_rect.x + popup_rect.width.saturating_sub(5);
+    let found = app.selectable_rects.find_for_position(outside_content_x, 0);
     assert!(found.is_some(), "picker popup rect should be selectable");
     assert_eq!(found.unwrap(), popup_rect);
 }
