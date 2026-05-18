@@ -114,3 +114,186 @@ fn serializer_skips_system_entries() {
     assert!(result.contains("[User]: hello"));
     assert!(result.contains("[Assistant]: hi"));
 }
+
+#[test]
+fn vec_order_after_compaction_insertion() {
+    // Given a session with entries that will be compacted.
+    let mut session = crate::feat::session::chat_session::ChatSessionState::new();
+    session.push_entry(ChatEntry::system("system")); // idx 0 — exempt
+    session.push_entry(ChatEntry::user("old1")); // idx 1 — compacted
+    session.push_entry(ChatEntry::assistant("old2")); // idx 2 — compacted
+    session.push_entry(ChatEntry::user("recent1")); // idx 3 — kept (recent)
+    session.push_entry(ChatEntry::assistant("recent2")); // idx 4 — kept (recent)
+
+    // When marking entries 1,2 as ignored and inserting compaction at boundary.
+    session.mark_entries_ignored(&[1, 2]);
+    let compaction = ChatEntry {
+        id: crate::protocol::ChatEntryId::new(),
+        timestamp: jiff::Timestamp::now(),
+        kind: ChatEntryKind::Compaction {
+            summary: "summarized".to_owned(),
+            tokens_before: 50,
+            entries_compacted: 2,
+            model_used: "test".to_owned(),
+        },
+        pin_position: None,
+        ignored: false,
+    };
+    session.insert_entry_at(3, compaction);
+
+    // Then the vec is in correct logical order.
+    assert_eq!(session.history().len(), 6);
+    assert_eq!(session.history()[0].text(), "system"); // system (exempt)
+    assert!(session.history()[1].ignored); // old1 (compacted)
+    assert!(session.history()[2].ignored); // old2 (compacted)
+    assert!(session.history()[3].is_compaction()); // compaction entry
+    assert!(!session.history()[4].ignored); // recent1 (kept)
+    assert!(!session.history()[5].ignored); // recent2 (kept)
+}
+
+#[test]
+fn boundary_detection_finds_last_compaction() {
+    // Given a session that already has a compaction entry.
+    let mut session = crate::feat::session::chat_session::ChatSessionState::new();
+    session.push_entry(ChatEntry::system("system"));
+    session.push_entry(ChatEntry::user("old1"));
+    // First compaction.
+    session.push_entry(ChatEntry {
+        id: crate::protocol::ChatEntryId::new(),
+        timestamp: jiff::Timestamp::now(),
+        kind: ChatEntryKind::Compaction {
+            summary: "first compaction".to_owned(),
+            tokens_before: 100,
+            entries_compacted: 1,
+            model_used: "test".to_owned(),
+        },
+        pin_position: None,
+        ignored: false,
+    });
+    // Entries after first compaction.
+    session.push_entry(ChatEntry::user("new1"));
+    session.push_entry(ChatEntry::assistant("new2"));
+
+    // When looking for the start boundary (last compaction entry).
+    let history = session.history();
+    let start_index = history
+        .iter()
+        .rposition(|e| e.is_compaction())
+        .map(|i| i + 1)
+        .unwrap_or(0);
+
+    // Then the boundary starts after the first compaction.
+    assert_eq!(start_index, 3); // indices 3,4 are the new entries
+    assert_eq!(history[start_index].text(), "new1");
+}
+
+#[test]
+fn serializer_includes_tool_calls_and_results() {
+    let entries = vec![
+        ChatEntry::user("run it"),
+        ChatEntry {
+            id: crate::protocol::ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::ToolCall {
+                id: "call1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: "echo hello".to_owned(),
+            },
+            pin_position: None,
+            ignored: false,
+        },
+        ChatEntry {
+            id: crate::protocol::ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::ToolResult {
+                id: "call1".to_owned(),
+                name: "bash".to_owned(),
+                content: "hello".to_owned(),
+                status: ToolResultStatus::Success,
+                full_content: None,
+                truncation: None,
+            },
+            pin_position: None,
+            ignored: false,
+        },
+    ];
+    let result = serialize_entries_for_compaction(&entries);
+    assert!(result.contains("[User]: run it"));
+    assert!(result.contains("[Tool call]: bash"));
+    assert!(result.contains("[Tool result] bash: hello"));
+}
+
+#[test]
+fn auto_compaction_threshold_estimation() {
+    use crate::feat::context::strategy::token_estimator::{
+        CharRatioEstimator, TokenEstimator, estimate_entry_tokens,
+    };
+    use crate::feat::preferences_actor::user_preferences::CompactionConfig;
+
+    // Given a session with entries and a threshold of 0.7 with budget 1000.
+    let config = CompactionConfig::default();
+    let token_budget: usize = 1000;
+    let threshold = 0.7;
+
+    let session = {
+        let mut session = crate::feat::session::chat_session::ChatSessionState::new();
+        // Add entries that together exceed 700 estimated tokens.
+        for i in 0..50 {
+            session.push_entry(ChatEntry::user(format!(
+                "message {i} with enough text to accumulate tokens"
+            )));
+            session.push_entry(ChatEntry::assistant(format!(
+                "response {i} with enough text to accumulate tokens"
+            )));
+        }
+        session
+    };
+
+    let estimator = CharRatioEstimator;
+    let total_tokens: usize = session
+        .history()
+        .iter()
+        .map(|e| estimate_entry_tokens(&estimator, e))
+        .sum();
+
+    let threshold_tokens = (threshold * token_budget as f64) as usize;
+
+    // Then the total exceeds the threshold.
+    assert!(
+        total_tokens > threshold_tokens,
+        "total tokens ({total_tokens}) should exceed threshold ({threshold_tokens})"
+    );
+}
+
+#[test]
+fn auto_compaction_no_trigger_below_threshold() {
+    use crate::feat::context::strategy::token_estimator::{
+        CharRatioEstimator, TokenEstimator, estimate_entry_tokens,
+    };
+
+    // Given a session with few entries (well below threshold).
+    let token_budget: usize = 100_000;
+    let threshold = 0.7;
+
+    let session = {
+        let mut session = crate::feat::session::chat_session::ChatSessionState::new();
+        session.push_entry(ChatEntry::user("hi"));
+        session.push_entry(ChatEntry::assistant("hello"));
+        session
+    };
+
+    let estimator = CharRatioEstimator;
+    let total_tokens: usize = session
+        .history()
+        .iter()
+        .map(|e| estimate_entry_tokens(&estimator, e))
+        .sum();
+
+    let threshold_tokens = (threshold * token_budget as f64) as usize;
+
+    // Then the total is below the threshold.
+    assert!(
+        total_tokens <= threshold_tokens,
+        "total tokens ({total_tokens}) should be below threshold ({threshold_tokens})"
+    );
+}
