@@ -16,7 +16,6 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use error_stack::{Report, ResultExt as _};
-use nullslop_domain::ActiveTab;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use wherror::Error;
 
@@ -130,15 +129,12 @@ fn run_main_loop(
         // Check should_quit from shared state (async forwarding task handles messages).
         let state_read = app.core.state.read();
         let should_quit = state_read.frontend.should_quit;
-        let scope = scope_for_focus(
-            state_read.frontend.scope_stack.current(),
-            state_read.frontend.active_tab,
-        );
+        let scope = scope_for_focus(state_read.frontend.scope_stack.current());
         drop(state_read);
         app.which_key.set_scope(scope);
 
         // Sync tab manager active tab from AppState.active_tab.
-        sync_tab_manager(app);
+        // Sync is no longer needed — tabs have been removed.
 
         // Check for pending suspend after event batch processing.
         if let Some(action) = app.suspend.take_action() {
@@ -219,19 +215,4 @@ fn handle_suspend_action(
     }
 
     Ok(())
-}
-
-/// Sync the tab manager's active tab index to match `AppState.active_tab`.
-fn sync_tab_manager(app: &mut TuiApp) {
-    let active_tab = app.core.state.read().frontend.active_tab;
-    let target_idx = match active_tab {
-        ActiveTab::Chat => 0,
-        ActiveTab::Dashboard => 1,
-    };
-    if let Some(current) = app.tab_manager.active_id()
-        && app.tab_manager.index_of(current) != Some(target_idx)
-        && let Some(tab) = app.tab_manager.tabs().get(target_idx)
-    {
-        app.tab_manager.switch_to(tab.id);
-    }
 }
