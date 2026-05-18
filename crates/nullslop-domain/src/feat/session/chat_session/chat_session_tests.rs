@@ -1271,9 +1271,7 @@ fn finish_streaming_with_preserve_creates_assistant_entry() {
     // Then an empty assistant entry was created.
     assert!(!session.is_streaming());
     assert_eq!(session.history().len(), 1);
-    assert!(
-        matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t.is_empty())
-    );
+    assert!(matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t.is_empty()));
 }
 
 #[rstest::rstest]
@@ -1289,9 +1287,7 @@ fn finish_streaming_without_preserve_keeps_existing_assistant() {
     // Then the existing assistant entry is still there (ensure_assistant_entry was a no-op since entry already existed).
     assert!(!session.is_streaming());
     assert_eq!(session.history().len(), 1);
-    assert!(
-        matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t == "Hello")
-    );
+    assert!(matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t == "Hello"));
 }
 
 // --- Smart auto-scroll (was_at_last) tests ---

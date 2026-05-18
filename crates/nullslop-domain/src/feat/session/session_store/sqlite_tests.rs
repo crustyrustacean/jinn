@@ -430,6 +430,7 @@ async fn token_ledger_round_trips() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 100,
         tokens_received: 50,
+        cost: None,
     });
 
     // When saving and loading.

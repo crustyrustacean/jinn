@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use crate::StreamEvent;
-use crate::stream_event::StopReason;
+use crate::stream_event::{StopReason, StreamUsage};
 use crate::tool_types::ToolCall;
 
 /// State tracked per content block index for tool use.
@@ -28,6 +28,10 @@ struct ToolUseState {
 pub struct AnthropicStreamParser {
     /// Per-index tool use state.
     tool_states: HashMap<usize, ToolUseState>,
+    /// Accumulated input tokens from `message_start` event.
+    input_tokens: Option<u64>,
+    /// Accumulated output tokens from `message_delta` event.
+    output_tokens: Option<u64>,
 }
 
 impl AnthropicStreamParser {
@@ -48,6 +52,15 @@ impl AnthropicStreamParser {
             .unwrap_or(0) as usize;
 
         match response_type {
+            "message_start" => {
+                // Extract input token count from the initial message.
+                if let Some(usage) = response.get("message").and_then(|m| m.get("usage")) {
+                    self.input_tokens = usage
+                        .get("input_tokens")
+                        .and_then(serde_json::Value::as_u64);
+                }
+                None
+            }
             "content_block_start" => {
                 let content_block = response.get("content_block")?;
                 let block_type = content_block
@@ -139,12 +152,31 @@ impl AnthropicStreamParser {
                     .and_then(|s| s.as_str())
                     .unwrap_or("end_turn");
 
+                // Extract output token count.
+                if let Some(usage) = response.get("usage") {
+                    self.output_tokens = usage
+                        .get("output_tokens")
+                        .and_then(serde_json::Value::as_u64);
+                }
+
                 let stop = match stop_reason {
                     "tool_use" => StopReason::ToolUse,
                     "end_turn" => StopReason::EndTurn,
                     other => StopReason::Other(other.to_owned()),
                 };
-                Some(StreamEvent::Done { stop_reason: stop })
+                let usage = if self.input_tokens.is_some() || self.output_tokens.is_some() {
+                    Some(StreamUsage {
+                        prompt_tokens: self.input_tokens,
+                        completion_tokens: self.output_tokens,
+                        cost: None,
+                    })
+                } else {
+                    None
+                };
+                Some(StreamEvent::Done {
+                    stop_reason: stop,
+                    usage,
+                })
             }
             _ => None,
         }
@@ -245,24 +277,26 @@ mod tests {
     fn message_delta_stop_reason_end_turn() {
         let json = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#;
         let event = parse_single(json);
-        assert_eq!(
+        assert!(matches!(
             event,
             Some(StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
+                ..
             })
-        );
+        ));
     }
 
     #[rstest::rstest]
     fn message_delta_stop_reason_tool_use() {
         let json = r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"}}"#;
         let event = parse_single(json);
-        assert_eq!(
+        assert!(matches!(
             event,
             Some(StreamEvent::Done {
                 stop_reason: StopReason::ToolUse,
+                ..
             })
-        );
+        ));
     }
 
     #[rstest::rstest]

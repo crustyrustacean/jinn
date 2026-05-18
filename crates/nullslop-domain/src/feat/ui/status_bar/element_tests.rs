@@ -306,6 +306,7 @@ fn render_shows_token_counts_with_values() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1500,
         tokens_received: 750,
+        cost: None,
     });
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -333,6 +334,7 @@ fn render_shows_context_size_when_cached() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
+        cost: None,
     });
     state.active_session_mut().set_context_size(5000);
     let (mut terminal, area) = setup_term(80, 2);
@@ -568,6 +570,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
+        cost: None,
     });
     state.active_session_mut().set_context_size(5000);
 
@@ -613,6 +616,7 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
+        cost: None,
     });
     state.active_session_mut().set_context_size(5000);
 
@@ -660,6 +664,7 @@ fn render_falls_back_when_no_model_cache() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
+        cost: None,
     });
     state.active_session_mut().set_context_size(5000);
     // No model cache.

@@ -95,6 +95,10 @@ impl UiElement<AppState> for StatusBarElement {
             format_tokens(agg.total_sent()),
             format_tokens(agg.total_received()),
         );
+        let total_cost = agg.total_cost();
+        if total_cost > 0.0 {
+            token_info = format!("{} ${total_cost:.4}", token_info);
+        }
         if let Some(ctx_size) = state.active_session().context_size() {
             let ctx_used = u64::from(ctx_size);
             let ctx_limit = state.provider.model_cache.as_ref().and_then(|cache| {

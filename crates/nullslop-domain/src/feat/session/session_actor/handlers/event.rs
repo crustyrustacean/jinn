@@ -62,6 +62,7 @@ impl SessionPersistenceActor {
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: input_tokens as u32,
                 tokens_received: 0,
+                cost: None,
             });
             session.set_context_size(input_tokens as u32);
 
@@ -170,7 +171,7 @@ impl SessionPersistenceActor {
                 // Finalize the last record if one exists (i.e., PromptAssembled fired first).
                 // If no record exists (e.g., session restored mid-stream), skip silently.
                 if !session.token_ledger().is_empty() {
-                    session.finalize_last_token_record(output_tokens);
+                    session.finalize_last_token_record(output_tokens, event.cost);
                 }
             }
             let preserve_assistant = event.reason == StreamCompletedReason::Finished

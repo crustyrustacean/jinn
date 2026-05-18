@@ -1,0 +1,1 @@
+ALTER TABLE token_ledger ADD COLUMN cost DOUBLE;

@@ -68,6 +68,7 @@ pub trait LlmService: Send + Sync {
         let done = stream::once(async {
             Ok(StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
+                usage: None,
             })
         });
         Ok(Box::pin(events.chain(done)))
