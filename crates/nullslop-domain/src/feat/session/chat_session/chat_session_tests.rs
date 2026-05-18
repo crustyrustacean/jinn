@@ -1653,7 +1653,7 @@ fn finalize_tool_result_completes_pending_entry() {
     );
 
     // When finalizing with success.
-    session.finalize_tool_result("call_1", "bash", "final output", true);
+    session.finalize_tool_result("call_1", "bash", "final output", true, None, None);
 
     // Then the entry is updated with final content and Success status.
     assert_eq!(session.history().len(), 1);
@@ -1682,7 +1682,7 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
     let mut session = ChatSessionState::new();
 
     // When finalizing for a tool that never streamed.
-    session.finalize_tool_result("call_1", "bash", "output", true);
+    session.finalize_tool_result("call_1", "bash", "output", true, None, None);
 
     // Then a new entry is pushed.
     assert_eq!(session.history().len(), 1);

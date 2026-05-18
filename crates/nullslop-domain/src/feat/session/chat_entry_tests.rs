@@ -642,3 +642,26 @@ fn completed_tool_result_fingerprint_includes_content() {
     // Then their fingerprints differ (content included for completed).
     assert_ne!(entry1.content_fingerprint(), entry2.content_fingerprint());
 }
+
+#[rstest::rstest]
+fn tool_result_fingerprint_differs_with_truncation() {
+    // Given two completed ToolResult entries with same content but different truncation.
+    let entry1 = ChatEntry::tool_result("id", "bash", "line1", ToolResultStatus::Success);
+    let entry2 = ChatEntry::tool_result_truncated(
+        "id",
+        "bash",
+        "line1".to_owned(),
+        "line1\nline2".to_owned(),
+        ToolResultStatus::Success,
+        nullslop_provider::tool_types::TruncationMeta {
+            truncated_by: nullslop_provider::tool_types::TruncatedBy::Lines,
+            total_lines: 2,
+            total_bytes: 19,
+            output_lines: 1,
+            output_bytes: 9,
+        },
+    );
+
+    // Then their fingerprints differ (truncation presence affects hash).
+    assert_ne!(entry1.content_fingerprint(), entry2.content_fingerprint());
+}

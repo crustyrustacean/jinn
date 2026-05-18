@@ -637,6 +637,7 @@ impl ChatEntry {
                 name,
                 content,
                 status,
+                truncation,
                 ..
             } => {
                 name.hash(&mut hasher);
@@ -647,6 +648,9 @@ impl ChatEntry {
                 if *status != ToolResultStatus::Pending {
                     content.hash(&mut hasher);
                 }
+                // Include truncation presence so the line count cache
+                // invalidates when the indicator line is added or removed.
+                truncation.is_some().hash(&mut hasher);
             }
             ChatEntryKind::Skill { name, content, .. } => {
                 name.hash(&mut hasher);

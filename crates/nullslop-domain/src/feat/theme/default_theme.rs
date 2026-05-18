@@ -34,6 +34,7 @@ mod tests {
         let fields: Vec<(&str, ratatui::style::Color)> = vec![
             ("focus_accent", theme.focus_accent),
             ("border_unfocused", theme.border_unfocused),
+            ("popup_title", theme.popup_title),
             ("primary_text", theme.primary_text),
             ("muted_text", theme.muted_text),
             ("error_text", theme.error_text),

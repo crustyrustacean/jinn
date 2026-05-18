@@ -712,6 +712,10 @@ impl ChatSessionState {
     /// If a pending entry exists, updates it with the final content and
     /// success/failure status. If no pending entry exists (non-streaming tool),
     /// pushes a new completed entry.
+    ///
+    /// Accepts optional truncation metadata and full content from the tool
+    /// execution result. When truncation is present, stores both the truncated
+    /// content and the original untruncated output.
     #[expect(
         clippy::indexing_slicing,
         reason = "index comes from begin_tool_result which always returns a valid index"
@@ -722,6 +726,8 @@ impl ChatSessionState {
         name: &str,
         content: &str,
         success: bool,
+        full_content: Option<String>,
+        truncation: Option<nullslop_provider::tool_types::TruncationMeta>,
     ) {
         let status = if success {
             crate::feat::session::tool_result_status::ToolResultStatus::Success
@@ -741,13 +747,28 @@ impl ChatSessionState {
                 ChatEntryKind::ToolResult {
                     content: entry_content,
                     status: entry_status,
+                    full_content: entry_full_content,
+                    truncation: entry_truncation,
                     ..
                 } => {
                     *entry_content = content.to_owned();
                     *entry_status = status;
+                    *entry_full_content = full_content;
+                    *entry_truncation = truncation;
                 }
                 _ => {}
             }
+        } else if let Some(meta) = truncation {
+            // Non-streaming tool with truncation — push a truncated entry.
+            let full = full_content.unwrap_or_default();
+            self.push_entry(ChatEntry::tool_result_truncated(
+                tool_call_id,
+                name,
+                content.to_owned(),
+                full,
+                status,
+                meta,
+            ));
         } else {
             // Non-streaming tool — push a new completed entry.
             self.push_entry(ChatEntry::tool_result(tool_call_id, name, content, status));
