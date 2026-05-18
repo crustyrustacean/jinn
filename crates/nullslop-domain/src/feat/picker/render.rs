@@ -4,6 +4,7 @@ use crate::common::app_state::AppState;
 use nullslop_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 use ratatui::text::Line;
 
 use super::strategy_entries;
@@ -26,6 +27,7 @@ pub fn render_context_strategy_picker(frame: &mut Frame<'_>, area: Rect, state: 
     let footer = strategy_entries::format_strategy_footer(active_name, &state.frontend.theme);
     let widget = SelectionWidget::new(&state.frontend.context_strategy_picker)
         .title(Line::from(" Context Assembly Strategy "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(footer);
     widget.render(frame, area);
 }
@@ -48,6 +50,7 @@ pub fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
     };
     let widget = SelectionWidget::new(&state.frontend.keymap_picker)
         .title(Line::from(" Keymaps "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(footer);
     widget.render(frame, area);
 }
@@ -76,6 +79,7 @@ pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
     };
     let widget = SelectionWidget::new(&state.frontend.persona_picker)
         .title(Line::from(" Personas "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(footer);
     widget.render(frame, area);
 }
@@ -87,6 +91,7 @@ pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
 pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let widget = SelectionWidget::new(&state.frontend.theme_picker)
         .title(Line::from(" Themes "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(Line::from(" ESC to cancel, Enter to apply "));
     widget.render(frame, area);
 }
