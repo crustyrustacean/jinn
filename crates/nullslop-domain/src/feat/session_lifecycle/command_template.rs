@@ -100,6 +100,11 @@ impl CommandTemplate {
     /// Parameters are deduplicated: if the same token appears multiple times,
     /// only the first occurrence is recorded. The order of first appearance
     /// defines the parameter order for arg assignment.
+    /// # Panics
+    ///
+    /// Panics if a `$N` token (where N is a single ASCII digit 1-9) cannot be
+    /// parsed as a `usize`. This should never happen because we only parse
+    /// single ASCII digits.
     #[must_use]
     pub fn parse(command: &str) -> Self {
         let mut params: Vec<Param> = Vec::new();

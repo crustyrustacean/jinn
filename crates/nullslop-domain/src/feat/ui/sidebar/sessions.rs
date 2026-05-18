@@ -512,6 +512,10 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
 /// then delegates to the lifecycle `handle_session_close`. If the session has
 /// a teardown command, it runs async. Otherwise, the session is removed
 /// immediately and the cursor is adjusted.
+///
+/// # Panics
+///
+/// Panics if `sessions_section.selected_index` is `None`.
 pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::protocol::IntentResult {
     // Validate.
     if validate_session_close(state).is_err() {
@@ -521,7 +525,6 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::proto
     let index = state.frontend.sessions_section.selected_index.unwrap();
     let sessions = sorted_open_sessions(state);
     let closing_id = sessions[index].id.clone();
-    let was_active = sessions[index].is_active;
 
     // Delegate to lifecycle handler.
     let result =
@@ -533,10 +536,6 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::proto
         if state.session.sessions.is_empty() {
             // Handled by remove_session_and_switch — cursor stays at 0.
             state.frontend.sessions_section.selected_index = Some(0);
-        } else if was_active {
-            let remaining = sorted_open_sessions(state);
-            let clamped = index.min(remaining.len() - 1);
-            state.frontend.sessions_section.selected_index = Some(clamped);
         } else {
             let remaining = sorted_open_sessions(state);
             let clamped = index.min(remaining.len() - 1);

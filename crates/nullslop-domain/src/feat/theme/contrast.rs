@@ -22,9 +22,7 @@ const MIN_DISTANCE_SQ: u32 = 1500;
 fn to_rgb(color: Color) -> (u8, u8, u8) {
     match color {
         Color::Rgb(r, g, b) => (r, g, b),
-        Color::Reset => (0, 0, 0),
-        // 16 standard ANSI colors mapped to their canonical sRGB values.
-        Color::Black => (0, 0, 0),
+        Color::Reset | Color::Black => (0, 0, 0),
         Color::Red => (205, 0, 0),
         Color::Green => (0, 205, 0),
         Color::Yellow => (205, 205, 0),
@@ -63,7 +61,8 @@ fn indexed_to_rgb(i: u8) -> (u8, u8, u8) {
         4 => (0, 0, 238),
         5 => (205, 0, 205),
         6 => (0, 205, 205),
-        7 => (229, 229, 229),
+        7 | 15 => (229, 229, 229),
+        // (indices 16–231).
         8 => (169, 169, 169),
         9 => (255, 0, 0),
         10 => (0, 255, 0),
@@ -71,7 +70,6 @@ fn indexed_to_rgb(i: u8) -> (u8, u8, u8) {
         12 => (92, 92, 255),
         13 => (255, 0, 255),
         14 => (0, 255, 255),
-        15 => (229, 229, 229),
         // 6×6×6 color cube (indices 16–231).
         16..=231 => {
             let i = u32::from(i) - 16;
@@ -148,12 +146,10 @@ fn lerp_toward_contrast(fg: (u8, u8, u8), bg: (u8, u8, u8), target_dist_sq: u32)
 
 /// Moves `current` one step closer to `target` (±1).
 fn step_toward(current: u8, target: u8) -> u8 {
-    if current < target {
-        current.saturating_add(1)
-    } else if current > target {
-        current.saturating_sub(1)
-    } else {
-        current
+    match current.cmp(&target) {
+        std::cmp::Ordering::Less => current.saturating_add(1),
+        std::cmp::Ordering::Greater => current.saturating_sub(1),
+        std::cmp::Ordering::Equal => current,
     }
 }
 
@@ -249,8 +245,7 @@ mod tests {
         // Then the result is darker than the original (lerped toward black).
         assert!(
             result_rgb.0 < 230,
-            "expected darker result, got {:?}",
-            result_rgb
+            "expected darker result, got {result_rgb:?}"
         );
     }
 

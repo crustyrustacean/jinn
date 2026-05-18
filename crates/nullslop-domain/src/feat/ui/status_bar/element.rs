@@ -26,14 +26,14 @@ fn shorten_path(path: &std::path::Path) -> String {
     } else {
         path.to_path_buf()
     };
-    if let Some(home) = dirs::home_dir() {
-        if let Ok(relative) = absolute.strip_prefix(&home) {
-            let display = relative.display().to_string();
-            if display.is_empty() {
-                return "~".to_owned();
-            }
-            return format!("~/{}", display);
+    if let Some(home) = dirs::home_dir()
+        && let Ok(relative) = absolute.strip_prefix(&home)
+    {
+        let display = relative.display().to_string();
+        if display.is_empty() {
+            return "~".to_owned();
         }
+        return format!("~/{display}");
     }
     absolute.display().to_string()
 }
@@ -66,6 +66,7 @@ impl UiElement<AppState> for StatusBarElement {
         "status-bar".to_owned()
     }
 
+    #[allow(clippy::cast_precision_loss)]
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         // Split area into cwd line + info line.
         let [cwd_area, info_area] =
