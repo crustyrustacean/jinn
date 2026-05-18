@@ -59,8 +59,11 @@ impl SidebarSection for PersonaSection {
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         let sidebar_focused = state.frontend.scope_stack.is_sidebar();
-        let section_focused =
-            sidebar_focused && state.frontend.sidebar.focused_section == SidebarSectionId::Persona;
+        let section_focused = sidebar_focused
+            && matches!(
+                state.frontend.scope_stack.sidebar_section(),
+                Some(SidebarSectionId::Persona)
+            );
         let theme = &state.frontend.theme;
 
         let indicator_color = if sidebar_focused {

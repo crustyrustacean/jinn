@@ -258,16 +258,7 @@ impl IntentHandler {
             Intent::ToggleKeymapScopeFilter => {
                 feat::picker::intent::handle_toggle_keymap_scope_filter(state)
             }
-            Intent::SessionNew => {
-                if state.frontend.scope_stack.is_sidebar()
-                    && state.frontend.sidebar.focused_section
-                        != crate::feat::ui::sidebar::section_trait::SidebarSectionId::Sessions
-                {
-                    IntentResult::empty()
-                } else {
-                    feat::session::intent::handle_session_new(state)
-                }
-            }
+            Intent::SessionNew => feat::session::intent::handle_session_new(state),
             Intent::RefreshModels => feat::session::intent::handle_refresh_models(state),
             Intent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)

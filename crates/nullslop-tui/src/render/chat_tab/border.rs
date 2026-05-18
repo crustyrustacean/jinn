@@ -18,7 +18,9 @@ pub(super) fn render_border(
 ) {
     let border_color = match focus_scope {
         FocusScope::SidebarResize => sidebar_resize_accent,
-        FocusScope::Sidebar => focus_accent,
+        FocusScope::SidebarPersona | FocusScope::SidebarPins | FocusScope::SidebarSessions => {
+            focus_accent
+        }
         _ => border_unfocused,
     };
     let border_style = Style::default().fg(border_color);
@@ -51,7 +53,7 @@ mod tests {
             .write()
             .frontend
             .scope_stack
-            .push(nullslop_domain::FocusScope::Sidebar);
+            .push(nullslop_domain::FocusScope::SidebarPersona);
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.

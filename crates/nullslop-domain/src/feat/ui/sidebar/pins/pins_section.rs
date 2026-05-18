@@ -105,8 +105,11 @@ impl SidebarSection for PinsSection {
             )])]
         } else {
             let sidebar_focused = state.frontend.scope_stack.is_sidebar();
-            let section_focused =
-                sidebar_focused && state.frontend.sidebar.focused_section == SidebarSectionId::Pins;
+            let section_focused = sidebar_focused
+                && matches!(
+                    state.frontend.scope_stack.sidebar_section(),
+                    Some(SidebarSectionId::Pins)
+                );
             build_entry_list(
                 &pinned,
                 selected_index,
@@ -147,7 +150,10 @@ impl SidebarSection for PinsSection {
 /// No-op if the pins section is focused.
 pub fn handle_sidebar_persona_edit(state: &mut AppState) -> IntentResult {
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
-    if state.frontend.sidebar.focused_section != SidebarSectionId::Persona {
+    if !matches!(
+        state.frontend.scope_stack.sidebar_section(),
+        Some(SidebarSectionId::Persona)
+    ) {
         return IntentResult::empty();
     }
     crate::feat::picker::intent::handle_open_picker(state, PickerKind::Persona)

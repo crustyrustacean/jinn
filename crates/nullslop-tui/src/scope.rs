@@ -1,6 +1,8 @@
 //! Keymap scopes for context-sensitive key handling.
 //!
 //! The scope determines which set of keybindings is active.
+//! Each sidebar section has its own scope so section-specific keys
+//! (like `r` for rename vs pin-relative) are unambiguous.
 
 /// The current keymap context.
 ///
@@ -12,8 +14,12 @@ pub enum Scope {
     Normal,
     /// Dashboard mode — actor list navigation.
     Dashboard,
-    /// Sidebar mode — sidebar section navigation and management.
-    Sidebar,
+    /// Sidebar — Persona section.
+    SidebarPersona,
+    /// Sidebar — Pins section.
+    SidebarPins,
+    /// Sidebar — Sessions section.
+    SidebarSessions,
     /// Picker mode — filtering and selecting a provider.
     Picker,
     /// Input mode — typing into the input buffer.
@@ -31,7 +37,9 @@ impl std::fmt::Display for Scope {
         match self {
             Self::Normal => write!(f, "Normal"),
             Self::Dashboard => write!(f, "Dashboard"),
-            Self::Sidebar => write!(f, "Sidebar"),
+            Self::SidebarPersona => write!(f, "SidebarPersona"),
+            Self::SidebarPins => write!(f, "SidebarPins"),
+            Self::SidebarSessions => write!(f, "SidebarSessions"),
             Self::Picker => write!(f, "Picker"),
             Self::Input => write!(f, "Input"),
             Self::ArgInput => write!(f, "ArgInput"),
@@ -48,7 +56,9 @@ impl std::str::FromStr for Scope {
         match s {
             "Normal" => Ok(Self::Normal),
             "Dashboard" => Ok(Self::Dashboard),
-            "Sidebar" => Ok(Self::Sidebar),
+            "SidebarPersona" => Ok(Self::SidebarPersona),
+            "SidebarPins" => Ok(Self::SidebarPins),
+            "SidebarSessions" => Ok(Self::SidebarSessions),
             "Picker" => Ok(Self::Picker),
             "Input" => Ok(Self::Input),
             "ArgInput" => Ok(Self::ArgInput),

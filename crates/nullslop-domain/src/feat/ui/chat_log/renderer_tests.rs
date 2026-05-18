@@ -104,7 +104,7 @@ fn selected_entry_gutter_is_dark_gray_when_unfocused() {
         s.active_session_mut().push_entry(ChatEntry::user("hello"));
         s.active_session_mut().push_entry(ChatEntry::user("world"));
         s.active_session_mut().select_prev_entry(); // index 0
-        s.frontend.scope_stack.push(FocusScope::Sidebar);
+        s.frontend.scope_stack.push(FocusScope::SidebarPersona);
         s
     };
 
@@ -469,7 +469,7 @@ fn render_pinned_selected_unfocused_entry_gutter_has_border_unfocused_bg() {
         let mut s = AppState::default();
         s.active_session_mut()
             .push_entry(ChatEntry::user("hello").with_pin(PinPosition::Top));
-        s.frontend.scope_stack.push(FocusScope::Sidebar);
+        s.frontend.scope_stack.push(FocusScope::SidebarPersona);
         s
     };
 
