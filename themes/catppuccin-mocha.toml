@@ -4,6 +4,7 @@
 # Borders & focus
 focus_accent = "#cba6f7"       # Mauve
 border_unfocused = "#45475a"   # Surface1
+popup_title = "#a6e3a1"        # Green (matches picker_active_marker)
 
 # Text
 primary_text = "#cdd6f4"       # Text
