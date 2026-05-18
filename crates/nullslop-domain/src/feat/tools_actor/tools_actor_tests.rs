@@ -63,7 +63,7 @@ fn find_execution_completed(events: &[Event]) -> Vec<&ToolExecutionCompleted> {
 #[tokio::test]
 async fn activate_registers_get_time_tool() {
     // Given a fresh actor context with state.
-    let (sink, mut ctx) = default_test_ctx();
+    let (_sink, mut ctx) = default_test_ctx();
 
     // When activating the actor.
     let actor = ToolOrchestratorActor::activate(&mut ctx);
@@ -76,7 +76,7 @@ async fn activate_registers_get_time_tool() {
 #[tokio::test]
 async fn activate_registers_read_tool() {
     // Given a fresh actor context with state.
-    let (sink, mut ctx) = default_test_ctx();
+    let (_sink, mut ctx) = default_test_ctx();
 
     // When activating the actor.
     let actor = ToolOrchestratorActor::activate(&mut ctx);
@@ -89,7 +89,7 @@ async fn activate_registers_read_tool() {
 #[tokio::test]
 async fn activate_registers_write_tool() {
     // Given a fresh actor context with state.
-    let (sink, mut ctx) = default_test_ctx();
+    let (_sink, mut ctx) = default_test_ctx();
 
     // When activating the actor.
     let actor = ToolOrchestratorActor::activate(&mut ctx);

@@ -425,15 +425,15 @@ impl LlmActor {
     /// Cancels the active stream for a session and emits a completion event.
     fn cancel_stream(&mut self, session_id: &SessionId, ctx: &ActorContext) {
         // If there's an active session, cancel any pending tool batches.
-        if self.sessions.contains_key(session_id) {
-            if let Err(e) = ctx.send_command(Command::CancelToolBatch(CancelToolBatch {
+        if self.sessions.contains_key(session_id)
+            && let Err(e) = ctx.send_command(Command::CancelToolBatch(CancelToolBatch {
                 session_id: session_id.clone(),
-            })) {
-                tracing::warn!(
-                    err = ?e,
-                    "failed to emit CancelToolBatch during stream cancellation"
-                );
-            }
+            }))
+        {
+            tracing::warn!(
+                err = ?e,
+                "failed to emit CancelToolBatch during stream cancellation"
+            );
         }
 
         if let Some(handle) = self.tasks.remove(session_id) {
@@ -467,7 +467,7 @@ impl LlmActor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::actor::{ActorContext, RecordingSink};
+
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::provider_infra::LlmServiceFactoryService;
