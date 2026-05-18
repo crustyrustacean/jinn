@@ -72,7 +72,7 @@ mod tests {
         let entry = make_entry("q", "quit", "Normal", "General");
         let line = entry.render_row(true);
         let key_span = &line.spans[0];
-        assert_eq!(key_span.style.bg, Some(Color::DarkGray));
+        assert_eq!(key_span.style.bg, Some(Color::Rgb(50, 52, 58)));
     }
 
     #[rstest::rstest]
