@@ -754,3 +754,83 @@ fn new_with_lifecycle_opens_picker_when_sessions_section() {
     // And no commands emitted (lifecycle entries are loaded synchronously).
     assert!(result.commands.is_empty());
 }
+
+#[rstest::rstest]
+fn teardown_only_emits_run_session_teardown_with_close_on_success_false() {
+    // Given a session with a lifecycle that has a teardown command.
+    let mut state = AppState::default();
+    state
+        .frontend
+        .preferences
+        .session_lifecycles
+        .push(crate::feat::preferences_actor::user_preferences::SessionLifecycle {
+            name: "fossil branch".to_owned(),
+            description: None,
+            setup_command: Some("echo setup".to_owned()),
+            teardown_command: Some("cleanup.sh $1".to_owned()),
+        });
+    state
+        .active_session_mut()
+        .set_lifecycle_name(Some("fossil branch".to_owned()));
+    state
+        .active_session_mut()
+        .set_lifecycle_args(vec!["my-branch".to_owned()]);
+    state.frontend.sessions_section.selected_index = Some(0);
+    state
+        .frontend
+        .scope_stack
+        .push(crate::common::app_state::FocusScope::SidebarSessions);
+
+    // When handling SidebarSessionTeardown via IntentHandler.
+    let result = crate::feat::intent::IntentHandler::handle(
+        &crate::Intent::SidebarSessionTeardown,
+        &mut state,
+    );
+
+    // Then a RunSessionTeardown command is emitted with close_on_success = false.
+    assert_eq!(result.commands.len(), 1);
+    assert!(matches!(
+        &result.commands[0],
+        crate::protocol::Command::RunSessionTeardown(
+            crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
+                close_on_success: false,
+                command,
+                args,
+                ..
+            }
+        ) if command == "cleanup.sh my-branch" && args == &["my-branch".to_owned()]
+    ));
+}
+
+#[rstest::rstest]
+fn teardown_only_is_noop_without_lifecycle_teardown() {
+    // Given a session with a lifecycle that has NO teardown command.
+    let mut state = AppState::default();
+    state
+        .frontend
+        .preferences
+        .session_lifecycles
+        .push(crate::feat::preferences_actor::user_preferences::SessionLifecycle {
+            name: "plain".to_owned(),
+            description: None,
+            setup_command: Some("echo setup".to_owned()),
+            teardown_command: None,
+        });
+    state
+        .active_session_mut()
+        .set_lifecycle_name(Some("plain".to_owned()));
+    state.frontend.sessions_section.selected_index = Some(0);
+    state
+        .frontend
+        .scope_stack
+        .push(crate::common::app_state::FocusScope::SidebarSessions);
+
+    // When handling SidebarSessionTeardown via IntentHandler.
+    let result = crate::feat::intent::IntentHandler::handle(
+        &crate::Intent::SidebarSessionTeardown,
+        &mut state,
+    );
+
+    // Then no commands are emitted (no teardown command to run).
+    assert!(result.commands.is_empty());
+}

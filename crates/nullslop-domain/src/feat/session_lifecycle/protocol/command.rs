@@ -25,6 +25,10 @@ pub struct RunSessionSetup {
 /// Sent by the `IntentHandler` when the user closes a session whose lifecycle
 /// has a `teardown_command`. The session-persistence actor receives this,
 /// runs the command, and removes the session on success.
+///
+/// When `close_on_success` is `true`, the session is removed after successful
+/// teardown. When `false`, the session is kept and a success info entry is
+/// pushed instead (teardown-only mode).
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("session")]
 pub struct RunSessionTeardown {
@@ -34,4 +38,12 @@ pub struct RunSessionTeardown {
     pub command: String,
     /// Positional arguments (replayed from setup).
     pub args: Vec<String>,
+    /// Whether to close the session on successful teardown.
+    /// `true` for normal close (`x`), `false` for teardown-only (`t`).
+    #[serde(default = "default_true")]
+    pub close_on_success: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
