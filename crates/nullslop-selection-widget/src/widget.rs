@@ -134,6 +134,8 @@ where
     footer: Option<Line<'a>>,
     /// Theme-dependent colors for border, text, separator, etc.
     colors: SelectionColors,
+    /// Optional style override for the border title.
+    title_style: Option<Style>,
 }
 
 impl<'a, T> SelectionWidget<'a, T>
@@ -147,6 +149,7 @@ where
             state,
             footer: None,
             colors: SelectionColors::default(),
+            title_style: None,
         }
     }
 
@@ -171,6 +174,16 @@ where
         self
     }
 
+    /// Sets an optional style override for the popup border title.
+    ///
+    /// When set, this is applied to the `Block` via `Block::title_style()`,
+    /// allowing the title color to differ from the border color.
+    #[must_use]
+    pub fn title_style(mut self, style: Style) -> Self {
+        self.title_style = Some(style);
+        self
+    }
+
     /// Renders the selection popup within the given frame area.
     ///
     /// Computes the popup rectangle, draws the bordered block, filter input,
@@ -183,10 +196,16 @@ where
         frame.render_widget(Clear, popup_area);
 
         // Bordered block with muted border.
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(self.colors.border))
-            .title(self.title);
+        let block = {
+            let mut b = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(self.colors.border))
+                .title(self.title);
+            if let Some(style) = self.title_style {
+                b = b.title_style(style);
+            }
+            b
+        };
         frame.render_widget(block, popup_area);
 
         // Layout: input line -> separator -> results -> footer.
