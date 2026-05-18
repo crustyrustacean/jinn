@@ -31,8 +31,11 @@ fn state_with_pinned(count: usize) -> AppState {
 fn sidebar_persona_edit_opens_picker_when_persona_focused() {
     // Given a state with persona section focused and sidebar scope.
     let mut state = AppState::default();
-    state.frontend.scope_stack.push(FocusScope::Sidebar);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    state.frontend.scope_stack.push(FocusScope::SidebarPersona);
+    state
+        .frontend
+        .scope_stack
+        .set_sidebar_section(SidebarSectionId::Persona);
 
     // When handling sidebar persona edit.
     let result = handle_sidebar_persona_edit(&mut state);
@@ -55,8 +58,11 @@ fn sidebar_persona_edit_opens_picker_when_persona_focused() {
 fn sidebar_persona_edit_noop_when_pins_focused() {
     // Given a state with pins section focused and sidebar scope.
     let mut state = AppState::default();
-    state.frontend.scope_stack.push(FocusScope::Sidebar);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
+    state.frontend.scope_stack.push(FocusScope::SidebarPersona);
+    state
+        .frontend
+        .scope_stack
+        .set_sidebar_section(SidebarSectionId::Pins);
 
     // When handling sidebar persona edit.
     let result = handle_sidebar_persona_edit(&mut state);
@@ -290,7 +296,7 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
     let mut section = PinsSection;
     let mut state = state_with_pinned(2);
     // Sidebar must be focused for the indicator to be yellow.
-    state.frontend.scope_stack.push(FocusScope::Sidebar);
+    state.frontend.scope_stack.push(FocusScope::SidebarPins);
 
     let (mut terminal, area) = setup_term(60, 20);
     terminal
@@ -379,44 +385,19 @@ fn render_sorts_entries_by_position() {
 
 // --- SessionNew section restriction tests ---
 
-#[rstest::rstest]
-fn session_new_noop_when_sidebar_persona_focused() {
-    // Given a state in Sidebar scope with Persona section focused.
-    let mut state = AppState::default();
-    state.frontend.scope_stack.push(FocusScope::Sidebar);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
-    let old_id = state.session.active_session.clone();
-
-    // When handling SessionNew via IntentHandler.
-    let result = crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
-
-    // Then no new session is created.
-    assert_eq!(state.session.active_session, old_id);
-    assert!(result.commands.is_empty());
-}
-
-#[rstest::rstest]
-fn session_new_noop_when_sidebar_pins_focused() {
-    // Given a state in Sidebar scope with Pins section focused.
-    let mut state = AppState::default();
-    state.frontend.scope_stack.push(FocusScope::Sidebar);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Pins;
-    let old_id = state.session.active_session.clone();
-
-    // When handling SessionNew via IntentHandler.
-    let result = crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
-
-    // Then no new session is created.
-    assert_eq!(state.session.active_session, old_id);
-    assert!(result.commands.is_empty());
-}
+// Note: SessionNew section-scoping is now handled by the keymap (n is only
+// bound in SidebarSessions scope), so the IntentHandler no longer checks
+// which section is focused. These tests validated the old handler-level check.
 
 #[rstest::rstest]
 fn session_new_works_when_sidebar_sessions_focused() {
     // Given a state in Sidebar scope with Sessions section focused.
     let mut state = AppState::default();
-    state.frontend.scope_stack.push(FocusScope::Sidebar);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.scope_stack.push(FocusScope::SidebarPersona);
+    state
+        .frontend
+        .scope_stack
+        .set_sidebar_section(SidebarSectionId::Sessions);
     let old_id = state.session.active_session.clone();
 
     // When handling SessionNew via IntentHandler.

@@ -50,6 +50,7 @@ use crate::feat::skills::Skill;
 use crate::feat::theme::Theme;
 pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
 pub use crate::feat::ui::sidebar::pins::state::PinsState;
+use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
 use crate::protocol::KeymapEntry;
@@ -180,8 +181,12 @@ pub enum FocusScope {
     Normal,
     /// Typing into the input buffer.
     Input,
-    /// Sidebar panel focused.
-    Sidebar,
+    /// Sidebar — Persona section focused.
+    SidebarPersona,
+    /// Sidebar — Pins section focused.
+    SidebarPins,
+    /// Sidebar — Sessions section focused.
+    SidebarSessions,
     /// Picker overlay active — kind distinguishes Provider/Session/Keymap/etc.
     Picker { kind: PickerKind },
     /// Arg input popup — collecting positional args for a lifecycle command.
@@ -197,7 +202,11 @@ impl FocusScope {
     #[must_use]
     pub fn mode(&self) -> Mode {
         match self {
-            Self::Normal | Self::Sidebar | Self::SidebarResize => Mode::Normal,
+            Self::Normal
+            | Self::SidebarPersona
+            | Self::SidebarPins
+            | Self::SidebarSessions
+            | Self::SidebarResize => Mode::Normal,
             Self::Input => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
             Self::ArgInput => Mode::Input,
@@ -211,7 +220,9 @@ impl std::fmt::Display for FocusScope {
         match self {
             Self::Normal => write!(f, "Normal"),
             Self::Input => write!(f, "Input"),
-            Self::Sidebar => write!(f, "Sidebar"),
+            Self::SidebarPersona => write!(f, "SidebarPersona"),
+            Self::SidebarPins => write!(f, "SidebarPins"),
+            Self::SidebarSessions => write!(f, "SidebarSessions"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
@@ -294,10 +305,39 @@ impl ScopeStack {
         }
     }
 
-    /// Returns `true` if the current scope is Sidebar.
+    /// Returns `true` if the current scope is a sidebar section.
     #[must_use]
     pub fn is_sidebar(&self) -> bool {
-        matches!(self.current(), FocusScope::Sidebar)
+        matches!(
+            self.current(),
+            FocusScope::SidebarPersona | FocusScope::SidebarPins | FocusScope::SidebarSessions
+        )
+    }
+
+    /// Returns the focused sidebar section, if a sidebar scope is active.
+    #[must_use]
+    pub fn sidebar_section(&self) -> Option<SidebarSectionId> {
+        match self.current() {
+            FocusScope::SidebarPersona => Some(SidebarSectionId::Persona),
+            FocusScope::SidebarPins => Some(SidebarSectionId::Pins),
+            FocusScope::SidebarSessions => Some(SidebarSectionId::Sessions),
+            _ => None,
+        }
+    }
+
+    /// Swaps the top of the scope stack to a different sidebar section.
+    ///
+    /// No-op if the current scope is not a sidebar section.
+    pub fn set_sidebar_section(&mut self, section: SidebarSectionId) {
+        if self.is_sidebar() {
+            let scope = match section {
+                SidebarSectionId::Persona => FocusScope::SidebarPersona,
+                SidebarSectionId::Pins => FocusScope::SidebarPins,
+                SidebarSectionId::Sessions => FocusScope::SidebarSessions,
+            };
+            self.stack.pop();
+            self.stack.push(scope);
+        }
     }
 
     /// Returns `true` if the stack has no scopes.

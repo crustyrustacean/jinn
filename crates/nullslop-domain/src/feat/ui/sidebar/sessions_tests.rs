@@ -1,4 +1,4 @@
-use crate::common::app_state::AppState;
+use crate::common::app_state::{AppState, FocusScope};
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
@@ -461,7 +461,7 @@ fn render_arrow_has_inverted_colors() {
 fn close_session_switches_to_next() {
     // Given state with 3 sessions, sessions section focused, cursor at index 0 (active session).
     let mut state = state_with_sessions(3);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     let sessions = sorted_open_sessions(&state);
     // Active session is at index 0 (sorted newest-first, default is oldest → last, but we
     // set active to index 0 explicitly to test active-session close).
@@ -482,7 +482,7 @@ fn close_session_switches_to_next() {
 fn close_non_active_session_keeps_active() {
     // Given state with 3 sessions, sessions section focused, cursor at index 1 (not active).
     let mut state = state_with_sessions(3);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     let sessions = sorted_open_sessions(&state);
     // Active session is at index 0.
     state.session.active_session = sessions[0].id.clone();
@@ -504,7 +504,7 @@ fn close_non_active_session_keeps_active() {
 fn close_last_session_creates_new() {
     // Given state with 1 session, sessions section focused.
     let mut state = AppState::default();
-    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     let original_id = state.session.active_session.clone();
     state.frontend.sessions_section.selected_index = Some(0);
 
@@ -521,7 +521,7 @@ fn close_last_session_creates_new() {
 fn close_session_clamps_index() {
     // Given state with 3 sessions, sessions section focused, cursor at last index.
     let mut state = state_with_sessions(3);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     let sessions = sorted_open_sessions(&state);
     state.session.active_session = sessions[2].id.clone();
     // Move cursor to index 2 (the active session, sorted to 0, so use index 0)
@@ -540,7 +540,7 @@ fn close_session_clamps_index() {
 fn close_session_adjusts_scroll_offset() {
     // Given 20 sessions with scroll_offset at 10, sessions section focused, cursor at 10.
     let mut state = state_with_sessions(20);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     state.frontend.sessions_section.scroll_offset = 10;
     state.frontend.sessions_section.selected_index = Some(10);
 
@@ -558,7 +558,7 @@ fn close_session_adjusts_scroll_offset() {
 fn close_session_rejected_when_streaming() {
     // Given state with a streaming session, sessions section focused.
     let mut state = AppState::default();
-    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     state.frontend.sessions_section.selected_index = Some(0);
     state.active_session_mut().begin_streaming();
 
@@ -683,7 +683,7 @@ fn sorted_sessions_empty_history_is_not_error() {
 fn activate_switches_to_cursor_session() {
     // Given state with 3 sessions, sessions section focused, cursor at index 1.
     let mut state = state_with_sessions(3);
-    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     let sessions = sorted_open_sessions(&state);
     state.frontend.sessions_section.selected_index = Some(1);
     let target_id = sessions[1].id.clone();
@@ -715,7 +715,7 @@ fn activate_is_noop_when_not_sessions_section() {
 fn new_with_lifecycle_noop_when_not_sessions_section() {
     // Given sidebar focused on persona section.
     let mut state = AppState::default();
-    state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
+    state.frontend.scope_stack.push(FocusScope::SidebarPersona);
 
     // When handling the intent via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
@@ -733,11 +733,11 @@ fn new_with_lifecycle_noop_when_not_sessions_section() {
 fn new_with_lifecycle_opens_picker_when_sessions_section() {
     // Given sidebar focused on sessions section.
     let mut state = AppState::default();
-    state.frontend.sidebar.focused_section = SidebarSectionId::Sessions;
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     state
         .frontend
         .scope_stack
-        .push(crate::common::app_state::FocusScope::Sidebar);
+        .push(crate::common::app_state::FocusScope::SidebarSessions);
 
     // When handling the intent via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(

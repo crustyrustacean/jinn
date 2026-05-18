@@ -300,7 +300,9 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope, active_tab: ActiveTa
     match focus {
         FocusScope::Picker { .. } => Scope::Picker,
         FocusScope::Input => Scope::Input,
-        FocusScope::Sidebar => Scope::Sidebar,
+        FocusScope::SidebarPersona => Scope::SidebarPersona,
+        FocusScope::SidebarPins => Scope::SidebarPins,
+        FocusScope::SidebarSessions => Scope::SidebarSessions,
         FocusScope::ArgInput => Scope::ArgInput,
         FocusScope::TokenBudgetInput => Scope::TokenBudgetInput,
         FocusScope::SidebarResize => Scope::SidebarResize,

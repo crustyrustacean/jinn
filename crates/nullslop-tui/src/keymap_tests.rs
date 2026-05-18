@@ -1114,7 +1114,7 @@ fn sidebar_c_produces_sidebar_persona_edit() {
     // Then it's a leaf with SidebarPersonaEdit for Sidebar scope.
     assert!(node.is_some());
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
-        let entry = entries.iter().find(|e| e.scope == Scope::Sidebar);
+        let entry = entries.iter().find(|e| e.scope == Scope::SidebarPersona);
         assert!(entry.is_some(), "'c' should be bound in Sidebar scope");
         assert!(
             matches!(entry.unwrap().action, Intent::SidebarPersonaEdit),
@@ -1140,7 +1140,7 @@ fn sidebar_e_is_not_sidebar_persona_edit() {
 
     // Then 'e' is either not bound in Sidebar scope or bound to something other than SidebarPersonaEdit.
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
-        let sidebar_entry = entries.iter().find(|e| e.scope == Scope::Sidebar);
+        let sidebar_entry = entries.iter().find(|e| e.scope == Scope::SidebarPersona);
         assert!(
             sidebar_entry.is_none()
                 || !matches!(sidebar_entry.unwrap().action, Intent::SidebarPersonaEdit),

@@ -60,7 +60,11 @@ fn test_app() -> TuiApp {
     ActiveTab::Dashboard,
     Scope::Dashboard
 )]
-#[case::sidebar(nullslop_domain::FocusScope::Sidebar, ActiveTab::Chat, Scope::Sidebar)]
+#[case::sidebar(
+    nullslop_domain::FocusScope::SidebarPersona,
+    ActiveTab::Chat,
+    Scope::SidebarPersona
+)]
 #[case::input(nullslop_domain::FocusScope::Input, ActiveTab::Chat, Scope::Input)]
 #[case::picker(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, ActiveTab::Chat, Scope::Picker)]
 #[case::sidebar_resize(

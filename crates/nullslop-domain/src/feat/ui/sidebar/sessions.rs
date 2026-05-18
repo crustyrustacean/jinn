@@ -149,7 +149,10 @@ pub fn handle_session_activate(state: &mut AppState) {
     use crate::common::app_state::FocusScope;
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 
-    if state.frontend.sidebar.focused_section != SidebarSectionId::Sessions {
+    if !matches!(
+        state.frontend.scope_stack.sidebar_section(),
+        Some(SidebarSectionId::Sessions)
+    ) {
         return;
     }
     let Some(index) = state.frontend.sessions_section.selected_index else {
@@ -190,8 +193,11 @@ impl SidebarSection for SessionsSection {
         let sessions = sorted_open_sessions(state);
         let theme = &state.frontend.theme;
         let sidebar_focused = state.frontend.scope_stack.is_sidebar();
-        let section_focused =
-            sidebar_focused && state.frontend.sidebar.focused_section == SidebarSectionId::Sessions;
+        let section_focused = sidebar_focused
+            && matches!(
+                state.frontend.scope_stack.sidebar_section(),
+                Some(SidebarSectionId::Sessions)
+            );
 
         let selected_index = state.frontend.sessions_section.selected_index;
         let scroll_offset = state.frontend.sessions_section.scroll_offset;
@@ -376,7 +382,10 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 
     // Sessions section must be focused.
-    if state.frontend.sidebar.focused_section != SidebarSectionId::Sessions {
+    if !matches!(
+        state.frontend.scope_stack.sidebar_section(),
+        Some(SidebarSectionId::Sessions)
+    ) {
         return Err(SessionCloseError::WrongSection);
     }
 
@@ -527,7 +536,10 @@ pub fn handle_sidebar_session_new_with_lifecycle(
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
     use crate::protocol::PickerKind;
 
-    if state.frontend.sidebar.focused_section != SidebarSectionId::Sessions {
+    if !matches!(
+        state.frontend.scope_stack.sidebar_section(),
+        Some(SidebarSectionId::Sessions)
+    ) {
         return crate::protocol::IntentResult::empty();
     }
     crate::feat::picker::intent::handle_open_picker(state, PickerKind::SessionLifecycle)

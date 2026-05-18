@@ -201,9 +201,9 @@ fn picker_kind_returns_none_when_not_picker() {
 
 #[rstest::rstest]
 fn is_sidebar_returns_true_when_sidebar_active() {
-    // Given a ScopeStack with Sidebar on top.
+    // Given a ScopeStack with SidebarPersona on top.
     let mut stack = ScopeStack::default();
-    stack.push(FocusScope::Sidebar);
+    stack.push(FocusScope::SidebarPersona);
 
     // Then is_sidebar is true.
     assert!(stack.is_sidebar());
@@ -223,7 +223,7 @@ fn is_sidebar_returns_false_when_normal() {
 #[rstest::rstest]
 #[case(FocusScope::Normal, Mode::Normal)]
 #[case(FocusScope::Input, Mode::Input)]
-#[case(FocusScope::Sidebar, Mode::Normal)]
+#[case(FocusScope::SidebarPersona, Mode::Normal)]
 #[case(FocusScope::Picker { kind: PickerKind::Provider }, Mode::Picker)]
 fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
     // Given a FocusScope variant.
@@ -237,7 +237,7 @@ fn focus_scope_mode_mapping(#[case] scope: FocusScope, #[case] expected: Mode) {
 #[rstest::rstest]
 #[case(FocusScope::Normal, "Normal")]
 #[case(FocusScope::Input, "Input")]
-#[case(FocusScope::Sidebar, "Sidebar")]
+#[case(FocusScope::SidebarPersona, "SidebarPersona")]
 #[case(FocusScope::Picker { kind: PickerKind::Provider }, "Picker(models)")]
 fn focus_scope_display(#[case] scope: FocusScope, #[case] expected: &str) {
     // Given a FocusScope variant.

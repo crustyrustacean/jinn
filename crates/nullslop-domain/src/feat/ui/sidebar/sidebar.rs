@@ -121,7 +121,11 @@ impl Default for Sidebar {
 /// Sections report `Exhausted` when they run out of entries; this function
 /// decides whether to switch to an adjacent section or keep the cursor where it is.
 pub fn navigate_sidebar(direction: &SidebarIntent, state: &mut AppState) {
-    let focused = state.frontend.sidebar.focused_section;
+    let focused = state
+        .frontend
+        .scope_stack
+        .sidebar_section()
+        .unwrap_or(SidebarSectionId::Persona);
     let result = dispatch_navigate(focused, direction, state);
 
     if result == SectionNavResult::Exhausted {
@@ -136,7 +140,7 @@ pub fn navigate_sidebar(direction: &SidebarIntent, state: &mut AppState) {
         while let Some(target) = candidate {
             if section_has_content(target, state) {
                 clear_cursor(focused, state);
-                state.frontend.sidebar.focused_section = target;
+                state.frontend.scope_stack.set_sidebar_section(target);
                 let enter_from = match direction {
                     SidebarIntent::MoveDown => EnterFrom::Top,
                     SidebarIntent::MoveUp => EnterFrom::Bottom,
@@ -222,7 +226,11 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
 /// cursor (never visited), calls [`receive_cursor`] as fallback.
 /// If the target has a retained cursor, ensures scroll offset is valid.
 pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
-    let focused = state.frontend.sidebar.focused_section;
+    let focused = state
+        .frontend
+        .scope_stack
+        .sidebar_section()
+        .unwrap_or(SidebarSectionId::Persona);
     let neighbor_fn: fn(SidebarSectionId) -> Option<SidebarSectionId> = match direction {
         SidebarIntent::MoveDown => next_section,
         SidebarIntent::MoveUp => prev_section,
@@ -233,7 +241,7 @@ pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
     let mut candidate = neighbor_fn(focused);
     while let Some(target) = candidate {
         if section_has_content(target, state) {
-            state.frontend.sidebar.focused_section = target;
+            state.frontend.scope_stack.set_sidebar_section(target);
 
             // If target has no cursor, call receive_cursor as fallback.
             if !section_has_cursor(target, state) {
