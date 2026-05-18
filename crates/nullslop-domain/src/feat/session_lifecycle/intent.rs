@@ -30,6 +30,11 @@ pub enum ArgInputError {
 }
 
 /// Validates that the arg input has enough tokens for the lifecycle template.
+///
+/// # Errors
+///
+/// Returns [`ArgInputError::NotEnoughArgs`] if there aren't enough tokens
+/// to fill the template's parameters.
 pub fn validate_arg_input(state: &AppState) -> Result<(), ArgInputError> {
     let arg_state = &state.frontend.arg_input;
 
@@ -40,8 +45,7 @@ pub fn validate_arg_input(state: &AppState) -> Result<(), ArgInputError> {
         .iter()
         .find(|l| l.name == arg_state.lifecycle_name)
         .and_then(|l| l.setup_command.as_ref())
-        .map(|cmd| CommandTemplate::parse(cmd).param_count())
-        .unwrap_or(0);
+        .map_or(0, |cmd| CommandTemplate::parse(cmd).param_count());
 
     let arg_count = if arg_state.input.trim().is_empty() {
         0
@@ -106,8 +110,7 @@ pub fn handle_session_lifecycle_setup(
         .context
         .active_persona
         .as_ref()
-        .map(|p| p.name.clone())
-        .unwrap_or_else(|| "coding-assistant".to_owned());
+        .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
     let token_budget = state.frontend.preferences.context_token_budget.budget;
 
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
@@ -220,7 +223,7 @@ pub fn handle_session_close(state: &mut AppState, session_id: Option<&SessionId>
 /// returns without popping (user stays in the arg input popup).
 pub fn handle_arg_input_confirm(state: &mut AppState) -> IntentResult {
     // Validate that enough args are provided.
-    if let Err(_) = validate_arg_input(state) {
+    if validate_arg_input(state).is_err() {
         return IntentResult::empty();
     }
 
@@ -255,7 +258,7 @@ pub fn handle_arg_input_delete(state: &mut AppState) -> IntentResult {
     if arg.cursor_pos > 0 {
         let prev = arg.input[..arg.cursor_pos]
             .grapheme_indices(true)
-            .last()
+            .next_back()
             .map(|(i, _)| i);
         if let Some(prev_idx) = prev {
             arg.input.drain(prev_idx..arg.cursor_pos);
@@ -273,8 +276,7 @@ pub fn handle_arg_input_delete_forward(state: &mut AppState) -> IntentResult {
         let next_end = arg.input[arg.cursor_pos..]
             .grapheme_indices(true)
             .nth(1)
-            .map(|(i, _)| arg.cursor_pos + i)
-            .unwrap_or(arg.input.len());
+            .map_or(arg.input.len(), |(i, _)| arg.cursor_pos + i);
         arg.input.drain(arg.cursor_pos..next_end);
     }
     IntentResult::empty()
@@ -287,7 +289,7 @@ pub fn handle_arg_input_cursor_left(state: &mut AppState) -> IntentResult {
     if arg.cursor_pos > 0 {
         let prev = arg.input[..arg.cursor_pos]
             .grapheme_indices(true)
-            .last()
+            .next_back()
             .map(|(i, _)| i);
         if let Some(prev_idx) = prev {
             arg.cursor_pos = prev_idx;
