@@ -83,7 +83,7 @@ pub fn truncate_head(content: &str, max_lines: usize, max_bytes: usize) -> Trunc
 
     for (i, line) in lines.iter().enumerate() {
         // +1 for newline separator (except the first line).
-        let line_bytes = line.len() + if i > 0 { 1 } else { 0 };
+        let line_bytes = line.len() + usize::from(i > 0);
 
         if output_bytes_count + line_bytes > max_bytes {
             truncated_by = TruncatedBy::Bytes;
@@ -153,7 +153,7 @@ pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> Trunc
 
     for line in lines.iter().rev() {
         // +1 for newline separator (except when this is the first line added).
-        let line_bytes = line.len() + if output_lines_arr.is_empty() { 0 } else { 1 };
+        let line_bytes = line.len() + usize::from(!output_lines_arr.is_empty());
 
         if output_bytes_count + line_bytes > max_bytes {
             truncated_by = TruncatedBy::Bytes;
@@ -234,6 +234,7 @@ fn truncate_string_from_end(s: &str, max_bytes: usize) -> String {
 }
 
 /// Format a byte count as a human-readable size string.
+#[allow(clippy::cast_precision_loss)]
 pub fn format_size(bytes: usize) -> String {
     if bytes < 1024 {
         format!("{bytes}B")

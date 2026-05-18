@@ -60,13 +60,12 @@ pub fn arg_input_popup_rect(area: Rect, state: &AppState) -> Rect {
         .iter()
         .find(|l| l.name == arg_state.lifecycle_name)
         .and_then(|l| l.setup_command.as_ref())
-        .map(|cmd| {
+        .map_or(1, |cmd| {
             let template = CommandTemplate::parse(cmd);
             let display_args: Vec<String> = split_preserving_quotes(&arg_state.input);
             let lines = template.display_line_segments(&display_args);
             (lines.len() as u16) + 2 // command lines + separator + input
-        })
-        .unwrap_or(1);
+        });
 
     compute_arg_input_popup_rect(area, content_rows)
 }
@@ -512,16 +511,15 @@ mod tests {
 
         // Find "my-feature" in the rendered output and check its color.
         if line1_y < buffer.area().height {
-            // The param starts after "mkdir " (7 chars).
-            let param_start_x = inner_x + 7; // "mkdir " = 6 chars + inner_x offset for "mkdir "
-            // Actually, let's just find "my-feature" by scanning.
+            // Scan to find "my-feature" in the rendered output.
             let mut found_colored = false;
             for x in inner_x..inner_x + 40 {
-                if let Some(cell) = buffer.cell((x, line1_y)) {
-                    if cell.symbol() == "m" && cell.fg == expected_color {
-                        found_colored = true;
-                        break;
-                    }
+                if let Some(cell) = buffer.cell((x, line1_y))
+                    && cell.symbol() == "m"
+                    && cell.fg == expected_color
+                {
+                    found_colored = true;
+                    break;
                 }
             }
             assert!(
@@ -597,11 +595,12 @@ mod tests {
         if line1_y < buffer.area().height {
             let mut found_colored_bracket = false;
             for x in inner_x..inner_x + 40 {
-                if let Some(cell) = buffer.cell((x, line1_y)) {
-                    if cell.symbol() == "<" && cell.fg == expected_color {
-                        found_colored_bracket = true;
-                        break;
-                    }
+                if let Some(cell) = buffer.cell((x, line1_y))
+                    && cell.symbol() == "<"
+                    && cell.fg == expected_color
+                {
+                    found_colored_bracket = true;
+                    break;
                 }
             }
             assert!(
