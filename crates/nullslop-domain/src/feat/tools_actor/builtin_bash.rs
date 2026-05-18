@@ -12,7 +12,7 @@ use crate::feat::tools_actor::protocol::event::{ToolExecutionOutput, ToolExecuti
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Event, SessionId};
 
-use super::truncation::{truncate_tail, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES, format_size};
+use super::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, format_size, truncate_tail};
 
 use super::BoxedToolFuture;
 
@@ -125,10 +125,7 @@ fn format_exit_result(
                 .as_ref()
                 .ok()
                 .and_then(std::process::ExitStatus::code)
-                .map_or_else(
-                    || "unknown (signal)".to_owned(),
-                    |c: i32| c.to_string()
-                )
+                .map_or_else(|| "unknown (signal)".to_owned(), |c: i32| c.to_string())
         );
     }
 
@@ -254,7 +251,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let (command, per_call_timeout) = match parse_args(&call.arguments) {
             Ok(v) => v,
             Err(e) => {
-                return error_tool_result(call.id, call.name, format!("failed to parse arguments: {e}"));
+                return error_tool_result(
+                    call.id,
+                    call.name,
+                    format!("failed to parse arguments: {e}"),
+                );
             }
         };
 
@@ -287,7 +288,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let mut child = match spawn_result {
             Ok(child) => child,
             Err(e) => {
-                return error_tool_result(call.id, call.name, format!("failed to execute command: {e}"));
+                return error_tool_result(
+                    call.id,
+                    call.name,
+                    format!("failed to execute command: {e}"),
+                );
             }
         };
 
@@ -312,30 +317,40 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         );
 
         // Apply timeout to the entire read+wait sequence.
-        let exit_result: Result<std::process::ExitStatus, std::io::Error> =
-            match per_call_timeout
-                .map(std::time::Duration::from_secs)
-                .or(ctx.timeout)
-            {
-                Some(dur) => match tokio::time::timeout(dur, read_fut).await {
-                    Ok(Ok(status)) => Ok(status),
-                    Ok(Err(e)) => {
-                        return error_tool_result(call.id, call.name, format!("failed to wait for process: {e}"));
-                    }
-                    Err(_) => {
-                        // Timeout — kill the process.
-                        let _ = child.kill().await;
-                        return error_tool_result(
-                            call.id,
-                            call.name,
-                            format!("command timed out after {}s", dur.as_secs()),
-                        );
-                    }
-                },
-                None => read_fut.await,
-            };
+        let exit_result: Result<std::process::ExitStatus, std::io::Error> = match per_call_timeout
+            .map(std::time::Duration::from_secs)
+            .or(ctx.timeout)
+        {
+            Some(dur) => match tokio::time::timeout(dur, read_fut).await {
+                Ok(Ok(status)) => Ok(status),
+                Ok(Err(e)) => {
+                    return error_tool_result(
+                        call.id,
+                        call.name,
+                        format!("failed to wait for process: {e}"),
+                    );
+                }
+                Err(_) => {
+                    // Timeout — kill the process.
+                    let _ = child.kill().await;
+                    return error_tool_result(
+                        call.id,
+                        call.name,
+                        format!("command timed out after {}s", dur.as_secs()),
+                    );
+                }
+            },
+            None => read_fut.await,
+        };
 
-        format_exit_result(&exit_result, accumulated, call.id, call.name, max_lines, max_bytes)
+        format_exit_result(
+            &exit_result,
+            accumulated,
+            call.id,
+            call.name,
+            max_lines,
+            max_bytes,
+        )
     })
 }
 

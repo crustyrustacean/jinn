@@ -86,7 +86,12 @@ mod tests {
             ChatEntry::user("list files"),
             ChatEntry::assistant("let me check"),
             ChatEntry::tool_call("id-1", "bash", r#"{"command":"ls"}"#),
-            ChatEntry::tool_result("id-1", "bash", "file1.txt\nfile2.txt", ToolResultStatus::Success),
+            ChatEntry::tool_result(
+                "id-1",
+                "bash",
+                "file1.txt\nfile2.txt",
+                ToolResultStatus::Success,
+            ),
             ChatEntry::assistant("here are the files"),
         ];
 

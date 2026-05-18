@@ -160,8 +160,7 @@ pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> Trunc
             // Edge case: no lines added yet and this line exceeds the limit.
             // Take the tail of the line (partial).
             if output_lines_arr.is_empty() && !line.is_empty() {
-                let truncated_line =
-                    truncate_string_from_end(line, max_bytes);
+                let truncated_line = truncate_string_from_end(line, max_bytes);
                 output_lines_arr.insert(0, ""); // Will be replaced
                 output_bytes_count = truncated_line.len();
                 last_line_partial = true;

@@ -180,6 +180,7 @@ mod tests {
                 context_token_budget: Default::default(),
                 max_tool_output_lines: None,
                 max_tool_output_bytes: None,
+                compaction: Default::default(),
             })
             .expect("save prefs");
 

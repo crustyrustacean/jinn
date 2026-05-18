@@ -407,5 +407,10 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, ctx: &RenderContext) -> Ve
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
         ChatEntryKind::Skill { name, content, .. } => skill::to_lines(name, content, ctx),
         ChatEntryKind::Info(lines) => info::to_lines(lines, ctx),
+        // TODO: Compaction entries need a dedicated rendering submodule.
+        ChatEntryKind::Compaction { summary, .. } => vec![Line::from(format!(
+            "\u{1f4dc} Compacted: {}",
+            summary.chars().take(80).collect::<String>()
+        ))],
     }
 }

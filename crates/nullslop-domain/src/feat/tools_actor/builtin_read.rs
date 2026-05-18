@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
-use super::truncation::{truncate_head, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES, format_size};
+use super::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, format_size, truncate_head};
 
 use super::BoxedToolFuture;
 
