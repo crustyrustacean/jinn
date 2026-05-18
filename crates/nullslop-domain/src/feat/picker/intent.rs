@@ -125,7 +125,9 @@ fn load_theme_picker_entries(state: &mut AppState) {
             if name == "default" {
                 continue; // skip duplicate
             }
-            if let Ok(theme) = crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir) {
+            if let Ok(theme) =
+                crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir)
+            {
                 entries.push(ThemeEntry { name, theme });
             }
         }
@@ -140,7 +142,9 @@ fn load_theme_picker_entries(state: &mut AppState) {
             if entries.iter().any(|e: &ThemeEntry| e.name == name) {
                 continue;
             }
-            if let Ok(theme) = crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir) {
+            if let Ok(theme) =
+                crate::feat::theme::load_theme(&name, &themes_dir, &system_themes_dir)
+            {
                 entries.push(ThemeEntry { name, theme });
             }
         }
@@ -164,6 +168,17 @@ pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
     validator::validate_picker_insert_char(state, ch);
     if let Some(picker) = state.active_picker_ops() {
         picker.insert_char(ch);
+    }
+    IntentResult::empty()
+}
+
+/// Handles `PasteText` in picker scope — bulk inserts pasted text into the filter.
+///
+/// Newlines are stripped by the picker's `insert_text` method since the filter
+/// is a single-line input.
+pub fn handle_picker_paste(state: &mut AppState, text: &str) -> IntentResult {
+    if let Some(picker) = state.active_picker_ops() {
+        picker.insert_text(text);
     }
     IntentResult::empty()
 }

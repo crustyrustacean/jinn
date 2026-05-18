@@ -18,6 +18,7 @@ impl RenderHooks for TreeListHooks {
         is_last_in_group: bool,
         ancestors_are_last: &[bool],
         index_in_group: usize,
+        _ordered: Option<u32>,
     ) -> Option<String> {
         let unit: usize = Self::tree_indent_unit(self).unwrap_or(3);
         let connector = if is_last_in_group {

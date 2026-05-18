@@ -38,7 +38,7 @@ pub use config_storage::{
 pub use generic_factory::GenericLlmServiceFactory;
 pub use model_cache::{ModelCache, ModelCacheError, cache_path};
 pub use no_providers::{NO_PROVIDER_ID, NoProvidersAvailableFactory};
-pub use nullslop_provider::{FakeLlmServiceFactory, TOOL_LOOP_TRIGGER};
+pub use nullslop_provider::{FakeLlmServiceFactory, ModelInfo, TOOL_LOOP_TRIGGER};
 pub use provider_id::ProviderId;
 pub use registry::ProviderRegistry;
 pub use registry_service::ProviderRegistryService;

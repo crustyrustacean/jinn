@@ -18,6 +18,42 @@
 
 use std::fmt;
 
+/// A segment of a displayed command line, tagged with its parameter index.
+///
+/// Used by [`CommandTemplate::display_line_segments`] to produce structured
+/// output suitable for styled rendering. Static text has `param_index = None`;
+/// parameter placeholders and their substituted values have `Some(idx)` where
+/// `idx` is the index into the template's params list.
+///
+/// This design enables future per-argument color schemes (gradient, rainbow)
+/// by only changing the color-assignment logic in the renderer — the data
+/// structure already knows which arg each segment belongs to.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplaySegment {
+    /// The text to display (placeholder like `<branch>` or substituted value).
+    pub text: String,
+    /// Index into the template's `params` list, or `None` for static text.
+    pub param_index: Option<usize>,
+}
+
+impl DisplaySegment {
+    /// Creates a static (non-parameter) segment.
+    fn static_text(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            param_index: None,
+        }
+    }
+
+    /// Creates a parameter segment with the given param index.
+    fn param(text: impl Into<String>, index: usize) -> Self {
+        Self {
+            text: text.into(),
+            param_index: Some(index),
+        }
+    }
+}
+
 /// A single parameter extracted from a command template.
 ///
 /// Parameters are deduplicated — each unique token appears at most once.
@@ -171,7 +207,7 @@ impl CommandTemplate {
                 Param::Named(name) => {
                     let search = format!("<{name}>");
                     let replacement = if arg_idx < args.len() {
-                        args[arg_idx].clone()
+                        shell_quote(&args[arg_idx])
                     } else {
                         String::new()
                     };
@@ -181,7 +217,7 @@ impl CommandTemplate {
                 Param::Positional(_n) => {
                     let search = format!("{param}");
                     let replacement = if arg_idx < args.len() {
-                        args[arg_idx].clone()
+                        shell_quote(&args[arg_idx])
                     } else {
                         String::new()
                     };
@@ -196,7 +232,11 @@ impl CommandTemplate {
 
         // Replace $@ and $* with remaining args (those not consumed by non-splat params).
         if self.has_splat() {
-            let joined = args[arg_idx..].join(" ");
+            let joined = args[arg_idx..]
+                .iter()
+                .map(|a| shell_quote(a))
+                .collect::<Vec<_>>()
+                .join(" ");
             result = result.replace("$@", &joined);
             result = result.replace("$*", &joined);
         }
@@ -236,6 +276,216 @@ impl CommandTemplate {
 
         result
     }
+
+    /// Produce structured display lines with parameter substitution for the arg-input popup.
+    ///
+    /// Splits the display form of the command on ` && `, producing one
+    /// [`Vec<DisplaySegment>`] per line. Each segment is tagged with its parameter
+    /// index (or `None` for static text). When a user-provided arg is available
+    /// for a parameter, the placeholder is replaced with the arg value.
+    ///
+    /// The first line is bare; subsequent lines are prefixed with `&& ` in a static
+    /// segment. Non-last lines are suffixed with ` \` in a static segment.
+    ///
+    /// This is render-time only — it does not affect command execution.
+    #[must_use]
+    pub fn display_line_segments(&self, args: &[String]) -> Vec<Vec<DisplaySegment>> {
+        // Build the display form of the command (same logic as display()).
+        let display_str = self.display();
+
+        // Split on " && " to get the raw segments.
+        let raw_parts: Vec<&str> = display_str.split(" && ").collect();
+
+        // For each raw part, tokenize into DisplaySegments.
+        let mut lines = Vec::with_capacity(raw_parts.len());
+        for (line_idx, raw) in raw_parts.iter().enumerate() {
+            let mut segments = Vec::new();
+
+            // Prefix for non-first lines.
+            if line_idx > 0 {
+                segments.push(DisplaySegment::static_text("  && "));
+            }
+
+            // Parse the raw text for <...> placeholders.
+            segments.extend(self.tokenize_display_line(raw, args));
+
+            // Suffix for non-last lines.
+            if line_idx < raw_parts.len() - 1 {
+                segments.push(DisplaySegment::static_text(" \\"));
+            }
+
+            lines.push(segments);
+        }
+
+        lines
+    }
+
+    /// Tokenize a display-form line into `DisplaySegment`s.
+    ///
+    /// Walks the text looking for `<...>` patterns. For each match, looks up
+    /// the corresponding param index. If a user-provided arg is available,
+    /// substitutes it; otherwise keeps the placeholder text.
+    fn tokenize_display_line(&self, line: &str, args: &[String]) -> Vec<DisplaySegment> {
+        let mut segments = Vec::new();
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0;
+        let mut static_start = 0;
+
+        // Build a lookup: display token -> param index.
+        // E.g., Named("branch") -> ("<branch>", param_list_index).
+        //        Positional(1) -> ("<1>", param_list_index).
+        //        Splat -> ("<args>", param_list_index).
+        let mut arg_offset = 0usize;
+        let mut token_map: Vec<(String, usize, usize)> = Vec::new(); // (display_token, param_index, arg_offset_for_this_param)
+        for (pidx, param) in self.params.iter().enumerate() {
+            match param {
+                Param::Named(name) => {
+                    token_map.push((format!("<{name}>"), pidx, arg_offset));
+                    arg_offset += 1;
+                }
+                Param::Positional(n) => {
+                    token_map.push((format!("<{n}>"), pidx, arg_offset));
+                    arg_offset += 1;
+                }
+                Param::Splat => {
+                    token_map.push(("<args>".to_owned(), pidx, arg_offset));
+                }
+            }
+        }
+
+        while i < chars.len() {
+            if chars[i] == '<' {
+                // Potential placeholder — scan for '>'.
+                let start = i + 1;
+                let mut end = start;
+                while end < chars.len() && chars[end] != '>' {
+                    end += 1;
+                }
+
+                if end < chars.len() && end > start {
+                    let token_text: String = chars[start..end].iter().collect();
+                    let full_token = format!("<{token_text}>");
+
+                    // Check if this matches any known param.
+                    if let Some((_, param_idx, arg_off)) =
+                        token_map.iter().find(|(tok, _, _)| *tok == full_token)
+                    {
+                        // Emit preceding static text.
+                        if static_start < i {
+                            let text: String = chars[static_start..i].iter().collect();
+                            segments.push(DisplaySegment::static_text(text));
+                        }
+
+                        // Determine display text: substitute arg if available.
+                        let display_text = if *arg_off < args.len() {
+                            match &self.params[*param_idx] {
+                                Param::Splat => args[*arg_off..].join(" "),
+                                _ => args[*arg_off].clone(),
+                            }
+                        } else {
+                            full_token.clone()
+                        };
+
+                        segments.push(DisplaySegment::param(display_text, *param_idx));
+                        static_start = end + 1;
+                        i = end + 1;
+                        continue;
+                    }
+                }
+            }
+            i += 1;
+        }
+
+        // Emit remaining static text.
+        if static_start < chars.len() {
+            let text: String = chars[static_start..].iter().collect();
+            if !text.is_empty() {
+                segments.push(DisplaySegment::static_text(text));
+            }
+        }
+
+        segments
+    }
+}
+
+/// Shell-quote a value for safe interpolation into a `$SHELL -c` command.
+///
+/// Uses single-quote wrapping with `\'\'\'` escape for embedded single quotes.
+/// Only applies quoting when the value contains spaces or shell-special characters.
+/// Safe values pass through unchanged.
+#[must_use]
+pub fn shell_quote(s: &str) -> String {
+    /// Characters that require shell quoting.
+    const SHELL_SPECIAL: &[char] = &[
+        ' ', '\t', '\n', '\r', '|', '&', ';', '<', '>', '$', '`', '\\', '"', '\'', '(', ')', '*',
+        '?', '[', ']', '~', '#', '!', '{', '}', '=', ':',
+    ];
+
+    if s.is_empty() {
+        return "''".to_owned();
+    }
+
+    if !s.contains(SHELL_SPECIAL) {
+        return s.to_owned();
+    }
+
+    // Wrap in single quotes, escaping embedded single quotes as '\'\''.
+    let escaped = s.replace('\'', "'\\''");
+    format!("'{escaped}'")
+}
+
+/// Parse a user input string into arguments, preserving quote characters.
+///
+/// Same splitting logic as [`parse_quoted_args`] (splits on unquoted whitespace,
+/// respects backslash escapes) but keeps the double-quote characters in the tokens.
+/// Used for display purposes so users see their literal input including quotes.
+#[must_use]
+pub fn split_preserving_quotes(input: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if in_quotes {
+            if ch == '\\' {
+                // Backslash escape inside quotes: next char is literal (skip backslash).
+                current.push('\\');
+                if let Some(escaped) = chars.next() {
+                    current.push(escaped);
+                }
+            } else if ch == '"' {
+                // End of quoted section — keep the quote char.
+                current.push(ch);
+                in_quotes = false;
+            } else {
+                current.push(ch);
+            }
+        } else if ch == '\\' {
+            // Backslash escape outside quotes.
+            current.push('\\');
+            if let Some(escaped) = chars.next() {
+                current.push(escaped);
+            }
+        } else if ch == '"' {
+            // Start of quoted section — keep the quote char.
+            current.push(ch);
+            in_quotes = true;
+        } else if ch.is_whitespace() {
+            if !current.is_empty() {
+                args.push(current.clone());
+                current.clear();
+            }
+        } else {
+            current.push(ch);
+        }
+    }
+
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    args
 }
 
 /// Parse a user input string into arguments, respecting double quotes and backslash escapes.
@@ -619,6 +869,185 @@ mod tests {
         assert_eq!(format!("{tmpl}"), tmpl.display());
     }
 
+    // --- display_line_segments ---
+
+    #[rstest::rstest]
+    fn display_line_segments_no_params() {
+        // Given a simple command with no params and no &&.
+        let tmpl = CommandTemplate::parse("echo hello");
+
+        // When getting display line segments with no args.
+        let lines = tmpl.display_line_segments(&[]);
+
+        // Then it produces a single line with one static segment.
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], vec![DisplaySegment::static_text("echo hello")]);
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_no_params_single_arg_ignored() {
+        // Given a command with no params.
+        let tmpl = CommandTemplate::parse("echo hello");
+
+        // When passing args (should be ignored since no placeholders).
+        let lines = tmpl.display_line_segments(&["ignored".to_owned()]);
+
+        // Then same as no args.
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], vec![DisplaySegment::static_text("echo hello")]);
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_splits_on_and_and() {
+        // Given a command with && and no params.
+        let tmpl = CommandTemplate::parse("echo hello && echo world");
+
+        // When getting display line segments.
+        let lines = tmpl.display_line_segments(&[]);
+
+        // Then it produces two lines with continuation markers.
+        assert_eq!(lines.len(), 2);
+        // Line 1: "echo hello \"
+        assert_eq!(
+            lines[0],
+            vec![
+                DisplaySegment::static_text("echo hello"),
+                DisplaySegment::static_text(" \\"),
+            ]
+        );
+        // Line 2: "&& echo world"
+        assert_eq!(
+            lines[1],
+            vec![
+                DisplaySegment::static_text("  && "),
+                DisplaySegment::static_text("echo world"),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_five_parts() {
+        // Given a long command split into 5 parts by &&.
+        let tmpl = CommandTemplate::parse(
+            "mkdir <branch> && cd <branch> && fossil open ../nullslop.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>",
+        );
+
+        // When getting display line segments with no args.
+        let lines = tmpl.display_line_segments(&[]);
+
+        // Then it produces 5 lines.
+        assert_eq!(lines.len(), 5);
+
+        // First line: "mkdir <branch> \"
+        assert!(lines[0].last().unwrap().text.ends_with('\\'));
+        // Last line: "&& echo ./<branch>" (no trailing \).
+        assert!(!lines[4].last().unwrap().text.ends_with('\\'));
+        // Lines 2-4 start with "  && ".
+        assert_eq!(lines[1][0].text, "  && ");
+        assert_eq!(lines[2][0].text, "  && ");
+        assert_eq!(lines[3][0].text, "  && ");
+        assert_eq!(lines[4][0].text, "  && ");
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_last_line_no_trailing_backslash() {
+        // Given a two-part command.
+        let tmpl = CommandTemplate::parse("echo hello && echo world");
+
+        // When getting display line segments.
+        let lines = tmpl.display_line_segments(&[]);
+
+        // Then the first line has trailing \ but the last doesn't.
+        let first_line_text: String = lines[0].iter().map(|s| s.text.as_str()).collect();
+        let last_line_text: String = lines[1].iter().map(|s| s.text.as_str()).collect();
+        assert!(first_line_text.ends_with('\\'));
+        assert!(!last_line_text.ends_with('\\'));
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_substitutes_named_params() {
+        // Given a command with named params and &&.
+        let tmpl = CommandTemplate::parse("mkdir <branch> && cd <branch>");
+
+        // When getting display line segments with an arg.
+        let lines = tmpl.display_line_segments(&["my-feature".to_owned()]);
+
+        // Then <branch> is replaced with "my-feature" and tagged with param index.
+        // Line 1: static("mkdir "), param("my-feature", 0), static(" \\").
+        assert_eq!(lines[0].len(), 3);
+        assert_eq!(lines[0][0], DisplaySegment::static_text("mkdir "));
+        assert_eq!(lines[0][1], DisplaySegment::param("my-feature", 0));
+        assert_eq!(lines[0][2], DisplaySegment::static_text(" \\"));
+
+        // Line 2: static("  && "), static("cd "), param("my-feature", 0).
+        assert_eq!(lines[1][0], DisplaySegment::static_text("  && "));
+        assert_eq!(lines[1][1], DisplaySegment::static_text("cd "));
+        assert_eq!(lines[1][2], DisplaySegment::param("my-feature", 0));
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_substitutes_positional_params() {
+        // Given a command with $1 $2 and &&.
+        let tmpl = CommandTemplate::parse("script.sh $1 && other.sh $2");
+
+        // When getting display line segments with args.
+        let lines = tmpl.display_line_segments(&["foo".to_owned(), "bar".to_owned()]);
+
+        // Then params are replaced in display form (<1> and <2> substituted).
+        // Line 1: static("script.sh "), param("foo", 0), static(" \\").
+        assert_eq!(lines[0].len(), 3);
+        assert_eq!(lines[0][0], DisplaySegment::static_text("script.sh "));
+        assert_eq!(lines[0][1], DisplaySegment::param("foo", 0));
+
+        // Line 2: static("  && "), static("other.sh "), param("bar", 1).
+        assert_eq!(lines[1][1], DisplaySegment::static_text("other.sh "));
+        assert_eq!(lines[1][2], DisplaySegment::param("bar", 1));
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_unfilled_params_keep_placeholder() {
+        // Given a command with two named params but only one arg provided.
+        let tmpl = CommandTemplate::parse("mkdir <branch> && cd <target>");
+
+        // When getting display line segments with only one arg.
+        let lines = tmpl.display_line_segments(&["my-feature".to_owned()]);
+
+        // Then the first param is substituted and the second keeps its placeholder.
+        // Line 1: static("mkdir "), param("my-feature", 0).
+        assert_eq!(lines[0][1], DisplaySegment::param("my-feature", 0));
+
+        // Line 2: static("  && "), static("cd "), param("<target>", 1).
+        assert_eq!(lines[1][1], DisplaySegment::static_text("cd "));
+        assert_eq!(lines[1][2], DisplaySegment::param("<target>", 1));
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_no_args_shows_all_placeholders() {
+        // Given a command with named params.
+        let tmpl = CommandTemplate::parse("mkdir <branch> && cd <branch>");
+
+        // When getting display line segments with no args.
+        let lines = tmpl.display_line_segments(&[]);
+
+        // Then all <branch> placeholders are preserved and tagged with param index.
+        assert_eq!(lines[0][1], DisplaySegment::param("<branch>", 0));
+        assert_eq!(lines[1][2], DisplaySegment::param("<branch>", 0));
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_mixed_named_and_positional() {
+        // Given a command with mixed param types.
+        let tmpl = CommandTemplate::parse("script.sh <branch> $1 && echo done");
+
+        // When getting display line segments with both args.
+        let lines = tmpl.display_line_segments(&["my-branch".to_owned(), "extra".to_owned()]);
+
+        // Then both params are substituted.
+        // Line 1: static("script.sh "), param("my-branch", 0), static(" "), param("extra", 1), ...
+        assert_eq!(lines[0][1], DisplaySegment::param("my-branch", 0));
+        assert_eq!(lines[0][3], DisplaySegment::param("extra", 1));
+    }
+
     // --- Safe render: missing args ---
 
     #[rstest::rstest]
@@ -833,6 +1262,93 @@ mod tests {
         assert_eq!(
             parse_quoted_args("  foo bar  "),
             vec!["foo".to_owned(), "bar".to_owned()]
+        );
+    }
+
+    // --- shell_quote ---
+
+    #[rstest::rstest]
+    fn shell_quote_safe_value_passes_through() {
+        assert_eq!(shell_quote("hello"), "hello");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_value_with_spaces_is_wrapped() {
+        assert_eq!(shell_quote("my branch"), "'my branch'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_empty_string_is_empty_quotes() {
+        assert_eq!(shell_quote(""), "''");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_embedded_single_quote_is_escaped() {
+        assert_eq!(shell_quote("it's here"), "'it'\\''s here'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_dollar_sign_is_quoted() {
+        assert_eq!(shell_quote("$HOME"), "'$HOME'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_semicolon_is_quoted() {
+        assert_eq!(shell_quote("foo;bar"), "'foo;bar'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_pipe_is_quoted() {
+        assert_eq!(shell_quote("foo|bar"), "'foo|bar'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_path_with_slash_is_safe() {
+        // Forward slashes are not shell-special.
+        assert_eq!(shell_quote("/tmp/workdir"), "/tmp/workdir");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_hyphenated_value_is_safe() {
+        assert_eq!(shell_quote("my-branch"), "my-branch");
+    }
+
+    // --- split_preserving_quotes ---
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_keeps_quotes() {
+        assert_eq!(
+            split_preserving_quotes("\"my branch\" target"),
+            vec!["\"my branch\"".to_owned(), "target".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_no_quotes() {
+        assert_eq!(
+            split_preserving_quotes("foo bar"),
+            vec!["foo".to_owned(), "bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_empty_input() {
+        assert_eq!(split_preserving_quotes(""), Vec::<String>::new());
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_single_quoted_arg() {
+        assert_eq!(
+            split_preserving_quotes("\"hello world\""),
+            vec!["\"hello world\"".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_unterminated_quote() {
+        assert_eq!(
+            split_preserving_quotes("\"foo bar"),
+            vec!["\"foo bar".to_owned()]
         );
     }
 }

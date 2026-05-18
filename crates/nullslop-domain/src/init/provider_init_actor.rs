@@ -177,6 +177,7 @@ mod tests {
                 persona_name: None,
                 session_lifecycles: vec![],
                 sidebar_width: None,
+                context_token_budget: Default::default(),
             })
             .expect("save prefs");
 
@@ -190,6 +191,7 @@ mod tests {
                 api_key_env: None,
                 requires_key: false,
                 extra_body: None,
+                context_length: None,
             }],
             aliases: vec![],
             default_provider: None,
@@ -226,6 +228,7 @@ mod tests {
                 api_key_env: None,
                 requires_key: false,
                 extra_body: None,
+                context_length: None,
             }],
             aliases: vec![],
             default_provider: None,
@@ -281,6 +284,7 @@ mod tests {
                 api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
                 requires_key: true,
                 extra_body: None,
+                context_length: None,
             }],
             aliases: vec![],
             default_provider: None,

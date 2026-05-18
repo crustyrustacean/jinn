@@ -4,6 +4,7 @@ use error_stack::{Report, ResultExt as _};
 use futures::StreamExt as _;
 use reqwest::Client;
 
+use crate::ModelInfo;
 use crate::google::models;
 use crate::google::request;
 use crate::google::response::GeminiStreamParser;
@@ -66,7 +67,7 @@ impl GoogleService {
     /// # Errors
     ///
     /// Returns [`LlmServiceError::Provider`] on HTTP or parse errors.
-    pub async fn list_models(&self) -> Result<Vec<String>, Report<LlmServiceError>> {
+    pub async fn list_models(&self) -> Result<Vec<ModelInfo>, Report<LlmServiceError>> {
         models::list_models(&self.client, &self.api_key).await
     }
 

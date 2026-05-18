@@ -238,9 +238,58 @@ fn ordered_list_renders_items() -> anyhow::Result<()> {
     let lines = render_markdown("1. first\n2. second\n3. third", 80);
     assert_eq!(lines.len(), 3);
     let buf = render_to_buffer(lines, 80, 10)?;
-    assert_eq!(buf.cell((0, 0)).context("cell at (0, 0)")?.symbol(), "•");
-    assert_eq!(buf.cell((0, 1)).context("cell at (0, 1)")?.symbol(), "•");
-    assert_eq!(buf.cell((0, 2)).context("cell at (0, 2)")?.symbol(), "•");
+    // First line should start with "1." (the '1' character)
+    assert_eq!(buf.cell((0, 0)).context("cell at (0, 0)")?.symbol(), "1");
+    assert_eq!(buf.cell((0, 1)).context("cell at (0, 1)")?.symbol(), "2");
+    assert_eq!(buf.cell((0, 2)).context("cell at (0, 2)")?.symbol(), "3");
+    Ok(())
+}
+
+#[test]
+fn ordered_list_preserves_source_numbers() -> anyhow::Result<()> {
+    // Given non-sequential numbers in the source.
+    let lines = render_markdown("3. alpha\n7. beta", 80);
+    assert_eq!(lines.len(), 2);
+    let buf = render_to_buffer(lines, 80, 5)?;
+    // Then the rendered markers use the source numbers.
+    assert_eq!(buf.cell((0, 0)).context("cell at (0, 0)")?.symbol(), "3");
+    assert_eq!(buf.cell((0, 1)).context("cell at (0, 1)")?.symbol(), "7");
+    Ok(())
+}
+
+#[test]
+fn ordered_list_parsed_with_number_field() -> anyhow::Result<()> {
+    // Given an ordered list.
+    let renderer = MarkdownRenderer::new(80);
+    let blocks = renderer.parse("1. first\n2. second");
+    // Then the blocks have ordered = Some(n).
+    match &blocks[0] {
+        MarkdownBlock::ListItem { ordered, .. } => {
+            assert_eq!(*ordered, Some(1));
+        }
+        other => panic!("expected ListItem, got {:?}", other),
+    }
+    match &blocks[1] {
+        MarkdownBlock::ListItem { ordered, .. } => {
+            assert_eq!(*ordered, Some(2));
+        }
+        other => panic!("expected ListItem, got {:?}", other),
+    }
+    Ok(())
+}
+
+#[test]
+fn unordered_list_parsed_without_ordered_field() -> anyhow::Result<()> {
+    // Given an unordered list.
+    let renderer = MarkdownRenderer::new(80);
+    let blocks = renderer.parse("- first\n- second");
+    // Then the blocks have ordered = None.
+    match &blocks[0] {
+        MarkdownBlock::ListItem { ordered, .. } => {
+            assert_eq!(*ordered, None);
+        }
+        other => panic!("expected ListItem, got {:?}", other),
+    }
     Ok(())
 }
 
@@ -250,9 +299,9 @@ fn nested_list_indents() -> anyhow::Result<()> {
     let blocks = renderer.parse("- outer\n  - inner");
     let inner_block = blocks
         .iter()
-        .find(|b| matches!(b, MarkdownBlock::ListItem(t, _) if t == "inner"));
+        .find(|b| matches!(b, MarkdownBlock::ListItem { content, .. } if content == "inner"));
     assert!(inner_block.is_some(), "should find inner list item");
-    if let Some(MarkdownBlock::ListItem(_, indent)) = inner_block {
+    if let Some(MarkdownBlock::ListItem { indent, .. }) = inner_block {
         assert_eq!(
             *indent, 1,
             "inner list item should have indent=1, got {}",
@@ -394,6 +443,7 @@ mod example_tree_list_tests {
             is_last_in_group: bool,
             ancestors_are_last: &[bool],
             index_in_group: usize,
+            _ordered: Option<u32>,
         ) -> Option<String> {
             let marker = if is_last_in_group {
                 "└─ "

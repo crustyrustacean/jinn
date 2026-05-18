@@ -1,7 +1,7 @@
 # Maintainer: Jayson Lennon <jayson@jaysonlennon.dev>
 
 pkgname=nullslop
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='Agentic LLM agent harness'
 url='https://github.com/jayson-lennon/nullslop'
@@ -19,6 +19,7 @@ prepare() {
     ln -sf "$startdir" "$srcdir/$pkgname-$pkgver"
     cd "$srcdir/$pkgname-$pkgver"
     export RUSTUP_TOOLCHAIN=stable
+    cargo generate-lockfile
     cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
 }
 

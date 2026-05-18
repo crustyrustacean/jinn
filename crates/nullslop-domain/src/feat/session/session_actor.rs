@@ -45,7 +45,8 @@ use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownCompleted,
 };
 use crate::feat::tools_actor::protocol::event::{
-    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolUseStarted,
+    ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted, ToolExecutionOutput,
+    ToolExecutionStarted, ToolUseStarted,
 };
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{ChatEntry, Command, Event, PromptStrategyId};
@@ -205,6 +206,8 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<ToolCallReceived>();
         ctx.subscribe_event::<ToolCallStreaming>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
+        ctx.subscribe_event::<ToolExecutionStarted>();
+        ctx.subscribe_event::<ToolExecutionOutput>();
         ctx.subscribe_event::<crate::feat::context::protocol::event::ChatEntryPinChanged>();
         ctx.subscribe_event::<ModelsRefreshed>();
         ctx.subscribe_event::<EnvironmentLoaded>();
@@ -254,6 +257,12 @@ impl SessionPersistenceActor {
             Event::ToolCallStreaming(payload) => self.on_tool_call_streaming(payload),
             Event::ToolExecutionCompleted(payload) => {
                 self.on_tool_execution_completed(payload).await;
+            }
+            Event::ToolExecutionStarted(payload) => {
+                self.on_tool_execution_started(payload);
+            }
+            Event::ToolExecutionOutput(payload) => {
+                self.on_tool_execution_output(payload);
             }
             Event::ModelsRefreshed(payload) => {
                 self.on_models_refreshed(payload);
@@ -389,7 +398,9 @@ impl SessionPersistenceActor {
             if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
                 session_id,
                 strategy_id,
-            })) {}
+            })) {
+                tracing::error!(err = ?e, "failed to send command");
+            }
         }
     }
 
@@ -505,9 +516,12 @@ impl SessionPersistenceActor {
                                 crate::protocol::PromptStrategyId::passthrough,
                                 crate::protocol::PromptStrategyId::new,
                             );
+                        let token_budget = state.frontend.preferences.context_token_budget.budget;
                         let new_session = ChatSessionState::new_with_profile(
                             crate::feat::session::profile::SessionProfile::from_config(
-                                model, strategy,
+                                model,
+                                strategy,
+                                token_budget,
                             ),
                         );
                         let new_id = new_session.session_id().clone();
@@ -552,6 +566,8 @@ impl SessionPersistenceActor {
                         .scope_stack
                         .push(crate::common::app_state::FocusScope::Input);
                 }
+
+                self.save_active_session(&payload.session_id).await;
 
                 if let Err(e) =
                     ctx.send_event(Event::SessionTeardownCompleted(SessionTeardownCompleted {
@@ -631,7 +647,12 @@ mod tests {
     use super::{
         no_output_info, setup_complete_msg, setup_running_msg, strip_ansi, teardown_running_msg,
     };
-    use crate::protocol::ChatEntryKind;
+    use crate::common::actor::{ActorContext, RecordingSink};
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
+    use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+    use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
+    use crate::protocol::{ChatEntry, ChatEntryKind};
     use ratatui::style::Color;
     use std::path::Path;
 
@@ -790,5 +811,87 @@ mod tests {
         assert!(span.content.contains("⚙️"));
         assert!(span.content.contains("Running teardown script"));
         assert_eq!(span.style.fg, Some(Color::Yellow));
+    }
+
+    // --- StreamCompleted(Error) handler tests ---
+
+    fn test_actor() -> super::SessionPersistenceActor {
+        super::SessionPersistenceActor {
+            state: State::new(AppState::default()),
+            services: None,
+            store: None,
+            counter: TiktokenCounter::o200k_base(),
+        }
+    }
+
+    fn test_context() -> (std::sync::Arc<RecordingSink>, ActorContext) {
+        let sink = std::sync::Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("test-session-actor", sink.clone());
+        (sink, ctx)
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_error_reason_finishes_streaming() {
+        // Given a session actor with a session in streaming state.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            assert!(session.is_streaming());
+            state.session.active_session.clone()
+        };
+
+        // When handling StreamCompleted with Error reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session is no longer streaming.
+        let state = actor.state.read();
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
+        assert!(!session.is_streaming());
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_error_reason_does_not_drain_queue() {
+        // Given a session actor with a session in streaming state and a queued message.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.enqueue_message(ChatEntry::user("queued message"));
+            assert_eq!(session.queue_len(), 1);
+            state.session.active_session.clone()
+        };
+
+        // When handling StreamCompleted with Error reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the queued message is still in the queue.
+        let state = actor.state.read();
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
+        assert_eq!(session.queue_len(), 1);
     }
 }

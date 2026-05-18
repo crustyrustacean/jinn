@@ -12,7 +12,11 @@ pub enum MarkdownBlock {
         prefix_override: Option<String>,
     },
     InlineCode(String),
-    ListItem(String, u8),
+    ListItem {
+        content: String,
+        indent: u8,
+        ordered: Option<u32>,
+    },
     Blockquote {
         level: u8,
         children: Vec<MarkdownBlock>,
@@ -61,7 +65,7 @@ impl MarkdownBlock {
             | MarkdownBlock::BlankLine => 1,
             MarkdownBlock::Paragraph(lines) => lines.len().max(1),
             MarkdownBlock::CodeBlock { code, .. } => code.lines().count().max(1) + 2,
-            MarkdownBlock::ListItem(_, _) => 1,
+            MarkdownBlock::ListItem { .. } => 1,
             MarkdownBlock::Blockquote { children, .. } => children
                 .iter()
                 .map(|c| c.line_count())

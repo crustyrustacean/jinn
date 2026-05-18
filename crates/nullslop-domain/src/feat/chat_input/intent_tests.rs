@@ -682,3 +682,36 @@ fn enter_completes_and_executes_slash_command() {
         "/new should not enqueue a chat message"
     );
 }
+
+// --- Paste ---
+
+#[rstest::rstest]
+fn paste_text_inserts_into_chat_input() {
+    // Given a default AppState.
+    let mut state = AppState::default();
+
+    // When handling PasteText with "hello\nworld".
+    let result = crate::feat::chat_input::intent::handle_paste_text("hello\nworld", &mut state);
+
+    // Then the buffer contains the pasted text with newlines preserved.
+    assert_eq!(state.active_chat_input().text(), "hello\nworld");
+    assert!(result.commands.is_empty());
+}
+
+#[rstest::rstest]
+fn paste_text_inserts_at_cursor_position() {
+    // Given a state with "hello" and cursor at position 2.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("hello");
+    state.active_chat_input_mut().move_cursor_to_start();
+    state.active_chat_input_mut().move_cursor_right();
+    state.active_chat_input_mut().move_cursor_right(); // cursor at 2
+
+    // When handling PasteText with "XY".
+    let result = crate::feat::chat_input::intent::handle_paste_text("XY", &mut state);
+
+    // Then text is "heXYllo" and cursor is at 4.
+    assert_eq!(state.active_chat_input().text(), "heXYllo");
+    assert_eq!(state.active_chat_input().cursor_pos(), 4);
+    assert!(result.commands.is_empty());
+}

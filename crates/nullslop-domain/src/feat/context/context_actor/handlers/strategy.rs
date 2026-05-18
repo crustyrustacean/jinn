@@ -18,7 +18,15 @@ impl PromptAssemblyActor {
             tracing::error!("no strategy factory available");
             return;
         };
-        match factory.create(&evt.strategy_id) {
+        let token_budget = self
+            .state
+            .read()
+            .session
+            .sessions
+            .get(&evt.session_id)
+            .map(|s| s.profile().token_budget)
+            .unwrap_or(crate::feat::session::profile::DEFAULT_TOKEN_BUDGET);
+        match factory.create(&evt.strategy_id, token_budget) {
             Ok(new_strategy) => {
                 self.strategies.insert(evt.session_id.clone(), new_strategy);
             }

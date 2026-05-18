@@ -72,6 +72,11 @@ pub struct ProviderEntry {
     /// Maps to `LLMBuilder::extra_body()`.
     #[serde(default)]
     pub extra_body: Option<serde_json::Value>,
+    /// Manual override for the maximum context length in tokens.
+    /// When set, applies to all models under this provider and takes
+    /// precedence over API-discovered values.
+    #[serde(default)]
+    pub context_length: Option<u32>,
 }
 
 /// A named alias for a provider entry.
@@ -287,6 +292,7 @@ target = "ollama/llama3"
                 api_key_env: Some("TEST_KEY".to_owned()),
                 requires_key: true,
                 extra_body: None,
+                context_length: None,
             }],
             aliases: vec![],
             default_provider: Some("test/gpt-4".to_owned()),
@@ -354,6 +360,7 @@ tool_stream = true
                 api_key_env: Some("ZAI_API_KEY".to_owned()),
                 requires_key: true,
                 extra_body: Some(serde_json::json!({"enable_thinking": true})),
+                context_length: None,
             }],
             aliases: vec![],
             default_provider: None,

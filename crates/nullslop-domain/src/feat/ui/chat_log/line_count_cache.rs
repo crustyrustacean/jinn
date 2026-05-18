@@ -8,7 +8,8 @@
 
 use std::collections::HashMap;
 
-use crate::protocol::{ChatEntry, ChatEntryId};
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
+use crate::feat::session::tool_result_status::ToolResultStatus;
 
 /// Cached wrapped line count for a single entry.
 #[derive(Debug, Clone)]
@@ -57,6 +58,13 @@ impl EntryLineCache {
     /// - The entry's expanded state has changed (expand/collapse toggle).
     /// - The content width has changed (terminal resize).
     pub fn get(&mut self, entry: &ChatEntry, is_expanded: bool, content_width: u16) -> Option<u16> {
+        // Never cache pending tool result entries — their content changes every tick.
+        if let ChatEntryKind::ToolResult { status, .. } = &entry.kind
+            && *status == ToolResultStatus::Pending
+        {
+            return None;
+        }
+
         // If content width changed, clear everything.
         if self.content_width != Some(content_width) {
             self.entries.clear();
@@ -262,5 +270,19 @@ mod tests {
             assistant.content_fingerprint(),
             system.content_fingerprint()
         );
+    }
+
+    #[rstest::rstest]
+    fn cache_miss_on_pending_tool_result() {
+        // Given a cache with a pending ToolResult entry.
+        let mut cache = EntryLineCache::new();
+        let entry = ChatEntry::tool_result("id", "bash", "", ToolResultStatus::Pending);
+        cache.insert(&entry, false, 80, 5);
+
+        // When looking up the pending entry.
+        let result = cache.get(&entry, false, 80);
+
+        // Then the cache returns None (pending entries are never cached).
+        assert!(result.is_none());
     }
 }

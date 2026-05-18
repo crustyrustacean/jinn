@@ -149,6 +149,12 @@ impl TuiApp {
                         };
                         self.route_intent(intent);
                     }
+                    crossterm::event::Event::Paste(text) => {
+                        let scope = *self.which_key.scope();
+                        if matches!(scope, Scope::Input | Scope::Picker) {
+                            self.route_intent(nullslop_domain::Intent::PasteText { text });
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -296,6 +302,7 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope, active_tab: ActiveTa
         FocusScope::Input => Scope::Input,
         FocusScope::Sidebar => Scope::Sidebar,
         FocusScope::ArgInput => Scope::ArgInput,
+        FocusScope::TokenBudgetInput => Scope::TokenBudgetInput,
         FocusScope::SidebarResize => Scope::SidebarResize,
         FocusScope::Normal => match active_tab {
             ActiveTab::Dashboard => Scope::Dashboard,

@@ -122,6 +122,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
         }
     }
 
@@ -262,6 +263,7 @@ mod tests {
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
         };
 
         let call = ToolCall {

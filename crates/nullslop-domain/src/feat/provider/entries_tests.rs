@@ -16,6 +16,7 @@ fn ollama_entry() -> ProviderEntry {
         api_key_env: None,
         requires_key: false,
         extra_body: None,
+        context_length: None,
     }
 }
 
@@ -28,6 +29,7 @@ fn openrouter_entry() -> ProviderEntry {
         api_key_env: Some("OPENROUTER_API_KEY".to_owned()),
         requires_key: true,
         extra_body: None,
+        context_length: None,
     }
 }
 
@@ -224,9 +226,13 @@ fn static_entries_present_after_cache_merge() {
 
     // And a cache with an additional model for the same provider.
     let mut cache = crate::feat::provider_infra::ModelCache::new();
-    cache
-        .entries
-        .insert("ollama".to_owned(), vec!["mistral".to_owned()]);
+    cache.entries.insert(
+        "ollama".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "mistral".to_owned(),
+            context_length: None,
+        }],
+    );
 
     // When loading provider entries with the cache.
     let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
@@ -249,9 +255,13 @@ fn remote_entries_present_after_cache_merge() {
 
     // And a cache with an additional model for the same provider.
     let mut cache = crate::feat::provider_infra::ModelCache::new();
-    cache
-        .entries
-        .insert("ollama".to_owned(), vec!["mistral".to_owned()]);
+    cache.entries.insert(
+        "ollama".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "mistral".to_owned(),
+            context_length: None,
+        }],
+    );
 
     // When loading provider entries with the cache.
     let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
@@ -277,7 +287,16 @@ fn static_entry_not_duplicated_on_collision() {
     let mut cache = crate::feat::provider_infra::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
-        vec!["llama3".to_owned(), "mistral".to_owned()],
+        vec![
+            crate::feat::provider_infra::ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: None,
+            },
+            crate::feat::provider_infra::ModelInfo {
+                id: "mistral".to_owned(),
+                context_length: None,
+            },
+        ],
     );
 
     // When loading provider entries.
@@ -300,7 +319,16 @@ fn new_remote_entry_added_on_collision() {
     let mut cache = crate::feat::provider_infra::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
-        vec!["llama3".to_owned(), "mistral".to_owned()],
+        vec![
+            crate::feat::provider_infra::ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: None,
+            },
+            crate::feat::provider_infra::ModelInfo {
+                id: "mistral".to_owned(),
+                context_length: None,
+            },
+        ],
     );
 
     // When loading provider entries.
@@ -321,9 +349,13 @@ fn remote_entry_present_when_key_missing() {
 
     // And a cache with additional models.
     let mut cache = crate::feat::provider_infra::ModelCache::new();
-    cache
-        .entries
-        .insert("openrouter".to_owned(), vec!["claude-3".to_owned()]);
+    cache.entries.insert(
+        "openrouter".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "claude-3".to_owned(),
+            context_length: None,
+        }],
+    );
 
     // When loading provider entries.
     let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
@@ -345,9 +377,13 @@ fn remote_entry_marked_unavailable_when_key_missing() {
 
     // And a cache with additional models.
     let mut cache = crate::feat::provider_infra::ModelCache::new();
-    cache
-        .entries
-        .insert("openrouter".to_owned(), vec!["claude-3".to_owned()]);
+    cache.entries.insert(
+        "openrouter".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "claude-3".to_owned(),
+            context_length: None,
+        }],
+    );
 
     // When loading provider entries.
     let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
@@ -370,7 +406,16 @@ fn load_provider_entries_includes_all_remote_models() {
     let mut cache = crate::feat::provider_infra::ModelCache::new();
     cache.entries.insert(
         "ollama".to_owned(),
-        vec!["mistral".to_owned(), "codellama".to_owned()],
+        vec![
+            crate::feat::provider_infra::ModelInfo {
+                id: "mistral".to_owned(),
+                context_length: None,
+            },
+            crate::feat::provider_infra::ModelInfo {
+                id: "codellama".to_owned(),
+                context_length: None,
+            },
+        ],
     );
 
     // When loading entries (no filter — returns everything).

@@ -4,7 +4,7 @@
 //! dispatches [`ExecuteToolBatch`] requests, and emits [`ToolBatchCompleted`] when
 //! all calls in a batch finish.
 //!
-//! Built-in tools (`echo`, `get_time`, `read`, `write`) are registered at
+//! Built-in tools (`get_time`, `read`, `write`) are registered at
 //! activation and executed via spawned tokio tasks. Actor-provided tools
 //! are routed via [`ExecuteTool`] commands on the bus.
 //!
@@ -14,7 +14,6 @@
 
 mod builtin;
 pub(crate) mod builtin_bash;
-pub(crate) mod builtin_echo;
 pub(crate) mod builtin_get_time;
 pub(crate) mod builtin_read;
 #[cfg(test)]
@@ -31,7 +30,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
@@ -287,7 +286,11 @@ impl ToolOrchestratorActor {
     }
 
     /// Builds a [`ToolContext`] for the given session by reading its CWD from shared state.
-    fn build_tool_context(&self, session_id: &SessionId) -> ToolContext {
+    fn build_tool_context(
+        &self,
+        session_id: &SessionId,
+        sink: std::sync::Arc<dyn MessageSink>,
+    ) -> ToolContext {
         let cwd = {
             let guard = self.state.read();
             guard
@@ -302,6 +305,7 @@ impl ToolOrchestratorActor {
             state: Some(self.state.clone()),
             session_id: Some(session_id.clone()),
             app_paths: self.app_paths.clone(),
+            sink: Some(sink),
         }
     }
 
@@ -331,7 +335,7 @@ impl ToolOrchestratorActor {
             Some(ToolRegistration::Builtin { execute, .. }) => {
                 let sink = ctx.sink();
                 let execute_fn = *execute;
-                let tool_ctx = self.build_tool_context(&session_id);
+                let tool_ctx = self.build_tool_context(&session_id, sink.clone());
                 let timeout = tool_ctx.timeout;
 
                 let handle = tokio::spawn(async move {
