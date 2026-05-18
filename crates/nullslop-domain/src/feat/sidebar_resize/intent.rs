@@ -165,7 +165,7 @@ mod tests {
     fn leave_from_sidebar_returns_to_normal() {
         // Given state entered from Sidebar scope (stack: Normal, Sidebar, SidebarResize).
         let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Sidebar);
+        state.frontend.scope_stack.push(FocusScope::SidebarPersona);
         state.frontend.scope_stack.push(FocusScope::SidebarResize);
 
         // When handling SidebarResizeLeave.

@@ -34,6 +34,33 @@ pub enum KeyCategory {
 }
 
 /// Builds and returns the full keymap with all scope bindings.
+/// Adds shared sidebar keybindings common to all sidebar section scopes.
+///
+/// Includes: quit, help, navigation (j/k/J/K), escape, tab switching,
+/// pane navigation, sidebar resize, and input mode entry.
+fn add_sidebar_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Intent, KeyCategory>) {
+    b
+        // General — app control
+        .bind("q", Intent::Quit, KeyCategory::General)
+        .bind("<c-c>", Intent::Quit, KeyCategory::General)
+        .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
+        // Navigation — within section and between sections
+        .bind("j", Intent::SidebarMoveDown, KeyCategory::Navigation)
+        .bind("k", Intent::SidebarMoveUp, KeyCategory::Navigation)
+        .bind("J", Intent::SidebarSectionNext, KeyCategory::Navigation)
+        .bind("K", Intent::SidebarSectionPrev, KeyCategory::Navigation)
+        .bind("<esc>", Intent::SidebarLeave, KeyCategory::General)
+        // Pane navigation — focus back to chat
+        .bind("<c-h>", Intent::SidebarLeave, KeyCategory::Navigation)
+        // Sidebar resize
+        .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
+        // Input — external editor
+        .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
+        // Input — enter input mode
+        .bind("i", Intent::EnterInsertMode, KeyCategory::Input);
+}
+
+/// Builds and returns the full keymap with all scope bindings.
 #[must_use]
 #[rustfmt::skip]
 #[expect(clippy::too_many_lines, reason = "exhaustive keymap bindings grow with each scope")]
@@ -90,39 +117,34 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Escape: cancel selection
             .bind("<esc>", Intent::NormalEscape, KeyCategory::General);
         })
-        // Pinned scope: pinned entry navigation and management
-        .scope(Scope::Sidebar, |b| {
+        // Sidebar — Persona section
+        .scope(Scope::SidebarPersona, |b| {
+            add_sidebar_base(b);
             b
-            // General — app control
-            .bind("q", Intent::Quit, KeyCategory::General)
-            .bind("<c-c>", Intent::Quit, KeyCategory::General)
-            .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
-            // Navigation — pinned entry list
-            .bind("j", Intent::SidebarMoveDown, KeyCategory::Navigation)
-            .bind("k", Intent::SidebarMoveUp, KeyCategory::Navigation)
-            .bind("J", Intent::SidebarSectionNext, KeyCategory::Navigation)
-            .bind("K", Intent::SidebarSectionPrev, KeyCategory::Navigation)
-            // Actions
+            // Persona-specific actions
+            .bind("c", Intent::SidebarPersonaEdit, KeyCategory::Context);
+        })
+        // Sidebar — Pins section
+        .scope(Scope::SidebarPins, |b| {
+            add_sidebar_base(b);
+            b
+            // Pin management actions
             .bind("u", Intent::PinsUnpin, KeyCategory::Context)
-            // Position — change pin position of selected entry
             .bind("t", Intent::PinsPinTop, KeyCategory::Context)
             .bind("b", Intent::PinsPinBottom, KeyCategory::Context)
             .bind("r", Intent::PinsPinRelative, KeyCategory::Context)
-            .bind("m", Intent::PinsPinCycle, KeyCategory::Context)
-            .bind("c", Intent::SidebarPersonaEdit, KeyCategory::Context)
+            .bind("m", Intent::PinsPinCycle, KeyCategory::Context);
+        })
+        // Sidebar — Sessions section
+        .scope(Scope::SidebarSessions, |b| {
+            add_sidebar_base(b);
+            b
+            // Session management actions
             .bind("x", Intent::SidebarSessionClose, KeyCategory::General)
             .bind("<enter>", Intent::SidebarConfirm, KeyCategory::General)
             .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
-            .bind("<esc>", Intent::SidebarLeave, KeyCategory::General)
-            // Pane navigation — focus back to chat
-            .bind("<c-h>", Intent::SidebarLeave, KeyCategory::Navigation)
-            // Sidebar resize
-            .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
-            // Input — external editor
-            .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
-            // Input — enter input mode
-            .bind("i", Intent::EnterInsertMode, KeyCategory::Input);
+            .bind("r", Intent::SidebarRenameSession, KeyCategory::General);
         })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
@@ -228,6 +250,24 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("9", Intent::InsertChar { ch: '9' }, KeyCategory::Input);
     });
 
+    // RenameSessionInput scope — editing a session title.
+    keymap.scope(Scope::RenameSessionInput, |b| {
+        b
+        .bind("<esc>", Intent::RenameSessionLeave, KeyCategory::General)
+        .bind("<enter>", Intent::RenameSessionConfirm, KeyCategory::Input)
+        .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
+        .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
+        .catch_all(|key: KeyEvent| {
+            if let Key::Char(c) = key.key {
+                Some(Intent::InsertChar { ch: c })
+            } else {
+                None
+            }
+        });
+    });
+
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
         match mouse.kind {
             MouseEventKind::ScrollUp => Some(Intent::MouseScrollUp),
@@ -262,7 +302,9 @@ pub fn collect_all_bindings(
     let mut entries = Vec::new();
     for scope in &[
         Scope::Normal,
-        Scope::Sidebar,
+        Scope::SidebarPersona,
+        Scope::SidebarPins,
+        Scope::SidebarSessions,
         Scope::Picker,
         Scope::Input,
         Scope::ArgInput,

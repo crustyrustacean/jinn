@@ -106,7 +106,7 @@ mod tests {
             .write()
             .frontend
             .scope_stack
-            .push(FocusScope::Sidebar);
+            .push(FocusScope::SidebarPersona);
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.

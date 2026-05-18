@@ -13,7 +13,7 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
     use crate::feat::ui::sidebar::section_trait::{EnterFrom, SidebarSectionId};
 
-    state.frontend.scope_stack.push(FocusScope::Sidebar);
+    state.frontend.scope_stack.push(FocusScope::SidebarPersona);
 
     // If a section already has cursor state, restore it.
     let has_existing_cursor = state.frontend.persona_section.cursor.is_some()
@@ -22,8 +22,17 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
 
     if !has_existing_cursor {
         // First entry — default to Persona at top.
-        state.frontend.sidebar.focused_section = SidebarSectionId::Persona;
         crate::feat::ui::sidebar::persona_section::receive_cursor(state, EnterFrom::Top);
+    } else {
+        // Restore to whichever section has a cursor.
+        let section = if state.frontend.sessions_section.selected_index.is_some() {
+            SidebarSectionId::Sessions
+        } else if state.frontend.pins.selected_id().is_some() {
+            SidebarSectionId::Pins
+        } else {
+            SidebarSectionId::Persona
+        };
+        state.frontend.scope_stack.set_sidebar_section(section);
     }
 
     IntentResult::empty()
@@ -95,7 +104,7 @@ mod tests {
     fn sidebar_leave_returns_to_normal_scope() {
         // Given a state with Sidebar pushed onto the scope stack.
         let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Sidebar);
+        state.frontend.scope_stack.push(FocusScope::SidebarPersona);
 
         // When handling sidebar leave.
         let result = handle_sidebar_leave(&mut state);
@@ -110,7 +119,7 @@ mod tests {
         // Given a state that entered sidebar from Input mode.
         let mut state = AppState::default();
         state.frontend.scope_stack.push(FocusScope::Input);
-        state.frontend.scope_stack.push(FocusScope::Sidebar);
+        state.frontend.scope_stack.push(FocusScope::SidebarPersona);
 
         // When handling sidebar leave.
         handle_sidebar_leave(&mut state);
@@ -123,7 +132,7 @@ mod tests {
     fn sidebar_leave_does_not_set_cancel_prompt_when_streaming() {
         // Given a state in Sidebar with an active stream.
         let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::Sidebar);
+        state.frontend.scope_stack.push(FocusScope::SidebarPersona);
         state.active_session_mut().begin_streaming();
 
         // When handling sidebar leave.
