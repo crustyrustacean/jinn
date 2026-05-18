@@ -7,6 +7,7 @@
 //! - Generating unified diff output
 
 use std::fmt::Write;
+use unicode_segmentation::UnicodeSegmentation as _;
 
 /// A single edit operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,7 +89,13 @@ pub(crate) fn find_and_validate_edits(
         while let Some(pos) = original[search_from..].find(&edit.old_text) {
             let abs_pos = search_from + pos;
             occurrences.push((abs_pos, abs_pos + edit.old_text.len()));
-            search_from = abs_pos + 1; // Allow overlapping finds for duplicate detection
+            // Advance by one grapheme, not one byte, to avoid slicing
+            // inside a multi-byte UTF-8 character.
+            search_from = original[abs_pos..]
+                .grapheme_indices(true)
+                .nth(1)
+                .map(|(idx, _)| abs_pos + idx)
+                .unwrap_or(original.len());
         }
 
         match occurrences.len() {
@@ -363,6 +370,25 @@ mod tests {
 
         // Then the text is deleted.
         assert_eq!(result, "hello");
+    }
+
+    #[rstest::rstest]
+    fn find_duplicate_match_with_multibyte_chars() {
+        // Given content with a multi-byte character appearing twice.
+        let original = "café café";
+
+        // When finding an edit that matches the multi-byte character.
+        let edits = vec![Edit {
+            old_text: "é".to_owned(),
+            new_text: "e".to_owned(),
+        }];
+        let result = find_and_validate_edits(original, &edits);
+
+        // Then it fails with DuplicateMatch instead of panicking.
+        assert_eq!(
+            result,
+            Err(EditError::DuplicateMatch { index: 0, count: 2 })
+        );
     }
 
     #[rstest::rstest]
