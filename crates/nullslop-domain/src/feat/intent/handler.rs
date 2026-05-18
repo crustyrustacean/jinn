@@ -315,6 +315,9 @@ impl IntentHandler {
             Intent::SidebarSessionClose => {
                 feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state)
             }
+            Intent::SidebarSessionTeardown => {
+                feat::ui::sidebar::sessions::handle_session_teardown(state)
+            }
             Intent::SidebarConfirm => {
                 feat::ui::sidebar::sessions::handle_session_activate(state);
                 IntentResult::empty()

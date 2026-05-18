@@ -149,6 +149,17 @@ fn teardown_running_msg() -> ChatEntry {
     ))])
 }
 
+/// INFO entry shown when a teardown-only command succeeds (session is kept open).
+fn teardown_success_msg() -> ChatEntry {
+    use ratatui::style::{Color, Style};
+    use ratatui::text::{Line, Span};
+
+    ChatEntry::info(vec![Line::from(Span::styled(
+        "✅ Teardown completed successfully.",
+        Style::default().fg(Color::Green),
+    ))])
+}
+
 /// Format a `LifecycleCommandError` into a clean user-facing message.
 fn format_lifecycle_error(err: &LifecycleCommandError) -> String {
     match err {
@@ -505,66 +516,85 @@ impl SessionPersistenceActor {
 
         match result {
             Ok(()) => {
-                // Teardown succeeded - remove session and switch active.
-                {
-                    let mut state = self.state.write();
-                    state.session.sessions.remove(&payload.session_id);
-                    if state.session.sessions.is_empty() {
-                        let model = state
-                            .frontend
-                            .preferences
-                            .last_model
-                            .clone()
-                            .unwrap_or_else(|| {
-                                crate::feat::provider_infra::NO_PROVIDER_ID.to_owned()
-                            });
-                        let strategy = state
-                            .frontend
-                            .preferences
-                            .last_strategy
-                            .as_deref()
-                            .map_or_else(
-                                crate::protocol::PromptStrategyId::passthrough,
-                                crate::protocol::PromptStrategyId::new,
+                if payload.close_on_success {
+                    // Teardown succeeded - remove session and switch active.
+                    {
+                        let mut state = self.state.write();
+                        state.session.sessions.remove(&payload.session_id);
+                        if state.session.sessions.is_empty() {
+                            let model = state
+                                .frontend
+                                .preferences
+                                .last_model
+                                .clone()
+                                .unwrap_or_else(|| {
+                                    crate::feat::provider_infra::NO_PROVIDER_ID.to_owned()
+                                });
+                            let strategy = state
+                                .frontend
+                                .preferences
+                                .last_strategy
+                                .as_deref()
+                                .map_or_else(
+                                    crate::protocol::PromptStrategyId::passthrough,
+                                    crate::protocol::PromptStrategyId::new,
+                                );
+                            let token_budget = state.frontend.preferences.context_token_budget.budget;
+                            let new_session = ChatSessionState::new_with_profile(
+                                crate::feat::session::profile::SessionProfile::from_config(
+                                    model,
+                                    strategy,
+                                    token_budget,
+                                ),
                             );
-                        let token_budget = state.frontend.preferences.context_token_budget.budget;
-                        let new_session = ChatSessionState::new_with_profile(
-                            crate::feat::session::profile::SessionProfile::from_config(
-                                model,
-                                strategy,
-                                token_budget,
-                            ),
-                        );
-                        let new_id = new_session.session_id().clone();
-                        state.session.sessions.insert(new_id.clone(), new_session);
-                        state.session.active_session = new_id;
-                    } else if state.session.active_session == payload.session_id {
-                        let next_id = state
-                            .session
-                            .sessions
-                            .keys()
-                            .next()
-                            .expect("sessions is non-empty")
-                            .clone();
-                        state.session.active_session = next_id;
+                            let new_id = new_session.session_id().clone();
+                            state.session.sessions.insert(new_id.clone(), new_session);
+                            state.session.active_session = new_id;
+                        } else if state.session.active_session == payload.session_id {
+                            let next_id = state
+                                .session
+                                .sessions
+                                .keys()
+                                .next()
+                                .expect("sessions is non-empty")
+                                .clone();
+                            state.session.active_session = next_id;
+                        }
                     }
-                }
 
-                if let Err(e) =
-                    ctx.send_event(Event::SessionTeardownCompleted(SessionTeardownCompleted {
-                        session_id: payload.session_id.clone(),
-                        error: None,
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
-                }
+                    if let Err(e) =
+                        ctx.send_event(Event::SessionTeardownCompleted(SessionTeardownCompleted {
+                            session_id: payload.session_id.clone(),
+                            error: None,
+                        }))
+                    {
+                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
+                    }
 
-                if let Err(e) =
-                    ctx.send_event(Event::SessionRemoved(SessionRemoved {
-                        session_id: payload.session_id.clone(),
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionRemoved");
+                    if let Err(e) =
+                        ctx.send_event(Event::SessionRemoved(SessionRemoved {
+                            session_id: payload.session_id.clone(),
+                        }))
+                    {
+                        tracing::warn!(err = ?e, "session-actor failed to emit SessionRemoved");
+                    }
+                } else {
+                    // Teardown-only success — keep session, push info entry.
+                    {
+                        let mut state = self.state.write();
+                        if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+                            session.push_entry(teardown_success_msg());
+                        }
+                    }
+
+                    if let Err(e) =
+                        ctx.send_event(Event::SessionTeardownCompleted(SessionTeardownCompleted {
+                            session_id: payload.session_id.clone(),
+                            error: None,
+                        }))
+                    {
+                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
+                    }
                 }
             }
             Err(report) => {
@@ -1118,6 +1148,7 @@ mod tests {
                     session_id: target_id,
                     command: "exit 1".to_owned(),
                     args: vec![],
+                    close_on_success: true,
                 },
                 &ctx,
             )
@@ -1153,6 +1184,7 @@ mod tests {
                     session_id,
                     command: "exit 1".to_owned(),
                     args: vec![],
+                    close_on_success: true,
                 },
                 &ctx,
             )
@@ -1183,6 +1215,7 @@ mod tests {
                     session_id: session_id.clone(),
                     command: "exit 1".to_owned(),
                     args: vec![],
+                    close_on_success: true,
                 },
                 &ctx,
             )
@@ -1212,6 +1245,7 @@ mod tests {
                     session_id: session_id.clone(),
                     command: "exit 1".to_owned(),
                     args: vec![],
+                    close_on_success: true,
                 },
                 &ctx,
             )
@@ -1419,5 +1453,151 @@ mod tests {
             )
         });
         assert!(!found, "did not expect SessionRemoved for nonexistent session");
+    }
+
+    // --- Teardown-only (close_on_success: false) tests ---
+
+    #[tokio::test]
+    async fn teardown_only_success_does_not_remove_session() {
+        // Given a session actor with a session.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session.clone()
+        };
+        let original_count = {
+            let state = actor.state.read();
+            state.session.sessions.len()
+        };
+
+        // When teardown succeeds with close_on_success: false.
+        actor
+            .handle_run_session_teardown(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
+                    session_id: session_id.clone(),
+                    command: "echo test".to_owned(),
+                    args: vec![],
+                    close_on_success: false,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is NOT removed.
+        let state = actor.state.read();
+        assert!(state.session.sessions.contains_key(&session_id));
+        assert_eq!(state.session.sessions.len(), original_count);
+    }
+
+    #[tokio::test]
+    async fn teardown_only_success_does_not_emit_session_removed() {
+        // Given a session actor with a session.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session.clone()
+        };
+
+        // When teardown succeeds with close_on_success: false.
+        actor
+            .handle_run_session_teardown(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
+                    session_id: session_id.clone(),
+                    command: "echo test".to_owned(),
+                    args: vec![],
+                    close_on_success: false,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then no SessionRemoved event is emitted.
+        let events = sink.events();
+        let found = events.iter().any(|e| {
+            matches!(
+                e,
+                crate::protocol::Event::SessionRemoved(
+                    crate::feat::session::protocol::session_removed::SessionRemoved {
+                        session_id: sid,
+                    }
+                ) if sid == &session_id
+            )
+        });
+        assert!(!found, "did not expect SessionRemoved for teardown-only");
+    }
+
+    #[tokio::test]
+    async fn teardown_only_success_emits_session_teardown_completed() {
+        // Given a session actor with a session.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session.clone()
+        };
+
+        // When teardown succeeds with close_on_success: false.
+        actor
+            .handle_run_session_teardown(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
+                    session_id: session_id.clone(),
+                    command: "echo test".to_owned(),
+                    args: vec![],
+                    close_on_success: false,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SessionTeardownCompleted is still emitted.
+        let events = sink.events();
+        let found = events.iter().any(|e| {
+            matches!(
+                e,
+                crate::protocol::Event::SessionTeardownCompleted(
+                    crate::feat::session_lifecycle::protocol::event::SessionTeardownCompleted {
+                        session_id: sid,
+                        error: None,
+                    }
+                ) if sid == &session_id
+            )
+        });
+        assert!(found, "expected SessionTeardownCompleted event");
+    }
+
+    #[tokio::test]
+    async fn teardown_only_success_pushes_info_entry() {
+        // Given a session actor with a session.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session.clone()
+        };
+
+        // When teardown succeeds with close_on_success: false.
+        actor
+            .handle_run_session_teardown(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
+                    session_id: session_id.clone(),
+                    command: "echo test".to_owned(),
+                    args: vec![],
+                    close_on_success: false,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session has an info entry about success.
+        let state = actor.state.read();
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
+        let last = session.history().last().expect("has an entry");
+        assert!(matches!(&last.kind, ChatEntryKind::Info(..)));
     }
 }

@@ -205,6 +205,7 @@ pub fn handle_session_close(state: &mut AppState, session_id: Option<&SessionId>
                 session_id: closing_id,
                 command: rendered,
                 args: lifecycle_args,
+                close_on_success: true,
             },
         )]);
     }

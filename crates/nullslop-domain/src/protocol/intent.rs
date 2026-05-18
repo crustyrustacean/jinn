@@ -138,6 +138,8 @@ pub enum Intent {
     PinsPinCycle,
     /// Close the selected open session from the sidebar.
     SidebarSessionClose,
+    /// Re-run teardown for the selected session without closing it.
+    SidebarSessionTeardown,
     /// Open the persona picker from the sidebar.
     SidebarPersonaEdit,
     /// Open the session lifecycle picker from the sidebar sessions section.
@@ -255,6 +257,7 @@ impl std::fmt::Display for Intent {
             Intent::PinsPinRelative => write!(f, "pins pin relative"),
             Intent::PinsPinCycle => write!(f, "pins pin cycle"),
             Intent::SidebarSessionClose => write!(f, "sidebar session close"),
+            Intent::SidebarSessionTeardown => write!(f, "sidebar session teardown"),
             Intent::SidebarPersonaEdit => write!(f, "edit persona"),
             Intent::SidebarSessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
