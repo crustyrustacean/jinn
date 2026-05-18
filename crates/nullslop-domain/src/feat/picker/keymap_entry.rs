@@ -2,6 +2,7 @@
 
 use std::ops::Range;
 
+use super::style::dim_style;
 use crate::feat::theme::Theme;
 use crate::protocol::Intent;
 use nullslop_selection_widget::PickerItem;
@@ -86,7 +87,7 @@ fn render_keymap_row(
 
     let desc_style = Style::default().fg(theme.primary_text).bg(sel_bg);
 
-    let meta_style = Style::default().fg(theme.muted_text).bg(sel_bg);
+    let meta_style = dim_style(is_selected, theme);
 
     let key_display = if key_sequence.len() < 8 {
         format!("{key_sequence:<8}")
