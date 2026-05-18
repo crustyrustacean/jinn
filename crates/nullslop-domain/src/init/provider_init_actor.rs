@@ -130,11 +130,13 @@ mod tests {
     use std::sync::Arc;
 
     use crate::AppState;
+    use crate::ContextTokenBudgetConfig;
     use crate::common::actor::{
         Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
     };
     use crate::common::services::Services;
     use crate::common::state::State;
+    use crate::feat::preferences_actor::user_preferences::CompactionConfig;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::provider_infra::ProviderEntry;
     use crate::init::EnvironmentLoaded;
@@ -177,10 +179,10 @@ mod tests {
                 persona_name: None,
                 session_lifecycles: vec![],
                 sidebar_width: None,
-                context_token_budget: Default::default(),
+                context_token_budget: ContextTokenBudgetConfig::default(),
                 max_tool_output_lines: None,
                 max_tool_output_bytes: None,
-                compaction: Default::default(),
+                compaction: CompactionConfig::default(),
             })
             .expect("save prefs");
 

@@ -40,9 +40,7 @@ impl Actor for PreferencesStateSyncActor {
             .take_data::<State>()
             .expect("PreferencesStateSyncActor requires State injection");
 
-        let paths = ctx
-            .take_data::<AppPaths>()
-            .unwrap_or_else(|| AppPaths::default());
+        let paths = ctx.take_data::<AppPaths>().unwrap_or_default();
 
         Self {
             state,
@@ -92,12 +90,14 @@ impl Actor for PreferencesStateSyncActor {
 mod tests {
     use std::sync::Arc;
 
+    use crate::ContextTokenBudgetConfig;
     use crate::common::actor::{
         Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
     };
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
+    use crate::feat::preferences_actor::user_preferences::CompactionConfig;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::protocol::Event;
 
@@ -128,10 +128,10 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
         actor
             .handle(
@@ -167,10 +167,10 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
         actor
             .handle(
@@ -190,10 +190,10 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: Default::default(),
+            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
-            compaction: Default::default(),
+            compaction: CompactionConfig::default(),
         };
         actor
             .handle(
