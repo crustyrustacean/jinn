@@ -223,9 +223,7 @@ impl IntentHandler {
             Intent::MouseScrollDown => feat::navigation::intent::handle_mouse_scroll_down(state),
             Intent::ScrollToTop => feat::navigation::intent::handle_scroll_to_top(state),
             Intent::ScrollToBottom => feat::navigation::intent::handle_scroll_to_bottom(state),
-            Intent::SwitchTab { direction } => {
-                feat::navigation::intent::handle_switch_tab(state, *direction)
-            }
+
             Intent::EditInput => feat::navigation::intent::handle_edit_input(state),
 
             // --- Mode & App ---
@@ -263,12 +261,6 @@ impl IntentHandler {
             Intent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)
             }
-
-            // --- Dashboard ---
-            Intent::DashboardSelectDown => feat::dashboard::intent::handle_select_down(state),
-            Intent::DashboardSelectUp => feat::dashboard::intent::handle_select_up(state),
-            Intent::DashboardSelectFirst => feat::dashboard::intent::handle_select_first(state),
-            Intent::DashboardSelectLast => feat::dashboard::intent::handle_select_last(state),
 
             // --- Sidebar ---
             Intent::SidebarFocus => feat::ui::sidebar::intent::handle_sidebar_focus(state),

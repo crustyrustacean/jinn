@@ -104,16 +104,14 @@ fn submit_message_completes_and_submits_when_hash_autocomplete_active() {
 }
 
 #[rstest::rstest]
-fn autocomplete_confirm_falls_back_to_switch_tab() {
+fn autocomplete_confirm_no_op_when_no_autocomplete() {
     // Given a state with no autocomplete active.
     let mut state = AppState::default();
-    let prev_tab = state.frontend.active_tab;
 
     // When handling AutocompleteConfirm.
     let result = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
 
-    // Then the tab has advanced.
-    assert_ne!(state.frontend.active_tab, prev_tab);
+    // Then nothing changes and no commands are emitted.
     assert!(result.commands.is_empty());
 }
 

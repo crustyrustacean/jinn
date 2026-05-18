@@ -1,10 +1,7 @@
 //! Per-session state machine for the LLM actor.
 //!
 //! Each active LLM conversation is tracked by a [`SessionData`] instance
-//! that records the current state, accumulated messages, and stream data.
-
-use crate::feat::provider::llm_message::LlmMessage;
-use crate::feat::tools_actor::tool_types::ToolCall;
+//! that records the current state and stream data.
 
 /// Per-session state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,35 +10,19 @@ pub(crate) enum SessionState {
     Idle,
     /// Streaming tokens from the LLM.
     Streaming,
-    /// Tool calls were sent; awaiting results from the orchestrator.
-    AwaitingToolResults,
 }
 
 /// Per-session data tracked by the actor.
 pub(crate) struct SessionData {
     /// Current state in the streaming lifecycle.
     pub(crate) state: SessionState,
-    /// Accumulated messages for the conversation (survives across tool loops).
-    pub(crate) messages: Vec<LlmMessage>,
-    /// Accumulated text content from the current stream.
-    pub(crate) accumulated_text: String,
-    /// Accumulated tool calls from the current stream.
-    pub(crate) accumulated_tool_calls: Vec<ToolCall>,
-    /// The provider ID used for the initial stream. Preserved across tool loops
-    /// so continuation streams use the same provider instead of falling back
-    /// to the global factory.
-    pub(crate) provider_id: Option<String>,
 }
 
 impl SessionData {
-    /// Creates a new [`SessionData`] with the given initial messages.
-    pub(crate) fn new(messages: Vec<LlmMessage>) -> Self {
+    /// Creates a new [`SessionData`] in Idle state.
+    pub(crate) fn new() -> Self {
         Self {
             state: SessionState::Idle,
-            messages,
-            accumulated_text: String::new(),
-            accumulated_tool_calls: Vec::new(),
-            provider_id: None,
         }
     }
 }

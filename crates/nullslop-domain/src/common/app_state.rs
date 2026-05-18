@@ -11,14 +11,11 @@
 
 use std::collections::HashMap;
 
-use crate::protocol::{
-    ActiveTab, ChatEntryId, Mode, PickerKind, PinPosition, SessionId, ToolDefinition,
-};
+use crate::protocol::{ChatEntryId, Mode, PickerKind, PinPosition, SessionId, ToolDefinition};
 
 use crate::common::tui_signals::TuiSignals;
 pub use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
-pub use crate::feat::dashboard::DashboardState;
 use crate::feat::persona::Persona;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::preferences_actor::UserPreferences;
@@ -371,10 +368,6 @@ pub struct StatusNotification {
 /// Actors should NOT write to these fields — they are for the frontend only.
 #[derive(Debug)]
 pub struct FrontendState {
-    /// The currently active tab.
-    /// OWNER: IntentHandler (tab switching).
-    pub active_tab: ActiveTab,
-
     /// Set to `true` when the user has requested to quit.
     /// OWNER: IntentHandler (Quit intent),
     ///        shutdown-tracker (ProceedWithShutdown command).
@@ -395,10 +388,6 @@ pub struct FrontendState {
     /// Sessions sidebar section state — cursor tracking.
     /// OWNER: IntentHandler (sidebar navigation).
     pub sessions_section: SessionsSectionState,
-
-    /// Actor dashboard — tracks registered actors and their status.
-    /// OWNER: IntentHandler (dashboard navigation).
-    pub dashboard: DashboardState,
 
     /// Signals from the IntentHandler for the outer platform layer.
     /// OWNER: IntentHandler (cleared and set each handle() call).
@@ -504,13 +493,11 @@ pub struct FrontendState {
 impl Default for FrontendState {
     fn default() -> Self {
         Self {
-            active_tab: ActiveTab::Chat,
             should_quit: false,
             pins: PinsState::default(),
             sidebar: SidebarState::default(),
             persona_section: PersonaSectionState::default(),
             sessions_section: SessionsSectionState::default(),
-            dashboard: DashboardState::new(),
             tui_signals: TuiSignals::new(),
             preferences: UserPreferences::default(),
             all_keymap_entries: vec![],
