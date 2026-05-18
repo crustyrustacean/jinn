@@ -173,7 +173,9 @@ impl SessionPersistenceActor {
                     session.finalize_last_token_record(output_tokens);
                 }
             }
-            session.finish_streaming();
+            let preserve_assistant = event.reason == StreamCompletedReason::Finished
+                || event.reason == StreamCompletedReason::ToolUse;
+            session.finish_streaming(preserve_assistant);
 
             // Tool use means the conversation continues — transition to sending
             // so the indicator shows activity while awaiting the followup.

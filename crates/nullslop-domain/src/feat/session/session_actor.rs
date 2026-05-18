@@ -951,7 +951,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.finish_streaming();
+            session.finish_streaming(true);
             session.begin_sending();
             state.session.active_session.clone()
         };
