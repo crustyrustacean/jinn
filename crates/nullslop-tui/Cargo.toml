@@ -10,7 +10,6 @@ error-stack = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 ratatui-which-key = { workspace = true }
-ratatui-tabs = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
 futures = { workspace = true }
