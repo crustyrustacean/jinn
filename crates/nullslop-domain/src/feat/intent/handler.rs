@@ -77,6 +77,56 @@ impl IntentHandler {
         }
 
         match intent {
+            // --- Token Budget Input (takes priority when TokenBudgetInput scope is active) ---
+            Intent::InsertChar { ch }
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::TokenBudgetInput
+                ) =>
+            {
+                feat::token_budget_input::intent::handle_insert_char(state, *ch)
+            }
+            Intent::DeleteGrapheme
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::TokenBudgetInput
+                ) =>
+            {
+                feat::token_budget_input::intent::handle_delete(state)
+            }
+            Intent::MoveCursorLeft
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::TokenBudgetInput
+                ) =>
+            {
+                feat::token_budget_input::intent::handle_cursor_left(state)
+            }
+            Intent::MoveCursorRight
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::TokenBudgetInput
+                ) =>
+            {
+                feat::token_budget_input::intent::handle_cursor_right(state)
+            }
+            Intent::DeleteGraphemeForward
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::TokenBudgetInput
+                ) =>
+            {
+                feat::token_budget_input::intent::handle_delete_forward(state)
+            }
+            Intent::EnterNormalMode
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::TokenBudgetInput
+                ) =>
+            {
+                feat::token_budget_input::intent::handle_token_budget_leave(state)
+            }
+
             // --- Arg Input (takes priority when ArgInput scope is active) ---
             Intent::InsertChar { ch }
                 if matches!(
@@ -332,6 +382,17 @@ impl IntentHandler {
                 feat::sidebar_resize::intent::handle_resize_contract(state)
             }
             Intent::SidebarResizeLeave => feat::sidebar_resize::intent::handle_resize_leave(state),
+
+            // --- Token Budget Input ---
+            Intent::TokenBudgetInputEnter => {
+                feat::token_budget_input::intent::handle_token_budget_enter(state)
+            }
+            Intent::TokenBudgetInputConfirm => {
+                feat::token_budget_input::intent::handle_token_budget_confirm(state)
+            }
+            Intent::TokenBudgetInputLeave => {
+                feat::token_budget_input::intent::handle_token_budget_leave(state)
+            }
         }
     }
 }

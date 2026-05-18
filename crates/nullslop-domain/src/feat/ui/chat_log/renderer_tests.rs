@@ -1,5 +1,6 @@
 use crate::common::app_state::{AppState, FocusScope};
 use crate::common::ui_element::UiElement;
+use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::ui::chat_log::renderer::ChatLogElement;
 use crate::feat::ui::chat_log::shared::GUTTER_WIDTH;
 use crate::protocol::{ChatEntry, PinPosition};
@@ -763,7 +764,7 @@ fn expand_collapse_invalidates_and_rerenders() {
         .map(|i| format!("line {i}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let entry = ChatEntry::tool_result("call1", "bash", &long_content, true);
+    let entry = ChatEntry::tool_result("call1", "bash", &long_content, ToolResultStatus::Success);
     let entry_id = entry.id.clone();
     let mut state = AppState::default();
     state.active_session_mut().push_entry(entry);

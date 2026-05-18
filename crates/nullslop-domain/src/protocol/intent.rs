@@ -195,6 +195,14 @@ pub enum Intent {
     SidebarResizeContract,
     /// Exit sidebar resize mode, returning to Normal scope.
     SidebarResizeLeave,
+
+    // --- Token Budget Input ---
+    /// Open the token budget input popup.
+    TokenBudgetInputEnter,
+    /// Confirm the token budget input and apply.
+    TokenBudgetInputConfirm,
+    /// Cancel the token budget input popup.
+    TokenBudgetInputLeave,
 }
 
 impl std::fmt::Display for Intent {
@@ -278,6 +286,9 @@ impl std::fmt::Display for Intent {
             Intent::SidebarResizeExpand => write!(f, "sidebar resize expand"),
             Intent::SidebarResizeContract => write!(f, "sidebar resize contract"),
             Intent::SidebarResizeLeave => write!(f, "sidebar resize leave"),
+            Intent::TokenBudgetInputEnter => write!(f, "token budget input enter"),
+            Intent::TokenBudgetInputConfirm => write!(f, "token budget input confirm"),
+            Intent::TokenBudgetInputLeave => write!(f, "token budget input leave"),
         }
     }
 }

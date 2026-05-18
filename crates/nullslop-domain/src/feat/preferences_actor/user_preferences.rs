@@ -45,6 +45,36 @@ pub struct SessionLifecycle {
     pub teardown_command: Option<String>,
 }
 
+/// Default token budget for the token-budget context strategy.
+///
+/// Configured in `nullslop.toml` under `[context_token_budget]`.
+/// Each strategy gets its own config block since they have different semantics.
+const DEFAULT_TOKEN_BUDGET: usize = 150_000;
+
+/// Token budget configuration for the token-budget context strategy.
+///
+/// Serialized as `[context_token_budget]` in `nullslop.toml`.
+/// Future strategy-specific blocks will follow the same pattern
+/// (e.g., `[context_compaction]`, `[context_sliding_window]`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextTokenBudgetConfig {
+    /// The default token budget for new sessions using the token-budget strategy.
+    #[serde(default = "default_token_budget")]
+    pub budget: usize,
+}
+
+fn default_token_budget() -> usize {
+    DEFAULT_TOKEN_BUDGET
+}
+
+impl Default for ContextTokenBudgetConfig {
+    fn default() -> Self {
+        Self {
+            budget: DEFAULT_TOKEN_BUDGET,
+        }
+    }
+}
+
 /// User preferences persisted in `nullslop.toml`.
 ///
 /// This file stores user behavior preferences that should survive
@@ -80,6 +110,10 @@ pub struct UserPreferences {
     /// Sidebar width in columns. None means use the built-in default (30 columns).
     #[serde(default)]
     pub sidebar_width: Option<u16>,
+    /// Token budget configuration for the token-budget context strategy.
+    /// New sessions inherit `budget` as their default.
+    #[serde(default)]
+    pub context_token_budget: ContextTokenBudgetConfig,
 }
 
 /// Returns the path to the user preferences file.
@@ -207,6 +241,7 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
+            context_token_budget: Default::default(),
         };
 
         // When saving and reloading.
@@ -270,6 +305,7 @@ last_strategy = "sliding_window""#,
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
+            context_token_budget: Default::default(),
         };
 
         // When saving.
@@ -292,6 +328,7 @@ last_strategy = "sliding_window""#,
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
+            context_token_budget: Default::default(),
         };
 
         // When saving and reloading.
@@ -322,6 +359,7 @@ last_strategy = "sliding_window""#,
                 ),
             }],
             sidebar_width: None,
+            context_token_budget: Default::default(),
         };
 
         // When saving and reloading.
@@ -358,6 +396,7 @@ last_strategy = "sliding_window""#,
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: Some(25),
+            context_token_budget: Default::default(),
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -401,5 +440,74 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
             prefs.session_lifecycles[0].setup_command.as_deref(),
             Some("~/.config/nullslop/scripts/fossil-branch.sh $1")
         );
+    }
+
+    #[rstest::rstest]
+    fn default_preferences_has_default_token_budget() {
+        // Given default preferences.
+        let prefs = UserPreferences::default();
+
+        // Then token budget is 150_000.
+        assert_eq!(prefs.context_token_budget.budget, 150_000);
+    }
+
+    #[rstest::rstest]
+    fn save_then_load_round_trips_context_token_budget() {
+        // Given preferences with a custom token budget.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            last_model: None,
+            last_strategy: None,
+            tool_entry_max_lines: None,
+            theme_name: None,
+            persona_name: None,
+            session_lifecycles: vec![],
+            sidebar_width: None,
+            context_token_budget: ContextTokenBudgetConfig { budget: 200_000 },
+        };
+
+        // When saving and reloading.
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then the token budget is preserved.
+        assert_eq!(reloaded.context_token_budget.budget, 200_000);
+    }
+
+    #[rstest::rstest]
+    fn load_parses_context_token_budget_table() {
+        // Given a TOML file with [context_token_budget] block.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"last_model = "ollama/llama3"
+
+[context_token_budget]
+budget = 100_000
+"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the token budget is parsed.
+        assert_eq!(prefs.context_token_budget.budget, 100_000);
+    }
+
+    #[rstest::rstest]
+    fn load_uses_default_budget_when_block_missing() {
+        // Given a TOML file without [context_token_budget].
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, r#"last_model = "ollama/llama3""#).expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the default budget is used.
+        assert_eq!(prefs.context_token_budget.budget, 150_000);
     }
 }

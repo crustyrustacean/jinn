@@ -117,6 +117,18 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         );
     }
 
+    // Token budget input popup overlay (+ selectable rect).
+    if matches!(
+        state.frontend.scope_stack.current(),
+        FocusScope::TokenBudgetInput
+    ) {
+        nullslop_domain::feat::token_budget_input::render::render_token_budget_input(
+            frame, area, &state,
+        );
+        rects
+            .push(nullslop_domain::feat::token_budget_input::render::token_budget_popup_rect(area));
+    }
+
     // Release the state read lock before post-render steps.
     drop(state);
 

@@ -46,6 +46,8 @@ pub struct Theme {
     pub tool_success_bg: Color,
     /// Tool result failure block background.
     pub tool_failure_bg: Color,
+    /// Tool result pending (still executing) block background.
+    pub tool_pending_bg: Color,
     /// Tool result truncation indicator foreground.
     pub truncation_fg: Color,
 
@@ -121,6 +123,8 @@ pub struct ThemeFile {
     pub tool_success_bg: Option<ThemeColor>,
     #[serde(default)]
     pub tool_failure_bg: Option<ThemeColor>,
+    #[serde(default)]
+    pub tool_pending_bg: Option<ThemeColor>,
     #[serde(default)]
     pub truncation_fg: Option<ThemeColor>,
 
@@ -211,6 +215,9 @@ impl ThemeFile {
             tool_failure_bg: self
                 .tool_failure_bg
                 .map_or(fallback.tool_failure_bg, super::color::ThemeColor::inner),
+            tool_pending_bg: self
+                .tool_pending_bg
+                .map_or(fallback.tool_pending_bg, super::color::ThemeColor::inner),
             truncation_fg: self
                 .truncation_fg
                 .map_or(fallback.truncation_fg, super::color::ThemeColor::inner),
@@ -307,6 +314,9 @@ impl ThemeFile {
             tool_failure_bg: self
                 .tool_failure_bg
                 .map_or(Color::Reset, super::color::ThemeColor::inner),
+            tool_pending_bg: self
+                .tool_pending_bg
+                .map_or(Color::Reset, super::color::ThemeColor::inner),
             truncation_fg: self
                 .truncation_fg
                 .map_or(Color::Reset, super::color::ThemeColor::inner),
@@ -374,6 +384,7 @@ mod tests {
             tool_block_fg: None,
             tool_success_bg: None,
             tool_failure_bg: None,
+            tool_pending_bg: None,
             truncation_fg: None,
             picker_active_marker: None,
             picker_selected_bg: None,
@@ -418,6 +429,7 @@ mod tests {
             tool_block_fg: None,
             tool_success_bg: None,
             tool_failure_bg: None,
+            tool_pending_bg: None,
             truncation_fg: None,
             picker_active_marker: None,
             picker_selected_bg: None,
@@ -476,6 +488,7 @@ mod tests {
             tool_block_fg: Some(ThemeColor(Color::Rgb(88, 95, 106))),
             tool_success_bg: Some(ThemeColor(Color::Rgb(40, 50, 40))),
             tool_failure_bg: Some(ThemeColor(Color::Rgb(60, 40, 40))),
+            tool_pending_bg: Some(ThemeColor(Color::Rgb(45, 45, 50))),
             truncation_fg: Some(ThemeColor(Color::Rgb(83, 83, 83))),
             picker_active_marker: Some(ThemeColor(Color::Green)),
             picker_selected_bg: Some(ThemeColor(Color::DarkGray)),

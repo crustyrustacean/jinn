@@ -37,6 +37,15 @@ pub struct ArgInputState {
     /// Byte offset for cursor position in the input.
     pub cursor_pos: usize,
 }
+
+/// State for the token budget input popup — typing a numeric budget value.
+#[derive(Debug, Clone, Default)]
+pub struct TokenBudgetInputState {
+    /// User's raw input text (digits only).
+    pub input: String,
+    /// Byte offset for cursor position in the input.
+    pub cursor_pos: usize,
+}
 use crate::feat::skills::Skill;
 use crate::feat::theme::Theme;
 pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
@@ -177,6 +186,8 @@ pub enum FocusScope {
     Picker { kind: PickerKind },
     /// Arg input popup — collecting positional args for a lifecycle command.
     ArgInput,
+    /// Token budget input popup — typing a numeric budget value.
+    TokenBudgetInput,
     /// Sidebar resize mode — adjusting sidebar width with h/l keys.
     SidebarResize,
 }
@@ -190,6 +201,7 @@ impl FocusScope {
             Self::Input => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
             Self::ArgInput => Mode::Input,
+            Self::TokenBudgetInput => Mode::Input,
         }
     }
 }
@@ -202,6 +214,7 @@ impl std::fmt::Display for FocusScope {
             Self::Sidebar => write!(f, "Sidebar"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
+            Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
         }
     }
@@ -439,6 +452,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (arg input editing, confirmation).
     pub arg_input: ArgInputState,
 
+    /// Token budget input popup state — active when `FocusScope::TokenBudgetInput` is on the scope stack.
+    /// OWNER: IntentHandler (budget input editing, confirmation).
+    pub token_budget_input: TokenBudgetInputState,
+
     /// Sidebar width in columns, synced from preferences.
     /// OWNER: PreferencesStateSyncActor (on PreferencesUpdated).
     pub sidebar_width: u16,
@@ -476,6 +493,7 @@ impl Default for FrontendState {
             system_themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
             arg_input: ArgInputState::default(),
+            token_budget_input: TokenBudgetInputState::default(),
             sidebar_width: 30,
         }
     }

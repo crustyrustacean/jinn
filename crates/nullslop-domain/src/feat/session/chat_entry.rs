@@ -6,6 +6,8 @@
 use ratatui::text::{Line, Span};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::feat::session::tool_result_status::ToolResultStatus;
+
 /// A unique identifier for a [`ChatEntry`].
 ///
 /// Auto-generated as a UUID. Used by prompt assembly strategies
@@ -194,8 +196,8 @@ pub enum ChatEntryKind {
         name: String,
         /// The output content.
         content: String,
-        /// Whether execution succeeded.
-        success: bool,
+        /// Execution status (pending, success, or failure).
+        status: ToolResultStatus,
     },
     /// A skill loaded into the session context.
     ///
@@ -368,7 +370,7 @@ impl ChatEntry {
 
     /// Create a new tool result entry with the current timestamp.
     #[must_use]
-    pub fn tool_result<S1, S2, S3>(id: S1, name: S2, content: S3, success: bool) -> Self
+    pub fn tool_result<S1, S2, S3>(id: S1, name: S2, content: S3, status: ToolResultStatus) -> Self
     where
         S1: Into<String>,
         S2: Into<String>,
@@ -381,7 +383,7 @@ impl ChatEntry {
                 id: id.into(),
                 name: name.into(),
                 content: content.into(),
-                success,
+                status,
             },
             pin_position: None,
         }
@@ -536,12 +538,17 @@ impl ChatEntry {
             ChatEntryKind::ToolResult {
                 name,
                 content,
-                success,
+                status,
                 ..
             } => {
                 name.hash(&mut hasher);
-                content.hash(&mut hasher);
-                success.hash(&mut hasher);
+                status.hash(&mut hasher);
+                // Exclude content from fingerprint when pending — content grows
+                // during streaming and would invalidate the line count cache
+                // on every output line.
+                if *status != ToolResultStatus::Pending {
+                    content.hash(&mut hasher);
+                }
             }
             ChatEntryKind::Skill { name, content, .. } => {
                 name.hash(&mut hasher);
@@ -636,14 +643,14 @@ impl Serialize for ChatEntryKind {
                 id,
                 name,
                 content,
-                success,
+                status,
             } => {
                 #[derive(Serialize)]
                 struct ToolResultData {
                     id: String,
                     name: String,
                     content: String,
-                    success: bool,
+                    status: ToolResultStatus,
                 }
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry(
@@ -652,7 +659,7 @@ impl Serialize for ChatEntryKind {
                         id: id.clone(),
                         name: name.clone(),
                         content: content.clone(),
-                        success: *success,
+                        status: *status,
                     },
                 )?;
                 map.end()
@@ -765,20 +772,47 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         })
                     }
                     "ToolResult" => {
+                        // Supports both new format (status: ToolResultStatus) and
+                        // old format (success: bool) for backward compat.
                         #[derive(Deserialize)]
-                        struct ToolResultData {
+                        struct ToolResultDataNew {
+                            id: String,
+                            name: String,
+                            content: String,
+                            status: ToolResultStatus,
+                        }
+                        #[derive(Deserialize)]
+                        struct ToolResultDataOld {
                             id: String,
                             name: String,
                             content: String,
                             success: bool,
                         }
-                        let data: ToolResultData = map.next_value()?;
-                        Ok(ChatEntryKind::ToolResult {
-                            id: data.id,
-                            name: data.name,
-                            content: data.content,
-                            success: data.success,
-                        })
+                        // Try new format first, fall back to old format.
+                        let value: serde_json::Value = map.next_value()?;
+                        let result = serde_json::from_value::<ToolResultDataNew>(value.clone())
+                            .map(|data| ChatEntryKind::ToolResult {
+                                id: data.id,
+                                name: data.name,
+                                content: data.content,
+                                status: data.status,
+                            })
+                            .or_else(|_| {
+                                serde_json::from_value::<ToolResultDataOld>(value).map(
+                                    |data| ChatEntryKind::ToolResult {
+                                        id: data.id,
+                                        name: data.name,
+                                        content: data.content,
+                                        status: if data.success {
+                                            ToolResultStatus::Success
+                                        } else {
+                                            ToolResultStatus::Failure
+                                        },
+                                    },
+                                )
+                            })
+                            .map_err(|e| de::Error::custom(format!("failed to deserialize ToolResult: {e}")))?;
+                        Ok(result)
                     }
                     "Skill" => {
                         #[derive(Deserialize)]

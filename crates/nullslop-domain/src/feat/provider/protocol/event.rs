@@ -17,6 +17,8 @@ pub enum StreamCompletedReason {
     Canceled,
     /// The stream stopped because the model requested tool use.
     ToolUse,
+    /// The stream failed due to a provider error.
+    Error,
 }
 
 /// Streaming response completed for a session.
