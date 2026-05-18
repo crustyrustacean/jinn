@@ -16,6 +16,8 @@ pub enum SidebarSectionId {
     Persona,
     /// The open sessions section.
     Sessions,
+    /// The conversation minimap section (display-only).
+    Minimap,
 }
 
 impl std::fmt::Display for SidebarSectionId {
@@ -24,6 +26,7 @@ impl std::fmt::Display for SidebarSectionId {
             Self::Pins => write!(f, "Pins"),
             Self::Persona => write!(f, "Persona"),
             Self::Sessions => write!(f, "Sessions"),
+            Self::Minimap => write!(f, "Minimap"),
         }
     }
 }
