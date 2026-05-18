@@ -510,7 +510,7 @@ fn load_lifecycle_picker_entries(state: &mut AppState) {
         let has_args = lifecycle
             .setup_command
             .as_ref()
-            .map_or(false, |cmd| CommandTemplate::parse(cmd).has_params());
+            .is_some_and(|cmd| CommandTemplate::parse(cmd).has_params());
         entries.push(SessionLifecycleEntry {
             name: lifecycle.name.clone(),
             description: lifecycle.description.clone(),

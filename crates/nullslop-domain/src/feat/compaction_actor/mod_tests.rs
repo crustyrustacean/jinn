@@ -178,9 +178,8 @@ fn boundary_detection_finds_last_compaction() {
     let history = session.history();
     let start_index = history
         .iter()
-        .rposition(|e| e.is_compaction())
-        .map(|i| i + 1)
-        .unwrap_or(0);
+        .rposition(super::super::session::chat_entry::ChatEntry::is_compaction)
+        .map_or(0, |i| i + 1);
 
     // Then the boundary starts after the first compaction.
     assert_eq!(start_index, 3); // indices 3,4 are the new entries
@@ -223,15 +222,16 @@ fn serializer_includes_tool_calls_and_results() {
     assert!(result.contains("[Tool result] bash: hello"));
 }
 
+#[allow(clippy::cast_precision_loss)]
 #[test]
 fn auto_compaction_threshold_estimation() {
     use crate::feat::context::strategy::token_estimator::{
-        CharRatioEstimator, TokenEstimator, estimate_entry_tokens,
+        CharRatioEstimator, estimate_entry_tokens,
     };
     use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 
     // Given a session with entries and a threshold of 0.7 with budget 1000.
-    let config = CompactionConfig::default();
+    let _config = CompactionConfig::default();
     let token_budget: usize = 1000;
     let threshold = 0.7;
 
@@ -265,10 +265,11 @@ fn auto_compaction_threshold_estimation() {
     );
 }
 
+#[allow(clippy::cast_precision_loss)]
 #[test]
 fn auto_compaction_no_trigger_below_threshold() {
     use crate::feat::context::strategy::token_estimator::{
-        CharRatioEstimator, TokenEstimator, estimate_entry_tokens,
+        CharRatioEstimator, estimate_entry_tokens,
     };
 
     // Given a session with few entries (well below threshold).

@@ -577,7 +577,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         "openrouter".to_owned(),
         vec![crate::feat::provider_infra::ModelInfo {
             id: "anthropic/claude-sonnet-4".to_owned(),
-            context_length: Some(200000),
+            context_length: Some(200_000),
         }],
     );
     state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
@@ -678,7 +678,7 @@ fn render_falls_back_when_no_model_cache() {
         row.contains("ctx:5.0k"),
         "expected ctx without limit, got: {row}"
     );
-    assert!(!row.contains("%"), "expected no percentage, got: {row}");
+    assert!(!row.contains('%'), "expected no percentage, got: {row}");
 }
 
 // --- Token budget display tests ---
