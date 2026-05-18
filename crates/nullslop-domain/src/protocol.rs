@@ -8,7 +8,6 @@
 //! - **[`key`]** — `Key`, `KeyEvent`, `Modifiers` (keyboard input types)
 //! - **[`mode`]** — `Mode` (application interaction mode)
 //! - **[`system`]** — `KeyDown`, `KeyUp`, `ModeChanged`
-//! - **[`tab`]** — `ActiveTab`, `TabDirection`
 //!
 //! Domain-specific types (session, provider, context, tools, chat input, etc.) live
 //! in their feature modules under `feat/` and are re-exported here for convenience.
@@ -20,7 +19,6 @@ pub mod key;
 mod key_tests;
 pub mod mode;
 pub mod system;
-pub mod tab;
 
 // Re-export primary types
 pub use crate::common::actor::{CommandMsg, CommandName, EventMsg, EventTypeName};
@@ -32,8 +30,6 @@ pub use intent::IntentResult;
 pub use key::{Key, KeyEvent, Modifiers};
 pub use mode::Mode;
 pub use nullslop_protocol_derive::{CommandMsg, EventMsg};
-pub use tab::ActiveTab;
-pub use tab::TabDirection;
 
 // Re-export domain types that are widely used as cross-cutting protocol concerns
 pub use crate::common::actor::actor_name::ActorName;

@@ -140,7 +140,6 @@ impl App {
                     suspend: nullslop_tui::suspend::Suspend::new(),
                     event_task: None,
                     status: nullslop_tui::AppStatus::Starting,
-                    tab_manager: nullslop_tui::render::init_tab_manager(),
                     selection: nullslop_tui::selection::SelectionState::Idle,
                     selectable_rects: Default::default(),
                     pending_clipboard: false,

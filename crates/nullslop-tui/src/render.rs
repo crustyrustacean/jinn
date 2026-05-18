@@ -3,16 +3,13 @@
 pub mod app_layout;
 pub mod chat_tab;
 pub mod clipboard;
-pub mod dashboard_tab;
 pub mod picker;
 pub mod selection_highlight;
 pub mod status_bar;
-pub mod tab_bar;
 pub mod too_small;
 pub mod which_key;
 
 pub use app_layout::{AppLayout, MIN_HEIGHT, MIN_WIDTH};
-pub use tab_bar::init_tab_manager;
 
 use nullslop_domain::{FocusScope, Mode};
 use ratatui::Frame;
@@ -57,42 +54,16 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         state.frontend.sidebar_width,
     );
 
-    // Tab bar — always visible.
-    {
-        let theme = &state.frontend.theme;
-        tab_bar::render_tab_bar(
-            frame,
-            layout.tabs,
-            &app.tab_manager,
-            theme.tab_active_fg,
-            theme.tab_active_bg,
-            theme.tab_inactive_fg,
-        );
-    }
-
-    // Active tab content.
+    // Tab bar removed — content renders directly.
     let mut rects = vec![];
-    match state.frontend.active_tab {
-        nullslop_domain::ActiveTab::Chat => {
-            chat_tab::render_chat_tab(
-                &mut app.ui_registry,
-                &mut app.sidebar,
-                frame,
-                &layout,
-                &state,
-                &mut rects,
-            );
-        }
-        nullslop_domain::ActiveTab::Dashboard => {
-            dashboard_tab::render_dashboard_tab(
-                &mut app.ui_registry,
-                frame,
-                layout.content,
-                &state,
-                &mut rects,
-            );
-        }
-    }
+    chat_tab::render_chat_tab(
+        &mut app.ui_registry,
+        &mut app.sidebar,
+        frame,
+        &layout,
+        &state,
+        &mut rects,
+    );
 
     // Status bar — always visible at bottom.
     status_bar::render_status_bar(&mut app.ui_registry, frame, layout.status_bar, &state);

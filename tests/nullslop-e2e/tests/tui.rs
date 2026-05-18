@@ -414,10 +414,7 @@ fn when_user_opens_fork_picker(world: &mut TuiWorld) {
     });
     // Update which-key scope.
     let state = world.app.core.state.read();
-    let scope = nullslop_tui::app::scope_for_focus(
-        state.frontend.scope_stack.current(),
-        state.frontend.active_tab,
-    );
+    let scope = nullslop_tui::app::scope_for_focus(state.frontend.scope_stack.current());
     drop(state);
     world.app.which_key.set_scope(scope);
 }
@@ -530,10 +527,8 @@ fn run_headless_script(world: &mut TuiWorld, content: &str) {
     for keys in lines {
         for key in keys {
             let state_read = world.app.core.state.read();
-            let scope = nullslop_tui::app::scope_for_focus(
-                state_read.frontend.scope_stack.current(),
-                state_read.frontend.active_tab,
-            );
+            let scope =
+                nullslop_tui::app::scope_for_focus(state_read.frontend.scope_stack.current());
             drop(state_read);
             world.app.which_key.set_scope(scope);
             if let Some(intent) = world.app.which_key.handle_key(key) {
