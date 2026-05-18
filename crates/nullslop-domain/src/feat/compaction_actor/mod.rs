@@ -26,8 +26,9 @@ use crate::feat::context::strategy::token_estimator::{
     CharRatioEstimator, TokenEstimator, estimate_entry_tokens,
 };
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
+use crate::feat::provider::protocol::event::StreamCompleted;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
-use crate::protocol::{ChatEntryId, Event};
+use crate::protocol::{ChatEntryId, Command, Event};
 
 /// Errors during compaction.
 #[derive(Debug, Error)]
@@ -49,6 +50,7 @@ impl Actor for CompactionActor {
 
     fn activate(ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<CompactContext>();
+        ctx.subscribe_event::<StreamCompleted>();
 
         let state = ctx
             .take_data::<State>()
@@ -70,8 +72,13 @@ impl Actor for CompactionActor {
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(cmd) => {
-                if let crate::protocol::Command::CompactContext(ref payload) = cmd {
+                if let Command::CompactContext(ref payload) = cmd {
                     self.handle_compact_context(payload, ctx).await;
+                }
+            }
+            ActorEnvelope::Event(event) => {
+                if let Event::StreamCompleted(ref payload) = event {
+                    self.handle_stream_completed(payload, ctx);
                 }
             }
             ActorEnvelope::System(_) => {}
@@ -94,7 +101,7 @@ impl CompactionActor {
                     entries_compacted,
                     "context compaction completed"
                 );
-                ctx.send_event(Event::CompactionCompleted(CompactionCompleted {
+                let _ = ctx.send_event(Event::CompactionCompleted(CompactionCompleted {
                     session_id: cmd.session_id.clone(),
                     entries_compacted,
                 }));
@@ -106,11 +113,57 @@ impl CompactionActor {
                     "context compaction failed"
                 );
                 // Emit completion with 0 to unblock any waiting logic.
-                ctx.send_event(Event::CompactionCompleted(CompactionCompleted {
+                let _ = ctx.send_event(Event::CompactionCompleted(CompactionCompleted {
                     session_id: cmd.session_id.clone(),
                     entries_compacted: 0,
                 }));
             }
+        }
+    }
+
+    /// Handle a `StreamCompleted` event for auto-trigger.
+    ///
+    /// Only fires on `Finished` reason. Estimates total tokens and compares
+    /// against `threshold * token_budget`. If exceeded, sends `CompactContext`.
+    fn handle_stream_completed(&self, payload: &StreamCompleted, ctx: &ActorContext) {
+        use crate::feat::provider::protocol::event::StreamCompletedReason;
+
+        // Only trigger on normal completion, not tool use or errors.
+        if payload.reason != StreamCompletedReason::Finished {
+            return;
+        }
+
+        let (should_compact, session_id) = {
+            let state = self.state.read();
+            let config = &state.frontend.preferences.compaction;
+            let token_budget = state.frontend.preferences.context_token_budget.budget;
+            let session = state.active_session();
+            let session_id = state.session.active_session.clone();
+
+            let estimator = CharRatioEstimator;
+            let total_tokens: usize = session
+                .history()
+                .iter()
+                .map(|e| estimate_entry_tokens(&estimator, e))
+                .sum();
+
+            let threshold_tokens = (config.threshold * token_budget as f64) as usize;
+            let should = total_tokens > threshold_tokens;
+
+            if should {
+                tracing::info!(
+                    session_id = ?session_id,
+                    total_tokens,
+                    threshold_tokens,
+                    "auto-compaction threshold exceeded"
+                );
+            }
+
+            (should, session_id)
+        };
+
+        if should_compact {
+            let _ = ctx.send_command(Command::CompactContext(CompactContext { session_id }));
         }
     }
 

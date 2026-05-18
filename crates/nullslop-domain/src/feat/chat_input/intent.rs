@@ -20,6 +20,7 @@ use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
+use crate::feat::compaction_actor::protocol::command::CompactContext;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::protocol::{ChatEntry, Command, IntentResult};
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -305,6 +306,12 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
 /// Executes a slash command.
 fn execute_slash_command(command: SlashCommand, state: &mut AppState) -> IntentResult {
     match command {
+        SlashCommand::Compact => {
+            let session_id = state.session.active_session.clone();
+            IntentResult::with_commands(vec![Command::CompactContext(CompactContext {
+                session_id,
+            })])
+        }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
     }
 }
