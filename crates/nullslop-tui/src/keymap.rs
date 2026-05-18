@@ -172,6 +172,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
             .bind("<c-p>", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
+            .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(c) = key.key {
                     Some(Intent::InsertChar { ch: c })
@@ -212,6 +213,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
         .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
         .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
+        .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
                 Some(Intent::InsertChar { ch: c })
@@ -260,6 +262,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
         .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
         .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
+        .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
                 Some(Intent::InsertChar { ch: c })
