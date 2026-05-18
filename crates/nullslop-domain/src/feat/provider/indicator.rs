@@ -1,8 +1,7 @@
 //! Streaming indicator element with animated throbber.
 //!
-//! Renders an animated ASCII spinner alongside "Sending..." when the active
-//! session has dispatched a message but no tokens have arrived yet, "Streaming..."
-//! when tokens are arriving, and renders nothing when the session is idle.
+//! Renders an animated ASCII spinner alongside "Working..." when the active
+//! session is busy (sending or streaming), and renders nothing when idle.
 //! Queue count is shown when messages are waiting.
 
 use std::time::{Duration, Instant};
@@ -59,20 +58,15 @@ impl UiElement<AppState> for StreamingIndicatorElement {
         let session = state.active_session();
         let queue_len = session.queue_len();
 
-        let label = if session.is_sending() {
-            if queue_len > 0 {
-                format!(" Sending... ({queue_len} queued)")
-            } else {
-                " Sending...".to_owned()
-            }
-        } else if session.is_streaming() {
-            if queue_len > 0 {
-                format!(" Streaming... ({queue_len} queued)")
-            } else {
-                " Streaming...".to_owned()
-            }
-        } else {
+        let is_busy = session.is_sending() || session.is_streaming();
+        if !is_busy {
             return;
+        }
+
+        let label = if queue_len > 0 {
+            format!(" Working... ({queue_len} queued)")
+        } else {
+            " Working...".to_owned()
         };
 
         let throbber = Throbber::default()
