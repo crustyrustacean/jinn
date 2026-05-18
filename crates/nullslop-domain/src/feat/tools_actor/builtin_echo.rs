@@ -35,6 +35,8 @@ pub fn execute(call: ToolCall, _ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: input.to_owned(),
                     success: true,
+                    full_content: None,
+                    truncation: None,
                 }
             }
             Err(e) => ToolResult {
@@ -42,6 +44,8 @@ pub fn execute(call: ToolCall, _ctx: ToolContext) -> BoxedToolFuture {
                 name: call.name,
                 content: format!("failed to parse arguments: {e}"),
                 success: false,
+                full_content: None,
+                truncation: None,
             },
         }
     })

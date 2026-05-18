@@ -2,6 +2,34 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Which truncation limit was hit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TruncatedBy {
+    /// The line limit was exceeded.
+    Lines,
+    /// The byte limit was exceeded.
+    Bytes,
+}
+
+/// Metadata about a truncation operation on tool output.
+///
+/// Carried in [`ToolResult`] when the tool's output exceeded the configured
+/// limits. The `content` field holds the truncated text; `full_content`
+/// holds the original.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TruncationMeta {
+    /// Which limit was hit.
+    pub truncated_by: TruncatedBy,
+    /// Total lines in the original content.
+    pub total_lines: usize,
+    /// Total bytes in the original content.
+    pub total_bytes: usize,
+    /// Number of complete lines in the truncated output.
+    pub output_lines: usize,
+    /// Number of bytes in the truncated output.
+    pub output_bytes: usize,
+}
+
 /// A tool definition that describes a tool the LLM can invoke.
 ///
 /// Actors register these at startup via `RegisterTools`.
@@ -41,10 +69,16 @@ pub struct ToolResult {
     pub tool_call_id: String,
     /// The name of the tool that was executed.
     pub name: String,
-    /// The output content.
+    /// The output content (truncated if output exceeded limits).
     pub content: String,
     /// Whether execution succeeded.
     pub success: bool,
+    /// Original untruncated output. `Some(...)` only when truncation occurred.
+    #[serde(default)]
+    pub full_content: Option<String>,
+    /// Truncation metadata. `Some(...)` only when truncation occurred.
+    #[serde(default)]
+    pub truncation: Option<TruncationMeta>,
 }
 
 #[cfg(test)]
@@ -98,9 +132,47 @@ mod tests {
             name: "echo".to_owned(),
             content: "hi".to_owned(),
             success: true,
+            full_content: None,
+            truncation: None,
         };
         let json = serde_json::to_string(&result).expect("serialize");
         let back: ToolResult = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, result);
+    }
+
+    #[rstest::rstest]
+    fn tool_result_with_truncation_roundtrips() {
+        let result = ToolResult {
+            tool_call_id: "call_456".to_owned(),
+            name: "bash".to_owned(),
+            content: "last line".to_owned(),
+            success: true,
+            full_content: Some("first line\nlast line".to_owned()),
+            truncation: Some(TruncationMeta {
+                truncated_by: TruncatedBy::Lines,
+                total_lines: 2,
+                total_bytes: 19,
+                output_lines: 1,
+                output_bytes: 9,
+            }),
+        };
+        let json = serde_json::to_string(&result).expect("serialize");
+        let back: ToolResult = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, result);
+    }
+
+    #[rstest::rstest]
+    fn tool_result_deserializes_without_new_fields() {
+        // Given JSON without full_content or truncation (pre-existing data).
+        let json = r#"{"tool_call_id":"call_1","name":"bash","content":"ok","success":true}"#;
+
+        // When deserializing.
+        let result: ToolResult = serde_json::from_str(json).expect("deserialize");
+
+        // Then the new fields default to None.
+        assert_eq!(result.tool_call_id, "call_1");
+        assert_eq!(result.content, "ok");
+        assert!(result.full_content.is_none());
+        assert!(result.truncation.is_none());
     }
 }

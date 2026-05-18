@@ -129,6 +129,8 @@ mod tests {
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
         actor
             .handle(
@@ -165,6 +167,8 @@ mod tests {
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
         actor
             .handle(
@@ -185,6 +189,8 @@ mod tests {
             session_lifecycles: vec![],
             sidebar_width: None,
             context_token_budget: Default::default(),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
         };
         actor
             .handle(

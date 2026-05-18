@@ -25,6 +25,7 @@ pub(crate) mod edit;
 mod edit_tests;
 pub mod protocol;
 pub mod tool_types;
+pub(crate) mod truncation;
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -291,13 +292,16 @@ impl ToolOrchestratorActor {
         session_id: &SessionId,
         sink: std::sync::Arc<dyn MessageSink>,
     ) -> ToolContext {
-        let cwd = {
+        let (cwd, max_output_lines, max_output_bytes) = {
             let guard = self.state.read();
-            guard
+            let cwd = guard
                 .session
                 .sessions
                 .get(session_id)
-                .map_or_else(|| guard.session.default_cwd.clone(), |s| s.cwd().to_owned())
+                .map_or_else(|| guard.session.default_cwd.clone(), |s| s.cwd().to_owned());
+            let max_output_lines = guard.frontend.preferences.max_tool_output_lines;
+            let max_output_bytes = guard.frontend.preferences.max_tool_output_bytes;
+            (cwd, max_output_lines, max_output_bytes)
         };
         ToolContext {
             cwd,
@@ -306,6 +310,8 @@ impl ToolOrchestratorActor {
             session_id: Some(session_id.clone()),
             app_paths: self.app_paths.clone(),
             sink: Some(sink),
+            max_output_lines,
+            max_output_bytes,
         }
     }
 
@@ -350,6 +356,8 @@ impl ToolOrchestratorActor {
                                     name: call_name,
                                     content: format!("tool execution timed out after {dur:?}"),
                                     success: false,
+                                    full_content: None,
+                                    truncation: None,
                                 },
                             }
                         }
@@ -390,6 +398,8 @@ impl ToolOrchestratorActor {
                     name: call_name,
                     content: format!("unknown tool: {}", tool_call.name),
                     success: false,
+                    full_content: None,
+                    truncation: None,
                 };
 
                 if let Err(e) =

@@ -12,6 +12,8 @@ use crate::feat::tools_actor::protocol::event::{ToolExecutionOutput, ToolExecuti
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Event, SessionId};
 
+use super::truncation::{truncate_tail, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES, format_size};
+
 use super::BoxedToolFuture;
 
 /// Returns the tool definition for the `bash` built-in tool.
@@ -58,27 +60,15 @@ fn parse_args(raw: &str) -> Result<(String, Option<u64>), serde_json::Error> {
     Ok((command, timeout))
 }
 
-/// Maximum lines to keep in accumulated output (truncation from top).
-const MAX_LINES: usize = 2000;
-/// Maximum bytes to keep in accumulated output (truncation from top).
-const MAX_BYTES: usize = 50 * 1024;
+/// Maximum bytes to buffer before truncating accumulated streaming output.
+/// This is a streaming-only threshold to prevent unbounded memory growth.
+/// The final truncation uses the shared limits from the truncation module.
+const STREAM_BUFFER_MAX_BYTES: usize = DEFAULT_MAX_BYTES * 2;
 
-/// Truncates accumulated output to stay within line and byte limits.
-/// Removes from the front, keeping the most recent output.
-fn truncate_output(content: &str) -> String {
-    let lines: Vec<&str> = content.split('\n').collect();
-    let mut result = if lines.len() > MAX_LINES {
-        lines[lines.len() - MAX_LINES..].join("\n")
-    } else {
-        content.to_owned()
-    };
-
-    if result.len() > MAX_BYTES {
-        let start = result.len() - MAX_BYTES;
-        result = result[start..].to_owned();
-    }
-
-    result
+/// Truncates accumulated streaming output to prevent unbounded memory growth.
+/// Uses the shared tail-truncation logic.
+fn truncate_streaming_output(content: &str) -> String {
+    truncate_tail(content, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES).content
 }
 
 /// Emits a streaming tool event if both sink and session_id are available.
@@ -101,17 +91,24 @@ fn error_tool_result(tool_call_id: String, name: String, content: String) -> Too
         name,
         content,
         success: false,
+        full_content: None,
+        truncation: None,
     }
 }
 
 /// Formats the final [`ToolResult`] from the process exit status and accumulated output.
+///
+/// Applies tail-truncation when output exceeds the configured limits.
+/// Stores the full output in `full_content` when truncation occurs.
 fn format_exit_result(
     exit_result: &Result<std::process::ExitStatus, std::io::Error>,
     accumulated: String,
     tool_call_id: String,
     tool_name: String,
+    max_lines: usize,
+    max_bytes: usize,
 ) -> ToolResult {
-    let mut content = accumulated;
+    let mut content = accumulated.clone();
     let success = match exit_result {
         Ok(status) => status.success(),
         Err(_) => false,
@@ -135,13 +132,43 @@ fn format_exit_result(
         );
     }
 
-    let content = truncate_output(&content);
-
-    ToolResult {
-        tool_call_id,
-        name: tool_name,
-        content,
-        success,
+    // Apply tail-truncation to the final output.
+    let truncation_result = truncate_tail(&content, max_lines, max_bytes);
+    if truncation_result.truncated {
+        let meta = truncation_result.meta.expect("meta present when truncated");
+        let start_line = meta.total_lines.saturating_sub(meta.output_lines) + 1;
+        let end_line = meta.total_lines;
+        let notice = if meta.truncated_by == nullslop_provider::tool_types::TruncatedBy::Bytes {
+            format!(
+                "\n\n[Showing lines {start_line}-{end_line} of {} ({} limit)]",
+                meta.total_lines,
+                format_size(max_bytes)
+            )
+        } else {
+            format!(
+                "\n\n[Showing lines {start_line}-{end_line} of {}]",
+                meta.total_lines
+            )
+        };
+        let mut output = truncation_result.content;
+        output.push_str(&notice);
+        ToolResult {
+            tool_call_id,
+            name: tool_name,
+            content: output,
+            success,
+            full_content: Some(content),
+            truncation: Some(meta),
+        }
+    } else {
+        ToolResult {
+            tool_call_id,
+            name: tool_name,
+            content,
+            success,
+            full_content: None,
+            truncation: None,
+        }
     }
 }
 
@@ -207,8 +234,8 @@ async fn read_child_output_and_wait(
             }),
         );
 
-        if accumulated.len() > MAX_BYTES * 2 {
-            let truncated = truncate_output(accumulated);
+        if accumulated.len() > STREAM_BUFFER_MAX_BYTES {
+            let truncated = truncate_streaming_output(accumulated);
             *accumulated = truncated;
         }
     }
@@ -267,6 +294,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let stdout = child.stdout.take().expect("stdout was piped");
         let stderr = child.stderr.take().expect("stderr was piped");
 
+        // Extract truncation limits from context.
+        let max_lines = ctx.max_output_lines.unwrap_or(DEFAULT_MAX_LINES);
+        let max_bytes = ctx.max_output_bytes.unwrap_or(DEFAULT_MAX_BYTES);
+
         // Read stdout and stderr concurrently using tokio async IO.
         let mut accumulated = String::new();
 
@@ -304,7 +335,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 None => read_fut.await,
             };
 
-        format_exit_result(&exit_result, accumulated, call.id, call.name)
+        format_exit_result(&exit_result, accumulated, call.id, call.name, max_lines, max_bytes)
     })
 }
 
@@ -321,6 +352,8 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            max_output_lines: None,
+            max_output_bytes: None,
         }
     }
 
@@ -400,6 +433,8 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            max_output_lines: None,
+            max_output_bytes: None,
         };
 
         let call = ToolCall {
