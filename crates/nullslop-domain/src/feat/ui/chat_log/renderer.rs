@@ -34,8 +34,8 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
 use super::{
-    actor, assistant, error_entry, info, skill, system, table, thinking, tool_call, tool_result,
-    user,
+    actor, assistant, compaction, error_entry, info, skill, system, table, thinking, tool_call,
+    tool_result, user,
 };
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.
@@ -408,5 +408,11 @@ fn entry_to_lines(entry: &crate::protocol::ChatEntry, ctx: &RenderContext) -> Ve
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
         ChatEntryKind::Skill { name, content, .. } => skill::to_lines(name, content, ctx),
         ChatEntryKind::Info(lines) => info::to_lines(lines, ctx),
+        ChatEntryKind::Compaction {
+            summary,
+            entries_compacted,
+            tokens_before,
+            model_used,
+        } => compaction::to_lines(summary, *entries_compacted, *tokens_before, model_used, ctx),
     }
 }

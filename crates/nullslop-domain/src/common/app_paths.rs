@@ -116,6 +116,14 @@ impl AppPaths {
             .join(super::app_info::PREFS_FILE_NAME)
     }
 
+    /// Compaction prompt template override path (`~/.config/nullslop/compaction.md`).
+    ///
+    /// If this file exists, it overrides the bundled default compaction prompt.
+    #[must_use]
+    pub fn compaction_prompt_path(&self) -> PathBuf {
+        self.config_dir.join(APP_NAME).join("compaction.md")
+    }
+
     // -- System data directories (XDG fallback) -----------------------------
 
     /// System data directory (`/usr/share/nullslop`).

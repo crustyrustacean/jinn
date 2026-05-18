@@ -10,6 +10,8 @@
 pub enum SlashCommand {
     /// Create a new chat session.
     New,
+    /// Summarize conversation history into a structured checkpoint.
+    Compact,
 }
 
 /// A single entry for the slash command autocomplete popup.
@@ -24,15 +26,22 @@ pub struct SlashCommandEntry {
 impl SlashCommand {
     /// Returns all registered slash commands as popup entries.
     pub fn all_entries() -> Vec<SlashCommandEntry> {
-        vec![SlashCommandEntry {
-            name: "new".to_owned(),
-            description: "Create a new session".to_owned(),
-        }]
+        vec![
+            SlashCommandEntry {
+                name: "compact".to_owned(),
+                description: "Summarize conversation history".to_owned(),
+            },
+            SlashCommandEntry {
+                name: "new".to_owned(),
+                description: "Create a new session".to_owned(),
+            },
+        ]
     }
 
     /// Looks up a slash command by name (without the leading `/`).
     pub fn lookup(name: &str) -> Option<Self> {
         match name {
+            "compact" => Some(Self::Compact),
             "new" => Some(Self::New),
             _ => None,
         }

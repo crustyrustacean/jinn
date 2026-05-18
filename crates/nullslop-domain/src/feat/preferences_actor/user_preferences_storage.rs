@@ -244,6 +244,7 @@ mod tests {
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
 
         // When saving and reloading.
@@ -289,6 +290,7 @@ mod tests {
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
 
         // When saving and reloading.
@@ -317,6 +319,7 @@ mod tests {
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -345,6 +348,7 @@ mod tests {
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -360,6 +364,7 @@ mod tests {
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -384,6 +389,7 @@ mod tests {
             context_token_budget: Default::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
+            compaction: Default::default(),
         };
         service.save(&prefs).expect("save");
 

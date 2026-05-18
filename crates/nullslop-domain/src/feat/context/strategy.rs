@@ -2,6 +2,7 @@
 
 pub mod compaction;
 pub mod compaction_data;
+pub mod compaction_prompt;
 #[cfg(test)]
 mod compaction_tests;
 pub mod discovery;

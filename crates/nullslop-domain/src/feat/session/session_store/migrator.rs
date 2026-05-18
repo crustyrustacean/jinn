@@ -40,6 +40,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) {
         migrate_v2(conn);
         record_version(conn, 2, "add_created_at_column");
     }
+    if current < 3 {
+        migrate_v3(conn);
+        record_version(conn, 3, "add_ignored_to_session_entries");
+    }
 }
 
 // ── Tracking table ───────────────────────────────────────────────────────
@@ -158,6 +162,16 @@ fn migrate_v2(conn: &mut SqliteConnection) {
         .expect("v2: add created_at column to sessions");
 }
 
+/// v3: Add `ignored` column to session_entries.
+///
+/// Compaction marks entries as ignored when they've been summarized.
+/// Default is `false` (entry is active and visible during prompt assembly).
+fn migrate_v3(conn: &mut SqliteConnection) {
+    sql_query("ALTER TABLE session_entries ADD COLUMN ignored BOOLEAN NOT NULL DEFAULT FALSE")
+        .execute(conn)
+        .expect("v3: add ignored column to session_entries");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,13 +211,15 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 3);
+        assert_eq!(rows.len(), 4);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
         assert_eq!(rows[1].name, "add_cwd_column");
         assert_eq!(rows[2].version, 2);
         assert_eq!(rows[2].name, "add_created_at_column");
+        assert_eq!(rows[3].version, 3);
+        assert_eq!(rows[3].name, "add_ignored_to_session_entries");
     }
 
     #[test]
@@ -227,7 +243,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 3);
+        assert_eq!(rows[0].count, 4);
     }
 
     #[test]

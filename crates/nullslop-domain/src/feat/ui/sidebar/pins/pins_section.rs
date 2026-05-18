@@ -321,6 +321,8 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
                 .join(" ");
             ("\u{2139} ", truncate_str(&plain, 40))
         }
+        // Compaction entries are not pinnable — skip.
+        ChatEntryKind::Compaction { .. } => ("", String::new()),
     }
 }
 
