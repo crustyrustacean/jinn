@@ -99,7 +99,8 @@ pub async fn run_setup_command(command: &str) -> Result<PathBuf, Report<Lifecycl
 
     let raw_path = PathBuf::from(last_line);
 
-    let canonical = std::fs::canonicalize(&raw_path)
+    let canonical = tokio::fs::canonicalize(&raw_path)
+        .await
         .change_context(LifecycleCommandError::InvalidPath {
             path: raw_path.clone(),
         })

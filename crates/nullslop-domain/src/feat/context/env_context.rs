@@ -74,13 +74,13 @@ pub struct ContextFile {
 /// Searches for AGENTS.md, AGENTS.MD, CLAUDE.md, CLAUDE.MD in each directory
 /// from CWD up to root. Returns files ordered from root → CWD (so closer
 /// files come last, matching pi-mono's ordering).
-pub fn load_project_context_files(cwd: &Path) -> Vec<ContextFile> {
+pub async fn load_project_context_files(cwd: &Path) -> Vec<ContextFile> {
     let mut files = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
     let mut current = Some(cwd.to_path_buf());
     while let Some(dir) = current {
-        if let Some(file) = load_context_file_from_dir(&dir) {
+        if let Some(file) = load_context_file_from_dir(&dir).await {
             let canonical = file.path.clone();
             if seen.insert(canonical) {
                 files.push(file);
@@ -100,11 +100,11 @@ pub fn load_project_context_files(cwd: &Path) -> Vec<ContextFile> {
 }
 
 /// Loads a context file from a single directory (first match wins).
-fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
+async fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
     for filename in CONTEXT_FILE_CANDIDATES {
         let path = dir.join(filename);
         if path.exists()
-            && let Ok(content) = std::fs::read_to_string(&path)
+            && let Ok(content) = tokio::fs::read_to_string(&path).await
         {
             return Some(ContextFile { path, content });
         }
@@ -206,13 +206,14 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn load_project_context_files_finds_agents_md() {
+    #[tokio::test]
+    async fn load_project_context_files_finds_agents_md() {
         // Given a temp directory with AGENTS.md.
         let dir = tempfile::TempDir::new().expect("temp dir");
         std::fs::write(dir.path().join("AGENTS.md"), "# Test").expect("write");
 
         // When loading context files.
-        let files = load_project_context_files(dir.path());
+        let files = load_project_context_files(dir.path()).await;
 
         // Then the file is found.
         assert_eq!(files.len(), 1);
@@ -221,12 +222,13 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn load_project_context_files_returns_empty_for_missing() {
+    #[tokio::test]
+    async fn load_project_context_files_returns_empty_for_missing() {
         // Given a directory with no context files.
         let dir = tempfile::TempDir::new().expect("temp dir");
 
         // When loading context files.
-        let files = load_project_context_files(dir.path());
+        let files = load_project_context_files(dir.path()).await;
 
         // Then no files are found.
         assert!(files.is_empty());

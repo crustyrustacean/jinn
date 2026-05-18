@@ -188,13 +188,18 @@ impl PromptAssemblyActor {
             .collect();
 
         let env_context = {
+            // Extract CWD and load context files (async I/O).
+            let cwd = {
+                let guard = self.state.read();
+                guard
+                    .session
+                    .sessions
+                    .get(&session_id)
+                    .map_or_else(|| std::path::PathBuf::from("."), |s| s.cwd().to_path_buf())
+            };
+            let context_files = load_project_context_files(&cwd).await;
+            // Re-acquire lock for persona lookup.
             let guard = self.state.read();
-            let cwd = guard
-                .session
-                .sessions
-                .get(&session_id)
-                .map_or_else(|| std::path::PathBuf::from("."), |s| s.cwd().to_path_buf());
-            let context_files = load_project_context_files(&cwd);
             // Look up persona from this session's profile, not the global default.
             // Falls back to coding-assistant if the session's persona name is not found.
             let persona = guard

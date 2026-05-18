@@ -164,57 +164,65 @@ impl SessionStore for SqliteSessionStore {
     }
 
     async fn save(&self, session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
-        let mut conn = self
-            .pool
-            .get()
-            .change_context(SessionStoreError)
-            .attach("failed to acquire connection from pool")?;
+        let pool = self.pool.clone();
         let session = session.clone();
-        spawn_blocking(move || save_blocking(&mut conn, &session))
-            .await
-            .change_context(SessionStoreError)
-            .attach("spawn_blocking panicked during save")?
+        spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(SessionStoreError)
+                .attach("failed to acquire connection from pool")?;
+            save_blocking(&mut conn, &session)
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("spawn_blocking panicked during save")?
     }
 
     async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
-        let mut conn = self
-            .pool
-            .get()
-            .change_context(SessionStoreError)
-            .attach("failed to acquire connection from pool")?;
-        spawn_blocking(move || load_summaries_blocking(&mut conn))
-            .await
-            .change_context(SessionStoreError)
-            .attach("spawn_blocking panicked during load_summaries")?
+        let pool = self.pool.clone();
+        spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(SessionStoreError)
+                .attach("failed to acquire connection from pool")?;
+            load_summaries_blocking(&mut conn)
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("spawn_blocking panicked during load_summaries")?
     }
 
     async fn load_session(
         &self,
         session_id: &SessionId,
     ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
-        let mut conn = self
-            .pool
-            .get()
-            .change_context(SessionStoreError)
-            .attach("failed to acquire connection from pool")?;
+        let pool = self.pool.clone();
         let session_id = session_id.clone();
-        spawn_blocking(move || load_session_blocking(&mut conn, &session_id))
-            .await
-            .change_context(SessionStoreError)
-            .attach("spawn_blocking panicked during load_session")?
+        spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(SessionStoreError)
+                .attach("failed to acquire connection from pool")?;
+            load_session_blocking(&mut conn, &session_id)
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("spawn_blocking panicked during load_session")?
     }
 
     async fn delete(&self, session_id: &SessionId) -> Result<(), Report<SessionStoreError>> {
-        let mut conn = self
-            .pool
-            .get()
-            .change_context(SessionStoreError)
-            .attach("failed to acquire connection from pool")?;
+        let pool = self.pool.clone();
         let session_id = session_id.clone();
-        spawn_blocking(move || delete_blocking(&mut conn, &session_id))
-            .await
-            .change_context(SessionStoreError)
-            .attach("spawn_blocking panicked during delete")?
+        spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(SessionStoreError)
+                .attach("failed to acquire connection from pool")?;
+            delete_blocking(&mut conn, &session_id)
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("spawn_blocking panicked during delete")?
     }
 
     async fn fork(
@@ -222,16 +230,18 @@ impl SessionStore for SqliteSessionStore {
         source_session_id: &SessionId,
         at_ordinal: usize,
     ) -> Result<SessionId, Report<SessionStoreError>> {
-        let mut conn = self
-            .pool
-            .get()
-            .change_context(SessionStoreError)
-            .attach("failed to acquire connection from pool")?;
+        let pool = self.pool.clone();
         let source_session_id = source_session_id.clone();
-        spawn_blocking(move || fork_blocking(&mut conn, &source_session_id, at_ordinal))
-            .await
-            .change_context(SessionStoreError)
-            .attach("spawn_blocking panicked during fork")?
+        spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(SessionStoreError)
+                .attach("failed to acquire connection from pool")?;
+            fork_blocking(&mut conn, &source_session_id, at_ordinal)
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("spawn_blocking panicked during fork")?
     }
 }
 

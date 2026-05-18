@@ -115,6 +115,7 @@ pub trait TokenCounter: Send + Sync {
 /// time and does not change — counts are deterministic for a given text input.
 /// This is important: once a count is recorded in the token ledger, it is
 /// immutable regardless of future model/tokenizer changes.
+#[derive(Clone, Copy)]
 pub struct TiktokenCounter {
     encoder: &'static tiktoken::CoreBpe,
     encoding_name: &'static str,
