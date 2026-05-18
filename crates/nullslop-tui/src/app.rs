@@ -11,10 +11,9 @@ use nullslop_domain::ActorHostService;
 use nullslop_domain::AppUiRegistry;
 use nullslop_domain::IntentHandler;
 use nullslop_domain::feat::ui::sidebar::Sidebar;
-use nullslop_domain::{ActiveTab, FocusScope, Intent, PickerKind};
 use nullslop_domain::{AppCore, AppMsg};
+use nullslop_domain::{FocusScope, Intent, PickerKind};
 use ratatui::Frame;
-use ratatui_tabs::TabManager;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
 
 use crate::config::TuiConfig;
@@ -55,8 +54,6 @@ pub struct TuiApp {
     pub event_task: Option<tokio::task::JoinHandle<()>>,
     /// Current application lifecycle status.
     pub status: AppStatus,
-    /// Tab manager for rendering the tab bar.
-    pub tab_manager: TabManager,
     /// Mouse text selection state.
     pub selection: SelectionState,
     /// Selectable screen regions, rebuilt each frame during rendering.
@@ -283,8 +280,7 @@ impl TuiApp {
 
         // Step 6: Update scope based on new focus.
         let state_read = self.core.state.read();
-        let active_tab = state_read.frontend.active_tab;
-        let new_scope = scope_for_focus(state_read.frontend.scope_stack.current(), active_tab);
+        let new_scope = scope_for_focus(state_read.frontend.scope_stack.current());
         drop(state_read);
         self.which_key.set_scope(new_scope);
     }
@@ -295,8 +291,8 @@ impl TuiApp {
     }
 }
 
-/// Returns the keymap scope corresponding to the given focus scope and active tab.
-pub fn scope_for_focus(focus: &nullslop_domain::FocusScope, active_tab: ActiveTab) -> Scope {
+/// Returns the keymap scope corresponding to the given focus scope.
+pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
     match focus {
         FocusScope::Picker { .. } => Scope::Picker,
         FocusScope::Input => Scope::Input,
@@ -304,9 +300,6 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope, active_tab: ActiveTa
         FocusScope::ArgInput => Scope::ArgInput,
         FocusScope::TokenBudgetInput => Scope::TokenBudgetInput,
         FocusScope::SidebarResize => Scope::SidebarResize,
-        FocusScope::Normal => match active_tab {
-            ActiveTab::Dashboard => Scope::Dashboard,
-            ActiveTab::Chat => Scope::Normal,
-        },
+        FocusScope::Normal => Scope::Normal,
     }
 }

@@ -2,7 +2,6 @@
 
 use crate::common::app_state::AppState;
 use crate::protocol::IntentResult;
-use crate::protocol::tab::TabDirection;
 
 /// Number of lines to scroll per mouse wheel tick.
 const MOUSE_SCROLL_STEP: u16 = 3;
@@ -60,15 +59,6 @@ pub fn handle_scroll_to_bottom(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Switches to the next or previous tab.
-pub fn handle_switch_tab(state: &mut AppState, direction: TabDirection) -> IntentResult {
-    state.frontend.active_tab = match direction {
-        TabDirection::Next => state.frontend.active_tab.next(),
-        TabDirection::Prev => state.frontend.active_tab.prev(),
-    };
-    IntentResult::empty()
-}
-
 /// Opens the input in an external editor.
 pub fn handle_edit_input(state: &mut AppState) -> IntentResult {
     state.frontend.tui_signals.edit_requested = true;
@@ -79,7 +69,6 @@ pub fn handle_edit_input(state: &mut AppState) -> IntentResult {
 mod tests {
     use crate::common::app_state::AppState;
     use crate::protocol::ChatEntry;
-    use crate::protocol::tab::TabDirection;
 
     use super::*;
 
@@ -188,23 +177,6 @@ mod tests {
 
         // Then we're at bottom.
         assert!(state.active_session().is_at_bottom());
-        assert!(result.commands.is_empty());
-    }
-
-    #[rstest::rstest]
-    fn switch_tab_next_advances_tab() {
-        // Given a state on Chat tab.
-        let mut state = AppState::default();
-        assert_eq!(state.frontend.active_tab, crate::protocol::ActiveTab::Chat);
-
-        // When handling SwitchTab(Next).
-        let result = handle_switch_tab(&mut state, TabDirection::Next);
-
-        // Then the tab has advanced.
-        assert_eq!(
-            state.frontend.active_tab,
-            crate::protocol::ActiveTab::Dashboard
-        );
         assert!(result.commands.is_empty());
     }
 
