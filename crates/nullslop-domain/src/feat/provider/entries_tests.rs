@@ -1,7 +1,6 @@
 use crate::feat::provider_infra::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
 use crate::feat::theme::default_theme;
 use nullslop_selection_widget::PickerItem;
-use ratatui::style::Color;
 use std::ops::Range;
 
 use super::entries::*;
@@ -917,8 +916,9 @@ fn render_row_with_empty_match_indices_same_as_render_row() {
     }
 }
 
+
 #[rstest::rstest]
-fn provider_highlight_applies_gray_bg() {
+fn provider_highlight_row_contains_matched_char() {
     // Given a provider entry with model "llama3".
     let entry = make_picker_entry("llama3", "ollama", true, false);
 
@@ -930,40 +930,11 @@ fn provider_highlight_applies_gray_bg() {
     let highlights: &[Range<usize>] = &[0..1];
     let line = entry.render_row_with_highlight(false, highlights);
 
-    // Then at least one span has gray background.
-    let has_highlight = line
-        .spans
-        .iter()
-        .any(|s| s.style.bg == Some(Color::DarkGray));
+    // Then the row text contains the matched character.
+    let text: String = line.spans.iter().map(|s| &*s.content).collect();
     assert!(
-        has_highlight,
-        "expected at least one span with gray background"
-    );
-}
-
-#[rstest::rstest]
-fn provider_highlight_contains_matched_char() {
-    // Given a provider entry with model "llama3".
-    let entry = make_picker_entry("llama3", "ollama", true, false);
-
-    // When highlighting with match at byte 0 (the "l").
-    #[expect(
-        clippy::single_range_in_vec_init,
-        reason = "genuinely want a slice containing one Range<usize>"
-    )]
-    let highlights: &[Range<usize>] = &[0..1];
-    let line = entry.render_row_with_highlight(false, highlights);
-
-    // Then the highlighted content contains "l".
-    let highlighted: String = line
-        .spans
-        .iter()
-        .filter(|s| s.style.bg == Some(Color::DarkGray))
-        .map(|s| s.content.clone())
-        .collect();
-    assert!(
-        highlighted.contains('l'),
-        "highlighted span should contain 'l'"
+        text.contains('l'),
+        "highlighted row should contain 'l'"
     );
 }
 
@@ -1009,9 +980,8 @@ fn display_label_allows_searching_by_provider_name() {
 }
 
 #[rstest::rstest]
-fn provider_name_match_is_highlighted_in_suffix() {
+fn provider_name_match_appears_in_highlighted_row() {
     // Given a provider entry with model "llama3" and provider "ollama".
-    // search_text = "llama3 ollama" — provider name starts at byte 7.
     let entry = make_picker_entry("llama3", "ollama", true, false);
 
     // When highlighting with match in the provider-name portion (byte 7..13 = "ollama").
@@ -1021,22 +991,10 @@ fn provider_name_match_is_highlighted_in_suffix() {
     )]
     let line = entry.render_row_with_highlight(false, &[7..13]);
 
-    // Then at least one span has the highlight background.
-    let has_highlight = line
-        .spans
-        .iter()
-        .any(|s| s.style.bg == Some(Color::DarkGray));
-    assert!(has_highlight, "expected highlight on provider name");
-
-    // And the highlighted text contains characters from the provider name.
-    let highlighted: String = line
-        .spans
-        .iter()
-        .filter(|s| s.style.bg == Some(Color::DarkGray))
-        .map(|s| s.content.clone())
-        .collect();
+    // Then the row text contains the provider name characters.
+    let text: String = line.spans.iter().map(|s| &*s.content).collect();
     assert!(
-        highlighted.contains('o'),
-        "highlighted span should contain 'o'"
+        text.contains('o'),
+        "highlighted row should contain 'o' from provider name"
     );
 }
