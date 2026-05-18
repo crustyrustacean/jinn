@@ -18,6 +18,8 @@ pub enum Scope {
     SidebarPins,
     /// Sidebar — Sessions section.
     SidebarSessions,
+    /// Sidebar — Minimap section (display-only).
+    SidebarMinimap,
     /// Picker mode — filtering and selecting a provider.
     Picker,
     /// Input mode — typing into the input buffer.
@@ -39,6 +41,7 @@ impl std::fmt::Display for Scope {
             Self::SidebarPersona => write!(f, "SidebarPersona"),
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
+            Self::SidebarMinimap => write!(f, "SidebarMinimap"),
             Self::Picker => write!(f, "Picker"),
             Self::Input => write!(f, "Input"),
             Self::ArgInput => write!(f, "ArgInput"),
@@ -58,6 +61,7 @@ impl std::str::FromStr for Scope {
             "SidebarPersona" => Ok(Self::SidebarPersona),
             "SidebarPins" => Ok(Self::SidebarPins),
             "SidebarSessions" => Ok(Self::SidebarSessions),
+            "SidebarMinimap" => Ok(Self::SidebarMinimap),
             "Picker" => Ok(Self::Picker),
             "Input" => Ok(Self::Input),
             "ArgInput" => Ok(Self::ArgInput),

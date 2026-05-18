@@ -306,6 +306,7 @@ pub fn collect_all_bindings(
         Scope::SidebarPersona,
         Scope::SidebarPins,
         Scope::SidebarSessions,
+        Scope::SidebarMinimap,
         Scope::Picker,
         Scope::Input,
         Scope::ArgInput,
