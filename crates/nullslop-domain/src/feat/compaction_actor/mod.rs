@@ -137,8 +137,8 @@ impl CompactionActor {
             let state = self.state.read();
             let config = &state.frontend.preferences.compaction;
             let token_budget = state.frontend.preferences.context_token_budget.budget;
-            let session = state.active_session();
-            let session_id = state.session.active_session.clone();
+            let session_id = payload.session_id.clone();
+            let session = state.session(&session_id);
 
             let estimator = CharRatioEstimator;
             let total_tokens: usize = session
@@ -170,12 +170,12 @@ impl CompactionActor {
     /// Perform the compaction algorithm.
     async fn perform_compaction(
         &self,
-        _cmd: &CompactContext,
+        cmd: &CompactContext,
     ) -> Result<usize, error_stack::Report<CompactionError>> {
         // Read config and session state.
         let (config, model_name, history_len) = {
             let state = self.state.read();
-            let session = state.active_session();
+            let session = state.session(&cmd.session_id);
             let config = state.frontend.preferences.compaction.clone();
             let model_name = session.profile().model.clone();
             let history_len = session.history().len();
@@ -189,7 +189,7 @@ impl CompactionActor {
         // Step 1: Find start boundary, cut point, gather entries, mark ignored.
         let gathered = {
             let mut state = self.state.write();
-            let session = state.active_session_mut();
+            let session = state.session_mut(&cmd.session_id);
 
             let history = session.history();
 
@@ -285,7 +285,7 @@ impl CompactionActor {
         // Step 3: Insert Compaction entry and push System entry.
         {
             let mut state = self.state.write();
-            let session = state.active_session_mut();
+            let session = state.session_mut(&cmd.session_id);
 
             let compaction_entry = ChatEntry {
                 id: ChatEntryId::new(),
