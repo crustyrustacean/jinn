@@ -376,6 +376,17 @@ impl IntentHandler {
             Intent::TokenBudgetInputLeave => {
                 feat::token_budget_input::intent::handle_token_budget_leave(state)
             }
+
+            // --- Rename Session Input ---
+            Intent::SidebarRenameSession => {
+                feat::rename_session_input::intent::handle_rename_session_enter(state)
+            }
+            Intent::RenameSessionConfirm => {
+                feat::rename_session_input::intent::handle_rename_session_confirm(state)
+            }
+            Intent::RenameSessionLeave => {
+                feat::rename_session_input::intent::handle_rename_session_leave(state)
+            }
         }
     }
 }

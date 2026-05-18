@@ -187,6 +187,14 @@ pub enum Intent {
     TokenBudgetInputConfirm,
     /// Cancel the token budget input popup.
     TokenBudgetInputLeave,
+
+    // --- Rename Session Input ---
+    /// Open the rename session input popup.
+    SidebarRenameSession,
+    /// Confirm the rename session input and apply.
+    RenameSessionConfirm,
+    /// Cancel the rename session input popup.
+    RenameSessionLeave,
 }
 
 impl std::fmt::Display for Intent {
@@ -268,6 +276,9 @@ impl std::fmt::Display for Intent {
             Intent::TokenBudgetInputEnter => write!(f, "token budget input enter"),
             Intent::TokenBudgetInputConfirm => write!(f, "token budget input confirm"),
             Intent::TokenBudgetInputLeave => write!(f, "token budget input leave"),
+            Intent::SidebarRenameSession => write!(f, "rename session"),
+            Intent::RenameSessionConfirm => write!(f, "rename session confirm"),
+            Intent::RenameSessionLeave => write!(f, "rename session leave"),
         }
     }
 }

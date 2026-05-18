@@ -43,6 +43,15 @@ pub struct TokenBudgetInputState {
     /// Byte offset for cursor position in the input.
     pub cursor_pos: usize,
 }
+
+/// State for the rename session input popup — editing a session title.
+#[derive(Debug, Clone, Default)]
+pub struct RenameSessionInputState {
+    /// User's raw input text.
+    pub input: String,
+    /// Byte offset for cursor position in the input.
+    pub cursor_pos: usize,
+}
 use crate::feat::skills::Skill;
 use crate::feat::theme::Theme;
 pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
@@ -190,6 +199,8 @@ pub enum FocusScope {
     ArgInput,
     /// Token budget input popup — typing a numeric budget value.
     TokenBudgetInput,
+    /// Rename session input popup — editing a session title.
+    RenameSessionInput,
     /// Sidebar resize mode — adjusting sidebar width with h/l keys.
     SidebarResize,
 }
@@ -208,6 +219,7 @@ impl FocusScope {
             Self::Picker { .. } => Mode::Picker,
             Self::ArgInput => Mode::Input,
             Self::TokenBudgetInput => Mode::Input,
+            Self::RenameSessionInput => Mode::Input,
         }
     }
 }
@@ -223,6 +235,7 @@ impl std::fmt::Display for FocusScope {
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
+            Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
         }
     }
@@ -484,6 +497,9 @@ pub struct FrontendState {
     /// Token budget input popup state — active when `FocusScope::TokenBudgetInput` is on the scope stack.
     /// OWNER: IntentHandler (budget input editing, confirmation).
     pub token_budget_input: TokenBudgetInputState,
+    /// Rename session input popup state — active when `FocusScope::RenameSessionInput` is on the scope stack.
+    /// OWNER: IntentHandler (rename input editing, confirmation).
+    pub rename_session_input: RenameSessionInputState,
 
     /// Sidebar width in columns, synced from preferences.
     /// OWNER: PreferencesStateSyncActor (on PreferencesUpdated).
@@ -521,6 +537,7 @@ impl Default for FrontendState {
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
             arg_input: ArgInputState::default(),
             token_budget_input: TokenBudgetInputState::default(),
+            rename_session_input: RenameSessionInputState::default(),
             sidebar_width: 30,
         }
     }

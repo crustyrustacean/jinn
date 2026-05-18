@@ -143,7 +143,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("x", Intent::SidebarSessionClose, KeyCategory::General)
             .bind("<enter>", Intent::SidebarConfirm, KeyCategory::General)
             .bind("n", Intent::SessionNew, KeyCategory::General)
-            .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General);
+            .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
+            .bind("r", Intent::SidebarRenameSession, KeyCategory::General);
         })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
@@ -247,6 +248,24 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("7", Intent::InsertChar { ch: '7' }, KeyCategory::Input)
         .bind("8", Intent::InsertChar { ch: '8' }, KeyCategory::Input)
         .bind("9", Intent::InsertChar { ch: '9' }, KeyCategory::Input);
+    });
+
+    // RenameSessionInput scope — editing a session title.
+    keymap.scope(Scope::RenameSessionInput, |b| {
+        b
+        .bind("<esc>", Intent::RenameSessionLeave, KeyCategory::General)
+        .bind("<enter>", Intent::RenameSessionConfirm, KeyCategory::Input)
+        .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
+        .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
+        .catch_all(|key: KeyEvent| {
+            if let Key::Char(c) = key.key {
+                Some(Intent::InsertChar { ch: c })
+            } else {
+                None
+            }
+        });
     });
 
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {

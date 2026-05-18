@@ -40,7 +40,7 @@ pub struct SessionsSectionState {
 
 pub(crate) struct SessionEntry {
     pub(crate) id: crate::protocol::SessionId,
-    title: String,
+    pub(crate) title: String,
     pub(crate) is_active: bool,
     pub(crate) created_at: jiff::Timestamp,
     pub(crate) is_idle: bool,

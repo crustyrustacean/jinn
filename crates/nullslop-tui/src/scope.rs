@@ -26,6 +26,8 @@ pub enum Scope {
     ArgInput,
     /// Token budget input mode — typing a numeric budget value.
     TokenBudgetInput,
+    /// Rename session input mode — editing a session title.
+    RenameSessionInput,
     /// Sidebar resize mode — adjusting sidebar width.
     SidebarResize,
 }
@@ -41,6 +43,7 @@ impl std::fmt::Display for Scope {
             Self::Input => write!(f, "Input"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
+            Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
         }
     }
@@ -59,6 +62,7 @@ impl std::str::FromStr for Scope {
             "Input" => Ok(Self::Input),
             "ArgInput" => Ok(Self::ArgInput),
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
+            "RenameSessionInput" => Ok(Self::RenameSessionInput),
             "SidebarResize" => Ok(Self::SidebarResize),
             _ => Err(()),
         }
