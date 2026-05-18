@@ -327,6 +327,21 @@ pub fn create_core_with_actor_host(
         },
     );
 
+    // Compaction actor.
+    let compaction_result = spawn::<nullslop_domain::feat::compaction_actor::CompactionActor>(
+        "compaction",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        |ctx| {
+            ctx.set_description("Summarizes conversation history into structured checkpoints");
+            ctx.set_data(state.clone());
+            ctx.set_data(services.clone());
+            ctx.set_data(handle.clone());
+        },
+    );
+
     // ── Build actor host ─────────────────────────────────────────────────
 
     let host = InMemoryActorHost::from_actors_with_handle(
@@ -345,6 +360,7 @@ pub fn create_core_with_actor_host(
             skills_result,
             persona_scan_result,
             prov_result,
+            compaction_result,
         ],
         handle.clone(),
         shutdown_tracker,

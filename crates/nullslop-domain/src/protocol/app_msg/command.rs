@@ -17,6 +17,7 @@ use crate::common::actor::protocol::command::ProceedWithShutdown;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
+use crate::feat::compaction_actor::protocol::command::CompactContext;
 use crate::feat::context::protocol::command::{
     AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
     RescanPersonas, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
@@ -109,6 +110,8 @@ pub enum Command {
     RunSessionSetup(RunSessionSetup),
     /// Run a lifecycle teardown command asynchronously.
     RunSessionTeardown(RunSessionTeardown),
+    /// Compact the conversation context for a session.
+    CompactContext(CompactContext),
 }
 
 impl Command {
@@ -149,6 +152,7 @@ impl Command {
             Self::SessionForkRequested(..) => Some(SessionForkRequested::NAME),
             Self::RunSessionSetup(..) => Some(RunSessionSetup::NAME),
             Self::RunSessionTeardown(..) => Some(RunSessionTeardown::NAME),
+            Self::CompactContext(..) => Some(CompactContext::NAME),
         }
     }
 }
@@ -230,6 +234,9 @@ impl std::fmt::Display for Command {
             }
             Command::RunSessionTeardown(payload) => {
                 write!(f, "run session teardown for {}", payload.session_id)
+            }
+            Command::CompactContext(payload) => {
+                write!(f, "compact context for {}", payload.session_id)
             }
         }
     }

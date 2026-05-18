@@ -303,6 +303,18 @@ impl ChatSessionState {
         &self.core.history
     }
 
+    /// Mark entries at the given indices as ignored.
+    ///
+    /// Used by the compaction actor to mark entries that have been summarized.
+    /// Ignores any indices that are out of bounds.
+    pub fn mark_entries_ignored(&mut self, indices: &[usize]) {
+        for &i in indices {
+            if i < self.core.history.len() {
+                self.core.history[i].ignored = true;
+            }
+        }
+    }
+
     /// Whether this session has no history entries.
     ///
     /// A session is "empty" when it has never had any entries pushed —
@@ -331,6 +343,62 @@ impl ChatSessionState {
             self.ui.selected_entry_index = Some(new_last);
         }
         index
+    }
+
+    /// Insert an entry at a specific position in the history.
+    ///
+    /// Used by compaction to place the `Compaction` entry at the boundary
+    /// between compacted and non-compacted entries, maintaining logical
+    /// vec order.
+    ///
+    /// Adjusts ephemeral tracking indices (streaming, tool results) that
+    /// reference positions >= the insertion point.
+    ///
+    /// Returns the index where the entry was inserted.
+    pub fn insert_entry_at(&mut self, index: usize, entry: ChatEntry) -> usize {
+        let clamped = index.min(self.core.history.len());
+        self.core.history.insert(clamped, entry);
+        // Shift tracking indices that point to entries at or after the insertion point.
+        if let Some(ref mut i) = self.core.ephemeral.streaming_entry_index {
+            if *i >= clamped {
+                *i += 1;
+            }
+        }
+        if let Some(ref mut i) = self.core.ephemeral.streaming_thinking_entry_index {
+            if *i >= clamped {
+                *i += 1;
+            }
+        }
+        for i in self
+            .core
+            .ephemeral
+            .streaming_tool_result_indices
+            .values_mut()
+        {
+            if *i >= clamped {
+                *i += 1;
+            }
+        }
+        for key in self
+            .core
+            .ephemeral
+            .streaming_tool_call_indices
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+        {
+            if let Some(v) = self
+                .core
+                .ephemeral
+                .streaming_tool_call_indices
+                .get_mut(&key)
+            {
+                if *v >= clamped {
+                    *v += 1;
+                }
+            }
+        }
+        clamped
     }
 
     /// Lazily create the Assistant entry for the current stream.

@@ -20,6 +20,7 @@ use crate::common::actor::protocol::event::{
     ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned,
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
+use crate::feat::compaction_actor::protocol::event::CompactionCompleted;
 use crate::feat::context::protocol::event::{
     PromptAssembled, PromptStrategySwitched, StrategyStateUpdated,
 };
@@ -114,6 +115,8 @@ pub enum Event {
     SessionSetupCompleted(SessionSetupCompleted),
     /// A lifecycle teardown command completed.
     SessionTeardownCompleted(SessionTeardownCompleted),
+    /// Context compaction completed for a session.
+    CompactionCompleted(CompactionCompleted),
 }
 
 impl Event {
@@ -159,6 +162,7 @@ impl Event {
             }
             Self::SessionSetupCompleted(..) => Some(SessionSetupCompleted::TYPE_NAME),
             Self::SessionTeardownCompleted(..) => Some(SessionTeardownCompleted::TYPE_NAME),
+            Self::CompactionCompleted(..) => Some(CompactionCompleted::TYPE_NAME),
         }
     }
 }
