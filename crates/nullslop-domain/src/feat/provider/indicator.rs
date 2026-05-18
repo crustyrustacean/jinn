@@ -1,7 +1,7 @@
 //! Streaming indicator element with animated throbber.
 //!
-//! Renders an animated ASCII spinner alongside "📤 Sending..." when the active
-//! session has dispatched a message but no tokens have arrived yet, "🧠 Streaming..."
+//! Renders an animated ASCII spinner alongside "Sending..." when the active
+//! session has dispatched a message but no tokens have arrived yet, "Streaming..."
 //! when tokens are arriving, and renders nothing when the session is idle.
 //! Queue count is shown when messages are waiting.
 
@@ -45,15 +45,15 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         let label = if session.is_sending() {
             if queue_len > 0 {
-                format!(" 📤 Sending... ({queue_len} queued)")
+                format!(" Sending... ({queue_len} queued)")
             } else {
-                " 📤 Sending...".to_owned()
+                " Sending...".to_owned()
             }
         } else if session.is_streaming() {
             if queue_len > 0 {
-                format!(" 🧠 Streaming... ({queue_len} queued)")
+                format!(" Streaming... ({queue_len} queued)")
             } else {
-                " 🧠 Streaming...".to_owned()
+                " Streaming...".to_owned()
             }
         } else {
             return;
