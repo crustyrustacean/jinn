@@ -27,6 +27,11 @@ pub trait TokenEstimator: Send + Sync {
 /// sent to the LLM. Pinned System and Actor entries are estimated based on the
 /// text that `entries_to_messages` would produce for them.
 pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) -> usize {
+    // Ignored entries contribute 0 tokens unless pinned (pin overrides ignore).
+    if entry.ignored && !entry.is_pinned() {
+        return 0;
+    }
+
     match &entry.kind {
         ChatEntryKind::User { expanded, .. } => estimator.estimate(expanded),
         ChatEntryKind::Assistant(text) | ChatEntryKind::Error(text) => estimator.estimate(text),

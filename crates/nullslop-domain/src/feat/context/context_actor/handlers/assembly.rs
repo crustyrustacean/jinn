@@ -113,6 +113,7 @@ impl PromptAssemblyActor {
             .filter(|e| {
                 (e.pin_position().is_none() || e.pin_position() == Some(PinPosition::Relative))
                     && !matches!(e.kind, ChatEntryKind::Thinking(_))
+                    && (!e.ignored || e.is_pinned())
             })
             .cloned()
             .collect();

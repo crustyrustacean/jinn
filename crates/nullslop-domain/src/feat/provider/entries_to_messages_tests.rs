@@ -420,3 +420,110 @@ fn info_entries_are_skipped() {
         }
     );
 }
+
+#[rstest::rstest]
+fn compaction_entry_produces_user_message_with_summary() {
+    // Given a compaction entry.
+    let entries = vec![ChatEntry {
+        id: crate::protocol::ChatEntryId::new(),
+        timestamp: jiff::Timestamp::now(),
+        kind: crate::protocol::ChatEntryKind::Compaction {
+            summary: "User asked to fix a bug. Work completed.".to_owned(),
+            tokens_before: 5000,
+            entries_compacted: 10,
+            model_used: "test/model".to_owned(),
+        },
+        pin_position: None,
+        ignored: false,
+    }];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then a User message with the wrapped summary is produced.
+    assert_eq!(messages.len(), 1);
+    let content = match &messages[0] {
+        LlmMessage::User { content } => content.clone(),
+        other => panic!("expected User, got {other:?}"),
+    };
+    assert!(content.contains("compacted into the following summary"));
+    assert!(content.contains("<summary>"));
+    assert!(content.contains("User asked to fix a bug. Work completed."));
+    assert!(content.contains("</summary>"));
+}
+
+#[rstest::rstest]
+fn ignored_user_entry_is_skipped() {
+    // Given an ignored user entry.
+    let entries = vec![ChatEntry::user("hello").with_ignored(true)];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then no messages are produced.
+    assert!(messages.is_empty());
+}
+
+#[rstest::rstest]
+fn ignored_assistant_entry_is_skipped() {
+    // Given an ignored assistant entry.
+    let entries = vec![ChatEntry::assistant("response").with_ignored(true)];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then no messages are produced.
+    assert!(messages.is_empty());
+}
+
+#[rstest::rstest]
+fn ignored_pinned_entry_is_included() {
+    // Given an ignored but pinned user entry.
+    let entries = vec![
+        ChatEntry::user("important")
+            .with_pin(PinPosition::Relative)
+            .with_ignored(true),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the entry is included (pin overrides ignore).
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LlmMessage::User {
+            content: "important".into()
+        }
+    );
+}
+
+#[rstest::rstest]
+fn ignored_entry_mixed_with_active_entries() {
+    // Given a mix of ignored and active entries.
+    let entries = vec![
+        ChatEntry::user("first").with_ignored(true),
+        ChatEntry::user("second"),
+        ChatEntry::assistant("response").with_ignored(true),
+        ChatEntry::assistant("final"),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then only active entries are included.
+    assert_eq!(messages.len(), 2);
+    assert_eq!(
+        messages[0],
+        LlmMessage::User {
+            content: "second".into()
+        }
+    );
+    assert_eq!(
+        messages[1],
+        LlmMessage::Assistant {
+            content: "final".into(),
+            tool_calls: None,
+        }
+    );
+}
