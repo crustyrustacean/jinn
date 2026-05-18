@@ -35,6 +35,9 @@ pub struct StreamCompleted {
     /// Tool calls requested by the assistant (populated when reason is `ToolUse`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
+    /// Cost in USD reported by the provider for this request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
 }
 
 /// A single token from a streaming LLM response.

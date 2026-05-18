@@ -128,7 +128,7 @@ mod tests {
         let entry = test_entry("fossil branch", None, true);
         let line = entry.render_row(false);
         let text = line.to_string();
-        assert!(text.contains("*"));
+        assert!(text.contains('*'));
     }
 
     #[rstest::rstest]

@@ -39,6 +39,21 @@ impl std::fmt::Display for StopReason {
     }
 }
 
+/// Usage and cost data from a provider's streaming response.
+///
+/// Populated when the provider reports token counts or cost in its streaming
+/// response. Not all providers report all fields — `None` means the provider
+/// did not include that data.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StreamUsage {
+    /// Tokens in the prompt (provider-reported, not estimated).
+    pub prompt_tokens: Option<u64>,
+    /// Tokens in the completion (provider-reported, not estimated).
+    pub completion_tokens: Option<u64>,
+    /// Cost in USD reported by the provider (e.g. OpenRouter).
+    pub cost: Option<f64>,
+}
+
 /// A streaming event from an LLM chat response.
 ///
 /// Produced by [`LlmService::chat_stream_with_tools`](super::LlmService::chat_stream_with_tools).
@@ -76,6 +91,8 @@ pub enum StreamEvent {
     Done {
         /// Why the stream stopped.
         stop_reason: StopReason,
+        /// Usage and cost data from the provider, if reported.
+        usage: Option<StreamUsage>,
     },
 }
 

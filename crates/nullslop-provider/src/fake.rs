@@ -210,6 +210,7 @@ impl FakeLlmService {
 
         events.push(Ok(StreamEvent::Done {
             stop_reason: StopReason::ToolUse,
+            usage: None,
         }));
 
         events
@@ -227,6 +228,7 @@ impl FakeLlmService {
 
         events.push(Ok(StreamEvent::Done {
             stop_reason: StopReason::EndTurn,
+            usage: None,
         }));
 
         events
@@ -282,6 +284,7 @@ impl LlmService for FakeLlmService {
             // No tool calls — just text and Done(end_turn).
             events.push(Ok(StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
+                usage: None,
             }));
         } else {
             // Emit tool call events.
@@ -304,6 +307,7 @@ impl LlmService for FakeLlmService {
             // Terminal event.
             events.push(Ok(StreamEvent::Done {
                 stop_reason: StopReason::ToolUse,
+                usage: None,
             }));
         }
 

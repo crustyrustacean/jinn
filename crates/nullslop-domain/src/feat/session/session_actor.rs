@@ -260,7 +260,7 @@ impl SessionPersistenceActor {
                 self.on_tool_execution_completed(payload).await;
             }
             Event::ToolBatchCompleted(payload) => {
-                self.on_tool_batch_completed(payload, ctx).await;
+                self.on_tool_batch_completed(payload, ctx);
             }
             Event::ToolExecutionStarted(payload) => {
                 self.on_tool_execution_started(payload);
@@ -841,7 +841,7 @@ mod tests {
     async fn on_stream_completed_error_reason_finishes_streaming() {
         // Given a session actor with a session in streaming state.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -856,6 +856,7 @@ mod tests {
             reason: StreamCompletedReason::Error,
             assistant_content: None,
             tool_calls: None,
+            cost: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -873,7 +874,7 @@ mod tests {
     async fn on_stream_completed_error_reason_does_not_drain_queue() {
         // Given a session actor with a session in streaming state and a queued message.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -889,6 +890,7 @@ mod tests {
             reason: StreamCompletedReason::Error,
             assistant_content: None,
             tool_calls: None,
+            cost: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -929,7 +931,7 @@ mod tests {
                 truncation: None,
             }],
         };
-        actor.on_tool_batch_completed(&event, &ctx).await;
+        actor.on_tool_batch_completed(&event, &ctx);
 
         // Then an AssemblePrompt command was emitted.
         let commands = sink.commands();
@@ -946,12 +948,12 @@ mod tests {
     async fn on_tool_batch_completed_transitions_session_to_sending() {
         // Given a session in sending state (set by on_stream_completed for ToolUse).
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.finish_streaming();
+            session.finish_streaming(true);
             session.begin_sending();
             state.session.active_session.clone()
         };
@@ -961,7 +963,7 @@ mod tests {
             session_id: session_id.clone(),
             results: vec![],
         };
-        actor.on_tool_batch_completed(&event, &ctx).await;
+        actor.on_tool_batch_completed(&event, &ctx);
 
         // Then the session is still in sending state.
         let state = actor.state.read();
@@ -977,7 +979,7 @@ mod tests {
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
         // Given a session with a token record (from PromptAssembled) in streaming state.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -985,6 +987,7 @@ mod tests {
                 timestamp: jiff::Timestamp::now(),
                 tokens_sent: 100,
                 tokens_received: 0,
+                cost: None,
             });
             session.begin_streaming();
             state.session.active_session.clone()
@@ -1000,6 +1003,7 @@ mod tests {
                 name: "bash".to_owned(),
                 arguments: r#"{"command":"ls -la /very/long/path"}"#.to_owned(),
             }]),
+            cost: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 

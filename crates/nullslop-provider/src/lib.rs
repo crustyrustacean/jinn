@@ -28,7 +28,7 @@ pub use no_providers::{NO_PROVIDER_ID, NoProvidersAvailableFactory};
 pub use openai_compat::{OpenAiCompatibleFactory, OpenAiCompatibleService, ProviderConfig};
 pub use sample::SampleLlmServiceFactory;
 pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
-pub use stream_event::{StopReason, StreamEvent};
+pub use stream_event::{StopReason, StreamEvent, StreamUsage};
 pub use tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 /// Rich model metadata returned by provider model listing endpoints.

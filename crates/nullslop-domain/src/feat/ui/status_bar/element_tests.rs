@@ -306,6 +306,7 @@ fn render_shows_token_counts_with_values() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1500,
         tokens_received: 750,
+        cost: None,
     });
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -333,6 +334,7 @@ fn render_shows_context_size_when_cached() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
+        cost: None,
     });
     state.active_session_mut().set_context_size(5000);
     let (mut terminal, area) = setup_term(80, 2);
@@ -568,6 +570,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
+        cost: None,
     });
     state.active_session_mut().set_context_size(5000);
 
@@ -577,7 +580,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         "openrouter".to_owned(),
         vec![crate::feat::provider_infra::ModelInfo {
             id: "anthropic/claude-sonnet-4".to_owned(),
-            context_length: Some(200000),
+            context_length: Some(200_000),
         }],
     );
     state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
@@ -613,6 +616,7 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
+        cost: None,
     });
     state.active_session_mut().set_context_size(5000);
 
@@ -660,6 +664,7 @@ fn render_falls_back_when_no_model_cache() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 5000,
         tokens_received: 0,
+        cost: None,
     });
     state.active_session_mut().set_context_size(5000);
     // No model cache.
@@ -678,7 +683,7 @@ fn render_falls_back_when_no_model_cache() {
         row.contains("ctx:5.0k"),
         "expected ctx without limit, got: {row}"
     );
-    assert!(!row.contains("%"), "expected no percentage, got: {row}");
+    assert!(!row.contains('%'), "expected no percentage, got: {row}");
 }
 
 // --- Token budget display tests ---
