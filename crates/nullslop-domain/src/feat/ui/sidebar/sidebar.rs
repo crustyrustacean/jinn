@@ -164,6 +164,7 @@ fn dispatch_navigate(
     state: &mut AppState,
 ) -> SectionNavResult {
     match section {
+        SidebarSectionId::Minimap => super::minimap_section::navigate(intent, state),
         SidebarSectionId::Persona => persona_section::navigate(intent, state),
         SidebarSectionId::Pins => pins::navigate(intent, state),
         SidebarSectionId::Sessions => sessions::navigate(intent, state),
@@ -172,6 +173,7 @@ fn dispatch_navigate(
 
 fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
+        SidebarSectionId::Minimap => Some(SidebarSectionId::Persona),
         SidebarSectionId::Persona => Some(SidebarSectionId::Pins),
         SidebarSectionId::Pins => Some(SidebarSectionId::Sessions),
         SidebarSectionId::Sessions => None,
@@ -180,7 +182,8 @@ fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
 
 fn prev_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
-        SidebarSectionId::Persona => None,
+        SidebarSectionId::Minimap => None,
+        SidebarSectionId::Persona => Some(SidebarSectionId::Minimap),
         SidebarSectionId::Pins => Some(SidebarSectionId::Persona),
         SidebarSectionId::Sessions => Some(SidebarSectionId::Pins),
     }
@@ -188,6 +191,7 @@ fn prev_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
 
 fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
+        SidebarSectionId::Minimap => false, // display-only, skip during navigation
         SidebarSectionId::Persona => true,
         SidebarSectionId::Pins => !state.sorted_pinned_ids().is_empty(),
         SidebarSectionId::Sessions => !state.session.sessions.is_empty(),
@@ -196,6 +200,7 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
 
 fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
     match id {
+        SidebarSectionId::Minimap => {}
         SidebarSectionId::Persona => state.frontend.persona_section.cursor = None,
         SidebarSectionId::Pins => state.frontend.pins.clear_selection(),
         SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index = None,
@@ -204,6 +209,7 @@ fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
 
 fn receive_cursor(id: SidebarSectionId, enter_from: EnterFrom, state: &mut AppState) {
     match id {
+        SidebarSectionId::Minimap => super::minimap_section::receive_cursor(state, enter_from),
         SidebarSectionId::Persona => persona_section::receive_cursor(state, enter_from),
         SidebarSectionId::Pins => pins::receive_cursor(state, enter_from),
         SidebarSectionId::Sessions => sessions::receive_cursor(state, enter_from),
@@ -213,6 +219,7 @@ fn receive_cursor(id: SidebarSectionId, enter_from: EnterFrom, state: &mut AppSt
 /// Check if a section has a retained cursor.
 fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
+        SidebarSectionId::Minimap => false,
         SidebarSectionId::Persona => state.frontend.persona_section.cursor.is_some(),
         SidebarSectionId::Pins => state.frontend.pins.selected_id().is_some(),
         SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index.is_some(),

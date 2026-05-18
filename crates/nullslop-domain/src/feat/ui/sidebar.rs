@@ -9,6 +9,7 @@
 //! next/previous section.
 
 pub mod intent;
+pub mod minimap_section;
 pub mod persona_section;
 pub mod pins;
 pub mod section_trait;
@@ -32,6 +33,7 @@ pub use state::SidebarState;
 
 /// Registers all built-in sidebar sections into the given sidebar.
 pub fn register_sections(sidebar: &mut Sidebar) {
+    sidebar.register(Box::new(minimap_section::MinimapSection::default()));
     sidebar.register(Box::new(persona_section::PersonaSection));
     sidebar.register(Box::new(pins::PinsSection));
     sidebar.register(Box::new(sessions::SessionsSection::new()));
