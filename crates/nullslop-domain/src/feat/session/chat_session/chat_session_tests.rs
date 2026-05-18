@@ -73,7 +73,7 @@ fn finish_streaming_clears_streaming_state() {
     session.append_stream_token("Hi");
 
     // When finishing streaming.
-    session.finish_streaming();
+    session.finish_streaming(true);
 
     // Then is_streaming is false and text is preserved.
     assert!(!session.is_streaming());
@@ -511,7 +511,7 @@ fn finish_streaming_clears_is_sending() {
         Some(session.push_entry(ChatEntry::assistant("")));
 
     // When finishing streaming.
-    session.finish_streaming();
+    session.finish_streaming(true);
 
     // Then is_sending is cleared.
     assert!(!session.is_sending());
@@ -528,7 +528,7 @@ fn finish_streaming_clears_is_streaming() {
         Some(session.push_entry(ChatEntry::assistant("")));
 
     // When finishing streaming.
-    session.finish_streaming();
+    session.finish_streaming(true);
 
     // Then is_streaming is cleared.
     assert!(!session.is_streaming());
@@ -678,7 +678,7 @@ fn finish_streaming_clears_tool_call_indices() {
     session.begin_tool_call(0, "call_1", "echo");
 
     // When finishing streaming.
-    session.finish_streaming();
+    session.finish_streaming(true);
 
     // Then the tool call indices are cleared (entries remain in history).
     assert!(!session.is_streaming());
@@ -1212,7 +1212,7 @@ fn finish_streaming_clears_thinking_entry_index() {
     session.append_stream_token("response");
 
     // When finishing streaming.
-    session.finish_streaming();
+    session.finish_streaming(true);
 
     // Then the thinking entry index is cleared.
     assert_eq!(session.streaming_thinking_entry_index(), None);
@@ -1242,6 +1242,55 @@ fn cancel_streaming_preserves_partial_thinking() {
     assert_eq!(session.streaming_thinking_entry_index(), None);
     assert!(
         matches!(session.history()[1].kind, ChatEntryKind::Thinking(ref t) if t == "partial reasoning")
+    );
+}
+
+#[rstest::rstest]
+fn finish_streaming_without_preserve_skips_assistant_entry() {
+    // Given a session that is streaming with no tokens received.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+
+    // When finishing streaming without preserving assistant.
+    session.finish_streaming(false);
+
+    // Then no assistant entry was created.
+    assert!(!session.is_streaming());
+    assert!(session.history().is_empty());
+}
+
+#[rstest::rstest]
+fn finish_streaming_with_preserve_creates_assistant_entry() {
+    // Given a session that is streaming with no tokens received.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+
+    // When finishing streaming with preserving assistant.
+    session.finish_streaming(true);
+
+    // Then an empty assistant entry was created.
+    assert!(!session.is_streaming());
+    assert_eq!(session.history().len(), 1);
+    assert!(
+        matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t.is_empty())
+    );
+}
+
+#[rstest::rstest]
+fn finish_streaming_without_preserve_keeps_existing_assistant() {
+    // Given a session that is streaming and has received tokens.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.append_stream_token("Hello");
+
+    // When finishing streaming without preserving assistant.
+    session.finish_streaming(false);
+
+    // Then the existing assistant entry is still there (ensure_assistant_entry was a no-op since entry already existed).
+    assert!(!session.is_streaming());
+    assert_eq!(session.history().len(), 1);
+    assert!(
+        matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t == "Hello")
     );
 }
 
