@@ -539,7 +539,8 @@ impl SessionPersistenceActor {
                                     crate::protocol::PromptStrategyId::passthrough,
                                     crate::protocol::PromptStrategyId::new,
                                 );
-                            let token_budget = state.frontend.preferences.context_token_budget.budget;
+                            let token_budget =
+                                state.frontend.preferences.context_token_budget.budget;
                             let new_session = ChatSessionState::new_with_profile(
                                 crate::feat::session::profile::SessionProfile::from_config(
                                     model,
@@ -571,11 +572,9 @@ impl SessionPersistenceActor {
                         tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
                     }
 
-                    if let Err(e) =
-                        ctx.send_event(Event::SessionRemoved(SessionRemoved {
-                            session_id: payload.session_id.clone(),
-                        }))
-                    {
+                    if let Err(e) = ctx.send_event(Event::SessionRemoved(SessionRemoved {
+                        session_id: payload.session_id.clone(),
+                    })) {
                         tracing::warn!(err = ?e, "session-actor failed to emit SessionRemoved");
                     }
                 } else {
@@ -629,7 +628,13 @@ impl SessionPersistenceActor {
     /// switch active if needed, and emit `SessionRemoved`.
     fn handle_remove_session(&self, payload: &RemoveSession, ctx: &ActorContext) {
         // No-op if the session doesn't exist.
-        if !self.state.read().session.sessions.contains_key(&payload.session_id) {
+        if !self
+            .state
+            .read()
+            .session
+            .sessions
+            .contains_key(&payload.session_id)
+        {
             return;
         }
 
@@ -643,18 +648,13 @@ impl SessionPersistenceActor {
                     .preferences
                     .last_model
                     .clone()
-                    .unwrap_or_else(|| {
-                        crate::feat::provider_infra::NO_PROVIDER_ID.to_owned()
-                    });
+                    .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
                 let strategy = state
                     .frontend
                     .preferences
                     .last_strategy
                     .as_deref()
-                    .map_or_else(
-                        PromptStrategyId::passthrough,
-                        PromptStrategyId::new,
-                    );
+                    .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
                 let token_budget = state.frontend.preferences.context_token_budget.budget;
                 let new_session = ChatSessionState::new_with_profile(
                     crate::feat::session::profile::SessionProfile::from_config(
@@ -1164,7 +1164,10 @@ mod tests {
         let teardown_evt = events
             .iter()
             .find(|e| matches!(e, crate::protocol::Event::SessionTeardownCompleted(..)));
-        assert!(teardown_evt.is_some(), "expected SessionTeardownCompleted event");
+        assert!(
+            teardown_evt.is_some(),
+            "expected SessionTeardownCompleted event"
+        );
     }
 
     #[tokio::test]
@@ -1223,7 +1226,11 @@ mod tests {
 
         // Then the session has an error entry.
         let state = actor.state.read();
-        let session = state.session.sessions.get(&session_id).expect("session exists");
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
         let last = session.history().last().expect("has an entry");
         assert!(matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("exit code")));
     }
@@ -1452,7 +1459,10 @@ mod tests {
                 ) if sid == &fake_id
             )
         });
-        assert!(!found, "did not expect SessionRemoved for nonexistent session");
+        assert!(
+            !found,
+            "did not expect SessionRemoved for nonexistent session"
+        );
     }
 
     // --- Teardown-only (close_on_success: false) tests ---

@@ -165,7 +165,9 @@ impl Event {
             Self::SessionSetupCompleted(..) => Some(SessionSetupCompleted::TYPE_NAME),
             Self::SessionTeardownCompleted(..) => Some(SessionTeardownCompleted::TYPE_NAME),
             Self::CompactionCompleted(..) => Some(CompactionCompleted::TYPE_NAME),
-            Self::SessionRemoved(..) => Some(crate::feat::session::protocol::session_removed::SessionRemoved::TYPE_NAME),
+            Self::SessionRemoved(..) => {
+                Some(crate::feat::session::protocol::session_removed::SessionRemoved::TYPE_NAME)
+            }
         }
     }
 }

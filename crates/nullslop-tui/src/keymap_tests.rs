@@ -907,10 +907,7 @@ fn input_ctrl_j_produces_insert_newline() {
     assert!(node.is_some());
     if let Some(ratatui_which_key::KeyNode::Leaf(entries)) = node {
         let entry = entries.iter().find(|e| e.scope == Scope::Input);
-        assert!(
-            entry.is_some(),
-            "'<c-j>' should be bound in Input scope"
-        );
+        assert!(entry.is_some(), "'<c-j>' should be bound in Input scope");
         assert!(
             matches!(&entry.unwrap().action, Intent::InsertChar { ch } if *ch == '\n'),
             "expected InsertChar {{ ch: '\\n' }}"

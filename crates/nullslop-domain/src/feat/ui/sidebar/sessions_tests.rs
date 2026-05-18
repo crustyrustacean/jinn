@@ -759,16 +759,14 @@ fn new_with_lifecycle_opens_picker_when_sessions_section() {
 fn teardown_only_emits_run_session_teardown_with_close_on_success_false() {
     // Given a session with a lifecycle that has a teardown command.
     let mut state = AppState::default();
-    state
-        .frontend
-        .preferences
-        .session_lifecycles
-        .push(crate::feat::preferences_actor::user_preferences::SessionLifecycle {
+    state.frontend.preferences.session_lifecycles.push(
+        crate::feat::preferences_actor::user_preferences::SessionLifecycle {
             name: "fossil branch".to_owned(),
             description: None,
             setup_command: Some("echo setup".to_owned()),
             teardown_command: Some("cleanup.sh $1".to_owned()),
-        });
+        },
+    );
     state
         .active_session_mut()
         .set_lifecycle_name(Some("fossil branch".to_owned()));
@@ -806,16 +804,14 @@ fn teardown_only_emits_run_session_teardown_with_close_on_success_false() {
 fn teardown_only_is_noop_without_lifecycle_teardown() {
     // Given a session with a lifecycle that has NO teardown command.
     let mut state = AppState::default();
-    state
-        .frontend
-        .preferences
-        .session_lifecycles
-        .push(crate::feat::preferences_actor::user_preferences::SessionLifecycle {
+    state.frontend.preferences.session_lifecycles.push(
+        crate::feat::preferences_actor::user_preferences::SessionLifecycle {
             name: "plain".to_owned(),
             description: None,
             setup_command: Some("echo setup".to_owned()),
             teardown_command: None,
-        });
+        },
+    );
     state
         .active_session_mut()
         .set_lifecycle_name(Some("plain".to_owned()));
