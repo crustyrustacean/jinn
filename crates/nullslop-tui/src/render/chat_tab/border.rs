@@ -35,7 +35,7 @@ pub(super) fn render_border(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code, panics are acceptable")]
     use nullslop_testutil::setup_term;
     use ratatui::layout::Rect;
     use ratatui::style::Color;

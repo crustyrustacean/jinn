@@ -94,8 +94,7 @@ pub(crate) fn find_and_validate_edits(
             search_from = original[abs_pos..]
                 .grapheme_indices(true)
                 .nth(1)
-                .map(|(idx, _)| abs_pos + idx)
-                .unwrap_or(original.len());
+                .map_or(original.len(), |(idx, _)| abs_pos + idx);
         }
 
         match occurrences.len() {

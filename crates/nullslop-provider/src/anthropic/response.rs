@@ -42,6 +42,7 @@ impl AnthropicStreamParser {
     }
 
     /// Parse a single SSE data payload into an optional `StreamEvent`.
+    #[allow(clippy::too_many_lines)]
     pub fn parse_data(&mut self, json: &str) -> Option<StreamEvent> {
         let response: serde_json::Value = serde_json::from_str(json).ok()?;
 

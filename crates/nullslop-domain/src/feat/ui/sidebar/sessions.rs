@@ -542,6 +542,8 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::proto
 /// # Panics
 /// Panics if `sessions_section.selected_index` is `None`.
 pub fn handle_session_teardown(state: &mut AppState) -> crate::protocol::IntentResult {
+    use crate::feat::session_lifecycle::command_template::CommandTemplate;
+
     // Validate — same preconditions as session close.
     if validate_session_close(state).is_err() {
         return crate::protocol::IntentResult::empty();
@@ -572,11 +574,9 @@ pub fn handle_session_teardown(state: &mut AppState) -> crate::protocol::IntentR
     };
 
     let Some(ref teardown_cmd) = teardown_command else {
-        // No teardown command — no-op.
         return crate::protocol::IntentResult::empty();
     };
 
-    use crate::feat::session_lifecycle::command_template::CommandTemplate;
     let template = CommandTemplate::parse(teardown_cmd);
     let rendered = if lifecycle_args.is_empty() {
         teardown_cmd.to_owned()

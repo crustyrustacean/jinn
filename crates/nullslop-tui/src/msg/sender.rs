@@ -33,7 +33,7 @@ impl MsgSender {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, reason = "test code, panics are acceptable")]
     use super::*;
 
     #[rstest::rstest]
