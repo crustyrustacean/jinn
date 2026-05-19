@@ -293,6 +293,8 @@ fn render_shows_token_counts_with_zero_values() {
     let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows zero token counts.
     assert!(row.contains("\u{2191}0 \u{2193}0"));
+    // And cost is always shown as $0.0000.
+    assert!(row.contains("$0.0000"));
 }
 
 #[rstest::rstest]
@@ -321,6 +323,8 @@ fn render_shows_token_counts_with_values() {
     // Then the status bar shows token counts.
     assert!(row.contains("1.5k"));
     assert!(row.contains("750"));
+    // And cost is shown as $0.0000 when no cost data.
+    assert!(row.contains("$0.0000"));
 }
 
 #[rstest::rstest]
@@ -737,5 +741,95 @@ fn render_hides_token_budget_for_passthrough_strategy() {
     assert!(
         !row.contains("Token Budget:"),
         "expected no budget display for passthrough strategy, got: {row}"
+    );
+}
+
+// --- Cost display tests ---
+
+#[rstest::rstest]
+fn render_always_shows_cost_even_when_zero() {
+    // Given a state with no token records and no history.
+    let mut element = StatusBarElement;
+    let state = AppState::default();
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then cost is always shown as $0.0000.
+    assert!(
+        row.contains("$0.0000"),
+        "expected $0.0000 in status bar, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_shows_cost_with_non_zero_value() {
+    // Given a session with a token record that has cost data.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state.active_session_mut().push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1500,
+        tokens_received: 750,
+        cost: Some(0.0023),
+    });
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then the status bar shows the cost value.
+    assert!(
+        row.contains("$0.0023"),
+        "expected $0.0023 in status bar, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_shows_cost_before_turns_indicator() {
+    // Given a state with history entries producing turns and a token record with cost.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state
+        .active_session_mut()
+        .push_entry(crate::protocol::ChatEntry::user("hello"));
+    state
+        .active_session_mut()
+        .push_entry(crate::protocol::ChatEntry::assistant("hi there"));
+    state.active_session_mut().push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 500,
+        cost: Some(0.0015),
+    });
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then cost appears before Turns in the rendered row.
+    let cost_pos = row.find("$0.0015").expect("cost should be present");
+    let turns_pos = row.find("Turns:").expect("Turns should be present");
+    assert!(
+        cost_pos < turns_pos,
+        "cost should appear before Turns, got: {row}"
     );
 }
