@@ -473,7 +473,8 @@ fn is_valid_hash_trigger_position(input: &ChatInputBoxState) -> bool {
     if dollar_pos == 0 {
         return true;
     }
-    input.grapheme_at(dollar_pos - 1) == Some(" ")
+    let prev = input.grapheme_at(dollar_pos - 1);
+    prev == Some(" ") || prev == Some("\n")
 }
 
 /// Checks whether the `/` at the cursor is in a valid position to trigger slash autocomplete.
@@ -483,12 +484,39 @@ fn is_valid_slash_trigger_position(input: &ChatInputBoxState) -> bool {
     input.cursor_pos() == 1 && input.text().starts_with('/')
 }
 
-/// Returns true if the cursor has moved before the autocomplete token start, requiring deactivation.
+/// Returns true if the cursor has moved outside the autocomplete token region,
+/// requiring deactivation.
+///
+/// Deactivates when the cursor is before `token_start` or past `token_end`.
 fn should_deactivate_on_cursor_move(state: &AppState) -> bool {
     let Some(ac) = state.active_chat_input().autocomplete() else {
         return false;
     };
-    state.active_chat_input().cursor_pos() <= ac.token_start()
+    let cursor = state.active_chat_input().cursor_pos();
+    let token_start = ac.token_start();
+    if cursor <= token_start {
+        return true;
+    }
+    let token_end = compute_token_end(state.active_chat_input(), token_start);
+    cursor > token_end
+}
+
+/// Computes the grapheme index one past the last character of the token
+/// that starts at `token_start` (the `#` position).
+///
+/// Scans forward from `token_start + 1` until whitespace, `#`, or end of buffer.
+fn compute_token_end(input: &ChatInputBoxState, token_start: usize) -> usize {
+    let graphemes: Vec<&str> = input.text().graphemes(true).collect();
+    let len = graphemes.len();
+    let mut end = token_start + 1;
+    while end < len {
+        let g = graphemes.get(end);
+        if g.is_none() || g.is_some_and(|c| c.trim().is_empty() || *c == "#") {
+            break;
+        }
+        end += 1;
+    }
+    end
 }
 
 /// Performs a fuzzy search against the prompt template store and returns matching entries.
@@ -559,7 +587,9 @@ fn find_hash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String
     loop {
         if graphemes.get(i) == Some(&"#") {
             // Check that the '#' is at a valid trigger position.
-            let preceded_by_boundary = i == 0 || graphemes.get(i.wrapping_sub(1)) == Some(&" ");
+            let preceded_by_boundary = i == 0
+                || graphemes.get(i.wrapping_sub(1)) == Some(&" ")
+                || graphemes.get(i.wrapping_sub(1)) == Some(&"\n");
             if !preceded_by_boundary {
                 return None;
             }
