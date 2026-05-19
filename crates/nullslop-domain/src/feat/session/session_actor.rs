@@ -346,6 +346,7 @@ impl SessionPersistenceActor {
             | Command::ExecuteTool(..)
             | Command::ProceedWithShutdown(..)
             | Command::CancelStream(..)
+            | Command::CancelCompaction(..)
             | Command::RefreshModels
             | Command::RescanPromptTemplates
             | Command::ExecuteToolBatch(..)
