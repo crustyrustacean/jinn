@@ -218,7 +218,9 @@ mod tests {
     use super::*;
     use crate::ContextTokenBudgetConfig;
     use crate::common::app_info::PREFS_FILE_NAME;
-    use crate::feat::preferences_actor::user_preferences::{CompactionConfig, ContextSlidingWindowConfig};
+    use crate::feat::preferences_actor::user_preferences::{
+        CompactionConfig, ContextSlidingWindowConfig,
+    };
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
