@@ -44,6 +44,15 @@ pub struct TokenBudgetInputState {
     pub cursor_pos: usize,
 }
 
+/// State for the sliding window input popup — typing a numeric window size.
+#[derive(Debug, Clone, Default)]
+pub struct SlidingWindowInputState {
+    /// User's raw input text (digits only).
+    pub input: String,
+    /// Byte offset for cursor position in the input.
+    pub cursor_pos: usize,
+}
+
 /// State for the rename session input popup — editing a session title.
 #[derive(Debug, Clone, Default)]
 pub struct RenameSessionInputState {
@@ -201,6 +210,8 @@ pub enum FocusScope {
     ArgInput,
     /// Token budget input popup — typing a numeric budget value.
     TokenBudgetInput,
+    /// Sliding window input popup — typing a numeric window size.
+    SlidingWindowInput,
     /// Rename session input popup — editing a session title.
     RenameSessionInput,
     /// Sidebar resize mode — adjusting sidebar width with h/l keys.
@@ -218,7 +229,7 @@ impl FocusScope {
             | Self::SidebarSessions
             | Self::SidebarMinimap
             | Self::SidebarResize => Mode::Normal,
-            Self::Input | Self::ArgInput | Self::TokenBudgetInput | Self::RenameSessionInput => {
+            Self::Input | Self::ArgInput | Self::TokenBudgetInput | Self::SlidingWindowInput | Self::RenameSessionInput => {
                 Mode::Input
             }
             Self::Picker { .. } => Mode::Picker,
@@ -238,6 +249,7 @@ impl std::fmt::Display for FocusScope {
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
+            Self::SlidingWindowInput => write!(f, "SlidingWindowInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
         }
@@ -505,6 +517,9 @@ pub struct FrontendState {
     /// Token budget input popup state — active when `FocusScope::TokenBudgetInput` is on the scope stack.
     /// OWNER: IntentHandler (budget input editing, confirmation).
     pub token_budget_input: TokenBudgetInputState,
+    /// Sliding window input popup state — active when `FocusScope::SlidingWindowInput` is on the scope stack.
+    /// OWNER: IntentHandler (window size input editing, confirmation).
+    pub sliding_window_input: SlidingWindowInputState,
     /// Rename session input popup state — active when `FocusScope::RenameSessionInput` is on the scope stack.
     /// OWNER: IntentHandler (rename input editing, confirmation).
     pub rename_session_input: RenameSessionInputState,
@@ -545,6 +560,7 @@ impl Default for FrontendState {
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
             arg_input: ArgInputState::default(),
             token_budget_input: TokenBudgetInputState::default(),
+            sliding_window_input: SlidingWindowInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
             sidebar_width: 30,
         }
