@@ -191,6 +191,7 @@ fn picker_confirm_session_returns_session_load_command() {
         title: "Test".to_owned(),
         updated_at: jiff::Timestamp::now(),
         theme: default_theme(),
+        archived: false,
     }]);
 
     // When confirming picker.

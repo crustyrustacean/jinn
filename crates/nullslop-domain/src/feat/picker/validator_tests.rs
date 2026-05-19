@@ -105,6 +105,7 @@ fn picker_confirm_succeeds_with_session_selection() {
         title: "Test Session".to_owned(),
         updated_at: jiff::Timestamp::now(),
         theme: default_theme(),
+        archived: false,
     }]);
 
     // When validating picker confirm.

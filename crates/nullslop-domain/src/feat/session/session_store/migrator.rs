@@ -48,6 +48,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) {
         migrate_v4(conn);
         record_version(conn, 4, "add_cost_to_token_ledger");
     }
+    if current < 5 {
+        migrate_v5(conn);
+        record_version(conn, 5, "add_archived_column");
+    }
 }
 
 // ── Tracking table ───────────────────────────────────────────────────────
@@ -185,6 +189,16 @@ fn migrate_v4(conn: &mut SqliteConnection) {
         .expect("v4: add cost column to token_ledger");
 }
 
+/// v5: Add `archived` column to sessions.
+///
+/// Sessions default to unarchived. Closing a session sets `archived = TRUE`.
+/// On startup, only unarchived sessions are loaded into memory.
+fn migrate_v5(conn: &mut SqliteConnection) {
+    sql_query("ALTER TABLE sessions ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE")
+        .execute(conn)
+        .expect("v5: add archived column to sessions");
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
@@ -225,7 +239,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 5);
+        assert_eq!(rows.len(), 6);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -236,6 +250,8 @@ mod tests {
         assert_eq!(rows[3].name, "add_ignored_to_session_entries");
         assert_eq!(rows[4].version, 4);
         assert_eq!(rows[4].name, "add_cost_to_token_ledger");
+        assert_eq!(rows[5].version, 5);
+        assert_eq!(rows[5].name, "add_archived_column");
     }
 
     #[test]
@@ -259,7 +275,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 5);
+        assert_eq!(rows[0].count, 6);
     }
 
     #[test]
