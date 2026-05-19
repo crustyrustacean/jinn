@@ -1,16 +1,16 @@
-//! Sidebar state actor — keeps sidebar cursor in sync after session removal.
+//! Sidebar state actor — keeps sidebar cursor in sync after session close.
 //!
-//! Subscribes to [`SessionRemoved`] events and clamps the sidebar's
+//! Subscribes to [`SessionClosed`] events and clamps the sidebar's
 //! `selected_index` and `scroll_offset` so they never point past the end
 //! of the sessions list.
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
-use crate::feat::session::protocol::session_removed::SessionRemoved;
+use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::ui::sidebar::sessions::{scroll_to_cursor, sorted_open_sessions};
 use crate::protocol::Event;
 
-/// Actor that adjusts sidebar cursor state in response to session removal.
+/// Actor that adjusts sidebar cursor state in response to session close.
 pub struct SidebarStateActor {
     state: State,
 }
@@ -26,22 +26,22 @@ impl Actor for SidebarStateActor {
     type Deps = SidebarStateActorDeps;
 
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.subscribe_event::<SessionRemoved>();
+        ctx.subscribe_event::<SessionClosed>();
         ctx.set_description("Sidebar cursor state management");
 
         Self { state: deps.state }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
-        if let ActorEnvelope::Event(Event::SessionRemoved(payload)) = &msg {
-            self.handle_session_removed(payload);
+        if let ActorEnvelope::Event(Event::SessionClosed(payload)) = &msg {
+            self.handle_session_closed(payload);
         }
     }
 }
 
 impl SidebarStateActor {
     /// Clamp `selected_index` to valid range and re-scroll.
-    fn handle_session_removed(&self, _payload: &SessionRemoved) {
+    fn handle_session_closed(&self, _payload: &SessionClosed) {
         let mut state = self.state.write();
         let sessions = sorted_open_sessions(&state);
         if sessions.is_empty() {
@@ -104,11 +104,11 @@ mod tests {
             state.session.sessions_mut().remove(&removed_id);
         }
 
-        // When handling SessionRemoved.
-        let payload = crate::feat::session::protocol::session_removed::SessionRemoved {
+        // When handling SessionClosed.
+        let payload = crate::feat::session::protocol::session_closed::SessionClosed {
             session_id: removed_id,
         };
-        actor.handle_session_removed(&payload);
+        actor.handle_session_closed(&payload);
 
         // Then selected_index is clamped to 1 (max valid index).
         let state = actor.state.read();
@@ -126,7 +126,7 @@ mod tests {
             id
         };
 
-        // Simulate session removal + new session creation (as session actor would do).
+        // Simulate session close + new session creation (as session actor would do).
         {
             let mut state = actor.state.write();
             state.session.sessions_mut().remove(&removed_id);
@@ -135,11 +135,11 @@ mod tests {
             state.session.sessions_mut().insert(new_id, new_session);
         }
 
-        // When handling SessionRemoved.
-        let payload = crate::feat::session::protocol::session_removed::SessionRemoved {
+        // When handling SessionClosed.
+        let payload = crate::feat::session::protocol::session_closed::SessionClosed {
             session_id: removed_id,
         };
-        actor.handle_session_removed(&payload);
+        actor.handle_session_closed(&payload);
 
         // Then cursor stays at 0.
         let state = actor.state.read();
@@ -175,11 +175,11 @@ mod tests {
             state.session.sessions_mut().remove(&removed_id);
         }
 
-        // When handling SessionRemoved.
-        let payload = crate::feat::session::protocol::session_removed::SessionRemoved {
+        // When handling SessionClosed.
+        let payload = crate::feat::session::protocol::session_closed::SessionClosed {
             session_id: removed_id,
         };
-        actor.handle_session_removed(&payload);
+        actor.handle_session_closed(&payload);
 
         // Then cursor stays at 0.
         let state = actor.state.read();
