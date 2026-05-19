@@ -40,7 +40,7 @@ impl PromptAssemblyActor {
         };
         let (strategy_id, config) = {
             let guard = self.state.read();
-            match guard.session.sessions.get(session_id) {
+            match guard.session.sessions().get(session_id) {
                 Some(session) => {
                     let sid = session.active_strategy().clone();
                     let cfg = if sid == PromptStrategyId::sliding_window() {
@@ -165,7 +165,7 @@ impl PromptAssemblyActor {
                 let guard = self.state.read();
                 guard
                     .session
-                    .sessions
+                    .sessions()
                     .get(&session_id)
                     .map_or_else(|| std::path::PathBuf::from("."), |s| s.cwd().to_path_buf())
             };
@@ -173,7 +173,7 @@ impl PromptAssemblyActor {
             let guard = self.state.read();
             let persona = guard
                 .session
-                .sessions
+                .sessions()
                 .get(&session_id)
                 .and_then(|s| {
                     let name = s.persona_name();

@@ -46,32 +46,34 @@ pub struct EnvInitActor {
     api_keys: ApiKeysService,
 }
 
+/// Dependencies for [`EnvInitActor`].
+pub struct EnvInitActorDeps {
+    /// Config storage for loading `providers.toml`.
+    pub config_storage: ConfigStorageService,
+    /// API keys service to populate.
+    pub api_keys: ApiKeysService,
+}
+
 impl Actor for EnvInitActor {
     type Message = EnvInitDirectMsg;
+    type Deps = EnvInitActorDeps;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "Data injection is required at activation"
-    )]
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Loads environment variables and API keys");
 
         // Self-schedule initialization — the message buffers until the run loop starts.
+        #[expect(
+            clippy::expect_used,
+            reason = "self-ref is injected by spawn before activate"
+        )]
         let self_ref = ctx
             .take_actor_ref::<EnvInitDirectMsg>()
             .expect("EnvInitActor requires self-ref injection");
         let _ = self_ref.send(EnvInitDirectMsg::Initialize);
 
-        let config_storage = ctx
-            .take_data::<ConfigStorageService>()
-            .expect("EnvInitActor requires ConfigStorageService injection");
-        let api_keys = ctx
-            .take_data::<ApiKeysService>()
-            .expect("EnvInitActor requires ApiKeysService injection");
-
         Self {
-            config_storage,
-            api_keys,
+            config_storage: deps.config_storage,
+            api_keys: deps.api_keys,
         }
     }
 
@@ -128,7 +130,7 @@ mod tests {
         ApiKeys, ApiKeysService, ConfigStorageService, FilesystemConfigStorage,
     };
 
-    use super::EnvInitActor;
+    use super::{EnvInitActor, EnvInitActorDeps};
 
     /// Creates a test actor with in-memory storage.
     fn create_actor() -> (
@@ -150,9 +152,11 @@ mod tests {
         let config_storage = ConfigStorageService::new(Arc::new(storage));
         let api_keys = ApiKeysService::new(ApiKeys::new());
 
-        ctx.set_data(config_storage);
-        ctx.set_data(api_keys.clone());
-        let actor = EnvInitActor::activate(&mut ctx);
+        let deps = EnvInitActorDeps {
+            config_storage,
+            api_keys: api_keys.clone(),
+        };
+        let actor = EnvInitActor::activate(deps, &mut ctx);
         (actor, api_keys, sink, ctx)
     }
 

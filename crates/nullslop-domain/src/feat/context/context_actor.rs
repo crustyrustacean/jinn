@@ -27,7 +27,7 @@ use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
 use crate::protocol::{Command, Event, SessionId};
 
-use crate::feat::context::{DefaultStrategyFactory, PromptAssembly, StrategyFactory};
+use crate::feat::context::{PromptAssembly, StrategyFactory};
 
 /// The context actor — handles prompt assembly, strategy management, pinning, and templates.
 pub struct PromptAssemblyActor {
@@ -41,10 +41,21 @@ pub struct PromptAssemblyActor {
     pub(super) services: Services,
 }
 
+/// Dependencies for [`PromptAssemblyActor`].
+pub struct PromptAssemblyActorDeps {
+    /// Shared application state.
+    pub state: State,
+    /// Strategy factory for creating prompt assembly strategies.
+    pub factory: Option<Box<dyn StrategyFactory>>,
+    /// Runtime services.
+    pub services: Services,
+}
+
 impl Actor for PromptAssemblyActor {
     type Message = NoDirectMsg;
+    type Deps = PromptAssemblyActorDeps;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         // Existing subscriptions (prompt assembly).
         ctx.subscribe_command::<AssemblePrompt>();
         ctx.subscribe_event::<PromptStrategySwitched>();
@@ -62,22 +73,11 @@ impl Actor for PromptAssemblyActor {
 
         ctx.set_description("Context assembly, strategy management, pinning, and templates");
 
-        #[expect(clippy::expect_used, reason = "State is always injected at startup")]
-        let state = ctx
-            .take_data::<State>()
-            .expect("PromptAssemblyActor requires State injection");
-        let factory = ctx
-            .take_data::<Box<dyn StrategyFactory>>()
-            .unwrap_or_else(|| Box::new(DefaultStrategyFactory));
-        #[expect(clippy::expect_used, reason = "Services is always injected at startup")]
-        let services = ctx
-            .take_data::<Services>()
-            .expect("PromptAssemblyActor requires Services injection");
         Self {
-            state,
+            state: deps.state,
             strategies: HashMap::new(),
-            factory: Some(factory),
-            services,
+            factory: deps.factory,
+            services: deps.services,
         }
     }
 
@@ -257,11 +257,13 @@ mod tests {
         let sink: Arc<dyn MessageSink> = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("test", sink);
         let state = State::new(AppState::default());
-        ctx.set_data(state.clone());
-        ctx.set_data(Box::new(crate::feat::context::DefaultStrategyFactory)
-            as Box<dyn crate::feat::context::strategy::types::StrategyFactory>);
-        ctx.set_data(TestServices::builder().build());
-        let actor = PromptAssemblyActor::activate(&mut ctx);
+        let deps = PromptAssemblyActorDeps {
+            state: state.clone(),
+            factory: Some(Box::new(crate::feat::context::DefaultStrategyFactory)
+                as Box<dyn crate::feat::context::strategy::types::StrategyFactory>),
+            services: TestServices::builder().build(),
+        };
+        let actor = PromptAssemblyActor::activate(deps, &mut ctx);
         (actor, state)
     }
 

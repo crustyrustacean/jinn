@@ -624,14 +624,14 @@ fn slash_autocomplete_does_not_reactivate_after_cursor_leaves_token() {
 fn submit_new_command_creates_session() {
     // Given a state with "/new" in the buffer (no autocomplete active).
     let mut state = AppState::default();
-    let old_id = state.session.active_session.clone();
+    let old_id = state.session.active_session_id().clone();
     state.active_chat_input_mut().insert_text("/new");
 
     // When handling SubmitMessage.
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
     // Then a new session is created.
-    assert_ne!(state.session.active_session, old_id);
+    assert_ne!(*state.session.active_session_id(), old_id);
     // And the input buffer is cleared.
     assert!(state.active_chat_input().is_empty());
     // And no EnqueueUserMessage was emitted.
@@ -667,7 +667,7 @@ fn submit_unknown_slash_command_sends_as_chat() {
 fn submit_compact_slash_command_sends_compact_context() {
     // Given a state with "/compact" in the buffer.
     let mut state = AppState::default();
-    let session_id = state.session.active_session.clone();
+    let session_id = state.session.active_session_id().clone();
     state.active_chat_input_mut().insert_text("/compact");
 
     // When handling SubmitMessage.
@@ -688,7 +688,7 @@ fn tab_completes_name_without_executing() {
     // Given a state with slash autocomplete active ("/" typed, popup showing "new").
     let mut state = AppState::default();
     crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
-    let old_id = state.session.active_session.clone();
+    let old_id = state.session.active_session_id().clone();
 
     // When confirming autocomplete (Tab).
     let result = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
@@ -696,7 +696,8 @@ fn tab_completes_name_without_executing() {
     // Then the buffer contains "/new" (completed) but no session was created.
     assert_eq!(state.active_chat_input().text(), "/new");
     assert_eq!(
-        state.session.active_session, old_id,
+        *state.session.active_session_id(),
+        old_id,
         "session should not change on Tab confirm"
     );
     assert!(result.commands.is_empty());
@@ -707,14 +708,15 @@ fn enter_completes_and_executes_slash_command() {
     // Given a state with slash autocomplete active ("/" typed, popup showing "new").
     let mut state = AppState::default();
     crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
-    let old_id = state.session.active_session.clone();
+    let old_id = state.session.active_session_id().clone();
 
     // When pressing Enter (SubmitMessage with autocomplete active).
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
     // Then the command is completed and executed.
     assert_ne!(
-        state.session.active_session, old_id,
+        *state.session.active_session_id(),
+        old_id,
         "session should change on Enter"
     );
     assert!(state.active_chat_input().is_empty());

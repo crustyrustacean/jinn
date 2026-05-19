@@ -43,7 +43,7 @@ pub use message_sink::MessageSink;
 pub use message_sink::RecordingSink;
 
 pub mod scan_actor;
-pub use scan_actor::{NoDirectMsg, ScanActor, ScanConfig};
+pub use scan_actor::NoDirectMsg;
 
 #[cfg(test)]
 mod derive_tests;

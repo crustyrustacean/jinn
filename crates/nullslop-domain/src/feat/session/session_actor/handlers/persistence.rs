@@ -22,7 +22,7 @@ impl SessionPersistenceActor {
 
         let session = {
             let mut state = self.state.write();
-            let Some(session) = state.session.sessions.get_mut(session_id) else {
+            let Some(session) = state.session.sessions_mut().get_mut(session_id) else {
                 tracing::warn!(session_id = ?session_id, "session not found for save");
                 return;
             };
