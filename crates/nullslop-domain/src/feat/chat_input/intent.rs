@@ -473,7 +473,8 @@ fn is_valid_hash_trigger_position(input: &ChatInputBoxState) -> bool {
     if dollar_pos == 0 {
         return true;
     }
-    input.grapheme_at(dollar_pos - 1) == Some(" ")
+    let prev = input.grapheme_at(dollar_pos - 1);
+    prev == Some(" ") || prev == Some("\n")
 }
 
 /// Checks whether the `/` at the cursor is in a valid position to trigger slash autocomplete.
@@ -559,7 +560,9 @@ fn find_hash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String
     loop {
         if graphemes.get(i) == Some(&"#") {
             // Check that the '#' is at a valid trigger position.
-            let preceded_by_boundary = i == 0 || graphemes.get(i.wrapping_sub(1)) == Some(&" ");
+            let preceded_by_boundary = i == 0
+                || graphemes.get(i.wrapping_sub(1)) == Some(&" ")
+                || graphemes.get(i.wrapping_sub(1)) == Some(&"\n");
             if !preceded_by_boundary {
                 return None;
             }
