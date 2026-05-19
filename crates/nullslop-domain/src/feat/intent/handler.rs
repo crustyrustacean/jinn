@@ -67,7 +67,7 @@ impl IntentHandler {
             state.frontend.cancel_stream_prompt = false;
             if matches!(intent, Intent::NormalEscape) {
                 // Second ESC — cancel the stream.
-                let session_id = state.session.active_session.clone();
+                let session_id = state.session.active_session_id().clone();
                 state.active_session_mut().cancel_stream_and_drain();
                 return IntentResult::with_commands(vec![Command::CancelStream(
                     crate::feat::provider::protocol::command::CancelStream { session_id },

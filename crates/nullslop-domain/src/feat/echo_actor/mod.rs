@@ -18,8 +18,9 @@ pub struct EchoActor;
 
 impl Actor for EchoActor {
     type Message = NoDirectMsg;
+    type Deps = ();
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(_deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<ChatEntrySubmitted>();
 
         Self

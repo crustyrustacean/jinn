@@ -123,9 +123,13 @@ impl SessionPersistenceActor {
             if session.streaming_thinking_entry_index().is_none() {
                 session.begin_thinking();
             }
-            session.append_thinking_token(&event.token);
+            if let Err(e) = session.append_thinking_token(&event.token) {
+                tracing::error!(err = ?e, "failed to append thinking token");
+            }
         } else {
-            session.append_stream_token(&event.token);
+            if let Err(e) = session.append_stream_token(&event.token) {
+                tracing::error!(err = ?e, "failed to append stream token");
+            }
         }
     }
 
@@ -194,7 +198,9 @@ impl SessionPersistenceActor {
                 // Finalize the last record if one exists (i.e., PromptAssembled fired first).
                 // If no record exists (e.g., session restored mid-stream), skip silently.
                 if !session.token_ledger().is_empty() {
-                    session.finalize_last_token_record(output_tokens, event.cost);
+                    if let Err(e) = session.finalize_last_token_record(output_tokens, event.cost) {
+                        tracing::error!(err = ?e, "failed to finalize token record");
+                    }
                 }
             }
             let preserve_assistant = event.reason == StreamCompletedReason::Finished
@@ -261,7 +267,9 @@ impl SessionPersistenceActor {
     ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
-        session.append_tool_call_delta(event.index, &event.partial_json);
+        if let Err(e) = session.append_tool_call_delta(event.index, &event.partial_json) {
+            tracing::error!(err = ?e, "failed to append tool call delta");
+        }
     }
 
     /// Pushes a tool result entry into the session history.

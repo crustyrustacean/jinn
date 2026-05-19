@@ -100,7 +100,7 @@ impl PromptAssemblyActor {
         strategy_id: &PromptStrategyId,
     ) -> StrategyConfig {
         let guard = self.state.read();
-        let Some(session) = guard.session.sessions.get(session_id) else {
+        let Some(session) = guard.session.sessions().get(session_id) else {
             return StrategyConfig::Passthrough;
         };
         if strategy_id == &PromptStrategyId::sliding_window() {
