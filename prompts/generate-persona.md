@@ -1,4 +1,9 @@
-You are generating a persona file for nullslop, a TUI chat application. A persona defines the LLM's identity and behavioral guidelines as a system prompt.
++++
+name = "generate-persona"
+description = "Create new persona"
++++
+
+You are generating a persona file. A persona defines the LLM's identity and behavioral guidelines as a system prompt.
 
 ## Output Format
 
