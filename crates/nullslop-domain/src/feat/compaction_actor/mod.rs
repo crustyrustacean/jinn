@@ -116,7 +116,8 @@ impl CompactionActor {
         let rt_handle = self.handle.clone();
 
         let task = rt_handle.clone().spawn(async move {
-            let result = perform_compaction(&state, &services, &rt_handle, &session_id, &sink).await;
+            let result =
+                perform_compaction(&state, &services, &rt_handle, &session_id, &sink).await;
 
             match result {
                 Ok(entries_compacted) => {
@@ -457,8 +458,9 @@ async fn generate_summary(
         Ok(s) => s,
         Err(e) => {
             tracing::error!(error = %e, "failed to start compaction LLM stream");
-            return Err(error_stack::Report::new(CompactionError)
-                .attach("compaction LLM stream failed"));
+            return Err(
+                error_stack::Report::new(CompactionError).attach("compaction LLM stream failed")
+            );
         }
     };
 

@@ -30,8 +30,8 @@
 )]
 
 use crate::AppState;
-use crate::protocol::{Command, PinPosition};
 use crate::feat::session::chat_session::SessionPhase;
+use crate::protocol::{Command, PinPosition};
 
 use crate::Intent;
 use crate::feat;
@@ -72,9 +72,9 @@ impl IntentHandler {
                 if state.active_session().phase() == SessionPhase::Compacting {
                     // Cancel compaction.
                     let drained = state.active_session_mut().cancel_compacting();
-                    state.active_session_mut().push_entry(crate::ChatEntry::system(
-                        "Context compaction cancelled.",
-                    ));
+                    state
+                        .active_session_mut()
+                        .push_entry(crate::ChatEntry::system("Context compaction cancelled."));
                     let mut commands = vec![Command::CancelCompaction(
                         crate::feat::compaction_actor::protocol::command::CancelCompaction {
                             session_id: session_id.clone(),
