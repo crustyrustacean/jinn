@@ -477,11 +477,13 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
                     crate::protocol::PromptStrategyId::new,
                 );
             let token_budget = state.frontend.preferences.context_token_budget.budget;
+            let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
             crate::feat::session::chat_session::ChatSessionState::new_with_profile(
                 crate::feat::session::profile::SessionProfile::from_config(
                     model,
                     strategy,
                     token_budget,
+                    sliding_window_size,
                 ),
             )
         };
