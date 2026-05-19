@@ -49,9 +49,9 @@ pub struct TuiApp {
     pub which_key: WhichKeyInstance,
     /// Deferred suspend action queue (e.g., for external editor).
     pub suspend: Suspend,
-    /// Background event stream. Set by [`run`](crate::run::run).
+    /// Background event thread. Set by [`run`](crate::run::run).
     #[debug(skip)]
-    pub event_task: Option<tokio::task::JoinHandle<()>>,
+    pub event_thread: Option<crate::msg::handler::EventThreadGuard>,
     /// Current application lifecycle status.
     pub status: AppStatus,
     /// Mouse text selection state.
