@@ -18,6 +18,7 @@ use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::AutocompleteTrigger;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
+use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::compaction_actor::protocol::command::CompactContext;
@@ -427,7 +428,7 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
 pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     super::validator::validate_normal_escape(state);
 
-    if !state.active_session().is_idle() {
+    if !matches!(state.active_session().phase(), SessionPhase::Idle) {
         // Session is busy — show cancel confirmation prompt.
         state.frontend.cancel_stream_prompt = true;
     }

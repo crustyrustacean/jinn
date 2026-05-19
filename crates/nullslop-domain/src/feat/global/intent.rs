@@ -46,6 +46,7 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::feat::session::chat_session::SessionPhase;
 
     fn handle_quit(state: &mut AppState) -> IntentResult {
         super::handle_quit(state)
@@ -124,7 +125,7 @@ mod tests {
         // Then no CancelStream command is emitted.
         assert!(result.commands.is_empty());
         // And the session is still streaming.
-        assert!(state.active_session().is_streaming());
+        assert!(matches!(state.active_session().phase(), SessionPhase::Streaming));
     }
 
     #[rstest::rstest]
@@ -144,7 +145,7 @@ mod tests {
         let result = super::handle_interrupt(&mut state, Some(&second_id));
 
         // Then the targeted session's stream is cancelled.
-        assert!(state.session.sessions[&second_id].is_idle());
+        assert!(matches!(state.session.sessions[&second_id].phase(), SessionPhase::Idle));
         // And a CancelStream command is returned for that session.
         assert_eq!(result.commands.len(), 1);
         assert!(

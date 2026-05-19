@@ -19,6 +19,7 @@ use ratatui::text::Span;
 use crate::protocol::{ChatEntry, Command, Event, SessionId, TableData};
 
 use super::super::SessionPersistenceActor;
+use crate::feat::session::chat_session::SessionPhase;
 
 impl SessionPersistenceActor {
     /// PromptAssembled (event): transition session from assembling to streaming,
@@ -51,14 +52,25 @@ impl SessionPersistenceActor {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
-            if session.is_sending() {
-                // Sending → Streaming transition.
-                // Don't call finish_sending() here — begin_streaming() handles
-                // the Sending → Streaming transition directly.
-                session.begin_streaming();
-            } else if session.is_assembling() {
-                session.finish_assembling();
-                session.begin_sending();
+            match session.phase() {
+                SessionPhase::Sending => {
+                    // Sending → Streaming transition.
+                    // Don't call finish_sending() here — begin_streaming() handles
+                    // the Sending → Streaming transition directly.
+                    session.begin_streaming();
+                }
+                SessionPhase::Assembling => {
+                    session.finish_assembling();
+                    session.begin_sending();
+                    session.begin_streaming();
+                }
+                other => {
+                    tracing::warn!(
+                        phase = ?other,
+                        "PromptAssembled received in unexpected phase, transitioning to Streaming"
+                    );
+                    session.begin_streaming();
+                }
             }
 
             session.push_token_record(crate::feat::session::token_stats::TokenRecord {
@@ -68,8 +80,6 @@ impl SessionPersistenceActor {
                 cost: None,
             });
             session.set_context_size(input_tokens as u32);
-
-            session.begin_streaming();
         }
 
         let provider_id = {
@@ -96,11 +106,17 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) fn on_stream_token(&self, event: &StreamToken) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
-        if !session.is_streaming() {
-            // Defensive: stream token arrived without PromptAssembled.
-            // Only valid from Sending phase.
-            if session.is_sending() {
+        match session.phase() {
+            SessionPhase::Streaming => {}
+            SessionPhase::Sending => {
+                // Defensive: stream token arrived without PromptAssembled.
                 session.begin_streaming();
+            }
+            _ => {
+                tracing::warn!(
+                    phase = ?session.phase(),
+                    "StreamToken received in unexpected phase"
+                );
             }
         }
         if event.is_thinking {
