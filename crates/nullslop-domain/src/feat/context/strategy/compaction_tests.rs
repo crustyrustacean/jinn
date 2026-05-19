@@ -3,6 +3,7 @@
 use crate::feat::context::strategy::compaction::CompactionStrategy;
 use crate::feat::context::strategy::token_estimator::CharRatioEstimator;
 use crate::feat::context::strategy::types::{AssemblyContext, PromptAssembly};
+use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::{ChatEntry, LlmMessage, PinPosition, SessionId};
 
 fn test_context<'a>(history: &'a [ChatEntry], session_id: &'a SessionId) -> AssemblyContext<'a> {
@@ -258,4 +259,77 @@ async fn pinned_entries_survive_when_over_threshold() {
         .collect();
     assert!(contents.contains(&"pinned-early"));
     assert!(contents.contains(&"pinned-mid"));
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn compaction_never_splits_tool_loop() {
+    // Given entries that exceed the threshold, with a tool loop at the end.
+    let mut history: Vec<ChatEntry> = (0..5).map(|_| ChatEntry::user("a".repeat(400))).collect();
+    history.push(ChatEntry::assistant("check"));
+    history.push(ChatEntry::tool_call("call_1", "echo", "{}"));
+    history.push(ChatEntry::tool_result(
+        "call_1",
+        "echo",
+        "ok",
+        ToolResultStatus::Success,
+    ));
+    let strategy = make_strategy(100);
+    let session_id = SessionId::new();
+    let context = test_context(&history, &session_id);
+
+    // When assembling.
+    let result = strategy.assemble(&context).await.expect("assemble");
+
+    // Then the tool-loop turn is never split.
+    let messages = &result.messages;
+    let has_tool_calls = messages.iter().any(|m| {
+        matches!(
+            m,
+            LlmMessage::Assistant {
+                tool_calls: Some(_),
+                ..
+            }
+        )
+    });
+    let has_tool_result = messages
+        .iter()
+        .any(|m| matches!(m, LlmMessage::Tool { .. }));
+    assert_eq!(has_tool_calls, has_tool_result);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn compaction_pinned_entry_forces_entire_turn() {
+    // Given entries that exceed the threshold, where a ToolResult is pinned.
+    let mut history: Vec<ChatEntry> = (0..5).map(|_| ChatEntry::user("a".repeat(400))).collect();
+    history.push(ChatEntry::assistant("check"));
+    history.push(ChatEntry::tool_call("call_1", "echo", "{}"));
+    history.push(
+        ChatEntry::tool_result("call_1", "echo", "ok", ToolResultStatus::Success)
+            .with_pin(PinPosition::Relative),
+    );
+    let strategy = make_strategy(100);
+    let session_id = SessionId::new();
+    let context = test_context(&history, &session_id);
+
+    // When assembling.
+    let result = strategy.assemble(&context).await.expect("assemble");
+
+    // Then the entire tool-loop turn is included (pinned ToolResult forces it).
+    let messages = &result.messages;
+    assert!(messages.iter().any(|m| {
+        matches!(
+            m,
+            LlmMessage::Assistant {
+                tool_calls: Some(_),
+                ..
+            }
+        )
+    }));
+    assert!(
+        messages
+            .iter()
+            .any(|m| matches!(m, LlmMessage::Tool { .. }))
+    );
 }
