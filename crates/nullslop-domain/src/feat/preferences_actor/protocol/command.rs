@@ -24,6 +24,8 @@ pub enum PreferenceUpdate {
     SetSidebarWidth(Option<u16>),
     /// Set the default token budget for the token-budget strategy.
     SetTokenBudget(usize),
+    /// Set the default sliding window size for the sliding-window strategy.
+    SetSlidingWindowSize(usize),
 }
 
 impl PreferenceUpdate {
@@ -36,6 +38,7 @@ impl PreferenceUpdate {
             Self::SetPersona(v) => prefs.persona_name.clone_from(v),
             Self::SetSidebarWidth(v) => prefs.sidebar_width.clone_from(v),
             Self::SetTokenBudget(v) => prefs.context_token_budget.budget = *v,
+            Self::SetSlidingWindowSize(v) => prefs.context_sliding_window.size = *v,
         }
     }
 }
