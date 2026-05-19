@@ -15,6 +15,20 @@ fn test_context<'a>(history: &'a [ChatEntry], session_id: &'a SessionId) -> Asse
     }
 }
 
+fn test_context_with_overhead<'a>(
+    history: &'a [ChatEntry],
+    session_id: &'a SessionId,
+    budget_offset: usize,
+) -> AssemblyContext<'a> {
+    AssemblyContext {
+        history,
+        tools: &[],
+        model_name: "test-model",
+        session_id,
+        budget_offset,
+    }
+}
+
 fn make_strategy(max_tokens: usize) -> TokenBudgetStrategy {
     TokenBudgetStrategy::new(max_tokens, Box::new(CharRatioEstimator))
 }
@@ -316,6 +330,66 @@ async fn pinned_entry_does_not_prevent_newest_entry() {
 
     // Then both pinned and most recent are included.
     assert_eq!(result.messages.len(), 2);
+    let last = result.messages.last().expect("should have messages");
+    assert_eq!(
+        last,
+        &LlmMessage::User {
+            content: "ok".to_owned(),
+        }
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn budget_offset_reduces_effective_history_budget() {
+    // Given 4 short entries that easily fit in budget with offset=0.
+    let history = vec![
+        ChatEntry::user("first"),
+        ChatEntry::assistant("second"),
+        ChatEntry::user("third"),
+        ChatEntry::user("fourth"),
+    ];
+    let session_id = SessionId::new();
+
+    // When assembling with no offset, all entries fit.
+    let strategy = make_strategy(100);
+    let context_no_offset = test_context(&history, &session_id);
+    let result_no_offset = strategy
+        .assemble(&context_no_offset)
+        .await
+        .expect("assemble");
+    assert_eq!(result_no_offset.messages.len(), 4);
+
+    // When assembling with a large offset, entries are trimmed.
+    let context_with_offset = test_context_with_overhead(&history, &session_id, 95);
+    let result_with_offset = strategy
+        .assemble(&context_with_offset)
+        .await
+        .expect("assemble");
+
+    // Then fewer entries survive because the effective budget is only 5 tokens.
+    assert!(result_with_offset.messages.len() < 4);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn budget_offset_equal_to_max_tokens_leaves_only_newest() {
+    // Given 3 entries where the newest is very short.
+    let history = vec![
+        ChatEntry::user("a fairly long first message"),
+        ChatEntry::assistant("a fairly long response"),
+        ChatEntry::user("ok"),
+    ];
+    // Budget is 100, offset is 100, so effective budget is 0.
+    let strategy = make_strategy(100);
+    let session_id = SessionId::new();
+    let context = test_context_with_overhead(&history, &session_id, 100);
+
+    // When assembling.
+    let result = strategy.assemble(&context).await.expect("assemble");
+
+    // Then only the most recent entry survives (at-least-one guarantee).
+    assert!(!result.messages.is_empty());
     let last = result.messages.last().expect("should have messages");
     assert_eq!(
         last,
