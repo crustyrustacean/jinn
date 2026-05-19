@@ -8,9 +8,12 @@ use crate::protocol::Command;
 impl SessionPersistenceActor {
     /// Saves the current state of a session to disk.
     ///
-    /// Reads session data from shared state, touches the timestamp, clones the
-    /// session, then drops the lock before writing via the store. Errors are
-    /// logged as warnings — persistence failure must not break the user experience.
+    /// Clones the session inside `spawn_blocking` to avoid blocking the
+    /// async runtime with a potentially expensive `ChatSessionState` clone
+    /// (which includes the full `Vec<ChatEntry>` history). The store's
+    /// `save` method does its own `spawn_blocking` internally for SQLite I/O.
+    /// Errors are logged as warnings — persistence failure must not break
+    /// the user experience.
     pub(in crate::feat::session::session_actor) async fn save_active_session(
         &self,
         session_id: &crate::protocol::SessionId,
@@ -20,19 +23,27 @@ impl SessionPersistenceActor {
             return;
         };
 
-        let session = {
-            let mut state = self.state.write();
-            let Some(session) = state.session.sessions_mut().get_mut(session_id) else {
-                tracing::warn!(session_id = ?session_id, "session not found for save");
-                return;
-            };
+        let state = self.state.clone();
+        let session_id = session_id.clone();
+        let session_id_log = session_id.clone();
+
+        let session = tokio::task::spawn_blocking(move || {
+            let mut guard = state.write();
+            let session = guard.session.sessions_mut().get_mut(&session_id)?;
             session.touch();
-            session.clone()
-        };
+            Some(session.clone())
+        })
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(err = ?e, "spawn_blocking panicked during session save");
+            None
+        });
+
+        let Some(session) = session else { return };
 
         if let Err(e) = store.save(&session).await {
             tracing::warn!(
-                session_id = ?session_id,
+                session_id = ?session_id_log,
                 err = ?e,
                 "failed to persist session"
             );

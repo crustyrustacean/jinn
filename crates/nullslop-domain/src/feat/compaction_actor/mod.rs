@@ -270,7 +270,6 @@ impl CompactionActor {
                 .iter()
                 .map(|&i| history[i].clone())
                 .collect();
-            let serialized = serialize_entries_for_compaction(&entries_to_serialize);
 
             // Check for previous compaction summary (for iterative updating).
             let previous_summary = if start_index > 0 {
@@ -293,7 +292,7 @@ impl CompactionActor {
             let entries_compacted = gathered_indices.len();
 
             (
-                serialized,
+                entries_to_serialize,
                 previous_summary,
                 entries_compacted,
                 tokens_before,
@@ -303,13 +302,26 @@ impl CompactionActor {
         };
 
         let (
-            serialized,
+            entries_to_serialize,
             previous_summary,
             entries_compacted,
             tokens_before,
             boundary_index,
             gathered_indices,
         ) = gathered;
+
+        // CPU-bound: serialize entries — offloaded to blocking thread.
+        let serialized = tokio::task::spawn_blocking(move || {
+            serialize_entries_for_compaction(&entries_to_serialize)
+        })
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(
+                err = ?e,
+                "spawn_blocking panicked during compaction serialization"
+            );
+            String::new()
+        });
 
         // Step 2: Emit BeginCompaction — session actor marks entries ignored, sets phase.
         let _ = ctx.send_command(Command::BeginCompaction(BeginCompaction {
