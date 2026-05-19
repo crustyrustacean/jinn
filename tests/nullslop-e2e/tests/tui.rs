@@ -61,7 +61,7 @@ impl TuiWorld {
                 nullslop_domain::InMemoryConfigStorage::new(),
             )),
             session_store: nullslop_domain::SessionStoreService::new(Arc::new(
-                nullslop_domain::SqliteSessionStore::new_in(&sessions_dir),
+                nullslop_domain::SqliteSessionStore::new_in(&sessions_dir).expect("store"),
             )),
             strategy_registry,
             user_preferences_storage: nullslop_domain::UserPreferencesStorageService::new(
@@ -477,7 +477,14 @@ fn then_active_session_history_count(world: &mut TuiWorld, count: u64) {
 fn given_record_session_id(world: &mut TuiWorld) {
     // We don't need to store it on the world — we can check it inline.
     // This step is a no-op marker for readability.
-    let _ = world.app.core.state.read().session.active_session.clone();
+    let _ = world
+        .app
+        .core
+        .state
+        .read()
+        .session
+        .active_session_id()
+        .clone();
 }
 
 /// Asserts the session fork was requested.

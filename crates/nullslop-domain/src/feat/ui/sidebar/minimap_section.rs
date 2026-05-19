@@ -96,9 +96,9 @@ enum MinimapBlock {
 /// call this function.
 fn count_char(n: usize) -> char {
     match n {
-        2..=9 => char::from_digit(n as u32, 10).unwrap(),
+        2..=9 => char::from_digit(n as u32, 10).unwrap_or('?'),
         10..=35 => (b'A' + (n - 10) as u8) as char,
-        _ => unreachable!("count_char called with {n}, expected 2..=35"),
+        _ => '?',
     }
 }
 

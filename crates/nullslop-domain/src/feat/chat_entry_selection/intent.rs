@@ -86,7 +86,7 @@ pub fn handle_pin_selected(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
-    let session_id = state.session.active_session.clone();
+    let session_id = state.session.active_session_id().clone();
     let Some(selected) = state.active_session().selected_entry() else {
         return IntentResult::empty();
     };

@@ -400,13 +400,13 @@ fn session_new_works_when_sidebar_sessions_focused() {
         .frontend
         .scope_stack
         .set_sidebar_section(SidebarSectionId::Sessions);
-    let old_id = state.session.active_session.clone();
+    let old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
 
     // Then a new session is created.
-    assert_ne!(state.session.active_session, old_id);
+    assert_ne!(*state.session.active_session_id(), old_id);
     assert!(result.commands.is_empty());
 }
 
@@ -414,12 +414,12 @@ fn session_new_works_when_sidebar_sessions_focused() {
 fn session_new_works_when_not_in_sidebar() {
     // Given a state in Normal scope (not sidebar).
     let mut state = AppState::default();
-    let old_id = state.session.active_session.clone();
+    let old_id = state.session.active_session_id().clone();
 
     // When handling SessionNew via IntentHandler.
     let _result =
         crate::feat::intent::IntentHandler::handle(&crate::Intent::SessionNew, &mut state);
 
     // Then a new session is created (no section restriction outside sidebar).
-    assert_ne!(state.session.active_session, old_id);
+    assert_ne!(*state.session.active_session_id(), old_id);
 }

@@ -4,6 +4,8 @@
 //! [`CharRatioEstimator`] as a simple heuristic implementation (1 token ≈ 4 characters),
 //! and [`estimate_entry_tokens`] for estimating the token cost of individual chat entries.
 
+use std::sync::OnceLock;
+
 use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::{ChatEntry, ChatEntryKind};
 
@@ -152,7 +154,9 @@ impl TiktokenCounter {
     /// as it is a built-in tiktoken encoding.
     #[must_use]
     pub fn o200k_base() -> Self {
-        let encoder = tiktoken::get_encoding("o200k_base")
+        static ENCODING: OnceLock<Option<&'static tiktoken::CoreBpe>> = OnceLock::new();
+        let encoder = ENCODING
+            .get_or_init(|| tiktoken::get_encoding("o200k_base"))
             .expect("o200k_base encoding should always be available");
         Self {
             encoder,

@@ -236,7 +236,7 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
         // Unknown /command — fall through to normal message.
     }
 
-    let session_id = state.session.active_session.clone();
+    let session_id = state.session.active_session_id().clone();
     let expanded = crate::feat::context::prompt_template::expand_tokens(
         &display,
         &state.context.prompt_templates,
@@ -291,7 +291,7 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
         _ => {}
     }
 
-    let session_id = state.session.active_session.clone();
+    let session_id = state.session.active_session_id().clone();
     let expanded = crate::feat::context::prompt_template::expand_tokens(
         &display,
         &state.context.prompt_templates,
@@ -308,7 +308,7 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
 fn execute_slash_command(command: SlashCommand, state: &mut AppState) -> IntentResult {
     match command {
         SlashCommand::Compact => {
-            let session_id = state.session.active_session.clone();
+            let session_id = state.session.active_session_id().clone();
             IntentResult::with_commands(vec![Command::CompactContext(CompactContext {
                 session_id,
             })])

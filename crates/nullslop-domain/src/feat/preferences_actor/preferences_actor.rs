@@ -28,22 +28,23 @@ pub struct PreferencesActor {
     pub(crate) storage: UserPreferencesStorageService,
 }
 
+/// Dependencies for [`PreferencesActor`].
+pub struct PreferencesActorDeps {
+    /// Storage backend for persisting user preferences.
+    pub storage: UserPreferencesStorageService,
+}
+
 impl Actor for PreferencesActor {
     type Message = NoDirectMsg;
+    type Deps = PreferencesActorDeps;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<UpdatePreferences>();
         ctx.set_description("Persists user preferences to nullslop.toml");
 
-        #[expect(
-            clippy::expect_used,
-            reason = "Storage injection is required at activation"
-        )]
-        let storage = ctx
-            .take_data::<UserPreferencesStorageService>()
-            .expect("PreferencesActor requires UserPreferencesStorageService injection");
-
-        Self { storage }
+        Self {
+            storage: deps.storage,
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
