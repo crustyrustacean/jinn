@@ -6,32 +6,36 @@ This repo uses two ticket reports in Fossil SCM.
 
 ### Report #1: All Tickets
 
-Shows every ticket with color-coded rows by status.
+Shows every ticket with rows color-coded by priority (warm=high, cool=low). Closed tickets are neutral gray regardless of priority.
 
-| Status | Color | Hex |
-|--------|-------|-----|
-| Open / Verified (Active) | Soft salmon/pink | `#f5c6c6` |
-| Review | Warm gray | `#d8d8d8` |
-| Fixed | Sage green | `#c8e6b8` |
-| Tested | Soft teal | `#b8d8d8` |
-| Deferred | Lavender | `#d0c8e8` |
-| Closed | Cool gray | `#c8c8c8` |
+| Priority | Color | Hex |
+|----------|-------|-----|
+| Immediate | Warm red | `#8b3a3a` |
+| High | Warm orange | `#8b5a2a` |
+| Medium | Muted olive | `#4a5a2a` |
+| Low | Cool blue-teal | `#2a4a5a` |
+| Zero | Cool blue-gray | `#3a3a5a` |
+| Empty/null | Neutral gray | `#3a3a3a` |
+| Closed (any priority) | Neutral gray | `#3a3a3a` |
 
-**Columns:** `#`, `mtime`, `type`, `status`, `subsystem`, `title`
+**Columns:** `#`, `mtime`, `type`, `status`, `priority`, `severity`, `subsystem`, `title`
 
 **SQL:**
 ```sql
 SELECT
-  CASE WHEN status IN ('Open','Verified') THEN '#f5c6c6'
-       WHEN status='Review' THEN '#d8d8d8'
-       WHEN status='Fixed' THEN '#c8e6b8'
-       WHEN status='Tested' THEN '#b8d8d8'
-       WHEN status='Deferred' THEN '#d0c8e8'
-       ELSE '#c8c8c8' END AS 'bgcolor',
+  CASE WHEN status='Closed' THEN '#3a3a3a'
+       WHEN priority='Immediate' THEN '#8b3a3a'
+       WHEN priority='High' THEN '#8b5a2a'
+       WHEN priority='Medium' THEN '#4a5a2a'
+       WHEN priority='Low' THEN '#2a4a5a'
+       WHEN priority='Zero' THEN '#3a3a5a'
+       ELSE '#3a3a3a' END AS 'bgcolor',
   substr(tkt_uuid,1,10) AS '#',
   datetime(tkt_mtime) AS 'mtime',
   type,
   status,
+  priority,
+  severity,
   subsystem,
   title
 FROM ticket
@@ -39,26 +43,46 @@ FROM ticket
 
 ### Report #2: Open Tickets
 
-Shows only tickets with `status='Open'`. No status column (redundant) and no background colors.
+Shows only tickets with `status='Open'`, color-coded by priority (warm=high, cool=low). No status column (redundant since all are Open).
 
-**Columns:** `#`, `mtime`, `type`, `subsystem`, `title`
+Same priority color scheme as All Tickets, minus the closed override.
+
+**Columns:** `#`, `mtime`, `type`, `priority`, `severity`, `subsystem`, `title`
 
 **SQL:**
 ```sql
-SELECT substr(tkt_uuid,1,10) AS '#', datetime(tkt_mtime) AS 'mtime', type, subsystem, title
+SELECT
+  CASE WHEN priority='Immediate' THEN '#8b3a3a'
+       WHEN priority='High' THEN '#8b5a2a'
+       WHEN priority='Medium' THEN '#4a5a2a'
+       WHEN priority='Low' THEN '#2a4a5a'
+       WHEN priority='Zero' THEN '#3a3a5a'
+       ELSE '#3a3a3a' END AS 'bgcolor',
+  substr(tkt_uuid,1,10) AS '#',
+  datetime(tkt_mtime) AS 'mtime',
+  type,
+  priority,
+  severity,
+  subsystem,
+  title
 FROM ticket WHERE status='Open'
 ```
 
 ## Color Scheme Rationale
 
-The repo uses Fossil's `darkmode` skin, which **forces black text** (`color: black`) on report table cells (see `body.report table.report tr td { color: black }` in the CSS). This means background colors **must** be light enough for black text to be readable.
+The repo uses a customized `darkmode` skin with overrides for report table text colors. The built-in darkmode CSS forces `color: black` on report cells; the custom skin CSS overrides this to `color: #d4d4d4` (light gray) and `background-color: #2a2a2a` on ticket display cells. Form inputs on ticket pages are also styled dark.
 
-The current colors are muted pastels — light enough for black text but desaturated enough to not be eye-searing on the dark page background. Each color uses a distinct hue for easy visual differentiation.
+Colors follow a warm→cool gradient by priority:
+- **Immediate/High** → warm reds/oranges (urgent, attention-grabbing)
+- **Medium** → neutral olive (middle ground)
+- **Low/Zero** → cool blues/teals (calm, low urgency)
+- **Closed/empty** → neutral gray (de-emphasized)
 
 When changing colors, ensure:
-- Lightness is high enough for black text (keep R/G/B values above ~180)
-- Colors are distinct from each other (different hue families)
-- Saturation is moderate (not neon, not gray)
+- Colors are dark/muted enough for dark backgrounds (R/G/B values below ~140)
+- Warm colors for high priority, cool for low
+- Closed tickets always neutral gray
+- Each priority level is visually distinct from its neighbors
 
 ## Ticket Schema
 
