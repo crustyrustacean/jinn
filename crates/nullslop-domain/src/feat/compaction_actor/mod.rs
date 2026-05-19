@@ -378,11 +378,13 @@ impl CompactionActor {
             .context
             .prompt_templates
             .find_by_name("compaction")
-            .map(|t| t.body.clone())
-            .unwrap_or_else(|| {
-                crate::feat::context::strategy::compaction_prompt::DEFAULT_COMPACTION_PROMPT
-                    .to_owned()
-            });
+            .map_or_else(
+                || {
+                    crate::feat::context::strategy::compaction_prompt::DEFAULT_COMPACTION_PROMPT
+                        .to_owned()
+                },
+                |t| t.body.clone(),
+            );
 
         let mut user_content = String::new();
         if let Some(prev) = previous_summary {
