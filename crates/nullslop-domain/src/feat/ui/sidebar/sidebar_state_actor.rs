@@ -29,9 +29,7 @@ impl Actor for SidebarStateActor {
         ctx.subscribe_event::<SessionRemoved>();
         ctx.set_description("Sidebar cursor state management");
 
-        Self {
-            state: deps.state,
-        }
+        Self { state: deps.state }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
@@ -86,8 +84,14 @@ mod tests {
             let s2 = ChatSessionState::new();
             let s3 = ChatSessionState::new();
             let id3 = s3.session_id().clone();
-            state.session.sessions_mut().insert(s1.session_id().clone(), s1);
-            state.session.sessions_mut().insert(s2.session_id().clone(), s2);
+            state
+                .session
+                .sessions_mut()
+                .insert(s1.session_id().clone(), s1);
+            state
+                .session
+                .sessions_mut()
+                .insert(s2.session_id().clone(), s2);
             state.session.sessions_mut().insert(id3.clone(), s3);
             state.session.set_active(id3.clone());
             state.frontend.sessions_section.selected_index = Some(2);
@@ -152,8 +156,14 @@ mod tests {
             let s2 = ChatSessionState::new();
             let s3 = ChatSessionState::new();
             let id3 = s3.session_id().clone();
-            state.session.sessions_mut().insert(s1.session_id().clone(), s1);
-            state.session.sessions_mut().insert(s2.session_id().clone(), s2);
+            state
+                .session
+                .sessions_mut()
+                .insert(s1.session_id().clone(), s1);
+            state
+                .session
+                .sessions_mut()
+                .insert(s2.session_id().clone(), s2);
             state.session.sessions_mut().insert(id3.clone(), s3);
             state.frontend.sessions_section.selected_index = Some(0);
             id3

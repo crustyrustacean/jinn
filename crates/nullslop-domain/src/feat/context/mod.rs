@@ -46,7 +46,9 @@ pub use strategy::factory::DefaultStrategyFactory;
 pub use strategy::passthrough::PassthroughStrategy;
 pub use strategy::sliding_window::SlidingWindowStrategy;
 pub use strategy::token_budget::TokenBudgetStrategy;
-pub use strategy::token_estimator::{CharRatioEstimator, TokenEstimator, estimate_entry_tokens, estimate_tool_schema_tokens};
+pub use strategy::token_estimator::{
+    CharRatioEstimator, TokenEstimator, estimate_entry_tokens, estimate_tool_schema_tokens,
+};
 pub use strategy::types::{
     AssembledPrompt, AssemblyContext, PromptAssembly, PromptAssemblyError, StrategyConfig,
     StrategyDiscovery, StrategyFactory, StrategyInfo, StrategyState,

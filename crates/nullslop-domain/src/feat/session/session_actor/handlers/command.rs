@@ -167,9 +167,13 @@ impl SessionPersistenceActor {
             let title_text = loaded.title().unwrap_or("Untitled Session").to_owned();
 
             // Insert loaded session into HashMap.
-            state.session.sessions_mut().insert(session_id.clone(), loaded);
+            state
+                .session
+                .sessions_mut()
+                .insert(session_id.clone(), loaded);
 
             // Add a system message about the restore.
+            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state
                 .session
                 .sessions_mut()
@@ -194,6 +198,7 @@ impl SessionPersistenceActor {
                 state.session.default_cwd().clone()
             };
             let mut state = self.state.write();
+            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state
                 .session
                 .sessions_mut()
@@ -220,6 +225,7 @@ impl SessionPersistenceActor {
         // Serialize the strategy state for RestoreStrategyState.
         let blob = {
             let state = self.state.read();
+            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state
                 .session
                 .sessions()

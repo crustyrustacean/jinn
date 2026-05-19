@@ -872,7 +872,10 @@ fn streaming_content_change_invalidates_cache() {
 
     let mut state = AppState::default();
     state.active_session_mut().begin_streaming();
-    state.active_session_mut().append_stream_token("initial").expect("ok");
+    state
+        .active_session_mut()
+        .append_stream_token("initial")
+        .expect("ok");
 
     // When rendering with initial streaming content.
     terminal

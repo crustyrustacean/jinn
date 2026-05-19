@@ -494,7 +494,8 @@ impl SessionPersistenceActor {
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
+                    {
                         session.set_cwd(default.clone());
                         let entry = if is_no_output {
                             no_output_info(&default)
@@ -569,7 +570,10 @@ impl SessionPersistenceActor {
                                 ),
                             );
                             let new_id = new_session.session_id().clone();
-                            state.session.sessions_mut().insert(new_id.clone(), new_session);
+                            state
+                                .session
+                                .sessions_mut()
+                                .insert(new_id.clone(), new_session);
                             state.session.set_active(new_id);
                         } else if *state.session.active_session_id() == payload.session_id {
                             let next_id = state
@@ -601,7 +605,9 @@ impl SessionPersistenceActor {
                     // Teardown-only success — keep session, push info entry.
                     {
                         let mut state = self.state.write();
-                        if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+                        if let Some(session) =
+                            state.session.sessions_mut().get_mut(&payload.session_id)
+                        {
                             session.push_entry(teardown_success_msg());
                         }
                     }
@@ -625,7 +631,8 @@ impl SessionPersistenceActor {
                     };
                 {
                     let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
+                    {
                         session.push_entry(ChatEntry::error(&error_msg));
                     }
                 }
@@ -686,7 +693,10 @@ impl SessionPersistenceActor {
                     ),
                 );
                 let new_id = new_session.session_id().clone();
-                state.session.sessions_mut().insert(new_id.clone(), new_session);
+                state
+                    .session
+                    .sessions_mut()
+                    .insert(new_id.clone(), new_session);
                 state.session.set_active(new_id);
             } else if *state.session.active_session_id() == payload.session_id {
                 let next_id = state
@@ -993,10 +1003,7 @@ mod tests {
 
         // Then the session is no longer streaming.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(!matches!(session.phase(), SessionPhase::Streaming));
     }
 
@@ -1026,10 +1033,7 @@ mod tests {
 
         // Then the queued message is still in the queue.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.queue_len(), 1);
     }
 
@@ -1096,10 +1100,7 @@ mod tests {
 
         // Then the session is still in sending state.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Sending));
     }
 
@@ -1137,10 +1138,7 @@ mod tests {
 
         // Then the token record includes tokens from both text and tool call arguments.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         let ledger = session.token_ledger();
         assert_eq!(ledger.len(), 1);
         // tokens_received should be > just "checking" (2 tokens with tiktoken).
@@ -1164,7 +1162,10 @@ mod tests {
             let original_active = state.session.active_session_id().clone();
             let second = ChatSessionState::new();
             let second_id = second.session_id().clone();
-            state.session.sessions_mut().insert(second_id.clone(), second);
+            state
+                .session
+                .sessions_mut()
+                .insert(second_id.clone(), second);
             (second_id, original_active)
         };
 
@@ -1253,10 +1254,7 @@ mod tests {
 
         // Then the session has an error entry.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         let last = session.history().last().expect("has an entry");
         assert!(matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("exit code")));
     }
@@ -1311,7 +1309,10 @@ mod tests {
         let second_id = second.session_id().clone();
         {
             let mut state = actor.state.write();
-            state.session.sessions_mut().insert(second_id.clone(), second);
+            state
+                .session
+                .sessions_mut()
+                .insert(second_id.clone(), second);
         }
 
         // When handling RemoveSession for the second session.
@@ -1393,7 +1394,10 @@ mod tests {
         let second_id = second.session_id().clone();
         {
             let mut state = actor.state.write();
-            state.session.sessions_mut().insert(second_id.clone(), second);
+            state
+                .session
+                .sessions_mut()
+                .insert(second_id.clone(), second);
             state.session.set_active(second_id.clone());
         }
 
@@ -1420,7 +1424,10 @@ mod tests {
         let second_id = second.session_id().clone();
         {
             let mut state = actor.state.write();
-            state.session.sessions_mut().insert(second_id.clone(), second);
+            state
+                .session
+                .sessions_mut()
+                .insert(second_id.clone(), second);
         }
 
         // When handling RemoveSession.
@@ -1628,10 +1635,7 @@ mod tests {
 
         // Then the session has an info entry about success.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         let last = session.history().last().expect("has an entry");
         assert!(matches!(&last.kind, ChatEntryKind::Info(..)));
     }
@@ -1658,10 +1662,7 @@ mod tests {
 
         // Then the session is in Compacting phase.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Compacting));
         assert!(!matches!(session.phase(), SessionPhase::Idle));
         drop(state);
@@ -1702,10 +1703,7 @@ mod tests {
 
         // Then the session is idle and has the compaction entry.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Idle));
         // The history should have: user entry, compaction entry, system entry.
         assert!(session.history().iter().any(ChatEntry::is_compaction));
@@ -1739,10 +1737,7 @@ mod tests {
 
         // Then the session is idle and has an error entry.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Idle));
         let last = session.history().last().expect("has an entry");
         assert!(
@@ -1907,10 +1902,7 @@ mod tests {
 
         // Then the session is in Sending state (start_turn_from_queued called begin_sending).
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Sending));
     }
 
@@ -1940,10 +1932,7 @@ mod tests {
 
         // Then the session is in Streaming phase without panicking.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Streaming);
     }
 
@@ -1968,10 +1957,7 @@ mod tests {
 
         // Then the session is in Streaming phase.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Streaming);
     }
 }

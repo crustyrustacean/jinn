@@ -142,7 +142,12 @@ mod tests {
         state.session.sessions_mut().insert(second_id.clone(), {
             let mut s = AppState::default();
             s.active_session_mut().begin_streaming();
-            s.session.sessions_mut().drain().map(|(_, v)| v).next().unwrap()
+            s.session
+                .sessions_mut()
+                .drain()
+                .map(|(_, v)| v)
+                .next()
+                .unwrap()
         });
 
         // When handling Interrupt targeting the second session.

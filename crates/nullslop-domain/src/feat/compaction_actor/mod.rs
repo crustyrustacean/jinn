@@ -285,10 +285,10 @@ impl CompactionActor {
             };
 
             // Determine boundary insertion point: right after the last gathered entry.
-            let boundary_index = gathered_indices
-                .last()
-                .expect("gathered_indices is non-empty")
-                + 1;
+            let Some(&last_index) = gathered_indices.last() else {
+                return Ok(0);
+            };
+            let boundary_index = last_index + 1;
 
             let entries_compacted = gathered_indices.len();
 

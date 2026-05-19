@@ -696,7 +696,8 @@ fn tab_completes_name_without_executing() {
     // Then the buffer contains "/new" (completed) but no session was created.
     assert_eq!(state.active_chat_input().text(), "/new");
     assert_eq!(
-        *state.session.active_session_id(), old_id,
+        *state.session.active_session_id(),
+        old_id,
         "session should not change on Tab confirm"
     );
     assert!(result.commands.is_empty());
@@ -714,7 +715,8 @@ fn enter_completes_and_executes_slash_command() {
 
     // Then the command is completed and executed.
     assert_ne!(
-        *state.session.active_session_id(), old_id,
+        *state.session.active_session_id(),
+        old_id,
         "session should change on Enter"
     );
     assert!(state.active_chat_input().is_empty());
