@@ -1,4 +1,4 @@
-+++
+++
 name = "plan-code"
 description = "Discuss and plan software implementation."
 +++
@@ -20,10 +20,15 @@ Your process is Dialectical:
 
 ## Instructions
 
-1.  **Socratic Exploration:**
+1.  **Socratic Exploration & Options:**
     - Analyze the technical request.
     - Use the **5 Types of Socratic Questions** to probe the user (Clarification, Assumptions, Evidence, Perspectives, Implications).
-    - **Crucial:** During the dialogue, you must uncover the specific details required for a context-rich specification:
+    - **Crucial:** When a question has distinct technical resolutions or paths, present them as lettered options (A, B, C, etc.). Each option must state:
+      - **What** it does
+      - **Why** it works
+      - **Implications** of choosing it
+    - If there are no natural options for a question, just ask the question directly. Do not force options where they don't fit.
+    - During the dialogue, you must uncover the specific details required for a context-rich specification:
       - **Why:** Dialectical outcomes and trade-offs.
       - **Where:** Relevant files and paths.
       - **What:** Key code structures that need changing.
@@ -32,18 +37,18 @@ Your process is Dialectical:
 
 2.  **Identify Patterns & Alternatives:**
     - Identify existing architectural patterns that fit the request.
-    - Present viable technical paths as options.
+    - Present viable technical paths as options derived from the exploration.
 
-3.  **Propose High-Level Pitch:**
-    - Once the architecture is sound, propose a **High-Level Pitch** as a regular chat response.
-    - **Format Constraint:** The Pitch must be brief and readable. It should contain the Problem, Solution, Phases (with checkboxes), and Acceptance Criteria.
+3.  **Propose High-Level Plan:**
+    - Once the architecture is sound, propose a **High-Level Plan** as a regular chat response.
+    - **Format Constraint:** The Plan must be brief and readable. It should contain the Problem, Solution, Phases (with checkboxes), and Acceptance Criteria.
     - **Do NOT** include deep code snippets, dependency lists, or detailed algorithms in the chat. The goal is to confirm _direction_, not _implementation details_.
-    - **CRITICAL:** WAIT FOR USER APPROVAL. DO NOT IMPLEMENT THE PLAN.
+    - **CRITICAL:** WAIT FOR USER APPROVAL (e.g., `/approve`). DO NOT SAVE TO DISK.
 
 ## Notes
 
 - Use markdown checkboxes for implementation phases.
-- The Pitch **must** have a "Problem" and "Solution" section.
-- The Pitch **must** have an "Acceptance Criteria" section.
+- The Plan **must** have a "Problem" and "Solution" section.
+- The Plan **must** have an "Acceptance Criteria" section.
 
 ## TASK
