@@ -100,6 +100,19 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             .push(nullslop_domain::feat::token_budget_input::render::token_budget_popup_rect(area));
     }
 
+    // Sliding window input popup overlay (+ selectable rect).
+    if matches!(
+        state.frontend.scope_stack.current(),
+        FocusScope::SlidingWindowInput
+    ) {
+        nullslop_domain::feat::sliding_window_input::render::render_sliding_window_input(
+            frame, area, &state,
+        );
+        rects.push(
+            nullslop_domain::feat::sliding_window_input::render::sliding_window_popup_rect(area),
+        );
+    }
+
     // Rename session input popup overlay (+ selectable rect).
     if matches!(
         state.frontend.scope_stack.current(),
