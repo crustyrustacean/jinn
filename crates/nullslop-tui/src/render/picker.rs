@@ -73,7 +73,7 @@ pub(super) fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppSta
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code, panics are acceptable")]
     use nullslop_selection_widget::compute_popup_rect;
     use ratatui::layout::Rect;
 

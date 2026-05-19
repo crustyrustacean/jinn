@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test file, panics are acceptable")]
 
 use super::render::*;
 use nullslop_domain::feat::ui::chat_log::GUTTER_WIDTH;

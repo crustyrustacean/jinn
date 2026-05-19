@@ -67,7 +67,7 @@ impl UiElement<AppState> for StatusBarElement {
         "status-bar".to_owned()
     }
 
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         // Split area into cwd line + info line.
         let [cwd_area, info_area] =
@@ -98,7 +98,7 @@ impl UiElement<AppState> for StatusBarElement {
         );
         let total_cost = agg.total_cost();
         if total_cost > 0.0 {
-            token_info = format!("{} ${total_cost:.4}", token_info);
+            token_info = format!("{token_info} ${total_cost:.4}");
         }
         if let Some(ctx_size) = state.active_session().context_size() {
             let ctx_used = u64::from(ctx_size);

@@ -331,7 +331,7 @@ impl SessionPersistenceActor {
                 self.handle_remove_session(payload, ctx);
             }
             Command::SaveNewLifecycleSession(payload) => {
-                self.handle_save_new_lifecycle_session(&payload).await;
+                self.handle_save_new_lifecycle_session(payload).await;
             }
             Command::BeginCompaction(payload) => {
                 self.handle_begin_compaction(payload);
@@ -515,11 +515,12 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// RunSessionTeardown: execute the lifecycle teardown command asynchronously.
-    ///
-    /// On success, removes the session from the map and switches to another.
-    /// On failure, pushes an error entry and keeps the session open.
-    async fn handle_run_session_teardown(&self, payload: &RunSessionTeardown, ctx: &ActorContext) {
+    #[allow(clippy::too_many_lines)]
+    async fn handle_run_session_teardown(
+        &self,
+        payload: &RunSessionTeardown,
+        ctx: &ActorContext,
+    ) {
         // Push "running" info entry so the user sees feedback immediately.
         {
             let mut state = self.state.write();
@@ -1645,7 +1646,7 @@ mod tests {
     async fn begin_compaction_sets_compacting_phase_and_pushes_system_entry() {
         // Given a session actor with a session.
         let actor = test_actor();
-        let (_sink, ctx) = test_context();
+        let (_sink, _ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
             state.session.active_session.clone()
@@ -1705,7 +1706,7 @@ mod tests {
         let session = state.session.sessions.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Idle));
         // The history should have: user entry, compaction entry, system entry.
-        assert!(session.history().iter().any(|e| e.is_compaction()));
+        assert!(session.history().iter().any(ChatEntry::is_compaction));
         assert!(session
             .history()
             .iter()

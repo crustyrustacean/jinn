@@ -328,32 +328,29 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
 
-            match &payload.result {
-                Some(result) => {
-                    let compaction_entry = ChatEntry {
-                        id: ChatEntryId::new(),
-                        timestamp: jiff::Timestamp::now(),
-                        kind: ChatEntryKind::Compaction {
-                            summary: result.summary.clone(),
-                            tokens_before: result.tokens_before,
-                            entries_compacted: result.entries_compacted,
-                            model_used: result.model_used.clone(),
-                        },
-                        pin_position: None,
-                        ignored: false,
-                    };
-                    session.insert_entry_at(result.boundary_index, compaction_entry);
-                    session.push_entry(ChatEntry::system(format!(
-                        "Context was compacted. {} messages were summarized.",
-                        result.entries_compacted
-                    )));
-                }
-                None => {
-                    let error_msg = payload.error.as_deref().unwrap_or("Unknown error");
-                    session.push_entry(ChatEntry::error(format!(
-                        "Compaction failed: {error_msg}"
-                    )));
-                }
+            if let Some(result) = &payload.result {
+                let compaction_entry = ChatEntry {
+                    id: ChatEntryId::new(),
+                    timestamp: jiff::Timestamp::now(),
+                    kind: ChatEntryKind::Compaction {
+                        summary: result.summary.clone(),
+                        tokens_before: result.tokens_before,
+                        entries_compacted: result.entries_compacted,
+                        model_used: result.model_used.clone(),
+                    },
+                    pin_position: None,
+                    ignored: false,
+                };
+                session.insert_entry_at(result.boundary_index, compaction_entry);
+                session.push_entry(ChatEntry::system(format!(
+                    "Context was compacted. {} messages were summarized.",
+                    result.entries_compacted
+                )));
+            } else {
+                let error_msg = payload.error.as_deref().unwrap_or("Unknown error");
+                session.push_entry(ChatEntry::error(format!(
+                    "Compaction failed: {error_msg}"
+                )));
             }
             session.finish_compacting();
 

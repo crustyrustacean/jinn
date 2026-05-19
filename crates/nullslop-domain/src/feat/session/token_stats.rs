@@ -120,8 +120,7 @@ pub fn aggregate_session_stats<S: std::hash::BuildHasher>(
     let children = aggregate_children(sessions, session_id);
 
     let own_cost = own_session
-        .map(|s| TokenStats::total_cost(s.token_ledger()))
-        .unwrap_or(0.0);
+        .map_or(0.0, |s| TokenStats::total_cost(s.token_ledger()));
     let children_cost = aggregate_children_cost(sessions, session_id);
 
     AggregatedTokenStats {
