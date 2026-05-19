@@ -10,24 +10,24 @@ Shows every ticket with color-coded rows by status.
 
 | Status | Color | Hex |
 |--------|-------|-----|
-| Open / Verified (Active) | Muted dark red | `#5c2a2a` |
-| Review | Neutral dark gray | `#3a3a3a` |
-| Fixed | Muted dark green | `#2a4a1a` |
-| Tested | Muted dark teal | `#1a3a3a` |
-| Deferred | Muted dark purple | `#2a2a4a` |
-| Closed | Dark gray | `#2a2a2a` |
+| Open / Verified (Active) | Soft salmon/pink | `#f5c6c6` |
+| Review | Warm gray | `#d8d8d8` |
+| Fixed | Sage green | `#c8e6b8` |
+| Tested | Soft teal | `#b8d8d8` |
+| Deferred | Lavender | `#d0c8e8` |
+| Closed | Cool gray | `#c8c8c8` |
 
 **Columns:** `#`, `mtime`, `type`, `status`, `subsystem`, `title`
 
 **SQL:**
 ```sql
 SELECT
-  CASE WHEN status IN ('Open','Verified') THEN '#5c2a2a'
-       WHEN status='Review' THEN '#3a3a3a'
-       WHEN status='Fixed' THEN '#2a4a1a'
-       WHEN status='Tested' THEN '#1a3a3a'
-       WHEN status='Deferred' THEN '#2a2a4a'
-       ELSE '#2a2a2a' END AS 'bgcolor',
+  CASE WHEN status IN ('Open','Verified') THEN '#f5c6c6'
+       WHEN status='Review' THEN '#d8d8d8'
+       WHEN status='Fixed' THEN '#c8e6b8'
+       WHEN status='Tested' THEN '#b8d8d8'
+       WHEN status='Deferred' THEN '#d0c8e8'
+       ELSE '#c8c8c8' END AS 'bgcolor',
   substr(tkt_uuid,1,10) AS '#',
   datetime(tkt_mtime) AS 'mtime',
   type,
@@ -51,9 +51,14 @@ FROM ticket WHERE status='Open'
 
 ## Color Scheme Rationale
 
-The repo uses Fossil's `darkmode` skin. The original report colors were bright pastels (`#f2dcdc`, `#cfe8bd`, etc.) designed for light backgrounds. These were replaced with dark, desaturated tones that provide subtle row differentiation without eye-searing brightness.
+The repo uses Fossil's `darkmode` skin, which **forces black text** (`color: black`) on report table cells (see `body.report table.report tr td { color: black }` in the CSS). This means background colors **must** be light enough for black text to be readable.
 
-When adding new statuses or changing colors, keep values dark and muted (R/G/B all below ~100) for dark mode compatibility.
+The current colors are muted pastels — light enough for black text but desaturated enough to not be eye-searing on the dark page background. Each color uses a distinct hue for easy visual differentiation.
+
+When changing colors, ensure:
+- Lightness is high enough for black text (keep R/G/B values above ~180)
+- Colors are distinct from each other (different hue families)
+- Saturation is moderate (not neon, not gray)
 
 ## Ticket Schema
 
