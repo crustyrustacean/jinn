@@ -1680,7 +1680,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("old message"));
-            session.begin_compacting();
+            session.begin_compacting(vec![]);
             state.session.active_session.clone()
         };
 
@@ -1726,7 +1726,7 @@ mod tests {
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().begin_compacting();
+            state.active_session_mut().begin_compacting(vec![]);
             state.session.active_session.clone()
         };
 
@@ -1765,7 +1765,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.enqueue_message(ChatEntry::user("queued during compaction"));
-            session.begin_compacting();
+            session.begin_compacting(vec![]);
             state.session.active_session.clone()
         };
 
@@ -1809,7 +1809,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.enqueue_message(ChatEntry::user("queued during compaction"));
-            session.begin_compacting();
+            session.begin_compacting(vec![]);
             state.session.active_session.clone()
         };
 
@@ -1843,7 +1843,7 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().begin_compacting();
+            state.active_session_mut().begin_compacting(vec![]);
             state.session.active_session.clone()
         };
 
@@ -1887,7 +1887,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.enqueue_message(ChatEntry::user("queued during compaction"));
-            session.begin_compacting();
+            session.begin_compacting(vec![]);
             state.session.active_session.clone()
         };
 
