@@ -22,14 +22,14 @@ pub struct SessionSetupCompleted {
     pub error: Option<String>,
 }
 
-/// Teardown command completed (success or failure).
+/// Teardown command finished (success or failure).
 ///
 /// Emitted by the session-persistence actor after running a lifecycle teardown command.
 /// On success, the session has already been removed from the sessions map.
 /// On failure, the session is still open and `error` describes the problem.
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
 #[event_msg("session_lifecycle")]
-pub struct SessionTeardownCompleted {
+pub struct SessionTeardownFinished {
     /// The session that was being torn down.
     pub session_id: SessionId,
     /// Error message if teardown failed.

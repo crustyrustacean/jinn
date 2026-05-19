@@ -31,7 +31,7 @@ use crate::feat::provider::protocol::event::{
     ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
 };
 use crate::feat::session_lifecycle::protocol::event::{
-    SessionSetupCompleted, SessionTeardownCompleted,
+    SessionSetupCompleted, SessionTeardownFinished,
 };
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
@@ -113,12 +113,14 @@ pub enum Event {
     ActiveSessionChanged(crate::protocol::system::ActiveSessionChanged),
     /// A lifecycle setup command completed.
     SessionSetupCompleted(SessionSetupCompleted),
-    /// A lifecycle teardown command completed.
-    SessionTeardownCompleted(SessionTeardownCompleted),
+    /// A lifecycle teardown command finished.
+    SessionTeardownFinished(SessionTeardownFinished),
     /// Context compaction completed for a session.
     CompactionCompleted(CompactionCompleted),
-    /// A session was removed from the sessions map.
-    SessionRemoved(crate::feat::session::protocol::session_removed::SessionRemoved),
+    /// A session was closed and removed from the sessions map.
+    SessionClosed(crate::feat::session::protocol::session_closed::SessionClosed),
+    /// A session was archived in persistent storage.
+    SessionArchived(crate::feat::session::protocol::session_archived::SessionArchived),
 }
 
 impl Event {
@@ -163,10 +165,13 @@ impl Event {
                 Some(crate::protocol::system::ActiveSessionChanged::TYPE_NAME)
             }
             Self::SessionSetupCompleted(..) => Some(SessionSetupCompleted::TYPE_NAME),
-            Self::SessionTeardownCompleted(..) => Some(SessionTeardownCompleted::TYPE_NAME),
+            Self::SessionTeardownFinished(..) => Some(SessionTeardownFinished::TYPE_NAME),
             Self::CompactionCompleted(..) => Some(CompactionCompleted::TYPE_NAME),
-            Self::SessionRemoved(..) => {
-                Some(crate::feat::session::protocol::session_removed::SessionRemoved::TYPE_NAME)
+            Self::SessionClosed(..) => {
+                Some(crate::feat::session::protocol::session_closed::SessionClosed::TYPE_NAME)
+            }
+            Self::SessionArchived(..) => {
+                Some(crate::feat::session::protocol::session_archived::SessionArchived::TYPE_NAME)
             }
         }
     }
