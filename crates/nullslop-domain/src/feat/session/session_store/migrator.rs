@@ -50,7 +50,11 @@ pub fn run_migrations(conn: &mut SqliteConnection) {
     }
     if current < 5 {
         migrate_v5(conn);
-        record_version(conn, 5, "add_archived_column");
+        record_version(conn, 5, "add_lifecycle_columns_to_sessions");
+    }
+    if current < 6 {
+        migrate_v6(conn);
+        record_version(conn, 6, "add_archived_column");
     }
 }
 
@@ -189,14 +193,27 @@ fn migrate_v4(conn: &mut SqliteConnection) {
         .expect("v4: add cost column to token_ledger");
 }
 
-/// v5: Add `archived` column to sessions.
+/// v5: Add \`lifecycle_name\` and \`lifecycle_args\` columns to sessions.
 ///
-/// Sessions default to unarchived. Closing a session sets `archived = TRUE`.
-/// On startup, only unarchived sessions are loaded into memory.
+/// \`lifecycle_name\` is NULL for sessions created without a lifecycle.
+/// \`lifecycle_args\` is a JSON array of strings, defaulting to empty.
 fn migrate_v5(conn: &mut SqliteConnection) {
+    sql_query("ALTER TABLE sessions ADD COLUMN lifecycle_name TEXT DEFAULT NULL")
+        .execute(conn)
+        .expect("v5: add lifecycle_name column to sessions");
+    sql_query("ALTER TABLE sessions ADD COLUMN lifecycle_args TEXT NOT NULL DEFAULT '[]'")
+        .execute(conn)
+        .expect("v5: add lifecycle_args column to sessions");
+}
+
+/// v6: Add \`archived\` column to sessions.
+///
+/// Sessions default to unarchived. Closing a session sets \`archived = TRUE\`.
+/// On startup, only unarchived sessions are loaded into memory.
+fn migrate_v6(conn: &mut SqliteConnection) {
     sql_query("ALTER TABLE sessions ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE")
         .execute(conn)
-        .expect("v5: add archived column to sessions");
+        .expect("v6: add archived column to sessions");
 }
 
 #[cfg(test)]
@@ -239,7 +256,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 6);
+        assert_eq!(rows.len(), 7);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -251,7 +268,9 @@ mod tests {
         assert_eq!(rows[4].version, 4);
         assert_eq!(rows[4].name, "add_cost_to_token_ledger");
         assert_eq!(rows[5].version, 5);
-        assert_eq!(rows[5].name, "add_archived_column");
+        assert_eq!(rows[5].name, "add_lifecycle_columns_to_sessions");
+        assert_eq!(rows[6].version, 6);
+        assert_eq!(rows[6].name, "add_archived_column");
     }
 
     #[test]
@@ -275,7 +294,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 6);
+        assert_eq!(rows[0].count, 7);
     }
 
     #[test]

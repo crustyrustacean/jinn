@@ -190,6 +190,14 @@ pub enum Intent {
     /// Cancel the token budget input popup.
     TokenBudgetInputLeave,
 
+    // --- Sliding Window Input ---
+    /// Open the sliding window input popup.
+    SlidingWindowInputEnter,
+    /// Confirm the sliding window input and apply.
+    SlidingWindowInputConfirm,
+    /// Cancel the sliding window input popup.
+    SlidingWindowInputLeave,
+
     // --- Rename Session Input ---
     /// Open the rename session input popup.
     SidebarRenameSession,
@@ -279,6 +287,9 @@ impl std::fmt::Display for Intent {
             Intent::TokenBudgetInputEnter => write!(f, "token budget input enter"),
             Intent::TokenBudgetInputConfirm => write!(f, "token budget input confirm"),
             Intent::TokenBudgetInputLeave => write!(f, "token budget input leave"),
+            Intent::SlidingWindowInputEnter => write!(f, "sliding window input enter"),
+            Intent::SlidingWindowInputConfirm => write!(f, "sliding window input confirm"),
+            Intent::SlidingWindowInputLeave => write!(f, "sliding window input leave"),
             Intent::SidebarRenameSession => write!(f, "rename session"),
             Intent::RenameSessionConfirm => write!(f, "rename session confirm"),
             Intent::RenameSessionLeave => write!(f, "rename session leave"),

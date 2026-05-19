@@ -114,12 +114,14 @@ pub fn handle_session_lifecycle_setup(
         .as_ref()
         .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
     let token_budget = state.frontend.preferences.context_token_budget.budget;
+    let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
 
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
         model,
         strategy,
         persona_name,
         token_budget,
+        sliding_window_size,
     ));
     let new_id = new_session.session_id().clone();
 
