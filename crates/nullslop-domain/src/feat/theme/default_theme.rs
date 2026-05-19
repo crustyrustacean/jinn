@@ -18,6 +18,10 @@ const DEFAULT_TOML: &str = include_str!("../../../../../themes/default.toml");
 /// produce a valid theme. This is a compile-time bug.
 #[must_use]
 pub fn default_theme() -> Theme {
+    #[expect(
+        clippy::expect_used,
+        reason = "embedded TOML is a compile-time artifact"
+    )]
     let file: ThemeFile = toml::from_str(DEFAULT_TOML)
         .expect("embedded default.toml should be valid — this is a compile-time bug");
     file.resolve_standalone()

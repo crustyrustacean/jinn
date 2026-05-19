@@ -123,7 +123,7 @@ pub fn spawn<A>(
     handle: &tokio::runtime::Handle,
     counter: &ActorCounter,
     shutdown_tracker: &ShutdownTracker,
-    configure: impl FnOnce(&mut ActorContext),
+    deps: A::Deps,
 ) -> ActorSpawnResult
 where
     A: Actor + Send + 'static,
@@ -139,9 +139,8 @@ where
     let actor_ref = ActorRef::new(tx);
     let mut ctx = ActorContext::new(name, sink.clone());
     ctx.set_actor_ref(actor_ref.clone());
-    configure(&mut ctx);
+    let actor = A::activate(deps, &mut ctx);
     let description = ctx.description().map(str::to_owned);
-    let actor = A::activate(&mut ctx);
     let result = spawn_actor_impl(
         name,
         actor,
@@ -176,7 +175,7 @@ pub fn system_spawn<A>(
     handle: &tokio::runtime::Handle,
     counter: &ActorCounter,
     shutdown_tracker: &ShutdownTracker,
-    configure: impl FnOnce(&mut ActorContext),
+    deps: A::Deps,
 ) -> ActorSpawnResult
 where
     A: Actor + Send + 'static,
@@ -187,8 +186,7 @@ where
     let actor_ref = ActorRef::new(tx);
     let mut ctx = ActorContext::new(name, sink);
     ctx.set_actor_ref(actor_ref.clone());
-    configure(&mut ctx);
-    let actor = A::activate(&mut ctx);
+    let actor = A::activate(deps, &mut ctx);
     spawn_actor_impl(
         name,
         actor,

@@ -27,25 +27,26 @@ pub struct ProviderInitActor {
     state: State,
 }
 
+/// Dependencies for [`ProviderInitActor`].
+pub struct ProviderInitActorDeps {
+    /// Runtime services.
+    pub services: Services,
+    /// Shared application state.
+    pub state: State,
+}
+
 impl Actor for ProviderInitActor {
     type Message = NoDirectMsg;
+    type Deps = ProviderInitActorDeps;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<EnvironmentLoaded>();
         ctx.set_description("Loads provider config, merges cache, resolves last_model");
 
-        #[expect(
-            clippy::expect_used,
-            reason = "Services injection is required at activation"
-        )]
-        let services = ctx
-            .take_data::<Services>()
-            .expect("ProviderInitActor requires Services injection");
-        let state = ctx
-            .take_data::<State>()
-            .expect("ProviderInitActor requires State injection");
-
-        Self { services, state }
+        Self {
+            services: deps.services,
+            state: deps.state,
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
@@ -113,7 +114,7 @@ impl ProviderInitActor {
             if self.services.provider_registry.is_available(&id, &api_keys) {
                 tracing::info!(last_model = %model, "provider-init resolving last_model");
                 if let Err(e) = ctx.send_command(Command::ProviderSwitch(ProviderSwitch {
-                    session_id: self.state.read().session.active_session.clone(),
+                    session_id: self.state.read().session.active_session_id().clone(),
                     provider_id: model.clone(),
                 })) {
                     tracing::warn!(err = ?e, "provider-init failed to send ProviderSwitch");
@@ -145,7 +146,7 @@ mod tests {
     use crate::init::EnvironmentLoaded;
     use crate::protocol::{Command, Event};
 
-    use super::ProviderInitActor;
+    use super::{ProviderInitActor, ProviderInitActorDeps};
 
     /// Creates a test actor with Services defaults.
     fn create_actor() -> (
@@ -159,9 +160,11 @@ mod tests {
 
         let services = Services::new();
         let state = State::new(AppState::default());
-        ctx.set_data(services.clone());
-        ctx.set_data(state);
-        let actor = ProviderInitActor::activate(&mut ctx);
+        let deps = ProviderInitActorDeps {
+            services: services.clone(),
+            state,
+        };
+        let actor = ProviderInitActor::activate(deps, &mut ctx);
         (actor, services, sink, ctx)
     }
 
@@ -272,9 +275,11 @@ mod tests {
 
         let services = Services::new();
         let state = State::new(AppState::default());
-        ctx.set_data(services.clone());
-        ctx.set_data(state.clone());
-        let actor = ProviderInitActor::activate(&mut ctx);
+        let deps = ProviderInitActorDeps {
+            services: services.clone(),
+            state: state.clone(),
+        };
+        let actor = ProviderInitActor::activate(deps, &mut ctx);
         (actor, services, sink, ctx, state)
     }
 

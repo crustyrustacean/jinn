@@ -49,31 +49,31 @@ pub struct LlmActor {
     sessions: HashMap<SessionId, SessionData>,
 }
 
+/// Dependencies for [`LlmActor`].
+pub struct LlmActorDeps {
+    /// Factory for creating LLM service instances.
+    pub factory: LlmServiceFactoryService,
+    /// Runtime services (provider registry, API keys for per-request factory creation).
+    pub services: Option<Services>,
+    /// Shared application state (for reading tool definitions).
+    pub state: State,
+}
+
 impl Actor for LlmActor {
     type Message = NoDirectMsg;
+    type Deps = LlmActorDeps;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "data is injected by the host before activate is called"
-    )]
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
+        ctx.set_description("LLM streaming with tool support");
         ctx.subscribe_command::<SendToLlmProvider>();
         ctx.subscribe_command::<CancelStream>();
         ctx.subscribe_event::<ToolsRegistered>();
         ctx.subscribe_event::<StreamCompleted>();
 
-        let factory = ctx
-            .take_data::<LlmServiceFactoryService>()
-            .expect("LlmServiceFactoryService must be injected via ctx.set_data() before activate");
-        let services = ctx.take_data::<Services>();
-        let state = ctx
-            .take_data::<State>()
-            .expect("State must be injected via ctx.set_data() before activate");
-
         Self {
-            factory,
-            services,
-            state,
+            factory: deps.factory,
+            services: deps.services,
+            state: deps.state,
             tasks: HashMap::new(),
             sessions: HashMap::new(),
         }
