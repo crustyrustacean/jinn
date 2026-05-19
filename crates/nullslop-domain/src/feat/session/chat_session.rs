@@ -47,6 +47,26 @@ pub enum SessionPhase {
     Compacting,
 }
 
+impl std::str::FromStr for SessionPhase {
+    type Err = SessionPhaseParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "idle" => Ok(Self::Idle),
+            "assembling" => Ok(Self::Assembling),
+            "sending" => Ok(Self::Sending),
+            "streaming" => Ok(Self::Streaming),
+            "compacting" => Ok(Self::Compacting),
+            _ => Err(SessionPhaseParseError(s.to_owned())),
+        }
+    }
+}
+
+/// Error returned when a string does not match any [`SessionPhase`] variant.
+#[derive(Debug, wherror::Error)]
+#[error("unknown session phase: {0}")]
+pub struct SessionPhaseParseError(String);
+
 /// Groups runtime-only fields that are specific to the current running instance
 /// and have no meaning across restarts (stream indices, queues, in-progress flags).
 /// The entire struct is skipped during serialization so individual fields cannot
@@ -606,9 +626,9 @@ impl ChatSessionState {
         }
     }
 
-    /// Whether an LLM stream is actively producing tokens.
-    pub fn is_streaming(&self) -> bool {
-        matches!(self.core.ephemeral.phase, SessionPhase::Streaming)
+    /// Returns the current session lifecycle phase.
+    pub fn phase(&self) -> SessionPhase {
+        self.core.ephemeral.phase
     }
 
     // --- Tool call streaming ---
@@ -853,10 +873,7 @@ impl ChatSessionState {
         self.core.ephemeral.phase = SessionPhase::Idle;
     }
 
-    /// Whether a prompt assembly is in progress.
-    pub fn is_assembling(&self) -> bool {
-        matches!(self.core.ephemeral.phase, SessionPhase::Assembling)
-    }
+
 
     /// Switch the active prompt strategy for this session.
     pub fn switch_strategy(&mut self, strategy_id: PromptStrategyId) {
@@ -919,22 +936,7 @@ impl ChatSessionState {
         self.core.ephemeral.phase = SessionPhase::Idle;
     }
 
-    /// Whether a message has been dispatched but no tokens have arrived yet.
-    pub fn is_sending(&self) -> bool {
-        matches!(self.core.ephemeral.phase, SessionPhase::Sending)
-    }
 
-    // --- Combined status ---
-
-    /// Whether the session is completely idle (not sending, not streaming, not assembling).
-    pub fn is_idle(&self) -> bool {
-        matches!(self.core.ephemeral.phase, SessionPhase::Idle)
-    }
-
-    /// Whether context compaction is in progress.
-    pub fn is_compacting(&self) -> bool {
-        matches!(self.core.ephemeral.phase, SessionPhase::Compacting)
-    }
 
     /// Mark the session as compacting.
     ///
