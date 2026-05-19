@@ -160,7 +160,7 @@ mod tests {
         for i in 1..count {
             let session = ChatSessionState::new();
             let id = session.session_id().clone();
-            state.session.sessions.insert(id, {
+            state.session.sessions_mut().insert(id, {
                 let mut s = ChatSessionState::new();
                 s.push_entry(ChatEntry::user(format!("message for session {i}")));
                 s
@@ -192,7 +192,7 @@ mod tests {
     fn enter_seeds_input_with_current_title() {
         // Given a session with a title.
         let mut state = AppState::default();
-        let session_id = state.session.active_session.clone();
+        let session_id = state.session.active_session_id().clone();
         state
             .session_mut(&session_id)
             .set_title("My Session".to_owned());
@@ -228,7 +228,7 @@ mod tests {
     fn confirm_updates_session_title() {
         // Given state in RenameSessionInput scope with input "New Title".
         let mut state = AppState::default();
-        let session_id = state.session.active_session.clone();
+        let session_id = state.session.active_session_id().clone();
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         state
             .frontend
@@ -286,7 +286,7 @@ mod tests {
     fn leave_discards_changes() {
         // Given state in RenameSessionInput scope.
         let mut state = AppState::default();
-        let session_id = state.session.active_session.clone();
+        let session_id = state.session.active_session_id().clone();
         state
             .session_mut(&session_id)
             .set_title("Original".to_owned());

@@ -20,8 +20,9 @@ struct NoopActor;
 
 impl Actor for NoopActor {
     type Message = String;
+    type Deps = ();
 
-    fn activate(_ctx: &mut ActorContext) -> Self {
+    fn activate(_deps: Self::Deps, _ctx: &mut ActorContext) -> Self {
         Self
     }
 
@@ -45,8 +46,9 @@ impl RecordingActor {
 
 impl Actor for RecordingActor {
     type Message = String;
+    type Deps = ();
 
-    fn activate(_ctx: &mut ActorContext) -> Self {
+    fn activate(_deps: Self::Deps, _ctx: &mut ActorContext) -> Self {
         panic!("use RecordingActor::new() and set subscriptions manually");
     }
 
@@ -90,7 +92,7 @@ fn spawn_noop_actor(
     let (tx, rx) = kanal::unbounded::<ActorEnvelope<String>>();
     let actor_ref = ActorRef::new(tx);
     let mut ctx = ActorContext::new(name, sink);
-    let actor = NoopActor::activate(&mut ctx);
+    let actor = NoopActor::activate((), &mut ctx);
     spawn_actor_impl(name, actor, &actor_ref, rx, ctx, handle, tracker.clone())
 }
 
@@ -433,7 +435,8 @@ fn actor_to_actor_direct_message() {
     struct DirectActor;
     impl Actor for DirectActor {
         type Message = String;
-        fn activate(_ctx: &mut ActorContext) -> Self {
+        type Deps = ();
+        fn activate(_deps: Self::Deps, _ctx: &mut ActorContext) -> Self {
             Self
         }
         async fn handle(&mut self, _msg: ActorEnvelope<String>, _ctx: &ActorContext) {}
@@ -466,7 +469,7 @@ fn actor_to_actor_direct_message() {
     let actor_ref_a = ActorRef::new(tx_a);
     let mut ctx_a = ActorContext::new("actor-a", sink.clone());
     ctx_a.set_actor_ref(ref_b.clone());
-    let actor_a = DirectActor::activate(&mut ctx_a);
+    let actor_a = DirectActor::activate((), &mut ctx_a);
     let result_a = spawn_actor_impl(
         "actor-a",
         actor_a,

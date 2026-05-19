@@ -82,14 +82,14 @@ pub fn handle_session_lifecycle_setup(
     // any messages. Teardown is skipped because an empty session has no
     // meaningful state to clean up.
     if state.active_session().is_empty() {
-        let old_id = state.session.active_session.clone();
-        state.session.sessions.remove(&old_id);
+        let old_id = state.session.active_session_id().clone();
+        state.session.sessions_mut().remove(&old_id);
         // If that was the last session, we'll create a new one below.
         // Ensure active_session points to something valid (it will be
         // overwritten immediately, but the insert below expects the map
         // to potentially be non-empty for the "switch" logic).
-        if let Some(next_id) = state.session.sessions.keys().next().cloned() {
-            state.session.active_session = next_id;
+        if let Some(next_id) = state.session.sessions().keys().next().cloned() {
+            state.session.set_active(next_id);
         }
     }
 
@@ -133,8 +133,11 @@ pub fn handle_session_lifecycle_setup(
     });
     new_session.set_lifecycle_args(args.to_vec());
 
-    state.session.sessions.insert(new_id.clone(), new_session);
-    state.session.active_session = new_id.clone();
+    state
+        .session
+        .sessions_mut()
+        .insert(new_id.clone(), new_session);
+    state.session.set_active(new_id.clone());
     state.frontend.scope_stack.clear_overlays();
     state
         .frontend
@@ -163,7 +166,7 @@ pub fn handle_session_lifecycle_setup(
     }
 
     // No setup command — use default CWD immediately.
-    let default_cwd = state.session.default_cwd.clone();
+    let default_cwd = state.session.default_cwd().clone();
     state.session_mut(&new_id).set_cwd(default_cwd);
 
     IntentResult::empty()
@@ -179,10 +182,10 @@ pub fn handle_session_lifecycle_setup(
 pub fn handle_session_close(state: &mut AppState, session_id: Option<&SessionId>) -> IntentResult {
     let closing_id = session_id
         .cloned()
-        .unwrap_or_else(|| state.session.active_session.clone());
+        .unwrap_or_else(|| state.session.active_session_id().clone());
 
     let (teardown_command, lifecycle_args) = {
-        let session = state.session.sessions.get(&closing_id);
+        let session = state.session.sessions().get(&closing_id);
         let Some(session) = session else {
             return IntentResult::empty();
         };
@@ -355,30 +358,30 @@ mod tests {
     fn session_lifecycle_setup_with_blank_creates_session() {
         // Given default state (no lifecycles configured).
         let mut state = AppState::default();
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
 
         // When handling SessionLifecycleSetup with blank lifecycle.
         let result = handle_session_lifecycle_setup(&mut state, "", &[]);
 
         // Then a new session is created.
-        assert_ne!(state.session.active_session, old_id);
+        assert_ne!(*state.session.active_session_id(), old_id);
         // And the old empty session was auto-closed.
-        assert!(!state.session.sessions.contains_key(&old_id));
+        assert!(!state.session.sessions().contains_key(&old_id));
         // And only one session remains (the new one).
-        assert_eq!(state.session.sessions.len(), 1);
+        assert_eq!(state.session.sessions().len(), 1);
         // And no commands emitted (no setup command).
         assert!(result.commands.is_empty());
         // And the session has no lifecycle name.
         assert!(state.active_session().lifecycle_name().is_none());
         // And the session has the default CWD.
-        assert_eq!(state.active_session().cwd(), &state.session.default_cwd);
+        assert_eq!(state.active_session().cwd(), state.session.default_cwd());
     }
 
     #[rstest::rstest]
     fn session_lifecycle_setup_with_lifecycle_emits_command() {
         // Given a state with a lifecycle that has a setup_command.
         let mut state = AppState::default();
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
         state
             .frontend
             .preferences
@@ -394,7 +397,7 @@ mod tests {
         let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
 
         // Then a new session is created.
-        assert_ne!(state.session.active_session, old_id);
+        assert_ne!(*state.session.active_session_id(), old_id);
         // And the session has the lifecycle name.
         assert_eq!(
             state.active_session().lifecycle_name(),
@@ -482,11 +485,8 @@ mod tests {
         let mut state = AppState::default();
         let second_session = ChatSessionState::new();
         let second_id = second_session.session_id().clone();
-        state
-            .session
-            .sessions
-            .insert(second_id.clone(), second_session);
-        state.session.active_session = second_id.clone();
+        state.session.insert(second_session);
+        state.session.set_active(second_id.clone());
 
         // When handling SessionClose.
         let result = handle_session_close(&mut state, None);
@@ -513,7 +513,7 @@ mod tests {
                 setup_command: Some("echo /tmp/workdir".to_owned()),
                 teardown_command: Some("cleanup.sh $1".to_owned()),
             });
-        let session_id = state.session.active_session.clone();
+        let session_id = state.session.active_session_id().clone();
         state
             .active_session_mut()
             .set_lifecycle_name(Some("fossil branch".to_owned()));
@@ -525,7 +525,7 @@ mod tests {
         let result = handle_session_close(&mut state, None);
 
         // Then the session is NOT removed yet (awaiting teardown).
-        assert!(state.session.sessions.contains_key(&session_id));
+        assert!(state.session.sessions().contains_key(&session_id));
         // And a RunSessionTeardown command is emitted.
         assert_eq!(result.commands.len(), 1);
         assert!(matches!(
@@ -542,8 +542,8 @@ mod tests {
     fn session_close_last_session_emits_remove_session() {
         // Given a state with only one session.
         let mut state = AppState::default();
-        let session_id = state.session.active_session.clone();
-        assert_eq!(state.session.sessions.len(), 1);
+        let session_id = state.session.active_session_id().clone();
+        assert_eq!(state.session.sessions().len(), 1);
 
         // When handling SessionClose.
         let result = handle_session_close(&mut state, None);
@@ -560,7 +560,7 @@ mod tests {
     fn session_new_delegates_to_blank_lifecycle() {
         // Given default state.
         let mut state = AppState::default();
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
         state
             .active_session_mut()
             .push_entry(ChatEntry::user("old"));
@@ -569,7 +569,7 @@ mod tests {
         let result = crate::feat::session::intent::handle_session_new(&mut state);
 
         // Then a new session is created (same behavior as before).
-        assert_ne!(state.session.active_session, old_id);
+        assert_ne!(*state.session.active_session_id(), old_id);
         assert!(state.active_session().history().is_empty());
         assert!(result.commands.is_empty());
     }
@@ -591,13 +591,13 @@ mod tests {
                 setup_command: Some("script.sh $1 $2".to_owned()),
                 teardown_command: None,
             });
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
 
         // When confirming arg input.
         let result = handle_arg_input_confirm(&mut state);
 
         // Then a new session is created with the args.
-        assert_ne!(state.session.active_session, old_id);
+        assert_ne!(*state.session.active_session_id(), old_id);
         assert_eq!(
             state.active_session().lifecycle_args(),
             &["my-branch".to_owned(), "target-dir".to_owned()]
@@ -637,7 +637,7 @@ mod tests {
                 setup_command: Some("script.sh $1".to_owned()),
                 teardown_command: None,
             });
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
 
         // When confirming arg input with empty input.
         let result = handle_arg_input_confirm(&mut state);
@@ -645,7 +645,7 @@ mod tests {
         // Then no command is emitted (validation rejects empty input).
         assert!(result.commands.is_empty());
         // And no session was created (state unchanged).
-        assert_eq!(state.session.active_session, old_id);
+        assert_eq!(*state.session.active_session_id(), old_id);
         // And arg input state is NOT cleared (user stays in popup).
         assert_eq!(state.frontend.arg_input.lifecycle_name, "test");
     }
@@ -904,7 +904,7 @@ mod tests {
                 setup_command: Some("script.sh $1 $2".to_owned()),
                 teardown_command: None,
             });
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
 
         // When confirming arg input.
         let result = handle_arg_input_confirm(&mut state);
@@ -926,7 +926,7 @@ mod tests {
             }) if command == "script.sh foo bar" && args == &["foo".to_owned(), "bar".to_owned()]
         ));
         // And a new session is created.
-        assert_ne!(state.session.active_session, old_id);
+        assert_ne!(*state.session.active_session_id(), old_id);
     }
 
     #[rstest::rstest]
@@ -946,13 +946,13 @@ mod tests {
                 setup_command: Some("script.sh $1 $2".to_owned()),
                 teardown_command: None,
             });
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
 
         // When confirming arg input.
         let result = handle_arg_input_confirm(&mut state);
 
         // Then "my branch" is one arg and "target" is the second.
-        assert_ne!(state.session.active_session, old_id);
+        assert_ne!(*state.session.active_session_id(), old_id);
         assert_eq!(
             state.active_session().lifecycle_args(),
             &["my branch".to_owned(), "target".to_owned()]
@@ -980,23 +980,23 @@ mod tests {
     fn auto_close_removes_empty_active_session_on_new_session() {
         // Given default state with a single empty session.
         let mut state = AppState::default();
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
         assert!(state.active_session().is_empty());
 
         // When creating a new session via lifecycle setup.
         let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
 
         // Then the old empty session is removed.
-        assert!(!state.session.sessions.contains_key(&old_id));
+        assert!(!state.session.sessions().contains_key(&old_id));
         // And only one session remains.
-        assert_eq!(state.session.sessions.len(), 1);
+        assert_eq!(state.session.sessions().len(), 1);
     }
 
     #[rstest::rstest]
     fn auto_close_preserves_session_with_history() {
         // Given an active session with history.
         let mut state = AppState::default();
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
         state
             .active_session_mut()
             .push_entry(ChatEntry::user("hello"));
@@ -1005,18 +1005,18 @@ mod tests {
         let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
 
         // Then the old session is preserved.
-        assert!(state.session.sessions.contains_key(&old_id));
+        assert!(state.session.sessions().contains_key(&old_id));
         // And two sessions exist.
-        assert_eq!(state.session.sessions.len(), 2);
+        assert_eq!(state.session.sessions().len(), 2);
         // And the new session is active.
-        assert_ne!(state.session.active_session, old_id);
+        assert_ne!(*state.session.active_session_id(), old_id);
     }
 
     #[rstest::rstest]
     fn auto_close_replaces_last_empty_session() {
         // Given a single empty session (app just started).
         let mut state = AppState::default();
-        assert_eq!(state.session.sessions.len(), 1);
+        assert_eq!(state.session.sessions().len(), 1);
 
         // When creating a new session with a lifecycle.
         state
@@ -1032,7 +1032,7 @@ mod tests {
         let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
 
         // Then only the new session remains (old empty one was auto-closed).
-        assert_eq!(state.session.sessions.len(), 1);
+        assert_eq!(state.session.sessions().len(), 1);
         // And the new session has the lifecycle name.
         assert_eq!(
             state.active_session().lifecycle_name(),

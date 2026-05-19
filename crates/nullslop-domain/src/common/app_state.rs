@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use crate::protocol::{ChatEntryId, Mode, PickerKind, PinPosition, SessionId, ToolDefinition};
 
+use crate::common::session_map::SessionMap;
 use crate::common::tui_signals::TuiSignals;
 pub use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
@@ -89,63 +90,9 @@ pub struct SessionLoadGuard {
 
 /// Written to exclusively by `SessionPersistenceActor` and `IntentHandler`.
 /// No other actor should mutate these fields.
-#[derive(Debug)]
-pub struct SessionState {
-    /// All chat sessions, keyed by session ID.
-    /// OWNER: session-actor (creates/removes sessions, restores history),
-    ///        IntentHandler (creates new sessions, reads for dispatch).
-    pub sessions: HashMap<SessionId, ChatSessionState>,
-
-    /// The currently active session ID.
-    /// OWNER: session-actor (sets on SessionLoadCompleted),
-    ///        IntentHandler (sets on SessionNew).
-    pub active_session: SessionId,
-
-    /// In-progress session load from disk, if any.
-    /// OWNER: session-actor (clears on SessionLoadCompleted),
-    ///        IntentHandler (sets on confirm_session),
-    ///        TUI tick (clears on timeout).
-    pub session_load_guard: Option<SessionLoadGuard>,
-
-    /// The default CWD for new sessions, set once at startup from the process CWD.
-    /// Used by `session_mut_or_create` to ensure every session has a valid CWD.
-    pub default_cwd: std::path::PathBuf,
-}
-
-impl SessionState {
-    /// Whether a session is currently being loaded from disk.
-    pub fn is_loading(&self) -> bool {
-        self.session_load_guard.is_some()
-    }
-
-    /// Begin loading a session. Sets the guard with the current timestamp.
-    pub fn begin_load(&mut self, session_id: SessionId) {
-        self.session_load_guard = Some(SessionLoadGuard {
-            session_id,
-            started_at: std::time::Instant::now(),
-        });
-    }
-
-    /// Clear the loading guard (called on completion or timeout).
-    pub fn clear_load(&mut self) {
-        self.session_load_guard = None;
-    }
-}
-
-impl Default for SessionState {
-    fn default() -> Self {
-        let session = ChatSessionState::new();
-        let active_session = session.session_id().clone();
-        let mut sessions = HashMap::new();
-        sessions.insert(active_session.clone(), session);
-        Self {
-            sessions,
-            active_session,
-            session_load_guard: None,
-            default_cwd: std::path::PathBuf::from("/"),
-        }
-    }
-}
+///
+/// See [`SessionMap`] for the full API.
+pub type SessionState = SessionMap;
 
 /// Context assembly state — owned by the context-actor.
 ///
@@ -297,6 +244,7 @@ impl ScopeStack {
     /// Panics if the stack is empty (should never happen as the base is always present).
     #[must_use]
     pub fn current(&self) -> &FocusScope {
+        #[expect(clippy::expect_used, reason = "ScopeStack invariant: always has base")]
         self.stack.last().expect("stack always has base")
     }
 
@@ -631,65 +579,34 @@ impl AppState {
 
     /// Read-only access to the active chat session.
     ///
-    /// # Panics
-    ///
-    /// Panics if the active session does not exist in the sessions map.
-    /// This should never happen in normal operation.
-    #[expect(
-        clippy::expect_used,
-        reason = "active session invariant guaranteed by construction"
-    )]
+    /// Infallible — `SessionMap` guarantees the active session exists.
     pub fn active_session(&self) -> &ChatSessionState {
-        self.session
-            .sessions
-            .get(&self.session.active_session)
-            .expect("active session must exist")
+        self.session.active_session()
     }
 
     /// Mutable access to the active chat session.
     ///
-    /// # Panics
-    ///
-    /// Panics if the active session does not exist in the sessions map.
-    /// This should never happen in normal operation.
-    #[expect(
-        clippy::expect_used,
-        reason = "active session invariant guaranteed by construction"
-    )]
+    /// Infallible — `SessionMap` guarantees the active session exists.
     pub fn active_session_mut(&mut self) -> &mut ChatSessionState {
-        self.session
-            .sessions
-            .get_mut(&self.session.active_session)
-            .expect("active session must exist")
+        self.session.active_session_mut()
     }
 
     /// Read-only access to a session by ID.
     ///
     /// # Panics
     ///
-    /// Panics if the given session ID does not exist in the sessions map.
-    #[expect(
-        clippy::expect_used,
-        reason = "session invariant guaranteed by construction"
-    )]
+    /// Panics if the given session ID does not exist.
     pub fn session(&self, id: &SessionId) -> &ChatSessionState {
-        self.session.sessions.get(id).expect("session must exist")
+        self.session.get_unchecked(id)
     }
 
     /// Mutable access to a session by ID.
     ///
     /// # Panics
     ///
-    /// Panics if the given session ID does not exist in the sessions map.
-    #[expect(
-        clippy::expect_used,
-        reason = "session invariant guaranteed by construction"
-    )]
+    /// Panics if the given session ID does not exist.
     pub fn session_mut(&mut self, id: &SessionId) -> &mut ChatSessionState {
-        self.session
-            .sessions
-            .get_mut(id)
-            .expect("session must exist")
+        self.session.get_unchecked_mut(id)
     }
 
     /// Returns mutable access to a session by ID, creating it if missing.
@@ -698,13 +615,7 @@ impl AppState {
     /// which may create new session IDs not yet present in the
     /// sessions map.
     pub fn session_mut_or_create(&mut self, id: &SessionId) -> &mut ChatSessionState {
-        let default_cwd = self.session.default_cwd.clone();
-        self.session.sessions.entry(id.clone()).or_insert_with(|| {
-            let mut s = ChatSessionState::new();
-            s.set_session_id(id.clone());
-            s.set_cwd(default_cwd.clone());
-            s
-        })
+        self.session.get_or_create(id)
     }
 
     /// Read-only access to the active session's input box.

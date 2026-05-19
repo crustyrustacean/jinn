@@ -28,29 +28,27 @@ pub struct SystemReadyActor {
     all_spawned: bool,
 }
 
+/// Dependencies for [`SystemReadyActor`].
+pub struct SystemReadyActorDeps {
+    /// One-shot sender to signal system readiness to the main thread.
+    pub ready_tx: tokio::sync::oneshot::Sender<()>,
+    /// Actor counter for checking expected actor count.
+    pub counter: ActorCounter,
+}
+
 impl Actor for SystemReadyActor {
     type Message = NoDirectMsg;
+    type Deps = SystemReadyActorDeps;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "Data injection is required at activation"
-    )]
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<ActorStarted>();
         ctx.subscribe_event::<AllActorsSpawned>();
         ctx.set_description("Counts ActorStarted events and signals system ready");
 
-        let ready_tx = ctx
-            .take_data::<tokio::sync::oneshot::Sender<()>>()
-            .expect("SystemReadyActor requires oneshot::Sender injection");
-        let counter = ctx
-            .take_data::<ActorCounter>()
-            .expect("SystemReadyActor requires ActorCounter injection");
-
         Self {
-            ready_tx: Some(ready_tx),
+            ready_tx: Some(deps.ready_tx),
             received: 0,
-            counter,
+            counter: deps.counter,
             all_spawned: false,
         }
     }

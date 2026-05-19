@@ -18,7 +18,7 @@ fn make_session(id: &SessionId, title: &str) -> ChatSessionState {
 
 fn make_store() -> (TempDir, SqliteSessionStore) {
     let dir = TempDir::new().expect("temp dir");
-    let store = SqliteSessionStore::new_in(dir.path());
+    let store = SqliteSessionStore::new_in(dir.path()).expect("store");
     (dir, store)
 }
 
@@ -155,7 +155,7 @@ async fn save_creates_directory() {
     // Given a SqliteSessionStore pointed at a non-existent directory.
     let dir = TempDir::new().expect("temp dir");
     let nested = dir.path().join("does").join("not").join("exist");
-    let store = SqliteSessionStore::new_in(&nested);
+    let store = SqliteSessionStore::new_in(&nested).expect("store");
     let session = make_session(&SessionId::new(), "Mkdir Test");
 
     // When saving.

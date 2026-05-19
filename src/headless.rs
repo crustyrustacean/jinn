@@ -53,7 +53,7 @@ impl HeadlessApp {
     pub fn send_chat(&self, message: &str) -> Result<(), Report<HeadlessError>> {
         let session_id = {
             let state = self.core.state.read();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
         self.core
             .sender()

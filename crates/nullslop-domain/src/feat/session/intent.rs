@@ -46,7 +46,7 @@ mod tests {
     fn session_new_creates_fresh_session() {
         // Given a state with an existing session.
         let mut state = AppState::default();
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
         state
             .active_session_mut()
             .push_entry(ChatEntry::user("old"));
@@ -55,11 +55,11 @@ mod tests {
         let _result = handle_session_new(&mut state);
 
         // Then a new session is created.
-        assert_ne!(state.session.active_session, old_id);
+        assert_ne!(*state.session.active_session_id(), old_id);
         assert!(state.active_session().history().is_empty());
         assert!(!state.frontend.scope_stack.is_picker());
         // And the old session is preserved in the sessions map.
-        assert!(state.session.sessions.contains_key(&old_id));
+        assert!(state.session.sessions().contains_key(&old_id));
     }
 
     #[rstest::rstest]
@@ -72,13 +72,13 @@ mod tests {
             .push(crate::common::app_state::FocusScope::Picker {
                 kind: PickerKind::Provider,
             });
-        let old_id = state.session.active_session.clone();
+        let old_id = state.session.active_session_id().clone();
 
         // When handling SessionNew.
         let _result = handle_session_new(&mut state);
 
         // Then a new session is created.
-        assert_ne!(state.session.active_session, old_id);
+        assert_ne!(*state.session.active_session_id(), old_id);
         // And the picker is closed.
         assert!(!state.frontend.scope_stack.is_picker());
     }
