@@ -4,6 +4,7 @@
 //! [`CharRatioEstimator`] as a simple heuristic implementation (1 token ≈ 4 characters),
 //! and [`estimate_entry_tokens`] for estimating the token cost of individual chat entries.
 
+use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::{ChatEntry, ChatEntryKind};
 
 /// Estimates the token count of text.
@@ -73,6 +74,25 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         // Compaction entries carry an LLM-generated summary that replaces compacted history.
         ChatEntryKind::Compaction { summary, .. } => estimator.estimate(summary),
     }
+}
+
+/// Estimates the token cost of tool definitions as serialized JSON schemas.
+///
+/// Each [`ToolDefinition`] is serialized to JSON via `serde_json::to_string`
+/// and estimated using the given estimator. This captures the cost of the
+/// name, description, parameters schema, prompt_snippet, and prompt_guidelines
+/// as they appear in the API request.
+pub fn estimate_tool_schema_tokens(
+    estimator: &dyn TokenEstimator,
+    tools: &[ToolDefinition],
+) -> usize {
+    tools
+        .iter()
+        .map(|td| {
+            let json = serde_json::to_string(td).unwrap_or_default();
+            estimator.estimate(&json)
+        })
+        .sum()
 }
 
 /// Simple heuristic estimator: 1 token ≈ 4 Unicode characters.
