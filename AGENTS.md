@@ -511,3 +511,4 @@ Task plans live in `.plans/<task>/` where `<task>` is a slugified task name. Eac
 - No trivial setters for struct methods. Prefer meaningful semantic actions. It's an anti-pattern to directly inspect and manipulate state.
 - Environment variables should only be accessed at program initialization and then saved into a struct as needed. Environment variables are a global namespace and should be avoided outside of program startup.
 - Use `where` clause for all generics.
+- Prefer `match` over `if` where appropriate.
