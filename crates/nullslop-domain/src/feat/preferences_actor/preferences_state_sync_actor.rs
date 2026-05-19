@@ -98,8 +98,10 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
-    use crate::feat::preferences_actor::user_preferences::{CompactionConfig, ContextSlidingWindowConfig};
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
+    use crate::feat::preferences_actor::user_preferences::{
+        CompactionConfig, ContextSlidingWindowConfig,
+    };
     use crate::protocol::Event;
 
     use super::PreferencesStateSyncActor;

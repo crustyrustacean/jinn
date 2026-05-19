@@ -34,12 +34,14 @@ impl StrategyFactory for DefaultStrategyFactory {
             StrategyConfig::SlidingWindow { window_size } => {
                 Ok(Box::new(SlidingWindowStrategy::new(*window_size)))
             }
-            StrategyConfig::TokenBudget { budget } => Ok(Box::new(
-                TokenBudgetStrategy::new(*budget, Box::new(CharRatioEstimator)),
-            )),
-            StrategyConfig::Compaction { budget } => Ok(Box::new(
-                CompactionStrategy::new(*budget, Box::new(CharRatioEstimator)),
-            )),
+            StrategyConfig::TokenBudget { budget } => Ok(Box::new(TokenBudgetStrategy::new(
+                *budget,
+                Box::new(CharRatioEstimator),
+            ))),
+            StrategyConfig::Compaction { budget } => Ok(Box::new(CompactionStrategy::new(
+                *budget,
+                Box::new(CharRatioEstimator),
+            ))),
         }
     }
 
@@ -57,7 +59,10 @@ mod tests {
     fn factory_creates_passthrough() {
         let factory = DefaultStrategyFactory;
         let strategy = factory
-            .create(&PromptStrategyId::passthrough(), &StrategyConfig::Passthrough)
+            .create(
+                &PromptStrategyId::passthrough(),
+                &StrategyConfig::Passthrough,
+            )
             .expect("create");
         assert_eq!(strategy.name(), "passthrough");
     }
@@ -80,9 +85,7 @@ mod tests {
         let strategy = factory
             .create(
                 &PromptStrategyId::token_budget(),
-                &StrategyConfig::TokenBudget {
-                    budget: 150_000,
-                },
+                &StrategyConfig::TokenBudget { budget: 150_000 },
             )
             .expect("create");
         assert_eq!(strategy.name(), "token_budget");
@@ -94,9 +97,7 @@ mod tests {
         let strategy = factory
             .create(
                 &PromptStrategyId::compaction(),
-                &StrategyConfig::Compaction {
-                    budget: 150_000,
-                },
+                &StrategyConfig::Compaction { budget: 150_000 },
             )
             .expect("create");
         assert_eq!(strategy.name(), "compaction");

@@ -59,10 +59,7 @@ impl PromptAssemblyActor {
                     };
                     (sid, cfg)
                 }
-                None => (
-                    PromptStrategyId::passthrough(),
-                    StrategyConfig::Passthrough,
-                ),
+                None => (PromptStrategyId::passthrough(), StrategyConfig::Passthrough),
             }
         };
         match factory.create(&strategy_id, &config) {
