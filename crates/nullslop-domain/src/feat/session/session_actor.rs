@@ -42,7 +42,9 @@ use crate::feat::session::protocol::session_removed::SessionRemoved;
 use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 use crate::feat::session_lifecycle::command_runner::run_setup_command;
 use crate::feat::session_lifecycle::command_runner::run_teardown_command;
-use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
+use crate::feat::session_lifecycle::protocol::command::{
+    RunSessionSetup, RunSessionTeardown, SaveNewLifecycleSession,
+};
 use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownCompleted,
 };
@@ -210,6 +212,7 @@ impl Actor for SessionPersistenceActor {
         // Lifecycle command subscriptions.
         ctx.subscribe_command::<RunSessionSetup>();
         ctx.subscribe_command::<RunSessionTeardown>();
+        ctx.subscribe_command::<SaveNewLifecycleSession>();
         ctx.subscribe_command::<RemoveSession>();
 
         // Compaction command subscriptions.
@@ -326,6 +329,9 @@ impl SessionPersistenceActor {
             }
             Command::RemoveSession(payload) => {
                 self.handle_remove_session(payload, ctx);
+            }
+            Command::SaveNewLifecycleSession(payload) => {
+                self.handle_save_new_lifecycle_session(&payload).await;
             }
             Command::BeginCompaction(payload) => {
                 self.handle_begin_compaction(payload);
@@ -693,6 +699,17 @@ impl SessionPersistenceActor {
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SessionRemoved");
         }
+    }
+
+    /// SaveNewLifecycleSession: persist the session immediately.
+    ///
+    /// Called right after the IntentHandler creates a lifecycle session
+    /// so that the session metadata survives an app crash during setup.
+    async fn handle_save_new_lifecycle_session(
+        &self,
+        payload: &SaveNewLifecycleSession,
+    ) {
+        self.save_active_session(&payload.session_id).await;
     }
 
     /// Runs teardown commands for all open sessions that have a lifecycle with teardown.
