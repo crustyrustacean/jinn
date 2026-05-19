@@ -5,7 +5,7 @@
 //! [`PersonasLoaded`] events with the results.
 
 use crate::common::actor::ActorContext;
-use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
+use crate::common::actor::scan_actor::{ScanActor, ScanActorDeps, ScanConfig};
 use crate::common::app_paths::AppPaths;
 use crate::feat::context::protocol::command::RescanPersonas;
 use crate::feat::context::protocol::event::PersonasLoaded;
@@ -21,7 +21,7 @@ pub struct PersonaScanConfig;
 impl ScanConfig for PersonaScanConfig {
     type Output = Vec<crate::feat::persona::Persona>;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(_deps: &ScanActorDeps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<RescanPersonas>();
         Self
     }
@@ -67,6 +67,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::common::actor::scan_actor::ScanActorDeps;
     use crate::common::app_paths::AppPaths;
     use crate::feat::context::protocol::command::RescanPersonas;
     use crate::feat::context::protocol::event::PersonasLoaded;
@@ -91,8 +92,10 @@ mod tests {
 
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
-        ctx.set_data(AppPaths::new_in(dir.path()));
-        let mut actor = PersonaScanActor::activate(&mut ctx);
+        let mut actor = PersonaScanActor::activate(
+            ScanActorDeps { paths: AppPaths::new_in(dir.path()), state: None },
+            &mut ctx,
+        );
 
         // When processing RescanPersonas command.
         actor
@@ -118,8 +121,10 @@ mod tests {
 
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
-        ctx.set_data(AppPaths::new_in(dir.path()));
-        let mut actor = PersonaScanActor::activate(&mut ctx);
+        let mut actor = PersonaScanActor::activate(
+            ScanActorDeps { paths: AppPaths::new_in(dir.path()), state: None },
+            &mut ctx,
+        );
 
         // When processing RescanPersonas command.
         actor
@@ -146,8 +151,10 @@ mod tests {
 
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
-        ctx.set_data(paths);
-        let mut actor = PersonaScanActor::activate(&mut ctx);
+        let mut actor = PersonaScanActor::activate(
+            ScanActorDeps { paths, state: None },
+            &mut ctx,
+        );
 
         // When processing RescanPersonas command.
         actor

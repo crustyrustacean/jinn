@@ -15,7 +15,7 @@ use crate::feat::tools_actor::protocol::event::{ToolBatchCompleted, ToolExecutio
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
 
-use super::{ToolOrchestratorActor, ToolRegistration};
+use super::{ToolOrchestratorActor, ToolOrchestratorActorDeps, ToolRegistration};
 
 /// Creates a test context backed by a recording sink.
 fn _test_context(sink: &std::sync::Arc<RecordingSink>) -> ActorContext {
@@ -23,18 +23,19 @@ fn _test_context(sink: &std::sync::Arc<RecordingSink>) -> ActorContext {
 }
 
 /// Creates a test context with State injection.
-fn test_context_with_state(sink: &std::sync::Arc<RecordingSink>, state: State) -> ActorContext {
-    let mut ctx = ActorContext::new("test-tool-orchestrator", sink.clone());
-    ctx.set_data(state);
-    ctx.set_data(crate::common::app_paths::AppPaths::default());
-    ctx
+fn test_context_with_state(sink: &std::sync::Arc<RecordingSink>, _state: State) -> ActorContext {
+    ActorContext::new("test-tool-orchestrator", sink.clone())
 }
 
-fn default_test_ctx() -> (std::sync::Arc<RecordingSink>, ActorContext) {
+fn default_test_ctx() -> (std::sync::Arc<RecordingSink>, ActorContext, ToolOrchestratorActorDeps) {
     let sink = std::sync::Arc::new(RecordingSink::new());
     let state = State::new(AppState::default());
-    let ctx = test_context_with_state(&sink, state);
-    (sink, ctx)
+    let ctx = test_context_with_state(&sink, state.clone());
+    let deps = ToolOrchestratorActorDeps {
+        state,
+        app_paths: crate::common::app_paths::AppPaths::default(),
+    };
+    (sink, ctx, deps)
 }
 
 /// Extracts `ToolBatchCompleted` events from a list of events.
@@ -65,10 +66,10 @@ fn find_execution_completed(events: &[Event]) -> Vec<&ToolExecutionCompleted> {
 #[tokio::test]
 async fn activate_registers_get_time_tool() {
     // Given a fresh actor context with state.
-    let (_sink, mut ctx) = default_test_ctx();
+    let (_sink, mut ctx, deps) = default_test_ctx();
 
     // When activating the actor.
-    let actor = ToolOrchestratorActor::activate(&mut ctx);
+    let actor = ToolOrchestratorActor::activate(deps, &mut ctx);
 
     // Then the get_time tool is registered.
     assert!(actor.tools.contains_key("get_time"));
@@ -78,10 +79,10 @@ async fn activate_registers_get_time_tool() {
 #[tokio::test]
 async fn activate_registers_read_tool() {
     // Given a fresh actor context with state.
-    let (_sink, mut ctx) = default_test_ctx();
+    let (_sink, mut ctx, deps) = default_test_ctx();
 
     // When activating the actor.
-    let actor = ToolOrchestratorActor::activate(&mut ctx);
+    let actor = ToolOrchestratorActor::activate(deps, &mut ctx);
 
     // Then the read tool is registered.
     assert!(actor.tools.contains_key("read"));
@@ -91,10 +92,10 @@ async fn activate_registers_read_tool() {
 #[tokio::test]
 async fn activate_registers_write_tool() {
     // Given a fresh actor context with state.
-    let (_sink, mut ctx) = default_test_ctx();
+    let (_sink, mut ctx, deps) = default_test_ctx();
 
     // When activating the actor.
-    let actor = ToolOrchestratorActor::activate(&mut ctx);
+    let actor = ToolOrchestratorActor::activate(deps, &mut ctx);
 
     // Then the write tool is registered.
     assert!(actor.tools.contains_key("write"));
@@ -104,10 +105,10 @@ async fn activate_registers_write_tool() {
 #[tokio::test]
 async fn activate_emits_tools_registered_for_builtins() {
     // Given a fresh actor context with state and a recording sink.
-    let (sink, mut ctx) = default_test_ctx();
+    let (sink, mut ctx, deps) = default_test_ctx();
 
     // When activating the actor.
-    let _actor = ToolOrchestratorActor::activate(&mut ctx);
+    let _actor = ToolOrchestratorActor::activate(deps, &mut ctx);
 
     // Then ToolsRegistered event was emitted for built-in tools.
     let events = sink.events();
@@ -132,8 +133,8 @@ async fn activate_emits_tools_registered_for_builtins() {
 #[tokio::test]
 async fn register_tools_stores_actor_tools() {
     // Given an activated actor.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let definition = ToolDefinition {
@@ -169,8 +170,8 @@ async fn register_tools_stores_actor_tools() {
 #[tokio::test]
 async fn register_tools_emits_event() {
     // Given an activated actor.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let definition = ToolDefinition {
@@ -203,8 +204,8 @@ async fn register_tools_emits_event() {
 #[tokio::test]
 async fn register_tools_records_tool_count() {
     // Given an activated actor.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let definition = ToolDefinition {
@@ -336,8 +337,8 @@ async fn execute_builtin_read_tool_returns_error_on_missing_file() {
 #[tokio::test]
 async fn execute_batch_with_get_time_tool_emits_completion() {
     // Given an activated actor.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let session_id = SessionId::new();
@@ -366,8 +367,8 @@ async fn execute_batch_with_get_time_tool_emits_completion() {
 #[tokio::test]
 async fn completion_event_triggers_batch_completed() {
     // Given an activated actor with a single get_time batch executed.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let session_id = SessionId::new();
@@ -405,8 +406,8 @@ async fn completion_event_triggers_batch_completed() {
 #[tokio::test]
 async fn execute_batch_with_two_tools_emits_two_completions() {
     // Given an activated actor.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let session_id = SessionId::new();
@@ -440,8 +441,8 @@ async fn execute_batch_with_two_tools_emits_two_completions() {
 #[tokio::test]
 async fn first_completion_does_not_complete_batch() {
     // Given an activated actor with a batch of two get_time calls executed.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let session_id = SessionId::new();
@@ -485,8 +486,8 @@ async fn first_completion_does_not_complete_batch() {
 #[tokio::test]
 async fn second_completion_emits_batch_completed() {
     // Given an activated actor with a batch of two get_time calls where first completion was fed back.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let session_id = SessionId::new();
@@ -541,8 +542,8 @@ async fn second_completion_emits_batch_completed() {
 #[tokio::test]
 async fn execute_batch_with_unknown_tool_emits_error_completion() {
     // Given an activated actor.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let session_id = SessionId::new();
@@ -570,8 +571,8 @@ async fn execute_batch_with_unknown_tool_emits_error_completion() {
 #[tokio::test]
 async fn error_completion_triggers_batch_completed() {
     // Given an activated actor with an unknown tool batch executed.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let session_id = SessionId::new();
@@ -610,8 +611,8 @@ async fn error_completion_triggers_batch_completed() {
 #[tokio::test]
 async fn execute_batch_with_no_tool_calls_emits_empty_batch_completed() {
     // Given an activated actor.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let session_id = SessionId::new();
@@ -809,8 +810,8 @@ async fn write_tool_returns_error_on_bad_json() {
 #[tokio::test]
 async fn tool_execution_completed_for_unknown_session_is_ignored() {
     // Given an activated actor with no pending batches.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let unknown_session = SessionId::new();
@@ -839,8 +840,8 @@ async fn tool_execution_completed_for_unknown_session_is_ignored() {
 #[tokio::test]
 async fn build_tool_context_reads_session_cwd() {
     // Given an activated actor with a session that has a specific CWD.
-    let (sink, mut ctx) = default_test_ctx();
-    let actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let actor = ToolOrchestratorActor::activate(deps, &mut ctx);
 
     let session_id = {
         let mut guard = actor.state.write();
@@ -860,8 +861,8 @@ async fn build_tool_context_reads_session_cwd() {
 #[tokio::test]
 async fn build_tool_context_returns_default_cwd_for_unknown_session() {
     // Given an activated actor.
-    let (sink, mut ctx) = default_test_ctx();
-    let actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let actor = ToolOrchestratorActor::activate(deps, &mut ctx);
 
     // When building tool context for an unknown session.
     let unknown_session = SessionId::new();
@@ -877,8 +878,8 @@ async fn build_tool_context_returns_default_cwd_for_unknown_session() {
 #[tokio::test]
 async fn cancel_tool_batch_removes_pending_batch() {
     // Given an activated actor with a pending batch of two get_time calls.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let session_id = SessionId::new();
@@ -917,8 +918,8 @@ async fn cancel_tool_batch_removes_pending_batch() {
 #[tokio::test]
 async fn cancel_tool_batch_aborts_spawned_tasks() {
     // Given an activated actor with a pending batch of get_time calls.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let session_id = SessionId::new();
@@ -958,8 +959,8 @@ async fn cancel_tool_batch_aborts_spawned_tasks() {
 #[tokio::test]
 async fn cancel_tool_batch_for_unknown_session_is_noop() {
     // Given an activated actor with no pending batches.
-    let (sink, mut ctx) = default_test_ctx();
-    let mut actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
     sink.clear();
 
     let unknown_session = SessionId::new();
@@ -982,8 +983,8 @@ async fn cancel_tool_batch_for_unknown_session_is_noop() {
 #[tokio::test]
 async fn build_tool_context_uses_session_default_cwd_when_not_overridden() {
     // Given an activated actor with a session using the default CWD (".").
-    let (sink, mut ctx) = default_test_ctx();
-    let actor = ToolOrchestratorActor::activate(&mut ctx);
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let actor = ToolOrchestratorActor::activate(deps, &mut ctx);
 
     let session_id = {
         let mut guard = actor.state.write();

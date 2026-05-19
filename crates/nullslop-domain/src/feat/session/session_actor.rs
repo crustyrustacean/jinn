@@ -193,10 +193,23 @@ fn format_lifecycle_error(err: &LifecycleCommandError) -> String {
     }
 }
 
+/// Dependencies for [`SessionPersistenceActor`].
+pub struct SessionPersistenceActorDeps {
+    /// Shared application state.
+    pub state: State,
+    /// Runtime services.
+    pub services: Option<Services>,
+    /// Session persistence store.
+    pub store: Option<SessionStoreService>,
+    /// Token counter for usage tracking.
+    pub counter: TiktokenCounter,
+}
+
 impl Actor for SessionPersistenceActor {
     type Message = NoDirectMsg;
+    type Deps = SessionPersistenceActorDeps;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         // Persistence subscriptions.
         ctx.subscribe_command::<SessionLoadRequested>();
         ctx.subscribe_command::<LoadSessionPickerEntries>();
@@ -237,21 +250,11 @@ impl Actor for SessionPersistenceActor {
 
         ctx.set_description("Session lifecycle and persistence");
 
-        #[expect(clippy::expect_used, reason = "State is always injected at startup")]
-        let state = ctx
-            .take_data::<State>()
-            .expect("SessionPersistenceActor requires State injection");
-        let store = ctx.take_data::<SessionStoreService>();
-        let services = ctx.take_data::<Services>();
-        let counter = ctx
-            .take_data::<TiktokenCounter>()
-            .unwrap_or_else(TiktokenCounter::o200k_base);
-
         Self {
-            state,
-            services,
-            store,
-            counter,
+            state: deps.state,
+            services: deps.services,
+            store: deps.store,
+            counter: deps.counter,
         }
     }
 

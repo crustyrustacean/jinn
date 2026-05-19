@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::common::actor::ActorContext;
-use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
+use crate::common::actor::scan_actor::{ScanActor, ScanActorDeps, ScanConfig};
 use crate::common::app_paths::AppPaths;
 use crate::common::state::State;
 use crate::feat::skills::scan::scan_skills;
@@ -27,15 +27,12 @@ pub struct SkillsScanConfig {
 impl ScanConfig for SkillsScanConfig {
     type Output = Vec<Skill>;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "State must be injected via ctx.set_data before activate"
-    )]
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: &ScanActorDeps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<ScanSkills>();
-        let state = ctx
-            .take_data::<State>()
-            .expect("State must be injected via ctx.set_data()");
+        let state = deps
+            .state
+            .clone()
+            .expect("SkillsScanConfig requires State in ScanActorDeps");
         Self { state }
     }
 
@@ -102,6 +99,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::common::actor::scan_actor::ScanActorDeps;
     use crate::common::app_paths::AppPaths;
     use crate::common::app_state::AppState;
     use crate::common::state::State;
@@ -134,9 +132,10 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        ctx.set_data(AppPaths::new_in(dir.path()));
-        ctx.set_data(state.clone());
-        let mut actor = SkillsScanActor::activate(&mut ctx);
+        let mut actor = SkillsScanActor::activate(
+            ScanActorDeps { paths: AppPaths::new_in(dir.path()), state: Some(state.clone()) },
+            &mut ctx,
+        );
 
         // When processing ScanSkills command.
         actor
@@ -158,9 +157,10 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        ctx.set_data(AppPaths::new_in(dir.path()));
-        ctx.set_data(state);
-        let mut actor = SkillsScanActor::activate(&mut ctx);
+        let mut actor = SkillsScanActor::activate(
+            ScanActorDeps { paths: AppPaths::new_in(dir.path()), state: Some(state) },
+            &mut ctx,
+        );
 
         // When processing ScanSkills command.
         actor
@@ -184,9 +184,10 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        ctx.set_data(AppPaths::new_in(dir.path()));
-        ctx.set_data(state);
-        let mut actor = SkillsScanActor::activate(&mut ctx);
+        let mut actor = SkillsScanActor::activate(
+            ScanActorDeps { paths: AppPaths::new_in(dir.path()), state: Some(state) },
+            &mut ctx,
+        );
 
         // When processing ScanSkills command.
         actor
@@ -209,9 +210,10 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        ctx.set_data(AppPaths::new_in(dir.path()));
-        ctx.set_data(state);
-        let mut actor = SkillsScanActor::activate(&mut ctx);
+        let mut actor = SkillsScanActor::activate(
+            ScanActorDeps { paths: AppPaths::new_in(dir.path()), state: Some(state) },
+            &mut ctx,
+        );
 
         // When processing ScanSkills command.
         actor

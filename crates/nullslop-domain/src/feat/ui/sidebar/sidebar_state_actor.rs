@@ -15,19 +15,23 @@ pub struct SidebarStateActor {
     state: State,
 }
 
+/// Dependencies for [`SidebarStateActor`].
+pub struct SidebarStateActorDeps {
+    /// Shared application state.
+    pub state: State,
+}
+
 impl Actor for SidebarStateActor {
     type Message = NoDirectMsg;
+    type Deps = SidebarStateActorDeps;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<SessionRemoved>();
         ctx.set_description("Sidebar cursor state management");
 
-        #[expect(clippy::expect_used, reason = "State is always injected at startup")]
-        let state = ctx
-            .take_data::<State>()
-            .expect("SidebarStateActor requires State injection");
-
-        Self { state }
+        Self {
+            state: deps.state,
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {

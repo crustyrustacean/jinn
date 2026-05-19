@@ -5,7 +5,7 @@
 //! and emits [`PromptTemplatesLoaded`] events with the results.
 
 use crate::common::actor::ActorContext;
-use crate::common::actor::scan_actor::{ScanActor, ScanConfig};
+use crate::common::actor::scan_actor::{ScanActor, ScanActorDeps, ScanConfig};
 use crate::common::app_paths::AppPaths;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::provider::protocol::command::RescanPromptTemplates;
@@ -18,8 +18,7 @@ use crate::protocol::{Command, Event};
 /// recursively, parses all `*.md` files, and emits `PromptTemplatesLoaded`
 /// with the merged results. User templates override system templates.
 ///
-/// Paths are injected via [`ActorContext::set_data::<AppPaths>()`] during
-/// actor spawn in `src/actor_wiring.rs`.
+/// Paths are provided via [`ScanActorDeps`] during actor spawn in `src/actor_wiring.rs`.
 pub struct PromptScanConfig;
 
 /// The scan result from `PromptTemplateStore::load_from_dir` — may fail.
@@ -35,7 +34,7 @@ use crate::feat::context::prompt_template::PromptTemplateStoreError;
 impl ScanConfig for PromptScanConfig {
     type Output = PromptScanResult;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(_deps: &ScanActorDeps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<RescanPromptTemplates>();
         Self
     }
