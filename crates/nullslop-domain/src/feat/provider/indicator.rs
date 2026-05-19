@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
+use crate::feat::session::chat_session::SessionPhase;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -58,7 +59,7 @@ impl UiElement<AppState> for StreamingIndicatorElement {
         let session = state.active_session();
         let queue_len = session.queue_len();
 
-        let is_busy = session.is_sending() || session.is_streaming();
+        let is_busy = matches!(session.phase(), SessionPhase::Sending | SessionPhase::Streaming);
         if !is_busy {
             return;
         }

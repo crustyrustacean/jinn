@@ -766,7 +766,7 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
-    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
     use crate::feat::tools_actor::protocol::event::ToolBatchCompleted;
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChatEntry, ChatEntryKind, Command};
@@ -956,7 +956,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            assert!(session.is_streaming());
+            assert!(matches!(session.phase(), SessionPhase::Streaming));
             state.session.active_session.clone()
         };
 
@@ -977,7 +977,7 @@ mod tests {
             .sessions
             .get(&session_id)
             .expect("session exists");
-        assert!(!session.is_streaming());
+        assert!(!matches!(session.phase(), SessionPhase::Streaming));
     }
 
     #[tokio::test]
@@ -1082,7 +1082,7 @@ mod tests {
             .sessions
             .get(&session_id)
             .expect("session exists");
-        assert!(session.is_sending());
+        assert!(matches!(session.phase(), SessionPhase::Sending));
     }
 
     #[tokio::test]
@@ -1644,8 +1644,8 @@ mod tests {
         // Then the session is in Compacting phase.
         let state = actor.state.read();
         let session = state.session.sessions.get(&session_id).expect("session exists");
-        assert!(session.is_compacting());
-        assert!(!session.is_idle());
+        assert!(matches!(session.phase(), SessionPhase::Compacting));
+        assert!(!matches!(session.phase(), SessionPhase::Idle));
         drop(state);
     }
 
@@ -1684,7 +1684,7 @@ mod tests {
         // Then the session is idle and has the compaction entry.
         let state = actor.state.read();
         let session = state.session.sessions.get(&session_id).expect("session exists");
-        assert!(session.is_idle());
+        assert!(matches!(session.phase(), SessionPhase::Idle));
         // The history should have: user entry, compaction entry, system entry.
         assert!(session.history().iter().any(|e| e.is_compaction()));
         assert!(session
@@ -1718,7 +1718,7 @@ mod tests {
         // Then the session is idle and has an error entry.
         let state = actor.state.read();
         let session = state.session.sessions.get(&session_id).expect("session exists");
-        assert!(session.is_idle());
+        assert!(matches!(session.phase(), SessionPhase::Idle));
         let last = session.history().last().expect("has an entry");
         assert!(matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("Compaction failed")));
     }

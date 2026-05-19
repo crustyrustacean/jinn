@@ -1,6 +1,7 @@
 //! Global intent validators — quit, toggle which-key, and interrupt.
 
 use crate::common::app_state::AppState;
+use crate::feat::session::chat_session::SessionPhase;
 use wherror::Error;
 
 /// Validates the Quit intent.
@@ -30,7 +31,7 @@ pub enum InterruptError {
 ///
 /// Returns an error if the buffer is empty and the session is idle.
 pub fn validate_interrupt(state: &AppState) -> Result<(), InterruptError> {
-    if state.active_chat_input().is_empty() && state.active_session().is_idle() {
+    if state.active_chat_input().is_empty() && matches!(state.active_session().phase(), SessionPhase::Idle) {
         return Err(InterruptError::NothingToInterrupt);
     }
     Ok(())

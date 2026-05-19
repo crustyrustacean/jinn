@@ -671,7 +671,7 @@ async fn when_submit_cancel_stream(world: &mut AppWorld) {
         session_id,
     }));
     world
-        .wait_until(|s| !s.active_session().is_streaming())
+        .wait_until(|s| s.active_session().phase() != nullslop_domain::SessionPhase::Streaming)
         .await;
 }
 
@@ -938,14 +938,10 @@ fn then_which_key_inactive(world: &mut AppWorld) {
 /// Asserts the active session's state matches the expected value.
 #[cucumber::then(expr = "the session should be {word}")]
 fn then_session_state(world: &mut AppWorld, state_name: String) {
+    let expected: nullslop_domain::SessionPhase = state_name.parse().expect("valid session phase");
     let state = world.state();
     let session = state.active_session();
-    match state_name.to_lowercase().as_str() {
-        "idle" => assert!(session.is_idle(), "expected idle, got streaming/sending"),
-        "sending" => assert!(session.is_sending(), "expected sending"),
-        "streaming" => assert!(session.is_streaming(), "expected streaming"),
-        _ => panic!("unknown session state: {state_name}"),
-    }
+    assert_eq!(session.phase(), expected, "expected {expected:?}, got {:?}", session.phase());
 }
 
 /// Asserts the active session's message queue has the expected count.
