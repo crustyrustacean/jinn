@@ -19,7 +19,7 @@ pub fn handle_sliding_window_enter(state: &mut AppState) -> IntentResult {
     let input = current_size.to_string();
     let cursor_pos = input.len();
 
-    state.frontend.sliding_window_input = SlidingWindowInputState { input, cursor_pos };
+    state.frontend.sliding_window_input = SlidingWindowInputState { input, cursor_pos, error_message: None };
     state
         .frontend
         .scope_stack
@@ -211,7 +211,7 @@ mod tests {
             .push(FocusScope::SlidingWindowInput);
         state.frontend.sliding_window_input = SlidingWindowInputState {
             input: "20".to_owned(),
-            cursor_pos: 2,
+            cursor_pos: 2, error_message: None
         };
 
         // When handling SlidingWindowInputConfirm.
@@ -249,7 +249,7 @@ mod tests {
             .push(FocusScope::SlidingWindowInput);
         state.frontend.sliding_window_input = SlidingWindowInputState {
             input: String::new(),
-            cursor_pos: 0,
+            cursor_pos: 0, error_message: None
         };
 
         // When handling SlidingWindowInputConfirm.
@@ -274,7 +274,7 @@ mod tests {
             .push(FocusScope::SlidingWindowInput);
         state.frontend.sliding_window_input = SlidingWindowInputState {
             input: "0".to_owned(),
-            cursor_pos: 1,
+            cursor_pos: 1, error_message: None
         };
 
         // When handling SlidingWindowInputConfirm.
@@ -300,7 +300,7 @@ mod tests {
             .push(FocusScope::SlidingWindowInput);
         state.frontend.sliding_window_input = SlidingWindowInputState {
             input: "99".to_owned(),
-            cursor_pos: 2,
+            cursor_pos: 2, error_message: None
         };
 
         // When handling SlidingWindowInputLeave.
@@ -328,7 +328,7 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.sliding_window_input = SlidingWindowInputState {
             input: "1".to_owned(),
-            cursor_pos: 1,
+            cursor_pos: 1, error_message: None
         };
 
         // When inserting '0'.
@@ -345,7 +345,7 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.sliding_window_input = SlidingWindowInputState {
             input: "1".to_owned(),
-            cursor_pos: 1,
+            cursor_pos: 1, error_message: None
         };
 
         // When inserting 'a' (non-digit).
@@ -362,7 +362,7 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.sliding_window_input = SlidingWindowInputState {
             input: "10".to_owned(),
-            cursor_pos: 2,
+            cursor_pos: 2, error_message: None
         };
 
         // When deleting.
@@ -379,7 +379,7 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.sliding_window_input = SlidingWindowInputState {
             input: "10".to_owned(),
-            cursor_pos: 0,
+            cursor_pos: 0, error_message: None
         };
 
         // When forward deleting.
@@ -396,7 +396,7 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.sliding_window_input = SlidingWindowInputState {
             input: "10".to_owned(),
-            cursor_pos: 2,
+            cursor_pos: 2, error_message: None
         };
 
         // When moving cursor left.
@@ -412,7 +412,7 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.sliding_window_input = SlidingWindowInputState {
             input: "10".to_owned(),
-            cursor_pos: 0,
+            cursor_pos: 0, error_message: None
         };
 
         // When moving cursor right.
