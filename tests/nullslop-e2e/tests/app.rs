@@ -941,7 +941,12 @@ fn then_session_state(world: &mut AppWorld, state_name: String) {
     let expected: nullslop_domain::SessionPhase = state_name.parse().expect("valid session phase");
     let state = world.state();
     let session = state.active_session();
-    assert_eq!(session.phase(), expected, "expected {expected:?}, got {:?}", session.phase());
+    assert_eq!(
+        session.phase(),
+        expected,
+        "expected {expected:?}, got {:?}",
+        session.phase()
+    );
 }
 
 /// Asserts the active session's message queue has the expected count.

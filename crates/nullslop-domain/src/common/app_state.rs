@@ -323,7 +323,10 @@ impl ScopeStack {
     pub fn is_sidebar(&self) -> bool {
         matches!(
             self.current(),
-            FocusScope::SidebarPersona | FocusScope::SidebarPins | FocusScope::SidebarSessions | FocusScope::SidebarMinimap
+            FocusScope::SidebarPersona
+                | FocusScope::SidebarPins
+                | FocusScope::SidebarSessions
+                | FocusScope::SidebarMinimap
         )
     }
 

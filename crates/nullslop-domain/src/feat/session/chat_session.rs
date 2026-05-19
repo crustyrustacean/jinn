@@ -467,7 +467,10 @@ impl ChatSessionState {
     /// before starting a new one.
     pub fn begin_streaming(&mut self) {
         assert!(
-            matches!(self.core.ephemeral.phase, SessionPhase::Sending | SessionPhase::Idle),
+            matches!(
+                self.core.ephemeral.phase,
+                SessionPhase::Sending | SessionPhase::Idle
+            ),
             "begin_streaming called while not in Sending or Idle phase (current: {:?})",
             self.core.ephemeral.phase
         );
@@ -873,8 +876,6 @@ impl ChatSessionState {
         self.core.ephemeral.phase = SessionPhase::Idle;
     }
 
-
-
     /// Switch the active prompt strategy for this session.
     pub fn switch_strategy(&mut self, strategy_id: PromptStrategyId) {
         self.core.profile.strategy = strategy_id;
@@ -935,8 +936,6 @@ impl ChatSessionState {
         );
         self.core.ephemeral.phase = SessionPhase::Idle;
     }
-
-
 
     /// Mark the session as compacting.
     ///

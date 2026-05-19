@@ -216,7 +216,8 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<RemoveSession>();
 
         // Compaction command subscriptions.
-        ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>();
+        ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>(
+        );
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::EndCompaction>();
 
         // Event subscriptions.
@@ -516,11 +517,7 @@ impl SessionPersistenceActor {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn handle_run_session_teardown(
-        &self,
-        payload: &RunSessionTeardown,
-        ctx: &ActorContext,
-    ) {
+    async fn handle_run_session_teardown(&self, payload: &RunSessionTeardown, ctx: &ActorContext) {
         // Push "running" info entry so the user sees feedback immediately.
         {
             let mut state = self.state.write();
@@ -706,10 +703,7 @@ impl SessionPersistenceActor {
     ///
     /// Called right after the IntentHandler creates a lifecycle session
     /// so that the session metadata survives an app crash during setup.
-    async fn handle_save_new_lifecycle_session(
-        &self,
-        payload: &SaveNewLifecycleSession,
-    ) {
+    async fn handle_save_new_lifecycle_session(&self, payload: &SaveNewLifecycleSession) {
         self.save_active_session(&payload.session_id).await;
     }
 
@@ -1662,7 +1656,11 @@ mod tests {
 
         // Then the session is in Compacting phase.
         let state = actor.state.read();
-        let session = state.session.sessions.get(&session_id).expect("session exists");
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Compacting));
         assert!(!matches!(session.phase(), SessionPhase::Idle));
         drop(state);
@@ -1703,14 +1701,17 @@ mod tests {
 
         // Then the session is idle and has the compaction entry.
         let state = actor.state.read();
-        let session = state.session.sessions.get(&session_id).expect("session exists");
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Idle));
         // The history should have: user entry, compaction entry, system entry.
         assert!(session.history().iter().any(ChatEntry::is_compaction));
-        assert!(session
-            .history()
-            .iter()
-            .any(|e| matches!(&e.kind, ChatEntryKind::System(t) if t.contains("Context was compacted"))));
+        assert!(session.history().iter().any(
+            |e| matches!(&e.kind, ChatEntryKind::System(t) if t.contains("Context was compacted"))
+        ));
     }
 
     #[tokio::test]
@@ -1738,10 +1739,16 @@ mod tests {
 
         // Then the session is idle and has an error entry.
         let state = actor.state.read();
-        let session = state.session.sessions.get(&session_id).expect("session exists");
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Idle));
         let last = session.history().last().expect("has an entry");
-        assert!(matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("Compaction failed")));
+        assert!(
+            matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("Compaction failed"))
+        );
     }
 
     #[tokio::test]
@@ -1782,7 +1789,10 @@ mod tests {
         let has_assemble = commands
             .iter()
             .any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(has_assemble, "expected AssemblePrompt command for queued message");
+        assert!(
+            has_assemble,
+            "expected AssemblePrompt command for queued message"
+        );
     }
 
     #[tokio::test]
@@ -1815,7 +1825,10 @@ mod tests {
         let has_assemble = commands
             .iter()
             .any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(has_assemble, "expected AssemblePrompt command for queued message after failure");
+        assert!(
+            has_assemble,
+            "expected AssemblePrompt command for queued message after failure"
+        );
     }
 
     #[tokio::test]
@@ -1854,7 +1867,10 @@ mod tests {
         let has_assemble = commands
             .iter()
             .any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(!has_assemble, "expected no AssemblePrompt when queue is empty");
+        assert!(
+            !has_assemble,
+            "expected no AssemblePrompt when queue is empty"
+        );
     }
 
     #[tokio::test]
@@ -1892,7 +1908,11 @@ mod tests {
 
         // Then the session is in Sending state (start_turn_from_queued called begin_sending).
         let state = actor.state.read();
-        let session = state.session.sessions.get(&session_id).expect("session exists");
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Sending));
     }
 
@@ -1922,7 +1942,11 @@ mod tests {
 
         // Then the session is in Streaming phase without panicking.
         let state = actor.state.read();
-        let session = state.session.sessions.get(&session_id).expect("session exists");
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Streaming);
     }
 
@@ -1947,7 +1971,11 @@ mod tests {
 
         // Then the session is in Streaming phase.
         let state = actor.state.read();
-        let session = state.session.sessions.get(&session_id).expect("session exists");
+        let session = state
+            .session
+            .sessions
+            .get(&session_id)
+            .expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Streaming);
     }
 }

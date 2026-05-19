@@ -71,7 +71,11 @@ pub fn from_crossterm(event: crossterm::event::KeyEvent) -> Option<KeyEvent> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code, panics are acceptable")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "test code, panics are acceptable"
+    )]
     use super::*;
 
     fn crossterm_key(code: crossterm::event::KeyCode) -> crossterm::event::KeyEvent {

@@ -918,7 +918,6 @@ fn render_row_with_empty_match_indices_same_as_render_row() {
     }
 }
 
-
 #[rstest::rstest]
 fn provider_highlight_row_contains_matched_char() {
     // Given a provider entry with model "llama3".
@@ -934,10 +933,7 @@ fn provider_highlight_row_contains_matched_char() {
 
     // Then the row text contains the matched character.
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
-    assert!(
-        text.contains('l'),
-        "highlighted row should contain 'l'"
-    );
+    assert!(text.contains('l'), "highlighted row should contain 'l'");
 }
 
 #[rstest::rstest]

@@ -400,7 +400,10 @@ mod tests {
         );
         // And SaveNewLifecycleSession then RunSessionSetup are emitted.
         assert_eq!(result.commands.len(), 2);
-        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        assert!(matches!(
+            &result.commands[0],
+            Command::SaveNewLifecycleSession(_)
+        ));
         assert!(matches!(
             &result.commands[1],
             Command::RunSessionSetup(RunSessionSetup {
@@ -430,7 +433,10 @@ mod tests {
             handle_session_lifecycle_setup(&mut state, "fossil branch", &["my-branch".to_owned()]);
 
         // Then SaveNewLifecycleSession is emitted first.
-        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        assert!(matches!(
+            &result.commands[0],
+            Command::SaveNewLifecycleSession(_)
+        ));
         // And RunSessionSetup is emitted second with rendered args.
         assert!(matches!(
             &result.commands[1],
@@ -595,7 +601,10 @@ mod tests {
             &["my-branch".to_owned(), "target-dir".to_owned()]
         );
         // Then SaveNewLifecycleSession is emitted first.
-        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        assert!(matches!(
+            &result.commands[0],
+            Command::SaveNewLifecycleSession(_)
+        ));
         // And RunSessionSetup is emitted second with rendered args.
         assert!(matches!(
             &result.commands[1],
@@ -901,7 +910,10 @@ mod tests {
         // Then a command is emitted with the rendered args.
         assert!(!result.commands.is_empty(), "command should be emitted");
         // Then SaveNewLifecycleSession is emitted first.
-        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        assert!(matches!(
+            &result.commands[0],
+            Command::SaveNewLifecycleSession(_)
+        ));
         // And RunSessionSetup is emitted second with rendered args.
         assert!(matches!(
             &result.commands[1],
@@ -944,7 +956,10 @@ mod tests {
             &["my branch".to_owned(), "target".to_owned()]
         );
         // Then SaveNewLifecycleSession is emitted first.
-        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        assert!(matches!(
+            &result.commands[0],
+            Command::SaveNewLifecycleSession(_)
+        ));
         // And RunSessionSetup is emitted second with rendered args.
         assert!(matches!(
             &result.commands[1],
@@ -1022,7 +1037,10 @@ mod tests {
             Some("fossil branch")
         );
         // And SaveNewLifecycleSession then RunSessionSetup are emitted.
-        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        assert!(matches!(
+            &result.commands[0],
+            Command::SaveNewLifecycleSession(_)
+        ));
         assert!(matches!(&result.commands[1], Command::RunSessionSetup(..)));
     }
 }

@@ -18,11 +18,11 @@ use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::AutocompleteTrigger;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
-use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::compaction_actor::protocol::command::CompactContext;
 use crate::feat::context::prompt_template::PromptTemplateStore;
+use crate::feat::session::chat_session::SessionPhase;
 use crate::protocol::{ChatEntry, Command, IntentResult};
 use unicode_segmentation::UnicodeSegmentation as _;
 

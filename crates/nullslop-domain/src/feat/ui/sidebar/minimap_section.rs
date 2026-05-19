@@ -12,12 +12,12 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::common::app_state::AppState;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
-use crate::feat::theme::contrast::darken;
 use super::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
+use crate::common::app_state::AppState;
+use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
+use crate::feat::theme::contrast::darken;
 
 /// Full block character for entries and single-round tool sequences.
 const FULL_BLOCK: &str = "\u{2588}";
@@ -153,8 +153,7 @@ fn compute_blocks(history: &[ChatEntry]) -> Vec<MinimapBlock> {
     let included: Vec<_> = history
         .iter()
         .filter_map(|entry| {
-            MinimapCategory::from_kind(&entry.kind)
-                .map(|cat| (cat, entry.ignored, &entry.kind))
+            MinimapCategory::from_kind(&entry.kind).map(|cat| (cat, entry.ignored, &entry.kind))
         })
         .collect();
 
@@ -435,7 +434,12 @@ mod tests {
         let history = vec![
             ChatEntry::user("do something"),
             ChatEntry::tool_call("id1", "bash", "echo hi"),
-            ChatEntry::tool_result("id1", "bash", "output", crate::feat::session::tool_result_status::ToolResultStatus::Success),
+            ChatEntry::tool_result(
+                "id1",
+                "bash",
+                "output",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ),
             ChatEntry::assistant("done"),
         ];
 
@@ -460,10 +464,20 @@ mod tests {
         // Given: TCall → TResult → Asst → TCall → TResult → Asst(final).
         let history = vec![
             ChatEntry::tool_call("id1", "bash", "echo hi"),
-            ChatEntry::tool_result("id1", "bash", "output", crate::feat::session::tool_result_status::ToolResultStatus::Success),
+            ChatEntry::tool_result(
+                "id1",
+                "bash",
+                "output",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ),
             ChatEntry::assistant("thinking..."),
             ChatEntry::tool_call("id2", "read", "file.txt"),
-            ChatEntry::tool_result("id2", "read", "contents", crate::feat::session::tool_result_status::ToolResultStatus::Success),
+            ChatEntry::tool_result(
+                "id2",
+                "read",
+                "contents",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ),
             ChatEntry::assistant("here is the answer"),
         ];
 
@@ -557,8 +571,13 @@ mod tests {
         // Given a TA sequence where all entries are ignored.
         let history = vec![
             ChatEntry::tool_call("id1", "bash", "echo hi").with_ignored(true),
-            ChatEntry::tool_result("id1", "bash", "output", crate::feat::session::tool_result_status::ToolResultStatus::Success)
-                .with_ignored(true),
+            ChatEntry::tool_result(
+                "id1",
+                "bash",
+                "output",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            )
+            .with_ignored(true),
             ChatEntry::assistant("done").with_ignored(true),
         ];
 
@@ -580,8 +599,13 @@ mod tests {
         // Given a TA sequence where only some entries are ignored.
         let history = vec![
             ChatEntry::tool_call("id1", "bash", "echo hi").with_ignored(true),
-            ChatEntry::tool_result("id1", "bash", "output", crate::feat::session::tool_result_status::ToolResultStatus::Success)
-                .with_ignored(false),
+            ChatEntry::tool_result(
+                "id1",
+                "bash",
+                "output",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            )
+            .with_ignored(false),
             ChatEntry::assistant("done"),
         ];
 
@@ -603,11 +627,7 @@ mod tests {
         // Given 40 tool rounds (ToolCall + ToolResult each).
         let mut history = Vec::new();
         for i in 0..40 {
-            history.push(ChatEntry::tool_call(
-                format!("id{i}"),
-                "bash",
-                "echo",
-            ));
+            history.push(ChatEntry::tool_call(format!("id{i}"), "bash", "echo"));
             history.push(ChatEntry::tool_result(
                 format!("id{i}"),
                 "bash",
@@ -717,7 +737,9 @@ mod tests {
         // Given a minimap with one non-ignored user entry.
         let mut section = MinimapSection::default();
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
 
         // When rendering.
         let rows = render_rows(&mut section, &state, 30, 5);
@@ -754,15 +776,48 @@ mod tests {
         // Given a 3-round TA sequence: TCall → TResult → Asst → TCall → TResult → Asst → TCall → TResult → Asst(final).
         let mut section = MinimapSection::default();
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::tool_call("id1", "bash", "echo 1"));
-        state.active_session_mut().push_entry(ChatEntry::tool_result("id1", "bash", "out", crate::feat::session::tool_result_status::ToolResultStatus::Success));
-        state.active_session_mut().push_entry(ChatEntry::assistant("intermediate"));
-        state.active_session_mut().push_entry(ChatEntry::tool_call("id2", "bash", "echo 2"));
-        state.active_session_mut().push_entry(ChatEntry::tool_result("id2", "bash", "out", crate::feat::session::tool_result_status::ToolResultStatus::Success));
-        state.active_session_mut().push_entry(ChatEntry::assistant("intermediate 2"));
-        state.active_session_mut().push_entry(ChatEntry::tool_call("id3", "bash", "echo 3"));
-        state.active_session_mut().push_entry(ChatEntry::tool_result("id3", "bash", "out", crate::feat::session::tool_result_status::ToolResultStatus::Success));
-        state.active_session_mut().push_entry(ChatEntry::assistant("final answer"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_call("id1", "bash", "echo 1"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result(
+                "id1",
+                "bash",
+                "out",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("intermediate"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_call("id2", "bash", "echo 2"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result(
+                "id2",
+                "bash",
+                "out",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("intermediate 2"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_call("id3", "bash", "echo 3"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result(
+                "id3",
+                "bash",
+                "out",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("final answer"));
 
         // When rendering.
         let rows = render_rows(&mut section, &state, 30, 5);
@@ -782,8 +837,12 @@ mod tests {
         // Given a single-round TA sequence.
         let mut section = MinimapSection::default();
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::tool_call("id1", "bash", "echo hi"));
-        state.active_session_mut().push_entry(ChatEntry::assistant("done"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_call("id1", "bash", "echo hi"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("done"));
 
         // When rendering.
         let rows = render_rows(&mut section, &state, 30, 5);
@@ -801,11 +860,21 @@ mod tests {
         // Given a minimap with 5 different-type blocks in a 3-wide container.
         let mut section = MinimapSection::default();
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("msg"));
-        state.active_session_mut().push_entry(ChatEntry::assistant("resp"));
-        state.active_session_mut().push_entry(ChatEntry::system("info"));
-        state.active_session_mut().push_entry(ChatEntry::error("err"));
-        state.active_session_mut().push_entry(ChatEntry::user("msg2"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("msg"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("resp"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::system("info"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::error("err"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("msg2"));
 
         // When rendering in a 3-wide container.
         let rows = render_rows(&mut section, &state, 3, 5);

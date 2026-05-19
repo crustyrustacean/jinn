@@ -348,9 +348,7 @@ impl SessionPersistenceActor {
                 )));
             } else {
                 let error_msg = payload.error.as_deref().unwrap_or("Unknown error");
-                session.push_entry(ChatEntry::error(format!(
-                    "Compaction failed: {error_msg}"
-                )));
+                session.push_entry(ChatEntry::error(format!("Compaction failed: {error_msg}")));
             }
             session.finish_compacting();
 

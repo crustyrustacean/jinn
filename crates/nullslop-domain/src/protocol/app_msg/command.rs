@@ -17,7 +17,9 @@ use crate::common::actor::protocol::command::ProceedWithShutdown;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
-use crate::feat::compaction_actor::protocol::command::{BeginCompaction, CompactContext, EndCompaction};
+use crate::feat::compaction_actor::protocol::command::{
+    BeginCompaction, CompactContext, EndCompaction,
+};
 use crate::feat::context::protocol::command::{
     AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
     RescanPersonas, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
