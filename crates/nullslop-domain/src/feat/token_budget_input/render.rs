@@ -109,7 +109,8 @@ mod tests {
             .push(FocusScope::TokenBudgetInput);
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "150000".to_owned(),
-            cursor_pos: 6, error_message: None
+            cursor_pos: 6,
+            error_message: None,
         };
         let (mut terminal, area) = setup_term(80, 24);
 
@@ -152,7 +153,8 @@ mod tests {
             .push(FocusScope::TokenBudgetInput);
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "200000".to_owned(),
-            cursor_pos: 6, error_message: None
+            cursor_pos: 6,
+            error_message: None,
         };
         let (mut terminal, area) = setup_term(80, 24);
 
