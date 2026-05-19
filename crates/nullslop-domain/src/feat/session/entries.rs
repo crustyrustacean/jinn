@@ -26,6 +26,7 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
                     title: summary.title,
                     updated_at: summary.updated_at,
                     theme: theme.clone(),
+                    archived: summary.archived,
                 })
                 .collect();
             entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
@@ -64,6 +65,7 @@ pub async fn load_session_entries_from_store(
                     title: summary.title,
                     updated_at: summary.updated_at,
                     theme: theme.clone(),
+                    archived: summary.archived,
                 })
                 .collect();
             entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
@@ -102,6 +104,7 @@ mod tests {
             title: "My Chat".to_owned(),
             updated_at: jiff::Timestamp::now(),
             theme: default_theme(),
+            archived: false,
         };
 
         // When calling display_label.
@@ -117,6 +120,7 @@ mod tests {
             title: "My Session".to_owned(),
             updated_at: jiff::Timestamp::now(),
             theme: default_theme(),
+            archived: false,
         };
 
         // When rendering.

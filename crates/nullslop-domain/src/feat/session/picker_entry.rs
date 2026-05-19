@@ -20,6 +20,8 @@ pub struct SessionEntry {
     pub updated_at: jiff::Timestamp,
     /// Theme for rendering.
     pub theme: Theme,
+    /// Whether this session has been archived.
+    pub archived: bool,
 }
 
 impl PickerItem for SessionEntry {

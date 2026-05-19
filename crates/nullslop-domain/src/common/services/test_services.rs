@@ -67,6 +67,20 @@ impl SessionStore for FakeSessionStore {
     ) -> Result<SessionId, Report<SessionStoreError>> {
         Ok(SessionId::new())
     }
+
+    async fn set_archived(
+        &self,
+        _session_id: &SessionId,
+        _archived: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
+
+    async fn load_unarchived_summaries(
+        &self,
+    ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+        Ok(Vec::new())
+    }
 }
 
 /// A builder for constructing [Services] with fake implementations for tests.
