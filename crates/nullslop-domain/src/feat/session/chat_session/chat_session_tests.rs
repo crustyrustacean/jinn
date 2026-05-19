@@ -27,7 +27,7 @@ fn first_stream_token_creates_assistant_entry() {
     session.begin_streaming();
 
     // When appending the first token.
-    session.append_stream_token("Hello");
+    session.append_stream_token("Hello").expect("ok");
 
     // Then the assistant entry is created.
     assert_eq!(session.history().len(), 2);
@@ -57,8 +57,8 @@ fn append_stream_token_appends_to_assistant_entry() {
     session.begin_streaming();
 
     // When appending a token.
-    session.append_stream_token("Hello");
-    session.append_stream_token(" world");
+    session.append_stream_token("Hello").expect("ok");
+    session.append_stream_token(" world").expect("ok");
 
     // Then the assistant entry text is "Hello world".
     assert_eq!(
@@ -72,7 +72,7 @@ fn finish_streaming_clears_streaming_state() {
     // Given a session that is streaming with some tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.append_stream_token("Hi");
+    session.append_stream_token("Hi").expect("ok");
 
     // When finishing streaming.
     session.finish_streaming(true);
@@ -90,7 +90,7 @@ fn cancel_streaming_keeps_partial_text() {
     // Given a session that is streaming with partial tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.append_stream_token("Partial");
+    session.append_stream_token("Partial").expect("ok");
 
     // When cancelling streaming.
     session.cancel_streaming();
@@ -123,7 +123,7 @@ fn append_stream_token_when_not_streaming_panics() {
 
     // When calling append_stream_token.
     // Then it panics.
-    session.append_stream_token("oops");
+    session.append_stream_token("oops").expect("ok");
 }
 
 #[rstest::rstest]
@@ -542,8 +542,8 @@ fn append_tool_call_delta_accumulates_arguments() {
     session.begin_tool_call(0, "call_1", "echo");
 
     // When appending tool call deltas.
-    session.append_tool_call_delta(0, r#"{"input":"#);
-    session.append_tool_call_delta(0, r#""hello"}"#);
+    session.append_tool_call_delta(0, r#"{"input":"#).expect("ok");
+    session.append_tool_call_delta(0, r#""hello"}"#).expect("ok");
 
     // Then the tool call entry has the accumulated arguments.
     assert_eq!(
@@ -562,7 +562,7 @@ fn finalize_tool_call_overwrites_arguments() {
     let mut session = ChatSessionState::new();
     session.begin_streaming();
     session.begin_tool_call(0, "call_1", "echo");
-    session.append_tool_call_delta(0, r#"{"input":"#);
+    session.append_tool_call_delta(0, r#"{"input":"#).expect("ok");
 
     // When finalizing the tool call with the complete arguments.
     session.finalize_tool_call("call_1", "echo", r#"{"input":"world"}"#);
@@ -607,7 +607,7 @@ fn first_tool_call_tracks_arguments() {
 
     // When beginning a tool call and appending a delta.
     session.begin_tool_call(0, "call_1", "echo");
-    session.append_tool_call_delta(0, r#"{"a":1}"#);
+    session.append_tool_call_delta(0, r#"{"a":1}"#).expect("ok");
 
     // Then the tool call entry tracks its own arguments.
     assert_eq!(
@@ -626,11 +626,11 @@ fn second_tool_call_tracks_independent_arguments() {
     let mut session = ChatSessionState::new();
     session.begin_streaming();
     session.begin_tool_call(0, "call_1", "echo");
-    session.append_tool_call_delta(0, r#"{"a":1}"#);
+    session.append_tool_call_delta(0, r#"{"a":1}"#).expect("ok");
 
     // When beginning a second tool call with a different index.
     session.begin_tool_call(1, "call_2", "get_time");
-    session.append_tool_call_delta(1, "{}");
+    session.append_tool_call_delta(1, "{}").expect("ok");
 
     // Then the second tool call entry tracks its own arguments independently.
     assert_eq!(
@@ -1163,8 +1163,8 @@ fn append_thinking_token_appends_to_thinking_entry() {
     session.begin_thinking();
 
     // When appending thinking tokens.
-    session.append_thinking_token("reasoning");
-    session.append_thinking_token(" more");
+    session.append_thinking_token("reasoning").expect("ok");
+    session.append_thinking_token(" more").expect("ok");
 
     // Then the Thinking entry has the accumulated text.
     match &session.history()[1].kind {
@@ -1181,8 +1181,8 @@ fn finish_streaming_clears_thinking_entry_index() {
         .begin_streaming()
         .build();
     session.begin_thinking();
-    session.append_thinking_token("reasoning");
-    session.append_stream_token("response");
+    session.append_thinking_token("reasoning").expect("ok");
+    session.append_stream_token("response").expect("ok");
 
     // When finishing streaming.
     session.finish_streaming(true);
@@ -1206,7 +1206,7 @@ fn cancel_streaming_preserves_partial_thinking() {
         .begin_streaming()
         .build();
     session.begin_thinking();
-    session.append_thinking_token("partial reasoning");
+    session.append_thinking_token("partial reasoning").expect("ok");
 
     // When cancelling streaming.
     session.cancel_streaming();
@@ -1252,7 +1252,7 @@ fn finish_streaming_without_preserve_keeps_existing_assistant() {
     // Given a session that is streaming and has received tokens.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.append_stream_token("Hello");
+    session.append_stream_token("Hello").expect("ok");
 
     // When finishing streaming without preserving assistant.
     session.finish_streaming(false);

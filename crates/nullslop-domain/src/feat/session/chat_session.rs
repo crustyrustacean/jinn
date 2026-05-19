@@ -67,6 +67,28 @@ impl std::str::FromStr for SessionPhase {
 #[error("unknown session phase: {0}")]
 pub struct SessionPhaseParseError(String);
 
+/// Error returned when a streaming operation fails.
+#[derive(Debug, wherror::Error)]
+pub enum StreamingError {
+    /// No streaming entry index is set.
+    #[error("no streaming entry index")]
+    NoStreamingEntry,
+    /// The streaming entry has an unexpected kind.
+    #[error("streaming entry is not an Assistant entry")]
+    NotAssistantEntry,
+    /// No thinking entry index is set.
+    #[error("no thinking entry index")]
+    NoThinkingEntry,
+    /// No tool call tracked for the given stream index.
+    #[error("no entry tracked for tool call stream index {index}")]
+    NoToolCallIndex {
+        index: usize,
+    },
+    /// The token ledger is empty.
+    #[error("token ledger is empty")]
+    EmptyLedger,
+}
+
 /// Groups runtime-only fields that are specific to the current running instance
 /// and have no meaning across restarts (stream indices, queues, in-progress flags).
 /// The entire struct is skipped during serialization so individual fields cannot
@@ -489,15 +511,7 @@ impl ChatSessionState {
         clippy::indexing_slicing,
         reason = "index comes from push_entry which always returns a valid index"
     )]
-    #[expect(
-        clippy::expect_used,
-        reason = "streaming_entry_index guaranteed by ensure_assistant_entry"
-    )]
-    #[expect(
-        clippy::panic,
-        reason = "streaming invariant violated: entry must be Assistant during active stream"
-    )]
-    pub fn append_stream_token<S>(&mut self, token: S)
+    pub fn append_stream_token<S>(&mut self, token: S) -> Result<(), StreamingError>
     where
         S: AsRef<str>,
     {
@@ -511,15 +525,16 @@ impl ChatSessionState {
             .core
             .ephemeral
             .streaming_entry_index
-            .expect("streaming_entry_index must be set after ensure_assistant_entry");
+            .ok_or(StreamingError::NoStreamingEntry)?;
         if let ChatEntry {
             kind: ChatEntryKind::Assistant(ref mut text),
             ..
         } = self.core.history[index]
         {
             text.push_str(token.as_ref());
+            Ok(())
         } else {
-            panic!("streaming entry is not an Assistant entry");
+            Err(StreamingError::NotAssistantEntry)
         }
     }
 
@@ -553,11 +568,7 @@ impl ChatSessionState {
     ///
     /// Panics if `begin_thinking()` has not been called.
     #[expect(clippy::indexing_slicing, reason = "index set by begin_thinking")]
-    #[expect(
-        clippy::expect_used,
-        reason = "streaming invariant guaranteed by begin_thinking"
-    )]
-    pub fn append_thinking_token<S>(&mut self, token: S)
+    pub fn append_thinking_token<S>(&mut self, token: S) -> Result<(), StreamingError>
     where
         S: AsRef<str>,
     {
@@ -565,7 +576,7 @@ impl ChatSessionState {
             .core
             .ephemeral
             .streaming_thinking_entry_index
-            .expect("streaming_thinking_entry_index must be set");
+            .ok_or(StreamingError::NoThinkingEntry)?;
         if let ChatEntry {
             kind: ChatEntryKind::Thinking(ref mut text),
             ..
@@ -573,6 +584,7 @@ impl ChatSessionState {
         {
             text.push_str(token.as_ref());
         }
+        Ok(())
     }
 
     /// The index of the streaming thinking entry, if thinking is being accumulated.
@@ -658,29 +670,26 @@ impl ChatSessionState {
     ///
     /// # Panics
     ///
-    /// Panics if no tool call entry is tracked for the given stream index.
+    /// Returns an error if no tool call entry is tracked for the given stream index.
     #[expect(
         clippy::indexing_slicing,
         reason = "index comes from push_entry which always returns a valid index"
     )]
-    #[expect(
-        clippy::expect_used,
-        reason = "stream index is always tracked before delta arrives"
-    )]
-    pub fn append_tool_call_delta(&mut self, index: usize, partial_json: &str) {
+    pub fn append_tool_call_delta(&mut self, index: usize, partial_json: &str) -> Result<(), StreamingError> {
         let history_index = self
             .core
             .ephemeral
             .streaming_tool_call_indices
             .get(&index)
             .copied()
-            .expect("append_tool_call_delta: no entry tracked for this stream index");
+            .ok_or(StreamingError::NoToolCallIndex { index })?;
         if let ChatEntryKind::ToolCall {
             ref mut arguments, ..
         } = self.core.history[history_index].kind
         {
             arguments.push_str(partial_json);
         }
+        Ok(())
     }
 
     /// Overwrite a tool call entry with the final complete arguments.
@@ -1272,17 +1281,16 @@ impl ChatSessionState {
     ///
     /// Called when `StreamCompleted` arrives to finalize the pending record.
     ///
-    /// # Panics
-    ///
-    /// Panics if the ledger is empty.
-    pub fn finalize_last_token_record(&mut self, tokens_received: u32, cost: Option<f64>) {
+    /// Returns an error if the ledger is empty.
+    pub fn finalize_last_token_record(&mut self, tokens_received: u32, cost: Option<f64>) -> Result<(), StreamingError> {
         let last = self
             .core
             .token_ledger
             .last_mut()
-            .expect("ledger must not be empty");
+            .ok_or(StreamingError::EmptyLedger)?;
         last.tokens_received = tokens_received;
         last.cost = cost;
+        Ok(())
     }
 
     /// The parent session, if this session was forked from another.
