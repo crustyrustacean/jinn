@@ -201,22 +201,63 @@ sync-github:
        --mainbranch trunk \
        --autopush "$GITHUB_REMOTE"
 
-# Bump version (major/minor/patch) in Cargo.toml and PKGBUILD
+# Bump version (major/minor/patch), commit, and tag in Fossil
 bump LEVEL:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # --- Validate input ---
     case "{{LEVEL}}" in
         major|minor|patch) ;;
         *) echo "Usage: just bump <major|minor|patch>" >&2; exit 1 ;;
     esac
 
+    # --- Pre-flight: must be on trunk ---
+    BRANCH=$(fossil branch current)
+    if [ "$BRANCH" != "trunk" ]; then
+        echo "Error: must be on trunk (currently on '$BRANCH')" >&2
+        exit 1
+    fi
+
+    # --- Pre-flight: working tree must be clean ---
+    if [ -n "$(fossil changes --differ)" ]; then
+        echo "Error: working tree has uncommitted changes" >&2
+        exit 1
+    fi
+
+    # --- Pre-flight: PKGBUILD must exist ---
+    if [ ! -f PKGBUILD ]; then
+        echo "Error: PKGBUILD not found" >&2
+        exit 1
+    fi
+
+    # --- Compute new version ---
     CURRENT=$(grep -m1 '^version' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
     NEW=$(rust-script scripts/bump-version.rs "$CURRENT" "{{LEVEL}}")
 
-    sed -i "s/^version = \".*\"/version = \"$NEW\"/" Cargo.toml
-    sed -i "s/^pkgver=.*/pkgver=$NEW/" PKGBUILD
+    # --- Resolve tag conflicts ---
+    CANDIDATE="$NEW"
+    ATTEMPTS=0
+    while fossil tag list | grep -qx "v${CANDIDATE}"; do
+        echo "Tag v${CANDIDATE} already exists, skipping..."
+        ATTEMPTS=$((ATTEMPTS + 1))
+        if [ "$ATTEMPTS" -ge 100 ]; then
+            echo "Error: too many tag collisions, aborting" >&2
+            exit 1
+        fi
+        CANDIDATE=$(rust-script scripts/bump-version.rs "$CANDIDATE" "patch")
+    done
+
+    # --- Update files ---
+    sed -i "s/^version = \".*\"/version = \"$CANDIDATE\"/" Cargo.toml
+    sed -i "s/^pkgver=.*/pkgver=$CANDIDATE/" PKGBUILD
     sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
-    echo "Bumped to $NEW"
+    # --- Commit ---
+    fossil commit -m "Bump version to ${CANDIDATE}"
+
+    # --- Tag ---
+    fossil tag add "v${CANDIDATE}" HEAD
+
+    echo "Bumped to ${CANDIDATE}, committed and tagged as v${CANDIDATE}"
 
