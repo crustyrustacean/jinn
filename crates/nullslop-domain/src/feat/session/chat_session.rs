@@ -110,6 +110,11 @@ pub struct SessionCoreEphemeral {
     /// Maps tool_call_id to history index for pending streaming ToolResult entries.
     /// OWNER: session-actor.
     pub(crate) streaming_tool_result_indices: HashMap<String, usize>,
+    /// Indices of entries marked as ignored during compaction.
+    /// Used to un-ignore on cancel. Empty when not compacting.
+    /// Not persisted — compaction is ephemeral.
+    #[serde(skip)]
+    pub(crate) compaction_gathered_indices: Vec<usize>,
 }
 
 // Core session state — owned by session-actor and context-actor.
@@ -954,27 +959,51 @@ impl ChatSessionState {
     /// # Panics
     ///
     /// Panics if not currently idle.
-    pub fn begin_compacting(&mut self) {
+    pub fn begin_compacting(&mut self, gathered_indices: Vec<usize>) {
         assert!(
             matches!(self.core.ephemeral.phase, SessionPhase::Idle),
             "begin_compacting called while not idle (current: {:?})",
             self.core.ephemeral.phase
         );
         self.core.ephemeral.phase = SessionPhase::Compacting;
+        self.core.ephemeral.compaction_gathered_indices = gathered_indices;
     }
 
     /// Mark compaction as finished.
     ///
-    /// # Panics
-    ///
-    /// Panics if not currently compacting.
+    /// Soft guard: if the session is not currently compacting (e.g. compaction was
+    /// cancelled by the user while the LLM call was in flight), logs a warning and
+    /// returns early instead of panicking.
     pub fn finish_compacting(&mut self) {
-        assert!(
-            matches!(self.core.ephemeral.phase, SessionPhase::Compacting),
-            "finish_compacting called while not compacting (current: {:?})",
-            self.core.ephemeral.phase
-        );
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "finish_compacting called while not compacting — ignoring"
+            );
+            return;
+        }
         self.core.ephemeral.phase = SessionPhase::Idle;
+    }
+
+    /// Cancel an in-progress compaction.
+    ///
+    /// Sets phase to Idle, un-ignores entries that were marked during
+    /// `begin_compacting`, and returns drained queued messages so the
+    /// caller can start a new turn if needed.
+    ///
+    /// No-op if not currently compacting.
+    pub fn cancel_compacting(&mut self) -> std::collections::VecDeque<crate::protocol::ChatEntry> {
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
+            return std::collections::VecDeque::new();
+        }
+        let indices = std::mem::take(&mut self.core.ephemeral.compaction_gathered_indices);
+        for i in indices {
+            if i < self.core.history.len() {
+                self.core.history[i].ignored = false;
+            }
+        }
+        self.core.ephemeral.phase = SessionPhase::Idle;
+        self.drain_queue()
     }
 
     /// The current scroll offset (lines to skip from top).
