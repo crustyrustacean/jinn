@@ -116,8 +116,9 @@ impl ProviderActor {
             | Command::RunSessionTeardown(..)
             | Command::CompactContext(..)
             | Command::BeginCompaction(..)
+            | Command::CancelCompaction(..)
             | Command::EndCompaction(..)
-            | Command::RemoveSession(..)
+            | Command::CloseSession(..)
             | Command::SaveNewLifecycleSession(..) => {}
         }
     }

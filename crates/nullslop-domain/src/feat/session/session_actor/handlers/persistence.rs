@@ -65,6 +65,11 @@ impl SessionPersistenceActor {
 
         match store.load_session(&evt.session_id).await {
             Ok(Some(session)) => {
+                // Unarchive the session so it appears in the picker on next load.
+                if let Err(e) = store.set_archived(&evt.session_id, false).await {
+                    tracing::warn!(err = ?e, "failed to unarchive session on load");
+                }
+
                 let strategy_id = session.active_strategy().clone();
                 let strategy_blob = session
                     .strategy_state()

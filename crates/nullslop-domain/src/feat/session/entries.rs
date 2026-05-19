@@ -11,11 +11,11 @@ use crate::protocol::SessionEntry;
 
 use super::SessionStoreService;
 
-/// Loads session entries from the session store, sorted by `updated_at` descending.
+/// Loads session entries from the session store, sorted by archived status then `updated_at`.
 ///
-/// Reads summaries from the store, maps them to [`SessionEntry`], and sorts
-/// so the most recently updated session appears first. Errors are logged and
-/// result in an empty list.
+/// Unarchived sessions appear first (sorted by `updated_at` descending),
+/// followed by archived sessions (sorted by `updated_at` descending).
+/// Errors are logged and result in an empty list.
 pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<SessionEntry> {
     match services.session_store.load_summaries().await {
         Ok(summaries) => {
@@ -26,9 +26,15 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
                     title: summary.title,
                     updated_at: summary.updated_at,
                     theme: theme.clone(),
+                    archived: summary.archived,
                 })
                 .collect();
-            entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+            // Unarchived first, then by updated_at descending within each group.
+            entries.sort_by(|a, b| {
+                b.archived
+                    .cmp(&a.archived)
+                    .then_with(|| b.updated_at.cmp(&a.updated_at))
+            });
             entries
         }
         Err(e) => {
@@ -47,7 +53,7 @@ pub async fn load_session_picker_items(services: &Services, state: &mut AppState
     state.frontend.session_picker.set_items(entries);
 }
 
-/// Loads session entries from a session store service directly, sorted by `updated_at` descending.
+/// Loads session entries from a session store service directly.
 ///
 /// Same as [`load_session_entries`] but accepts the store service directly
 /// instead of the full `Services` container.
@@ -64,9 +70,15 @@ pub async fn load_session_entries_from_store(
                     title: summary.title,
                     updated_at: summary.updated_at,
                     theme: theme.clone(),
+                    archived: summary.archived,
                 })
                 .collect();
-            entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+            // Unarchived first, then by updated_at descending within each group.
+            entries.sort_by(|a, b| {
+                b.archived
+                    .cmp(&a.archived)
+                    .then_with(|| b.updated_at.cmp(&a.updated_at))
+            });
             entries
         }
         Err(e) => {
@@ -102,6 +114,7 @@ mod tests {
             title: "My Chat".to_owned(),
             updated_at: jiff::Timestamp::now(),
             theme: default_theme(),
+            archived: false,
         };
 
         // When calling display_label.
@@ -117,6 +130,7 @@ mod tests {
             title: "My Session".to_owned(),
             updated_at: jiff::Timestamp::now(),
             theme: default_theme(),
+            archived: false,
         };
 
         // When rendering.
