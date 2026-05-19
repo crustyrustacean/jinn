@@ -1952,6 +1952,7 @@ dependencies = [
  "error-stack",
  "futures",
  "mockito",
+ "parking_lot",
  "rand 0.9.4",
  "reqwest",
  "rstest",
