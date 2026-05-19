@@ -36,9 +36,9 @@ use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
-use crate::feat::session::protocol::remove_session::RemoveSession;
+use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::feat::session::protocol::session_removed::SessionRemoved;
+use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 use crate::feat::session_lifecycle::command_runner::run_setup_command;
 use crate::feat::session_lifecycle::command_runner::run_teardown_command;
@@ -46,7 +46,7 @@ use crate::feat::session_lifecycle::protocol::command::{
     RunSessionSetup, RunSessionTeardown, SaveNewLifecycleSession,
 };
 use crate::feat::session_lifecycle::protocol::event::{
-    SessionSetupCompleted, SessionTeardownCompleted,
+    SessionSetupCompleted, SessionTeardownFinished,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -213,7 +213,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<RunSessionSetup>();
         ctx.subscribe_command::<RunSessionTeardown>();
         ctx.subscribe_command::<SaveNewLifecycleSession>();
-        ctx.subscribe_command::<RemoveSession>();
+        ctx.subscribe_command::<CloseSession>();
 
         // Compaction command subscriptions.
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>(
@@ -328,8 +328,8 @@ impl SessionPersistenceActor {
             Command::RunSessionTeardown(payload) => {
                 self.handle_run_session_teardown(payload, ctx).await;
             }
-            Command::RemoveSession(payload) => {
-                self.handle_remove_session(payload, ctx);
+            Command::CloseSession(payload) => {
+                self.handle_close_session(payload, ctx);
             }
             Command::SaveNewLifecycleSession(payload) => {
                 self.handle_save_new_lifecycle_session(payload).await;
@@ -581,18 +581,18 @@ impl SessionPersistenceActor {
                     }
 
                     if let Err(e) =
-                        ctx.send_event(Event::SessionTeardownCompleted(SessionTeardownCompleted {
+                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
                             session_id: payload.session_id.clone(),
                             error: None,
                         }))
                     {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
+                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
                     }
 
-                    if let Err(e) = ctx.send_event(Event::SessionRemoved(SessionRemoved {
+                    if let Err(e) = ctx.send_event(Event::SessionClosed(SessionClosed {
                         session_id: payload.session_id.clone(),
                     })) {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionRemoved");
+                        tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
                     }
                 } else {
                     // Teardown-only success — keep session, push info entry.
@@ -604,12 +604,12 @@ impl SessionPersistenceActor {
                     }
 
                     if let Err(e) =
-                        ctx.send_event(Event::SessionTeardownCompleted(SessionTeardownCompleted {
+                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
                             session_id: payload.session_id.clone(),
                             error: None,
                         }))
                     {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
+                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
                     }
                 }
             }
@@ -630,20 +630,20 @@ impl SessionPersistenceActor {
                 self.save_active_session(&payload.session_id).await;
 
                 if let Err(e) =
-                    ctx.send_event(Event::SessionTeardownCompleted(SessionTeardownCompleted {
+                    ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
                         session_id: payload.session_id.clone(),
                         error: Some(error_msg),
                     }))
                 {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownCompleted");
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
                 }
             }
         }
     }
 
-    /// RemoveSession: remove a session from the map, create a new one if empty,
-    /// switch active if needed, and emit `SessionRemoved`.
-    fn handle_remove_session(&self, payload: &RemoveSession, ctx: &ActorContext) {
+    /// CloseSession: remove a session from the map, create a new one if empty,
+    /// switch active if needed, and emit `SessionClosed`.
+    fn handle_close_session(&self, payload: &CloseSession, ctx: &ActorContext) {
         // No-op if the session doesn't exist.
         if !self
             .state
@@ -697,10 +697,10 @@ impl SessionPersistenceActor {
             }
         }
 
-        if let Err(e) = ctx.send_event(Event::SessionRemoved(SessionRemoved {
+        if let Err(e) = ctx.send_event(Event::SessionClosed(SessionClosed {
             session_id: payload.session_id.clone(),
         })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionRemoved");
+            tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
         }
     }
 
@@ -1187,14 +1187,14 @@ mod tests {
         assert_eq!(state.session.active_session, original_active);
         drop(state);
 
-        // And SessionTeardownCompleted was emitted with error.
+        // And SessionTeardownFinished was emitted with error.
         let events = sink.events();
         let teardown_evt = events
             .iter()
-            .find(|e| matches!(e, crate::protocol::Event::SessionTeardownCompleted(..)));
+            .find(|e| matches!(e, crate::protocol::Event::SessionTeardownFinished(..)));
         assert!(
             teardown_evt.is_some(),
-            "expected SessionTeardownCompleted event"
+            "expected SessionTeardownFinished event"
         );
     }
 
@@ -1286,23 +1286,23 @@ mod tests {
             )
             .await;
 
-        // Then SessionTeardownCompleted is emitted with an error message.
+        // Then SessionTeardownFinished is emitted with an error message.
         let events = sink.events();
         let found = events.iter().any(|e| {
             matches!(
                 e,
-                crate::protocol::Event::SessionTeardownCompleted(
-                    crate::feat::session_lifecycle::protocol::event::SessionTeardownCompleted {
+                crate::protocol::Event::SessionTeardownFinished(
+                    crate::feat::session_lifecycle::protocol::event::SessionTeardownFinished {
                         error: Some(..),
                         session_id: sid,
                     }
                 ) if sid == &session_id
             )
         });
-        assert!(found, "expected SessionTeardownCompleted with error");
+        assert!(found, "expected SessionTeardownFinished with error");
     }
 
-    // --- RemoveSession handler tests ---
+    // --- CloseSession handler tests ---
 
     #[tokio::test]
     async fn remove_session_removes_session_from_hashmap() {
@@ -1316,9 +1316,9 @@ mod tests {
             state.session.sessions.insert(second_id.clone(), second);
         }
 
-        // When handling RemoveSession for the second session.
-        actor.handle_remove_session(
-            &crate::feat::session::protocol::remove_session::RemoveSession {
+        // When handling CloseSession for the second session.
+        actor.handle_close_session(
+            &crate::feat::session::protocol::close_session::CloseSession {
                 session_id: second_id.clone(),
             },
             &ctx,
@@ -1331,19 +1331,19 @@ mod tests {
         assert_eq!(state.session.sessions.len(), 1);
         drop(state);
 
-        // And SessionRemoved is emitted.
+        // And SessionClosed is emitted.
         let events = sink.events();
         let found = events.iter().any(|e| {
             matches!(
                 e,
-                crate::protocol::Event::SessionRemoved(
-                    crate::feat::session::protocol::session_removed::SessionRemoved {
+                crate::protocol::Event::SessionClosed(
+                    crate::feat::session::protocol::session_closed::SessionClosed {
                         session_id: sid,
                     }
                 ) if sid == &second_id
             )
         });
-        assert!(found, "expected SessionRemoved event");
+        assert!(found, "expected SessionClosed event");
     }
 
     #[tokio::test]
@@ -1356,9 +1356,9 @@ mod tests {
             state.session.active_session.clone()
         };
 
-        // When handling RemoveSession for the only session.
-        actor.handle_remove_session(
-            &crate::feat::session::protocol::remove_session::RemoveSession {
+        // When handling CloseSession for the only session.
+        actor.handle_close_session(
+            &crate::feat::session::protocol::close_session::CloseSession {
                 session_id: only_id.clone(),
             },
             &ctx,
@@ -1371,19 +1371,19 @@ mod tests {
         assert_ne!(state.session.active_session, only_id);
         drop(state);
 
-        // And SessionRemoved is emitted.
+        // And SessionClosed is emitted.
         let events = sink.events();
         let found = events.iter().any(|e| {
             matches!(
                 e,
-                crate::protocol::Event::SessionRemoved(
-                    crate::feat::session::protocol::session_removed::SessionRemoved {
+                crate::protocol::Event::SessionClosed(
+                    crate::feat::session::protocol::session_closed::SessionClosed {
                         session_id: sid,
                     }
                 ) if sid == &only_id
             )
         });
-        assert!(found, "expected SessionRemoved event");
+        assert!(found, "expected SessionClosed event");
     }
 
     #[tokio::test]
@@ -1399,9 +1399,9 @@ mod tests {
             state.session.active_session = second_id.clone();
         }
 
-        // When handling RemoveSession for the active session.
-        actor.handle_remove_session(
-            &crate::feat::session::protocol::remove_session::RemoveSession {
+        // When handling CloseSession for the active session.
+        actor.handle_close_session(
+            &crate::feat::session::protocol::close_session::CloseSession {
                 session_id: second_id.clone(),
             },
             &ctx,
@@ -1425,30 +1425,30 @@ mod tests {
             state.session.sessions.insert(second_id.clone(), second);
         }
 
-        // When handling RemoveSession.
-        actor.handle_remove_session(
-            &crate::feat::session::protocol::remove_session::RemoveSession {
+        // When handling CloseSession.
+        actor.handle_close_session(
+            &crate::feat::session::protocol::close_session::CloseSession {
                 session_id: second_id.clone(),
             },
             &ctx,
         );
 
-        // Then exactly one SessionRemoved event is emitted for the correct session.
+        // Then exactly one SessionClosed event is emitted for the correct session.
         let events = sink.events();
         let count = events
             .iter()
             .filter(|e| {
                 matches!(
                     e,
-                    crate::protocol::Event::SessionRemoved(
-                        crate::feat::session::protocol::session_removed::SessionRemoved {
+                    crate::protocol::Event::SessionClosed(
+                        crate::feat::session::protocol::session_closed::SessionClosed {
                             session_id: sid,
                         }
                     ) if sid == &second_id
                 )
             })
             .count();
-        assert_eq!(count, 1, "expected exactly one SessionRemoved event");
+        assert_eq!(count, 1, "expected exactly one SessionClosed event");
     }
 
     #[tokio::test]
@@ -1462,9 +1462,9 @@ mod tests {
             state.session.sessions.len()
         };
 
-        // When handling RemoveSession for a nonexistent session.
-        actor.handle_remove_session(
-            &crate::feat::session::protocol::remove_session::RemoveSession {
+        // When handling CloseSession for a nonexistent session.
+        actor.handle_close_session(
+            &crate::feat::session::protocol::close_session::CloseSession {
                 session_id: fake_id.clone(),
             },
             &ctx,
@@ -1475,13 +1475,13 @@ mod tests {
         assert_eq!(state.session.sessions.len(), original_len);
         drop(state);
 
-        // And no SessionRemoved event is emitted.
+        // And no SessionClosed event is emitted.
         let events = sink.events();
         let found = events.iter().any(|e| {
             matches!(
                 e,
-                crate::protocol::Event::SessionRemoved(
-                    crate::feat::session::protocol::session_removed::SessionRemoved {
+                crate::protocol::Event::SessionClosed(
+                    crate::feat::session::protocol::session_closed::SessionClosed {
                         session_id: sid,
                     }
                 ) if sid == &fake_id
@@ -1489,7 +1489,7 @@ mod tests {
         });
         assert!(
             !found,
-            "did not expect SessionRemoved for nonexistent session"
+            "did not expect SessionClosed for nonexistent session"
         );
     }
 
@@ -1551,19 +1551,19 @@ mod tests {
             )
             .await;
 
-        // Then no SessionRemoved event is emitted.
+        // Then no SessionClosed event is emitted.
         let events = sink.events();
         let found = events.iter().any(|e| {
             matches!(
                 e,
-                crate::protocol::Event::SessionRemoved(
-                    crate::feat::session::protocol::session_removed::SessionRemoved {
+                crate::protocol::Event::SessionClosed(
+                    crate::feat::session::protocol::session_closed::SessionClosed {
                         session_id: sid,
                     }
                 ) if sid == &session_id
             )
         });
-        assert!(!found, "did not expect SessionRemoved for teardown-only");
+        assert!(!found, "did not expect SessionClosed for teardown-only");
     }
 
     #[tokio::test]
@@ -1589,20 +1589,20 @@ mod tests {
             )
             .await;
 
-        // Then SessionTeardownCompleted is still emitted.
+        // Then SessionTeardownFinished is still emitted.
         let events = sink.events();
         let found = events.iter().any(|e| {
             matches!(
                 e,
-                crate::protocol::Event::SessionTeardownCompleted(
-                    crate::feat::session_lifecycle::protocol::event::SessionTeardownCompleted {
+                crate::protocol::Event::SessionTeardownFinished(
+                    crate::feat::session_lifecycle::protocol::event::SessionTeardownFinished {
                         session_id: sid,
                         error: None,
                     }
                 ) if sid == &session_id
             )
         });
-        assert!(found, "expected SessionTeardownCompleted event");
+        assert!(found, "expected SessionTeardownFinished event");
     }
 
     #[tokio::test]

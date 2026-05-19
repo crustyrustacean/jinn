@@ -220,7 +220,7 @@ pub fn handle_session_close(state: &mut AppState, session_id: Option<&SessionId>
     }
 
     // No teardown — remove session via command.
-    remove_session_and_switch(&closing_id)
+    close_session_and_switch(&closing_id)
 }
 
 /// Handle `Intent::ArgInputConfirm`.
@@ -333,12 +333,12 @@ fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLife
         .find(|l| l.name == name)
 }
 
-/// Emit a `RemoveSession` command to the actor system.
+/// Emit a `CloseSession` command to the actor system.
 /// The session actor handles actual removal, active session switching, and emits
-/// `SessionRemoved` for the sidebar actor to clamp the cursor.
-fn remove_session_and_switch(closing_id: &SessionId) -> IntentResult {
-    use crate::feat::session::protocol::remove_session::RemoveSession;
-    IntentResult::with_commands(vec![Command::RemoveSession(RemoveSession {
+/// `SessionClosed` for the sidebar actor to clamp the cursor.
+fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
+    use crate::feat::session::protocol::close_session::CloseSession;
+    IntentResult::with_commands(vec![Command::CloseSession(CloseSession {
         session_id: closing_id.clone(),
     })])
 }
@@ -477,7 +477,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn session_close_without_lifecycle_emits_remove_session() {
+    fn session_close_without_lifecycle_emits_close_session() {
         // Given a state with two sessions.
         let mut state = AppState::default();
         let second_session = ChatSessionState::new();
@@ -491,11 +491,11 @@ mod tests {
         // When handling SessionClose.
         let result = handle_session_close(&mut state, None);
 
-        // Then a RemoveSession command is emitted for the closed session.
+        // Then a CloseSession command is emitted for the closed session.
         assert_eq!(result.commands.len(), 1);
         assert!(matches!(
             &result.commands[0],
-            Command::RemoveSession(cmd) if cmd.session_id == second_id
+            Command::CloseSession(cmd) if cmd.session_id == second_id
         ));
     }
 
@@ -539,7 +539,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn session_close_last_session_emits_remove_session() {
+    fn session_close_last_session_emits_close_session() {
         // Given a state with only one session.
         let mut state = AppState::default();
         let session_id = state.session.active_session.clone();
@@ -548,11 +548,11 @@ mod tests {
         // When handling SessionClose.
         let result = handle_session_close(&mut state, None);
 
-        // Then a RemoveSession command is emitted.
+        // Then a CloseSession command is emitted.
         assert_eq!(result.commands.len(), 1);
         assert!(matches!(
             &result.commands[0],
-            Command::RemoveSession(cmd) if cmd.session_id == session_id
+            Command::CloseSession(cmd) if cmd.session_id == session_id
         ));
     }
 

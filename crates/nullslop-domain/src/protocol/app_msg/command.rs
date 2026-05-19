@@ -30,7 +30,7 @@ use crate::feat::provider::protocol::command::{
     SendMessage, SendToLlmProvider,
 };
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
-use crate::feat::session::protocol::remove_session::RemoveSession;
+use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
@@ -121,8 +121,8 @@ pub enum Command {
     BeginCompaction(BeginCompaction),
     /// End a context compaction — inserts result entry, sets phase to Idle.
     EndCompaction(EndCompaction),
-    /// Remove a session from the sessions map.
-    RemoveSession(RemoveSession),
+    /// Close a session from the sessions map.
+    CloseSession(CloseSession),
     /// Save a newly-created lifecycle session immediately.
     SaveNewLifecycleSession(SaveNewLifecycleSession),
 }
@@ -168,7 +168,7 @@ impl Command {
             Self::CompactContext(..) => Some(CompactContext::NAME),
             Self::BeginCompaction(..) => Some(BeginCompaction::NAME),
             Self::EndCompaction(..) => Some(EndCompaction::NAME),
-            Self::RemoveSession(..) => Some(RemoveSession::NAME),
+            Self::CloseSession(..) => Some(CloseSession::NAME),
             Self::SaveNewLifecycleSession(..) => Some(SaveNewLifecycleSession::NAME),
         }
     }
@@ -261,8 +261,8 @@ impl std::fmt::Display for Command {
             Command::EndCompaction(payload) => {
                 write!(f, "end compaction for {}", payload.session_id)
             }
-            Command::RemoveSession(payload) => {
-                write!(f, "remove session {}", payload.session_id)
+            Command::CloseSession(payload) => {
+                write!(f, "close session {}", payload.session_id)
             }
             Command::SaveNewLifecycleSession(payload) => {
                 write!(f, "save new lifecycle session {}", payload.session_id)
