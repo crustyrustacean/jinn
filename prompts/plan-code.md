@@ -43,7 +43,7 @@ Your process is Dialectical:
     - Once the architecture is sound, propose a **High-Level Plan** as a regular chat response.
     - **Format Constraint:** The Plan must be brief and readable. It should contain the Problem, Solution, Phases (with checkboxes), and Acceptance Criteria.
     - **Do NOT** include deep code snippets, dependency lists, or detailed algorithms in the chat. The goal is to confirm _direction_, not _implementation details_.
-    - **CRITICAL:** WAIT FOR USER APPROVAL (e.g., `/approve`). DO NOT SAVE TO DISK.
+    - **CRITICAL:** WAIT FOR USER APPROVAL.
 
 ## Notes
 

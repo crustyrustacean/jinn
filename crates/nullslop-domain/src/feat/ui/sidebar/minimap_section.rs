@@ -110,28 +110,22 @@ fn is_tool_or_result(kind: &ChatEntryKind) -> bool {
     )
 }
 
-/// Emits collapsed blocks for a TA sequence, handling the Z+overflow split.
+/// Emits collapsed blocks for a TA sequence, splitting into chunks of 35.
 ///
-/// For tool_count > 35, emits `Z` (35) + remaining as a second block.
-fn emit_collapsed(blocks: &mut Vec<MinimapBlock>, tool_count: usize, all_ignored: bool) {
+/// For tool_count > 35, emits multiple `Z` (35) blocks + the remainder.
+fn emit_collapsed(blocks: &mut Vec<MinimapBlock>, mut tool_count: usize, all_ignored: bool) {
     if tool_count == 0 {
         return;
     }
-    if tool_count <= 35 {
+    while tool_count > 35 {
         blocks.push(MinimapBlock::CollapsedToolSequence {
-            tool_count,
+            tool_count: 35,
             all_ignored,
         });
-        return;
+        tool_count -= 35;
     }
-    // First block: Z (35 rounds).
     blocks.push(MinimapBlock::CollapsedToolSequence {
-        tool_count: 35,
-        all_ignored,
-    });
-    // Second block: remaining rounds.
-    blocks.push(MinimapBlock::CollapsedToolSequence {
-        tool_count: tool_count - 35,
+        tool_count,
         all_ignored,
     });
 }
@@ -657,6 +651,50 @@ mod tests {
             }
         );
         assert_eq!(blocks[2].entry_category(), Some(MinimapCategory::Assistant));
+    }
+
+    #[rstest::rstest]
+    fn tool_sequence_over_70_splits_into_multiple_z_blocks() {
+        // Given 78 tool rounds — would overflow a single split.
+        let mut history = Vec::new();
+        for i in 0..78 {
+            history.push(ChatEntry::tool_call(format!("id{i}"), "bash", "echo"));
+            history.push(ChatEntry::tool_result(
+                format!("id{i}"),
+                "bash",
+                "output",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ));
+        }
+        history.push(ChatEntry::assistant("final answer"));
+
+        // When computing blocks.
+        let blocks = compute_blocks(&history);
+
+        // Then: Collapsed(35), Collapsed(35), Collapsed(8), Entry(Asst).
+        assert_eq!(blocks.len(), 4);
+        assert_eq!(
+            blocks[0],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 35,
+                all_ignored: false
+            }
+        );
+        assert_eq!(
+            blocks[1],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 35,
+                all_ignored: false
+            }
+        );
+        assert_eq!(
+            blocks[2],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 8,
+                all_ignored: false
+            }
+        );
+        assert_eq!(blocks[3].entry_category(), Some(MinimapCategory::Assistant));
     }
 
     #[rstest::rstest]
