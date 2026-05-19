@@ -1722,4 +1722,59 @@ mod tests {
         let last = session.history().last().expect("has an entry");
         assert!(matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("Compaction failed")));
     }
+
+    // --- Regression tests for session-crash: handle_prompt_assembled crash ---
+
+    #[tokio::test]
+    async fn handle_prompt_assembled_with_session_in_sending_transitions_to_streaming() {
+        // Given a session actor with a session in Sending phase (e.g., after tool use).
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            state.session.active_session.clone()
+        };
+
+        // When handling PromptAssembled.
+        let payload = crate::feat::context::protocol::event::PromptAssembled {
+            session_id: session_id.clone(),
+            system_prompt: None,
+            messages: vec![],
+        };
+        actor.handle_prompt_assembled(&payload, &ctx).await;
+
+        // Then the session is in Streaming phase without panicking.
+        let state = actor.state.read();
+        let session = state.session.sessions.get(&session_id).expect("session exists");
+        assert_eq!(session.phase(), SessionPhase::Streaming);
+    }
+
+    #[tokio::test]
+    async fn handle_prompt_assembled_with_session_in_assembling_transitions_to_streaming() {
+        // Given a session actor with a session in Assembling phase.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            state.active_session_mut().begin_assembling();
+            state.session.active_session.clone()
+        };
+
+        // When handling PromptAssembled.
+        let payload = crate::feat::context::protocol::event::PromptAssembled {
+            session_id: session_id.clone(),
+            system_prompt: None,
+            messages: vec![],
+        };
+        actor.handle_prompt_assembled(&payload, &ctx).await;
+
+        // Then the session is in Streaming phase.
+        let state = actor.state.read();
+        let session = state.session.sessions.get(&session_id).expect("session exists");
+        assert_eq!(session.phase(), SessionPhase::Streaming);
+    }
 }
