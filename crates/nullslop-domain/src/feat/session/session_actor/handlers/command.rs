@@ -317,11 +317,13 @@ impl SessionPersistenceActor {
     }
 
     /// EndCompaction: insert compaction entry or error entry, set phase to Idle,
-    /// and persist.
+    /// drain any queued messages, persist, and start a new turn if needed.
     pub(in crate::feat::session::session_actor) async fn handle_end_compaction(
         &self,
         payload: &EndCompaction,
+        ctx: &ActorContext,
     ) {
+        let drained_entries: Vec<ChatEntry>;
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
@@ -354,8 +356,16 @@ impl SessionPersistenceActor {
                 }
             }
             session.finish_compacting();
+
+            // Drain any messages queued during compaction.
+            drained_entries = session.drain_queue().into_iter().collect();
         }
 
         self.save_active_session(&payload.session_id).await;
+
+        // If messages were queued during compaction, start a new turn.
+        if !drained_entries.is_empty() {
+            self.start_turn_from_queued(&payload.session_id, &drained_entries, ctx);
+        }
     }
 }

@@ -337,7 +337,7 @@ impl SessionPersistenceActor {
                 self.handle_begin_compaction(payload);
             }
             Command::EndCompaction(payload) => {
-                self.handle_end_compaction(payload).await;
+                self.handle_end_compaction(payload, ctx).await;
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::AssemblePrompt(..)
@@ -1695,6 +1695,7 @@ mod tests {
                     ),
                     error: None,
                 },
+                &ctx,
             )
             .await;
 
@@ -1729,6 +1730,7 @@ mod tests {
                     result: None,
                     error: Some("LLM call failed".to_owned()),
                 },
+                &ctx,
             )
             .await;
 
