@@ -349,6 +349,7 @@ impl SessionPersistenceActor {
             | Command::ExecuteTool(..)
             | Command::ProceedWithShutdown(..)
             | Command::CancelStream(..)
+            | Command::CancelCompaction(..)
             | Command::RefreshModels
             | Command::RescanPromptTemplates
             | Command::ExecuteToolBatch(..)
@@ -1677,7 +1678,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("old message"));
-            session.begin_compacting();
+            session.begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
 
@@ -1719,7 +1720,7 @@ mod tests {
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().begin_compacting();
+            state.active_session_mut().begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
 
@@ -1754,7 +1755,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.enqueue_message(ChatEntry::user("queued during compaction"));
-            session.begin_compacting();
+            session.begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
 
@@ -1798,7 +1799,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.enqueue_message(ChatEntry::user("queued during compaction"));
-            session.begin_compacting();
+            session.begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
 
@@ -1832,7 +1833,7 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().begin_compacting();
+            state.active_session_mut().begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
 
@@ -1876,7 +1877,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.enqueue_message(ChatEntry::user("queued during compaction"));
-            session.begin_compacting();
+            session.begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
 
@@ -1904,6 +1905,50 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Sending));
+    }
+
+    // --- EndCompaction guard tests ---
+
+    #[tokio::test]
+    async fn end_compaction_ignored_when_not_compacting() {
+        // Given a session in Idle phase (e.g. compaction was cancelled).
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+        // Session is Idle by default.
+
+        // When handling EndCompaction with a successful result.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: Some(
+                        crate::feat::compaction_actor::protocol::command::CompactionResult {
+                            summary: "summarized".to_owned(),
+                            entries_compacted: 1,
+                            tokens_before: 100,
+                            model_used: "test/model".to_owned(),
+                            boundary_index: 0,
+                        },
+                    ),
+                    error: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then no compaction entry was inserted and the session is still Idle.
+        let state = actor.state.read();
+        let session = state
+            .session
+            .sessions()
+            .get(&session_id)
+            .expect("session exists");
+        assert_eq!(session.phase(), SessionPhase::Idle);
+        assert!(!session.history().iter().any(ChatEntry::is_compaction));
     }
 
     // --- Regression tests for session-crash: handle_prompt_assembled crash ---
