@@ -55,7 +55,7 @@ pub fn handle_sliding_window_confirm(state: &mut AppState) -> IntentResult {
     state.active_session_mut().profile_mut().sliding_window_size = size;
 
     // Read current strategy and session ID before clearing state.
-    let session_id = state.session.active_session.clone();
+    let session_id = state.session.active_session_id().clone();
     let strategy_id = state.active_session().active_strategy().clone();
 
     // Pop scope and clear state.

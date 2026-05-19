@@ -102,9 +102,6 @@ impl CommandTemplate {
     /// defines the parameter order for arg assignment.
     /// # Panics
     ///
-    /// Panics if a `$N` token (where N is a single ASCII digit 1-9) cannot be
-    /// parsed as a `usize`. This should never happen because we only parse
-    /// single ASCII digits.
     #[must_use]
     pub fn parse(command: &str) -> Self {
         let mut params: Vec<Param> = Vec::new();
@@ -115,7 +112,7 @@ impl CommandTemplate {
             if chars[i] == '$' && i + 1 < chars.len() {
                 let next = chars[i + 1];
                 if next.is_ascii_digit() && next != '0' {
-                    let n = next.to_string().parse::<usize>().expect("single digit");
+                    let n = (next as u8 - b'0') as usize;
                     let param = Param::Positional(n);
                     if !params.contains(&param) {
                         params.push(param);

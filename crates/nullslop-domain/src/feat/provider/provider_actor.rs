@@ -38,32 +38,29 @@ pub struct ProviderActor {
     services: Services,
 }
 
+/// Dependencies for [`ProviderActor`].
+pub struct ProviderActorDeps {
+    /// Shared application state.
+    pub state: State,
+    /// Runtime services.
+    pub services: Services,
+}
+
 impl Actor for ProviderActor {
     type Message = NoDirectMsg;
+    type Deps = ProviderActorDeps;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<ProviderSwitch>();
         ctx.subscribe_command::<LoadProviderPickerEntries>();
         ctx.subscribe_event::<ModelsRefreshed>();
 
         ctx.set_description("Manages provider selection, LLM factory, and model cache");
 
-        #[expect(
-            clippy::expect_used,
-            reason = "State injection is required at activation"
-        )]
-        let state = ctx
-            .take_data::<State>()
-            .expect("ProviderActor requires State injection");
-        #[expect(
-            clippy::expect_used,
-            reason = "Services injection is required at activation"
-        )]
-        let services = ctx
-            .take_data::<Services>()
-            .expect("ProviderActor requires Services injection");
-
-        Self { state, services }
+        Self {
+            state: deps.state,
+            services: deps.services,
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {

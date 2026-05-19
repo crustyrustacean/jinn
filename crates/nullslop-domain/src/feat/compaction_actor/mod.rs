@@ -45,27 +45,29 @@ pub struct CompactionActor {
     handle: Handle,
 }
 
+/// Dependencies for [`CompactionActor`].
+pub struct CompactionActorDeps {
+    /// Shared application state.
+    pub state: State,
+    /// Runtime services.
+    pub services: Services,
+    /// Tokio runtime handle for spawning tasks.
+    pub handle: Handle,
+}
+
 impl Actor for CompactionActor {
     type Message = NoDirectMsg;
+    type Deps = CompactionActorDeps;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
+        ctx.set_description("Summarizes conversation history into structured checkpoints");
         ctx.subscribe_command::<CompactContext>();
         ctx.subscribe_event::<StreamCompleted>();
 
-        let state = ctx
-            .take_data::<State>()
-            .expect("State must be injected before activate");
-        let services = ctx
-            .take_data::<Services>()
-            .expect("Services must be injected before activate");
-        let handle = ctx
-            .take_data::<Handle>()
-            .expect("Handle must be injected before activate");
-
         Self {
-            state,
-            services,
-            handle,
+            state: deps.state,
+            services: deps.services,
+            handle: deps.handle,
         }
     }
 
@@ -282,10 +284,10 @@ impl CompactionActor {
             };
 
             // Determine boundary insertion point: right after the last gathered entry.
-            let boundary_index = gathered_indices
-                .last()
-                .expect("gathered_indices is non-empty")
-                + 1;
+            let Some(&last_index) = gathered_indices.last() else {
+                return Ok(0);
+            };
+            let boundary_index = last_index + 1;
 
             let entries_compacted = gathered_indices.len();
 

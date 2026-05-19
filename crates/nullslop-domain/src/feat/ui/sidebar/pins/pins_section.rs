@@ -204,7 +204,7 @@ pub fn handle_pins_pin_cycle(state: &mut AppState) -> IntentResult {
     };
     let current = entry.pin_position.unwrap_or(PinPosition::Relative);
     let next = cycle_position(current);
-    let session_id = state.session.active_session.clone();
+    let session_id = state.session.active_session_id().clone();
     let entry_id = entry.id.clone();
     IntentResult::with_commands(vec![Command::PinChatEntry(PinChatEntry {
         session_id,
@@ -238,7 +238,7 @@ fn sync_chat_log_cursor(state: &mut AppState) {
 fn resolve_selected_entry_id(state: &AppState) -> Option<(SessionId, ChatEntryId)> {
     let sorted_ids = state.sorted_pinned_ids();
     let index = state.frontend.pins.selection_index(&sorted_ids);
-    let session_id = state.session.active_session.clone();
+    let session_id = state.session.active_session_id().clone();
 
     let mut pinned = state.active_session().pinned_entries();
     pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));

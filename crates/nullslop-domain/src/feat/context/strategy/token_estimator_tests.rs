@@ -2,7 +2,9 @@
 
 use crate::feat::context::strategy::token_estimator::{
     CharRatioEstimator, TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_tokens,
+    estimate_tool_schema_tokens,
 };
+use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::{ChatEntry, PinPosition};
 
 #[rstest::rstest]
@@ -238,4 +240,68 @@ fn estimate_entry_tokens_for_ignored_pinned_entry_is_nonzero() {
 
     // Then pin overrides ignored — tokens are still counted.
     assert!(tokens > 0);
+}
+
+// --- estimate_tool_schema_tokens tests ---
+
+#[rstest::rstest]
+fn estimate_tool_schema_tokens_returns_zero_for_empty_tools() {
+    // Given a char ratio estimator and no tools.
+    let estimator = CharRatioEstimator;
+    let tools: Vec<ToolDefinition> = vec![];
+
+    // When estimating tool schema tokens.
+    let tokens = estimate_tool_schema_tokens(&estimator, &tools);
+
+    // Then the result is 0.
+    assert_eq!(tokens, 0);
+}
+
+#[rstest::rstest]
+fn estimate_tool_schema_tokens_returns_nonzero_for_tools() {
+    // Given a char ratio estimator and one tool definition.
+    let estimator = CharRatioEstimator;
+    let tools = vec![ToolDefinition {
+        name: "bash".to_owned(),
+        description: "Execute bash commands".to_owned(),
+        parameters: serde_json::json!({"type": "object"}),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+    }];
+
+    // When estimating tool schema tokens.
+    let tokens = estimate_tool_schema_tokens(&estimator, &tools);
+
+    // Then the result is nonzero (the serialized JSON has content).
+    assert!(tokens > 0);
+}
+
+#[rstest::rstest]
+fn estimate_tool_schema_tokens_sums_all_tools() {
+    // Given a char ratio estimator and two tool definitions.
+    let estimator = CharRatioEstimator;
+    let tools = vec![
+        ToolDefinition {
+            name: "bash".to_owned(),
+            description: "Execute bash commands".to_owned(),
+            parameters: serde_json::json!({"type": "object"}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+        },
+        ToolDefinition {
+            name: "read".to_owned(),
+            description: "Read file contents".to_owned(),
+            parameters: serde_json::json!({"type": "object"}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+        },
+    ];
+
+    // When estimating tool schema tokens.
+    let total = estimate_tool_schema_tokens(&estimator, &tools);
+
+    // Then the result equals the sum of individual tool estimates.
+    let first = estimate_tool_schema_tokens(&estimator, &tools[0..1]);
+    let second = estimate_tool_schema_tokens(&estimator, &tools[1..2]);
+    assert_eq!(total, first + second);
 }
