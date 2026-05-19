@@ -172,6 +172,20 @@ pub fn ensure_contrast(fg: Color, bg: Color) -> Color {
     Color::Rgb(adjusted.0, adjusted.1, adjusted.2)
 }
 
+/// Darkens a color by multiplying each RGB channel by `factor`.
+///
+/// A `factor` of `1.0` returns the color unchanged (or its RGB equivalent).
+/// A `factor` of `0.0` returns black. Values between darken proportionally.
+/// Named and indexed colors are converted to RGB first via [`to_rgb`].
+pub fn darken(color: Color, factor: f32) -> Color {
+    let (r, g, b) = to_rgb(color);
+    Color::Rgb(
+        (f32::from(r) * factor).round().clamp(0.0, 255.0) as u8,
+        (f32::from(g) * factor).round().clamp(0.0, 255.0) as u8,
+        (f32::from(b) * factor).round().clamp(0.0, 255.0) as u8,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,5 +289,61 @@ mod tests {
 
         // Then the result is adjusted (Reset = black, too close to dark bg).
         assert_ne!(result, fg);
+    }
+
+    // --- darken ---
+
+    #[rstest::rstest]
+    fn darken_white_by_half_produces_mid_gray() {
+        // Given White (229, 229, 229) darkened by 0.5.
+        // When darkening.
+        let result = darken(Color::White, 0.5);
+        // Then channels are halved and rounded.
+        assert_eq!(result, Color::Rgb(115, 115, 115)); // 229 * 0.5 = 114.5 → rounds to 115
+    }
+
+    #[rstest::rstest]
+    fn darken_black_stays_black() {
+        // Given Black (0, 0, 0).
+        // When darkening by any factor.
+        let result = darken(Color::Black, 0.5);
+        // Then it stays black.
+        assert_eq!(result, Color::Rgb(0, 0, 0));
+    }
+
+    #[rstest::rstest]
+    fn darken_by_one_is_passthrough() {
+        // Given Cyan (0, 205, 205).
+        // When darkening by 1.0 (no change).
+        let result = darken(Color::Cyan, 1.0);
+        // Then the color is unchanged.
+        assert_eq!(result, Color::Rgb(0, 205, 205));
+    }
+
+    #[rstest::rstest]
+    fn darken_by_zero_is_black() {
+        // Given Red.
+        // When darkening by 0.0.
+        let result = darken(Color::Red, 0.0);
+        // Then it is black.
+        assert_eq!(result, Color::Rgb(0, 0, 0));
+    }
+
+    #[rstest::rstest]
+    fn darken_rgb_color() {
+        // Given an arbitrary RGB color.
+        // When darkening by 0.5.
+        let result = darken(Color::Rgb(100, 200, 50), 0.5);
+        // Then channels are halved.
+        assert_eq!(result, Color::Rgb(50, 100, 25));
+    }
+
+    #[rstest::rstest]
+    fn darken_named_green() {
+        // Given named Green (0, 205, 0).
+        // When darkening by 0.5.
+        let result = darken(Color::Green, 0.5);
+        // Then green channel is halved.
+        assert_eq!(result, Color::Rgb(0, 103, 0)); // 205 * 0.5 = 102.5 → rounds to 103
     }
 }
