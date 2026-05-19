@@ -595,7 +595,6 @@ impl AppState {
     /// # Panics
     ///
     /// Panics if the given session ID does not exist.
-    #[expect(clippy::expect_used, reason = "caller guarantees session exists")]
     pub fn session(&self, id: &SessionId) -> &ChatSessionState {
         self.session.get_unchecked(id)
     }
@@ -605,7 +604,6 @@ impl AppState {
     /// # Panics
     ///
     /// Panics if the given session ID does not exist.
-    #[expect(clippy::expect_used, reason = "caller guarantees session exists")]
     pub fn session_mut(&mut self, id: &SessionId) -> &mut ChatSessionState {
         self.session.get_unchecked_mut(id)
     }
