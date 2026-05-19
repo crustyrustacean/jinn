@@ -512,17 +512,20 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
     crate::protocol::IntentResult::empty()
 }
 
-/// Handles `SidebarSessionClose` — closes the selected session via lifecycle teardown.
+/// Handles `SidebarSessionClose` — closes the selected session.
 ///
 /// Validates that the close can proceed, gets the selected session ID,
-/// then delegates to the lifecycle `handle_session_close`. If the session has
-/// a teardown command, it runs async. Otherwise, the session is removed
-/// immediately and the cursor is adjusted.
+/// then emits a `CloseSession` command. The session actor handles teardown,
+/// archival, removal, and emits `SessionClosed` for the sidebar actor to
+/// clamp the cursor.
 ///
 /// # Panics
 ///
 /// Panics if `sessions_section.selected_index` is `None`.
 pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::protocol::IntentResult {
+    use crate::feat::session::protocol::close_session::CloseSession;
+    use crate::protocol::Command;
+
     // Validate.
     if validate_session_close(state).is_err() {
         return crate::protocol::IntentResult::empty();
@@ -532,10 +535,10 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::proto
     let sessions = sorted_open_sessions(state);
     let closing_id = sessions[index].id.clone();
 
-    // Delegate to lifecycle handler.
-    // If no teardown command ran, a CloseSession command is emitted and
-    // the sidebar actor will clamp the cursor when SessionClosed fires.
-    crate::feat::session_lifecycle::intent::handle_session_close(state, Some(&closing_id))
+    // Emit CloseSession — the actor handles teardown, archive, and removal.
+    crate::protocol::IntentResult::with_commands(vec![Command::CloseSession(CloseSession {
+        session_id: closing_id,
+    })])
 }
 
 /// Handles `SidebarSessionTeardown` — re-runs teardown without closing the session.
