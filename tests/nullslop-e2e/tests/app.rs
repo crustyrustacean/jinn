@@ -135,7 +135,7 @@ impl AppWorld {
             let user_preferences_storage =
                 UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
             let session_store = nullslop_domain::SessionStoreService::new(Arc::new(
-                nullslop_domain::SqliteSessionStore::new_in(&paths.sessions_dir()),
+                nullslop_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
             ));
 
             // Call production wiring — spawns all 16 actors.
@@ -563,7 +563,7 @@ fn when_restart_app(world: &mut AppWorld) {
         let user_preferences_storage =
             UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
         let session_store = nullslop_domain::SessionStoreService::new(Arc::new(
-            nullslop_domain::SqliteSessionStore::new_in(&paths.sessions_dir()),
+            nullslop_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
         ));
 
         let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(

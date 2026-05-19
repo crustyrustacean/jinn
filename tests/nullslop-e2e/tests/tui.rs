@@ -61,7 +61,7 @@ impl TuiWorld {
                 nullslop_domain::InMemoryConfigStorage::new(),
             )),
             session_store: nullslop_domain::SessionStoreService::new(Arc::new(
-                nullslop_domain::SqliteSessionStore::new_in(&sessions_dir),
+                nullslop_domain::SqliteSessionStore::new_in(&sessions_dir).expect("store"),
             )),
             strategy_registry,
             user_preferences_storage: nullslop_domain::UserPreferencesStorageService::new(

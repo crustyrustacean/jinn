@@ -62,43 +62,33 @@ impl SqliteSessionStore {
     /// The database file is created on first access. Migrations are run
     /// once during pool initialization.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the platform data directory cannot be determined or
-    /// pool creation fails.
-    #[expect(
-        clippy::expect_used,
-        reason = "platform data dir is always available on supported targets"
-    )]
-    #[must_use]
-    pub fn new() -> Self {
+    /// Returns an error if the platform data directory cannot be determined,
+    /// directory creation fails, or pool creation fails.
+    pub fn new() -> Result<Self, Report<SessionStoreError>> {
         let dir = dirs::data_dir()
-            .expect("platform data directory should be available")
+            .ok_or_else(|| Report::new(SessionStoreError).attach("platform data directory not available"))?
             .join(APP_NAME);
         Self::build_pool(&dir, &PoolConfig::default())
     }
 
     /// Creates a store at an explicit directory (for testing).
-    #[must_use]
-    pub fn new_in(dir: &Path) -> Self {
+    pub fn new_in(dir: &Path) -> Result<Self, Report<SessionStoreError>> {
         Self::build_pool(dir, &PoolConfig::default())
     }
 
     /// Creates a store at an explicit directory with custom pool configuration.
-    #[must_use]
-    pub fn new_with_config(dir: &Path, config: &PoolConfig) -> Self {
+    pub fn new_with_config(dir: &Path, config: &PoolConfig) -> Result<Self, Report<SessionStoreError>> {
         Self::build_pool(dir, config)
     }
 
     /// Builds the connection pool.
-    ///
-    /// Creates the directory if needed, runs embedded migrations once on a
-    /// bootstrap connection, then builds the pool. Each pooled connection gets
-    /// WAL and foreign key pragmas set via the connection customizer.
-    #[expect(clippy::expect_used, reason = "pool creation failures are fatal")]
-    fn build_pool(dir: &Path, config: &PoolConfig) -> Self {
+    fn build_pool(dir: &Path, config: &PoolConfig) -> Result<Self, Report<SessionStoreError>> {
         if !dir.exists() {
-            std::fs::create_dir_all(dir).expect("failed to create session directory");
+            std::fs::create_dir_all(dir)
+                .change_context(SessionStoreError)
+                .attach("failed to create session directory")?;
         }
         let path = dir.join(FILE_NAME);
         let database_url = path.to_string_lossy().to_string();
@@ -107,14 +97,17 @@ impl SqliteSessionStore {
         // This ensures the schema is ready before any pooled connections are created.
         {
             let mut conn = SqliteConnection::establish(&database_url)
-                .expect("failed to open database for migration");
+                .change_context(SessionStoreError)
+                .attach("failed to open database for migration")?;
             diesel::sql_query("PRAGMA journal_mode=WAL")
                 .execute(&mut conn)
-                .expect("failed to set WAL pragma");
+                .change_context(SessionStoreError)
+                .attach("failed to set WAL pragma")?;
             diesel::sql_query("PRAGMA foreign_keys=ON")
                 .execute(&mut conn)
-                .expect("failed to set foreign_keys pragma");
-            migrator::run_migrations(&mut conn);
+                .change_context(SessionStoreError)
+                .attach("failed to set foreign_keys pragma")?;
+            migrator::run_migrations(&mut conn)?;
         }
 
         let manager = diesel_r2d2::ConnectionManager::<SqliteConnection>::new(&database_url);
@@ -122,18 +115,12 @@ impl SqliteSessionStore {
             .max_size(config.max_size)
             .connection_customizer(Box::new(SqliteConnectionCustomizer))
             .build(manager)
-            .expect("failed to create connection pool");
+            .change_context(SessionStoreError)
+            .attach("failed to create connection pool")?;
 
-        Self { pool }
+        Ok(Self { pool })
     }
 }
-
-impl Default for SqliteSessionStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl std::fmt::Debug for SqliteSessionStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SqliteSessionStore")

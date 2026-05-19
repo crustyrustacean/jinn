@@ -92,7 +92,7 @@ impl HeadlessWorld {
                 UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
             let session_store = SessionStoreService::new(Arc::new(SqliteSessionStore::new_in(
                 &paths.sessions_dir(),
-            )));
+            ).expect("store")));
 
             // Call production wiring — spawns all 16 actors.
             let (core, _services, actor_host) = actor_wiring::create_core_with_actor_host(
