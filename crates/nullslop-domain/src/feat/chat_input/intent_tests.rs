@@ -827,3 +827,62 @@ fn hash_reactivates_when_cursor_enters_token_after_newline() {
     );
     assert!(result.commands.is_empty());
 }
+
+// --- Popup auto-close on cursor move past token ---
+
+#[rstest::rstest]
+fn cursor_right_past_token_deactivates_autocomplete() {
+    // Given a state with "#code hello" and autocomplete active at token_start=0.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("#code hello");
+    state.active_chat_input_mut().activate_autocomplete(
+        0,
+        AutocompleteTrigger::Hash,
+        vec![],
+    );
+    // Move cursor to start, then right through the token.
+    // token_end = 5 (one past 'e'). Cursor at 5 == token_end, still "in" token.
+    state.active_chat_input_mut().move_cursor_to_start();
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 1 ('c')
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 2 ('o')
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 3 ('d')
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 4 ('e')
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 5 (space)
+
+    // Then autocomplete is still active (cursor at token_end).
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "popup should stay open when cursor is at token_end"
+    );
+
+    // When moving cursor right one more time to position 6 (past token).
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state);
+
+    // Then autocomplete is deactivated.
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "popup should close when cursor moves past token_end"
+    );
+}
+
+#[rstest::rstest]
+fn cursor_right_within_token_keeps_autocomplete_active() {
+    // Given a state with "#code" and autocomplete active at token_start=0.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("#code");
+    state.active_chat_input_mut().activate_autocomplete(
+        0,
+        AutocompleteTrigger::Hash,
+        vec![],
+    );
+    // Move cursor to start, then right to position 2.
+    state.active_chat_input_mut().move_cursor_to_start();
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 1
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 2
+
+    // Then autocomplete is still active (cursor within token, position 2 < token_end=5).
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "popup should stay open when cursor is within token"
+    );
+}
