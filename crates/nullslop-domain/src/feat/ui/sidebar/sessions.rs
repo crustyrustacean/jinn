@@ -50,12 +50,12 @@ pub(crate) struct SessionEntry {
 
 /// Collects all open sessions sorted by `created_at` descending (newest first).
 pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
-    let active_id = &state.session.active_session;
+    let active_id = state.session.active_session_id();
     let mut entries: Vec<SessionEntry> = state
         .session
-        .sessions
+        .sessions()
         .iter()
-        .map(|(id, session)| SessionEntry {
+        .map(|(id, session): (&_, &_)| SessionEntry {
             id: id.clone(),
             title: session.title().unwrap_or("Untitled Session").to_owned(),
             is_active: id == active_id,
@@ -167,7 +167,7 @@ pub fn handle_session_activate(state: &mut AppState) {
     let Some(entry) = sessions.get(index) else {
         return;
     };
-    state.session.active_session = entry.id.clone();
+    state.session.set_active(entry.id.clone());
     // Switch to insert mode so the user can start typing immediately.
     state.frontend.scope_stack.push(FocusScope::Input);
 }
@@ -361,7 +361,7 @@ impl SidebarSection for SessionsSection {
     }
 
     fn content_height(&self, state: &AppState) -> u16 {
-        let session_count = state.session.sessions.len() as u16;
+        let session_count = state.session.sessions().len() as u16;
         let visible = session_count.min(MAX_VISIBLE_SESSIONS as u16);
         // header(1) + blank(1) + visible sessions(N) + trailing gap(1)
         3 + visible.max(1) // max(1) for "No open sessions" message
@@ -425,7 +425,7 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
     let entry = sessions.get(index).ok_or(SessionCloseError::NoSelection)?;
     let session = state
         .session
-        .sessions
+        .sessions()
         .get(&entry.id)
         .ok_or(SessionCloseError::NoSelection)?;
     if !matches!(session.phase(), SessionPhase::Idle) {
@@ -456,9 +456,9 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
     let was_active = sessions[index].is_active;
 
     // Remove from HashMap (keeps in SQLite).
-    state.session.sessions.remove(&closing_id);
+    state.session.sessions_mut().remove(&closing_id);
 
-    if state.session.sessions.is_empty() {
+    if state.session.sessions().is_empty() {
         // Last session — create a new one with the last-used model/strategy.
         let new_session = {
             let model = state
@@ -488,14 +488,14 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
             )
         };
         let new_id = new_session.session_id().clone();
-        state.session.sessions.insert(new_id.clone(), new_session);
-        state.session.active_session = new_id;
+        state.session.sessions_mut().insert(new_id.clone(), new_session);
+        state.session.set_active(new_id);
         state.frontend.sessions_section.selected_index = Some(0);
     } else if was_active {
         // Closed the active session — activate next one. Clamp index to valid range.
         let remaining = sorted_open_sessions(state);
         let clamped = index.min(remaining.len() - 1);
-        state.session.active_session = remaining[clamped].id.clone();
+        state.session.set_active(remaining[clamped].id.clone());
         state.frontend.sessions_section.selected_index = Some(clamped);
     } else {
         // Closed a non-active session — keep active session, clamp cursor.
@@ -557,7 +557,7 @@ pub fn handle_session_teardown(state: &mut AppState) -> crate::protocol::IntentR
 
     // Look up teardown command for the session.
     let (teardown_command, lifecycle_args) = {
-        let session = state.session.sessions.get(&target_id);
+        let session = state.session.sessions().get(&target_id);
         let Some(session) = session else {
             return crate::protocol::IntentResult::empty();
         };

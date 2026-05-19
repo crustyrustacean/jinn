@@ -79,7 +79,7 @@ pub fn create_core_with_actor_host(
     {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
         let mut guard = state.write();
-        guard.session.default_cwd = cwd.clone();
+        guard.session.set_default_cwd(cwd.clone());
         guard.active_session_mut().set_cwd(cwd);
         // Show welcome message on startup.
         guard

@@ -79,17 +79,17 @@ mod tests {
         let removed_id = {
             let mut state = actor.state.write();
             // Remove default session so we control exact count.
-            let default_id = state.session.active_session.clone();
-            state.session.sessions.remove(&default_id);
+            let default_id = state.session.active_session_id().clone();
+            state.session.sessions_mut().remove(&default_id);
 
             let s1 = ChatSessionState::new();
             let s2 = ChatSessionState::new();
             let s3 = ChatSessionState::new();
             let id3 = s3.session_id().clone();
-            state.session.sessions.insert(s1.session_id().clone(), s1);
-            state.session.sessions.insert(s2.session_id().clone(), s2);
-            state.session.sessions.insert(id3.clone(), s3);
-            state.session.active_session = id3.clone();
+            state.session.sessions_mut().insert(s1.session_id().clone(), s1);
+            state.session.sessions_mut().insert(s2.session_id().clone(), s2);
+            state.session.sessions_mut().insert(id3.clone(), s3);
+            state.session.set_active(id3.clone());
             state.frontend.sessions_section.selected_index = Some(2);
             id3
         };
@@ -97,7 +97,7 @@ mod tests {
         // Simulate the session being removed (as the session actor would do).
         {
             let mut state = actor.state.write();
-            state.session.sessions.remove(&removed_id);
+            state.session.sessions_mut().remove(&removed_id);
         }
 
         // When handling SessionRemoved.
@@ -117,7 +117,7 @@ mod tests {
         let actor = test_actor();
         let removed_id = {
             let mut state = actor.state.write();
-            let id = state.session.active_session.clone();
+            let id = state.session.active_session_id().clone();
             state.frontend.sessions_section.selected_index = Some(0);
             id
         };
@@ -125,10 +125,10 @@ mod tests {
         // Simulate session removal + new session creation (as session actor would do).
         {
             let mut state = actor.state.write();
-            state.session.sessions.remove(&removed_id);
+            state.session.sessions_mut().remove(&removed_id);
             let new_session = ChatSessionState::new();
             let new_id = new_session.session_id().clone();
-            state.session.sessions.insert(new_id, new_session);
+            state.session.sessions_mut().insert(new_id, new_session);
         }
 
         // When handling SessionRemoved.
@@ -152,9 +152,9 @@ mod tests {
             let s2 = ChatSessionState::new();
             let s3 = ChatSessionState::new();
             let id3 = s3.session_id().clone();
-            state.session.sessions.insert(s1.session_id().clone(), s1);
-            state.session.sessions.insert(s2.session_id().clone(), s2);
-            state.session.sessions.insert(id3.clone(), s3);
+            state.session.sessions_mut().insert(s1.session_id().clone(), s1);
+            state.session.sessions_mut().insert(s2.session_id().clone(), s2);
+            state.session.sessions_mut().insert(id3.clone(), s3);
             state.frontend.sessions_section.selected_index = Some(0);
             id3
         };
@@ -162,7 +162,7 @@ mod tests {
         // Simulate removal of the last session (cursor at 0 is still valid).
         {
             let mut state = actor.state.write();
-            state.session.sessions.remove(&removed_id);
+            state.session.sessions_mut().remove(&removed_id);
         }
 
         // When handling SessionRemoved.

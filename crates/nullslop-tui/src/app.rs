@@ -81,8 +81,7 @@ impl TuiApp {
                     let state = self.core.state.read();
                     state
                         .session
-                        .session_load_guard
-                        .as_ref()
+                        .session_load_guard()
                         .map(|g| g.started_at)
                 };
                 if let Some(started) = load_started
