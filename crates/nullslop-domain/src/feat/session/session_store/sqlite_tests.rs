@@ -598,3 +598,76 @@ async fn ignored_field_round_trips() {
     assert!(loaded.history()[2].ignored, "entry 2 should be ignored");
     assert!(loaded.history()[3].ignored, "entry 3 should be ignored");
 }
+
+// --- Lifecycle metadata persistence ---
+
+#[rstest::rstest]
+#[tokio::test]
+async fn lifecycle_metadata_round_trips() {
+    // Given a store with a session that has lifecycle metadata.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let mut session = make_session(&session_id, "Lifecycle Session");
+    session.set_lifecycle_name(Some("fossil branch".to_owned()));
+    session.set_lifecycle_args(vec!["my-branch".to_owned(), "--private".to_owned()]);
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then lifecycle metadata is preserved.
+    assert_eq!(loaded.lifecycle_name(), Some("fossil branch"));
+    assert_eq!(loaded.lifecycle_args(), &["my-branch".to_owned(), "--private".to_owned()]);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn session_without_lifecycle_loads_as_none() {
+    // Given a store with a session that has no lifecycle metadata.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let session = make_session(&session_id, "Plain Session");
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then lifecycle fields are None/empty.
+    assert_eq!(loaded.lifecycle_name(), None);
+    assert!(loaded.lifecycle_args().is_empty());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fork_inherits_lifecycle_metadata() {
+    // Given a store with a session that has lifecycle metadata.
+    let (_dir, store) = make_store();
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new();
+    source.set_session_id(source_id.clone());
+    source.set_title("Source".to_owned());
+    source.push_entry(ChatEntry::user("hello"));
+    source.set_lifecycle_name(Some("fossil branch".to_owned()));
+    source.set_lifecycle_args(vec!["dev".to_owned()]);
+    store.save(&source).await.expect("save source");
+
+    // When forking.
+    let forked_id = store.fork(&source_id, 0).await.expect("fork");
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+
+    // Then the forked session inherits lifecycle metadata.
+    assert_eq!(forked.lifecycle_name(), Some("fossil branch"));
+    assert_eq!(forked.lifecycle_args(), &["dev".to_owned()]);
+}

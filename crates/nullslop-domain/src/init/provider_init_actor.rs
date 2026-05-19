@@ -137,8 +137,10 @@ mod tests {
     };
     use crate::common::services::Services;
     use crate::common::state::State;
-    use crate::feat::preferences_actor::user_preferences::CompactionConfig;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
+    use crate::feat::preferences_actor::user_preferences::{
+        CompactionConfig, ContextSlidingWindowConfig,
+    };
     use crate::feat::provider_infra::ProviderEntry;
     use crate::init::EnvironmentLoaded;
     use crate::protocol::{Command, Event};
@@ -184,6 +186,7 @@ mod tests {
                 max_tool_output_lines: None,
                 max_tool_output_bytes: None,
                 compaction: CompactionConfig::default(),
+                context_sliding_window: ContextSlidingWindowConfig::default(),
             })
             .expect("save prefs");
 

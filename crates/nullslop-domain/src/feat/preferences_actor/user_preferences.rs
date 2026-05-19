@@ -119,6 +119,31 @@ impl Default for CompactionConfig {
     }
 }
 
+/// Default sliding window size.
+const DEFAULT_SLIDING_WINDOW_SIZE: usize = 5;
+
+/// Sliding window configuration.
+///
+/// Serialized as `[context_sliding_window]` in `nullslop.toml`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextSlidingWindowConfig {
+    /// The default window size for new sessions using the sliding-window strategy.
+    #[serde(default = "default_sliding_window_size")]
+    pub size: usize,
+}
+
+fn default_sliding_window_size() -> usize {
+    DEFAULT_SLIDING_WINDOW_SIZE
+}
+
+impl Default for ContextSlidingWindowConfig {
+    fn default() -> Self {
+        Self {
+            size: DEFAULT_SLIDING_WINDOW_SIZE,
+        }
+    }
+}
+
 /// User preferences persisted in `nullslop.toml`.
 ///
 /// This file stores user behavior preferences that should survive
@@ -169,6 +194,10 @@ pub struct UserPreferences {
     /// Compaction configuration.
     #[serde(default)]
     pub compaction: CompactionConfig,
+    /// Sliding window configuration for the sliding-window context strategy.
+    /// New sessions inherit `size` as their default.
+    #[serde(default)]
+    pub context_sliding_window: ContextSlidingWindowConfig,
 }
 
 /// Returns the path to the user preferences file.
@@ -301,6 +330,7 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
 
         // When saving and reloading.
@@ -368,6 +398,7 @@ last_strategy = "sliding_window""#,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
 
         // When saving.
@@ -394,6 +425,7 @@ last_strategy = "sliding_window""#,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
 
         // When saving and reloading.
@@ -428,6 +460,7 @@ last_strategy = "sliding_window""#,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
 
         // When saving and reloading.
@@ -468,6 +501,7 @@ last_strategy = "sliding_window""#,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -539,6 +573,7 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
 
         // When saving and reloading.

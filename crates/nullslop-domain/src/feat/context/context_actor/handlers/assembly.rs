@@ -8,6 +8,7 @@ use crate::protocol::{
     ToolDefinition, entries_to_messages,
 };
 
+use crate::feat::context::strategy::types::StrategyConfig;
 use crate::feat::context::{
     AssemblyContext, CharRatioEstimator, PassthroughStrategy, estimate_entry_tokens,
 };
@@ -36,20 +37,32 @@ impl PromptAssemblyActor {
                 .insert(session_id.clone(), Box::new(PassthroughStrategy));
             return;
         };
-        let (strategy_id, token_budget) = {
+        let (strategy_id, config) = {
             let guard = self.state.read();
             match guard.session.sessions.get(session_id) {
-                Some(session) => (
-                    session.active_strategy().clone(),
-                    session.profile().token_budget,
-                ),
-                None => (
-                    PromptStrategyId::passthrough(),
-                    crate::feat::session::profile::DEFAULT_TOKEN_BUDGET,
-                ),
+                Some(session) => {
+                    let sid = session.active_strategy().clone();
+                    let cfg = if sid == PromptStrategyId::sliding_window() {
+                        StrategyConfig::SlidingWindow {
+                            window_size: session.profile().sliding_window_size,
+                        }
+                    } else if sid == PromptStrategyId::token_budget() {
+                        StrategyConfig::TokenBudget {
+                            budget: session.profile().token_budget,
+                        }
+                    } else if sid == PromptStrategyId::compaction() {
+                        StrategyConfig::Compaction {
+                            budget: session.profile().token_budget,
+                        }
+                    } else {
+                        StrategyConfig::Passthrough
+                    };
+                    (sid, cfg)
+                }
+                None => (PromptStrategyId::passthrough(), StrategyConfig::Passthrough),
             }
         };
-        match factory.create(&strategy_id, token_budget) {
+        match factory.create(&strategy_id, &config) {
             Ok(strategy) => {
                 self.strategies.insert(session_id.clone(), strategy);
             }
