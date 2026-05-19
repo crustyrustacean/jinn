@@ -27,7 +27,11 @@ fn test_context_with_state(sink: &std::sync::Arc<RecordingSink>, _state: State) 
     ActorContext::new("test-tool-orchestrator", sink.clone())
 }
 
-fn default_test_ctx() -> (std::sync::Arc<RecordingSink>, ActorContext, ToolOrchestratorActorDeps) {
+fn default_test_ctx() -> (
+    std::sync::Arc<RecordingSink>,
+    ActorContext,
+    ToolOrchestratorActorDeps,
+) {
     let sink = std::sync::Arc::new(RecordingSink::new());
     let state = State::new(AppState::default());
     let ctx = test_context_with_state(&sink, state.clone());

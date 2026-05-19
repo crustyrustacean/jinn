@@ -81,9 +81,7 @@ pub enum StreamingError {
     NoThinkingEntry,
     /// No tool call tracked for the given stream index.
     #[error("no entry tracked for tool call stream index {index}")]
-    NoToolCallIndex {
-        index: usize,
-    },
+    NoToolCallIndex { index: usize },
     /// The token ledger is empty.
     #[error("token ledger is empty")]
     EmptyLedger,
@@ -675,7 +673,11 @@ impl ChatSessionState {
         clippy::indexing_slicing,
         reason = "index comes from push_entry which always returns a valid index"
     )]
-    pub fn append_tool_call_delta(&mut self, index: usize, partial_json: &str) -> Result<(), StreamingError> {
+    pub fn append_tool_call_delta(
+        &mut self,
+        index: usize,
+        partial_json: &str,
+    ) -> Result<(), StreamingError> {
         let history_index = self
             .core
             .ephemeral
@@ -1282,7 +1284,11 @@ impl ChatSessionState {
     /// Called when `StreamCompleted` arrives to finalize the pending record.
     ///
     /// Returns an error if the ledger is empty.
-    pub fn finalize_last_token_record(&mut self, tokens_received: u32, cost: Option<f64>) -> Result<(), StreamingError> {
+    pub fn finalize_last_token_record(
+        &mut self,
+        tokens_received: u32,
+        cost: Option<f64>,
+    ) -> Result<(), StreamingError> {
         let last = self
             .core
             .token_ledger

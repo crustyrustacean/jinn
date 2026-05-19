@@ -68,7 +68,9 @@ impl SqliteSessionStore {
     /// directory creation fails, or pool creation fails.
     pub fn new() -> Result<Self, Report<SessionStoreError>> {
         let dir = dirs::data_dir()
-            .ok_or_else(|| Report::new(SessionStoreError).attach("platform data directory not available"))?
+            .ok_or_else(|| {
+                Report::new(SessionStoreError).attach("platform data directory not available")
+            })?
             .join(APP_NAME);
         Self::build_pool(&dir, &PoolConfig::default())
     }
@@ -79,7 +81,10 @@ impl SqliteSessionStore {
     }
 
     /// Creates a store at an explicit directory with custom pool configuration.
-    pub fn new_with_config(dir: &Path, config: &PoolConfig) -> Result<Self, Report<SessionStoreError>> {
+    pub fn new_with_config(
+        dir: &Path,
+        config: &PoolConfig,
+    ) -> Result<Self, Report<SessionStoreError>> {
         Self::build_pool(dir, config)
     }
 

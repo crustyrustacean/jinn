@@ -16,10 +16,7 @@ fn create_actor() -> (PreferencesActor, Arc<RecordingSink>, ActorContext) {
     let mut ctx = ActorContext::new("preferences-actor", sink.clone() as Arc<dyn MessageSink>);
     let storage =
         UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
-    let actor = PreferencesActor::activate(
-        PreferencesActorDeps { storage },
-        &mut ctx,
-    );
+    let actor = PreferencesActor::activate(PreferencesActorDeps { storage }, &mut ctx);
     (actor, sink, ctx)
 }
 

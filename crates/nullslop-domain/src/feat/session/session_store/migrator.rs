@@ -95,7 +95,11 @@ fn current_version(conn: &mut SqliteConnection) -> Result<i32, Report<SessionSto
 }
 
 /// Records a completed migration in the tracking table.
-fn record_version(conn: &mut SqliteConnection, version: i32, name: &str) -> Result<(), Report<SessionStoreError>> {
+fn record_version(
+    conn: &mut SqliteConnection,
+    version: i32,
+    name: &str,
+) -> Result<(), Report<SessionStoreError>> {
     sql_query("INSERT INTO _migrations (version, name) VALUES (?, ?)")
         .bind::<diesel::sql_types::Integer, _>(version)
         .bind::<diesel::sql_types::Text, _>(name)
@@ -120,7 +124,8 @@ fn migrate_v0(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
          parent_session TEXT DEFAULT NULL)",
     )
     .execute(conn)
-    .change_context(SessionStoreError).attach("v0: create sessions table")?;
+    .change_context(SessionStoreError)
+    .attach("v0: create sessions table")?;
 
     sql_query(
         "CREATE TABLE entries (\
@@ -129,7 +134,8 @@ fn migrate_v0(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
          kind TEXT NOT NULL)",
     )
     .execute(conn)
-    .change_context(SessionStoreError).attach("v0: create entries table")?;
+    .change_context(SessionStoreError)
+    .attach("v0: create entries table")?;
 
     sql_query(
         "CREATE TABLE session_entries (\
@@ -141,7 +147,8 @@ fn migrate_v0(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
          UNIQUE (session_id, ordinal))",
     )
     .execute(conn)
-    .change_context(SessionStoreError).attach("v0: create session_entries table")?;
+    .change_context(SessionStoreError)
+    .attach("v0: create session_entries table")?;
 
     sql_query(
         "CREATE TABLE token_ledger (\
@@ -152,15 +159,18 @@ fn migrate_v0(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
          tokens_received INTEGER NOT NULL)",
     )
     .execute(conn)
-    .change_context(SessionStoreError).attach("v0: create token_ledger table")?;
+    .change_context(SessionStoreError)
+    .attach("v0: create token_ledger table")?;
 
     sql_query("CREATE INDEX idx_session_entries_session ON session_entries(session_id, ordinal)")
         .execute(conn)
-        .change_context(SessionStoreError).attach("v0: create session_entries index")?;
+        .change_context(SessionStoreError)
+        .attach("v0: create session_entries index")?;
 
     sql_query("CREATE INDEX idx_token_ledger_session ON token_ledger(session_id)")
         .execute(conn)
-        .change_context(SessionStoreError).attach("v0: create token_ledger index")?;
+        .change_context(SessionStoreError)
+        .attach("v0: create token_ledger index")?;
     Ok(())
 }
 
@@ -168,7 +178,8 @@ fn migrate_v0(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
 fn migrate_v1(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT '.'")
         .execute(conn)
-        .change_context(SessionStoreError).attach("v1: add cwd column to sessions")?;
+        .change_context(SessionStoreError)
+        .attach("v1: add cwd column to sessions")?;
     Ok(())
 }
 
@@ -176,7 +187,8 @@ fn migrate_v1(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
 fn migrate_v2(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
         .execute(conn)
-        .change_context(SessionStoreError).attach("v2: add created_at column to sessions")?;
+        .change_context(SessionStoreError)
+        .attach("v2: add created_at column to sessions")?;
     Ok(())
 }
 
@@ -187,7 +199,8 @@ fn migrate_v2(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
 fn migrate_v3(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE session_entries ADD COLUMN ignored BOOLEAN NOT NULL DEFAULT FALSE")
         .execute(conn)
-        .change_context(SessionStoreError).attach("v3: add ignored column to session_entries")?;
+        .change_context(SessionStoreError)
+        .attach("v3: add ignored column to session_entries")?;
     Ok(())
 }
 
@@ -197,7 +210,8 @@ fn migrate_v3(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
 fn migrate_v4(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE token_ledger ADD COLUMN cost DOUBLE")
         .execute(conn)
-        .change_context(SessionStoreError).attach("v4: add cost column to token_ledger")?;
+        .change_context(SessionStoreError)
+        .attach("v4: add cost column to token_ledger")?;
     Ok(())
 }
 
@@ -208,10 +222,12 @@ fn migrate_v4(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
 fn migrate_v5(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE sessions ADD COLUMN lifecycle_name TEXT DEFAULT NULL")
         .execute(conn)
-        .change_context(SessionStoreError).attach("v5: add lifecycle_name column to sessions")?;
+        .change_context(SessionStoreError)
+        .attach("v5: add lifecycle_name column to sessions")?;
     sql_query("ALTER TABLE sessions ADD COLUMN lifecycle_args TEXT NOT NULL DEFAULT '[]'")
         .execute(conn)
-        .change_context(SessionStoreError).attach("v5: add lifecycle_args column to sessions")?;
+        .change_context(SessionStoreError)
+        .attach("v5: add lifecycle_args column to sessions")?;
     Ok(())
 }
 

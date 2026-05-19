@@ -106,7 +106,9 @@ impl App {
                     provider_registry.clone(),
                     resolved_api_keys.clone(),
                     config_storage.clone(),
-                    SessionStoreService::new(Arc::new(SqliteSessionStore::new().expect("failed to create session store"))),
+                    SessionStoreService::new(Arc::new(
+                        SqliteSessionStore::new().expect("failed to create session store"),
+                    )),
                     UserPreferencesStorageService::new(Arc::new(
                         FilesystemUserPreferencesStorage::default_path(),
                     )),
@@ -159,7 +161,9 @@ impl App {
                     provider_registry,
                     resolved_api_keys,
                     config_storage,
-                    SessionStoreService::new(Arc::new(SqliteSessionStore::new().expect("failed to create session store"))),
+                    SessionStoreService::new(Arc::new(
+                        SqliteSessionStore::new().expect("failed to create session store"),
+                    )),
                     UserPreferencesStorageService::new(Arc::new(
                         FilesystemUserPreferencesStorage::default_path(),
                     )),

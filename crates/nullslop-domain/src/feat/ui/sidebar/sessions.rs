@@ -488,7 +488,10 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
             )
         };
         let new_id = new_session.session_id().clone();
-        state.session.sessions_mut().insert(new_id.clone(), new_session);
+        state
+            .session
+            .sessions_mut()
+            .insert(new_id.clone(), new_session);
         state.session.set_active(new_id);
         state.frontend.sessions_section.selected_index = Some(0);
     } else if was_active {

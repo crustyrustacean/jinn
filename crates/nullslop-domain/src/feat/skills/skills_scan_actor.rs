@@ -136,7 +136,10 @@ mod tests {
         None
     }
 
-    fn create_actor(dir: &tempfile::TempDir, state: State) -> (SkillsScanActor, Arc<RecordingSink>, ActorContext) {
+    fn create_actor(
+        dir: &tempfile::TempDir,
+        state: State,
+    ) -> (SkillsScanActor, Arc<RecordingSink>, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let deps = SkillsScanActorDeps {

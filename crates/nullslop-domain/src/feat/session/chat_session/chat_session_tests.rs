@@ -542,8 +542,12 @@ fn append_tool_call_delta_accumulates_arguments() {
     session.begin_tool_call(0, "call_1", "echo");
 
     // When appending tool call deltas.
-    session.append_tool_call_delta(0, r#"{"input":"#).expect("ok");
-    session.append_tool_call_delta(0, r#""hello"}"#).expect("ok");
+    session
+        .append_tool_call_delta(0, r#"{"input":"#)
+        .expect("ok");
+    session
+        .append_tool_call_delta(0, r#""hello"}"#)
+        .expect("ok");
 
     // Then the tool call entry has the accumulated arguments.
     assert_eq!(
@@ -562,7 +566,9 @@ fn finalize_tool_call_overwrites_arguments() {
     let mut session = ChatSessionState::new();
     session.begin_streaming();
     session.begin_tool_call(0, "call_1", "echo");
-    session.append_tool_call_delta(0, r#"{"input":"#).expect("ok");
+    session
+        .append_tool_call_delta(0, r#"{"input":"#)
+        .expect("ok");
 
     // When finalizing the tool call with the complete arguments.
     session.finalize_tool_call("call_1", "echo", r#"{"input":"world"}"#);
@@ -1206,7 +1212,9 @@ fn cancel_streaming_preserves_partial_thinking() {
         .begin_streaming()
         .build();
     session.begin_thinking();
-    session.append_thinking_token("partial reasoning").expect("ok");
+    session
+        .append_thinking_token("partial reasoning")
+        .expect("ok");
 
     // When cancelling streaming.
     session.cancel_streaming();

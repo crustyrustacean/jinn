@@ -13,13 +13,13 @@ use std::collections::HashMap;
 
 use crate::protocol::{ChatEntryId, Mode, PickerKind, PinPosition, SessionId, ToolDefinition};
 
+use crate::common::session_map::SessionMap;
 use crate::common::tui_signals::TuiSignals;
 pub use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::persona::Persona;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::preferences_actor::UserPreferences;
-use crate::common::session_map::SessionMap;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
 
@@ -244,6 +244,7 @@ impl ScopeStack {
     /// Panics if the stack is empty (should never happen as the base is always present).
     #[must_use]
     pub fn current(&self) -> &FocusScope {
+        #[expect(clippy::expect_used, reason = "ScopeStack invariant: always has base")]
         self.stack.last().expect("stack always has base")
     }
 

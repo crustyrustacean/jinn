@@ -62,6 +62,10 @@ impl Actor for EnvInitActor {
         ctx.set_description("Loads environment variables and API keys");
 
         // Self-schedule initialization — the message buffers until the run loop starts.
+        #[expect(
+            clippy::expect_used,
+            reason = "self-ref is injected by spawn before activate"
+        )]
         let self_ref = ctx
             .take_actor_ref::<EnvInitDirectMsg>()
             .expect("EnvInitActor requires self-ref injection");

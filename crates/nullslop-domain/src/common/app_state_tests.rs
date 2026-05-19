@@ -254,7 +254,9 @@ fn focus_scope_display(#[case] scope: FocusScope, #[case] expected: &str) {
 fn session_mut_or_create_sets_cwd_from_default_cwd() {
     // Given an AppState with a custom default CWD.
     let mut state = AppState::default();
-    state.session.set_default_cwd(std::path::PathBuf::from("/custom/cwd"));
+    state
+        .session
+        .set_default_cwd(std::path::PathBuf::from("/custom/cwd"));
 
     let session_id = SessionId::new();
 
@@ -269,7 +271,9 @@ fn session_mut_or_create_sets_cwd_from_default_cwd() {
 fn session_mut_or_create_does_not_overwrite_existing_session_cwd() {
     // Given an AppState with a session that has a specific CWD.
     let mut state = AppState::default();
-    state.session.set_default_cwd(std::path::PathBuf::from("/new/default"));
+    state
+        .session
+        .set_default_cwd(std::path::PathBuf::from("/new/default"));
 
     let session_id = SessionId::new();
     {

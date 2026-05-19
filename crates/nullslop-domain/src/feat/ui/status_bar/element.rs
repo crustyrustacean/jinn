@@ -88,7 +88,8 @@ impl UiElement<AppState> for StatusBarElement {
         let active_model = state.active_session().profile().model.clone();
 
         // Compute aggregated token stats for the active session.
-        let agg = aggregate_session_stats(state.session.sessions(), state.session.active_session_id());
+        let agg =
+            aggregate_session_stats(state.session.sessions(), state.session.active_session_id());
         let up_arrow = '\u{2191}';
         let down_arrow = '\u{2193}';
         let mut token_info = format!(

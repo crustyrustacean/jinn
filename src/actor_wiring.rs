@@ -290,18 +290,17 @@ pub fn create_core_with_actor_host(
     );
 
     // Persona scan actor.
-    let persona_scan_result = spawn::<
-        nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActor,
-    >(
-        "persona-scan",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
-            paths: services.paths.clone(),
-        },
-    );
+    let persona_scan_result =
+        spawn::<nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActor>(
+            "persona-scan",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
+                paths: services.paths.clone(),
+            },
+        );
 
     // Provider actor.
     let prov_result = spawn::<nullslop_domain::feat::provider::provider_actor::ProviderActor>(

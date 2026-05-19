@@ -133,7 +133,10 @@ pub fn handle_session_lifecycle_setup(
     });
     new_session.set_lifecycle_args(args.to_vec());
 
-    state.session.sessions_mut().insert(new_id.clone(), new_session);
+    state
+        .session
+        .sessions_mut()
+        .insert(new_id.clone(), new_session);
     state.session.set_active(new_id.clone());
     state.frontend.scope_stack.clear_overlays();
     state
@@ -482,9 +485,7 @@ mod tests {
         let mut state = AppState::default();
         let second_session = ChatSessionState::new();
         let second_id = second_session.session_id().clone();
-        state
-            .session
-            .insert(second_session);
+        state.session.insert(second_session);
         state.session.set_active(second_id.clone());
 
         // When handling SessionClose.
