@@ -171,46 +171,6 @@ fn name_returns_host_assigned_name() {
 }
 
 #[rstest::rstest]
-fn set_and_take_data_roundtrip() {
-    // Given a context with injected data.
-    let mut ctx = ActorContext::new("test", test_sink());
-    ctx.set_data(42i32);
-
-    // When taking the data.
-    let result = ctx.take_data::<i32>();
-
-    // Then the value is returned.
-    assert_eq!(result, Some(42));
-}
-
-#[rstest::rstest]
-fn take_data_returns_none_when_empty() {
-    // Given a context with no injected data.
-    let mut ctx = ActorContext::new("test", test_sink());
-
-    // When taking data that was never set.
-    let result = ctx.take_data::<i32>();
-
-    // Then None is returned.
-    assert!(result.is_none());
-}
-
-#[rstest::rstest]
-fn take_data_removes_from_context() {
-    // Given a context with injected data.
-    let mut ctx = ActorContext::new("test", test_sink());
-    ctx.set_data("hello".to_owned());
-
-    // When taking it twice.
-    let first = ctx.take_data::<String>();
-    let second = ctx.take_data::<String>();
-
-    // Then first is Some and second is None.
-    assert_eq!(first, Some("hello".to_owned()));
-    assert!(second.is_none());
-}
-
-#[rstest::rstest]
 fn sink_returns_arc_clone() {
     // Given a context with a test sink.
     let sink = test_sink_as_concrete();

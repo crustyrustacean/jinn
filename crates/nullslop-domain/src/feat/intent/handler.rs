@@ -67,7 +67,7 @@ impl IntentHandler {
         if state.frontend.cancel_stream_prompt {
             state.frontend.cancel_stream_prompt = false;
             if matches!(intent, Intent::NormalEscape) {
-                let session_id = state.session.active_session.clone();
+                let session_id = state.session.active_session_id().clone();
 
                 if state.active_session().phase() == SessionPhase::Compacting {
                     // Cancel compaction.
