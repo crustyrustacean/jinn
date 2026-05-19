@@ -13,14 +13,13 @@ use ratatui::widgets::Paragraph;
 
 use crate::common::app_state::AppState;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
+use crate::feat::theme::contrast::darken;
 use super::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
 
-/// Full block character for non-ignored entries.
+/// Full block character for entries and single-round tool sequences.
 const FULL_BLOCK: &str = "\u{2588}";
-/// Half block (lower) character for ignored entries.
-const HALF_BLOCK: &str = "\u{2584}";
 
 /// Categorizes chat entry types for minimap coloring.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -279,18 +278,35 @@ impl SidebarSection for MinimapSection {
         let mut current_spans: Vec<Span<'static>> = Vec::new();
 
         for block in &blocks {
-            let (ch, color) = match block {
+            match block {
                 MinimapBlock::Entry { category, ignored } => {
-                    let ch = if *ignored { HALF_BLOCK } else { FULL_BLOCK };
-                    (ch, category.color())
+                    let color = if *ignored {
+                        darken(category.color(), 0.4)
+                    } else {
+                        category.color()
+                    };
+                    current_spans.push(Span::styled(
+                        FULL_BLOCK.to_owned(),
+                        Style::default().fg(color),
+                    ));
                 }
-                MinimapBlock::CollapsedToolSequence { all_ignored, .. } => {
-                    let ch = if *all_ignored { HALF_BLOCK } else { FULL_BLOCK };
-                    (ch, Color::Green)
+                MinimapBlock::CollapsedToolSequence {
+                    tool_count,
+                    all_ignored,
+                } => {
+                    let color = if *all_ignored {
+                        darken(Color::Green, 0.4)
+                    } else {
+                        Color::Green
+                    };
+                    let ch = if *tool_count == 1 {
+                        FULL_BLOCK.to_owned()
+                    } else {
+                        count_char(*tool_count).to_string()
+                    };
+                    current_spans.push(Span::styled(ch, Style::default().fg(color)));
                 }
-            };
-            current_spans.push(Span::styled(ch.to_owned(), Style::default().fg(color)));
-
+            }
             if current_spans.len() >= width {
                 lines.push(Line::from(std::mem::take(&mut current_spans)));
             }
@@ -714,7 +730,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_half_block_for_ignored_entry() {
+    fn render_darkened_color_for_ignored_entry() {
         // Given a minimap with one ignored user entry.
         let mut section = MinimapSection::default();
         let mut state = AppState::default();
@@ -724,10 +740,57 @@ mod tests {
         // When rendering.
         let rows = render_rows(&mut section, &state, 30, 5);
 
-        // Then the first row contains a half block character.
+        // Then the first row contains a full block (not half block).
         assert!(
-            rows[0].contains('\u{2584}'),
-            "should contain half block, got: {}",
+            rows[0].contains('\u{2588}'),
+            "should contain full block, got: {}",
+            rows[0]
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_count_char_for_collapsed_tool_sequence() {
+        // Given a 3-round TA sequence: TCall → TResult → Asst → TCall → TResult → Asst → TCall → TResult → Asst(final).
+        let mut section = MinimapSection::default();
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::tool_call("id1", "bash", "echo 1"));
+        state.active_session_mut().push_entry(ChatEntry::tool_result("id1", "bash", "out", crate::feat::session::tool_result_status::ToolResultStatus::Success));
+        state.active_session_mut().push_entry(ChatEntry::assistant("intermediate"));
+        state.active_session_mut().push_entry(ChatEntry::tool_call("id2", "bash", "echo 2"));
+        state.active_session_mut().push_entry(ChatEntry::tool_result("id2", "bash", "out", crate::feat::session::tool_result_status::ToolResultStatus::Success));
+        state.active_session_mut().push_entry(ChatEntry::assistant("intermediate 2"));
+        state.active_session_mut().push_entry(ChatEntry::tool_call("id3", "bash", "echo 3"));
+        state.active_session_mut().push_entry(ChatEntry::tool_result("id3", "bash", "out", crate::feat::session::tool_result_status::ToolResultStatus::Success));
+        state.active_session_mut().push_entry(ChatEntry::assistant("final answer"));
+
+        // When rendering.
+        let rows = render_rows(&mut section, &state, 30, 5);
+
+        // Then the first row contains '3' (count char for 3 tool rounds).
+        assert!(
+            rows[0].contains('3'),
+            "should contain count char '3', got: {}",
+            rows[0]
+        );
+        // And it does NOT contain the full block for the collapsed sequence.
+        // The final assistant should appear as a separate full block.
+    }
+
+    #[rstest::rstest]
+    fn render_full_block_for_single_tool_round() {
+        // Given a single-round TA sequence.
+        let mut section = MinimapSection::default();
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::tool_call("id1", "bash", "echo hi"));
+        state.active_session_mut().push_entry(ChatEntry::assistant("done"));
+
+        // When rendering.
+        let rows = render_rows(&mut section, &state, 30, 5);
+
+        // Then the first row contains a full block (single round = █, not a digit).
+        assert!(
+            rows[0].contains('\u{2588}'),
+            "should contain full block for single tool round, got: {}",
             rows[0]
         );
     }
