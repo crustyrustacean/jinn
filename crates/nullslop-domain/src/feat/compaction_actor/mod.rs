@@ -299,12 +299,11 @@ async fn perform_compaction(
             return Ok(0);
         }
 
-        // Serialize entries for the LLM prompt.
+        // Collect entries for serialization.
         let entries_to_serialize: Vec<ChatEntry> = gathered_indices
             .iter()
             .map(|&i| history[i].clone())
             .collect();
-        let serialized = serialize_entries_for_compaction(&entries_to_serialize);
 
         // Check for previous compaction summary (for iterative updating).
         let previous_summary = if start_index > 0 {
@@ -327,7 +326,7 @@ async fn perform_compaction(
         let entries_compacted = gathered_indices.len();
 
         (
-            serialized,
+            entries_to_serialize,
             previous_summary,
             entries_compacted,
             tokens_before,
@@ -337,13 +336,26 @@ async fn perform_compaction(
     };
 
     let (
-        serialized,
+        entries_to_serialize,
         previous_summary,
         entries_compacted,
         tokens_before,
         boundary_index,
         gathered_indices,
     ) = gathered;
+
+    // CPU-bound: serialize entries — offloaded to blocking thread.
+    let serialized = tokio::task::spawn_blocking(move || {
+        serialize_entries_for_compaction(&entries_to_serialize)
+    })
+    .await
+    .unwrap_or_else(|e| {
+        tracing::warn!(
+            err = ?e,
+            "spawn_blocking panicked during compaction serialization"
+        );
+        String::new()
+    });
 
     // Step 2: Emit BeginCompaction — session actor marks entries ignored, sets phase.
     let _ = sink.send_command(Command::BeginCompaction(BeginCompaction {
