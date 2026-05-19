@@ -73,32 +73,154 @@ impl MinimapCategory {
     }
 }
 
-/// A single block in the minimap, representing a run of same-category entries.
+/// A block in the minimap — either a single entry or a collapsed tool-use sequence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MinimapBlock {
-    category: MinimapCategory,
-    is_ignored: bool,
+enum MinimapBlock {
+    /// A single non-tool entry (User, Assistant, Error, etc.).
+    Entry {
+        category: MinimapCategory,
+        ignored: bool,
+    },
+    /// A collapsed sequence of consecutive ToolCall→[ToolResult]→Assistant rounds.
+    CollapsedToolSequence {
+        /// Number of tool-call rounds in this sequence.
+        tool_count: usize,
+        /// True if every entry in the sequence is ignored.
+        all_ignored: bool,
+    },
+}
+
+/// Maps a tool count to its display character.
+///
+/// 2–9 → `'2'`–`'9'`, 10–35 → `'A'`–`'Z'`. Counts ≤ 1 or > 35 should not
+/// call this function.
+fn count_char(n: usize) -> char {
+    match n {
+        2..=9 => char::from_digit(n as u32, 10).unwrap(),
+        10..=35 => (b'A' + (n - 10) as u8) as char,
+        _ => unreachable!("count_char called with {n}, expected 2..=35"),
+    }
+}
+
+/// Returns true if the entry kind is a tool call or tool result.
+fn is_tool_or_result(kind: &ChatEntryKind) -> bool {
+    matches!(
+        kind,
+        ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. }
+    )
+}
+
+/// Emits collapsed blocks for a TA sequence, handling the Z+overflow split.
+///
+/// For tool_count > 35, emits `Z` (35) + remaining as a second block.
+fn emit_collapsed(blocks: &mut Vec<MinimapBlock>, tool_count: usize, all_ignored: bool) {
+    if tool_count == 0 {
+        return;
+    }
+    if tool_count <= 35 {
+        blocks.push(MinimapBlock::CollapsedToolSequence {
+            tool_count,
+            all_ignored,
+        });
+        return;
+    }
+    // First block: Z (35 rounds).
+    blocks.push(MinimapBlock::CollapsedToolSequence {
+        tool_count: 35,
+        all_ignored,
+    });
+    // Second block: remaining rounds.
+    blocks.push(MinimapBlock::CollapsedToolSequence {
+        tool_count: tool_count - 35,
+        all_ignored,
+    });
 }
 
 /// Computes the minimap blocks from session history.
 ///
-/// Iterates entries, filters to included types, and collapses consecutive
-/// entries with the same `(category, is_ignored)` into a single block.
+/// Walks entries with a state machine:
+/// - Non-tool entries (User, Error, System, Compaction, Skill, standalone Assistant)
+///   become individual [`Entry`](MinimapBlock::Entry) blocks.
+/// - Consecutive ToolCall/ToolResult/Assistant sequences are collapsed into
+///   [`CollapsedToolSequence`](MinimapBlock::CollapsedToolSequence) blocks. The count
+///   is the number of ToolCall entries (tool rounds). Intermediate Assistant entries
+///   are absorbed. The final Assistant (not followed by another ToolCall) becomes its
+///   own `Entry` block.
 fn compute_blocks(history: &[ChatEntry]) -> Vec<MinimapBlock> {
     let mut blocks = Vec::new();
-    for entry in history {
-        let Some(category) = MinimapCategory::from_kind(&entry.kind) else {
-            continue;
-        };
-        let block = MinimapBlock {
-            category,
-            is_ignored: entry.ignored,
-        };
-        if blocks.last() == Some(&block) {
-            continue;
+
+    // Collect only included entries with their ignored status.
+    let included: Vec<_> = history
+        .iter()
+        .filter_map(|entry| {
+            MinimapCategory::from_kind(&entry.kind)
+                .map(|cat| (cat, entry.ignored, &entry.kind))
+        })
+        .collect();
+
+    let mut i = 0;
+    while i < included.len() {
+        let (category, ignored, kind) = &included[i];
+
+        if is_tool_or_result(kind) {
+            // Start of a TA sequence.
+            let mut tool_count = 0usize;
+            let mut all_ignored = true;
+            let mut seq_end = i;
+
+            // Absorb consecutive Tool/Assistant entries.
+            while seq_end < included.len() {
+                let (_, entry_ignored, entry_kind) = &included[seq_end];
+
+                if is_tool_or_result(entry_kind) {
+                    if matches!(entry_kind, ChatEntryKind::ToolCall { .. }) {
+                        tool_count += 1;
+                    }
+                    all_ignored = all_ignored && *entry_ignored;
+                    seq_end += 1;
+                } else if matches!(entry_kind, ChatEntryKind::Assistant(..)) {
+                    // Lookahead: is the next included entry a tool call?
+                    let next_is_tool = included
+                        .get(seq_end + 1)
+                        .map(|(_, _, k)| is_tool_or_result(k))
+                        .unwrap_or(false);
+                    if next_is_tool {
+                        // Intermediate assistant — absorb.
+                        all_ignored = all_ignored && *entry_ignored;
+                        seq_end += 1;
+                    } else {
+                        // Final assistant — end sequence before it.
+                        break;
+                    }
+                } else {
+                    // Non-tool, non-assistant entry breaks the sequence.
+                    break;
+                }
+            }
+
+            emit_collapsed(&mut blocks, tool_count, all_ignored);
+            i = seq_end;
+        } else {
+            // Non-tool entry: collapse consecutive entries with same (category, ignored).
+            let start_cat = *category;
+            let start_ignored = *ignored;
+            let mut run_end = i + 1;
+            while run_end < included.len() {
+                let (cat, ign, kind) = &included[run_end];
+                if *cat == start_cat && *ign == start_ignored && !is_tool_or_result(kind) {
+                    run_end += 1;
+                } else {
+                    break;
+                }
+            }
+            blocks.push(MinimapBlock::Entry {
+                category: start_cat,
+                ignored: start_ignored,
+            });
+            i = run_end;
         }
-        blocks.push(block);
     }
+
     blocks
 }
 
@@ -157,15 +279,17 @@ impl SidebarSection for MinimapSection {
         let mut current_spans: Vec<Span<'static>> = Vec::new();
 
         for block in &blocks {
-            let ch = if block.is_ignored {
-                HALF_BLOCK
-            } else {
-                FULL_BLOCK
+            let (ch, color) = match block {
+                MinimapBlock::Entry { category, ignored } => {
+                    let ch = if *ignored { HALF_BLOCK } else { FULL_BLOCK };
+                    (ch, category.color())
+                }
+                MinimapBlock::CollapsedToolSequence { all_ignored, .. } => {
+                    let ch = if *all_ignored { HALF_BLOCK } else { FULL_BLOCK };
+                    (ch, Color::Green)
+                }
             };
-            current_spans.push(Span::styled(
-                ch.to_owned(),
-                Style::default().fg(block.category.color()),
-            ));
+            current_spans.push(Span::styled(ch.to_owned(), Style::default().fg(color)));
 
             if current_spans.len() >= width {
                 lines.push(Line::from(std::mem::take(&mut current_spans)));
@@ -200,9 +324,17 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::ChatEntry;
 
-    // Helper to build history from a list of entries.
-    fn history_with(entries: Vec<ChatEntry>) -> Vec<ChatEntry> {
-        entries
+    // --- count_char ---
+
+    #[rstest::rstest]
+    #[case(2, '2')]
+    #[case(5, '5')]
+    #[case(9, '9')]
+    #[case(10, 'A')]
+    #[case(20, 'K')]
+    #[case(35, 'Z')]
+    fn count_char_maps_correctly(#[case] n: usize, #[case] expected: char) {
+        assert_eq!(count_char(n), expected);
     }
 
     // --- Block computation ---
@@ -210,7 +342,7 @@ mod tests {
     #[rstest::rstest]
     fn empty_history_produces_no_blocks() {
         // Given an empty history.
-        let history = history_with(vec![]);
+        let history: Vec<ChatEntry> = vec![];
 
         // When computing blocks.
         let blocks = compute_blocks(&history);
@@ -220,90 +352,329 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn single_entry_produces_one_block() {
+    fn single_user_entry_produces_one_entry_block() {
         // Given a history with one user entry.
-        let history = history_with(vec![ChatEntry::user("hello")]);
+        let history = vec![ChatEntry::user("hello")];
 
         // When computing blocks.
         let blocks = compute_blocks(&history);
 
-        // Then there is one User block, not ignored.
+        // Then there is one User Entry block.
         assert_eq!(blocks.len(), 1);
-        assert_eq!(blocks[0].category, MinimapCategory::User);
-        assert!(!blocks[0].is_ignored);
+        assert_eq!(
+            blocks[0],
+            MinimapBlock::Entry {
+                category: MinimapCategory::User,
+                ignored: false
+            }
+        );
     }
 
     #[rstest::rstest]
-    fn consecutive_same_type_collapses() {
+    fn consecutive_same_type_collapses_to_one_entry() {
         // Given three consecutive user entries.
-        let history = history_with(vec![
+        let history = vec![
             ChatEntry::user("msg 1"),
             ChatEntry::user("msg 2"),
             ChatEntry::user("msg 3"),
-        ]);
+        ];
 
         // When computing blocks.
         let blocks = compute_blocks(&history);
 
-        // Then there is one collapsed User block.
+        // Then there is one User Entry block.
         assert_eq!(blocks.len(), 1);
-        assert_eq!(blocks[0].category, MinimapCategory::User);
+        assert_eq!(
+            blocks[0],
+            MinimapBlock::Entry {
+                category: MinimapCategory::User,
+                ignored: false
+            }
+        );
     }
 
     #[rstest::rstest]
-    fn different_type_produces_separate_blocks() {
-        // Given a user entry, then a tool call, then another user entry.
-        let history = history_with(vec![
+    fn different_non_tool_types_produce_separate_entry_blocks() {
+        // Given a user entry, then an assistant, then a system message.
+        let history = vec![
             ChatEntry::user("hello"),
-            ChatEntry::tool_call("id1", "bash", "echo hi"),
-            ChatEntry::user("world"),
-        ]);
+            ChatEntry::assistant("resp"),
+            ChatEntry::system("info"),
+        ];
 
         // When computing blocks.
         let blocks = compute_blocks(&history);
 
-        // Then there are three blocks: User, Tool, User.
+        // Then there are three Entry blocks.
         assert_eq!(blocks.len(), 3);
-        assert_eq!(blocks[0].category, MinimapCategory::User);
-        assert_eq!(blocks[1].category, MinimapCategory::Tool);
-        assert_eq!(blocks[2].category, MinimapCategory::User);
+        assert_eq!(blocks[0].entry_category(), Some(MinimapCategory::User));
+        assert_eq!(blocks[1].entry_category(), Some(MinimapCategory::Assistant));
+        assert_eq!(blocks[2].entry_category(), Some(MinimapCategory::System));
     }
 
     #[rstest::rstest]
-    fn ignored_entries_produce_separate_blocks() {
-        // Given two user entries, one ignored and one not.
-        let mut entry1 = ChatEntry::user("old");
-        entry1.ignored = true;
-        let entry2 = ChatEntry::user("new");
-
-        let history = history_with(vec![entry1, entry2]);
+    fn simple_ta_sequence_collapses_to_one_block() {
+        // Given User → ToolCall → ToolResult → Assistant.
+        let history = vec![
+            ChatEntry::user("do something"),
+            ChatEntry::tool_call("id1", "bash", "echo hi"),
+            ChatEntry::tool_result("id1", "bash", "output", crate::feat::session::tool_result_status::ToolResultStatus::Success),
+            ChatEntry::assistant("done"),
+        ];
 
         // When computing blocks.
         let blocks = compute_blocks(&history);
 
-        // Then there are two blocks (same category, different ignored status).
+        // Then: Entry(User), CollapsedToolSequence(1), Entry(Asst).
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(blocks[0].entry_category(), Some(MinimapCategory::User));
+        assert_eq!(
+            blocks[1],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 1,
+                all_ignored: false
+            }
+        );
+        assert_eq!(blocks[2].entry_category(), Some(MinimapCategory::Assistant));
+    }
+
+    #[rstest::rstest]
+    fn multi_round_ta_collapses_with_final_assistant_separate() {
+        // Given: TCall → TResult → Asst → TCall → TResult → Asst(final).
+        let history = vec![
+            ChatEntry::tool_call("id1", "bash", "echo hi"),
+            ChatEntry::tool_result("id1", "bash", "output", crate::feat::session::tool_result_status::ToolResultStatus::Success),
+            ChatEntry::assistant("thinking..."),
+            ChatEntry::tool_call("id2", "read", "file.txt"),
+            ChatEntry::tool_result("id2", "read", "contents", crate::feat::session::tool_result_status::ToolResultStatus::Success),
+            ChatEntry::assistant("here is the answer"),
+        ];
+
+        // When computing blocks.
+        let blocks = compute_blocks(&history);
+
+        // Then: CollapsedToolSequence(2), Entry(Asst).
         assert_eq!(blocks.len(), 2);
-        assert!(blocks[0].is_ignored);
-        assert!(!blocks[1].is_ignored);
+        assert_eq!(
+            blocks[0],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 2,
+                all_ignored: false
+            }
+        );
+        assert_eq!(blocks[1].entry_category(), Some(MinimapCategory::Assistant));
+    }
+
+    #[rstest::rstest]
+    fn error_breaks_ta_sequence() {
+        // Given: TCall → Error → TCall.
+        let history = vec![
+            ChatEntry::tool_call("id1", "bash", "echo hi"),
+            ChatEntry::error("something went wrong"),
+            ChatEntry::tool_call("id2", "bash", "echo bye"),
+        ];
+
+        // When computing blocks.
+        let blocks = compute_blocks(&history);
+
+        // Then: Collapsed(1), Entry(Error), Collapsed(1).
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(
+            blocks[0],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 1,
+                all_ignored: false
+            }
+        );
+        assert_eq!(blocks[1].entry_category(), Some(MinimapCategory::Error));
+        assert_eq!(
+            blocks[2],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 1,
+                all_ignored: false
+            }
+        );
+    }
+
+    #[rstest::rstest]
+    fn compaction_breaks_ta_sequence() {
+        // Given: TCall → Compaction → TCall.
+        let compaction = ChatEntry {
+            id: crate::feat::session::chat_entry::ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Compaction {
+                summary: "summary".into(),
+                tokens_before: 100,
+                entries_compacted: 5,
+                model_used: "test".into(),
+            },
+            pin_position: None,
+            ignored: false,
+        };
+        let history = vec![
+            ChatEntry::tool_call("id1", "bash", "echo hi"),
+            compaction,
+            ChatEntry::tool_call("id2", "bash", "echo bye"),
+        ];
+
+        // When computing blocks.
+        let blocks = compute_blocks(&history);
+
+        // Then: Collapsed(1), Entry(Compaction), Collapsed(1).
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(
+            blocks[0],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 1,
+                all_ignored: false
+            }
+        );
+        assert_eq!(
+            blocks[1].entry_category(),
+            Some(MinimapCategory::Compaction)
+        );
+    }
+
+    #[rstest::rstest]
+    fn all_ignored_sequence_produces_all_ignored_block() {
+        // Given a TA sequence where all entries are ignored.
+        let history = vec![
+            ChatEntry::tool_call("id1", "bash", "echo hi").with_ignored(true),
+            ChatEntry::tool_result("id1", "bash", "output", crate::feat::session::tool_result_status::ToolResultStatus::Success)
+                .with_ignored(true),
+            ChatEntry::assistant("done").with_ignored(true),
+        ];
+
+        // When computing blocks.
+        let blocks = compute_blocks(&history);
+
+        // Then: Collapsed(1, all_ignored=true), Entry(Asst, ignored=true).
+        assert_eq!(
+            blocks[0],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 1,
+                all_ignored: true
+            }
+        );
+    }
+
+    #[rstest::rstest]
+    fn partially_ignored_sequence_produces_not_all_ignored() {
+        // Given a TA sequence where only some entries are ignored.
+        let history = vec![
+            ChatEntry::tool_call("id1", "bash", "echo hi").with_ignored(true),
+            ChatEntry::tool_result("id1", "bash", "output", crate::feat::session::tool_result_status::ToolResultStatus::Success)
+                .with_ignored(false),
+            ChatEntry::assistant("done"),
+        ];
+
+        // When computing blocks.
+        let blocks = compute_blocks(&history);
+
+        // Then: Collapsed(1, all_ignored=false).
+        assert_eq!(
+            blocks[0],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 1,
+                all_ignored: false
+            }
+        );
+    }
+
+    #[rstest::rstest]
+    fn tool_sequence_over_35_splits_into_z_plus_remaining() {
+        // Given 40 tool rounds (ToolCall + ToolResult each).
+        let mut history = Vec::new();
+        for i in 0..40 {
+            history.push(ChatEntry::tool_call(
+                format!("id{i}"),
+                "bash",
+                "echo",
+            ));
+            history.push(ChatEntry::tool_result(
+                format!("id{i}"),
+                "bash",
+                "output",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ));
+        }
+        history.push(ChatEntry::assistant("final answer"));
+
+        // When computing blocks.
+        let blocks = compute_blocks(&history);
+
+        // Then: Collapsed(35), Collapsed(5), Entry(Asst).
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(
+            blocks[0],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 35,
+                all_ignored: false
+            }
+        );
+        assert_eq!(
+            blocks[1],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 5,
+                all_ignored: false
+            }
+        );
+        assert_eq!(blocks[2].entry_category(), Some(MinimapCategory::Assistant));
     }
 
     #[rstest::rstest]
     fn excluded_types_are_filtered() {
         // Given entries of excluded types (Actor, Thinking, Table).
-        let history = history_with(vec![
+        let history = vec![
             ChatEntry::actor("bash", "output"),
             ChatEntry::thinking("reasoning..."),
             ChatEntry::table(crate::feat::session::chat_entry::TableData {
                 headers: vec![],
                 rows: vec![],
             }),
-        ]);
+        ];
 
         // When computing blocks.
         let blocks = compute_blocks(&history);
 
         // Then there are no blocks.
         assert!(blocks.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn standalone_assistant_is_entry_block() {
+        // Given a lone assistant entry with no tool calls.
+        let history = vec![ChatEntry::assistant("hello")];
+
+        // When computing blocks.
+        let blocks = compute_blocks(&history);
+
+        // Then there is one Assistant Entry block.
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].entry_category(), Some(MinimapCategory::Assistant));
+    }
+
+    #[rstest::rstest]
+    fn tool_call_without_result_still_counts_as_round() {
+        // Given a ToolCall with no ToolResult, followed by a final Assistant.
+        let history = vec![
+            ChatEntry::tool_call("id1", "bash", "echo hi"),
+            ChatEntry::assistant("done"),
+        ];
+
+        // When computing blocks.
+        let blocks = compute_blocks(&history);
+
+        // Then: Collapsed(1), Entry(Asst).
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(
+            blocks[0],
+            MinimapBlock::CollapsedToolSequence {
+                tool_count: 1,
+                all_ignored: false
+            }
+        );
+        assert_eq!(blocks[1].entry_category(), Some(MinimapCategory::Assistant));
     }
 
     // --- Rendering ---
@@ -325,7 +696,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn render_full_block_for_non_ignored() {
+    fn render_full_block_for_non_ignored_entry() {
         // Given a minimap with one non-ignored user entry.
         let mut section = MinimapSection::default();
         let mut state = AppState::default();
@@ -335,23 +706,30 @@ mod tests {
         let rows = render_rows(&mut section, &state, 30, 5);
 
         // Then the first row contains a full block character.
-        assert!(rows[0].contains('\u{2588}'), "should contain full block, got: {}", rows[0]);
+        assert!(
+            rows[0].contains('\u{2588}'),
+            "should contain full block, got: {}",
+            rows[0]
+        );
     }
 
     #[rstest::rstest]
-    fn render_half_block_for_ignored() {
+    fn render_half_block_for_ignored_entry() {
         // Given a minimap with one ignored user entry.
         let mut section = MinimapSection::default();
         let mut state = AppState::default();
-        let mut entry = ChatEntry::user("old");
-        entry.ignored = true;
+        let entry = ChatEntry::user("old").with_ignored(true);
         state.active_session_mut().push_entry(entry);
 
         // When rendering.
         let rows = render_rows(&mut section, &state, 30, 5);
 
         // Then the first row contains a half block character.
-        assert!(rows[0].contains('\u{2584}'), "should contain half block, got: {}", rows[0]);
+        assert!(
+            rows[0].contains('\u{2584}'),
+            "should contain half block, got: {}",
+            rows[0]
+        );
     }
 
     #[rstest::rstest]
@@ -392,15 +770,19 @@ mod tests {
 
     #[rstest::rstest]
     fn content_height_is_correct_for_known_blocks_and_width() {
-        // Given a MinimapSection with last_width=10 and 25 blocks worth of entries.
+        // Given a MinimapSection with last_width=10 and 25 separate blocks.
         let mut section = MinimapSection::default();
         let mut state = AppState::default();
-        // 25 entries alternating type to produce 25 separate blocks.
+        // 25 entries alternating user/assistant to produce 25 separate Entry blocks.
         for i in 0..25 {
             if i % 2 == 0 {
-                state.active_session_mut().push_entry(ChatEntry::user(format!("msg {i}")));
+                state
+                    .active_session_mut()
+                    .push_entry(ChatEntry::user(format!("msg {i}")));
             } else {
-                state.active_session_mut().push_entry(ChatEntry::assistant(format!("resp {i}")));
+                state
+                    .active_session_mut()
+                    .push_entry(ChatEntry::assistant(format!("resp {i}")));
             }
         }
         // Set last_width by simulating render area.
@@ -421,5 +803,17 @@ mod tests {
         // When asking for its ID.
         // Then it returns Minimap.
         assert_eq!(section.id(), SidebarSectionId::Minimap);
+    }
+
+    // --- Test helper on MinimapBlock ---
+
+    impl MinimapBlock {
+        /// Returns the category if this is an Entry block, None otherwise.
+        fn entry_category(&self) -> Option<MinimapCategory> {
+            match self {
+                MinimapBlock::Entry { category, .. } => Some(*category),
+                MinimapBlock::CollapsedToolSequence { .. } => None,
+            }
+        }
     }
 }
