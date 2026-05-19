@@ -18,6 +18,7 @@ pub mod session;
 pub mod session_lifecycle;
 pub mod sidebar_resize;
 pub mod skills;
+pub mod sliding_window_input;
 pub mod theme;
 pub mod token_budget_input;
 pub mod tools_actor;
