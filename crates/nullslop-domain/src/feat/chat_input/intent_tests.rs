@@ -754,3 +754,135 @@ fn paste_text_inserts_at_cursor_position() {
     assert_eq!(state.active_chat_input().cursor_pos(), 4);
     assert!(result.commands.is_empty());
 }
+
+// --- Hash after newline tests ---
+
+#[rstest::rstest]
+fn hash_triggers_after_newline() {
+    // Given a state with "hello\n" in the buffer.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("hello\n");
+
+    // When handling InsertChar('#').
+    let result = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
+
+    // Then autocomplete is active with Hash trigger.
+    let ac = state.active_chat_input().autocomplete();
+    assert!(
+        ac.is_some(),
+        "autocomplete should be active after '#' on new line"
+    );
+    assert_eq!(ac.as_ref().unwrap().trigger(), AutocompleteTrigger::Hash);
+    assert!(result.commands.is_empty());
+}
+
+#[rstest::rstest]
+fn hash_triggers_after_newline_at_line_start() {
+    // Given a state with "\n" in the buffer.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("\n");
+
+    // When handling InsertChar('#').
+    let result = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
+
+    // Then autocomplete is active.
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "autocomplete should be active after '#' following newline"
+    );
+    assert!(result.commands.is_empty());
+}
+
+#[rstest::rstest]
+fn hash_does_not_trigger_after_non_boundary_char() {
+    // Given a state with "hello" in the buffer.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("hello");
+
+    // When handling InsertChar('#').
+    let result = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
+
+    // Then autocomplete is NOT active (preceded by 'o', not a boundary).
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "autocomplete should NOT trigger when '#' is preceded by a non-boundary char"
+    );
+    assert!(result.commands.is_empty());
+}
+
+#[rstest::rstest]
+fn hash_reactivates_when_cursor_enters_token_after_newline() {
+    // Given a state with "hello\n#code" in buffer and no autocomplete.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("hello\n#code");
+
+    // When moving cursor left into the "#code" token.
+    // Cursor starts at end (position 11). Move left to 'e' (position 10).
+    let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
+
+    // Then autocomplete is re-activated.
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "autocomplete should reactivate when cursor re-enters #token after newline"
+    );
+    assert!(result.commands.is_empty());
+}
+
+// --- Popup auto-close on cursor move past token ---
+
+#[rstest::rstest]
+fn cursor_right_past_token_deactivates_autocomplete() {
+    // Given a state with "#code hello" and autocomplete active at token_start=0.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("#code hello");
+    state.active_chat_input_mut().activate_autocomplete(
+        0,
+        AutocompleteTrigger::Hash,
+        vec![],
+    );
+    // Move cursor to start, then right through the token.
+    // token_end = 5 (one past 'e'). Cursor at 5 == token_end, still "in" token.
+    state.active_chat_input_mut().move_cursor_to_start();
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 1 ('c')
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 2 ('o')
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 3 ('d')
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 4 ('e')
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 5 (space)
+
+    // Then autocomplete is still active (cursor at token_end).
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "popup should stay open when cursor is at token_end"
+    );
+
+    // When moving cursor right one more time to position 6 (past token).
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state);
+
+    // Then autocomplete is deactivated.
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "popup should close when cursor moves past token_end"
+    );
+}
+
+#[rstest::rstest]
+fn cursor_right_within_token_keeps_autocomplete_active() {
+    // Given a state with "#code" and autocomplete active at token_start=0.
+    let mut state = AppState::default();
+    state.active_chat_input_mut().insert_text("#code");
+    state.active_chat_input_mut().activate_autocomplete(
+        0,
+        AutocompleteTrigger::Hash,
+        vec![],
+    );
+    // Move cursor to start, then right to position 2.
+    state.active_chat_input_mut().move_cursor_to_start();
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 1
+    crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 2
+
+    // Then autocomplete is still active (cursor within token, position 2 < token_end=5).
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "popup should stay open when cursor is within token"
+    );
+}
