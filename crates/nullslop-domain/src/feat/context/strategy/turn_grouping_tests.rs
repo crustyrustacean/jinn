@@ -6,13 +6,13 @@ use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::{ChatEntry, PinPosition};
 
 fn turn_entry_counts(turns: &[Turn]) -> Vec<usize> {
-    turns.iter().map(|t| t.entry_count()).collect()
+    turns.iter().map(Turn::entry_count).collect()
 }
 
 fn turn_kinds(turns: &[Turn]) -> Vec<Vec<&'static str>> {
     turns
         .iter()
-        .map(|t| t.entries().map(|e| e.kind_str()).collect())
+        .map(|t| t.entries().map(ChatEntry::kind_str).collect())
         .collect()
 }
 
