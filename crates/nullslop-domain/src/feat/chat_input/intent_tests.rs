@@ -1,5 +1,6 @@
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger};
+use crate::feat::session::chat_session::SessionPhase;
 use crate::protocol::{ChatEntry, Command};
 
 #[rstest::rstest]
@@ -383,7 +384,7 @@ fn enter_normal_mode_does_not_cancel_stream() {
             .any(|c| matches!(c, Command::CancelStream(..)))
     );
     // And the session is still streaming (not cancelled).
-    assert!(state.active_session().is_streaming());
+    assert!(matches!(state.active_session().phase(), SessionPhase::Streaming));
 }
 
 #[rstest::rstest]

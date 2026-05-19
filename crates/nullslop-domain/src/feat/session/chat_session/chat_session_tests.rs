@@ -45,7 +45,7 @@ fn begin_streaming_sets_is_streaming() {
     session.begin_streaming();
 
     // Then is_streaming is true.
-    assert!(session.is_streaming());
+    assert_eq!(session.phase(), SessionPhase::Streaming);
 }
 
 #[rstest::rstest]
@@ -76,7 +76,7 @@ fn finish_streaming_clears_streaming_state() {
     session.finish_streaming(true);
 
     // Then is_streaming is false and text is preserved.
-    assert!(!session.is_streaming());
+    assert_ne!(session.phase(), SessionPhase::Streaming);
     assert_eq!(
         session.history()[0].kind,
         ChatEntryKind::Assistant("Hi".to_owned())
@@ -94,7 +94,7 @@ fn cancel_streaming_keeps_partial_text() {
     session.cancel_streaming();
 
     // Then is_streaming is false but partial text is kept.
-    assert!(!session.is_streaming());
+    assert_ne!(session.phase(), SessionPhase::Streaming);
     assert_eq!(
         session.history()[0].kind,
         ChatEntryKind::Assistant("Partial".to_owned())
@@ -382,13 +382,13 @@ fn drain_empties_queue() {
 fn begin_sending_sets_is_sending() {
     // Given a new session (idle).
     let mut session = ChatSessionState::new();
-    assert!(!session.is_sending());
+    assert_ne!(session.phase(), SessionPhase::Sending);
 
     // When beginning sending.
     session.begin_sending();
 
     // Then is_sending is true.
-    assert!(session.is_sending());
+    assert_eq!(session.phase(), SessionPhase::Sending);
 }
 
 #[rstest::rstest]
@@ -425,7 +425,7 @@ fn finish_sending_clears_flag() {
     session.finish_sending();
 
     // Then is_sending is false.
-    assert!(!session.is_sending());
+    assert_ne!(session.phase(), SessionPhase::Sending);
 }
 
 #[rstest::rstest]
@@ -447,7 +447,7 @@ fn is_idle_true_when_not_sending_or_streaming() {
     let session = ChatSessionState::new();
 
     // Then it is idle.
-    assert!(session.is_idle());
+    assert_eq!(session.phase(), SessionPhase::Idle);
 }
 
 #[rstest::rstest]
@@ -457,7 +457,7 @@ fn is_idle_false_when_sending() {
     session.begin_sending();
 
     // Then it is not idle.
-    assert!(!session.is_idle());
+    assert_ne!(session.phase(), SessionPhase::Idle);
 }
 
 #[rstest::rstest]
@@ -467,7 +467,7 @@ fn is_idle_false_when_streaming() {
     session.begin_streaming();
 
     // Then it is not idle.
-    assert!(!session.is_idle());
+    assert_ne!(session.phase(), SessionPhase::Idle);
 }
 
 #[rstest::rstest]
@@ -476,15 +476,15 @@ fn cancel_streaming_returns_to_idle() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    assert!(session.is_streaming());
+    assert_eq!(session.phase(), SessionPhase::Streaming);
 
     // When cancelling streaming.
     session.cancel_streaming();
 
     // Then the session is idle.
-    assert!(session.is_idle());
-    assert!(!session.is_streaming());
-    assert!(!session.is_sending());
+    assert_eq!(session.phase(), SessionPhase::Idle);
+    assert_ne!(session.phase(), SessionPhase::Streaming);
+    assert_ne!(session.phase(), SessionPhase::Sending);
 }
 
 #[rstest::rstest]
@@ -500,9 +500,9 @@ fn finish_streaming_returns_to_idle() {
     session.finish_streaming(true);
 
     // Then the session is idle.
-    assert!(session.is_idle());
-    assert!(!session.is_streaming());
-    assert!(!session.is_sending());
+    assert_eq!(session.phase(), SessionPhase::Idle);
+    assert_ne!(session.phase(), SessionPhase::Streaming);
+    assert_ne!(session.phase(), SessionPhase::Sending);
 }
 
 // --- Tool call streaming tests ---
@@ -652,7 +652,7 @@ fn finish_streaming_clears_tool_call_indices() {
     session.finish_streaming(true);
 
     // Then the tool call indices are cleared (entries remain in history).
-    assert!(!session.is_streaming());
+    assert_ne!(session.phase(), SessionPhase::Streaming);
     assert_eq!(session.history().len(), 2); // assistant + tool call still there
 }
 
@@ -667,7 +667,7 @@ fn cancel_streaming_clears_tool_call_indices() {
     session.cancel_streaming();
 
     // Then the tool call indices are cleared (entries remain in history).
-    assert!(!session.is_streaming());
+    assert_ne!(session.phase(), SessionPhase::Streaming);
     assert_eq!(session.history().len(), 2); // assistant + tool call still there
 }
 
@@ -1226,7 +1226,7 @@ fn finish_streaming_without_preserve_skips_assistant_entry() {
     session.finish_streaming(false);
 
     // Then no assistant entry was created.
-    assert!(!session.is_streaming());
+    assert_ne!(session.phase(), SessionPhase::Streaming);
     assert!(session.history().is_empty());
 }
 
@@ -1240,7 +1240,7 @@ fn finish_streaming_with_preserve_creates_assistant_entry() {
     session.finish_streaming(true);
 
     // Then an empty assistant entry was created.
-    assert!(!session.is_streaming());
+    assert_ne!(session.phase(), SessionPhase::Streaming);
     assert_eq!(session.history().len(), 1);
     assert!(matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t.is_empty()));
 }
@@ -1256,7 +1256,7 @@ fn finish_streaming_without_preserve_keeps_existing_assistant() {
     session.finish_streaming(false);
 
     // Then the existing assistant entry is still there (ensure_assistant_entry was a no-op since entry already existed).
-    assert!(!session.is_streaming());
+    assert_ne!(session.phase(), SessionPhase::Streaming);
     assert_eq!(session.history().len(), 1);
     assert!(matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t == "Hello"));
 }
@@ -1723,14 +1723,14 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
 fn begin_compacting_transitions_to_compacting_phase() {
     // Given an idle session.
     let mut session = ChatSessionState::new();
-    assert!(session.is_idle());
+    assert_eq!(session.phase(), SessionPhase::Idle);
 
     // When beginning compaction.
     session.begin_compacting();
 
     // Then the session is in Compacting phase.
-    assert!(session.is_compacting());
-    assert!(!session.is_idle());
+    assert_eq!(session.phase(), SessionPhase::Compacting);
+    assert_ne!(session.phase(), SessionPhase::Idle);
 }
 
 #[rstest::rstest]
@@ -1738,14 +1738,14 @@ fn finish_compacting_returns_to_idle() {
     // Given a session in Compacting phase.
     let mut session = ChatSessionState::new();
     session.begin_compacting();
-    assert!(session.is_compacting());
+    assert_eq!(session.phase(), SessionPhase::Compacting);
 
     // When finishing compaction.
     session.finish_compacting();
 
     // Then the session is idle.
-    assert!(session.is_idle());
-    assert!(!session.is_compacting());
+    assert_eq!(session.phase(), SessionPhase::Idle);
+    assert_ne!(session.phase(), SessionPhase::Compacting);
 }
 
 #[rstest::rstest]

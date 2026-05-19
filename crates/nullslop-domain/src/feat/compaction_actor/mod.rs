@@ -26,6 +26,7 @@ use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estima
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 use crate::feat::provider::protocol::event::StreamCompleted;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
+use crate::feat::session::chat_session::SessionPhase;
 use crate::protocol::{Command, Event};
 
 /// Errors during compaction.
@@ -147,7 +148,7 @@ impl CompactionActor {
             let session = state.session(&session_id);
 
             // Don't auto-trigger if already compacting.
-            if session.is_compacting() {
+            if matches!(session.phase(), SessionPhase::Compacting) {
                 tracing::debug!(
                     session_id = ?session_id,
                     "skipping auto-compaction: session is already compacting"
