@@ -82,4 +82,28 @@ impl SessionStoreService {
     ) -> Result<SessionId, Report<SessionStoreError>> {
         self.svc.fork(source_session_id, at_ordinal).await
     }
+
+    /// Set the `archived` flag for a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the update fails.
+    pub async fn set_archived(
+        &self,
+        session_id: &SessionId,
+        archived: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        self.svc.set_archived(session_id, archived).await
+    }
+
+    /// Load lightweight summaries for all unarchived sessions.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the database cannot be read.
+    pub async fn load_unarchived_summaries(
+        &self,
+    ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+        self.svc.load_unarchived_summaries().await
+    }
 }

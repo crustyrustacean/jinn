@@ -236,6 +236,41 @@ impl SessionStore for SqliteSessionStore {
         .change_context(SessionStoreError)
         .attach("spawn_blocking panicked during fork")?
     }
+
+    async fn set_archived(
+        &self,
+        session_id: &SessionId,
+        archived: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        let pool = self.pool.clone();
+        let session_id = session_id.clone();
+        spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(SessionStoreError)
+                .attach("failed to acquire connection from pool")?;
+            set_archived_blocking(&mut conn, &session_id, archived)
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("spawn_blocking panicked during set_archived")?
+    }
+
+    async fn load_unarchived_summaries(
+        &self,
+    ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+        let pool = self.pool.clone();
+        spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(SessionStoreError)
+                .attach("failed to acquire connection from pool")?;
+            load_unarchived_summaries_blocking(&mut conn)
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("spawn_blocking panicked during load_unarchived_summaries")?
+    }
 }
 
 // ── Diesel model structs ─────────────────────────────────────────────────
@@ -259,6 +294,7 @@ struct SessionRow {
     created_at: String,
     lifecycle_name: Option<String>,
     lifecycle_args: String,
+    archived: bool,
 }
 
 /// Insert model for the `sessions` table.
@@ -276,6 +312,7 @@ struct NewSessionRow {
     cwd: String,
     lifecycle_name: Option<String>,
     lifecycle_args: String,
+    archived: bool,
 }
 
 /// Reading model for the `entries` table.
@@ -413,6 +450,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
             lifecycle_args: serde_json::to_string(lifecycle_args)
                 .change_context(SessionStoreError)
                 .attach("failed to serialize lifecycle_args")?,
+            archived: false,
         })
     }
 }
@@ -443,6 +481,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             cwd,
             lifecycle_name,
             lifecycle_args,
+            archived: _archived, // archive status is a persistence concern, not part of ChatSessionState
         } = ctx.row;
 
         let profile = serde_json::from_str(&profile)
@@ -518,6 +557,7 @@ fn save_blocking(
                 sessions::cwd.eq(excluded(sessions::cwd)),
                 sessions::lifecycle_name.eq(excluded(sessions::lifecycle_name)),
                 sessions::lifecycle_args.eq(excluded(sessions::lifecycle_args)),
+                sessions::archived.eq(excluded(sessions::archived)),
             ))
             .execute(txn)?;
 
@@ -616,6 +656,7 @@ fn load_summaries_blocking(
                 .created_at
                 .parse()
                 .unwrap_or_else(|_| jiff::Timestamp::now()),
+            archived: row.archived,
         })
         .collect();
 
@@ -772,6 +813,7 @@ fn fork_blocking(
                 cwd: source_meta.cwd,
                 lifecycle_name: source_meta.lifecycle_name,
                 lifecycle_args: source_meta.lifecycle_args,
+                archived: false,
             })
             .execute(txn)?;
 
@@ -799,4 +841,50 @@ fn fork_blocking(
     .attach("failed to fork session")?;
 
     Ok(new_id)
+}
+
+/// Sets the `archived` flag for a session.
+fn set_archived_blocking(
+    conn: &mut SqliteConnection,
+    session_id: &SessionId,
+    archived: bool,
+) -> Result<(), Report<SessionStoreError>> {
+    let session_id_str = session_id.to_string();
+    sql_query("UPDATE sessions SET archived = ? WHERE id = ?")
+        .bind::<diesel::sql_types::Bool, _>(archived)
+        .bind::<diesel::sql_types::Text, _>(&session_id_str)
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to set archived flag")?;
+
+    Ok(())
+}
+
+/// Loads summaries for all unarchived sessions.
+fn load_unarchived_summaries_blocking(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+    let rows: Vec<SessionRow> = sql_query("SELECT * FROM sessions WHERE archived = FALSE")
+        .load(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to query unarchived summaries")?;
+
+    let summaries = rows
+        .into_iter()
+        .map(|row| SessionSummary {
+            session_id: SessionId::from(row.id.unwrap_or_default()),
+            title: row.title.unwrap_or_else(|| "Untitled".to_owned()),
+            updated_at: row
+                .updated_at
+                .parse()
+                .unwrap_or_else(|_| jiff::Timestamp::now()),
+            created_at: row
+                .created_at
+                .parse()
+                .unwrap_or_else(|_| jiff::Timestamp::now()),
+            archived: row.archived,
+        })
+        .collect();
+
+    Ok(summaries)
 }
