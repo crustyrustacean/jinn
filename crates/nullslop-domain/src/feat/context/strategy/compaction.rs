@@ -18,6 +18,7 @@ use error_stack::Report;
 use crate::protocol::{ChatEntry, entries_to_messages};
 
 use super::token_estimator::{TokenEstimator, estimate_entry_tokens};
+use super::turn_grouping::{Turn, group_into_turns};
 use super::types::{AssembledPrompt, AssemblyContext, PromptAssembly, PromptAssemblyError};
 
 /// System prompt set when context was compacted (stub: trimmed).
@@ -77,43 +78,40 @@ impl PromptAssembly for CompactionStrategy {
             });
         }
 
-        // Over threshold — trim newest-to-oldest (stub behavior).
+        // Over threshold — trim newest-to-oldest using turn-based walk.
         // Pinned entries are always included regardless of budget.
-        let mut included_indices = Vec::new();
+        let turns = group_into_turns(context.history);
+        let mut included_turns: Vec<&Turn> = Vec::new();
         let mut used_tokens = 0usize;
 
-        for (i, entry) in context.history.iter().enumerate().rev() {
-            let entry_tokens = estimate_entry_tokens(self.estimator.as_ref(), entry);
+        for turn in turns.iter().rev() {
+            let turn_tokens = turn.token_cost(self.estimator.as_ref());
 
-            // Pinned entries are always included, tokens count toward budget.
-            if entry.is_pinned() {
-                used_tokens += entry_tokens;
-                included_indices.push(i);
+            // Pinned turns are always included, tokens count toward budget.
+            if turn.is_pinned() {
+                used_tokens += turn_tokens;
+                included_turns.push(turn);
                 continue;
             }
 
-            // Skip unpinned entries when budget is exceeded, but continue walking
-            // to find pinned entries at older indices.
-            if !included_indices.is_empty() && used_tokens + entry_tokens > effective_budget {
+            // Skip unpinned turns when budget is exceeded, but continue walking
+            // to find pinned turns at older positions.
+            if !included_turns.is_empty() && used_tokens + turn_tokens > effective_budget {
                 continue;
             }
 
-            used_tokens += entry_tokens;
-            included_indices.push(i);
+            used_tokens += turn_tokens;
+            included_turns.push(turn);
         }
 
-        // Sort indices back to chronological order.
-        included_indices.sort_unstable();
-
-        let included: Vec<&ChatEntry> = included_indices
-            .iter()
-            .map(|&i| {
-                // SAFETY: indices come from enumerate on context.history
-                unsafe { context.history.get_unchecked(i) }
-            })
+        // Reverse to chronological order and flatten to entries.
+        included_turns.reverse();
+        let included: Vec<ChatEntry> = included_turns
+            .into_iter()
+            .flat_map(|t| t.entries().cloned().collect::<Vec<_>>())
             .collect();
 
-        let messages = entries_to_messages(&included.into_iter().cloned().collect::<Vec<_>>());
+        let messages = entries_to_messages(&included);
 
         Ok(AssembledPrompt {
             system_prompt: Some(COMPACTION_SYSTEM_PROMPT.to_owned()),

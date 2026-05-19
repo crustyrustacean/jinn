@@ -10,6 +10,8 @@ use error_stack::Report;
 
 use crate::protocol::{ChatEntry, entries_to_messages};
 
+use super::turn_grouping::{Turn, group_into_turns};
+
 use super::types::{AssembledPrompt, AssemblyContext, PromptAssembly, PromptAssemblyError};
 
 /// A sliding window strategy that sends only the last `window_size` entries.
@@ -32,16 +34,36 @@ impl PromptAssembly for SlidingWindowStrategy {
         &self,
         context: &AssemblyContext<'_>,
     ) -> Result<AssembledPrompt, Report<PromptAssemblyError>> {
-        let window_start = context.history.len().saturating_sub(self.window_size);
+        // Group history into atomic turns.
+        let turns = group_into_turns(context.history);
 
-        // Include entries that are in the window OR are pinned.
-        // Pinned entries outside the window are kept at their original positions.
-        let window: Vec<ChatEntry> = context
-            .history
-            .iter()
-            .enumerate()
-            .filter(|(i, entry)| *i >= window_start || entry.is_pinned())
-            .map(|(_, entry)| entry.clone())
+        // Walk turns newest → oldest, snapping outward at the window boundary.
+        let mut entries_included = 0usize;
+        let mut included_turns: Vec<&Turn> = Vec::new();
+
+        for turn in turns.iter().rev() {
+            if turn.is_pinned() {
+                included_turns.push(turn);
+                entries_included += turn.entry_count();
+                continue;
+            }
+
+            if entries_included >= self.window_size {
+                // Window is full. Stop accumulating unpinned turns.
+                continue;
+            }
+
+            included_turns.push(turn);
+            entries_included += turn.entry_count();
+        }
+
+        // Reverse to chronological order.
+        included_turns.reverse();
+
+        // Flatten to entries.
+        let window: Vec<ChatEntry> = included_turns
+            .into_iter()
+            .flat_map(|t| t.entries().cloned().collect::<Vec<_>>())
             .collect();
 
         let messages = entries_to_messages(&window);
