@@ -20,6 +20,32 @@ pub enum StrategyState {
     Compaction(CompactionSessionData),
 }
 
+/// Per-strategy configuration passed to the factory.
+///
+/// Each variant carries only the fields its strategy needs.
+/// When adding a new strategy, add a new variant here and update
+/// `DefaultStrategyFactory` accordingly.
+#[derive(Debug, Clone)]
+pub enum StrategyConfig {
+    /// Passthrough — no configuration needed.
+    Passthrough,
+    /// Sliding window — configurable window size.
+    SlidingWindow {
+        /// Maximum number of history entries to include.
+        window_size: usize,
+    },
+    /// Token budget — token-limited context window.
+    TokenBudget {
+        /// Maximum token budget.
+        budget: usize,
+    },
+    /// Compaction — summarization-based context management.
+    Compaction {
+        /// Maximum token budget.
+        budget: usize,
+    },
+}
+
 /// Error type for prompt assembly operations.
 #[derive(Debug, Error)]
 #[error(debug)]
@@ -76,9 +102,7 @@ pub trait PromptAssembly: Send + Sync {
 
 /// Factory for creating prompt assembly strategies by ID.
 pub trait StrategyFactory: Send + Sync {
-    /// Create a strategy instance for the given ID.
-    ///
-    /// Returns `None` if the ID is not recognized.
+    /// Create a strategy instance for the given configuration.
     ///
     /// # Errors
     ///
@@ -86,7 +110,7 @@ pub trait StrategyFactory: Send + Sync {
     fn create(
         &self,
         id: &PromptStrategyId,
-        token_budget: usize,
+        config: &StrategyConfig,
     ) -> Result<Box<dyn PromptAssembly>, Report<PromptAssemblyError>>;
 
     /// The name of this factory, for debugging.

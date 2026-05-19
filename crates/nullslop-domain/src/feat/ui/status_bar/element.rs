@@ -97,35 +97,34 @@ impl UiElement<AppState> for StatusBarElement {
             format_tokens(agg.total_received()),
         );
 
-        let context_display =
-            if let Some(ctx_size) = state.active_session().context_size() {
-                let ctx_used = u64::from(ctx_size);
-                let ctx_limit = state.provider.model_cache.as_ref().and_then(|cache| {
-                    // active_model is "provider/model" — extract provider name.
-                    let provider_name = active_model.split('/').next()?;
-                    let models = cache.entries.get(provider_name)?;
-                    // Find the model matching the full ID.
-                    let model_suffix = &active_model[(provider_name.len() + 1)..];
-                    models
-                        .iter()
-                        .find(|m| m.id == model_suffix)
-                        .and_then(|m| m.context_length)
-                });
+        let context_display = if let Some(ctx_size) = state.active_session().context_size() {
+            let ctx_used = u64::from(ctx_size);
+            let ctx_limit = state.provider.model_cache.as_ref().and_then(|cache| {
+                // active_model is "provider/model" — extract provider name.
+                let provider_name = active_model.split('/').next()?;
+                let models = cache.entries.get(provider_name)?;
+                // Find the model matching the full ID.
+                let model_suffix = &active_model[(provider_name.len() + 1)..];
+                models
+                    .iter()
+                    .find(|m| m.id == model_suffix)
+                    .and_then(|m| m.context_length)
+            });
 
-                if let Some(max_tokens) = ctx_limit {
-                    let max_u64 = u64::from(max_tokens);
-                    let pct = if max_u64 > 0 {
-                        format!("{:.1}%", (ctx_used as f64 / max_u64 as f64) * 100.0)
-                    } else {
-                        "0.0%".to_owned()
-                    };
-                    format!("{}/{}", pct, format_budget(max_tokens as usize))
+            if let Some(max_tokens) = ctx_limit {
+                let max_u64 = u64::from(max_tokens);
+                let pct = if max_u64 > 0 {
+                    format!("{:.1}%", (ctx_used as f64 / max_u64 as f64) * 100.0)
                 } else {
-                    "0.0%/MAX".to_owned()
-                }
+                    "0.0%".to_owned()
+                };
+                format!("{}/{}", pct, format_budget(max_tokens as usize))
             } else {
                 "0.0%/MAX".to_owned()
-            };
+            }
+        } else {
+            "0.0%/MAX".to_owned()
+        };
         token_info = format!("{token_info} {context_display}");
 
         let strategy_display =
