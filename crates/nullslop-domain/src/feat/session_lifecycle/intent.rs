@@ -12,9 +12,7 @@ use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
-use crate::feat::session_lifecycle::protocol::command::{
-    RunSessionSetup, RunSessionTeardown, SaveNewLifecycleSession,
-};
+use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, SaveNewLifecycleSession};
 use crate::protocol::{Command, IntentResult, PromptStrategyId, SessionId};
 
 /// Errors that can occur when validating arg input.
@@ -174,56 +172,11 @@ pub fn handle_session_lifecycle_setup(
 
 /// Handle `Intent::SessionClose`.
 ///
-/// Reads the session's lifecycle. If it has a teardown command,
-/// emits `Command::RunSessionTeardown` for async execution. If no teardown
-/// (blank lifecycle or no teardown_command), removes the session immediately.
-///
-/// `session_id` is the session to close. If `None`, closes the active session.
-pub fn handle_session_close(state: &mut AppState, session_id: Option<&SessionId>) -> IntentResult {
-    let closing_id = session_id
-        .cloned()
-        .unwrap_or_else(|| state.session.active_session_id().clone());
-
-    let (teardown_command, lifecycle_args) = {
-        let session = state.session.sessions().get(&closing_id);
-        let Some(session) = session else {
-            return IntentResult::empty();
-        };
-        let lifecycle_name = session.lifecycle_name().map(String::from);
-        let args = session.lifecycle_args().to_vec();
-        // Clone teardown_command from preferences (separate borrow).
-        let teardown = lifecycle_name.as_deref().and_then(|name| {
-            state
-                .frontend
-                .preferences
-                .session_lifecycles
-                .iter()
-                .find(|l| l.name == name)
-                .and_then(|l| l.teardown_command.clone())
-        });
-        (teardown, args)
-    };
-
-    if let Some(ref teardown_cmd) = teardown_command {
-        let template = CommandTemplate::parse(teardown_cmd);
-        let rendered = if lifecycle_args.is_empty() {
-            teardown_cmd.to_owned()
-        } else {
-            template.render(&lifecycle_args)
-        };
-
-        return IntentResult::with_commands(vec![Command::RunSessionTeardown(
-            RunSessionTeardown {
-                session_id: closing_id,
-                command: rendered,
-                args: lifecycle_args,
-                close_on_success: true,
-            },
-        )]);
-    }
-
-    // No teardown — remove session via command.
-    remove_session_and_switch(&closing_id)
+/// Emits a `CloseSession` command for the active session. The session actor
+/// handles teardown, archival, removal, and emits `SessionClosed`.
+pub fn handle_session_close(state: &mut AppState) -> IntentResult {
+    let closing_id = state.session.active_session_id().clone();
+    close_session_and_switch(&closing_id)
 }
 
 /// Handle `Intent::ArgInputConfirm`.
@@ -336,12 +289,12 @@ fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLife
         .find(|l| l.name == name)
 }
 
-/// Emit a `RemoveSession` command to the actor system.
+/// Emit a `CloseSession` command to the actor system.
 /// The session actor handles actual removal, active session switching, and emits
-/// `SessionRemoved` for the sidebar actor to clamp the cursor.
-fn remove_session_and_switch(closing_id: &SessionId) -> IntentResult {
-    use crate::feat::session::protocol::remove_session::RemoveSession;
-    IntentResult::with_commands(vec![Command::RemoveSession(RemoveSession {
+/// `SessionClosed` for the sidebar actor to clamp the cursor.
+fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
+    use crate::feat::session::protocol::close_session::CloseSession;
+    IntentResult::with_commands(vec![Command::CloseSession(CloseSession {
         session_id: closing_id.clone(),
     })])
 }
@@ -480,7 +433,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn session_close_without_lifecycle_emits_remove_session() {
+    fn session_close_without_lifecycle_emits_close_session() {
         // Given a state with two sessions.
         let mut state = AppState::default();
         let second_session = ChatSessionState::new();
@@ -489,18 +442,18 @@ mod tests {
         state.session.set_active(second_id.clone());
 
         // When handling SessionClose.
-        let result = handle_session_close(&mut state, None);
+        let result = handle_session_close(&mut state);
 
-        // Then a RemoveSession command is emitted for the closed session.
+        // Then a CloseSession command is emitted for the closed session.
         assert_eq!(result.commands.len(), 1);
         assert!(matches!(
             &result.commands[0],
-            Command::RemoveSession(cmd) if cmd.session_id == second_id
+            Command::CloseSession(cmd) if cmd.session_id == second_id
         ));
     }
 
     #[rstest::rstest]
-    fn session_close_with_teardown_emits_command() {
+    fn session_close_with_teardown_emits_close_session() {
         // Given a session with a lifecycle that has a teardown_command.
         let mut state = AppState::default();
         state
@@ -522,37 +475,32 @@ mod tests {
             .set_lifecycle_args(vec!["my-branch".to_owned()]);
 
         // When handling SessionClose.
-        let result = handle_session_close(&mut state, None);
+        let result = handle_session_close(&mut state);
 
-        // Then the session is NOT removed yet (awaiting teardown).
+        // Then a CloseSession command is emitted (actor handles teardown).
         assert!(state.session.sessions().contains_key(&session_id));
-        // And a RunSessionTeardown command is emitted.
         assert_eq!(result.commands.len(), 1);
         assert!(matches!(
             &result.commands[0],
-            Command::RunSessionTeardown(RunSessionTeardown {
-                command,
-                args,
-                ..
-            }) if command == "cleanup.sh my-branch" && args == &["my-branch".to_owned()]
+            Command::CloseSession(cmd) if cmd.session_id == session_id
         ));
     }
 
     #[rstest::rstest]
-    fn session_close_last_session_emits_remove_session() {
+    fn session_close_last_session_emits_close_session() {
         // Given a state with only one session.
         let mut state = AppState::default();
         let session_id = state.session.active_session_id().clone();
         assert_eq!(state.session.sessions().len(), 1);
 
         // When handling SessionClose.
-        let result = handle_session_close(&mut state, None);
+        let result = handle_session_close(&mut state);
 
-        // Then a RemoveSession command is emitted.
+        // Then a CloseSession command is emitted.
         assert_eq!(result.commands.len(), 1);
         assert!(matches!(
             &result.commands[0],
-            Command::RemoveSession(cmd) if cmd.session_id == session_id
+            Command::CloseSession(cmd) if cmd.session_id == session_id
         ));
     }
 
