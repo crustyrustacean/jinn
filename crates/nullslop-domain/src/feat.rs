@@ -17,6 +17,7 @@ pub mod rename_session_input;
 pub mod session;
 pub mod session_lifecycle;
 pub mod sidebar_resize;
+pub mod sliding_window_input;
 pub mod skills;
 pub mod theme;
 pub mod token_budget_input;
