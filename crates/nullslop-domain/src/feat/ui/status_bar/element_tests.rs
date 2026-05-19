@@ -328,8 +328,8 @@ fn render_shows_token_counts_with_values() {
 }
 
 #[rstest::rstest]
-fn render_shows_context_size_when_cached() {
-    // Given a session with a cached context size.
+fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
+    // Given a session with a cached context size but no model cache.
     use crate::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default();
@@ -351,12 +351,15 @@ fn render_shows_context_size_when_cached() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then the status bar shows ctx:5.0k.
-    assert!(row.contains("ctx:5.0k"));
+    // Then the status bar shows 0.0%/MAX (no context_length available).
+    assert!(
+        row.contains("0.0%/MAX"),
+        "expected 0.0%/MAX, got: {row}"
+    );
 }
 
 #[rstest::rstest]
-fn render_hides_context_size_when_not_cached() {
+fn render_shows_zero_percent_max_when_no_context_size() {
     // Given a session with no cached context size.
     let mut element = StatusBarElement;
     let state = AppState::default();
@@ -368,9 +371,12 @@ fn render_hides_context_size_when_not_cached() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then ctx: is not shown.
-    assert!(!row.contains("ctx:"));
-    // But token counts are still shown.
+    // Then the context display shows 0.0%/MAX as fallback.
+    assert!(
+        row.contains("0.0%/MAX"),
+        "expected 0.0%/MAX fallback, got: {row}"
+    );
+    // And token counts are still shown.
     assert!(row.contains("0 0") || row.contains("\u{2191}0 \u{2193}0"));
 }
 
@@ -602,10 +608,10 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
-    // Then the status bar shows ctx with limit and percentage.
+    // Then the status bar shows the percentage and formatted max.
     assert!(
-        row.contains("ctx:5.0k/200.0k (2.5%)"),
-        "expected ctx with limit and pct, got: {row}"
+        row.contains("2.5%/200k"),
+        "expected 2.5%/200k, got: {row}"
     );
 }
 
@@ -648,13 +654,11 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then the status bar falls back to ctx without limit.
+    // Then the status bar falls back to 0.0%/MAX.
     assert!(
-        row.contains("ctx:5.0k"),
-        "expected ctx without limit, got: {row}"
+        row.contains("0.0%/MAX"),
+        "expected 0.0%/MAX fallback, got: {row}"
     );
-    // And no percentage is shown.
-    assert!(!row.contains("2.5%"), "expected no percentage, got: {row}");
 }
 
 #[rstest::rstest]
@@ -684,12 +688,11 @@ fn render_falls_back_when_no_model_cache() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then the status bar shows ctx without limit.
+    // Then the status bar falls back to 0.0%/MAX.
     assert!(
-        row.contains("ctx:5.0k"),
-        "expected ctx without limit, got: {row}"
+        row.contains("0.0%/MAX"),
+        "expected 0.0%/MAX fallback, got: {row}"
     );
-    assert!(!row.contains('%'), "expected no percentage, got: {row}");
 }
 
 // --- Token budget display tests ---
