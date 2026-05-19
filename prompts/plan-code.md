@@ -1,6 +1,6 @@
 +++
 name = "plan-code"
-description = "Create a plan for implementing software."
+description = "Discuss and plan software implementation."
 +++
 
 Create a high-level implementation plan for the task detailed at the end of this prompt.
@@ -20,57 +20,30 @@ Your process is Dialectical:
 
 ## Instructions
 
-1.  **Socratic Exploration (The Thesis & Antithesis):**
-    - Before listing phases, analyze the technical request.
-    - Identify core assumptions, potential failure points, and scaling bottlenecks.
-    - Use the **5 Types of Socratic Questions** to probe the user:
-      - _Clarification:_ "What exactly is the data schema for this object?" / "How should this API respond if the payload is malformed?"
-      - _Assumptions:_ "What are we assuming about the state of the database during this transaction?" / "Are we assuming the user is always authenticated?"
-      - _Evidence/Reasons:_ "Why is [Tech X] the best choice here over [Tech Y]?" / "Is there a library that already solves this pattern?"
-      - _Perspectives:_ "How does this design handle concurrency?" / "What is the worst-case latency for this query?"
-      - _Implications:_ "If we denormalize this data, how do we handle updates?" / "How does adding this service impact our deployment complexity?"
+1.  **Socratic Exploration:**
+    - Analyze the technical request.
+    - Use the **5 Types of Socratic Questions** to probe the user (Clarification, Assumptions, Evidence, Perspectives, Implications).
+    - **Crucial:** During the dialogue, you must uncover the specific details required for a context-rich specification:
+      - **Why:** Dialectical outcomes and trade-offs.
+      - **Where:** Relevant files and paths.
+      - **What:** Key code structures that need changing.
+      - **How:** The implementation algorithm/logic flow.
+      - **Gotchas:** Edge cases and out-of-scope anti-goals.
 
 2.  **Identify Patterns & Alternatives:**
-    - Identify if there are existing architectural patterns that the request fits into.
-    - If multiple viable technical paths exist, present them as options derived from the exploration.
+    - Identify existing architectural patterns that fit the request.
+    - Present viable technical paths as options.
 
-3.  **Structure the Plan (The Synthesis):**
-    - Break the work into numbered implementation phases.
-    - **Crucial:** All phases **MUST** _sync_ with trunk/main as the last step in _each phase_. This is to reduce merge conflicts and to prevent code from drifting away from established patterns.
-    - For fossil scm: `fossil merge trunk` will sync your branch with the latest trunk. NEVER MERGE YOUR BRANCH INTO TRUNK. Merging into trunk will be done manually and is outside the scope of planning.
-
-4.  **Iterate via Dialogue:**
-    - Ask the clarifying questions from Step 1.
-    - **CRITICAL:** Do not generate the final plan until the user answers the questions and the architecture is sound.
-    - Once the user answers, propose the plan as a regular response and WAIT FOR USER APPROVAL. DO NOT SAVE TO DISK.
-
-5.  **Finalize Plan:**
-    - _After_ the user accepts the plan, write a _context-rich plan_ (see next section) to `.plans/<task>/high-level.md` where `<task>` is a slugified version of the task name.
-    - Report to the user "Plan created".
-
-## Context-Rich Plans
-
-A "context-rich" plan carries enough context for a fresh agent to derive the necessary information to create a detailed execution plan for any particular phase. It should include reasoning as to why certain decisions were made based on the **Socratic dialogue** with the user while creating the high-level plan.
-
-For example, if the user specifically questioned a database choice, or if you challenged an assumption about concurrency and the user justified their approach, **those dialectical outcomes must be mentioned in the relevant locations in the plan**. This way the fresh agent understands _why_ a particular path is being taken instead of a different path.
-
-Any samples, data structures, or API payloads discussed should also be part of the context-rich plan so that the agent knows exactly how something should happen.
+3.  **Propose High-Level Pitch:**
+    - Once the architecture is sound, propose a **High-Level Pitch** as a regular chat response.
+    - **Format Constraint:** The Pitch must be brief and readable. It should contain the Problem, Solution, Phases (with checkboxes), and Acceptance Criteria.
+    - **Do NOT** include deep code snippets, dependency lists, or detailed algorithms in the chat. The goal is to confirm _direction_, not _implementation details_.
+    - **CRITICAL:** WAIT FOR USER APPROVAL (e.g., `/approve`). DO NOT SAVE TO DISK.
 
 ## Notes
 
-- Use markdown checkboxes (see below) for implementation phases.
-- The plan **must** have an "Acceptance Criteria" section that shows the high-level goals.
-- The plan **must** have a "Problem" and "Solution" section at the beginning so the user and agent both understand what's being solved and how.
-
-### Checkbox example
-
-- [ ] Phase 1: Foo the bar
-  - [ ] subtask 1 brief description
-  - [ ] subtask 2 brief description
-  - [ ] _Sync branch with trunk and resolve merge conflicts_
-
-- [ ] Phase 2: Bar
-  - [ ] subtask 1 brief description
-  - [ ] _Sync branch with trunk and resolve merge conflicts_
+- Use markdown checkboxes for implementation phases.
+- The Pitch **must** have a "Problem" and "Solution" section.
+- The Pitch **must** have an "Acceptance Criteria" section.
 
 ## TASK
