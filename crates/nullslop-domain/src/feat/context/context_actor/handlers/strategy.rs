@@ -3,8 +3,8 @@
 use crate::common::actor::ActorContext;
 use crate::feat::context::protocol::command::{RestoreStrategyState, SwitchPromptStrategy};
 use crate::feat::context::protocol::event::{PromptStrategySwitched, StrategyStateUpdated};
-use crate::feat::context::strategy::types::StrategyState;
-use crate::protocol::{Command, Event};
+use crate::feat::context::strategy::types::{StrategyConfig, StrategyState};
+use crate::protocol::{Command, Event, PromptStrategyId, SessionId};
 
 use super::super::PromptAssemblyActor;
 
@@ -18,16 +18,8 @@ impl PromptAssemblyActor {
             tracing::error!("no strategy factory available");
             return;
         };
-        let token_budget = self
-            .state
-            .read()
-            .session
-            .sessions
-            .get(&evt.session_id)
-            .map_or(crate::feat::session::profile::DEFAULT_TOKEN_BUDGET, |s| {
-                s.profile().token_budget
-            });
-        match factory.create(&evt.strategy_id, token_budget) {
+        let config = self.build_strategy_config(&evt.session_id, &evt.strategy_id);
+        match factory.create(&evt.strategy_id, &config) {
             Ok(new_strategy) => {
                 self.strategies.insert(evt.session_id.clone(), new_strategy);
             }
@@ -95,6 +87,37 @@ impl PromptAssemblyActor {
             blob: payload.blob.clone(),
         })) {
             tracing::warn!(err = ?e, "context-actor failed to emit StrategyStateUpdated");
+        }
+    }
+
+    /// Builds a [`StrategyConfig`] from the session's current profile.
+    ///
+    /// Reads the strategy ID and profile fields (token budget, sliding window size)
+    /// to construct the appropriate config variant.
+    pub(in crate::feat::context::context_actor) fn build_strategy_config(
+        &self,
+        session_id: &SessionId,
+        strategy_id: &PromptStrategyId,
+    ) -> StrategyConfig {
+        let guard = self.state.read();
+        let Some(session) = guard.session.sessions.get(session_id) else {
+            return StrategyConfig::Passthrough;
+        };
+        if strategy_id == &PromptStrategyId::sliding_window() {
+            StrategyConfig::SlidingWindow {
+                // TODO: Phase 2 — read from session.profile().sliding_window_size
+                window_size: 5,
+            }
+        } else if strategy_id == &PromptStrategyId::token_budget() {
+            StrategyConfig::TokenBudget {
+                budget: session.profile().token_budget,
+            }
+        } else if strategy_id == &PromptStrategyId::compaction() {
+            StrategyConfig::Compaction {
+                budget: session.profile().token_budget,
+            }
+        } else {
+            StrategyConfig::Passthrough
         }
     }
 }
