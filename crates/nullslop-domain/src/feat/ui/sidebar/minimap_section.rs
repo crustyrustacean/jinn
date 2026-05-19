@@ -297,7 +297,10 @@ impl SidebarSection for MinimapSection {
                     } else {
                         count_char(*tool_count).to_string()
                     };
-                    current_spans.push(Span::styled(ch, Style::default().fg(color)));
+                    current_spans.push(Span::styled(
+                        ch,
+                        Style::default().bg(color).fg(Color::Black),
+                    ));
                 }
             }
             if current_spans.len() >= width {
