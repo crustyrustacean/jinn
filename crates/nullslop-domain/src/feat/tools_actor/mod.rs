@@ -33,6 +33,7 @@ use std::pin::Pin;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
 use crate::common::state::State;
+use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
 };
@@ -108,27 +109,30 @@ pub struct ToolOrchestratorActor {
     app_paths: crate::common::app_paths::AppPaths,
 }
 
+/// Dependencies for [`ToolOrchestratorActor`].
+pub struct ToolOrchestratorActorDeps {
+    /// Shared application state.
+    pub state: State,
+    /// Application paths for working directory.
+    pub app_paths: crate::common::app_paths::AppPaths,
+}
+
 impl Actor for ToolOrchestratorActor {
     type Message = NoDirectMsg;
+    type Deps = ToolOrchestratorActorDeps;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
+        ctx.set_description("Dispatches and manages tool execution");
         ctx.subscribe_command::<RegisterTools>();
         ctx.subscribe_command::<ExecuteToolBatch>();
         ctx.subscribe_command::<CancelToolBatch>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
 
-        let state: State = ctx
-            .take_data()
-            .expect("ToolOrchestratorActor requires State injection");
-        let app_paths: crate::common::app_paths::AppPaths = ctx
-            .take_data()
-            .expect("ToolOrchestratorActor requires AppPaths injection");
-
         let mut actor = Self {
             tools: HashMap::new(),
             pending: HashMap::new(),
-            state,
-            app_paths,
+            state: deps.state,
+            app_paths: deps.app_paths,
         };
 
         let builtins = builtin::builtin_tools();
@@ -294,11 +298,10 @@ impl ToolOrchestratorActor {
     ) -> ToolContext {
         let (cwd, max_output_lines, max_output_bytes) = {
             let guard = self.state.read();
-            let cwd = guard
-                .session
-                .sessions
-                .get(session_id)
-                .map_or_else(|| guard.session.default_cwd.clone(), |s| s.cwd().to_owned());
+            let cwd = guard.session.sessions().get(session_id).map_or_else(
+                || guard.session.default_cwd().clone(),
+                |s: &ChatSessionState| s.cwd().to_owned(),
+            );
             let max_output_lines = guard.frontend.preferences.max_tool_output_lines;
             let max_output_bytes = guard.frontend.preferences.max_tool_output_bytes;
             (cwd, max_output_lines, max_output_bytes)

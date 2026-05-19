@@ -79,11 +79,7 @@ impl TuiApp {
             Msg::Tick => {
                 let load_started = {
                     let state = self.core.state.read();
-                    state
-                        .session
-                        .session_load_guard
-                        .as_ref()
-                        .map(|g| g.started_at)
+                    state.session.session_load_guard().map(|g| g.started_at)
                 };
                 if let Some(started) = load_started
                     && started.elapsed() >= std::time::Duration::from_secs(10)

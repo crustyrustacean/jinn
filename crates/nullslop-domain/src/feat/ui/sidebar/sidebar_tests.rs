@@ -364,7 +364,7 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
         for i in 1..20 {
             let session = ChatSessionState::new();
             let id = session.session_id().clone();
-            s.session.sessions.insert(id, {
+            s.session.sessions_mut().insert(id, {
                 let mut sess = ChatSessionState::new();
                 sess.push_entry(ChatEntry::user(format!("message for session {i}")));
                 sess

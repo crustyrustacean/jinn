@@ -132,30 +132,41 @@ fn format_exit_result(
     // Apply tail-truncation to the final output.
     let truncation_result = truncate_tail(&content, max_lines, max_bytes);
     if truncation_result.truncated {
-        let meta = truncation_result.meta.expect("meta present when truncated");
-        let start_line = meta.total_lines.saturating_sub(meta.output_lines) + 1;
-        let end_line = meta.total_lines;
-        let notice = if meta.truncated_by == nullslop_provider::tool_types::TruncatedBy::Bytes {
-            format!(
-                "\n\n[Showing lines {start_line}-{end_line} of {} ({} limit)]",
-                meta.total_lines,
-                format_size(max_bytes)
-            )
+        if let Some(meta) = truncation_result.meta {
+            let start_line = meta.total_lines.saturating_sub(meta.output_lines) + 1;
+            let end_line = meta.total_lines;
+            let notice = if meta.truncated_by == nullslop_provider::tool_types::TruncatedBy::Bytes {
+                format!(
+                    "\n\n[Showing lines {start_line}-{end_line} of {} ({} limit)]",
+                    meta.total_lines,
+                    format_size(max_bytes)
+                )
+            } else {
+                format!(
+                    "\n\n[Showing lines {start_line}-{end_line} of {}]",
+                    meta.total_lines
+                )
+            };
+            let mut output = truncation_result.content;
+            output.push_str(&notice);
+            ToolResult {
+                tool_call_id,
+                name: tool_name,
+                content: output,
+                success,
+                full_content: Some(content),
+                truncation: Some(meta),
+            }
         } else {
-            format!(
-                "\n\n[Showing lines {start_line}-{end_line} of {}]",
-                meta.total_lines
-            )
-        };
-        let mut output = truncation_result.content;
-        output.push_str(&notice);
-        ToolResult {
-            tool_call_id,
-            name: tool_name,
-            content: output,
-            success,
-            full_content: Some(content),
-            truncation: Some(meta),
+            // truncated but no meta — return unformatted truncated content
+            ToolResult {
+                tool_call_id,
+                name: tool_name,
+                content: truncation_result.content,
+                success,
+                full_content: Some(content),
+                truncation: None,
+            }
         }
     } else {
         ToolResult {
@@ -296,8 +307,20 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             }
         };
 
-        let stdout = child.stdout.take().expect("stdout was piped");
-        let stderr = child.stderr.take().expect("stderr was piped");
+        let Some(stdout) = child.stdout.take() else {
+            return error_tool_result(
+                call.id,
+                call.name,
+                "failed to capture stdout: pipe was not set up".to_owned(),
+            );
+        };
+        let Some(stderr) = child.stderr.take() else {
+            return error_tool_result(
+                call.id,
+                call.name,
+                "failed to capture stderr: pipe was not set up".to_owned(),
+            );
+        };
 
         // Extract truncation limits from context.
         let max_lines = ctx.max_output_lines.unwrap_or(DEFAULT_MAX_LINES);
