@@ -1736,7 +1736,7 @@ fn begin_compacting_transitions_to_compacting_phase() {
     assert_eq!(session.phase(), SessionPhase::Idle);
 
     // When beginning compaction.
-    session.begin_compacting();
+    session.begin_compacting(vec![]);
 
     // Then the session is in Compacting phase.
     assert_eq!(session.phase(), SessionPhase::Compacting);
@@ -1747,7 +1747,7 @@ fn begin_compacting_transitions_to_compacting_phase() {
 fn finish_compacting_returns_to_idle() {
     // Given a session in Compacting phase.
     let mut session = ChatSessionState::new();
-    session.begin_compacting();
+    session.begin_compacting(vec![]);
     assert_eq!(session.phase(), SessionPhase::Compacting);
 
     // When finishing compaction.
@@ -1763,11 +1763,11 @@ fn finish_compacting_returns_to_idle() {
 fn begin_compacting_panics_when_already_compacting() {
     // Given a session already compacting.
     let mut session = ChatSessionState::new();
-    session.begin_compacting();
+    session.begin_compacting(vec![]);
 
     // When calling begin_compacting again.
     // Then it panics.
-    session.begin_compacting();
+    session.begin_compacting(vec![]);
 }
 
 #[rstest::rstest]
@@ -1779,5 +1779,99 @@ fn begin_compacting_panics_when_streaming() {
 
     // When calling begin_compacting.
     // Then it panics.
-    session.begin_compacting();
+    session.begin_compacting(vec![]);
+}
+
+#[rstest::rstest]
+fn finish_compacting_does_not_panic_when_idle() {
+    // Given a session in Idle phase.
+    let mut session = ChatSessionState::new();
+    assert_eq!(session.phase(), SessionPhase::Idle);
+
+    // When finishing compaction (phase is Idle, not Compacting).
+    session.finish_compacting();
+
+    // Then the phase remains Idle — no panic.
+    assert_eq!(session.phase(), SessionPhase::Idle);
+}
+
+#[rstest::rstest]
+fn finish_compacting_does_not_panic_when_streaming() {
+    // Given a session in Streaming phase.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    assert_eq!(session.phase(), SessionPhase::Streaming);
+
+    // When finishing compaction (phase is Streaming, not Compacting).
+    session.finish_compacting();
+
+    // Then the phase remains Streaming — no panic.
+    assert_eq!(session.phase(), SessionPhase::Streaming);
+}
+
+#[rstest::rstest]
+fn cancel_compacting_returns_to_idle() {
+    // Given a session in Compacting phase.
+    let mut session = ChatSessionState::new();
+    session.begin_compacting(vec![0, 1]);
+    assert_eq!(session.phase(), SessionPhase::Compacting);
+
+    // When cancelling compaction.
+    let drained = session.cancel_compacting();
+
+    // Then the session is idle.
+    assert_eq!(session.phase(), SessionPhase::Idle);
+    // And no messages were drained (queue was empty).
+    assert!(drained.is_empty());
+}
+
+#[rstest::rstest]
+fn cancel_compacting_unignores_entries() {
+    // Given a session with 3 entries, 2 marked as ignored during compaction.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::assistant("b"));
+    session.push_entry(ChatEntry::user("c"));
+
+    session.begin_compacting(vec![0, 1]);
+    session.mark_entries_ignored(&[0, 1]);
+    assert!(session.history()[0].ignored);
+    assert!(session.history()[1].ignored);
+
+    // When cancelling compaction.
+    session.cancel_compacting();
+
+    // Then the entries are un-ignored.
+    assert!(!session.history()[0].ignored);
+    assert!(!session.history()[1].ignored);
+    assert!(!session.history()[2].ignored);
+}
+
+#[rstest::rstest]
+fn cancel_compacting_drains_queue() {
+    // Given a session in Compacting phase with a queued message.
+    let mut session = ChatSessionState::new();
+    session.begin_compacting(vec![]);
+    session.enqueue_message(ChatEntry::user("queued during compaction"));
+
+    // When cancelling compaction.
+    let drained = session.cancel_compacting();
+
+    // Then the queued message is returned.
+    assert_eq!(drained.len(), 1);
+    assert_eq!(drained[0].text(), "queued during compaction");
+}
+
+#[rstest::rstest]
+fn cancel_compacting_is_noop_when_idle() {
+    // Given a session in Idle phase.
+    let mut session = ChatSessionState::new();
+    assert_eq!(session.phase(), SessionPhase::Idle);
+
+    // When cancelling compaction (phase is Idle, not Compacting).
+    let drained = session.cancel_compacting();
+
+    // Then no panic and nothing was drained.
+    assert!(drained.is_empty());
+    assert_eq!(session.phase(), SessionPhase::Idle);
 }

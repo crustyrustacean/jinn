@@ -59,3 +59,15 @@ pub struct CompactionResult {
     /// Insertion point for the compaction entry (right after the last gathered entry).
     pub boundary_index: usize,
 }
+
+/// Cancel an in-progress compaction for a session.
+///
+/// Aborts the in-flight LLM summarization task. The session actor's
+/// `cancel_compacting()` handles resetting state; this command only
+/// aborts the LLM call.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("cancel-compaction")]
+pub struct CancelCompaction {
+    /// The session whose compaction should be cancelled.
+    pub session_id: SessionId,
+}
