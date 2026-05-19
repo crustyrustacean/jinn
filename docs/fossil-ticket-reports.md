@@ -45,7 +45,7 @@ FROM ticket
 
 Shows only tickets with `status='Open'`, color-coded by priority (warm=high, cool=low). No status column (redundant since all are Open).
 
-Same priority color scheme as All Tickets, minus the closed override.
+Same priority color scheme as All Tickets. Since all tickets shown are Open, all get priority coloring.
 
 **Columns:** `#`, `mtime`, `type`, `priority`, `severity`, `subsystem`, `title`
 
@@ -94,7 +94,7 @@ These are the valid values for each ticket field (defined in `ticket-common` con
 | priority | `Immediate`, `High`, `Medium`, `Low`, `Zero` |
 | severity | `Critical`, `Severe`, `Important`, `Minor`, `Cosmetic` |
 | resolution | `Open`, `Fixed`, `Rejected`, `Workaround`, `Unable_To_Reproduce`, `Works_As_Designed`, `External_Bug`, `Not_A_Bug`, `Duplicate`, `Overcome_By_Events`, `Drive_By_Patch`, `Misconfiguration` |
-| status | `Open`, `Verified`, `Review`, `Deferred`, `Fixed`, `Tested`, `Closed` |
+| status | `Open`, `Fixed`, `Closed` |
 | subsystem | `Other`, `Workflows`, `Chat`, `UI_UX`, `Tools` |
 
 ## How to Modify Reports
