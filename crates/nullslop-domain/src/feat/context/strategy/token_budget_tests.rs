@@ -3,6 +3,7 @@
 use crate::feat::context::strategy::token_budget::TokenBudgetStrategy;
 use crate::feat::context::strategy::token_estimator::CharRatioEstimator;
 use crate::feat::context::strategy::types::{AssemblyContext, PromptAssembly};
+use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::{ChatEntry, LlmMessage, PinPosition, SessionId};
 
 fn test_context<'a>(history: &'a [ChatEntry], session_id: &'a SessionId) -> AssemblyContext<'a> {
@@ -322,5 +323,76 @@ async fn pinned_entry_does_not_prevent_newest_entry() {
         &LlmMessage::User {
             content: "ok".to_owned(),
         }
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tool_loop_turn_never_split_by_budget() {
+    // Given a large user entry followed by a tool-loop turn, with a tight budget.
+    let history = vec![
+        ChatEntry::user("a".repeat(2000)),
+        ChatEntry::assistant("let me check"),
+        ChatEntry::tool_call("call_1", "echo", "{}"),
+        ChatEntry::tool_result("call_1", "echo", "ok", ToolResultStatus::Success),
+    ];
+    let strategy = make_strategy(100);
+    let session_id = SessionId::new();
+    let context = test_context(&history, &session_id);
+
+    // When assembling.
+    let result = strategy.assemble(&context).await.expect("assemble");
+
+    // Then either all tool-loop entries are included or all are excluded.
+    let messages = &result.messages;
+    let has_tool_calls = messages.iter().any(|m| {
+        matches!(
+            m,
+            LlmMessage::Assistant {
+                tool_calls: Some(_),
+                ..
+            }
+        )
+    });
+    let has_tool_result = messages
+        .iter()
+        .any(|m| matches!(m, LlmMessage::Tool { .. }));
+    // Both or neither, never one without the other.
+    assert_eq!(has_tool_calls, has_tool_result);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn pinned_entry_inside_tool_loop_forces_entire_turn() {
+    // Given a tool-loop turn where the ToolResult is pinned, with a tight budget.
+    let history = vec![
+        ChatEntry::assistant("small check"),
+        ChatEntry::tool_call("call_1", "echo", "{}"),
+        ChatEntry::tool_result("call_1", "echo", "ok", ToolResultStatus::Success)
+            .with_pin(PinPosition::Relative),
+    ];
+    let strategy = make_strategy(50);
+    let session_id = SessionId::new();
+    let context = test_context(&history, &session_id);
+
+    // When assembling.
+    let result = strategy.assemble(&context).await.expect("assemble");
+
+    // Then all three entries are included (the pinned ToolResult forces
+    // the entire tool-loop turn to be included).
+    assert!(result.messages.iter().any(|m| {
+        matches!(
+            m,
+            LlmMessage::Assistant {
+                tool_calls: Some(_),
+                ..
+            }
+        )
+    }));
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|m| matches!(m, LlmMessage::Tool { .. }))
     );
 }

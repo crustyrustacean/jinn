@@ -621,7 +621,10 @@ async fn lifecycle_metadata_round_trips() {
 
     // Then lifecycle metadata is preserved.
     assert_eq!(loaded.lifecycle_name(), Some("fossil branch"));
-    assert_eq!(loaded.lifecycle_args(), &["my-branch".to_owned(), "--private".to_owned()]);
+    assert_eq!(
+        loaded.lifecycle_args(),
+        &["my-branch".to_owned(), "--private".to_owned()]
+    );
 }
 
 #[rstest::rstest]

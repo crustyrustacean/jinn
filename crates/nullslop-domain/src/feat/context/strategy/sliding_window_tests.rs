@@ -2,6 +2,7 @@
 
 use crate::feat::context::strategy::sliding_window::SlidingWindowStrategy;
 use crate::feat::context::strategy::types::{AssemblyContext, PromptAssembly};
+use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::{ChatEntry, LlmMessage, PinPosition, SessionId};
 
 fn test_context<'a>(history: &'a [ChatEntry], session_id: &'a SessionId) -> AssemblyContext<'a> {
@@ -233,4 +234,78 @@ async fn pinned_entry_inside_window_is_unaffected() {
             content: "pinned".to_owned(),
         }
     );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn window_boundary_never_splits_tool_loop() {
+    // Given history where window_size=2 would cut between ToolCall and ToolResult
+    // if counting individual entries. The turn-based walk includes the full turn.
+    let history = vec![
+        ChatEntry::assistant("check"),
+        ChatEntry::tool_call("call_1", "echo", "{}"),
+        ChatEntry::tool_result("call_1", "echo", "ok", ToolResultStatus::Success),
+    ];
+    let strategy = SlidingWindowStrategy::new(2);
+    let session_id = SessionId::new();
+    let context = test_context(&history, &session_id);
+
+    // When assembling.
+    let result = strategy.assemble(&context).await.expect("assemble");
+
+    // Then all tool-loop entries are included (the tool-loop turn is atomic).
+    // entries_to_messages folds ToolCall into Assistant, so we get 2 messages:
+    // Assistant{tool_calls} + Tool.
+    assert_eq!(result.messages.len(), 2);
+    assert!(result.messages.iter().any(|m| {
+        matches!(
+            m,
+            LlmMessage::Assistant {
+                tool_calls: Some(_),
+                ..
+            }
+        )
+    }));
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|m| matches!(m, LlmMessage::Tool { .. }))
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn tool_loop_at_window_edge_fully_included() {
+    // Given history where window_size=2 would normally include only
+    // [ToolCall, ToolResult], missing the Assistant.
+    let history = vec![
+        ChatEntry::user("start"),
+        ChatEntry::assistant("check"),
+        ChatEntry::tool_call("call_1", "echo", "{}"),
+        ChatEntry::tool_result("call_1", "echo", "ok", ToolResultStatus::Success),
+    ];
+    let strategy = SlidingWindowStrategy::new(2);
+    let session_id = SessionId::new();
+    let context = test_context(&history, &session_id);
+
+    // When assembling.
+    let result = strategy.assemble(&context).await.expect("assemble");
+
+    // Then all tool-loop entries are included (Assistant + ToolCall + ToolResult).
+    let has_tool_calls = result.messages.iter().any(|m| {
+        matches!(
+            m,
+            LlmMessage::Assistant {
+                tool_calls: Some(_),
+                ..
+            }
+        )
+    });
+    let has_tool_result = result
+        .messages
+        .iter()
+        .any(|m| matches!(m, LlmMessage::Tool { .. }));
+    assert!(has_tool_calls);
+    assert!(has_tool_result);
 }
