@@ -337,7 +337,7 @@ impl SessionPersistenceActor {
                 self.handle_begin_compaction(payload);
             }
             Command::EndCompaction(payload) => {
-                self.handle_end_compaction(payload).await;
+                self.handle_end_compaction(payload, ctx).await;
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::AssemblePrompt(..)
@@ -1695,6 +1695,7 @@ mod tests {
                     ),
                     error: None,
                 },
+                &ctx,
             )
             .await;
 
@@ -1729,6 +1730,7 @@ mod tests {
                     result: None,
                     error: Some("LLM call failed".to_owned()),
                 },
+                &ctx,
             )
             .await;
 
@@ -1738,6 +1740,158 @@ mod tests {
         assert!(matches!(session.phase(), SessionPhase::Idle));
         let last = session.history().last().expect("has an entry");
         assert!(matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("Compaction failed")));
+    }
+
+    #[tokio::test]
+    async fn end_compaction_drains_queued_messages_on_success() {
+        // Given a session in Compacting phase with a queued user message.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.enqueue_message(ChatEntry::user("queued during compaction"));
+            session.begin_compacting();
+            state.session.active_session.clone()
+        };
+
+        // When handling EndCompaction with a successful result.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: Some(
+                        crate::feat::compaction_actor::protocol::command::CompactionResult {
+                            summary: "summarized".to_owned(),
+                            entries_compacted: 1,
+                            tokens_before: 100,
+                            model_used: "test/model".to_owned(),
+                            boundary_index: 0,
+                        },
+                    ),
+                    error: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then AssemblePrompt was emitted for the queued message.
+        let commands = sink.commands();
+        let has_assemble = commands
+            .iter()
+            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+        assert!(has_assemble, "expected AssemblePrompt command for queued message");
+    }
+
+    #[tokio::test]
+    async fn end_compaction_drains_queued_messages_on_failure() {
+        // Given a session in Compacting phase with a queued user message.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.enqueue_message(ChatEntry::user("queued during compaction"));
+            session.begin_compacting();
+            state.session.active_session.clone()
+        };
+
+        // When handling EndCompaction with a failure result.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: None,
+                    error: Some("LLM call failed".to_owned()),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then AssemblePrompt was emitted for the queued message.
+        let commands = sink.commands();
+        let has_assemble = commands
+            .iter()
+            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+        assert!(has_assemble, "expected AssemblePrompt command for queued message after failure");
+    }
+
+    #[tokio::test]
+    async fn end_compaction_with_empty_queue_does_not_emit_assemble_prompt() {
+        // Given a session in Compacting phase with no queued messages.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            state.active_session_mut().begin_compacting();
+            state.session.active_session.clone()
+        };
+
+        // When handling EndCompaction with a successful result.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: Some(
+                        crate::feat::compaction_actor::protocol::command::CompactionResult {
+                            summary: "summarized".to_owned(),
+                            entries_compacted: 1,
+                            tokens_before: 100,
+                            model_used: "test/model".to_owned(),
+                            boundary_index: 0,
+                        },
+                    ),
+                    error: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then no AssemblePrompt command was emitted.
+        let commands = sink.commands();
+        let has_assemble = commands
+            .iter()
+            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+        assert!(!has_assemble, "expected no AssemblePrompt when queue is empty");
+    }
+
+    #[tokio::test]
+    async fn end_compaction_drain_leaves_session_in_sending_state() {
+        // Given a session in Compacting phase with a queued user message.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.enqueue_message(ChatEntry::user("queued during compaction"));
+            session.begin_compacting();
+            state.session.active_session.clone()
+        };
+
+        // When handling EndCompaction with a successful result.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: Some(
+                        crate::feat::compaction_actor::protocol::command::CompactionResult {
+                            summary: "summarized".to_owned(),
+                            entries_compacted: 1,
+                            tokens_before: 100,
+                            model_used: "test/model".to_owned(),
+                            boundary_index: 0,
+                        },
+                    ),
+                    error: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is in Sending state (start_turn_from_queued called begin_sending).
+        let state = actor.state.read();
+        let session = state.session.sessions.get(&session_id).expect("session exists");
+        assert!(matches!(session.phase(), SessionPhase::Sending));
     }
 
     // --- Regression tests for session-crash: handle_prompt_assembled crash ---
