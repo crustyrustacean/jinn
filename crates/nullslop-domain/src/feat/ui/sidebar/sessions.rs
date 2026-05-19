@@ -7,6 +7,7 @@
 use std::time::{Duration, Instant};
 
 use crate::common::app_state::AppState;
+use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
@@ -59,7 +60,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
             title: session.title().unwrap_or("Untitled Session").to_owned(),
             is_active: id == active_id,
             created_at: *session.created_at(),
-            is_idle: session.is_idle(),
+            is_idle: matches!(session.phase(), SessionPhase::Idle),
             last_entry_is_error: session
                 .history()
                 .last()
@@ -427,7 +428,7 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
         .sessions
         .get(&entry.id)
         .ok_or(SessionCloseError::NoSelection)?;
-    if !session.is_idle() {
+    if !matches!(session.phase(), SessionPhase::Idle) {
         return Err(SessionCloseError::SessionBusy);
     }
 

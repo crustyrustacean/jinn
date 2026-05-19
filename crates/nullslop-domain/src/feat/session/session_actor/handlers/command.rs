@@ -15,6 +15,7 @@ use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, Command, Event};
 
 use super::super::SessionPersistenceActor;
+use crate::feat::session::chat_session::SessionPhase;
 
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
 enum EnqueueAction {
@@ -34,24 +35,29 @@ impl SessionPersistenceActor {
         let action = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
-            if session.is_idle() {
-                // Set title on first user message.
-                if session.title().is_none() {
-                    let title = match &payload.entry.kind {
-                        ChatEntryKind::User { display, .. } => {
-                            display.lines().next().unwrap_or("").to_owned()
-                        }
-                        _ => String::new(),
-                    };
-                    session.set_title(title);
+            match session.phase() {
+                SessionPhase::Idle => {
+                    // Set title on first user message.
+                    if session.title().is_none() {
+                        let title = match &payload.entry.kind {
+                            ChatEntryKind::User { display, .. } => {
+                                display.lines().next().unwrap_or("").to_owned()
+                            }
+                            _ => String::new(),
+                        };
+                        session.set_title(title);
+                    }
+                    session.push_entry(payload.entry.clone());
+                    session.begin_sending();
+                    EnqueueAction::AssemblePrompt
                 }
-                session.push_entry(payload.entry.clone());
-                session.begin_sending();
-                EnqueueAction::AssemblePrompt
-            } else {
-                // All busy states (sending, streaming, assembling) → queue.
-                session.enqueue_message(payload.entry.clone());
-                EnqueueAction::Queued
+                SessionPhase::Sending
+                | SessionPhase::Streaming
+                | SessionPhase::Assembling
+                | SessionPhase::Compacting => {
+                    session.enqueue_message(payload.entry.clone());
+                    EnqueueAction::Queued
+                }
             }
         };
 

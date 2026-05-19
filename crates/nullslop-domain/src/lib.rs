@@ -74,6 +74,7 @@ pub use feat::context::DefaultStrategyFactory;
 pub use feat::session::PoolConfig;
 pub use feat::session::SessionStoreService;
 pub use feat::session::SqliteSessionStore;
+pub use feat::session::chat_session::SessionPhase;
 pub use feat::session::no_api_keys_msg;
 pub use feat::session::welcome_msg;
 
