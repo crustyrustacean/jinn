@@ -352,10 +352,7 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows 0.0%/MAX (no context_length available).
-    assert!(
-        row.contains("0.0%/MAX"),
-        "expected 0.0%/MAX, got: {row}"
-    );
+    assert!(row.contains("0.0%/MAX"), "expected 0.0%/MAX, got: {row}");
 }
 
 #[rstest::rstest]
@@ -609,10 +606,7 @@ fn render_shows_context_limit_with_usage_and_percentage() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
     // Then the status bar shows the percentage and formatted max.
-    assert!(
-        row.contains("2.5%/200k"),
-        "expected 2.5%/200k, got: {row}"
-    );
+    assert!(row.contains("2.5%/200k"), "expected 2.5%/200k, got: {row}");
 }
 
 #[rstest::rstest]

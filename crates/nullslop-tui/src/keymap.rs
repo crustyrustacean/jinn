@@ -253,6 +253,27 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("9", Intent::InsertChar { ch: '9' }, KeyCategory::Input);
     });
 
+    // SlidingWindowInput scope — typing a numeric window size.
+    keymap.scope(Scope::SlidingWindowInput, |b| {
+        b
+        .bind("<esc>", Intent::SlidingWindowInputLeave, KeyCategory::General)
+        .bind("<enter>", Intent::SlidingWindowInputConfirm, KeyCategory::Input)
+        .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
+        .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
+        .bind("0", Intent::InsertChar { ch: '0' }, KeyCategory::Input)
+        .bind("1", Intent::InsertChar { ch: '1' }, KeyCategory::Input)
+        .bind("2", Intent::InsertChar { ch: '2' }, KeyCategory::Input)
+        .bind("3", Intent::InsertChar { ch: '3' }, KeyCategory::Input)
+        .bind("4", Intent::InsertChar { ch: '4' }, KeyCategory::Input)
+        .bind("5", Intent::InsertChar { ch: '5' }, KeyCategory::Input)
+        .bind("6", Intent::InsertChar { ch: '6' }, KeyCategory::Input)
+        .bind("7", Intent::InsertChar { ch: '7' }, KeyCategory::Input)
+        .bind("8", Intent::InsertChar { ch: '8' }, KeyCategory::Input)
+        .bind("9", Intent::InsertChar { ch: '9' }, KeyCategory::Input);
+    });
+
     // RenameSessionInput scope — editing a session title.
     keymap.scope(Scope::RenameSessionInput, |b| {
         b
