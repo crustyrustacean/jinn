@@ -33,6 +33,7 @@ pub struct RoutingEntry {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::common::actor::{ActorEnvelope, ActorRef};
     use kanal::Receiver;
 

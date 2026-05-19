@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 //! Tests for [`SelectionWidget`] and [`compute_popup_rect`].
 
 use nullslop_testutil::setup_term;

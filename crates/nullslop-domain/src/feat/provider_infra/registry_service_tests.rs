@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::feat::provider_infra::config::ProvidersConfig;
 use crate::feat::provider_infra::registry_service::ProviderRegistryService;
 

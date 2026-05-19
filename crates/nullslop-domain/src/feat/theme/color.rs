@@ -163,6 +163,7 @@ impl serde::Serialize for ThemeColor {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use ratatui::style::Color;
 

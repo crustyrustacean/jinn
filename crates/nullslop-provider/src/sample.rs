@@ -153,6 +153,7 @@ fn delayed_token_stream(tokens: Vec<String>) -> ChatStream {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use futures::StreamExt;
 
     use super::*;

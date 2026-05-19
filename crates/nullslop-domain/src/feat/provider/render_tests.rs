@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 //! Provider picker render tests.
 
 use crate::common::app_state::{AppState, FocusScope};

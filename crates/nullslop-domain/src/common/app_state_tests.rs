@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::common::app_state::*;
 use crate::protocol::{ChatEntry, Mode, PickerKind, SessionId};
 

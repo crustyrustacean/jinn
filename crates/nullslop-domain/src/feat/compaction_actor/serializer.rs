@@ -69,6 +69,7 @@ pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
 
     #[test]

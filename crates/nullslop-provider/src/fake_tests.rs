@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use futures::StreamExt;
 
 use crate::tool_types::ToolCall;

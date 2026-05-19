@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use super::registry::*;
 use crate::feat::provider_infra::api_keys::ApiKeys;
 use crate::feat::provider_infra::config::{AliasEntry, ProviderEntry, ProvidersConfig};

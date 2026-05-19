@@ -187,6 +187,7 @@ fn migrate_v4(conn: &mut SqliteConnection) {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use tempfile::TempDir;
 

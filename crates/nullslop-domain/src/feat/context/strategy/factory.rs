@@ -58,6 +58,7 @@ impl StrategyFactory for DefaultStrategyFactory {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::feat::session::profile::DEFAULT_TOKEN_BUDGET;
 
     use super::*;

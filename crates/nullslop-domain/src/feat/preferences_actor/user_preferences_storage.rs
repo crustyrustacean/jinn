@@ -214,6 +214,7 @@ impl std::fmt::Debug for dyn UserPreferencesStorage {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::ContextTokenBudgetConfig;
     use crate::common::app_info::PREFS_FILE_NAME;

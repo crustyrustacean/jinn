@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 //! Public-API tests for [`ThemeColor`] TOML serialization.
 
 use ratatui::style::Color;

@@ -182,6 +182,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::protocol::{Command, Event};
 
     use super::*;

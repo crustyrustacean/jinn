@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use nullslop_testutil::setup_term;
 use ratatui::style::Color;
 

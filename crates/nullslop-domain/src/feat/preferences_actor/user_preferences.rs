@@ -253,6 +253,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use tempfile::TempDir;
 
     use super::*;

@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use super::render::*;
 use nullslop_domain::feat::ui::chat_log::GUTTER_WIDTH;
 use nullslop_selection_widget::compute_popup_rect;

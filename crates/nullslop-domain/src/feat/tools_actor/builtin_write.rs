@@ -120,6 +120,7 @@ fn parse_args(raw: &str) -> Result<(String, String), serde_json::Error> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use std::path::PathBuf;
 

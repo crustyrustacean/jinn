@@ -62,6 +62,7 @@ pub fn build_tool_context_block(tools: &HashMap<String, ToolDefinition>) -> Opti
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
 
     fn test_tool(name: &str, snippet: Option<&str>, guidelines: Vec<&str>) -> ToolDefinition {

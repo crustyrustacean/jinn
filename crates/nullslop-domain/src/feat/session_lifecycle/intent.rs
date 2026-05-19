@@ -343,6 +343,7 @@ fn remove_session_and_switch(closing_id: &SessionId) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
@@ -397,10 +398,11 @@ mod tests {
             state.active_session().lifecycle_name(),
             Some("fossil branch")
         );
-        // And a RunSessionSetup command is emitted.
-        assert_eq!(result.commands.len(), 1);
+        // And SaveNewLifecycleSession then RunSessionSetup are emitted.
+        assert_eq!(result.commands.len(), 2);
+        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
         assert!(matches!(
-            &result.commands[0],
+            &result.commands[1],
             Command::RunSessionSetup(RunSessionSetup {
                 command,
                 ..
@@ -427,9 +429,11 @@ mod tests {
         let result =
             handle_session_lifecycle_setup(&mut state, "fossil branch", &["my-branch".to_owned()]);
 
-        // Then the command is rendered with the arg.
+        // Then SaveNewLifecycleSession is emitted first.
+        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        // And RunSessionSetup is emitted second with rendered args.
         assert!(matches!(
-            &result.commands[0],
+            &result.commands[1],
             Command::RunSessionSetup(RunSessionSetup {
                 command,
                 args,
@@ -590,8 +594,11 @@ mod tests {
             state.active_session().lifecycle_args(),
             &["my-branch".to_owned(), "target-dir".to_owned()]
         );
+        // Then SaveNewLifecycleSession is emitted first.
+        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        // And RunSessionSetup is emitted second with rendered args.
         assert!(matches!(
-            &result.commands[0],
+            &result.commands[1],
             Command::RunSessionSetup(RunSessionSetup {
                 command,
                 args,
@@ -893,8 +900,11 @@ mod tests {
 
         // Then a command is emitted with the rendered args.
         assert!(!result.commands.is_empty(), "command should be emitted");
+        // Then SaveNewLifecycleSession is emitted first.
+        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        // And RunSessionSetup is emitted second with rendered args.
         assert!(matches!(
-            &result.commands[0],
+            &result.commands[1],
             Command::RunSessionSetup(RunSessionSetup {
                 command,
                 args,
@@ -933,8 +943,11 @@ mod tests {
             state.active_session().lifecycle_args(),
             &["my branch".to_owned(), "target".to_owned()]
         );
+        // Then SaveNewLifecycleSession is emitted first.
+        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        // And RunSessionSetup is emitted second with rendered args.
         assert!(matches!(
-            &result.commands[0],
+            &result.commands[1],
             Command::RunSessionSetup(RunSessionSetup {
                 command,
                 args,
@@ -1008,7 +1021,8 @@ mod tests {
             state.active_session().lifecycle_name(),
             Some("fossil branch")
         );
-        // And the setup command was emitted.
-        assert!(matches!(&result.commands[0], Command::RunSessionSetup(..)));
+        // And SaveNewLifecycleSession then RunSessionSetup are emitted.
+        assert!(matches!(&result.commands[0], Command::SaveNewLifecycleSession(_)));
+        assert!(matches!(&result.commands[1], Command::RunSessionSetup(..)));
     }
 }

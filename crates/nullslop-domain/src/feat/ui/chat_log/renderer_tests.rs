@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::common::app_state::{AppState, FocusScope};
 use crate::common::ui_element::UiElement;
 use crate::feat::session::tool_result_status::ToolResultStatus;

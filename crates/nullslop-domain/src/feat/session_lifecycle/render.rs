@@ -215,6 +215,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::common::app_state::ArgInputState;
     use crate::feat::preferences_actor::user_preferences::SessionLifecycle;

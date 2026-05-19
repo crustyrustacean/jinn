@@ -174,6 +174,7 @@ impl Event {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::protocol::{ChatEntry, Key, KeyEvent, Mode, Modifiers, SessionId};
 

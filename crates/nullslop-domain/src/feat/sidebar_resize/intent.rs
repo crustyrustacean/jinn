@@ -67,6 +67,7 @@ pub fn handle_resize_leave(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::common::app_state::AppState;
     use crate::common::app_state::FocusScope;
     use crate::feat::preferences_actor::protocol::command::PreferenceUpdate;

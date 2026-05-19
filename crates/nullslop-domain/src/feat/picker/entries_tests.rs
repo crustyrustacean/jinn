@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::feat::theme::default_theme;
 use crate::protocol::{PromptStrategyId, StrategyEntry};
 use nullslop_selection_widget::PickerItem as _;

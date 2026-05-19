@@ -60,6 +60,7 @@ pub fn expand_tokens(text: &str, store: &PromptTemplateStore) -> String {
 
 #[cfg(test)]
 mod expand_tokens_tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::protocol::PromptTemplate;
 

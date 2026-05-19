@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 //! Test utilities for constructing [Services] with fake implementations.
 //!
 //! [`TestServices`] provides a builder that creates a [`Services`] instance

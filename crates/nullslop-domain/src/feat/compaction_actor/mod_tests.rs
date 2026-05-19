@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 //! Tests for the compaction actor.
 
 use crate::feat::compaction_actor::serializer::serialize_entries_for_compaction;

@@ -130,6 +130,7 @@ pub fn no_api_keys_msg() -> crate::protocol::ChatEntry {
 
 #[cfg(test)]
 mod welcome_tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::protocol::ChatEntryKind;
 

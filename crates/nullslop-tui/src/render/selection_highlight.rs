@@ -76,6 +76,7 @@ pub(super) fn apply_selection_highlight(app: &TuiApp, buf: &mut Buffer) {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::selection::SelectionState;
     use ratatui::layout::Rect;

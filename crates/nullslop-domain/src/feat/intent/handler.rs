@@ -396,6 +396,7 @@ impl IntentHandler {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::common::app_state::AppState;
     use crate::feat::intent::IntentHandler;
     use crate::protocol::Intent;

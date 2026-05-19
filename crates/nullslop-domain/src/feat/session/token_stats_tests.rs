@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::token_stats::{
     AggregatedTokenStats, TokenRecord, TokenStats, aggregate_session_stats,

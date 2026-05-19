@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::protocol::key::{Key, KeyEvent, Modifiers};
 
 #[rstest::rstest]

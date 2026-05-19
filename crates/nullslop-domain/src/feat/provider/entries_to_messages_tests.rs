@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::feat::provider::entries_to_messages::entries_to_messages;
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::{ChatEntry, LlmMessage, PinPosition};

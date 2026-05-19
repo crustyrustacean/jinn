@@ -336,6 +336,7 @@ impl SidebarSection for MinimapSection {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::ChatEntry;

@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::common::app_state::{AppState, FocusScope};
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::ui::sidebar::section_trait::{

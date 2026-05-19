@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::session_store::SessionStore;
 use crate::feat::session::session_store::sqlite::SqliteSessionStore;

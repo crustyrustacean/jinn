@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use nullslop_domain::Intent;
 use nullslop_domain::feat::theme::default_theme;
 use nullslop_domain::{Key, KeyEvent, Modifiers, PickerKind};

@@ -45,6 +45,7 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::feat::session::chat_session::SessionPhase;
 

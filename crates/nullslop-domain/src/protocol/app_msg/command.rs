@@ -271,6 +271,7 @@ impl std::fmt::Display for Command {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::protocol::SessionId;
 

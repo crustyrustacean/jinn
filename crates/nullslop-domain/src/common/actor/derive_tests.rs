@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 //! Tests for `EventMsg` and `CommandMsg` derive macro code generation.
 
 // Import from protocol:: which re-exports both the derive macros and the traits.

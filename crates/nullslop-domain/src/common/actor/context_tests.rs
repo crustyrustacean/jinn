@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use super::context::*;
 use crate::ActorRef;
 use crate::common::actor::envelope::ActorEnvelope;
