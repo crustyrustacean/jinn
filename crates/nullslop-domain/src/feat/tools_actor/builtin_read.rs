@@ -97,28 +97,41 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let truncation_result = truncate_head(&sliced, max_lines, max_bytes);
 
         if truncation_result.truncated {
-            let meta = truncation_result.meta.expect("meta present when truncated");
-            let end_line_display = start_line + meta.output_lines - 1;
-            let next_offset = end_line_display + 1;
-            let notice = if meta.truncated_by == nullslop_provider::tool_types::TruncatedBy::Bytes {
-                format!(
-                    "\n\n[Showing lines {start_line}-{end_line_display} of {total_file_lines} ({} limit). Use offset={next_offset} to continue.]",
-                    format_size(max_bytes)
-                )
+            if let Some(meta) = truncation_result.meta {
+                let end_line_display = start_line + meta.output_lines - 1;
+                let next_offset = end_line_display + 1;
+                let notice = if meta.truncated_by
+                    == nullslop_provider::tool_types::TruncatedBy::Bytes
+                {
+                    format!(
+                        "\n\n[Showing lines {start_line}-{end_line_display} of {total_file_lines} ({} limit). Use offset={next_offset} to continue.]",
+                        format_size(max_bytes)
+                    )
+                } else {
+                    format!(
+                        "\n\n[Showing lines {start_line}-{end_line_display} of {total_file_lines}. Use offset={next_offset} to continue.]"
+                    )
+                };
+                let mut output = truncation_result.content;
+                output.push_str(&notice);
+                ToolResult {
+                    tool_call_id: call.id,
+                    name: call.name,
+                    content: output,
+                    success: true,
+                    full_content: Some(sliced),
+                    truncation: Some(meta),
+                }
             } else {
-                format!(
-                    "\n\n[Showing lines {start_line}-{end_line_display} of {total_file_lines}. Use offset={next_offset} to continue.]"
-                )
-            };
-            let mut output = truncation_result.content;
-            output.push_str(&notice);
-            ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: output,
-                success: true,
-                full_content: Some(sliced),
-                truncation: Some(meta),
+                // truncated but no meta — return unformatted truncated content
+                ToolResult {
+                    tool_call_id: call.id,
+                    name: call.name,
+                    content: truncation_result.content,
+                    success: true,
+                    full_content: Some(sliced),
+                    truncation: None,
+                }
             }
         } else {
             ToolResult {

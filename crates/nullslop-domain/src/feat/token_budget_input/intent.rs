@@ -55,7 +55,7 @@ pub fn handle_token_budget_confirm(state: &mut AppState) -> IntentResult {
     state.active_session_mut().profile_mut().token_budget = budget;
 
     // Read current strategy and session ID before clearing state.
-    let session_id = state.session.active_session.clone();
+    let session_id = state.session.active_session_id().clone();
     let strategy_id = state.active_session().active_strategy().clone();
 
     // Pop scope and clear state.

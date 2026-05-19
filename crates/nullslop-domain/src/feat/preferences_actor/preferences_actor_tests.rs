@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::common::actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
-use crate::feat::preferences_actor::preferences_actor::PreferencesActor;
+use crate::feat::preferences_actor::preferences_actor::{PreferencesActor, PreferencesActorDeps};
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::preferences_actor::user_preferences_storage::InMemoryUserPreferencesStorage;
@@ -16,8 +16,7 @@ fn create_actor() -> (PreferencesActor, Arc<RecordingSink>, ActorContext) {
     let mut ctx = ActorContext::new("preferences-actor", sink.clone() as Arc<dyn MessageSink>);
     let storage =
         UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
-    ctx.set_data(storage);
-    let actor = PreferencesActor::activate(&mut ctx);
+    let actor = PreferencesActor::activate(PreferencesActorDeps { storage }, &mut ctx);
     (actor, sink, ctx)
 }
 

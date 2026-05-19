@@ -25,27 +25,26 @@ pub struct PreferencesStateSyncActor {
     system_themes_dir: PathBuf,
 }
 
+/// Dependencies for [`PreferencesStateSyncActor`].
+pub struct PreferencesStateSyncActorDeps {
+    /// Shared application state.
+    pub state: State,
+    /// Application paths for theme resolution.
+    pub paths: AppPaths,
+}
+
 impl Actor for PreferencesStateSyncActor {
     type Message = NoDirectMsg;
+    type Deps = PreferencesStateSyncActorDeps;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "State injection is required at activation"
-    )]
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<super::protocol::event::PreferencesUpdated>();
         ctx.set_description("Syncs AppState.frontend.preferences from PreferencesUpdated events");
 
-        let state = ctx
-            .take_data::<State>()
-            .expect("PreferencesStateSyncActor requires State injection");
-
-        let paths = ctx.take_data::<AppPaths>().unwrap_or_default();
-
         Self {
-            state,
-            themes_dir: paths.themes_dir(),
-            system_themes_dir: paths.system_themes_dir(),
+            state: deps.state,
+            themes_dir: deps.paths.themes_dir(),
+            system_themes_dir: deps.paths.system_themes_dir(),
         }
     }
 
@@ -95,6 +94,7 @@ mod tests {
     use crate::common::actor::{
         Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
     };
+    use crate::common::app_paths::AppPaths;
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
@@ -104,15 +104,18 @@ mod tests {
     };
     use crate::protocol::Event;
 
-    use super::PreferencesStateSyncActor;
+    use super::{PreferencesStateSyncActor, PreferencesStateSyncActorDeps};
 
     /// Creates a test actor with shared state.
     fn create_actor() -> (PreferencesStateSyncActor, State, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("preferences-sync", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
-        ctx.set_data(state.clone());
-        let actor = PreferencesStateSyncActor::activate(&mut ctx);
+        let deps = PreferencesStateSyncActorDeps {
+            state: state.clone(),
+            paths: AppPaths::default(),
+        };
+        let actor = PreferencesStateSyncActor::activate(deps, &mut ctx);
         (actor, state, ctx)
     }
 

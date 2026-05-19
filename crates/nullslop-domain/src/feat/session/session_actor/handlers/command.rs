@@ -167,12 +167,16 @@ impl SessionPersistenceActor {
             let title_text = loaded.title().unwrap_or("Untitled Session").to_owned();
 
             // Insert loaded session into HashMap.
-            state.session.sessions.insert(session_id.clone(), loaded);
+            state
+                .session
+                .sessions_mut()
+                .insert(session_id.clone(), loaded);
 
             // Add a system message about the restore.
+            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state
                 .session
-                .sessions
+                .sessions_mut()
                 .get_mut(&session_id)
                 .expect("just inserted");
             session.push_entry(ChatEntry::system(format!("Session restored: {title_text}")));
@@ -181,7 +185,7 @@ impl SessionPersistenceActor {
             // Read cwd before releasing the lock (for async existence check).
             original_cwd = session.cwd().to_owned();
 
-            state.session.active_session = session_id.clone();
+            state.session.set_active(session_id.clone());
             state.session.clear_load();
         }
 
@@ -191,12 +195,13 @@ impl SessionPersistenceActor {
         if !cwd_exists {
             let default_cwd = {
                 let state = self.state.read();
-                state.session.default_cwd.clone()
+                state.session.default_cwd().clone()
             };
             let mut state = self.state.write();
+            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state
                 .session
-                .sessions
+                .sessions_mut()
                 .get_mut(&session_id)
                 .expect("just inserted");
             session.push_entry(ChatEntry::system(format!(
@@ -220,9 +225,10 @@ impl SessionPersistenceActor {
         // Serialize the strategy state for RestoreStrategyState.
         let blob = {
             let state = self.state.read();
+            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state
                 .session
-                .sessions
+                .sessions()
                 .get(&session_id)
                 .expect("just inserted");
             session
