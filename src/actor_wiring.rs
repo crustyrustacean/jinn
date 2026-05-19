@@ -35,9 +35,9 @@ use nullslop_domain::common::actor::protocol::event::{
 };
 use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
-use nullslop_domain::init::env_init_actor::EnvInitActor;
-use nullslop_domain::init::provider_init_actor::ProviderInitActor;
-use nullslop_domain::init::system_ready_actor::SystemReadyActor;
+use nullslop_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
+use nullslop_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
+use nullslop_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
 use nullslop_domain::strategy_registry::StrategyRegistryService;
 use nullslop_domain::{
     ActorCounter, ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost,
@@ -120,9 +120,9 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_data(ready_tx);
-            ctx.set_data(counter.clone());
+        SystemReadyActorDeps {
+            ready_tx,
+            counter: counter.clone(),
         },
     );
 
@@ -145,10 +145,9 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Loads environment variables and API keys");
-            ctx.set_data(config_storage.clone());
-            ctx.set_data(api_keys.clone());
+        EnvInitActorDeps {
+            config_storage: config_storage.clone(),
+            api_keys: api_keys.clone(),
         },
     );
 
@@ -159,10 +158,9 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Loads provider config, merges cache, resolves last_model");
-            ctx.set_data(services.clone());
-            ctx.set_data(state.clone());
+        ProviderInitActorDeps {
+            services: services.clone(),
+            state: state.clone(),
         },
     );
 
@@ -174,20 +172,20 @@ pub fn create_core_with_actor_host(
             handle,
             &counter,
             &shutdown_tracker,
-            |ctx| {
-                ctx.set_description("Persists user preferences to nullslop.toml");
-                ctx.set_data(user_preferences_storage.clone());
+            nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
+                storage: user_preferences_storage.clone(),
             },
         );
 
     // Preferences state sync: updates AppState from PreferencesUpdated events.
     let prefs_sync_result = spawn::<
         nullslop_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor,
-    >("preferences-sync", &sink, handle, &counter, &shutdown_tracker, |ctx| {
-        ctx.set_description("Syncs AppState.frontend.preferences from PreferencesUpdated events");
-        ctx.set_data(state.clone());
-        ctx.set_data(paths.clone());
-    });
+    >("preferences-sync", &sink, handle, &counter, &shutdown_tracker,
+        nullslop_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
+            state: state.clone(),
+            paths: paths.clone(),
+        },
+    );
 
     // ── Domain actors ────────────────────────────────────────────────────
 
@@ -198,11 +196,10 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("LLM streaming with tool support");
-            ctx.set_data(llm_service.clone());
-            ctx.set_data(services.clone());
-            ctx.set_data(state.clone());
+        nullslop_domain::feat::llm_actor::LlmActorDeps {
+            factory: llm_service.clone(),
+            services: Some(services.clone()),
+            state: state.clone(),
         },
     );
 
@@ -213,12 +210,11 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Discovers available models");
-            ctx.set_data(provider_registry.clone());
-            ctx.set_data(api_keys.clone());
-            ctx.set_data(state.clone());
-            ctx.set_data(paths.clone());
+        nullslop_domain::feat::provider::discover_actor::DiscoverActorDeps {
+            registry: provider_registry.clone(),
+            api_keys: api_keys.clone(),
+            state: state.clone(),
+            app_paths: paths.clone(),
         },
     );
 
@@ -229,10 +225,9 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Dispatches and manages tool execution");
-            ctx.set_data(state.clone());
-            ctx.set_data(paths.clone());
+        nullslop_domain::feat::tools_actor::ToolOrchestratorActorDeps {
+            state: state.clone(),
+            app_paths: paths.clone(),
         },
     );
 
@@ -243,14 +238,13 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Context assembly, strategy management, pinning, and templates");
-            ctx.set_data(state.clone());
-            ctx.set_data(Box::new(DefaultStrategyFactory)
+        nullslop_domain::feat::context::context_actor::PromptAssemblyActorDeps {
+            state: state.clone(),
+            factory: Some(Box::new(DefaultStrategyFactory)
                 as Box<
                     dyn nullslop_domain::feat::context::strategy::types::StrategyFactory,
-                >);
-            ctx.set_data(services.clone());
+                >),
+            services: services.clone(),
         },
     );
 
@@ -262,12 +256,11 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Persists session data to disk");
-            ctx.set_data(state.clone());
-            ctx.set_data(services.clone());
-            ctx.set_data(session_store.clone());
-            ctx.set_data(token_counter);
+        nullslop_domain::feat::session::session_actor::SessionPersistenceActorDeps {
+            state: state.clone(),
+            services: Some(services.clone()),
+            store: Some(session_store.clone()),
+            counter: token_counter,
         },
     );
 
@@ -278,9 +271,9 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Scans and reloads prompt templates");
-            ctx.set_data(services.paths.clone());
+        nullslop_domain::ScanActorDeps {
+            paths: services.paths.clone(),
+            state: None,
         },
     );
 
@@ -291,10 +284,9 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Scans and loads agent skills from ~/.agents/skills");
-            ctx.set_data(services.paths.clone());
-            ctx.set_data(state.clone());
+        nullslop_domain::ScanActorDeps {
+            paths: services.paths.clone(),
+            state: Some(state.clone()),
         },
     );
 
@@ -307,9 +299,9 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Scans and loads persona files from ~/.config/nullslop/personas");
-            ctx.set_data(services.paths.clone());
+        nullslop_domain::ScanActorDeps {
+            paths: services.paths.clone(),
+            state: None,
         },
     );
 
@@ -320,10 +312,9 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Manages provider selection, LLM factory, and model cache");
-            ctx.set_data(state.clone());
-            ctx.set_data(services.clone());
+        nullslop_domain::feat::provider::provider_actor::ProviderActorDeps {
+            state: state.clone(),
+            services: services.clone(),
         },
     );
 
@@ -334,11 +325,10 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        |ctx| {
-            ctx.set_description("Summarizes conversation history into structured checkpoints");
-            ctx.set_data(state.clone());
-            ctx.set_data(services.clone());
-            ctx.set_data(handle.clone());
+        nullslop_domain::feat::compaction_actor::CompactionActorDeps {
+            state: state.clone(),
+            services: services.clone(),
+            handle: handle.clone(),
         },
     );
 
@@ -350,9 +340,8 @@ pub fn create_core_with_actor_host(
             handle,
             &counter,
             &shutdown_tracker,
-            |ctx| {
-                ctx.set_description("Manages sidebar cursor state");
-                ctx.set_data(state.clone());
+            nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActorDeps {
+                state: state.clone(),
             },
         );
 

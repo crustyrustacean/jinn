@@ -108,27 +108,30 @@ pub struct ToolOrchestratorActor {
     app_paths: crate::common::app_paths::AppPaths,
 }
 
+/// Dependencies for [`ToolOrchestratorActor`].
+pub struct ToolOrchestratorActorDeps {
+    /// Shared application state.
+    pub state: State,
+    /// Application paths for working directory.
+    pub app_paths: crate::common::app_paths::AppPaths,
+}
+
 impl Actor for ToolOrchestratorActor {
     type Message = NoDirectMsg;
+    type Deps = ToolOrchestratorActorDeps;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
+        ctx.set_description("Dispatches and manages tool execution");
         ctx.subscribe_command::<RegisterTools>();
         ctx.subscribe_command::<ExecuteToolBatch>();
         ctx.subscribe_command::<CancelToolBatch>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
 
-        let state: State = ctx
-            .take_data()
-            .expect("ToolOrchestratorActor requires State injection");
-        let app_paths: crate::common::app_paths::AppPaths = ctx
-            .take_data()
-            .expect("ToolOrchestratorActor requires AppPaths injection");
-
         let mut actor = Self {
             tools: HashMap::new(),
             pending: HashMap::new(),
-            state,
-            app_paths,
+            state: deps.state,
+            app_paths: deps.app_paths,
         };
 
         let builtins = builtin::builtin_tools();

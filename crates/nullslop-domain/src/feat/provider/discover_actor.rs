@@ -41,34 +41,31 @@ pub struct DiscoverActor {
     app_paths: AppPaths,
 }
 
+/// Dependencies for [`DiscoverActor`].
+pub struct DiscoverActorDeps {
+    /// Provider registry for listing available models.
+    pub registry: ProviderRegistryService,
+    /// API keys service for authentication.
+    pub api_keys: ApiKeysService,
+    /// Shared application state.
+    pub state: State,
+    /// Application paths for cache directory.
+    pub app_paths: AppPaths,
+}
+
 impl Actor for DiscoverActor {
     type Message = NoDirectMsg;
+    type Deps = DiscoverActorDeps;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "data is injected by the host before activate is called"
-    )]
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
+        ctx.set_description("Discovers available models");
         ctx.subscribe_command::<RefreshModels>();
 
-        let registry = ctx
-            .take_data::<ProviderRegistryService>()
-            .expect("ProviderRegistryService must be injected via ctx.set_data()");
-        let api_keys = ctx
-            .take_data::<ApiKeysService>()
-            .expect("ApiKeysService must be injected via ctx.set_data()");
-        let state = ctx
-            .take_data::<State>()
-            .expect("State must be injected via ctx.set_data()");
-        let app_paths = ctx
-            .take_data::<AppPaths>()
-            .expect("AppPaths must be injected via ctx.set_data()");
-
         Self {
-            registry,
-            api_keys,
-            state,
-            app_paths,
+            registry: deps.registry,
+            api_keys: deps.api_keys,
+            state: deps.state,
+            app_paths: deps.app_paths,
         }
     }
 

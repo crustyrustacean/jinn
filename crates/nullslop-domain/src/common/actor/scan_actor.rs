@@ -13,6 +13,17 @@
 
 use super::{Actor, ActorContext, ActorEnvelope};
 use crate::common::app_paths::AppPaths;
+use crate::common::state::State;
+
+/// Dependencies for [`ScanActor`].
+///
+/// Passed directly at spawn time — no type erasure.
+pub struct ScanActorDeps {
+    /// Application paths for resolving scan directories.
+    pub paths: AppPaths,
+    /// Shared application state. Required by `SkillsScanConfig`, unused by others.
+    pub state: Option<State>,
+}
 
 /// Marker type for actors that don't accept direct messages.
 ///
@@ -29,9 +40,9 @@ pub trait ScanConfig: Send + 'static {
 
     /// Activate the scan config: subscribe to commands and extract extra data.
     ///
-    /// Called once during [`ScanActor::activate`], after `AppPaths` has
-    /// already been extracted from context.
-    fn activate(ctx: &mut ActorContext) -> Self;
+    /// Called once during [`ScanActor::activate`], after deps have been
+    /// extracted.
+    fn activate(deps: &ScanActorDeps, ctx: &mut ActorContext) -> Self;
 
     /// Returns `true` if the given command should trigger a rescan.
     ///
@@ -71,17 +82,14 @@ pub struct ScanActor<C: ScanConfig> {
 
 impl<C: ScanConfig + Sync> Actor for ScanActor<C> {
     type Message = NoDirectMsg;
+    type Deps = ScanActorDeps;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "AppPaths must be injected via ctx.set_data before activate"
-    )]
-    fn activate(ctx: &mut ActorContext) -> Self {
-        let config = C::activate(ctx);
-        let paths = ctx
-            .take_data::<AppPaths>()
-            .expect("AppPaths must be injected via ctx.set_data()");
-        Self { paths, config }
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
+        let config = C::activate(&deps, ctx);
+        Self {
+            paths: deps.paths,
+            config,
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
