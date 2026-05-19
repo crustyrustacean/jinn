@@ -256,8 +256,8 @@ bump LEVEL:
     # --- Commit ---
     fossil commit -m "Bump version to ${CANDIDATE}"
 
-    # --- Tag (omit version to tag current checkout) ---
-    fossil tag add "v${CANDIDATE}"
+    # --- Tag the current checkout ---
+    fossil tag add "v${CANDIDATE}" current
 
     echo "Bumped to ${CANDIDATE}, committed and tagged as v${CANDIDATE}"
 
