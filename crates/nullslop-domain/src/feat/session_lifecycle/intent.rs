@@ -12,7 +12,9 @@ use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
-use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
+use crate::feat::session_lifecycle::protocol::command::{
+    RunSessionSetup, RunSessionTeardown, SaveNewLifecycleSession,
+};
 use crate::protocol::{Command, IntentResult, PromptStrategyId, SessionId};
 
 /// Errors that can occur when validating arg input.
@@ -146,11 +148,16 @@ pub fn handle_session_lifecycle_setup(
             template.render(args)
         };
 
-        return IntentResult::with_commands(vec![Command::RunSessionSetup(RunSessionSetup {
-            session_id: new_id,
-            command: rendered,
-            args: args.to_vec(),
-        })]);
+        return IntentResult::with_commands(vec![
+            Command::SaveNewLifecycleSession(SaveNewLifecycleSession {
+                session_id: new_id.clone(),
+            }),
+            Command::RunSessionSetup(RunSessionSetup {
+                session_id: new_id,
+                command: rendered,
+                args: args.to_vec(),
+            }),
+        ]);
     }
 
     // No setup command — use default CWD immediately.

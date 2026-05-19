@@ -47,3 +47,15 @@ pub struct RunSessionTeardown {
 fn default_true() -> bool {
     true
 }
+
+/// Request to immediately persist a newly-created lifecycle session.
+///
+/// Emitted by the `IntentHandler` alongside `RunSessionSetup` so the session
+/// is saved before the setup command even begins executing. This ensures the
+/// session's lifecycle metadata (name, args) survives an app crash during setup.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("session")]
+pub struct SaveNewLifecycleSession {
+    /// The session to persist.
+    pub session_id: SessionId,
+}

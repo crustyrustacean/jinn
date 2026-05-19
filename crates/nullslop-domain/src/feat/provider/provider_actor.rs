@@ -120,7 +120,8 @@ impl ProviderActor {
             | Command::CompactContext(..)
             | Command::BeginCompaction(..)
             | Command::EndCompaction(..)
-            | Command::RemoveSession(..) => {}
+            | Command::RemoveSession(..)
+            | Command::SaveNewLifecycleSession(..) => {}
         }
     }
 

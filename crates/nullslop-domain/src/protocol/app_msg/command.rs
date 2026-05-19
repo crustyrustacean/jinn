@@ -32,7 +32,9 @@ use crate::feat::session::protocol::remove_session::RemoveSession;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, RunSessionTeardown};
+use crate::feat::session_lifecycle::protocol::command::{
+    RunSessionSetup, RunSessionTeardown, SaveNewLifecycleSession,
+};
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
@@ -119,6 +121,8 @@ pub enum Command {
     EndCompaction(EndCompaction),
     /// Remove a session from the sessions map.
     RemoveSession(RemoveSession),
+    /// Save a newly-created lifecycle session immediately.
+    SaveNewLifecycleSession(SaveNewLifecycleSession),
 }
 
 impl Command {
@@ -163,6 +167,7 @@ impl Command {
             Self::BeginCompaction(..) => Some(BeginCompaction::NAME),
             Self::EndCompaction(..) => Some(EndCompaction::NAME),
             Self::RemoveSession(..) => Some(RemoveSession::NAME),
+            Self::SaveNewLifecycleSession(..) => Some(SaveNewLifecycleSession::NAME),
         }
     }
 }
@@ -256,6 +261,9 @@ impl std::fmt::Display for Command {
             }
             Command::RemoveSession(payload) => {
                 write!(f, "remove session {}", payload.session_id)
+            }
+            Command::SaveNewLifecycleSession(payload) => {
+                write!(f, "save new lifecycle session {}", payload.session_id)
             }
         }
     }
