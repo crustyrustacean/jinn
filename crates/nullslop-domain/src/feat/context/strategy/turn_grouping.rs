@@ -32,7 +32,7 @@ impl Turn {
 
     /// Whether any entry in this turn is pinned.
     pub fn is_pinned(&self) -> bool {
-        self.0.iter().any(|e| e.is_pinned())
+        self.0.iter().any(ChatEntry::is_pinned)
     }
 
     /// Number of individual entries in this turn.
