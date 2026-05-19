@@ -19,7 +19,11 @@ pub fn handle_token_budget_enter(state: &mut AppState) -> IntentResult {
     let input = current_budget.to_string();
     let cursor_pos = input.len();
 
-    state.frontend.token_budget_input = TokenBudgetInputState { input, cursor_pos, error_message: None };
+    state.frontend.token_budget_input = TokenBudgetInputState {
+        input,
+        cursor_pos,
+        error_message: None,
+    };
     state
         .frontend
         .scope_stack
@@ -239,7 +243,8 @@ mod tests {
             .push(FocusScope::TokenBudgetInput);
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "999999".to_owned(),
-            cursor_pos: 6, error_message: None
+            cursor_pos: 6,
+            error_message: None,
         };
 
         // When handling TokenBudgetInputConfirm.
@@ -277,7 +282,8 @@ mod tests {
             .push(FocusScope::TokenBudgetInput);
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: String::new(),
-            cursor_pos: 0, error_message: None
+            cursor_pos: 0,
+            error_message: None,
         };
 
         // When handling TokenBudgetInputConfirm.
@@ -302,7 +308,8 @@ mod tests {
             .push(FocusScope::TokenBudgetInput);
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "500".to_owned(),
-            cursor_pos: 3, error_message: None
+            cursor_pos: 3,
+            error_message: None,
         };
 
         // When handling TokenBudgetInputConfirm.
@@ -328,7 +335,8 @@ mod tests {
             .push(FocusScope::TokenBudgetInput);
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "500000".to_owned(),
-            cursor_pos: 6, error_message: None
+            cursor_pos: 6,
+            error_message: None,
         };
 
         // When handling TokenBudgetInputLeave.
@@ -356,7 +364,8 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "15".to_owned(),
-            cursor_pos: 2, error_message: None
+            cursor_pos: 2,
+            error_message: None,
         };
 
         // When inserting '0'.
@@ -373,7 +382,8 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "15".to_owned(),
-            cursor_pos: 2, error_message: None
+            cursor_pos: 2,
+            error_message: None,
         };
 
         // When inserting 'a' (non-digit).
@@ -390,7 +400,8 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "150".to_owned(),
-            cursor_pos: 3, error_message: None
+            cursor_pos: 3,
+            error_message: None,
         };
 
         // When deleting.
@@ -407,7 +418,8 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "150".to_owned(),
-            cursor_pos: 1, error_message: None
+            cursor_pos: 1,
+            error_message: None,
         };
 
         // When forward deleting.
@@ -424,7 +436,8 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "150".to_owned(),
-            cursor_pos: 3, error_message: None
+            cursor_pos: 3,
+            error_message: None,
         };
 
         // When moving cursor left.
@@ -440,7 +453,8 @@ mod tests {
         let mut state = AppState::default();
         state.frontend.token_budget_input = TokenBudgetInputState {
             input: "150".to_owned(),
-            cursor_pos: 0, error_message: None
+            cursor_pos: 0,
+            error_message: None,
         };
 
         // When moving cursor right.
