@@ -104,7 +104,9 @@ impl SessionPersistenceActor {
     /// Appends a streaming token to the session's assistant entry,
     /// or to the thinking entry if the token is flagged as reasoning.
     pub(in crate::feat::session::session_actor) fn on_stream_token(&self, event: &StreamToken) {
+        let lock_start = std::time::Instant::now();
         let mut state = self.state.write();
+        let lock_wait = lock_start.elapsed();
         let session = state.session_mut_or_create(&event.session_id);
         match session.phase() {
             SessionPhase::Streaming => {}
@@ -130,6 +132,16 @@ impl SessionPersistenceActor {
             if let Err(e) = session.append_stream_token(&event.token) {
                 tracing::error!(err = ?e, "failed to append stream token");
             }
+        }
+        drop(state);
+        let total = lock_start.elapsed();
+        if total.as_micros() > 500 {
+            tracing::warn!(
+                lock_wait_us = lock_wait.as_micros() as u64,
+                total_us = total.as_micros() as u64,
+                token_len = event.token.len(),
+                "PERF: on_stream_token slow (>500µs)"
+            );
         }
     }
 
@@ -307,9 +319,21 @@ impl SessionPersistenceActor {
         &self,
         event: &ToolExecutionOutput,
     ) {
+        let lock_start = std::time::Instant::now();
         let mut state = self.state.write();
+        let lock_wait = lock_start.elapsed();
         let session = state.session_mut_or_create(&event.session_id);
         session.append_tool_result_output(&event.tool_call_id, &event.output);
+        drop(state);
+        let total = lock_start.elapsed();
+        if total.as_micros() > 500 {
+            tracing::warn!(
+                lock_wait_us = lock_wait.as_micros() as u64,
+                total_us = total.as_micros() as u64,
+                output_len = event.output.len(),
+                "PERF: on_tool_execution_output slow (>500µs)"
+            );
+        }
     }
 
     /// All tools in a batch have finished — route the continuation through
@@ -333,11 +357,18 @@ impl SessionPersistenceActor {
 
         // Read history and model, then emit AssemblePrompt.
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
+        let history_start = std::time::Instant::now();
         let (history, model_name) = {
             let state = self.state.read();
             let session = state.session(&event.session_id);
             (session.history().to_vec(), session.profile().model.clone())
         };
+        let history_dur = history_start.elapsed();
+        tracing::info!(
+            history_dur_us = history_dur.as_micros() as u64,
+            history_len = history.len(),
+            "PERF: on_tool_batch_completed history clone"
+        );
 
         if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
             session_id: event.session_id.clone(),
