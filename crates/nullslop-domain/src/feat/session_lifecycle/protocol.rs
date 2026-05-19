@@ -4,4 +4,4 @@ pub mod command;
 pub mod event;
 
 pub use command::{RunSessionSetup, RunSessionTeardown};
-pub use event::{SessionSetupCompleted, SessionTeardownCompleted};
+pub use event::{SessionSetupCompleted, SessionTeardownFinished};

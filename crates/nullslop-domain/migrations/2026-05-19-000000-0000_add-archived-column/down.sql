@@ -1,0 +1,1 @@
+-- not supported: ALTER TABLE sessions DROP COLUMN archived;

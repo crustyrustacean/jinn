@@ -28,6 +28,10 @@ pub struct SessionSummary {
     /// When this session was created. Set once at construction, never mutated.
     #[serde(default = "default_timestamp")]
     pub created_at: Timestamp,
+    /// Whether this session has been archived (closed by the user).
+    /// Archived sessions are hidden from the sidebar but appear in the picker.
+    #[serde(default)]
+    pub archived: bool,
 }
 
 fn default_title() -> String {

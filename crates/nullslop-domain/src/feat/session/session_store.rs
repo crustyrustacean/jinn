@@ -100,6 +100,26 @@ pub trait SessionStore: Send + Sync + 'static {
         source_session_id: &SessionId,
         at_ordinal: usize,
     ) -> Result<SessionId, Report<SessionStoreError>>;
+
+    /// Set the `archived` flag for a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the update fails.
+    async fn set_archived(
+        &self,
+        session_id: &SessionId,
+        archived: bool,
+    ) -> Result<(), Report<SessionStoreError>>;
+
+    /// Load lightweight summaries for all unarchived sessions.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the database cannot be read.
+    async fn load_unarchived_summaries(
+        &self,
+    ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>>;
 }
 
 impl std::fmt::Debug for dyn SessionStore {
