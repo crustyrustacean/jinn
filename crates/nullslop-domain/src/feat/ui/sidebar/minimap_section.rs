@@ -1,9 +1,10 @@
 //! Minimap sidebar section — compact visual summary of conversation history.
 //!
-//! Renders colored blocks (█) representing sequences of same-type chat entries.
-//! Entries marked `ignored` use a half block (▄) instead. Blocks are displayed
-//! horizontally and wrap to the next line at the container edge. No header,
-//! borders, or padding — blocks go edge-to-edge.
+//! Renders colored blocks representing chat entries. Consecutive tool-use rounds
+//! (ToolCall → ToolResult → intermediate Assistant) are collapsed into single numbered
+//! blocks (2-9, A-Z) in green. The final Assistant in a tool chain is shown as a
+//! separate white block. Other entry types render individually. Ignored entries use
+//! darkened colors instead of half-blocks. Blocks wrap at the container edge.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -181,8 +182,7 @@ fn compute_blocks(history: &[ChatEntry]) -> Vec<MinimapBlock> {
                     // Lookahead: is the next included entry a tool call?
                     let next_is_tool = included
                         .get(seq_end + 1)
-                        .map(|(_, _, k)| is_tool_or_result(k))
-                        .unwrap_or(false);
+                        .is_some_and(|(_, _, k)| is_tool_or_result(k));
                     if next_is_tool {
                         // Intermediate assistant — absorb.
                         all_ignored = all_ignored && *entry_ignored;
