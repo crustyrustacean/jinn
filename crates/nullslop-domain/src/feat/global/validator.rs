@@ -31,7 +31,9 @@ pub enum InterruptError {
 ///
 /// Returns an error if the buffer is empty and the session is idle.
 pub fn validate_interrupt(state: &AppState) -> Result<(), InterruptError> {
-    if state.active_chat_input().is_empty() && matches!(state.active_session().phase(), SessionPhase::Idle) {
+    if state.active_chat_input().is_empty()
+        && matches!(state.active_session().phase(), SessionPhase::Idle)
+    {
         return Err(InterruptError::NothingToInterrupt);
     }
     Ok(())

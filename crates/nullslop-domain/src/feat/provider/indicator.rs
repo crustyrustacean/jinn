@@ -59,7 +59,10 @@ impl UiElement<AppState> for StreamingIndicatorElement {
         let session = state.active_session();
         let queue_len = session.queue_len();
 
-        let is_busy = matches!(session.phase(), SessionPhase::Sending | SessionPhase::Streaming);
+        let is_busy = matches!(
+            session.phase(),
+            SessionPhase::Sending | SessionPhase::Streaming
+        );
         if !is_busy {
             return;
         }

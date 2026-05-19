@@ -43,7 +43,6 @@ fn render_row_shows_name_and_description() {
     assert!(text.contains("Send as-is"));
 }
 
-
 // --- load_strategy_entries tests ---
 
 #[rstest::rstest]
@@ -133,7 +132,6 @@ fn format_strategy_footer_contains_label_and_name() {
     assert!(text.contains("Sliding Window"));
 }
 
-
 // --- Highlight tests ---
 
 #[rstest::rstest]
@@ -148,7 +146,6 @@ fn render_row_with_empty_match_indices_same_as_render_row() {
     }
 }
 
-
 #[rstest::rstest]
 fn strategy_highlight_row_contains_matched_char() {
     let entry = make_entry("passthrough", "Passthrough", "Send as-is", false);
@@ -159,10 +156,7 @@ fn strategy_highlight_row_contains_matched_char() {
     let highlights: &[Range<usize>] = &[0..1];
     let line = entry.render_row_with_highlight(false, highlights);
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
-    assert!(
-        text.contains('P'),
-        "highlighted row should contain 'P'"
-    );
+    assert!(text.contains('P'), "highlighted row should contain 'P'");
 }
 
 #[rstest::rstest]

@@ -116,7 +116,6 @@ impl AppPaths {
             .join(super::app_info::PREFS_FILE_NAME)
     }
 
-
     // -- System data directories (XDG fallback) -----------------------------
 
     /// System data directory (`/usr/share/nullslop`).

@@ -66,7 +66,6 @@ mod tests {
         assert!(text.contains("Navigation"), "should contain category");
     }
 
-
     #[rstest::rstest]
     fn render_row_pads_short_key_sequences() {
         let entry = make_entry("q", "quit", "Normal", "General");
@@ -96,7 +95,6 @@ mod tests {
             assert_eq!(n.style, h.style);
         }
     }
-
 
     #[rstest::rstest]
     fn render_row_with_highlight_preserves_unmatched_chars() {

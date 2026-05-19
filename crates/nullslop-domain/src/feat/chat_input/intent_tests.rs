@@ -386,7 +386,10 @@ fn enter_normal_mode_does_not_cancel_stream() {
             .any(|c| matches!(c, Command::CancelStream(..)))
     );
     // And the session is still streaming (not cancelled).
-    assert!(matches!(state.active_session().phase(), SessionPhase::Streaming));
+    assert!(matches!(
+        state.active_session().phase(),
+        SessionPhase::Streaming
+    ));
 }
 
 #[rstest::rstest]
@@ -837,11 +840,9 @@ fn cursor_right_past_token_deactivates_autocomplete() {
     // Given a state with "#code hello" and autocomplete active at token_start=0.
     let mut state = AppState::default();
     state.active_chat_input_mut().insert_text("#code hello");
-    state.active_chat_input_mut().activate_autocomplete(
-        0,
-        AutocompleteTrigger::Hash,
-        vec![],
-    );
+    state
+        .active_chat_input_mut()
+        .activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]);
     // Move cursor to start, then right through the token.
     // token_end = 5 (one past 'e'). Cursor at 5 == token_end, still "in" token.
     state.active_chat_input_mut().move_cursor_to_start();
@@ -872,11 +873,9 @@ fn cursor_right_within_token_keeps_autocomplete_active() {
     // Given a state with "#code" and autocomplete active at token_start=0.
     let mut state = AppState::default();
     state.active_chat_input_mut().insert_text("#code");
-    state.active_chat_input_mut().activate_autocomplete(
-        0,
-        AutocompleteTrigger::Hash,
-        vec![],
-    );
+    state
+        .active_chat_input_mut()
+        .activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]);
     // Move cursor to start, then right to position 2.
     state.active_chat_input_mut().move_cursor_to_start();
     crate::feat::chat_input::intent::handle_move_cursor_right(&mut state); // cursor at 1

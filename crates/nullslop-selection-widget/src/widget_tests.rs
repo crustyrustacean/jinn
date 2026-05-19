@@ -1,4 +1,8 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test file, panics are acceptable")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "test file, panics are acceptable"
+)]
 
 //! Tests for [`SelectionWidget`] and [`compute_popup_rect`].
 

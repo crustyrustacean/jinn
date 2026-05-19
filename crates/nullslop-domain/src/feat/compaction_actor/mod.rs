@@ -19,7 +19,9 @@ use wherror::Error;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
-use crate::feat::compaction_actor::protocol::command::{BeginCompaction, CompactionResult, EndCompaction};
+use crate::feat::compaction_actor::protocol::command::{
+    BeginCompaction, CompactionResult, EndCompaction,
+};
 use crate::feat::compaction_actor::serializer::serialize_entries_for_compaction;
 use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;

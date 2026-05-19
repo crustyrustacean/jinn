@@ -46,7 +46,11 @@ impl StreamResponseParser {
     /// - `delta.reasoning_content` → `StreamEvent::Reasoning`
     /// - `delta.tool_calls[]` → `ToolUseStart`/`ToolUseInputDelta` (state tracked)
     /// - `finish_reason` → `ToolUseComplete` + `Done` (drains pending tool calls)
-    #[allow(clippy::collapsible_if, clippy::manual_let_else, clippy::too_many_lines)]
+    #[allow(
+        clippy::collapsible_if,
+        clippy::manual_let_else,
+        clippy::too_many_lines
+    )]
     pub fn parse_data(&mut self, json: &str) -> Vec<StreamEvent> {
         let mut results = Vec::new();
 

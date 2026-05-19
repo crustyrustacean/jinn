@@ -1,4 +1,8 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test file, panics are acceptable")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "test file, panics are acceptable"
+)]
 
 use std::sync::Arc;
 

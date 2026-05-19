@@ -126,7 +126,10 @@ mod tests {
         // Then no CancelStream command is emitted.
         assert!(result.commands.is_empty());
         // And the session is still streaming.
-        assert!(matches!(state.active_session().phase(), SessionPhase::Streaming));
+        assert!(matches!(
+            state.active_session().phase(),
+            SessionPhase::Streaming
+        ));
     }
 
     #[rstest::rstest]
@@ -146,7 +149,10 @@ mod tests {
         let result = super::handle_interrupt(&mut state, Some(&second_id));
 
         // Then the targeted session's stream is cancelled.
-        assert!(matches!(state.session.sessions[&second_id].phase(), SessionPhase::Idle));
+        assert!(matches!(
+            state.session.sessions[&second_id].phase(),
+            SessionPhase::Idle
+        ));
         // And a CancelStream command is returned for that session.
         assert_eq!(result.commands.len(), 1);
         assert!(
