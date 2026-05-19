@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use std::path::PathBuf;
 
 use crate::feat::tools_actor::builtin_read;

@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use std::path::PathBuf;
 
 use crate::common::actor::{Actor, ActorContext, RecordingSink};

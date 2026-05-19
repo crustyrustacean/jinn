@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::feat::tools_actor::edit::execute;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext};
 use std::path::PathBuf;

@@ -134,6 +134,7 @@ pub fn scan_personas_merged(user_dir: &Path, system_dir: &Path) -> Vec<Persona> 
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use std::path::PathBuf;
 

@@ -57,6 +57,7 @@ pub fn validate_session_new(_state: &AppState) {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::protocol::PickerKind;
 
     use super::*;

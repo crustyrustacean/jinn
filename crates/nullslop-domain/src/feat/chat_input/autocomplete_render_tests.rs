@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 //! Autocomplete popup render tests.
 
 use crate::common::app_state::AppState;

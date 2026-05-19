@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use ratatui::text::Line;
 
 use super::state::*;

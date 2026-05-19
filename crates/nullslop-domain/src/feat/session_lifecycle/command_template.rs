@@ -566,6 +566,7 @@ impl fmt::Display for CommandTemplate {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
 
     // --- Parsing: $N syntax (backward compat) ---

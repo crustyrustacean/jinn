@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use crate::feat::dashboard::element::DashboardElement;

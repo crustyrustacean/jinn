@@ -13,6 +13,7 @@ pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::feat::ui::chat_log::shared::RenderContext;
 
     fn render_context() -> RenderContext {

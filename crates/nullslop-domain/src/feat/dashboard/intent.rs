@@ -33,6 +33,7 @@ pub fn handle_select_last(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
 
     #[rstest::rstest]

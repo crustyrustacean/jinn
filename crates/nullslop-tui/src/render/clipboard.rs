@@ -61,6 +61,7 @@ pub(super) fn flush_pending_clipboard(app: &mut TuiApp, buf: &Buffer) {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::selection::SelectionState;
     use ratatui::layout::Rect;

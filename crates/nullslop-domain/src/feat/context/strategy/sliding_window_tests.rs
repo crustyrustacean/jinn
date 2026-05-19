@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::feat::context::strategy::sliding_window::SlidingWindowStrategy;
 use crate::feat::context::strategy::types::{AssemblyContext, PromptAssembly};
 use crate::protocol::{ChatEntry, LlmMessage, PinPosition, SessionId};

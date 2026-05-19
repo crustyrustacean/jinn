@@ -74,6 +74,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 

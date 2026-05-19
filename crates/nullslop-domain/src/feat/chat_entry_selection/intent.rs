@@ -122,6 +122,7 @@ pub fn handle_expand_tool_entry(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::common::app_state::AppState;
     use crate::feat::context::protocol::command::PinChatEntry;
     use crate::feat::session::tool_result_status::ToolResultStatus;

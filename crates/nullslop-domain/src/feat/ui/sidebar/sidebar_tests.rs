@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::style::Color;

@@ -36,6 +36,7 @@ impl PromptAssembly for PassthroughStrategy {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::protocol::{ChatEntry, SessionId};
 
     use super::*;

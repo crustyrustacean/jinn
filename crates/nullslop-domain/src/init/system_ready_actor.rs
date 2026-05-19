@@ -97,6 +97,7 @@ impl SystemReadyActor {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::common::actor::{ActorContext, MessageSink, SendResult};
     use crate::protocol::Event;

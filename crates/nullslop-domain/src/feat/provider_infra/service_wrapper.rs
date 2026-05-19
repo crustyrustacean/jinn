@@ -64,6 +64,7 @@ impl LlmServiceFactoryService {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use std::sync::Arc;
 
     use crate::feat::provider_infra::service_wrapper::LlmServiceFactoryService;

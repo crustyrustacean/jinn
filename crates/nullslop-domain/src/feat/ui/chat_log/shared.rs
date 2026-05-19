@@ -127,6 +127,7 @@ pub fn unicode_segementation_display_width(s: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 

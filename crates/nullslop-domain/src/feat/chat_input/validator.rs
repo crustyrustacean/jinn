@@ -56,6 +56,7 @@ pub fn validate_normal_escape(_state: &AppState) {}
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
 
     // --- SubmitMessage tests ---

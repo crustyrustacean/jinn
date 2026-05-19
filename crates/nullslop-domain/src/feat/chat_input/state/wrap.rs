@@ -188,6 +188,7 @@ fn wrap_logical_line(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
 
     #[rstest::rstest]

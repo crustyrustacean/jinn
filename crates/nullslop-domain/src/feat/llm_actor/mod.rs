@@ -474,6 +474,7 @@ impl LlmActor {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
 
     use crate::common::app_state::AppState;

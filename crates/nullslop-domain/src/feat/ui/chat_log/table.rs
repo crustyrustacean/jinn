@@ -99,6 +99,7 @@ fn build_row_spans(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::feat::ui::chat_log::shared::RenderContext;
     use ratatui::style::{Color, Modifier};

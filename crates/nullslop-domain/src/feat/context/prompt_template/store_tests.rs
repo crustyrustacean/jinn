@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::feat::context::prompt_template::store::{MAX_FUZZY_RESULTS, PromptTemplateStore};
 use crate::protocol::PromptTemplate;
 use std::path::Path;

@@ -67,6 +67,7 @@ fn tokenize(text: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use futures::StreamExt;
 
     use super::*;

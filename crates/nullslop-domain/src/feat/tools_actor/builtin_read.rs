@@ -185,6 +185,7 @@ fn apply_offset_limit(content: &str, offset: Option<usize>, limit: Option<usize>
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use std::path::PathBuf;
 

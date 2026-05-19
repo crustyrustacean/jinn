@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
 use crate::feat::picker::intent::{

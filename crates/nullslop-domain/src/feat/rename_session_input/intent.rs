@@ -148,6 +148,7 @@ pub fn handle_cursor_right(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::protocol::ChatEntry;

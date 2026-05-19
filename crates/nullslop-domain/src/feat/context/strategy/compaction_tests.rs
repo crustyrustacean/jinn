@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use crate::feat::context::strategy::compaction::CompactionStrategy;
 use crate::feat::context::strategy::token_estimator::CharRatioEstimator;
 use crate::feat::context::strategy::types::{AssemblyContext, PromptAssembly};

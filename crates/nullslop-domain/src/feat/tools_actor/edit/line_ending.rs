@@ -67,6 +67,7 @@ pub fn restore_line_endings(content: &str, ending: Option<LineEnding>) -> String
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
 
     #[rstest::rstest]

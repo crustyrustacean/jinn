@@ -96,6 +96,7 @@ async fn run_event_loop(sender: MsgSender) {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
 
     #[rstest::rstest]

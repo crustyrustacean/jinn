@@ -232,6 +232,7 @@ impl PromptAssemblyActor {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use std::sync::Arc;
 
     use crate::common::actor::{Actor as _, ActorContext, MessageSink, RecordingSink};

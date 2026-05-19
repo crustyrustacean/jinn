@@ -76,6 +76,7 @@ impl ApiKeysService {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::feat::provider_infra::api_keys_service::ApiKeysService;
 
     #[rstest::rstest]
