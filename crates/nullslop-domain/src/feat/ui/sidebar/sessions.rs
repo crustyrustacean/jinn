@@ -530,8 +530,8 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::proto
     let closing_id = sessions[index].id.clone();
 
     // Delegate to lifecycle handler.
-    // If no teardown command ran, a RemoveSession command is emitted and
-    // the sidebar actor will clamp the cursor when SessionRemoved fires.
+    // If no teardown command ran, a CloseSession command is emitted and
+    // the sidebar actor will clamp the cursor when SessionClosed fires.
     crate::feat::session_lifecycle::intent::handle_session_close(state, Some(&closing_id))
 }
 
