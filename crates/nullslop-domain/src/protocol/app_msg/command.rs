@@ -18,7 +18,7 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::compaction_actor::protocol::command::{
-    BeginCompaction, CompactContext, EndCompaction,
+    BeginCompaction, CancelCompaction, CompactContext, EndCompaction,
 };
 use crate::feat::context::protocol::command::{
     AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
@@ -121,6 +121,8 @@ pub enum Command {
     BeginCompaction(BeginCompaction),
     /// End a context compaction — inserts result entry, sets phase to Idle.
     EndCompaction(EndCompaction),
+    /// Cancel an in-progress context compaction — aborts the LLM call.
+    CancelCompaction(CancelCompaction),
     /// Remove a session from the sessions map.
     RemoveSession(RemoveSession),
     /// Save a newly-created lifecycle session immediately.
@@ -168,6 +170,7 @@ impl Command {
             Self::CompactContext(..) => Some(CompactContext::NAME),
             Self::BeginCompaction(..) => Some(BeginCompaction::NAME),
             Self::EndCompaction(..) => Some(EndCompaction::NAME),
+            Self::CancelCompaction(..) => Some(CancelCompaction::NAME),
             Self::RemoveSession(..) => Some(RemoveSession::NAME),
             Self::SaveNewLifecycleSession(..) => Some(SaveNewLifecycleSession::NAME),
         }
@@ -260,6 +263,9 @@ impl std::fmt::Display for Command {
             }
             Command::EndCompaction(payload) => {
                 write!(f, "end compaction for {}", payload.session_id)
+            }
+            Command::CancelCompaction(payload) => {
+                write!(f, "cancel compaction for {}", payload.session_id)
             }
             Command::RemoveSession(payload) => {
                 write!(f, "remove session {}", payload.session_id)
