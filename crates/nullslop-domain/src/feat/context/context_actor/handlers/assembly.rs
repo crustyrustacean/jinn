@@ -109,44 +109,42 @@ impl PromptAssemblyActor {
         // CPU-bound: clone + filter — offloaded to blocking thread to avoid
         // starving the tokio runtime during large history processing.
         let history = cmd.history.clone();
-        let (top_pins, bottom_pins, working_history) =
-            tokio::task::spawn_blocking(move || {
-                let top_pins: Vec<ChatEntry> = history
-                    .iter()
-                    .filter(|e| {
-                        e.pin_position() == Some(PinPosition::Top)
-                            && !matches!(e.kind, ChatEntryKind::Thinking(_))
-                    })
-                    .cloned()
-                    .collect();
+        let (top_pins, bottom_pins, working_history) = tokio::task::spawn_blocking(move || {
+            let top_pins: Vec<ChatEntry> = history
+                .iter()
+                .filter(|e| {
+                    e.pin_position() == Some(PinPosition::Top)
+                        && !matches!(e.kind, ChatEntryKind::Thinking(_))
+                })
+                .cloned()
+                .collect();
 
-                let bottom_pins: Vec<ChatEntry> = history
-                    .iter()
-                    .filter(|e| {
-                        e.pin_position() == Some(PinPosition::Bottom)
-                            && !matches!(e.kind, ChatEntryKind::Thinking(_))
-                    })
-                    .cloned()
-                    .collect();
+            let bottom_pins: Vec<ChatEntry> = history
+                .iter()
+                .filter(|e| {
+                    e.pin_position() == Some(PinPosition::Bottom)
+                        && !matches!(e.kind, ChatEntryKind::Thinking(_))
+                })
+                .cloned()
+                .collect();
 
-                let working_history: Vec<ChatEntry> = history
-                    .iter()
-                    .filter(|e| {
-                        (e.pin_position().is_none()
-                            || e.pin_position() == Some(PinPosition::Relative))
-                            && !matches!(e.kind, ChatEntryKind::Thinking(_))
-                            && (!e.ignored || e.is_pinned())
-                    })
-                    .cloned()
-                    .collect();
+            let working_history: Vec<ChatEntry> = history
+                .iter()
+                .filter(|e| {
+                    (e.pin_position().is_none() || e.pin_position() == Some(PinPosition::Relative))
+                        && !matches!(e.kind, ChatEntryKind::Thinking(_))
+                        && (!e.ignored || e.is_pinned())
+                })
+                .cloned()
+                .collect();
 
-                (top_pins, bottom_pins, working_history)
-            })
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(err = ?e, "spawn_blocking panicked during prompt assembly");
-                (vec![], vec![], vec![])
-            });
+            (top_pins, bottom_pins, working_history)
+        })
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(err = ?e, "spawn_blocking panicked during prompt assembly");
+            (vec![], vec![], vec![])
+        });
 
         // Convert pin entries to messages (needed for system prompt assembly).
         let top_messages = entries_to_messages(&top_pins);

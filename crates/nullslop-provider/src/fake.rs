@@ -6,8 +6,8 @@
 //! tool loop where the first call returns `tool_use` and subsequent calls
 //! return `end_turn`.
 
-use std::sync::Arc;
 use parking_lot::Mutex;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::llm_message::LlmMessage;
@@ -255,9 +255,7 @@ impl LlmService for FakeLlmService {
         _tools: Vec<crate::tool_types::ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
         // Record the messages for test observability.
-        self.received_calls
-            .lock()
-            .push(messages.clone());
+        self.received_calls.lock().push(messages.clone());
 
         // Check for multi-turn tool loop trigger.
         if let Some(ref counter) = self.tool_loop_call_count

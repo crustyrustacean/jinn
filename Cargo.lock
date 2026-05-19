@@ -1990,7 +1990,6 @@ dependencies = [
  "derive_more",
  "dialoguer",
  "error-stack",
- "futures",
  "kanal",
  "nullslop-domain",
  "nullslop-selection-widget",
