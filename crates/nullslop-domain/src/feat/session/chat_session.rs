@@ -953,15 +953,17 @@ impl ChatSessionState {
 
     /// Mark compaction as finished.
     ///
-    /// # Panics
-    ///
-    /// Panics if not currently compacting.
+    /// Soft guard: if the session is not currently compacting (e.g. compaction was
+    /// cancelled by the user while the LLM call was in flight), logs a warning and
+    /// returns early instead of panicking.
     pub fn finish_compacting(&mut self) {
-        assert!(
-            matches!(self.core.ephemeral.phase, SessionPhase::Compacting),
-            "finish_compacting called while not compacting (current: {:?})",
-            self.core.ephemeral.phase
-        );
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "finish_compacting called while not compacting — ignoring"
+            );
+            return;
+        }
         self.core.ephemeral.phase = SessionPhase::Idle;
     }
 

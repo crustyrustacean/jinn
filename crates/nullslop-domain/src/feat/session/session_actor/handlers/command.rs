@@ -318,6 +318,9 @@ impl SessionPersistenceActor {
 
     /// EndCompaction: insert compaction entry or error entry, set phase to Idle,
     /// drain any queued messages, persist, and start a new turn if needed.
+    ///
+    /// Ignores the payload if the session is not currently in Compacting phase
+    /// (e.g. compaction was cancelled while the LLM call was in flight).
     pub(in crate::feat::session::session_actor) async fn handle_end_compaction(
         &self,
         payload: &EndCompaction,
@@ -327,6 +330,16 @@ impl SessionPersistenceActor {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
+
+            // Guard: ignore stale EndCompaction if phase is no longer Compacting.
+            if !matches!(session.phase(), SessionPhase::Compacting) {
+                tracing::warn!(
+                    session_id = ?payload.session_id,
+                    current_phase = ?session.phase(),
+                    "EndCompaction received but session is not compacting — ignoring"
+                );
+                return;
+            }
 
             if let Some(result) = &payload.result {
                 let compaction_entry = ChatEntry {

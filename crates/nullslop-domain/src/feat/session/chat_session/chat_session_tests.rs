@@ -1773,3 +1773,30 @@ fn begin_compacting_panics_when_streaming() {
     // Then it panics.
     session.begin_compacting();
 }
+
+#[rstest::rstest]
+fn finish_compacting_does_not_panic_when_idle() {
+    // Given a session in Idle phase.
+    let mut session = ChatSessionState::new();
+    assert_eq!(session.phase(), SessionPhase::Idle);
+
+    // When finishing compaction (phase is Idle, not Compacting).
+    session.finish_compacting();
+
+    // Then the phase remains Idle — no panic.
+    assert_eq!(session.phase(), SessionPhase::Idle);
+}
+
+#[rstest::rstest]
+fn finish_compacting_does_not_panic_when_streaming() {
+    // Given a session in Streaming phase.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    assert_eq!(session.phase(), SessionPhase::Streaming);
+
+    // When finishing compaction (phase is Streaming, not Compacting).
+    session.finish_compacting();
+
+    // Then the phase remains Streaming — no panic.
+    assert_eq!(session.phase(), SessionPhase::Streaming);
+}
