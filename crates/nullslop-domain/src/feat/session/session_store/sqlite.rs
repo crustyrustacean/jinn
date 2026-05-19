@@ -16,6 +16,7 @@ use async_trait::async_trait;
 use diesel::insert_into;
 use diesel::prelude::*;
 use diesel::r2d2::{self as diesel_r2d2, CustomizeConnection, Pool};
+use diesel::sql_query;
 use diesel::upsert::excluded;
 use error_stack::{Report, ResultExt as _};
 use tokio::task::spawn_blocking;
@@ -248,7 +249,11 @@ impl SessionStore for SqliteSessionStore {
 // ── Diesel model structs ─────────────────────────────────────────────────
 
 /// Reading model for the `sessions` table.
-#[derive(Queryable)]
+///
+/// Uses `QueryableByName` to map columns by name rather than position.
+/// This bypasses Diesel's tuple-size limit (10 fields) which would
+/// otherwise prevent compiling with 11 columns.
+#[derive(QueryableByName)]
 #[diesel(table_name = crate::schema::sessions)]
 struct SessionRow {
     id: Option<String>,
@@ -260,6 +265,8 @@ struct SessionRow {
     parent_session: Option<String>,
     cwd: String,
     created_at: String,
+    lifecycle_name: Option<String>,
+    lifecycle_args: String,
 }
 
 /// Insert model for the `sessions` table.
@@ -275,6 +282,8 @@ struct NewSessionRow {
     blobs: String,
     parent_session: Option<String>,
     cwd: String,
+    lifecycle_name: Option<String>,
+    lifecycle_args: String,
 }
 
 /// Reading model for the `entries` table.
@@ -383,8 +392,8 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     parent_session,
                     strategy_state,
                     blobs,
-                    lifecycle_name: _lifecycle_name,
-                    lifecycle_args: _lifecycle_args,
+                    lifecycle_name,
+                    lifecycle_args,
                     ephemeral: _ephemeral, // runtime-only state, not persisted
                 },
             ui: _ui, // runtime-only UI state, not persisted
@@ -408,6 +417,10 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                 .as_ref()
                 .map(std::string::ToString::to_string),
             cwd: cwd.to_string_lossy().to_string(),
+            lifecycle_name: lifecycle_name.clone(),
+            lifecycle_args: serde_json::to_string(lifecycle_args)
+                .change_context(SessionStoreError)
+                .attach("failed to serialize lifecycle_args")?,
         })
     }
 }
@@ -436,6 +449,8 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             blobs,
             parent_session,
             cwd,
+            lifecycle_name,
+            lifecycle_args,
         } = ctx.row;
 
         let profile = serde_json::from_str(&profile)
@@ -471,8 +486,8 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 parent_session: parent_session.map(SessionId::from),
                 strategy_state,
                 blobs,
-                lifecycle_name: None,
-                lifecycle_args: Vec::new(),
+                lifecycle_name,
+                lifecycle_args: serde_json::from_str(&lifecycle_args).unwrap_or_default(),
                 ephemeral: SessionCoreEphemeral::default(),
             },
             ui: SessionUi::default(),
@@ -509,6 +524,8 @@ fn save_blocking(
                 sessions::strategy_state.eq(excluded(sessions::strategy_state)),
                 sessions::blobs.eq(excluded(sessions::blobs)),
                 sessions::cwd.eq(excluded(sessions::cwd)),
+                sessions::lifecycle_name.eq(excluded(sessions::lifecycle_name)),
+                sessions::lifecycle_args.eq(excluded(sessions::lifecycle_args)),
             ))
             .execute(txn)?;
 
@@ -589,10 +606,8 @@ fn save_blocking(
 fn load_summaries_blocking(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
-    use crate::schema::sessions::dsl::sessions;
-
-    let rows: Vec<SessionRow> = sessions
-        .load::<SessionRow>(conn)
+    let rows: Vec<SessionRow> = sql_query("SELECT * FROM sessions")
+        .load(conn)
         .change_context(SessionStoreError)
         .attach("failed to query summaries")?;
 
@@ -620,14 +635,14 @@ fn load_session_blocking(
     conn: &mut SqliteConnection,
     session_id: &SessionId,
 ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
-    use crate::schema::{entries, session_entries, sessions, token_ledger};
+    use crate::schema::{entries, session_entries, token_ledger};
 
     let session_id_str = session_id.to_string();
 
     // Load session metadata.
-    let meta: Option<SessionRow> = sessions::table
-        .filter(sessions::id.eq(&session_id_str))
-        .first::<SessionRow>(conn)
+    let meta: Option<SessionRow> = sql_query("SELECT * FROM sessions WHERE id = ?")
+        .bind::<diesel::sql_types::Text, _>(&session_id_str)
+        .get_result(conn)
         .ok();
 
     let Some(meta) = meta else {
@@ -740,9 +755,9 @@ fn fork_blocking(
 
     conn.transaction::<_, diesel::result::Error, _>(|txn| {
         // Load source session metadata.
-        let source_meta: Option<SessionRow> = sessions::table
-            .filter(sessions::id.eq(&source_str))
-            .first::<SessionRow>(txn)
+        let source_meta: Option<SessionRow> = sql_query("SELECT * FROM sessions WHERE id = ?")
+            .bind::<diesel::sql_types::Text, _>(&source_str)
+            .get_result(txn)
             .ok();
 
         let Some(source_meta) = source_meta else {
@@ -763,6 +778,8 @@ fn fork_blocking(
                 blobs: source_meta.blobs,
                 parent_session: Some(source_str.clone()),
                 cwd: source_meta.cwd,
+                lifecycle_name: source_meta.lifecycle_name,
+                lifecycle_args: source_meta.lifecycle_args,
             })
             .execute(txn)?;
 
