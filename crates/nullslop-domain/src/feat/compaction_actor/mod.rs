@@ -21,7 +21,6 @@ use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::compaction_actor::protocol::command::{BeginCompaction, CompactionResult, EndCompaction};
 use crate::feat::compaction_actor::serializer::serialize_entries_for_compaction;
-use crate::feat::context::strategy::compaction_prompt::load_compaction_prompt;
 use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 use crate::feat::provider::protocol::event::StreamCompleted;
@@ -372,17 +371,18 @@ impl CompactionActor {
                 .attach("failed to create LLM service for compaction")?
         };
 
-        // Build the prompt.
-        let system_prompt = {
-            let config_dir = self
-                .services
-                .paths
-                .preferences_path()
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .to_path_buf();
-            load_compaction_prompt(&config_dir)
-        };
+        // Build the prompt — prefer template from store, fall back to bundled default.
+        let system_prompt = self
+            .state
+            .read()
+            .context
+            .prompt_templates
+            .find_by_name("compaction")
+            .map(|t| t.body.clone())
+            .unwrap_or_else(|| {
+                crate::feat::context::strategy::compaction_prompt::DEFAULT_COMPACTION_PROMPT
+                    .to_owned()
+            });
 
         let mut user_content = String::new();
         if let Some(prev) = previous_summary {
