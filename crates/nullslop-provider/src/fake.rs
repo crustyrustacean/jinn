@@ -6,8 +6,8 @@
 //! tool loop where the first call returns `tool_use` and subsequent calls
 //! return `end_turn`.
 
+use parking_lot::Mutex;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::llm_message::LlmMessage;
@@ -124,7 +124,7 @@ impl FakeLlmServiceFactory {
     /// Panics if the mutex is poisoned.
     #[must_use]
     pub fn received_calls(&self) -> Vec<Vec<LlmMessage>> {
-        self.received_calls.lock().expect("lock").clone()
+        self.received_calls.lock().clone()
     }
 
     /// Clears all recorded calls.
@@ -133,7 +133,7 @@ impl FakeLlmServiceFactory {
     ///
     /// Panics if the mutex is poisoned.
     pub fn clear_calls(&self) {
-        self.received_calls.lock().expect("lock").clear();
+        self.received_calls.lock().clear();
     }
 }
 
@@ -242,7 +242,7 @@ impl LlmService for FakeLlmService {
         messages: Vec<LlmMessage>,
     ) -> Result<ChatStream, Report<LlmServiceError>> {
         // Record the messages for test observability.
-        self.received_calls.lock().expect("lock").push(messages);
+        self.received_calls.lock().push(messages);
 
         let tokens = self.tokens.clone();
         let stream: ChatStream = Box::pin(stream::iter(tokens.into_iter().map(Ok)));
@@ -255,10 +255,7 @@ impl LlmService for FakeLlmService {
         _tools: Vec<crate::tool_types::ToolDefinition>,
     ) -> Result<ToolStream, Report<LlmServiceError>> {
         // Record the messages for test observability.
-        self.received_calls
-            .lock()
-            .expect("lock")
-            .push(messages.clone());
+        self.received_calls.lock().push(messages.clone());
 
         // Check for multi-turn tool loop trigger.
         if let Some(ref counter) = self.tool_loop_call_count

@@ -872,7 +872,10 @@ fn streaming_content_change_invalidates_cache() {
 
     let mut state = AppState::default();
     state.active_session_mut().begin_streaming();
-    state.active_session_mut().append_stream_token("initial");
+    state
+        .active_session_mut()
+        .append_stream_token("initial")
+        .expect("ok");
 
     // When rendering with initial streaming content.
     terminal
@@ -886,7 +889,8 @@ fn streaming_content_change_invalidates_cache() {
     // When more tokens arrive (content changes, fingerprint changes).
     state
         .active_session_mut()
-        .append_stream_token(" + more text");
+        .append_stream_token(" + more text")
+        .expect("ok");
 
     terminal
         .draw(|frame| {

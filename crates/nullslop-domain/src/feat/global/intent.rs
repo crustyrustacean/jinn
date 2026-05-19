@@ -139,10 +139,15 @@ mod tests {
 
         let mut state = AppState::default();
         let second_id = SessionId::new();
-        state.session.sessions.insert(second_id.clone(), {
+        state.session.sessions_mut().insert(second_id.clone(), {
             let mut s = AppState::default();
             s.active_session_mut().begin_streaming();
-            s.session.sessions.into_values().next().unwrap()
+            s.session
+                .sessions_mut()
+                .drain()
+                .map(|(_, v)| v)
+                .next()
+                .unwrap()
         });
 
         // When handling Interrupt targeting the second session.
@@ -150,7 +155,7 @@ mod tests {
 
         // Then the targeted session's stream is cancelled.
         assert!(matches!(
-            state.session.sessions[&second_id].phase(),
+            state.session.sessions()[&second_id].phase(),
             SessionPhase::Idle
         ));
         // And a CancelStream command is returned for that session.

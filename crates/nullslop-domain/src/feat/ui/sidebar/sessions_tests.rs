@@ -20,7 +20,7 @@ fn state_with_sessions(count: usize) -> AppState {
         let session = ChatSessionState::new();
         let id = session.session_id().clone();
         // Give each additional session a title.
-        state.session.sessions.insert(id, {
+        state.session.sessions_mut().insert(id, {
             let mut s = ChatSessionState::new();
             s.push_entry(ChatEntry::user(format!("message for session {i}")));
             s
@@ -72,7 +72,7 @@ fn content_height_capped_at_max_visible() {
 fn navigate_down_moves_cursor_without_switching() {
     // Given state with 3 sessions, cursor at index 0.
     let mut state = state_with_sessions(3);
-    let original_active = state.session.active_session.clone();
+    let original_active = state.session.active_session_id().clone();
     state.frontend.sessions_section.selected_index = Some(0);
 
     // When navigating down.
@@ -83,7 +83,7 @@ fn navigate_down_moves_cursor_without_switching() {
     // And the cursor moved to index 1.
     assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
     // And the active session did NOT change.
-    assert_eq!(state.session.active_session, original_active);
+    assert_eq!(*state.session.active_session_id(), original_active);
 }
 
 #[rstest::rstest]
@@ -91,9 +91,9 @@ fn navigate_up_moves_cursor_without_switching() {
     // Given state with 3 sessions, cursor at index 2.
     let mut state = state_with_sessions(3);
     let sessions = sorted_open_sessions(&state);
-    state.session.active_session = sessions[2].id.clone();
+    state.session.set_active(sessions[2].id.clone());
     state.frontend.sessions_section.selected_index = Some(2);
-    let original_active = state.session.active_session.clone();
+    let original_active = state.session.active_session_id().clone();
 
     // When navigating up.
     let result = navigate(&SidebarIntent::MoveUp, &mut state);
@@ -103,7 +103,7 @@ fn navigate_up_moves_cursor_without_switching() {
     // And the cursor moved to index 1.
     assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
     // And the active session did NOT change.
-    assert_eq!(state.session.active_session, original_active);
+    assert_eq!(*state.session.active_session_id(), original_active);
 }
 
 #[rstest::rstest]
@@ -262,7 +262,7 @@ fn receive_cursor_from_bottom_positions_at_last_index() {
 fn receive_cursor_noop_when_empty() {
     // Given state with no sessions (manually clear default).
     let mut state = AppState::default();
-    state.session.sessions.clear();
+    state.session.sessions_mut().clear();
 
     // When receiving cursor.
     receive_cursor(&mut state, EnterFrom::Top);
@@ -467,7 +467,7 @@ fn close_session_switches_to_next() {
     let sessions = sorted_open_sessions(&state);
     // Active session is at index 0 (sorted newest-first, default is oldest → last, but we
     // set active to index 0 explicitly to test active-session close).
-    state.session.active_session = sessions[0].id.clone();
+    state.session.set_active(sessions[0].id.clone());
     let closing_id = sessions[0].id.clone();
     state.frontend.sessions_section.selected_index = Some(0);
 
@@ -475,9 +475,9 @@ fn close_session_switches_to_next() {
     handle_session_close(&mut state);
 
     // Then the closed session is removed and active session changed.
-    assert!(!state.session.sessions.contains_key(&closing_id));
-    assert_eq!(state.session.sessions.len(), 2);
-    assert_ne!(state.session.active_session, closing_id);
+    assert!(!state.session.sessions().contains_key(&closing_id));
+    assert_eq!(state.session.sessions().len(), 2);
+    assert_ne!(*state.session.active_session_id(), closing_id);
 }
 
 #[rstest::rstest]
@@ -487,8 +487,8 @@ fn close_non_active_session_keeps_active() {
     state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     let sessions = sorted_open_sessions(&state);
     // Active session is at index 0.
-    state.session.active_session = sessions[0].id.clone();
-    let active_id = state.session.active_session.clone();
+    state.session.set_active(sessions[0].id.clone());
+    let active_id = state.session.active_session_id().clone();
     // Close session at index 1 (non-active).
     let closing_id = sessions[1].id.clone();
     state.frontend.sessions_section.selected_index = Some(1);
@@ -497,9 +497,9 @@ fn close_non_active_session_keeps_active() {
     handle_session_close(&mut state);
 
     // Then the closed session is removed.
-    assert!(!state.session.sessions.contains_key(&closing_id));
+    assert!(!state.session.sessions().contains_key(&closing_id));
     // And the active session did NOT change.
-    assert_eq!(state.session.active_session, active_id);
+    assert_eq!(*state.session.active_session_id(), active_id);
 }
 
 #[rstest::rstest]
@@ -507,15 +507,15 @@ fn close_last_session_creates_new() {
     // Given state with 1 session, sessions section focused.
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::SidebarSessions);
-    let original_id = state.session.active_session.clone();
+    let original_id = state.session.active_session_id().clone();
     state.frontend.sessions_section.selected_index = Some(0);
 
     // When closing the session.
     handle_session_close(&mut state);
 
     // Then a new session is created.
-    assert_eq!(state.session.sessions.len(), 1);
-    assert_ne!(state.session.active_session, original_id);
+    assert_eq!(state.session.sessions().len(), 1);
+    assert_ne!(*state.session.active_session_id(), original_id);
     assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
 }
 
@@ -525,7 +525,7 @@ fn close_session_clamps_index() {
     let mut state = state_with_sessions(3);
     state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     let sessions = sorted_open_sessions(&state);
-    state.session.active_session = sessions[2].id.clone();
+    state.session.set_active(sessions[2].id.clone());
     // Move cursor to index 2 (the active session, sorted to 0, so use index 0)
     state.frontend.sessions_section.selected_index = Some(0);
 
@@ -535,7 +535,7 @@ fn close_session_clamps_index() {
     // Then index is clamped to valid range.
     let selected = state.frontend.sessions_section.selected_index;
     assert!(selected.is_some());
-    assert!(selected.unwrap() < state.session.sessions.len());
+    assert!(selected.unwrap() < state.session.sessions().len());
 }
 
 #[rstest::rstest]
@@ -694,21 +694,21 @@ fn activate_switches_to_cursor_session() {
     handle_session_activate(&mut state);
 
     // Then the active session is the one at cursor.
-    assert_eq!(state.session.active_session, target_id);
+    assert_eq!(*state.session.active_session_id(), target_id);
 }
 
 #[rstest::rstest]
 fn activate_is_noop_when_not_sessions_section() {
     // Given state with persona section focused.
     let mut state = state_with_sessions(3);
-    let original_active = state.session.active_session.clone();
+    let original_active = state.session.active_session_id().clone();
     state.frontend.sessions_section.selected_index = Some(1);
 
     // When activating.
     handle_session_activate(&mut state);
 
     // Then active session is unchanged.
-    assert_eq!(state.session.active_session, original_active);
+    assert_eq!(*state.session.active_session_id(), original_active);
 }
 
 // --- SidebarSessionNewWithLifecycle ---

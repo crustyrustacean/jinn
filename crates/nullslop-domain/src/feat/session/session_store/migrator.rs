@@ -13,49 +13,51 @@
 
 use diesel::prelude::*;
 use diesel::sql_query;
+use error_stack::{Report, ResultExt as _};
+
+use super::SessionStoreError;
 
 /// Runs all pending database migrations.
 ///
 /// Bootstraps the `_migrations` tracking table, reads the current version,
 /// and runs any migrations that haven't been applied yet.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if any migration fails — the database is left in whatever state
-/// the failed migration produced. This is intentional: silent migration
-/// failures are worse than loud ones.
-pub fn run_migrations(conn: &mut SqliteConnection) {
-    bootstrap_tracking_table(conn);
-    let current = current_version(conn);
+/// Returns an error if any migration fails.
+pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    bootstrap_tracking_table(conn)?;
+    let current = current_version(conn)?;
 
     if current < 0 {
-        migrate_v0(conn);
-        record_version(conn, 0, "create_initial_schema");
+        migrate_v0(conn)?;
+        record_version(conn, 0, "create_initial_schema")?;
     }
     if current < 1 {
-        migrate_v1(conn);
-        record_version(conn, 1, "add_cwd_column");
+        migrate_v1(conn)?;
+        record_version(conn, 1, "add_cwd_column")?;
     }
     if current < 2 {
-        migrate_v2(conn);
-        record_version(conn, 2, "add_created_at_column");
+        migrate_v2(conn)?;
+        record_version(conn, 2, "add_created_at_column")?;
     }
     if current < 3 {
-        migrate_v3(conn);
-        record_version(conn, 3, "add_ignored_to_session_entries");
+        migrate_v3(conn)?;
+        record_version(conn, 3, "add_ignored_to_session_entries")?;
     }
     if current < 4 {
-        migrate_v4(conn);
-        record_version(conn, 4, "add_cost_to_token_ledger");
+        migrate_v4(conn)?;
+        record_version(conn, 4, "add_cost_to_token_ledger")?;
     }
     if current < 5 {
-        migrate_v5(conn);
-        record_version(conn, 5, "add_lifecycle_columns_to_sessions");
+        migrate_v5(conn)?;
+        record_version(conn, 5, "add_lifecycle_columns_to_sessions")?;
     }
     if current < 6 {
         migrate_v6(conn);
-        record_version(conn, 6, "add_archived_column");
+        record_version(conn, 6, "add_archived_column")?;
     }
+    Ok(())
 }
 
 // ── Tracking table ───────────────────────────────────────────────────────
@@ -65,7 +67,7 @@ pub fn run_migrations(conn: &mut SqliteConnection) {
 /// This is the only place `IF NOT EXISTS` is used — the tracking table must
 /// bootstrap itself before version checking can begin. All other migrations
 /// use strict DDL so failures are loud.
-fn bootstrap_tracking_table(conn: &mut SqliteConnection) {
+fn bootstrap_tracking_table(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "CREATE TABLE IF NOT EXISTS _migrations (\
          version INTEGER NOT NULL,\
@@ -73,7 +75,9 @@ fn bootstrap_tracking_table(conn: &mut SqliteConnection) {
          applied_at TEXT NOT NULL DEFAULT (datetime('now')))",
     )
     .execute(conn)
-    .expect("failed to create _migrations table");
+    .change_context(SessionStoreError)
+    .attach("failed to create _migrations table")?;
+    Ok(())
 }
 
 /// Row returned by the version query.
@@ -86,26 +90,33 @@ struct VersionRow {
 /// Reads the highest migration version from the tracking table.
 ///
 /// Returns -1 if no migrations have been recorded (empty database).
-fn current_version(conn: &mut SqliteConnection) -> i32 {
+fn current_version(conn: &mut SqliteConnection) -> Result<i32, Report<SessionStoreError>> {
     let result: Vec<VersionRow> = sql_query("SELECT MAX(version) AS version FROM _migrations")
         .load(conn)
-        .expect("failed to query migration version");
-    result.first().and_then(|r| r.version).unwrap_or(-1)
+        .change_context(SessionStoreError)
+        .attach("failed to query migration version")?;
+    Ok(result.first().and_then(|r| r.version).unwrap_or(-1))
 }
 
 /// Records a completed migration in the tracking table.
-fn record_version(conn: &mut SqliteConnection, version: i32, name: &str) {
+fn record_version(
+    conn: &mut SqliteConnection,
+    version: i32,
+    name: &str,
+) -> Result<(), Report<SessionStoreError>> {
     sql_query("INSERT INTO _migrations (version, name) VALUES (?, ?)")
         .bind::<diesel::sql_types::Integer, _>(version)
         .bind::<diesel::sql_types::Text, _>(name)
         .execute(conn)
-        .unwrap_or_else(|e| panic!("failed to record migration v{version}: {e}"));
+        .change_context(SessionStoreError)
+        .attach(format!("failed to record migration v{version}"))?;
+    Ok(())
 }
 
 // ── Migrations ───────────────────────────────────────────────────────────
 
 /// v0: Initial schema — sessions, entries, session_entries, token_ledger.
-fn migrate_v0(conn: &mut SqliteConnection) {
+fn migrate_v0(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "CREATE TABLE sessions (\
          id TEXT PRIMARY KEY,\
@@ -117,7 +128,8 @@ fn migrate_v0(conn: &mut SqliteConnection) {
          parent_session TEXT DEFAULT NULL)",
     )
     .execute(conn)
-    .expect("v0: create sessions table");
+    .change_context(SessionStoreError)
+    .attach("v0: create sessions table")?;
 
     sql_query(
         "CREATE TABLE entries (\
@@ -126,7 +138,8 @@ fn migrate_v0(conn: &mut SqliteConnection) {
          kind TEXT NOT NULL)",
     )
     .execute(conn)
-    .expect("v0: create entries table");
+    .change_context(SessionStoreError)
+    .attach("v0: create entries table")?;
 
     sql_query(
         "CREATE TABLE session_entries (\
@@ -138,7 +151,8 @@ fn migrate_v0(conn: &mut SqliteConnection) {
          UNIQUE (session_id, ordinal))",
     )
     .execute(conn)
-    .expect("v0: create session_entries table");
+    .change_context(SessionStoreError)
+    .attach("v0: create session_entries table")?;
 
     sql_query(
         "CREATE TABLE token_ledger (\
@@ -149,61 +163,76 @@ fn migrate_v0(conn: &mut SqliteConnection) {
          tokens_received INTEGER NOT NULL)",
     )
     .execute(conn)
-    .expect("v0: create token_ledger table");
+    .change_context(SessionStoreError)
+    .attach("v0: create token_ledger table")?;
 
     sql_query("CREATE INDEX idx_session_entries_session ON session_entries(session_id, ordinal)")
         .execute(conn)
-        .expect("v0: create session_entries index");
+        .change_context(SessionStoreError)
+        .attach("v0: create session_entries index")?;
 
     sql_query("CREATE INDEX idx_token_ledger_session ON token_ledger(session_id)")
         .execute(conn)
-        .expect("v0: create token_ledger index");
+        .change_context(SessionStoreError)
+        .attach("v0: create token_ledger index")?;
+    Ok(())
 }
 
 /// v1: Add `cwd` column to sessions.
-fn migrate_v1(conn: &mut SqliteConnection) {
+fn migrate_v1(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE sessions ADD COLUMN cwd TEXT NOT NULL DEFAULT '.'")
         .execute(conn)
-        .expect("v1: add cwd column to sessions");
+        .change_context(SessionStoreError)
+        .attach("v1: add cwd column to sessions")?;
+    Ok(())
 }
 
 /// v2: Add `created_at` column to sessions.
-fn migrate_v2(conn: &mut SqliteConnection) {
+fn migrate_v2(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
         .execute(conn)
-        .expect("v2: add created_at column to sessions");
+        .change_context(SessionStoreError)
+        .attach("v2: add created_at column to sessions")?;
+    Ok(())
 }
 
 /// v3: Add `ignored` column to session_entries.
 ///
 /// Compaction marks entries as ignored when they've been summarized.
 /// Default is `false` (entry is active and visible during prompt assembly).
-fn migrate_v3(conn: &mut SqliteConnection) {
+fn migrate_v3(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE session_entries ADD COLUMN ignored BOOLEAN NOT NULL DEFAULT FALSE")
         .execute(conn)
-        .expect("v3: add ignored column to session_entries");
+        .change_context(SessionStoreError)
+        .attach("v3: add ignored column to session_entries")?;
+    Ok(())
 }
 
 /// v4: Add `cost` column to token_ledger.
 ///
 /// Tracks per-request cost in USD as reported by the provider (e.g. OpenRouter).
-fn migrate_v4(conn: &mut SqliteConnection) {
+fn migrate_v4(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE token_ledger ADD COLUMN cost DOUBLE")
         .execute(conn)
-        .expect("v4: add cost column to token_ledger");
+        .change_context(SessionStoreError)
+        .attach("v4: add cost column to token_ledger")?;
+    Ok(())
 }
 
 /// v5: Add \`lifecycle_name\` and \`lifecycle_args\` columns to sessions.
 ///
 /// \`lifecycle_name\` is NULL for sessions created without a lifecycle.
 /// \`lifecycle_args\` is a JSON array of strings, defaulting to empty.
-fn migrate_v5(conn: &mut SqliteConnection) {
+fn migrate_v5(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE sessions ADD COLUMN lifecycle_name TEXT DEFAULT NULL")
         .execute(conn)
-        .expect("v5: add lifecycle_name column to sessions");
+        .change_context(SessionStoreError)
+        .attach("v5: add lifecycle_name column to sessions")?;
     sql_query("ALTER TABLE sessions ADD COLUMN lifecycle_args TEXT NOT NULL DEFAULT '[]'")
         .execute(conn)
-        .expect("v5: add lifecycle_args column to sessions");
+        .change_context(SessionStoreError)
+        .attach("v5: add lifecycle_args column to sessions")?;
+    Ok(())
 }
 
 /// v6: Add \`archived\` column to sessions.

@@ -135,7 +135,7 @@ impl AppWorld {
             let user_preferences_storage =
                 UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
             let session_store = nullslop_domain::SessionStoreService::new(Arc::new(
-                nullslop_domain::SqliteSessionStore::new_in(&paths.sessions_dir()),
+                nullslop_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
             ));
 
             // Call production wiring — spawns all 16 actors.
@@ -241,7 +241,7 @@ impl AppWorld {
 
     /// Returns the active session ID.
     fn active_session_id(&self) -> SessionId {
-        self.state().session.active_session.clone()
+        self.state().session.active_session_id().clone()
     }
 
     /// Returns a copy of all messages received by the fake LLM factory.
@@ -563,7 +563,7 @@ fn when_restart_app(world: &mut AppWorld) {
         let user_preferences_storage =
             UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
         let session_store = nullslop_domain::SessionStoreService::new(Arc::new(
-            nullslop_domain::SqliteSessionStore::new_in(&paths.sessions_dir()),
+            nullslop_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
         ));
 
         let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
@@ -1364,6 +1364,6 @@ async fn then_warning_about_missing_cwd(world: &mut AppWorld) {
 fn then_session_cwd_fallback(world: &mut AppWorld) {
     let state = world.state();
     let actual = state.active_session().cwd();
-    let expected = &state.session.default_cwd;
+    let expected = state.session.default_cwd();
     assert_eq!(actual, expected, "expected CWD to fall back to global CWD");
 }

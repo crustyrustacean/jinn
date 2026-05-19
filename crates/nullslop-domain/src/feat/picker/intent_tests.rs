@@ -200,7 +200,7 @@ fn picker_confirm_session_returns_session_load_command() {
     // Then session is loading.
     assert!(state.session.is_loading());
     // And session_load_guard is set.
-    assert!(state.session.session_load_guard.is_some());
+    assert!(state.session.session_load_guard().is_some());
     // And a SessionLoadRequested command is returned.
     assert!(
         result
@@ -614,7 +614,7 @@ fn confirm_fork_picker_emits_fork_command() {
         is_user: true,
         theme: default_theme(),
     }]);
-    let source_id = state.session.active_session.clone();
+    let source_id = state.session.active_session_id().clone();
 
     // When confirming picker.
     let (result, maybe_intent) = handle_picker_confirm(&mut state);

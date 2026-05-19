@@ -33,12 +33,20 @@ pub trait Actor {
     /// The direct message type this actor accepts from other actors.
     type Message: Send + 'static;
 
-    /// Activates the actor. Use `ctx` to subscribe to events/commands
-    /// and extract peer `ActorRef` handles.
+    /// Dependencies required by this actor at activation.
+    ///
+    /// Each actor declares its dependencies as a concrete struct.
+    /// The `spawn` function passes `A::Deps` directly — no type erasure.
+    type Deps: Send + 'static;
+
+    /// Activates the actor with injected dependencies.
+    ///
+    /// Use `deps` to extract typed dependencies, and `ctx` to subscribe
+    /// to events/commands and extract peer `ActorRef` handles.
     ///
     /// This is an associated function (not a method) — it returns `Self`,
     /// constructing the actor during activation.
-    fn activate(ctx: &mut ActorContext) -> Self;
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self;
 
     /// Handles an incoming message (event, command, direct, or system).
     fn handle(

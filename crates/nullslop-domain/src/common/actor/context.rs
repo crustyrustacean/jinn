@@ -39,10 +39,6 @@ pub struct ActorContext {
     actor_refs: HashMap<TypeId, Box<dyn Any + Send + Sync>>, // Actually Box<ActorRef<M>>
     /// Message sink for sending commands/events to the application.
     sink: Arc<dyn MessageSink>,
-    /// Type-erased data storage for constructor injection.
-    ///
-    /// Uses the same `TypeId` pattern as `actor_refs`.
-    data: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
 }
 
 impl ActorContext {
@@ -63,7 +59,6 @@ impl ActorContext {
             subscribes_all_events: false,
             actor_refs: HashMap::new(),
             sink,
-            data: HashMap::new(),
         }
     }
 
@@ -157,32 +152,6 @@ impl ActorContext {
         self.actor_refs
             .remove(&TypeId::of::<M>())
             .and_then(|boxed| boxed.downcast::<ActorRef<M>>().ok())
-            .map(|boxed| *boxed)
-    }
-
-    /// Stores typed data for constructor injection.
-    ///
-    /// Uses the same `TypeId` pattern as [`set_actor_ref`](Self::set_actor_ref).
-    /// The wiring code injects data before calling `activate`, and `activate`
-    /// extracts it via [`take_data`](Self::take_data).
-    pub fn set_data<T>(&mut self, data: T)
-    where
-        T: Send + Sync + 'static,
-    {
-        self.data.insert(TypeId::of::<T>(), Box::new(data));
-    }
-
-    /// Removes and returns injected data of type `T`.
-    ///
-    /// Returns `None` if no data of this type was stored.
-    /// This is a take (not a clone) — subsequent calls return `None`.
-    pub fn take_data<T>(&mut self) -> Option<T>
-    where
-        T: Send + Sync + 'static,
-    {
-        self.data
-            .remove(&TypeId::of::<T>())
-            .and_then(|boxed| boxed.downcast::<T>().ok())
             .map(|boxed| *boxed)
     }
 

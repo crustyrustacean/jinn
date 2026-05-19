@@ -194,10 +194,23 @@ fn format_lifecycle_error(err: &LifecycleCommandError) -> String {
     }
 }
 
+/// Dependencies for [`SessionPersistenceActor`].
+pub struct SessionPersistenceActorDeps {
+    /// Shared application state.
+    pub state: State,
+    /// Runtime services.
+    pub services: Option<Services>,
+    /// Session persistence store.
+    pub store: Option<SessionStoreService>,
+    /// Token counter for usage tracking.
+    pub counter: TiktokenCounter,
+}
+
 impl Actor for SessionPersistenceActor {
     type Message = NoDirectMsg;
+    type Deps = SessionPersistenceActorDeps;
 
-    fn activate(ctx: &mut ActorContext) -> Self {
+    fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         // Persistence subscriptions.
         ctx.subscribe_command::<SessionLoadRequested>();
         ctx.subscribe_command::<LoadSessionPickerEntries>();
@@ -238,21 +251,11 @@ impl Actor for SessionPersistenceActor {
 
         ctx.set_description("Session lifecycle and persistence");
 
-        #[expect(clippy::expect_used, reason = "State is always injected at startup")]
-        let state = ctx
-            .take_data::<State>()
-            .expect("SessionPersistenceActor requires State injection");
-        let store = ctx.take_data::<SessionStoreService>();
-        let services = ctx.take_data::<Services>();
-        let counter = ctx
-            .take_data::<TiktokenCounter>()
-            .unwrap_or_else(TiktokenCounter::o200k_base);
-
         Self {
-            state,
-            services,
-            store,
-            counter,
+            state: deps.state,
+            services: deps.services,
+            store: deps.store,
+            counter: deps.counter,
         }
     }
 
@@ -419,7 +422,7 @@ impl SessionPersistenceActor {
                 let strategy_id = PromptStrategyId::new(strategy_str.clone());
                 session.switch_strategy(strategy_id.clone());
             }
-            session_id = state.session.active_session.clone();
+            session_id = state.session.active_session_id().clone();
         }
 
         // Send UpdatePreferences command so the pipeline handles persistence + state sync.
@@ -452,7 +455,7 @@ impl SessionPersistenceActor {
         // Push "running" info entry so the user sees feedback immediately.
         {
             let mut state = self.state.write();
-            if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
                 session.push_entry(setup_running_msg());
             }
         }
@@ -462,7 +465,7 @@ impl SessionPersistenceActor {
         match result {
             Ok(cwd) => {
                 let mut state = self.state.write();
-                if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+                if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
                     session.set_cwd(cwd.clone());
                     session.push_entry(setup_complete_msg(&cwd));
                 }
@@ -491,8 +494,9 @@ impl SessionPersistenceActor {
                     };
                 let default_cwd = {
                     let mut state = self.state.write();
-                    let default = state.session.default_cwd.clone();
-                    if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+                    let default = state.session.default_cwd().clone();
+                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
+                    {
                         session.set_cwd(default.clone());
                         let entry = if is_no_output {
                             no_output_info(&default)
@@ -522,7 +526,7 @@ impl SessionPersistenceActor {
         // Push "running" info entry so the user sees feedback immediately.
         {
             let mut state = self.state.write();
-            if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
                 session.push_entry(teardown_running_msg());
             }
         }
@@ -535,8 +539,8 @@ impl SessionPersistenceActor {
                     // Teardown succeeded - remove session and switch active.
                     {
                         let mut state = self.state.write();
-                        state.session.sessions.remove(&payload.session_id);
-                        if state.session.sessions.is_empty() {
+                        state.session.sessions_mut().remove(&payload.session_id);
+                        if state.session.sessions().is_empty() {
                             let model = state
                                 .frontend
                                 .preferences
@@ -567,17 +571,20 @@ impl SessionPersistenceActor {
                                 ),
                             );
                             let new_id = new_session.session_id().clone();
-                            state.session.sessions.insert(new_id.clone(), new_session);
-                            state.session.active_session = new_id;
-                        } else if state.session.active_session == payload.session_id {
+                            state
+                                .session
+                                .sessions_mut()
+                                .insert(new_id.clone(), new_session);
+                            state.session.set_active(new_id);
+                        } else if *state.session.active_session_id() == payload.session_id {
                             let next_id = state
                                 .session
-                                .sessions
+                                .sessions()
                                 .keys()
                                 .next()
                                 .expect("sessions is non-empty")
                                 .clone();
-                            state.session.active_session = next_id;
+                            state.session.set_active(next_id);
                         }
                     }
 
@@ -599,7 +606,9 @@ impl SessionPersistenceActor {
                     // Teardown-only success — keep session, push info entry.
                     {
                         let mut state = self.state.write();
-                        if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+                        if let Some(session) =
+                            state.session.sessions_mut().get_mut(&payload.session_id)
+                        {
                             session.push_entry(teardown_success_msg());
                         }
                     }
@@ -623,7 +632,8 @@ impl SessionPersistenceActor {
                     };
                 {
                     let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions.get_mut(&payload.session_id) {
+                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
+                    {
                         session.push_entry(ChatEntry::error(&error_msg));
                     }
                 }
@@ -651,7 +661,7 @@ impl SessionPersistenceActor {
         // No-op if the session doesn't exist.
         let session_info = {
             let state = self.state.read();
-            let Some(session) = state.session.sessions.get(&payload.session_id) else {
+            let Some(session) = state.session.sessions().get(&payload.session_id) else {
                 return;
             };
             // Collect what we need before releasing the lock.
@@ -711,9 +721,9 @@ impl SessionPersistenceActor {
     fn close_session_inline(&self, session_id: &crate::protocol::SessionId, ctx: &ActorContext) {
         {
             let mut state = self.state.write();
-            state.session.sessions.remove(session_id);
+            state.session.sessions_mut().remove(session_id);
 
-            if state.session.sessions.is_empty() {
+            if state.session.sessions().is_empty() {
                 let model = state
                     .frontend
                     .preferences
@@ -737,17 +747,20 @@ impl SessionPersistenceActor {
                     ),
                 );
                 let new_id = new_session.session_id().clone();
-                state.session.sessions.insert(new_id.clone(), new_session);
-                state.session.active_session = new_id;
-            } else if state.session.active_session == *session_id {
+                state
+                    .session
+                    .sessions_mut()
+                    .insert(new_id.clone(), new_session);
+                state.session.set_active(new_id);
+            } else if *state.session.active_session_id() == *session_id {
                 let next_id = state
                     .session
-                    .sessions
+                    .sessions()
                     .keys()
                     .next()
                     .expect("sessions is non-empty")
                     .clone();
-                state.session.active_session = next_id;
+                state.session.set_active(next_id);
             }
         }
 
@@ -772,7 +785,7 @@ impl SessionPersistenceActor {
         // Push "running" info entry.
         {
             let mut state = self.state.write();
-            if let Some(session) = state.session.sessions.get_mut(session_id) {
+            if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
                 session.push_entry(teardown_running_msg());
             }
         }
@@ -820,7 +833,7 @@ impl SessionPersistenceActor {
                     };
                 {
                     let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions.get_mut(session_id) {
+                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
                         session.push_entry(ChatEntry::error(&error_msg));
                     }
                 }
@@ -857,7 +870,7 @@ impl SessionPersistenceActor {
         let teardown_jobs: Vec<(crate::protocol::SessionId, String, String)> = {
             let state = self.state.read();
             let mut jobs = Vec::new();
-            for (id, session) in &state.session.sessions {
+            for (id, session) in state.session.sessions() {
                 let Some(lifecycle_name) = session.lifecycle_name() else {
                     continue;
                 };
@@ -1110,7 +1123,7 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_streaming();
             assert!(matches!(session.phase(), SessionPhase::Streaming));
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling StreamCompleted with Error reason.
@@ -1125,11 +1138,7 @@ mod tests {
 
         // Then the session is no longer streaming.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(!matches!(session.phase(), SessionPhase::Streaming));
     }
 
@@ -1144,7 +1153,7 @@ mod tests {
             session.begin_streaming();
             session.enqueue_message(ChatEntry::user("queued message"));
             assert_eq!(session.queue_len(), 1);
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling StreamCompleted with Error reason.
@@ -1159,11 +1168,7 @@ mod tests {
 
         // Then the queued message is still in the queue.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.queue_len(), 1);
     }
 
@@ -1179,7 +1184,7 @@ mod tests {
             session.push_entry(ChatEntry::assistant("checking"));
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
             session.push_entry(ChatEntry::assistant("here are the files"));
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling ToolBatchCompleted.
@@ -1218,7 +1223,7 @@ mod tests {
             session.begin_streaming();
             session.finish_streaming(true);
             session.begin_sending();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling ToolBatchCompleted.
@@ -1230,11 +1235,7 @@ mod tests {
 
         // Then the session is still in sending state.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Sending));
     }
 
@@ -1253,7 +1254,7 @@ mod tests {
                 cost: None,
             });
             session.begin_streaming();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling StreamCompleted(ToolUse) with tool calls.
@@ -1272,11 +1273,7 @@ mod tests {
 
         // Then the token record includes tokens from both text and tool call arguments.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         let ledger = session.token_ledger();
         assert_eq!(ledger.len(), 1);
         // tokens_received should be > just "checking" (2 tokens with tiktoken).
@@ -1297,10 +1294,13 @@ mod tests {
         let (sink, ctx) = test_context();
         let (target_id, original_active) = {
             let mut state = actor.state.write();
-            let original_active = state.session.active_session.clone();
+            let original_active = state.session.active_session_id().clone();
             let second = ChatSessionState::new();
             let second_id = second.session_id().clone();
-            state.session.sessions.insert(second_id.clone(), second);
+            state
+                .session
+                .sessions_mut()
+                .insert(second_id.clone(), second);
             (second_id, original_active)
         };
 
@@ -1319,7 +1319,7 @@ mod tests {
 
         // Then the active session is unchanged.
         let state = actor.state.read();
-        assert_eq!(state.session.active_session, original_active);
+        assert_eq!(*state.session.active_session_id(), original_active);
         drop(state);
 
         // And SessionTeardownFinished was emitted with error.
@@ -1340,7 +1340,7 @@ mod tests {
         let (_sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling a teardown command that fails.
@@ -1371,7 +1371,7 @@ mod tests {
         let (_sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling a teardown command that fails.
@@ -1389,11 +1389,7 @@ mod tests {
 
         // Then the session has an error entry.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         let last = session.history().last().expect("has an entry");
         assert!(matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("exit code")));
     }
@@ -1405,7 +1401,7 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling a teardown command that fails.
@@ -1448,7 +1444,10 @@ mod tests {
         let second_id = second.session_id().clone();
         {
             let mut state = actor.state.write();
-            state.session.sessions.insert(second_id.clone(), second);
+            state
+                .session
+                .sessions_mut()
+                .insert(second_id.clone(), second);
         }
 
         // When handling CloseSession for the second session.
@@ -1463,9 +1462,9 @@ mod tests {
 
         // Then the second session is removed.
         let state = actor.state.read();
-        assert!(!state.session.sessions.contains_key(&second_id));
+        assert!(!state.session.sessions().contains_key(&second_id));
         // And the first session still exists.
-        assert_eq!(state.session.sessions.len(), 1);
+        assert_eq!(state.session.sessions().len(), 1);
         drop(state);
 
         // And SessionClosed is emitted.
@@ -1490,7 +1489,7 @@ mod tests {
         let (sink, ctx) = test_context();
         let only_id = {
             let state = actor.state.read();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling CloseSession for the only session.
@@ -1505,9 +1504,9 @@ mod tests {
 
         // Then the only session is removed and a new one is created.
         let state = actor.state.read();
-        assert!(!state.session.sessions.contains_key(&only_id));
-        assert_eq!(state.session.sessions.len(), 1);
-        assert_ne!(state.session.active_session, only_id);
+        assert!(!state.session.sessions().contains_key(&only_id));
+        assert_eq!(state.session.sessions().len(), 1);
+        assert_ne!(*state.session.active_session_id(), only_id);
         drop(state);
 
         // And SessionClosed is emitted.
@@ -1534,8 +1533,11 @@ mod tests {
         let second_id = second.session_id().clone();
         {
             let mut state = actor.state.write();
-            state.session.sessions.insert(second_id.clone(), second);
-            state.session.active_session = second_id.clone();
+            state
+                .session
+                .sessions_mut()
+                .insert(second_id.clone(), second);
+            state.session.set_active(second_id.clone());
         }
 
         // When handling CloseSession for the active session.
@@ -1550,8 +1552,8 @@ mod tests {
 
         // Then active session is switched to the remaining one.
         let state = actor.state.read();
-        assert_ne!(state.session.active_session, second_id);
-        assert_eq!(state.session.sessions.len(), 1);
+        assert_ne!(*state.session.active_session_id(), second_id);
+        assert_eq!(state.session.sessions().len(), 1);
     }
 
     #[tokio::test]
@@ -1563,7 +1565,10 @@ mod tests {
         let second_id = second.session_id().clone();
         {
             let mut state = actor.state.write();
-            state.session.sessions.insert(second_id.clone(), second);
+            state
+                .session
+                .sessions_mut()
+                .insert(second_id.clone(), second);
         }
 
         // When handling CloseSession.
@@ -1602,7 +1607,7 @@ mod tests {
         let fake_id = crate::protocol::SessionId::new();
         let original_len = {
             let state = actor.state.read();
-            state.session.sessions.len()
+            state.session.sessions().len()
         };
 
         // When handling CloseSession for a nonexistent session.
@@ -1617,7 +1622,7 @@ mod tests {
 
         // Then nothing changes.
         let state = actor.state.read();
-        assert_eq!(state.session.sessions.len(), original_len);
+        assert_eq!(state.session.sessions().len(), original_len);
         drop(state);
 
         // And no SessionClosed event is emitted.
@@ -1647,11 +1652,11 @@ mod tests {
         let (_sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
         let original_count = {
             let state = actor.state.read();
-            state.session.sessions.len()
+            state.session.sessions().len()
         };
 
         // When teardown succeeds with close_on_success: false.
@@ -1669,8 +1674,8 @@ mod tests {
 
         // Then the session is NOT removed.
         let state = actor.state.read();
-        assert!(state.session.sessions.contains_key(&session_id));
-        assert_eq!(state.session.sessions.len(), original_count);
+        assert!(state.session.sessions().contains_key(&session_id));
+        assert_eq!(state.session.sessions().len(), original_count);
     }
 
     #[tokio::test]
@@ -1680,7 +1685,7 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When teardown succeeds with close_on_success: false.
@@ -1718,7 +1723,7 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When teardown succeeds with close_on_success: false.
@@ -1757,7 +1762,7 @@ mod tests {
         let (_sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When teardown succeeds with close_on_success: false.
@@ -1775,11 +1780,7 @@ mod tests {
 
         // Then the session has an info entry about success.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         let last = session.history().last().expect("has an entry");
         assert!(matches!(&last.kind, ChatEntryKind::Info(..)));
     }
@@ -1793,7 +1794,7 @@ mod tests {
         let (_sink, _ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling BeginCompaction.
@@ -1806,11 +1807,7 @@ mod tests {
 
         // Then the session is in Compacting phase.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Compacting));
         assert!(!matches!(session.phase(), SessionPhase::Idle));
         drop(state);
@@ -1826,7 +1823,7 @@ mod tests {
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("old message"));
             session.begin_compacting();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling EndCompaction with a successful result.
@@ -1851,11 +1848,7 @@ mod tests {
 
         // Then the session is idle and has the compaction entry.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Idle));
         // The history should have: user entry, compaction entry, system entry.
         assert!(session.history().iter().any(ChatEntry::is_compaction));
@@ -1872,7 +1865,7 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             state.active_session_mut().begin_compacting();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling EndCompaction with an error.
@@ -1889,11 +1882,7 @@ mod tests {
 
         // Then the session is idle and has an error entry.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Idle));
         let last = session.history().last().expect("has an entry");
         assert!(
@@ -1911,7 +1900,7 @@ mod tests {
             let session = state.active_session_mut();
             session.enqueue_message(ChatEntry::user("queued during compaction"));
             session.begin_compacting();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling EndCompaction with a successful result.
@@ -1955,7 +1944,7 @@ mod tests {
             let session = state.active_session_mut();
             session.enqueue_message(ChatEntry::user("queued during compaction"));
             session.begin_compacting();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling EndCompaction with a failure result.
@@ -1989,7 +1978,7 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             state.active_session_mut().begin_compacting();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling EndCompaction with a successful result.
@@ -2033,7 +2022,7 @@ mod tests {
             let session = state.active_session_mut();
             session.enqueue_message(ChatEntry::user("queued during compaction"));
             session.begin_compacting();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling EndCompaction with a successful result.
@@ -2058,11 +2047,7 @@ mod tests {
 
         // Then the session is in Sending state (start_turn_from_queued called begin_sending).
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert!(matches!(session.phase(), SessionPhase::Sending));
     }
 
@@ -2079,7 +2064,7 @@ mod tests {
             session.begin_streaming();
             session.finish_streaming(true);
             session.begin_sending();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling PromptAssembled.
@@ -2092,11 +2077,7 @@ mod tests {
 
         // Then the session is in Streaming phase without panicking.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Streaming);
     }
 
@@ -2108,7 +2089,7 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             state.active_session_mut().begin_assembling();
-            state.session.active_session.clone()
+            state.session.active_session_id().clone()
         };
 
         // When handling PromptAssembled.
@@ -2121,11 +2102,7 @@ mod tests {
 
         // Then the session is in Streaming phase.
         let state = actor.state.read();
-        let session = state
-            .session
-            .sessions
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Streaming);
     }
 }

@@ -10,7 +10,8 @@ use crate::protocol::{
 
 use crate::feat::context::strategy::types::StrategyConfig;
 use crate::feat::context::{
-    AssemblyContext, CharRatioEstimator, PassthroughStrategy, estimate_entry_tokens,
+    AssemblyContext, CharRatioEstimator, PassthroughStrategy, TokenEstimator,
+    estimate_entry_tokens, estimate_tool_schema_tokens,
 };
 
 use crate::feat::context::env_context::{build_env_context, load_project_context_files};
@@ -39,7 +40,7 @@ impl PromptAssemblyActor {
         };
         let (strategy_id, config) = {
             let guard = self.state.read();
-            match guard.session.sessions.get(session_id) {
+            match guard.session.sessions().get(session_id) {
                 Some(session) => {
                     let sid = session.active_strategy().clone();
                     let cfg = if sid == PromptStrategyId::sliding_window() {
@@ -75,6 +76,11 @@ impl PromptAssemblyActor {
     }
 
     /// Handles [`AssemblePrompt`] by running the session's strategy.
+    ///
+    /// The assembly pipeline builds all prompt parts before the strategy runs,
+    /// estimates their token cost, and subtracts it from the budget. This ensures
+    /// the strategy sees an accurate effective budget that accounts for everything
+    /// sent to the provider: history messages, system prompt, tool schemas, and pins.
     #[allow(clippy::too_many_lines)]
     pub(in crate::feat::context::context_actor) async fn on_assemble_prompt(
         &mut self,
@@ -131,61 +137,11 @@ impl PromptAssemblyActor {
             .cloned()
             .collect();
 
-        // Estimate reserved tokens for TOP/BOTTOM pins.
-        let estimator = CharRatioEstimator;
-        let reserved_tokens: usize = top_pins
-            .iter()
-            .chain(bottom_pins.iter())
-            .map(|e| estimate_entry_tokens(&estimator, e))
-            .sum();
-
-        #[expect(
-            clippy::expect_used,
-            reason = "strategy was just ensured by ensure_strategy above"
-        )]
-        let strategy = self
-            .strategies
-            .get(&session_id)
-            .expect("strategy was just ensured");
-        let context = AssemblyContext {
-            history: &working_history,
-            tools: &tools,
-            model_name: &cmd.model_name,
-            session_id: &session_id,
-            budget_offset: reserved_tokens,
-        };
-        let result = match strategy.assemble(&context).await {
-            Ok(assembled) => assembled,
-            Err(e) => {
-                tracing::error!("prompt assembly failed: {e:?}");
-                return;
-            }
-        };
-
-        // Post-processing: re-inject TOP and BOTTOM pins.
-        let mut messages: Vec<LlmMessage> = result.messages;
-
-        // Convert pin entries to messages.
+        // Convert pin entries to messages (needed for system prompt assembly).
         let top_messages = entries_to_messages(&top_pins);
         let bottom_messages = entries_to_messages(&bottom_pins);
 
-        // Insert BOTTOM pins just before the last message.
-        if messages.last().is_some() {
-            #[expect(clippy::expect_used, reason = "just checked non-empty")]
-            let last = messages.pop().expect("just checked non-empty");
-            messages.extend(bottom_messages);
-            messages.push(last);
-        } else {
-            messages.extend(bottom_messages);
-        }
-
-        // Build system prompt sections.
-        let skills_block = {
-            let guard = self.state.read();
-            format_skills_for_prompt(&guard.context.skills)
-        };
-
-        // Extract pinned System entry contents from top_messages.
+        // Extract pinned System entry contents and non-system top messages.
         let pinned_system_contents: Vec<String> = top_messages
             .iter()
             .filter_map(|m| match m {
@@ -193,31 +149,31 @@ impl PromptAssemblyActor {
                 _ => None,
             })
             .collect();
-
-        // Remove System messages from top_messages — they'll go into the system prompt.
         let top_non_system: Vec<LlmMessage> = top_messages
             .into_iter()
             .filter(|m| !matches!(m, LlmMessage::System { .. }))
             .collect();
 
+        // Build system prompt sections (all computed before the strategy runs).
+        let skills_block = {
+            let guard = self.state.read();
+            format_skills_for_prompt(&guard.context.skills)
+        };
+
         let env_context = {
-            // Extract CWD and load context files (async I/O).
             let cwd = {
                 let guard = self.state.read();
                 guard
                     .session
-                    .sessions
+                    .sessions()
                     .get(&session_id)
                     .map_or_else(|| std::path::PathBuf::from("."), |s| s.cwd().to_path_buf())
             };
             let context_files = load_project_context_files(&cwd).await;
-            // Re-acquire lock for persona lookup.
             let guard = self.state.read();
-            // Look up persona from this session's profile, not the global default.
-            // Falls back to coding-assistant if the session's persona name is not found.
             let persona = guard
                 .session
-                .sessions
+                .sessions()
                 .get(&session_id)
                 .and_then(|s| {
                     let name = s.persona_name();
@@ -233,8 +189,12 @@ impl PromptAssemblyActor {
             build_env_context(persona, &context_files, &cwd)
         };
 
-        // Concatenate all system sections into one message.
-        // Order: skills (lowest priority) → pinned System entries → env_context (highest priority, closest to conversation).
+        let tool_block = {
+            let guard = self.state.read();
+            build_tool_context_block(&guard.context.tool_definitions)
+        };
+
+        // Assemble system parts: skills → pinned system → env context → tool block.
         let mut system_parts: Vec<String> = Vec::new();
         if !skills_block.is_empty() {
             system_parts.push(skills_block);
@@ -243,25 +203,71 @@ impl PromptAssemblyActor {
         if !env_context.is_empty() {
             system_parts.push(env_context);
         }
-
-        // Tool context block (available tools + tool guidelines).
-        let tool_block = {
-            let guard = self.state.read();
-            build_tool_context_block(&guard.context.tool_definitions)
-        };
         if let Some(block) = tool_block {
             system_parts.push(block);
         }
 
-        // Assemble final messages: single system message + top pins (non-System) + working history + bottom pins.
-        let mut final_messages = Vec::new();
+        // Estimate overhead tokens for everything not managed by the strategy.
+        let estimator = CharRatioEstimator;
+        let reserved_tokens: usize = top_pins
+            .iter()
+            .chain(bottom_pins.iter())
+            .map(|e| estimate_entry_tokens(&estimator, e))
+            .sum();
+        let system_prompt_tokens: usize = if system_parts.is_empty() {
+            0
+        } else {
+            estimator.estimate(&system_parts.join("\n\n"))
+        };
+        let tool_schema_tokens = estimate_tool_schema_tokens(&estimator, &tools);
+        let budget_offset = reserved_tokens
+            .saturating_add(system_prompt_tokens)
+            .saturating_add(tool_schema_tokens);
 
+        // Run the strategy with the full budget offset.
+        #[expect(
+            clippy::expect_used,
+            reason = "strategy was just ensured by ensure_strategy above"
+        )]
+        let strategy = self
+            .strategies
+            .get(&session_id)
+            .expect("strategy was just ensured");
+        let context = AssemblyContext {
+            history: &working_history,
+            tools: &tools,
+            model_name: &cmd.model_name,
+            session_id: &session_id,
+            budget_offset,
+        };
+        let result = match strategy.assemble(&context).await {
+            Ok(assembled) => assembled,
+            Err(e) => {
+                tracing::error!("prompt assembly failed: {e:?}");
+                return;
+            }
+        };
+
+        // Post-processing: re-inject pins and build final messages.
+        let mut messages: Vec<LlmMessage> = result.messages;
+
+        // Insert BOTTOM pins just before the last message.
+        if messages.last().is_some() {
+            #[expect(clippy::expect_used, reason = "just checked non-empty")]
+            let last = messages.pop().expect("just checked non-empty");
+            messages.extend(bottom_messages);
+            messages.push(last);
+        } else {
+            messages.extend(bottom_messages);
+        }
+
+        // Build final messages: system message + top pins (non-System) + working history + bottom pins.
+        let mut final_messages = Vec::new();
         if !system_parts.is_empty() {
             final_messages.push(LlmMessage::System {
                 content: system_parts.join("\n\n"),
             });
         }
-
         final_messages.extend(top_non_system);
         final_messages.append(&mut messages);
 
