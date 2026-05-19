@@ -847,7 +847,7 @@ async fn build_tool_context_reads_session_cwd() {
         let mut guard = actor.state.write();
         let session = guard.active_session_mut();
         session.set_cwd(PathBuf::from("/custom/cwd"));
-        guard.session.active_session.clone()
+        guard.session.active_session_id().clone()
     };
 
     // When building tool context for that session.
@@ -990,7 +990,7 @@ async fn build_tool_context_uses_session_default_cwd_when_not_overridden() {
         let mut guard = actor.state.write();
         let _session = guard.active_session_mut();
         // Don't set cwd — it defaults to ".".
-        guard.session.active_session.clone()
+        guard.session.active_session_id().clone()
     };
 
     // When building tool context for that session.

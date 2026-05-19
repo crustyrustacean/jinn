@@ -33,6 +33,7 @@ use std::pin::Pin;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
 use crate::common::state::State;
+use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
 };
@@ -299,9 +300,9 @@ impl ToolOrchestratorActor {
             let guard = self.state.read();
             let cwd = guard
                 .session
-                .sessions
+                .sessions()
                 .get(session_id)
-                .map_or_else(|| guard.session.default_cwd.clone(), |s| s.cwd().to_owned());
+                .map_or_else(|| guard.session.default_cwd().clone(), |s: &ChatSessionState| s.cwd().to_owned());
             let max_output_lines = guard.frontend.preferences.max_tool_output_lines;
             let max_output_bytes = guard.frontend.preferences.max_tool_output_bytes;
             (cwd, max_output_lines, max_output_bytes)

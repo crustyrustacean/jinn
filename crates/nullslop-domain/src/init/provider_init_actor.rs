@@ -114,7 +114,7 @@ impl ProviderInitActor {
             if self.services.provider_registry.is_available(&id, &api_keys) {
                 tracing::info!(last_model = %model, "provider-init resolving last_model");
                 if let Err(e) = ctx.send_command(Command::ProviderSwitch(ProviderSwitch {
-                    session_id: self.state.read().session.active_session.clone(),
+                    session_id: self.state.read().session.active_session_id().clone(),
                     provider_id: model.clone(),
                 })) {
                     tracing::warn!(err = ?e, "provider-init failed to send ProviderSwitch");

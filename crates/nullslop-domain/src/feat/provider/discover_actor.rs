@@ -191,7 +191,7 @@ impl DiscoverActor {
         }
 
         // Emit ModelsRefreshed event.
-        let session_id = self.state.read().session.active_session.clone();
+        let session_id = self.state.read().session.active_session_id().clone();
         let _ = ctx.send_event(Event::ModelsRefreshed(ModelsRefreshed {
             session_id,
             results,

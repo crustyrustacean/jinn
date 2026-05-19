@@ -294,7 +294,7 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
     let provider_id = entry.provider_id.clone();
-    let session_id = state.session.active_session.clone();
+    let session_id = state.session.active_session_id().clone();
 
     state.frontend.scope_stack.pop();
     IntentResult::with_commands(vec![
@@ -314,7 +314,7 @@ fn confirm_strategy(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
     let strategy_id = entry.strategy_id.clone();
-    let session_id = state.session.active_session.clone();
+    let session_id = state.session.active_session_id().clone();
 
     state.frontend.scope_stack.pop();
     IntentResult::with_commands(vec![
@@ -432,7 +432,7 @@ fn confirm_session_fork(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.fork_picker.selected_item() else {
         return IntentResult::empty();
     };
-    let source_session_id = state.session.active_session.clone();
+    let source_session_id = state.session.active_session_id().clone();
     let at_ordinal = entry.ordinal;
 
     state.session.begin_load(source_session_id.clone());

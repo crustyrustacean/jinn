@@ -241,7 +241,7 @@ impl AppWorld {
 
     /// Returns the active session ID.
     fn active_session_id(&self) -> SessionId {
-        self.state().session.active_session.clone()
+        self.state().session.active_session_id().clone()
     }
 
     /// Returns a copy of all messages received by the fake LLM factory.
@@ -1364,6 +1364,6 @@ async fn then_warning_about_missing_cwd(world: &mut AppWorld) {
 fn then_session_cwd_fallback(world: &mut AppWorld) {
     let state = world.state();
     let actual = state.active_session().cwd();
-    let expected = &state.session.default_cwd;
+    let expected = state.session.default_cwd();
     assert_eq!(actual, expected, "expected CWD to fall back to global CWD");
 }
