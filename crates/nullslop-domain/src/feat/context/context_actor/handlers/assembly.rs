@@ -100,44 +100,55 @@ impl PromptAssemblyActor {
             .collect();
 
         // Pre-processing: split history into TOP/BOTTOM pins and working history.
-        let top_pins: Vec<ChatEntry> = cmd
-            .history
-            .iter()
-            .filter(|e| {
-                e.pin_position() == Some(PinPosition::Top)
-                    && !matches!(e.kind, ChatEntryKind::Thinking(_))
-            })
-            .cloned()
-            .collect();
+        // CPU-bound: clone + filter — offloaded to blocking thread to avoid
+        // starving the tokio runtime during large history processing.
+        let history = cmd.history.clone();
+        let (top_pins, bottom_pins, working_history, reserved_tokens) =
+            tokio::task::spawn_blocking(move || {
+                let top_pins: Vec<ChatEntry> = history
+                    .iter()
+                    .filter(|e| {
+                        e.pin_position() == Some(PinPosition::Top)
+                            && !matches!(e.kind, ChatEntryKind::Thinking(_))
+                    })
+                    .cloned()
+                    .collect();
 
-        let bottom_pins: Vec<ChatEntry> = cmd
-            .history
-            .iter()
-            .filter(|e| {
-                e.pin_position() == Some(PinPosition::Bottom)
-                    && !matches!(e.kind, ChatEntryKind::Thinking(_))
-            })
-            .cloned()
-            .collect();
+                let bottom_pins: Vec<ChatEntry> = history
+                    .iter()
+                    .filter(|e| {
+                        e.pin_position() == Some(PinPosition::Bottom)
+                            && !matches!(e.kind, ChatEntryKind::Thinking(_))
+                    })
+                    .cloned()
+                    .collect();
 
-        let working_history: Vec<ChatEntry> = cmd
-            .history
-            .iter()
-            .filter(|e| {
-                (e.pin_position().is_none() || e.pin_position() == Some(PinPosition::Relative))
-                    && !matches!(e.kind, ChatEntryKind::Thinking(_))
-                    && (!e.ignored || e.is_pinned())
-            })
-            .cloned()
-            .collect();
+                let working_history: Vec<ChatEntry> = history
+                    .iter()
+                    .filter(|e| {
+                        (e.pin_position().is_none()
+                            || e.pin_position() == Some(PinPosition::Relative))
+                            && !matches!(e.kind, ChatEntryKind::Thinking(_))
+                            && (!e.ignored || e.is_pinned())
+                    })
+                    .cloned()
+                    .collect();
 
-        // Estimate reserved tokens for TOP/BOTTOM pins.
-        let estimator = CharRatioEstimator;
-        let reserved_tokens: usize = top_pins
-            .iter()
-            .chain(bottom_pins.iter())
-            .map(|e| estimate_entry_tokens(&estimator, e))
-            .sum();
+                // Estimate reserved tokens for TOP/BOTTOM pins.
+                let estimator = CharRatioEstimator;
+                let reserved_tokens: usize = top_pins
+                    .iter()
+                    .chain(bottom_pins.iter())
+                    .map(|e| estimate_entry_tokens(&estimator, e))
+                    .sum();
+
+                (top_pins, bottom_pins, working_history, reserved_tokens)
+            })
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(err = ?e, "spawn_blocking panicked during prompt assembly");
+                (vec![], vec![], vec![], 0)
+            });
 
         #[expect(
             clippy::expect_used,
