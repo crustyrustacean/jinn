@@ -48,6 +48,6 @@ pub use strategy::sliding_window::SlidingWindowStrategy;
 pub use strategy::token_budget::TokenBudgetStrategy;
 pub use strategy::token_estimator::{CharRatioEstimator, TokenEstimator, estimate_entry_tokens};
 pub use strategy::types::{
-    AssembledPrompt, AssemblyContext, PromptAssembly, PromptAssemblyError, StrategyDiscovery,
-    StrategyFactory, StrategyInfo, StrategyState,
+    AssembledPrompt, AssemblyContext, PromptAssembly, PromptAssemblyError, StrategyConfig,
+    StrategyDiscovery, StrategyFactory, StrategyInfo, StrategyState,
 };
