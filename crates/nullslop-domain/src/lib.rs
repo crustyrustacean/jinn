@@ -23,7 +23,7 @@ pub mod schema;
 // Re-export actor framework types
 pub use common::actor::{
     Actor, ActorContext, ActorCounter, ActorEnvelope, ActorRef, ActorSendError, MessageSink,
-    NoDirectMsg, RecordingSink, ScanActorDeps, SendResult, SystemMessage,
+    NoDirectMsg, RecordingSink, SendResult, SystemMessage,
 };
 pub use common::actor_host::{
     ActorHost, ActorHostService, ActorSpawnResult, FakeActorHost, InMemoryActorHost, RoutingEntry,

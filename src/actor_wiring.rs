@@ -271,9 +271,8 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::ScanActorDeps {
+        nullslop_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
             paths: services.paths.clone(),
-            state: None,
         },
     );
 
@@ -284,9 +283,9 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::ScanActorDeps {
+        nullslop_domain::feat::skills::skills_scan_actor::SkillsScanActorDeps {
             paths: services.paths.clone(),
-            state: Some(state.clone()),
+            state: state.clone(),
         },
     );
 
@@ -299,9 +298,8 @@ pub fn create_core_with_actor_host(
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::ScanActorDeps {
+        nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
             paths: services.paths.clone(),
-            state: None,
         },
     );
 
