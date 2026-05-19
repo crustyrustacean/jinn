@@ -143,10 +143,7 @@ impl TuiApp {
                         self.route_intent(intent);
                     }
                     crossterm::event::Event::Paste(text) => {
-                        let scope = *self.which_key.scope();
-                        if matches!(scope, Scope::Input | Scope::Picker) {
-                            self.route_intent(nullslop_domain::Intent::PasteText { text });
-                        }
+                        self.route_intent(nullslop_domain::Intent::PasteText { text });
                     }
                     _ => {}
                 }
