@@ -293,6 +293,8 @@ fn render_shows_token_counts_with_zero_values() {
     let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows zero token counts.
     assert!(row.contains("\u{2191}0 \u{2193}0"));
+    // And cost is always shown as $0.0000.
+    assert!(row.contains("$0.0000"));
 }
 
 #[rstest::rstest]
@@ -321,11 +323,13 @@ fn render_shows_token_counts_with_values() {
     // Then the status bar shows token counts.
     assert!(row.contains("1.5k"));
     assert!(row.contains("750"));
+    // And cost is shown as $0.0000 when no cost data.
+    assert!(row.contains("$0.0000"));
 }
 
 #[rstest::rstest]
-fn render_shows_context_size_when_cached() {
-    // Given a session with a cached context size.
+fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
+    // Given a session with a cached context size but no model cache.
     use crate::feat::session::token_stats::TokenRecord;
     let mut element = StatusBarElement;
     let mut state = AppState::default();
@@ -347,12 +351,15 @@ fn render_shows_context_size_when_cached() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then the status bar shows ctx:5.0k.
-    assert!(row.contains("ctx:5.0k"));
+    // Then the status bar shows 0.0%/MAX (no context_length available).
+    assert!(
+        row.contains("0.0%/MAX"),
+        "expected 0.0%/MAX, got: {row}"
+    );
 }
 
 #[rstest::rstest]
-fn render_hides_context_size_when_not_cached() {
+fn render_shows_zero_percent_max_when_no_context_size() {
     // Given a session with no cached context size.
     let mut element = StatusBarElement;
     let state = AppState::default();
@@ -364,9 +371,12 @@ fn render_hides_context_size_when_not_cached() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then ctx: is not shown.
-    assert!(!row.contains("ctx:"));
-    // But token counts are still shown.
+    // Then the context display shows 0.0%/MAX as fallback.
+    assert!(
+        row.contains("0.0%/MAX"),
+        "expected 0.0%/MAX fallback, got: {row}"
+    );
+    // And token counts are still shown.
     assert!(row.contains("0 0") || row.contains("\u{2191}0 \u{2193}0"));
 }
 
@@ -598,10 +608,10 @@ fn render_shows_context_limit_with_usage_and_percentage() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
-    // Then the status bar shows ctx with limit and percentage.
+    // Then the status bar shows the percentage and formatted max.
     assert!(
-        row.contains("ctx:5.0k/200.0k (2.5%)"),
-        "expected ctx with limit and pct, got: {row}"
+        row.contains("2.5%/200k"),
+        "expected 2.5%/200k, got: {row}"
     );
 }
 
@@ -644,13 +654,11 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then the status bar falls back to ctx without limit.
+    // Then the status bar falls back to 0.0%/MAX.
     assert!(
-        row.contains("ctx:5.0k"),
-        "expected ctx without limit, got: {row}"
+        row.contains("0.0%/MAX"),
+        "expected 0.0%/MAX fallback, got: {row}"
     );
-    // And no percentage is shown.
-    assert!(!row.contains("2.5%"), "expected no percentage, got: {row}");
 }
 
 #[rstest::rstest]
@@ -680,12 +688,11 @@ fn render_falls_back_when_no_model_cache() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then the status bar shows ctx without limit.
+    // Then the status bar falls back to 0.0%/MAX.
     assert!(
-        row.contains("ctx:5.0k"),
-        "expected ctx without limit, got: {row}"
+        row.contains("0.0%/MAX"),
+        "expected 0.0%/MAX fallback, got: {row}"
     );
-    assert!(!row.contains('%'), "expected no percentage, got: {row}");
 }
 
 // --- Token budget display tests ---
@@ -737,5 +744,95 @@ fn render_hides_token_budget_for_passthrough_strategy() {
     assert!(
         !row.contains("Token Budget:"),
         "expected no budget display for passthrough strategy, got: {row}"
+    );
+}
+
+// --- Cost display tests ---
+
+#[rstest::rstest]
+fn render_always_shows_cost_even_when_zero() {
+    // Given a state with no token records and no history.
+    let mut element = StatusBarElement;
+    let state = AppState::default();
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then cost is always shown as $0.0000.
+    assert!(
+        row.contains("$0.0000"),
+        "expected $0.0000 in status bar, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_shows_cost_with_non_zero_value() {
+    // Given a session with a token record that has cost data.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state.active_session_mut().push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1500,
+        tokens_received: 750,
+        cost: Some(0.0023),
+    });
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then the status bar shows the cost value.
+    assert!(
+        row.contains("$0.0023"),
+        "expected $0.0023 in status bar, got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn render_shows_cost_before_turns_indicator() {
+    // Given a state with history entries producing turns and a token record with cost.
+    use crate::feat::session::token_stats::TokenRecord;
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state
+        .active_session_mut()
+        .push_entry(crate::protocol::ChatEntry::user("hello"));
+    state
+        .active_session_mut()
+        .push_entry(crate::protocol::ChatEntry::assistant("hi there"));
+    state.active_session_mut().push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 500,
+        cost: Some(0.0015),
+    });
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then cost appears before Turns in the rendered row.
+    let cost_pos = row.find("$0.0015").expect("cost should be present");
+    let turns_pos = row.find("Turns:").expect("Turns should be present");
+    assert!(
+        cost_pos < turns_pos,
+        "cost should appear before Turns, got: {row}"
     );
 }
