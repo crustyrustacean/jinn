@@ -555,11 +555,17 @@ impl SessionPersistenceActor {
                                 );
                             let token_budget =
                                 state.frontend.preferences.context_token_budget.budget;
+                            let sliding_window_size = state
+                                .frontend
+                                .preferences
+                                .context_sliding_window
+                                .size;
                             let new_session = ChatSessionState::new_with_profile(
                                 crate::feat::session::profile::SessionProfile::from_config(
                                     model,
                                     strategy,
                                     token_budget,
+                                    sliding_window_size,
                                 ),
                             );
                             let new_id = new_session.session_id().clone();
@@ -670,11 +676,14 @@ impl SessionPersistenceActor {
                     .as_deref()
                     .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
                 let token_budget = state.frontend.preferences.context_token_budget.budget;
+                let sliding_window_size =
+                    state.frontend.preferences.context_sliding_window.size;
                 let new_session = ChatSessionState::new_with_profile(
                     crate::feat::session::profile::SessionProfile::from_config(
                         model,
                         strategy,
                         token_budget,
+                        sliding_window_size,
                     ),
                 );
                 let new_id = new_session.session_id().clone();

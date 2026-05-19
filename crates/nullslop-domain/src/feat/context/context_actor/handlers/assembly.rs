@@ -44,8 +44,7 @@ impl PromptAssemblyActor {
                     let sid = session.active_strategy().clone();
                     let cfg = if sid == PromptStrategyId::sliding_window() {
                         StrategyConfig::SlidingWindow {
-                            // TODO: Phase 2 — read from session.profile().sliding_window_size
-                            window_size: 5,
+                            window_size: session.profile().sliding_window_size,
                         }
                     } else if sid == PromptStrategyId::token_budget() {
                         StrategyConfig::TokenBudget {
