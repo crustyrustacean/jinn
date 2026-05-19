@@ -436,9 +436,7 @@ impl IntentHandler {
                 lifecycle_name,
                 args,
             ),
-            Intent::SessionClose => {
-                feat::session_lifecycle::intent::handle_session_close(state, None)
-            }
+            Intent::SessionClose => feat::session_lifecycle::intent::handle_session_close(state),
             Intent::ArgInputConfirm => {
                 feat::session_lifecycle::intent::handle_arg_input_confirm(state)
             }

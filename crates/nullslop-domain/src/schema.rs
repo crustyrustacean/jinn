@@ -29,6 +29,7 @@ diesel::table! {
         parent_session -> Nullable<Text>,
         cwd -> Text,
         created_at -> Text,
+        archived -> Bool,
         lifecycle_name -> Nullable<Text>,
         lifecycle_args -> Text,
     }
