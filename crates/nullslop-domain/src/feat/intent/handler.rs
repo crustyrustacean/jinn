@@ -68,48 +68,43 @@ impl IntentHandler {
             state.frontend.cancel_stream_prompt = false;
             if matches!(intent, Intent::NormalEscape) {
                 let session_id = state.session.active_session.clone();
-                let phase = state.active_session().phase();
 
-                match phase {
-                    SessionPhase::Compacting => {
-                        // Cancel compaction.
-                        let drained = state.active_session_mut().cancel_compacting();
-                        state.active_session_mut().push_entry(crate::ChatEntry::system(
-                            "Context compaction cancelled.",
-                        ));
-                        let mut commands = vec![Command::CancelCompaction(
-                            crate::feat::compaction_actor::protocol::command::CancelCompaction {
-                                session_id: session_id.clone(),
-                            },
-                        )];
-                        // If messages were queued, start a new turn.
-                        if !drained.is_empty() {
-                            let entries: Vec<crate::ChatEntry> = drained.into_iter().collect();
-                            for entry in &entries {
-                                state.active_session_mut().push_entry(entry.clone());
-                            }
-                            state.active_session_mut().begin_sending();
-                            let history = state.active_session().history().to_vec();
-                            let model_name = state.active_session().profile().model.clone();
-                            commands.push(Command::AssemblePrompt(
-                                crate::feat::context::protocol::command::AssemblePrompt {
-                                    session_id,
-                                    history,
-                                    tools: vec![],
-                                    model_name,
-                                },
-                            ));
+                if state.active_session().phase() == SessionPhase::Compacting {
+                    // Cancel compaction.
+                    let drained = state.active_session_mut().cancel_compacting();
+                    state.active_session_mut().push_entry(crate::ChatEntry::system(
+                        "Context compaction cancelled.",
+                    ));
+                    let mut commands = vec![Command::CancelCompaction(
+                        crate::feat::compaction_actor::protocol::command::CancelCompaction {
+                            session_id: session_id.clone(),
+                        },
+                    )];
+                    // If messages were queued, start a new turn.
+                    if !drained.is_empty() {
+                        let entries: Vec<crate::ChatEntry> = drained.into_iter().collect();
+                        for entry in &entries {
+                            state.active_session_mut().push_entry(entry.clone());
                         }
-                        return IntentResult::with_commands(commands);
+                        state.active_session_mut().begin_sending();
+                        let history = state.active_session().history().to_vec();
+                        let model_name = state.active_session().profile().model.clone();
+                        commands.push(Command::AssemblePrompt(
+                            crate::feat::context::protocol::command::AssemblePrompt {
+                                session_id,
+                                history,
+                                tools: vec![],
+                                model_name,
+                            },
+                        ));
                     }
-                    _ => {
-                        // Existing stream cancel behavior (Streaming, Sending, Assembling, Idle).
-                        state.active_session_mut().cancel_stream_and_drain();
-                        return IntentResult::with_commands(vec![Command::CancelStream(
-                            crate::feat::provider::protocol::command::CancelStream { session_id },
-                        )]);
-                    }
+                    return IntentResult::with_commands(commands);
                 }
+                // Existing stream cancel behavior (Streaming, Sending, Assembling, Idle).
+                state.active_session_mut().cancel_stream_and_drain();
+                return IntentResult::with_commands(vec![Command::CancelStream(
+                    crate::feat::provider::protocol::command::CancelStream { session_id },
+                )]);
             }
             // Any other key — dismiss prompt, fall through to normal processing.
         }
