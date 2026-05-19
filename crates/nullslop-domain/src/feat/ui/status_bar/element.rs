@@ -96,10 +96,7 @@ impl UiElement<AppState> for StatusBarElement {
             format_tokens(agg.total_sent()),
             format_tokens(agg.total_received()),
         );
-        let total_cost = agg.total_cost();
-        if total_cost > 0.0 {
-            token_info = format!("{token_info} ${total_cost:.4}");
-        }
+
         if let Some(ctx_size) = state.active_session().context_size() {
             let ctx_used = u64::from(ctx_size);
             let ctx_limit = state.provider.model_cache.as_ref().and_then(|cache| {
@@ -155,10 +152,12 @@ impl UiElement<AppState> for StatusBarElement {
             active_model.clone()
         };
 
-        // Build left side: strategy info + turn count.
+        // Build left side: strategy info + cost + turn count.
+        let total_cost = agg.total_cost();
         let turn_count = turn_counter::compute_turn_count(state.active_session().history());
         let left_spans: Vec<Span> = vec![
             Span::styled(left, style),
+            Span::styled(format!(" ${total_cost:.4}"), style),
             Span::styled(format!(" Turns: {turn_count}"), style),
         ];
 
