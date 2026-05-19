@@ -98,7 +98,7 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
-    use crate::feat::preferences_actor::user_preferences::CompactionConfig;
+    use crate::feat::preferences_actor::user_preferences::{CompactionConfig, ContextSlidingWindowConfig};
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::protocol::Event;
 
@@ -133,6 +133,7 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
         actor
             .handle(
@@ -172,6 +173,7 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
         actor
             .handle(
@@ -195,6 +197,7 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
         actor
             .handle(

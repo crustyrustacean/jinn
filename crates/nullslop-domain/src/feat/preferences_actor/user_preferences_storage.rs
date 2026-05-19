@@ -218,7 +218,7 @@ mod tests {
     use super::*;
     use crate::ContextTokenBudgetConfig;
     use crate::common::app_info::PREFS_FILE_NAME;
-    use crate::feat::preferences_actor::user_preferences::CompactionConfig;
+    use crate::feat::preferences_actor::user_preferences::{CompactionConfig, ContextSlidingWindowConfig};
 
     #[rstest::rstest]
     fn in_memory_load_returns_default_when_empty() {
@@ -248,6 +248,7 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
 
         // When saving and reloading.
@@ -294,6 +295,7 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
 
         // When saving and reloading.
@@ -323,6 +325,7 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -352,6 +355,7 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -368,6 +372,7 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -393,6 +398,7 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
         };
         service.save(&prefs).expect("save");
 
