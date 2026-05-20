@@ -1,11 +1,13 @@
 //! Bash built-in tool — executes shell commands.
 //!
 //! Spawns a shell process with piped stdout/stderr, streaming output
-//! line-by-line via `ToolExecutionOutput` events. Falls back to a
-//! non-streaming path when the message sink is unavailable.
+//! via batched `ToolExecutionOutput` events. Output lines are accumulated
+//! and flushed every 500ms (or when the buffer exceeds 4KB) to reduce
+//! event volume and prevent dropped keystrokes from terminal overload.
 
 use std::fmt::Write as _;
 use std::process::Stdio;
+use std::time::Duration;
 
 use crate::common::actor::message_sink::MessageSink;
 use crate::feat::tools_actor::protocol::event::{ToolExecutionOutput, ToolExecutionStarted};
@@ -65,10 +67,37 @@ fn parse_args(raw: &str) -> Result<(String, Option<u64>), serde_json::Error> {
 /// The final truncation uses the shared limits from the truncation module.
 const STREAM_BUFFER_MAX_BYTES: usize = DEFAULT_MAX_BYTES * 2;
 
+/// Flush the streaming event buffer early when it exceeds this size,
+/// preventing unbounded memory growth between timer ticks.
+const STREAM_FLUSH_THRESHOLD: usize = 4096;
+
+/// Interval for batching streaming tool output events.
+/// Accumulated output is flushed every 500ms to reduce event volume
+/// and prevent dropped keystrokes from terminal emulator overload.
+const STREAM_FLUSH_INTERVAL: Duration = Duration::from_millis(500);
+
 /// Truncates accumulated streaming output to prevent unbounded memory growth.
 /// Uses the shared tail-truncation logic.
 fn truncate_streaming_output(content: &str) -> String {
     truncate_tail(content, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES).content
+}
+
+/// Emits buffered output as a single `ToolExecutionOutput` event.
+fn flush_buffer(
+    buffer: &str,
+    sink: Option<&std::sync::Arc<dyn MessageSink>>,
+    session_id: Option<&SessionId>,
+    tool_call_id: &str,
+) {
+    emit_stream_event(
+        sink,
+        session_id,
+        Event::ToolExecutionOutput(ToolExecutionOutput {
+            session_id: session_id.cloned().unwrap_or_default(),
+            tool_call_id: tool_call_id.to_owned(),
+            output: buffer.to_owned(),
+        }),
+    );
 }
 
 /// Emits a streaming tool event if both sink and session_id are available.
@@ -227,25 +256,46 @@ async fn read_child_output_and_wait(
     // Drop the sender so the receiver knows when both are done.
     drop(tx);
 
-    // Receive lines and emit events.
-    while let Some(line) = rx.recv().await {
-        accumulated.push_str(&line);
-        accumulated.push('\n');
+    // Receive lines and batch-emit events every 500ms.
+    let mut buffer = String::new();
+    let mut timer = tokio::time::interval(STREAM_FLUSH_INTERVAL);
+    timer.tick().await; // Consume the immediate first tick.
 
-        emit_stream_event(
-            sink,
-            session_id,
-            Event::ToolExecutionOutput(ToolExecutionOutput {
-                session_id: session_id.cloned().unwrap_or_default(),
-                tool_call_id: tool_call_id.to_owned(),
-                output: format!("{line}\n"),
-            }),
-        );
+    loop {
+        tokio::select! {
+            line = rx.recv() => {
+                match line {
+                    Some(line) => {
+                        accumulated.push_str(&line);
+                        accumulated.push('\n');
+                        buffer.push_str(&line);
+                        buffer.push('\n');
 
-        if accumulated.len() > STREAM_BUFFER_MAX_BYTES {
-            let truncated = truncate_streaming_output(accumulated);
-            *accumulated = truncated;
+                        if accumulated.len() > STREAM_BUFFER_MAX_BYTES {
+                            let truncated = truncate_streaming_output(accumulated);
+                            *accumulated = truncated;
+                        }
+
+                        if buffer.len() > STREAM_FLUSH_THRESHOLD {
+                            flush_buffer(&buffer, sink, session_id, tool_call_id);
+                            buffer.clear();
+                        }
+                    }
+                    None => break,
+                }
+            }
+            _ = timer.tick() => {
+                if !buffer.is_empty() {
+                    flush_buffer(&buffer, sink, session_id, tool_call_id);
+                    buffer.clear();
+                }
+            }
         }
+    }
+
+    // Final flush: emit any remaining buffered output.
+    if !buffer.is_empty() {
+        flush_buffer(&buffer, sink, session_id, tool_call_id);
     }
 
     // Wait for both readers to finish.
