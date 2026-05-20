@@ -64,6 +64,7 @@ mod tests {
             is_expanded,
             tool_entry_max_lines: 20,
             theme: default_theme(),
+            paired_status: None,
         }
     }
 

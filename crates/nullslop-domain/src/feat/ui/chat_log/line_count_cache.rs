@@ -8,8 +8,7 @@
 
 use std::collections::HashMap;
 
-use crate::feat::session::tool_result_status::ToolResultStatus;
-use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
+use crate::protocol::{ChatEntry, ChatEntryId};
 
 /// Cached wrapped line count for a single entry.
 #[derive(Debug, Clone)]
@@ -58,13 +57,6 @@ impl EntryLineCache {
     /// - The entry's expanded state has changed (expand/collapse toggle).
     /// - The content width has changed (terminal resize).
     pub fn get(&mut self, entry: &ChatEntry, is_expanded: bool, content_width: u16) -> Option<u16> {
-        // Never cache pending tool result entries — their content changes every tick.
-        if let ChatEntryKind::ToolResult { status, .. } = &entry.kind
-            && *status == ToolResultStatus::Pending
-        {
-            return None;
-        }
-
         // If content width changed, clear everything.
         if self.content_width != Some(content_width) {
             self.entries.clear();
@@ -135,7 +127,8 @@ impl EntryLineCache {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
-    use crate::protocol::ChatEntry;
+    use crate::feat::session::tool_result_status::ToolResultStatus;
+    use crate::protocol::{ChatEntry, ChatEntryKind};
 
     #[rstest::rstest]
     fn cache_hit_returns_count() {
@@ -274,16 +267,35 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn cache_miss_on_pending_tool_result() {
+    fn cache_hit_on_pending_tool_result_when_fingerprint_matches() {
         // Given a cache with a pending ToolResult entry.
         let mut cache = EntryLineCache::new();
         let entry = ChatEntry::tool_result("id", "bash", "", ToolResultStatus::Pending);
         cache.insert(&entry, false, 80, 5);
 
-        // When looking up the pending entry.
+        // When looking up the pending entry with unchanged content.
         let result = cache.get(&entry, false, 80);
 
-        // Then the cache returns None (pending entries are never cached).
+        // Then the cached count is returned (pending entries are cacheable).
+        assert_eq!(result, Some(5));
+    }
+
+    #[rstest::rstest]
+    fn cache_miss_on_pending_tool_result_content_change() {
+        // Given a cache with a pending ToolResult entry.
+        let mut cache = EntryLineCache::new();
+        let mut entry =
+            ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Pending);
+        cache.insert(&entry, false, 80, 5);
+
+        // When the entry's content changes (simulating tool output growth).
+        if let ChatEntryKind::ToolResult { ref mut content, .. } = entry.kind {
+            content.push_str(" more");
+        }
+
+        let result = cache.get(&entry, false, 80);
+
+        // Then the cache misses (fingerprint mismatch).
         assert!(result.is_none());
     }
 }
