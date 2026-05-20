@@ -42,8 +42,8 @@ pub struct Theme {
     pub gutter_bg: Color,
     /// User message block background.
     pub user_block_bg: Color,
-    /// Tool call/result text foreground.
-    pub tool_block_fg: Color,
+    /// Tool entry text foreground (tool calls, tool results, skills).
+    pub tool_fg: Color,
     /// Tool result success block background.
     pub tool_success_bg: Color,
     /// Tool result failure block background.
@@ -122,7 +122,7 @@ pub struct ThemeFile {
     #[serde(default)]
     pub user_block_bg: Option<ThemeColor>,
     #[serde(default)]
-    pub tool_block_fg: Option<ThemeColor>,
+    pub tool_fg: Option<ThemeColor>,
     #[serde(default)]
     pub tool_success_bg: Option<ThemeColor>,
     #[serde(default)]
@@ -213,9 +213,9 @@ impl ThemeFile {
             user_block_bg: self
                 .user_block_bg
                 .map_or(fallback.user_block_bg, super::color::ThemeColor::inner),
-            tool_block_fg: self
-                .tool_block_fg
-                .map_or(fallback.tool_block_fg, super::color::ThemeColor::inner),
+            tool_fg: self
+                .tool_fg
+                .map_or(fallback.tool_fg, super::color::ThemeColor::inner),
             tool_success_bg: self
                 .tool_success_bg
                 .map_or(fallback.tool_success_bg, super::color::ThemeColor::inner),
@@ -315,8 +315,8 @@ impl ThemeFile {
             user_block_bg: self
                 .user_block_bg
                 .map_or(Color::Reset, super::color::ThemeColor::inner),
-            tool_block_fg: self
-                .tool_block_fg
+            tool_fg: self
+                .tool_fg
                 .map_or(Color::Reset, super::color::ThemeColor::inner),
             tool_success_bg: self
                 .tool_success_bg
@@ -393,7 +393,7 @@ mod tests {
             streaming: None,
             gutter_bg: None,
             user_block_bg: None,
-            tool_block_fg: None,
+            tool_fg: None,
             tool_success_bg: None,
             tool_failure_bg: None,
             tool_pending_bg: None,
@@ -440,7 +440,7 @@ mod tests {
             streaming: None,
             gutter_bg: None,
             user_block_bg: None,
-            tool_block_fg: None,
+            tool_fg: None,
             tool_success_bg: None,
             tool_failure_bg: None,
             tool_pending_bg: None,
@@ -499,7 +499,7 @@ mod tests {
             streaming: Some(ThemeColor(Color::Cyan)),
             gutter_bg: Some(ThemeColor(Color::Rgb(25, 27, 30))),
             user_block_bg: Some(ThemeColor(Color::Rgb(52, 53, 65))),
-            tool_block_fg: Some(ThemeColor(Color::Rgb(88, 95, 106))),
+            tool_fg: Some(ThemeColor(Color::Rgb(88, 95, 106))),
             tool_success_bg: Some(ThemeColor(Color::Rgb(40, 50, 40))),
             tool_failure_bg: Some(ThemeColor(Color::Rgb(60, 40, 40))),
             tool_pending_bg: Some(ThemeColor(Color::Rgb(45, 45, 50))),

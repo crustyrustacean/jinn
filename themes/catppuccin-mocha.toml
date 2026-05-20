@@ -19,7 +19,7 @@ streaming = "#89dceb"          # Sky
 # Chat log backgrounds
 gutter_bg = [30, 30, 46]       # Base
 user_block_bg = [49, 50, 68]   # Surface0
-tool_block_fg = [147, 153, 178] # Overlay2
+tool_fg = [147, 153, 178] # Overlay2
 tool_success_bg = [36, 50, 36]
 tool_failure_bg = [50, 30, 38]
 truncation_fg = [69, 71, 90]   # Surface1

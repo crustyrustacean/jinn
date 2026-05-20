@@ -25,7 +25,7 @@ use super::shared::{RenderContext, pad_line_to_width};
 /// When expanded, shows the full content.
 pub fn to_lines(name: &str, content: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let bg = ctx.theme.tool_success_bg;
-    let style = Style::default().fg(ctx.theme.tool_block_fg).bg(bg);
+    let style = Style::default().fg(ctx.theme.tool_fg).bg(bg);
 
     let mut lines = Vec::new();
 
