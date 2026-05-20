@@ -3,7 +3,6 @@
 //! Each [`ChatEntry`] records a timestamped message from the user,
 //! the system, or an actor.
 
-use ratatui::text::{Line, Span};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
@@ -72,50 +71,7 @@ impl std::fmt::Display for PinPosition {
     }
 }
 
-/// Structured table data for rendering in the chat log.
-///
-/// Carries styled headers and rows so the renderer can produce
-/// a properly aligned table with per-cell coloring.
-/// This type is not serializable — table entries are ephemeral
-/// and do not survive session persistence.
-#[derive(Debug, Clone)]
-pub struct TableData {
-    /// Column headers (styled).
-    pub headers: Vec<Span<'static>>,
-    /// Data rows, one `Vec<Span>` per row (one span per column).
-    pub rows: Vec<Vec<Span<'static>>>,
-}
 
-impl TableData {
-    /// Returns a plain-text representation of the table for serialization fallback.
-    pub(crate) fn to_plain_text(&self) -> String {
-        let mut lines = Vec::new();
-        let header_text: Vec<&str> = self.headers.iter().map(|s| s.content.as_ref()).collect();
-        lines.push(header_text.join(" | "));
-        for row in &self.rows {
-            let cell_text: Vec<&str> = row.iter().map(|s| s.content.as_ref()).collect();
-            lines.push(cell_text.join(" | "));
-        }
-        lines.join("\n")
-    }
-}
-
-/// Extract plain text from a list of styled `Line`s.
-///
-/// Joins each line's span content with `\n` separators.
-/// Used by `text()`, `content_fingerprint()`, and serialization fallback.
-fn lines_to_plain_text(lines: &[Line<'static>]) -> String {
-    lines
-        .iter()
-        .map(|line| {
-            line.spans
-                .iter()
-                .map(|span| span.content.as_ref())
-                .collect::<String>()
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
 
 /// A single entry in the chat history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,13 +105,6 @@ pub struct ChatEntry {
 }
 
 /// The kind of chat entry.
-///
-/// # Serialization
-///
-/// The `Table` variant is not serializable (it contains ratatui `Span`s).
-/// Custom `Serialize`/`Deserialize` impls handle this: `Table` serializes
-/// as `System` with a plain-text fallback, and is never produced during
-/// deserialization (tables are ephemeral display data).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatEntryKind {
     /// A message typed by the user.
@@ -182,8 +131,6 @@ pub enum ChatEntryKind {
         /// The message text.
         text: String,
     },
-    /// A structured table with styled headers and rows.
-    Table(TableData),
     /// Reasoning/thinking content extracted from the LLM response.
     ///
     /// Displayed in the chat log but excluded from context assembly.
@@ -378,18 +325,6 @@ impl ChatEntry {
         }
     }
 
-    /// Create a new table entry with the current timestamp.
-    #[must_use]
-    pub fn table(data: TableData) -> Self {
-        Self {
-            id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
-            kind: ChatEntryKind::Table(data),
-            pin_position: None,
-            ignored: false,
-        }
-    }
-
     /// Create a new tool call entry with the current timestamp.
     #[must_use]
     pub fn tool_call<S1, S2, S3>(id: S1, name: S2, arguments: S3) -> Self
@@ -534,7 +469,7 @@ impl ChatEntry {
     ///
     /// Only user messages, assistant responses, tool results, and skill loads
     /// can be pinned. Transient entries, system messages, errors, actors, thinking,
-    /// tool calls, tables, and compaction entries are not pinnable.
+    /// tool calls, and compaction entries are not pinnable.
     #[must_use]
     pub fn is_pinnable(&self) -> bool {
         matches!(
@@ -571,7 +506,6 @@ impl ChatEntry {
             ChatEntryKind::Error(..) => "error",
             ChatEntryKind::Assistant(..) => "assistant",
             ChatEntryKind::Actor { .. } => "actor",
-            ChatEntryKind::Table(..) => "table",
             ChatEntryKind::Thinking(..) => "thinking",
             ChatEntryKind::ToolCall { .. } => "tool_call",
             ChatEntryKind::ToolResult { .. } => "tool_result",
@@ -596,7 +530,6 @@ impl ChatEntry {
             | ChatEntryKind::Thinking(t) => t.clone(),
             ChatEntryKind::Transient(s) => s.clone(),
             ChatEntryKind::Actor { text, .. } => text.clone(),
-            ChatEntryKind::Table(data) => data.to_plain_text(),
             ChatEntryKind::ToolCall {
                 name, arguments, ..
             } => {
@@ -629,7 +562,6 @@ impl ChatEntry {
             | ChatEntryKind::Thinking(t) => t.hash(&mut hasher),
             ChatEntryKind::Transient(s) => s.hash(&mut hasher),
             ChatEntryKind::Actor { text, .. } => text.hash(&mut hasher),
-            ChatEntryKind::Table(data) => data.to_plain_text().hash(&mut hasher),
             ChatEntryKind::ToolCall {
                 name, arguments, ..
             } => {
@@ -674,12 +606,6 @@ impl Serialize for ChatEntryKind {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
         match self {
-            // Table serializes as System with a plain-text fallback.
-            ChatEntryKind::Table(data) => {
-                let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("System", &data.to_plain_text())?;
-                map.end()
-            }
             ChatEntryKind::User { display, expanded } => {
                 #[derive(Serialize)]
                 struct UserData {
@@ -1029,12 +955,6 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
         }
 
         deserializer.deserialize_map(ChatEntryKindVisitor)
-    }
-}
-
-impl PartialEq for TableData {
-    fn eq(&self, other: &Self) -> bool {
-        self.to_plain_text() == other.to_plain_text()
     }
 }
 

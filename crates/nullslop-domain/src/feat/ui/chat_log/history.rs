@@ -42,7 +42,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
 use super::{
-    actor, assistant, compaction, error_entry, skill, system, table, thinking, tool_call,
+    actor, assistant, compaction, error_entry, skill, system, thinking, tool_call,
     tool_result, transient, user,
 };
 use viewport::ScrollState;
@@ -454,7 +454,6 @@ fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'static>> 
             truncation,
             ..
         } => tool_result::to_lines(name, content, *status, truncation.as_ref(), ctx),
-        ChatEntryKind::Table(data) => table::to_lines(data, ctx),
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
         ChatEntryKind::Skill { name, content, .. } => skill::to_lines(name, content, ctx),
         ChatEntryKind::Transient(text) => transient::to_lines(text, ctx),
