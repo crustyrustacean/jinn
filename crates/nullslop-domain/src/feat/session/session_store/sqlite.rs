@@ -687,12 +687,12 @@ fn save_blocking(
             .execute(txn)?;
 
         // Insert entries and junction rows.
-        // Info entries are runtime-only UI hints — skip them during persistence.
+        // Transient entries are runtime-only UI hints — skip them during persistence.
         for (ordinal, entry) in session
             .history()
             .iter()
             .enumerate()
-            .filter(|(_, e)| !matches!(e.kind, crate::protocol::ChatEntryKind::Info(_)))
+            .filter(|(_, e)| !matches!(e.kind, crate::protocol::ChatEntryKind::Transient(_)))
         {
             let entry_id_str = entry.id.to_string();
             let timestamp_str = entry.timestamp.to_string();

@@ -51,7 +51,7 @@ pub fn welcome_msg() -> crate::protocol::ChatEntry {
 
     let dim = Style::default().fg(crate::feat::theme::default_theme().muted_text);
 
-    crate::protocol::ChatEntry::info(vec![
+    crate::protocol::ChatEntry::transient(vec![
         Line::from(Span::styled("Welcome to nullslop!", bold)),
         Line::from(""),
         Line::from(vec![
@@ -110,7 +110,7 @@ pub fn no_api_keys_msg() -> crate::protocol::ChatEntry {
         .to_string_lossy()
         .into_owned();
 
-    crate::protocol::ChatEntry::info(vec![
+    crate::protocol::ChatEntry::transient(vec![
         Line::from(Span::styled("No API keys found", bold)),
         Line::from(""),
         Line::from(vec![
@@ -136,12 +136,12 @@ mod welcome_tests {
     use crate::protocol::ChatEntryKind;
 
     #[rstest::rstest]
-    fn welcome_msg_is_info_entry() {
+    fn welcome_msg_is_transient_entry() {
         // When creating the welcome message.
         let entry = welcome_msg();
 
-        // Then it is an Info entry.
-        assert!(matches!(entry.kind, ChatEntryKind::Info(_)));
+        // Then it is a Transient entry.
+        assert!(matches!(entry.kind, ChatEntryKind::Transient(_)));
     }
 
     #[rstest::rstest]
@@ -165,12 +165,12 @@ mod welcome_tests {
     }
 
     #[rstest::rstest]
-    fn no_api_keys_msg_is_info_entry() {
+    fn no_api_keys_msg_is_transient_entry() {
         // When creating the no-api-keys message.
         let entry = no_api_keys_msg();
 
-        // Then it is an Info entry.
-        assert!(matches!(entry.kind, ChatEntryKind::Info(_)));
+        // Then it is a Transient entry.
+        assert!(matches!(entry.kind, ChatEntryKind::Transient(_)));
     }
 
     #[rstest::rstest]

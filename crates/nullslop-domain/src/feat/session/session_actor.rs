@@ -101,67 +101,37 @@ fn strip_ansi(s: &str) -> String {
     out
 }
 
-/// Build an info chat entry for when a setup command produces no output.
+/// Build a system chat entry for when a setup command produces no output.
 ///
-/// Shows a yellow "No path returned" line and a white line with the fallback CWD.
+/// Shows the fallback CWD message.
 fn no_output_info(default_cwd: &std::path::Path) -> ChatEntry {
-    use ratatui::style::{Color, Style};
-    use ratatui::text::{Line, Span};
-
-    ChatEntry::info(vec![
-        Line::from(Span::styled(
-            "No path returned by setup command.",
-            Style::default().fg(Color::Yellow),
-        )),
-        Line::from(Span::styled(
-            format!("Using {} as cwd", default_cwd.display()),
-            Style::default().fg(Color::White),
-        )),
-    ])
+    ChatEntry::system(format!(
+        "No path returned by setup command. Using {} as cwd",
+        default_cwd.display()
+    ))
 }
 
-/// INFO entry shown while a setup command is running.
+/// System entry shown while a setup command is running.
 pub(crate) fn setup_running_msg() -> ChatEntry {
-    use ratatui::style::{Color, Style};
-    use ratatui::text::{Line, Span};
-
-    ChatEntry::info(vec![Line::from(Span::styled(
-        "⚙️ Running setup script...",
-        Style::default().fg(Color::Yellow),
-    ))])
+    ChatEntry::system("⚙️ Running setup script...")
 }
 
-/// INFO entry shown when a setup command completes successfully.
+/// System entry shown when a setup command completes successfully.
 fn setup_complete_msg(cwd: &std::path::Path) -> ChatEntry {
-    use ratatui::style::{Color, Style};
-    use ratatui::text::{Line, Span};
-
-    ChatEntry::info(vec![Line::from(Span::styled(
-        format!("✅ Setup complete — Using {} as cwd", cwd.display()),
-        Style::default().fg(Color::Green),
-    ))])
+    ChatEntry::system(format!(
+        "✅ Setup complete — Using {} as cwd",
+        cwd.display()
+    ))
 }
 
-/// INFO entry shown while a teardown command is running.
+/// System entry shown while a teardown command is running.
 fn teardown_running_msg() -> ChatEntry {
-    use ratatui::style::{Color, Style};
-    use ratatui::text::{Line, Span};
-
-    ChatEntry::info(vec![Line::from(Span::styled(
-        "⚙️ Running teardown script...",
-        Style::default().fg(Color::Yellow),
-    ))])
+    ChatEntry::system("⚙️ Running teardown script...")
 }
 
-/// INFO entry shown when a teardown-only command succeeds (session is kept open).
+/// System entry shown when a teardown-only command succeeds (session is kept open).
 fn teardown_success_msg() -> ChatEntry {
-    use ratatui::style::{Color, Style};
-    use ratatui::text::{Line, Span};
-
-    ChatEntry::info(vec![Line::from(Span::styled(
-        "✅ Teardown completed successfully.",
-        Style::default().fg(Color::Green),
-    ))])
+    ChatEntry::system("✅ Teardown completed successfully.")
 }
 
 /// Format a `LifecycleCommandError` into a clean user-facing message.
@@ -1077,106 +1047,62 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn no_output_info_is_info_entry_with_two_lines() {
+    fn no_output_info_is_system_entry_with_cwd() {
         // Given a default CWD path.
         let cwd = Path::new("/tmp/test-project");
 
         // When building the no-output info entry.
         let entry = no_output_info(cwd);
 
-        // Then it is an Info entry with exactly 2 lines.
-        let ChatEntryKind::Info(lines) = &entry.kind else {
-            panic!("expected Info entry, got {:?}", entry.kind);
+        // Then it is a System entry mentioning the CWD.
+        let ChatEntryKind::System(text) = &entry.kind else {
+            panic!("expected System entry, got {:?}", entry.kind);
         };
-        assert_eq!(lines.len(), 2);
+        assert!(text.contains("No path returned by setup command"));
+        assert!(text.contains("/tmp/test-project"));
     }
 
     #[rstest::rstest]
-    fn no_output_info_first_line_is_yellow() {
-        // Given a default CWD path.
-        let cwd = Path::new("/tmp/test-project");
-
-        // When building the no-output info entry.
-        let entry = no_output_info(cwd);
-
-        // Then the first line has yellow foreground.
-        let ChatEntryKind::Info(lines) = &entry.kind else {
-            panic!("expected Info entry");
-        };
-        let first_span = &lines[0].spans[0];
-        assert_eq!(first_span.content, "No path returned by setup command.");
-        assert_eq!(first_span.style.fg, Some(Color::Yellow));
-    }
-
-    #[rstest::rstest]
-    fn no_output_info_second_line_is_white_with_cwd() {
-        // Given an absolute default CWD path.
-        let cwd = Path::new("/tmp/test-project");
-
-        // When building the no-output info entry.
-        let entry = no_output_info(cwd);
-
-        // Then the second line is white and contains the absolute CWD.
-        let ChatEntryKind::Info(lines) = &entry.kind else {
-            panic!("expected Info entry");
-        };
-        let second_span = &lines[1].spans[0];
-        assert_eq!(second_span.style.fg, Some(Color::White));
-        assert!(second_span.content.contains("/tmp/test-project"));
-        assert!(second_span.content.starts_with("Using "));
-        assert!(second_span.content.ends_with(" as cwd"));
-    }
-
-    #[rstest::rstest]
-    fn setup_running_msg_is_yellow_with_gear_emoji() {
+    fn setup_running_msg_is_system_with_gear_emoji() {
         // When building the setup running message.
         let entry = setup_running_msg();
 
-        // Then it is an Info entry with one line.
-        let ChatEntryKind::Info(lines) = &entry.kind else {
-            panic!("expected Info entry");
+        // Then it is a System entry with gear emoji and running text.
+        let ChatEntryKind::System(text) = &entry.kind else {
+            panic!("expected System entry, got {:?}", entry.kind);
         };
-        assert_eq!(lines.len(), 1);
-        let span = &lines[0].spans[0];
-        assert!(span.content.contains("⚙️"));
-        assert!(span.content.contains("Running setup script"));
-        assert_eq!(span.style.fg, Some(Color::Yellow));
+        assert!(text.contains("⚙️"));
+        assert!(text.contains("Running setup script"));
     }
 
     #[rstest::rstest]
-    fn setup_complete_msg_is_green_with_checkmark_and_cwd() {
+    fn setup_complete_msg_is_system_with_checkmark_and_cwd() {
         // Given a CWD path.
         let cwd = Path::new("/tmp/my-project");
 
         // When building the setup complete message.
         let entry = setup_complete_msg(cwd);
 
-        // Then it is an Info entry with the checkmark and CWD.
-        let ChatEntryKind::Info(lines) = &entry.kind else {
-            panic!("expected Info entry");
+        // Then it is a System entry with checkmark and CWD.
+        let ChatEntryKind::System(text) = &entry.kind else {
+            panic!("expected System entry, got {:?}", entry.kind);
         };
-        assert_eq!(lines.len(), 1);
-        let span = &lines[0].spans[0];
-        assert!(span.content.contains("✅"));
-        assert!(span.content.contains("Setup complete"));
-        assert!(span.content.contains("Using /tmp/my-project as cwd"));
-        assert_eq!(span.style.fg, Some(Color::Green));
+        assert!(text.contains("✅"));
+        assert!(text.contains("Setup complete"));
+        assert!(text.contains("/tmp/my-project"));
     }
 
     #[rstest::rstest]
-    fn teardown_running_msg_is_yellow_with_gear_emoji() {
+    fn teardown_running_msg_is_system_with_gear_emoji() {
         // When building the teardown running message.
         let entry = teardown_running_msg();
 
-        // Then it is an Info entry with one line.
-        let ChatEntryKind::Info(lines) = &entry.kind else {
-            panic!("expected Info entry");
+        // Then it is a System entry with gear emoji and running text.
+        let ChatEntryKind::System(text) = &entry.kind else {
+            panic!("expected System entry, got {:?}", entry.kind);
         };
-        assert_eq!(lines.len(), 1);
-        let span = &lines[0].spans[0];
-        assert!(span.content.contains("⚙️"));
-        assert!(span.content.contains("Running teardown script"));
-        assert_eq!(span.style.fg, Some(Color::Yellow));
+        assert!(text.contains("⚙️"));
+        assert!(text.contains("Running teardown script"));
     }
 
     // --- StreamCompleted(Error) handler tests ---
@@ -1844,10 +1770,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn teardown_only_success_pushes_info_entry() {
+    async fn teardown_only_success_emits_push_chat_entry() {
         // Given a session actor with a session.
         let actor = test_actor();
-        let (_sink, ctx) = test_context();
+        let (sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
             state.session.active_session_id().clone()
@@ -1866,11 +1792,19 @@ mod tests {
             )
             .await;
 
-        // Then the session has an info entry about success.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        let last = session.history().last().expect("has an entry");
-        assert!(matches!(&last.kind, ChatEntryKind::Info(..)));
+        // Then a PushChatEntry command with a System entry was emitted.
+        let commands = sink.commands();
+        let has_success = commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                Command::PushChatEntry(PushChatEntry { entry, .. })
+                if matches!(&entry.kind, ChatEntryKind::System(t) if t.contains("Teardown"))
+            )
+        });
+        assert!(
+            has_success,
+            "expected PushChatEntry with teardown success entry"
+        );
     }
 
     // --- Compaction handler tests ---

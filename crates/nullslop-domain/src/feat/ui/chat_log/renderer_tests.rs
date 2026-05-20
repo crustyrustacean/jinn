@@ -920,13 +920,13 @@ fn streaming_content_change_invalidates_cache() {
 }
 
 #[rstest::rstest]
-fn render_info_entry_has_muted_text_color() {
-    // Given a ChatLogElement with an info entry.
+fn render_transient_entry_has_muted_text_color() {
+    // Given a ChatLogElement with a transient entry.
     let mut element = ChatLogElement::new();
     let state = {
         let mut s = AppState::default();
         s.active_session_mut()
-            .push_entry(ChatEntry::info(vec![ratatui::text::Line::from(
+            .push_entry(ChatEntry::transient(vec![ratatui::text::Line::from(
                 "Welcome to nullslop!",
             )]));
         s
@@ -941,13 +941,13 @@ fn render_info_entry_has_muted_text_color() {
         })
         .unwrap();
 
-    // Then the info text appears with muted text color.
+    // Then the transient text appears with muted text color.
     let buffer = terminal.backend().buffer().clone();
-    let info_cell = buffer.cell((G, 8)).expect("cell should exist");
-    assert_eq!(info_cell.symbol(), "W");
+    let transient_cell = buffer.cell((G, 8)).expect("cell should exist");
+    assert_eq!(transient_cell.symbol(), "W");
     assert_eq!(
-        info_cell.fg,
+        transient_cell.fg,
         Color::Reset,
-        "info entry should use default text color (no explicit styling)"
+        "transient entry should use default text color (no explicit styling)"
     );
 }

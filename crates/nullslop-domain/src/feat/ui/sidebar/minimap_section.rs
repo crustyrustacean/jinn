@@ -35,7 +35,7 @@ enum MinimapCategory {
     Compaction,
     /// Error messages — red.
     Error,
-    /// System and info messages — yellow.
+    /// System and transient messages — yellow.
     System,
     /// Skill entries — orange.
     Skill,
@@ -63,7 +63,7 @@ impl MinimapCategory {
             ChatEntryKind::Assistant(..) => Some(Self::Assistant),
             ChatEntryKind::Compaction { .. } => Some(Self::Compaction),
             ChatEntryKind::Error(..) => Some(Self::Error),
-            ChatEntryKind::System(..) | ChatEntryKind::Info(..) => Some(Self::System),
+            ChatEntryKind::System(..) | ChatEntryKind::Transient(..) => Some(Self::System),
             ChatEntryKind::Skill { .. } => Some(Self::Skill),
             // Excluded: Actor, Thinking, Table.
             ChatEntryKind::Actor { .. }

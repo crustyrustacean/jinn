@@ -93,11 +93,11 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             }
             // Table and Error entries are ephemeral display / local status — not sent to the LLM.
             // Thinking entries are display-only — excluded from context assembly.
-            // Info entries are UI-only — excluded from prompt assembly.
+            // Transient entries are UI-only — excluded from prompt assembly.
             ChatEntryKind::Table(_)
             | ChatEntryKind::Error(_)
             | ChatEntryKind::Thinking(_)
-            | ChatEntryKind::Info(_) => {}
+            | ChatEntryKind::Transient(_) => {}
             // Compaction entries produce a User message wrapping the summary.
             // The summary replaces all ignored entries before this point.
             ChatEntryKind::Compaction { summary, .. } => {

@@ -37,7 +37,7 @@ fn grapheme_safe_end(text: &str, max_bytes: usize) -> usize {
 /// - `[Tool call]: name(arguments)`
 /// - `[Tool result]: <content>` (truncated to ~2000 bytes)
 ///
-/// System, Error, Thinking, Info, Table, Skill, and Compaction entries
+/// System, Error, Thinking, Transient, Table, Skill, and Compaction entries
 /// are skipped — they are not relevant to the summarization prompt.
 pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
     let mut lines = Vec::new();
@@ -79,7 +79,7 @@ pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
             ChatEntryKind::System(_)
             | ChatEntryKind::Error(_)
             | ChatEntryKind::Thinking(_)
-            | ChatEntryKind::Info(_)
+            | ChatEntryKind::Transient(_)
             | ChatEntryKind::Table(_)
             | ChatEntryKind::Skill { .. }
             | ChatEntryKind::Compaction { .. } => {}

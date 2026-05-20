@@ -227,15 +227,15 @@ pub enum ChatEntryKind {
         /// The full skill content (body of SKILL.md with frontmatter stripped).
         content: String,
     },
-    /// An informational message (UI-only, not sent to the LLM).
+    /// A transient UI-only message (not sent to the LLM).
     ///
-    /// Used for welcome messages and other user-facing hints.
+    /// Used for welcome messages and other ephemeral user-facing hints.
     /// Excluded from prompt assembly, token estimation, LLM context,
     /// and session persistence. Cannot be pinned.
     ///
     /// Contains pre-built styled lines for rich formatting.
     /// Falls back to plain text during serialization.
-    Info(Vec<Line<'static>>),
+    Transient(Vec<Line<'static>>),
     /// A compaction summary entry created by the compaction actor.
     ///
     /// Contains a structured summary of previous conversation history
@@ -486,19 +486,19 @@ impl ChatEntry {
         }
     }
 
-    /// Create a new info chat entry with the current timestamp.
+    /// Create a new transient chat entry with the current timestamp.
     ///
-    /// Info entries are UI-only — they are excluded from prompt assembly,
+    /// Transient entries are UI-only — they are excluded from prompt assembly,
     /// token estimation, and LLM context. They cannot be pinned and
     /// are not persisted.
     ///
     /// Accepts pre-built styled lines for rich formatting.
     #[must_use]
-    pub fn info(lines: Vec<Line<'static>>) -> Self {
+    pub fn transient(lines: Vec<Line<'static>>) -> Self {
         Self {
             id: ChatEntryId::new(),
             timestamp: jiff::Timestamp::now(),
-            kind: ChatEntryKind::Info(lines),
+            kind: ChatEntryKind::Transient(lines),
             pin_position: None,
             ignored: false,
         }
@@ -530,7 +530,7 @@ impl ChatEntry {
     /// Whether this entry kind can be pinned to the context.
     ///
     /// Only user messages, assistant responses, tool results, and skill loads
-    /// can be pinned. Info entries, system messages, errors, actors, thinking,
+    /// can be pinned. Transient entries, system messages, errors, actors, thinking,
     /// tool calls, tables, and compaction entries are not pinnable.
     #[must_use]
     pub fn is_pinnable(&self) -> bool {
@@ -573,7 +573,7 @@ impl ChatEntry {
             ChatEntryKind::ToolCall { .. } => "tool_call",
             ChatEntryKind::ToolResult { .. } => "tool_result",
             ChatEntryKind::Skill { .. } => "skill",
-            ChatEntryKind::Info(..) => "info",
+            ChatEntryKind::Transient(..) => "transient",
             ChatEntryKind::Compaction { .. } => "compaction",
         }
     }
@@ -591,7 +591,7 @@ impl ChatEntry {
             | ChatEntryKind::Error(t)
             | ChatEntryKind::Assistant(t)
             | ChatEntryKind::Thinking(t) => t.clone(),
-            ChatEntryKind::Info(lines) => lines_to_plain_text(lines),
+            ChatEntryKind::Transient(lines) => lines_to_plain_text(lines),
             ChatEntryKind::Actor { text, .. } => text.clone(),
             ChatEntryKind::Table(data) => data.to_plain_text(),
             ChatEntryKind::ToolCall {
@@ -624,7 +624,7 @@ impl ChatEntry {
             | ChatEntryKind::Error(t)
             | ChatEntryKind::Assistant(t)
             | ChatEntryKind::Thinking(t) => t.hash(&mut hasher),
-            ChatEntryKind::Info(lines) => lines_to_plain_text(lines).hash(&mut hasher),
+            ChatEntryKind::Transient(lines) => lines_to_plain_text(lines).hash(&mut hasher),
             ChatEntryKind::Actor { text, .. } => text.hash(&mut hasher),
             ChatEntryKind::Table(data) => data.to_plain_text().hash(&mut hasher),
             ChatEntryKind::ToolCall {
@@ -806,9 +806,9 @@ impl Serialize for ChatEntryKind {
                 map.serialize_entry("Thinking", t)?;
                 map.end()
             }
-            ChatEntryKind::Info(lines) => {
+            ChatEntryKind::Transient(lines) => {
                 let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("Info", &lines_to_plain_text(lines))?;
+                map.serialize_entry("Transient", &lines_to_plain_text(lines))?;
                 map.end()
             }
             ChatEntryKind::Compaction {
@@ -982,8 +982,8 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         let text: String = map.next_value()?;
                         Ok(ChatEntryKind::Thinking(text))
                     }
-                    "Info" => {
-                        // Info entries are not persisted. If we encounter one in
+                    "Info" | "Transient" => {
+                        // Transient entries are not persisted. If we encounter one in
                         // deserialized data (e.g. from an older version), treat
                         // it as System so we don't lose the text.
                         let text: String = map.next_value()?;
@@ -1017,7 +1017,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             "ToolResult",
                             "Thinking",
                             "Skill",
-                            "Info",
+                            "Transient",
                             "Compaction",
                         ],
                     )),
