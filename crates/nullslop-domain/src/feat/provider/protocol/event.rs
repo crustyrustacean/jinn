@@ -85,6 +85,18 @@ pub struct ModelsRefreshed {
     pub errors: std::collections::HashMap<String, String>,
 }
 
+/// Model cache loaded from disk at startup.
+///
+/// Emitted by `ProviderInitActor` after loading the cache from disk.
+/// `ProviderActor` handles this by writing the cache into AppState and
+/// reloading picker entries.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("provider")]
+pub struct ModelCacheLoaded {
+    /// The loaded model cache.
+    pub cache: crate::feat::provider_infra::ModelCache,
+}
+
 /// Prompt templates loaded after a rescan.
 ///
 /// Emitted by the prompt scan actor after scanning the prompts directory.
