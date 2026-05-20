@@ -6,7 +6,6 @@
 
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
-use crate::feat::session::chat_session::SessionState;
 use crate::feat::theme::Theme;
 use crate::protocol::SessionEntry;
 
