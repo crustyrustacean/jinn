@@ -1,6 +1,13 @@
-//! Tool result entry rendering — light gray text on dark green/red background block.
+//! Tool result entry rendering.
 //!
-//! Format:
+//! **Collapsed** (default): shows the tool name and last N lines of output,
+//! with each line truncated to content width. No word wrapping, no block
+//! background padding — minimal escape sequences for streaming output.
+//!
+//! **Expanded:** shows the full content with word wrapping and block-style
+//! background padding (dark green for success, dark red for failure).
+//!
+//! Collapsed format:
 //! ```text
 //! <name>
 //! ---(N lines hidden above)---
@@ -14,10 +21,86 @@ use crate::feat::tools_actor::truncation::format_size;
 use nullslop_provider::tool_types::TruncationMeta;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+use unicode_segmentation::UnicodeSegmentation;
 
 use super::shared::{Pad, RenderContext, pad_entry_with, pad_line_to_width};
 
 pub fn to_lines(
+    name: &str,
+    content: &str,
+    status: ToolResultStatus,
+    truncation: Option<&TruncationMeta>,
+    ctx: &RenderContext,
+) -> Vec<Line<'static>> {
+    if ctx.is_expanded {
+        to_lines_expanded(name, content, status, truncation, ctx)
+    } else {
+        to_lines_collapsed(name, content, status, truncation, ctx)
+    }
+}
+
+/// Collapsed view: last N lines, truncated to content width, no block padding.
+fn to_lines_collapsed(
+    name: &str,
+    content: &str,
+    status: ToolResultStatus,
+    truncation: Option<&TruncationMeta>,
+    ctx: &RenderContext,
+) -> Vec<Line<'static>> {
+    let fg = status_foreground(status, &ctx.theme);
+    let style = Style::default().fg(fg);
+
+    let mut lines = Vec::new();
+    lines.push(Line::from(Span::styled(
+        truncate_to_width(name, ctx.content_width as usize),
+        style,
+    )));
+
+    // Content lines.
+    let text = super::shared::unescape_newlines(content);
+    let text = text.trim_start_matches('\n');
+    let all_lines: Vec<&str> = text.split('\n').collect();
+
+    let max = ctx.tool_entry_max_lines as usize;
+    if all_lines.len() <= max {
+        // Short content — show all lines.
+        for line_text in &all_lines {
+            lines.push(Line::from(Span::styled(
+                truncate_to_width(line_text, ctx.content_width as usize),
+                style,
+            )));
+        }
+    } else {
+        // Long content — show truncation indicator + last N lines.
+        let remaining = all_lines.len() - max;
+        let indicator = truncate_to_width(
+            &format!("---({remaining} lines hidden above)---"),
+            ctx.content_width as usize,
+        );
+        lines.push(Line::from(Span::styled(indicator, style)));
+        for line_text in &all_lines[remaining..] {
+            lines.push(Line::from(Span::styled(
+                truncate_to_width(line_text, ctx.content_width as usize),
+                style,
+            )));
+        }
+    }
+
+    // Content-level truncation indicator.
+    if let Some(meta) = truncation {
+        let label = format_content_truncation_label(meta);
+        let indicator_style = Style::default().fg(ctx.theme.focus_accent);
+        lines.push(Line::from(Span::styled(
+            truncate_to_width(&label, ctx.content_width as usize),
+            indicator_style,
+        )));
+    }
+
+    lines
+}
+
+/// Expanded view: full content, word wrapping, block-style background padding.
+fn to_lines_expanded(
     name: &str,
     content: &str,
     status: ToolResultStatus,
@@ -36,29 +119,11 @@ pub fn to_lines(
     let text = text.trim_start_matches('\n');
     let all_lines: Vec<&str> = text.split('\n').collect();
 
-    let show_all = ctx.is_expanded
-        || u16::try_from(all_lines.len()).unwrap_or(u16::MAX) <= ctx.tool_entry_max_lines;
-
-    if show_all {
-        for line_text in &all_lines {
-            lines.push(Line::from(Span::styled((*line_text).to_owned(), style)));
-        }
-    } else {
-        let max = ctx.tool_entry_max_lines as usize;
-        let remaining = all_lines.len() - max;
-        // Truncation indicator line (shown above the tail content).
-        let truncation_style = Style::default().fg(ctx.theme.truncation_fg).bg(bg);
-        lines.push(Line::from(Span::styled(
-            format!("---({remaining} lines hidden above)---"),
-            truncation_style,
-        )));
-        for line_text in &all_lines[remaining..] {
-            lines.push(Line::from(Span::styled((*line_text).to_owned(), style)));
-        }
+    for line_text in &all_lines {
+        lines.push(Line::from(Span::styled((*line_text).to_owned(), style)));
     }
 
-    // Content-level truncation indicator (output was truncated by the tools actor).
-    // Shown even when expanded — the full content is still truncated.
+    // Content-level truncation indicator.
     if let Some(meta) = truncation {
         let indicator_style = Style::default().fg(ctx.theme.focus_accent).bg(bg);
         let label = format_content_truncation_label(meta);
@@ -72,7 +137,10 @@ pub fn to_lines(
 
     // Add padding above and below with the entry's background.
     let pad_bg = Style::default().bg(bg);
-    let pad_line = Line::from(Span::styled(" ".repeat(ctx.content_width as usize), pad_bg));
+    let pad_line = Line::from(Span::styled(
+        " ".repeat(ctx.content_width as usize),
+        pad_bg,
+    ));
     pad_entry_with(&mut lines, Pad::Both, pad_line);
     lines
 }
@@ -83,6 +151,33 @@ fn status_background(status: ToolResultStatus, theme: &Theme) -> ratatui::style:
         ToolResultStatus::Pending => theme.tool_pending_bg,
         ToolResultStatus::Success => theme.tool_success_bg,
         ToolResultStatus::Failure => theme.tool_failure_bg,
+    }
+}
+
+/// Select the foreground color based on tool result status.
+///
+/// Collapsed view uses foreground only (no block background).
+fn status_foreground(status: ToolResultStatus, theme: &Theme) -> ratatui::style::Color {
+    match status {
+        ToolResultStatus::Pending => theme.tool_pending_bg,
+        ToolResultStatus::Success => theme.tool_success_bg,
+        ToolResultStatus::Failure => theme.tool_failure_bg,
+    }
+}
+
+/// Truncate a string to `max_width` graphemes.
+///
+/// Returns the string unchanged if it fits.
+/// Returns an empty string if `max_width` is 0.
+fn truncate_to_width(s: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    let graphemes: Vec<&str> = s.graphemes(true).collect();
+    if graphemes.len() <= max_width {
+        s.to_owned()
+    } else {
+        graphemes[..max_width].iter().copied().collect()
     }
 }
 
@@ -198,18 +293,18 @@ mod tests {
         // When converting to lines.
         let lines = to_lines("bash", "output", ToolResultStatus::Success, None, &ctx);
 
-        // Then line 1 (after padding) contains "bash".
-        let name_content: String = lines[1].spans.iter().map(|s| s.content.clone()).collect();
+        // Then line 0 contains "bash".
+        let name_content: String = lines[0].spans.iter().map(|s| s.content.clone()).collect();
         assert!(
             name_content.starts_with("bash"),
-            "second line should start with tool name"
+            "first line should start with tool name"
         );
 
-        // And line 2 (after padding) contains "output".
-        let content_line: String = lines[2].spans.iter().map(|s| s.content.clone()).collect();
+        // And line 1 contains "output".
+        let content_line: String = lines[1].spans.iter().map(|s| s.content.clone()).collect();
         assert!(
             content_line.starts_with("output"),
-            "third line should start with content"
+            "second line should start with content"
         );
     }
 
@@ -230,8 +325,8 @@ mod tests {
         // Then the result has multiple lines (name + 3 content lines = 4).
         assert_eq!(
             lines.len(),
-            6,
-            "tool result with literal \\n should produce 6 lines (pad + name + 3 content + pad), got {}",
+            4,
+            "tool result with literal \\n should produce 4 lines (name + 3 content), got {}",
             lines.len()
         );
 
@@ -246,7 +341,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn pending_tool_result_uses_pending_background() {
+    fn pending_tool_result_uses_pending_foreground() {
         // Given a pending tool result.
         let ctx = render_context(5, false);
         let theme = crate::feat::theme::default_theme();
@@ -254,21 +349,21 @@ mod tests {
         // When converting to lines.
         let lines = to_lines("bash", "", ToolResultStatus::Pending, None, &ctx);
 
-        // Then the lines use the pending background color.
+        // Then the lines use the pending foreground color.
         assert!(
             !lines.is_empty(),
             "pending tool result should produce lines"
         );
         for line in &lines {
-            let has_pending_bg = line
+            let has_pending_fg = line
                 .spans
                 .iter()
-                .any(|s| matches!(s.style.bg, Some(color) if color == theme.tool_pending_bg));
-            if has_pending_bg {
+                .any(|s| matches!(s.style.fg, Some(color) if color == theme.tool_pending_bg));
+            if has_pending_fg {
                 return;
             }
         }
-        panic!("no line uses the pending background color");
+        panic!("no line uses the pending foreground color");
     }
 
     fn sample_truncation_meta() -> TruncationMeta {
@@ -478,5 +573,77 @@ mod tests {
             !has_indicator,
             "non-truncated tool result should not show content truncation indicator"
         );
+    }
+
+    #[rstest::rstest]
+    fn collapsed_long_line_truncated_to_content_width() {
+        // Given a tool result with a line longer than content_width.
+        let ctx = render_context(5, false);
+        let long_line = "a".repeat(100);
+
+        // When converting to lines.
+        let lines = to_lines("bash", &long_line, ToolResultStatus::Success, None, &ctx);
+
+        // Then the content line is truncated to content_width (80 graphemes).
+        let content_line: String = lines[1].spans.iter().map(|s| s.content.clone()).collect();
+        assert_eq!(
+            content_line.len(),
+            80,
+            "content line should be truncated to 80 chars, got {}",
+            content_line.len()
+        );
+    }
+
+    #[rstest::rstest]
+    fn collapsed_no_block_padding() {
+        // Given a tool result, not expanded.
+        let ctx = render_context(5, false);
+
+        // When converting to lines.
+        let lines = to_lines("bash", "output", ToolResultStatus::Success, None, &ctx);
+
+        // Then there are no padding lines (just name + content = 2 lines).
+        assert_eq!(
+            lines.len(),
+            2,
+            "collapsed tool result should have 2 lines (name + content), got {}",
+            lines.len()
+        );
+
+        // And no line has a background color set.
+        for line in &lines {
+            for span in &line.spans {
+                assert!(
+                    span.style.bg.is_none(),
+                    "collapsed line should not have block background, got: {:?}",
+                    span.style.bg
+                );
+            }
+        }
+    }
+
+    #[rstest::rstest]
+    fn expanded_retains_block_padding() {
+        // Given a tool result, expanded.
+        let ctx = render_context(5, true);
+
+        // When converting to lines.
+        let lines = to_lines("bash", "output", ToolResultStatus::Success, None, &ctx);
+
+        // Then there are padding lines (pad + name + content + pad = 4 lines).
+        assert_eq!(
+            lines.len(),
+            4,
+            "expanded tool result should have 4 lines (pad + name + content + pad), got {}",
+            lines.len()
+        );
+
+        // And lines have background color.
+        let has_bg = lines.iter().any(|line| {
+            line.spans
+                .iter()
+                .any(|s| s.style.bg.is_some())
+        });
+        assert!(has_bg, "expanded tool result should have block background");
     }
 }
