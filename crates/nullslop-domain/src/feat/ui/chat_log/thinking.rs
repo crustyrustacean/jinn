@@ -23,6 +23,7 @@ mod tests {
             is_expanded: false,
             tool_entry_max_lines: 5,
             theme: crate::feat::theme::default_theme(),
+            paired_status: None,
         }
     }
 
