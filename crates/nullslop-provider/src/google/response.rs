@@ -26,7 +26,7 @@ impl GeminiStreamParser {
     }
 
     /// Parse a single SSE data payload into zero or more `StreamEvent`s.
-    #[allow(clippy::manual_let_else, clippy::collapsible_if)]
+    #[allow(clippy::manual_let_else)]
     pub fn parse_data(&mut self, json: &str) -> Vec<StreamEvent> {
         let mut results = Vec::new();
 
@@ -63,33 +63,8 @@ impl GeminiStreamParser {
             }
 
             // Function call.
-            if let Some(fc) = part.get("functionCall") {
-                let name = fc
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("")
-                    .to_owned();
-                let args = fc.get("args").cloned().unwrap_or(serde_json::Value::Null);
-                let arguments = serde_json::to_string(&args).unwrap_or_default();
-                let id = format!("call_{name}");
-
-                results.push(StreamEvent::ToolUseStart {
-                    index,
-                    id: id.clone(),
-                    name: name.clone(),
-                });
-                results.push(StreamEvent::ToolUseInputDelta {
-                    index,
-                    partial_json: arguments.clone(),
-                });
-                results.push(StreamEvent::ToolUseComplete {
-                    index,
-                    tool_call: ToolCall {
-                        id,
-                        name,
-                        arguments,
-                    },
-                });
+            if let Some(events) = self.handle_function_call(index, part) {
+                results.extend(events);
             }
         }
 
@@ -120,6 +95,42 @@ impl GeminiStreamParser {
         }
 
         results
+    }
+
+    fn handle_function_call(
+        &self,
+        index: usize,
+        part: &serde_json::Value,
+    ) -> Option<Vec<StreamEvent>> {
+        let fc = part.get("functionCall")?;
+        let name = fc
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("")
+            .to_owned();
+        let args = fc.get("args").cloned().unwrap_or(serde_json::Value::Null);
+        let arguments = serde_json::to_string(&args).unwrap_or_default();
+        let id = format!("call_{name}");
+
+        Some(vec![
+            StreamEvent::ToolUseStart {
+                index,
+                id: id.clone(),
+                name: name.clone(),
+            },
+            StreamEvent::ToolUseInputDelta {
+                index,
+                partial_json: arguments.clone(),
+            },
+            StreamEvent::ToolUseComplete {
+                index,
+                tool_call: ToolCall {
+                    id,
+                    name,
+                    arguments,
+                },
+            },
+        ])
     }
 
     /// Handle the `[DONE]` sentinel — emits Done if not already emitted.
