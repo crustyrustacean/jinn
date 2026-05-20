@@ -26,7 +26,7 @@ use nullslop_provider::tool_types::TruncationMeta;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, truncate_to_width};
+use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
 
 pub fn to_lines(
     _name: &str,
@@ -92,6 +92,9 @@ fn to_lines_collapsed(
         )));
     }
 
+    // Pad all lines to full content width so background spans the entire row.
+    pad_lines(&mut lines, ctx);
+
     lines
 }
 
@@ -120,6 +123,9 @@ fn to_lines_expanded(
         lines.push(Line::from(Span::styled(label, indicator_style)));
     }
 
+    // Pad all lines to full content width so background spans the entire row.
+    pad_lines(&mut lines, ctx);
+
     lines
 }
 
@@ -145,6 +151,27 @@ fn content_truncation_style(ctx: &RenderContext) -> Style {
         Some(ToolResultStatus::Success) => Style::default().fg(fg).bg(ctx.theme.tool_success_bg),
         Some(ToolResultStatus::Failure) => Style::default().fg(fg).bg(ctx.theme.tool_failure_bg),
         Some(ToolResultStatus::Pending) | None => Style::default().fg(fg),
+    }
+}
+
+/// Get the status background color, if any.
+fn status_bg(ctx: &RenderContext) -> Option<ratatui::style::Color> {
+    match ctx.paired_status {
+        Some(ToolResultStatus::Success) => Some(ctx.theme.tool_success_bg),
+        Some(ToolResultStatus::Failure) => Some(ctx.theme.tool_failure_bg),
+        Some(ToolResultStatus::Pending) | None => None,
+    }
+}
+
+/// Pad all lines to full content width so the background spans the entire row.
+///
+/// Only pads when there is a status background. Pending/unpaired entries are left as-is.
+fn pad_lines(lines: &mut [Line<'static>], ctx: &RenderContext) {
+    if let Some(bg) = status_bg(ctx) {
+        let bg_style = Style::default().bg(bg);
+        for line in lines.iter_mut() {
+            pad_line_to_width(line, ctx.content_width, bg_style);
+        }
     }
 }
 

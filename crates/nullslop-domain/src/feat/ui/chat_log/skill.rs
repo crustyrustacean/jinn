@@ -17,7 +17,7 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, truncate_to_width};
+use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
 
 /// Renders a skill entry as a collapsible block.
 ///
@@ -52,6 +52,12 @@ pub fn to_lines(name: &str, content: &str, ctx: &RenderContext) -> Vec<Line<'sta
             format!("---({remaining} more lines)---"),
             truncation_style,
         )));
+    }
+
+    // Pad all lines to full content width so background spans the entire row.
+    let bg_style = Style::default().bg(ctx.theme.tool_success_bg);
+    for line in &mut lines {
+        pad_line_to_width(line, ctx.content_width, bg_style);
     }
 
     lines
