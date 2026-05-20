@@ -125,9 +125,7 @@ impl SidebarSection for SessionsSection {
                 .saturating_sub(visible_count);
 
             if lines_above > 0 || lines_below > 0 {
-                let indicator_style = Style::default()
-                    .fg(Color::Black)
-                    .bg(theme.age_fresh);
+                let indicator_style = Style::default().fg(Color::Black).bg(theme.age_fresh);
 
                 if lines_above > 0 {
                     render_scroll_tag(frame, area, "\u{2191}", area.y + 2, indicator_style);
