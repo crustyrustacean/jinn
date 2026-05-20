@@ -81,10 +81,15 @@ impl ProviderInitActor {
         // Check if no API keys were resolved. If so, push a guidance message.
         if self.services.api_keys.is_empty() {
             tracing::warn!("no API keys found, showing guidance message");
-            self.state
-                .write()
-                .active_session_mut()
-                .push_entry(crate::feat::session::no_api_keys_msg());
+            let session_id = self.state.read().session.active_session_id().clone();
+            if let Err(e) = ctx.send_command(crate::protocol::Command::PushChatEntry(
+                crate::feat::chat_input::protocol::command::PushChatEntry {
+                    session_id,
+                    entry: crate::feat::session::no_api_keys_msg(),
+                },
+            )) {
+                tracing::warn!(err = ?e, "provider-init failed to emit PushChatEntry for no-api-keys message");
+            }
         }
 
         // Load model cache from disk and merge into registry.
@@ -287,7 +292,7 @@ mod tests {
     #[tokio::test]
     async fn pushes_no_api_keys_msg_when_keys_empty() {
         // Given a provider init actor with no API keys.
-        let (mut actor, _services, _sink, ctx, state) = create_actor_with_state();
+        let (mut actor, _services, sink, ctx, _state) = create_actor_with_state();
 
         let config = crate::feat::provider_infra::ProvidersConfig {
             providers: vec![ProviderEntry {
@@ -312,17 +317,19 @@ mod tests {
             )
             .await;
 
-        // Then the active session has a no-api-keys info entry.
-        let s = state.read();
-        let text = s
-            .active_session()
-            .history()
-            .last()
-            .expect("at least one entry")
-            .text();
+        // Then a PushChatEntry command was emitted with the no-api-keys guidance.
+        let commands = sink.commands();
+        let has_no_api_keys = commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                crate::protocol::Command::PushChatEntry(
+                    crate::feat::chat_input::protocol::command::PushChatEntry { entry, .. }
+                ) if entry.text().contains("No API keys found")
+            )
+        });
         assert!(
-            text.contains("No API keys found"),
-            "should contain no-api-keys guidance, got: {text}"
+            has_no_api_keys,
+            "expected PushChatEntry command with no-api-keys guidance"
         );
     }
 }

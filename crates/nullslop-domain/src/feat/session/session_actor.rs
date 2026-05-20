@@ -29,6 +29,7 @@ use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
+use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::protocol::command::SwitchPromptStrategy;
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -274,6 +275,31 @@ impl Actor for SessionPersistenceActor {
 }
 
 impl SessionPersistenceActor {
+    /// Push a chat entry directly and save.
+    ///
+    /// For use when the push must happen before an `.await` (e.g., teardown
+    /// "running" message). Otherwise, prefer emitting a `PushChatEntry` command
+    /// which routes through `handle_push_chat_entry` and persists automatically.
+    async fn push_and_save(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        entry: ChatEntry,
+        ctx: &ActorContext,
+    ) {
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(session_id);
+            session.push_entry(entry.clone());
+        }
+        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+            session_id: session_id.clone(),
+            entry,
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
+        }
+        self.save_active_session(session_id).await;
+    }
+
     /// Dispatches a bus event to the appropriate handler.
     async fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
@@ -296,7 +322,7 @@ impl SessionPersistenceActor {
                 self.on_tool_execution_output(payload);
             }
             Event::ModelsRefreshed(payload) => {
-                self.on_models_refreshed(payload);
+                self.on_models_refreshed(payload, ctx);
             }
             Event::EnvironmentLoaded(payload) => {
                 self.on_environment_loaded(&payload.config, ctx).await;
@@ -322,7 +348,9 @@ impl SessionPersistenceActor {
                 self.handle_enqueue_user_message(payload, ctx).await;
             }
             Command::SetChatInputText(payload) => self.handle_set_chat_input_text(payload),
-            Command::PushChatEntry(payload) => self.handle_push_chat_entry(payload, ctx),
+            Command::PushChatEntry(payload) => {
+                self.handle_push_chat_entry(payload, ctx).await;
+            }
             Command::SendMessage(payload) => Self::handle_send_message(payload, ctx),
             Command::SessionLoadCompleted(payload) => {
                 self.handle_session_load_completed(payload, ctx).await;
@@ -343,7 +371,7 @@ impl SessionPersistenceActor {
                 self.handle_save_new_lifecycle_session(payload).await;
             }
             Command::BeginCompaction(payload) => {
-                self.handle_begin_compaction(payload);
+                self.handle_begin_compaction(payload).await;
             }
             Command::EndCompaction(payload) => {
                 self.handle_end_compaction(payload, ctx).await;
@@ -1843,12 +1871,14 @@ mod tests {
         };
 
         // When handling BeginCompaction.
-        actor.handle_begin_compaction(
-            &crate::feat::compaction_actor::protocol::command::BeginCompaction {
-                session_id: session_id.clone(),
-                gathered_indices: vec![0, 1],
-            },
-        );
+        actor
+            .handle_begin_compaction(
+                &crate::feat::compaction_actor::protocol::command::BeginCompaction {
+                    session_id: session_id.clone(),
+                    gathered_indices: vec![0, 1],
+                },
+            )
+            .await;
 
         // Then the session is in Compacting phase.
         let state = actor.state.read();
