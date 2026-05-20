@@ -24,7 +24,7 @@ use tokio::task::spawn_blocking;
 use crate::common::app_info::APP_NAME;
 use crate::feat::session::SessionUi;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
-use crate::feat::session::chat_session::{ChatSessionState, LifecycleScriptState, SessionCore, SessionCoreEphemeral, SessionState};
+use crate::feat::session::chat_session::{ChatSessionState, SessionCore, SessionCoreEphemeral, SessionState};
 use crate::feat::session::session_summary::SessionSummary;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntryId, SessionId};
@@ -295,6 +295,7 @@ struct SessionRow {
     lifecycle_name: Option<String>,
     lifecycle_args: String,
     archived: bool,
+    lifecycle_script_state: String,
 }
 
 /// Insert model for the `sessions` table.
@@ -313,6 +314,7 @@ struct NewSessionRow {
     lifecycle_name: Option<String>,
     lifecycle_args: String,
     archived: bool,
+    lifecycle_script_state: String,
 }
 
 /// Reading model for the `entries` table.
@@ -425,7 +427,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     lifecycle_args,
                     ephemeral: _ephemeral, // runtime-only state, not persisted
                     session_state: _,
-                    lifecycle_script_state: _,
+                    lifecycle_script_state,
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
@@ -453,6 +455,9 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                 .change_context(SessionStoreError)
                 .attach("failed to serialize lifecycle_args")?,
             archived: false,
+            lifecycle_script_state: serde_json::to_string(&lifecycle_script_state)
+                .change_context(SessionStoreError)
+                .attach("failed to serialize lifecycle_script_state")?,
         })
     }
 }
@@ -484,6 +489,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             lifecycle_name,
             lifecycle_args,
             archived: _archived, // archive status is a persistence concern, not part of ChatSessionState
+            lifecycle_script_state,
         } = ctx.row;
 
         let profile = serde_json::from_str(&profile)
@@ -523,7 +529,8 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 lifecycle_args: serde_json::from_str(&lifecycle_args).unwrap_or_default(),
                 ephemeral: SessionCoreEphemeral::default(),
                 session_state: SessionState::Loaded,
-                lifecycle_script_state: LifecycleScriptState::default(),
+                lifecycle_script_state: serde_json::from_str(&lifecycle_script_state)
+                    .unwrap_or_default(),
             },
             ui: SessionUi::default(),
         })
@@ -562,6 +569,7 @@ fn save_blocking(
                 sessions::lifecycle_name.eq(excluded(sessions::lifecycle_name)),
                 sessions::lifecycle_args.eq(excluded(sessions::lifecycle_args)),
                 sessions::archived.eq(excluded(sessions::archived)),
+                sessions::lifecycle_script_state.eq(excluded(sessions::lifecycle_script_state)),
             ))
             .execute(txn)?;
 
@@ -818,6 +826,7 @@ fn fork_blocking(
                 lifecycle_name: source_meta.lifecycle_name,
                 lifecycle_args: source_meta.lifecycle_args,
                 archived: false,
+                lifecycle_script_state: source_meta.lifecycle_script_state,
             })
             .execute(txn)?;
 
