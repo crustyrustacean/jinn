@@ -1,10 +1,9 @@
-mod compaction;
-mod enqueue;
-mod event;
-mod lifecycle;
-mod misc;
+pub(super) mod compaction;
+pub(super) mod enqueue;
+pub(super) mod lifecycle;
+pub(super) mod misc;
 mod persistence;
-mod session_load;
-mod startup;
-mod streaming;
-mod tool_calls;
+pub(super) mod session_load;
+pub(super) mod startup;
+pub(super) mod streaming;
+pub(super) mod tool_calls;
