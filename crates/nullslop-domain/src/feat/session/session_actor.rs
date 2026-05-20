@@ -73,32 +73,9 @@ pub struct SessionPersistenceActor {
     pub(super) counter: TiktokenCounter,
 }
 
-/// Remove ANSI escape sequences (CSI SGR codes) from a string.
+/// Remove ANSI escape sequences from a string.
 fn strip_ansi(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(ch) = chars.next() {
-        if ch == '\x1b' {
-            // Consume '['.
-            if chars.next() != Some('[') {
-                out.push(ch);
-                continue;
-            }
-            // Consume parameter bytes (digits, semicolons, '?').
-            while let Some(&next) = chars.as_str().as_bytes().first() {
-                if next.is_ascii_digit() || next == b';' || next == b'?' {
-                    chars.next();
-                } else {
-                    break;
-                }
-            }
-            // Consume the final byte (m, K, H, etc.).
-            chars.next();
-        } else {
-            out.push(ch);
-        }
-    }
-    out
+    strip_ansi_escapes::strip_str(s)
 }
 
 /// Build a system chat entry for when a setup command produces no output.

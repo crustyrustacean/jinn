@@ -141,10 +141,26 @@ mod tests {
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
 
         // When handling select next.
-        let result = handle_select_next(&mut state);
+        let _result = handle_select_next(&mut state);
 
         // Then the second entry is selected.
         assert_eq!(state.active_session().selected_entry_index(), Some(1));
+    }
+
+    #[rstest::rstest]
+    fn chat_entry_select_next_returns_no_commands() {
+        // Given a state with entries and selection at first.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+        // After push, selection is at index 1 (last pushed). Move to 0.
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+
+        // When handling select next.
+        let result = handle_select_next(&mut state);
+
+        // Then no commands are emitted.
         assert!(result.commands.is_empty());
     }
 
@@ -157,10 +173,24 @@ mod tests {
         state.active_session_mut().select_prev_entry();
 
         // When handling select prev.
-        let result = handle_select_prev(&mut state);
+        let _result = handle_select_prev(&mut state);
 
         // Then selection moved.
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
+    }
+
+    #[rstest::rstest]
+    fn chat_entry_select_prev_returns_no_commands() {
+        // Given a state with entries and selection at last.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+        state.active_session_mut().select_prev_entry();
+
+        // When handling select prev.
+        let result = handle_select_prev(&mut state);
+
+        // Then no commands are emitted.
         assert!(result.commands.is_empty());
     }
 
@@ -243,10 +273,31 @@ mod tests {
         let entry_id = state.active_session().selected_entry_id().unwrap().clone();
 
         // When handling expand tool entry.
-        let result = handle_expand_tool_entry(&mut state);
+        let _result = handle_expand_tool_entry(&mut state);
 
         // Then the entry is expanded.
         assert!(state.active_session().is_entry_expanded(&entry_id));
+    }
+
+    #[rstest::rstest]
+    fn expand_tool_entry_returns_no_commands() {
+        // Given a state with a selected tool result.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                "output",
+                ToolResultStatus::Success,
+            ));
+        state.active_session_mut().select_next_entry();
+        let entry_id = state.active_session().selected_entry_id().unwrap().clone();
+
+        // When handling expand tool entry.
+        let result = handle_expand_tool_entry(&mut state);
+
+        // Then no commands are emitted.
         assert!(result.commands.is_empty());
     }
 
@@ -324,10 +375,28 @@ mod tests {
         let entry_id = state.active_session().selected_entry_id().unwrap().clone();
 
         // When handling expand tool entry.
-        let result = handle_expand_tool_entry(&mut state);
+        let _result = handle_expand_tool_entry(&mut state);
 
         // Then the entry is expanded.
         assert!(state.active_session().is_entry_expanded(&entry_id));
+    }
+
+    #[rstest::rstest]
+    fn expand_tool_entry_tool_call_returns_no_commands() {
+        // Given a state with a selected tool call.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::tool_call(
+            "id",
+            "bash",
+            "{\"cmd\": true}",
+        ));
+        state.active_session_mut().select_next_entry();
+        let entry_id = state.active_session().selected_entry_id().unwrap().clone();
+
+        // When handling expand tool entry.
+        let result = handle_expand_tool_entry(&mut state);
+
+        // Then no commands are emitted.
         assert!(result.commands.is_empty());
     }
 }
