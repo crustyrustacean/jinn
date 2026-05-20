@@ -1,43 +1,29 @@
-//! Context actor — prompt assembly, strategy management, pinning, and templates.
+//! Context actor — prompt assembly, pinning, and templates.
 //!
 //! Owns the full context/prompt domain: assembles LLM-ready prompts from chat
-//! history, manages prompt strategies, handles entry pinning, and loads prompt
-//! templates. Subscribes to [`AssemblePrompt`], [`SwitchPromptStrategy`],
-//! [`RestoreStrategyState`], [`PinChatEntry`], [`UnpinChatEntry`] commands and
-//! [`PromptStrategySwitched`], [`ToolsRegistered`], [`PromptTemplatesLoaded`] events.
-//!
-//! Unknown sessions are automatically initialized with `PassthroughStrategy`.
-//! Strategy switching uses a [`StrategyFactory`] injected via [`ActorContext`] data.
+//! history using compaction, handles entry pinning, and loads prompt templates.
+//! Subscribes to [`AssemblePrompt`], [`PinChatEntry`], [`UnpinChatEntry`] commands
+//! and [`ToolsRegistered`], [`PromptTemplatesLoaded`] events.
 
 mod handlers;
-
-use std::collections::HashMap;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::context::protocol::command::{
-    AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
-    RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry,
 };
-use crate::feat::context::protocol::event::{PersonasLoaded, PromptStrategySwitched};
+use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::persona::PersonaEntry;
-use crate::feat::picker::strategy_entries::load_strategy_picker_items;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
-use crate::protocol::{Command, Event, SessionId};
+use crate::protocol::{Command, Event};
 
-use crate::feat::context::{PromptAssembly, StrategyFactory};
-
-/// The context actor — handles prompt assembly, strategy management, pinning, and templates.
+/// The context actor — handles prompt assembly, pinning, and templates.
 pub struct PromptAssemblyActor {
     /// Shared application state.
     pub(super) state: State,
-    /// Per-session prompt assembly strategies.
-    pub(super) strategies: HashMap<SessionId, Box<dyn PromptAssembly>>,
-    /// Factory for creating new strategies on switch.
-    pub(super) factory: Option<Box<dyn StrategyFactory>>,
-    /// Runtime services (strategy registry for picker loading).
+    /// Runtime services.
     pub(super) services: Services,
 }
 
@@ -45,8 +31,6 @@ pub struct PromptAssemblyActor {
 pub struct PromptAssemblyActorDeps {
     /// Shared application state.
     pub state: State,
-    /// Strategy factory for creating prompt assembly strategies.
-    pub factory: Option<Box<dyn StrategyFactory>>,
     /// Runtime services.
     pub services: Services,
 }
@@ -56,27 +40,18 @@ impl Actor for PromptAssemblyActor {
     type Deps = PromptAssemblyActorDeps;
 
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        // Existing subscriptions (prompt assembly).
         ctx.subscribe_command::<AssemblePrompt>();
-        ctx.subscribe_event::<PromptStrategySwitched>();
         ctx.subscribe_event::<ToolsRegistered>();
         ctx.subscribe_event::<PersonasLoaded>();
-
-        // New subscriptions (strategy management, pinning, templates, picker).
-        ctx.subscribe_command::<SwitchPromptStrategy>();
-        ctx.subscribe_command::<RestoreStrategyState>();
         ctx.subscribe_command::<PinChatEntry>();
         ctx.subscribe_command::<UnpinChatEntry>();
-        ctx.subscribe_command::<LoadContextStrategyPickerEntries>();
         ctx.subscribe_command::<LoadPersonaPickerEntries>();
         ctx.subscribe_event::<PromptTemplatesLoaded>();
 
-        ctx.set_description("Context assembly, strategy management, pinning, and templates");
+        ctx.set_description("Context assembly, pinning, and templates");
 
         Self {
             state: deps.state,
-            strategies: HashMap::new(),
-            factory: deps.factory,
             services: deps.services,
         }
     }
@@ -107,19 +82,9 @@ impl PromptAssemblyActor {
             Command::UnpinChatEntry(payload) => {
                 self.handle_unpin_chat_entry(payload, ctx);
             }
-            Command::SwitchPromptStrategy(payload) => {
-                self.handle_switch_prompt_strategy(payload, ctx);
-            }
-            Command::RestoreStrategyState(payload) => {
-                self.handle_restore_strategy_state(payload, ctx);
-            }
-            Command::LoadContextStrategyPickerEntries(payload) => {
-                self.handle_load_context_strategy_picker_entries(payload);
-            }
             Command::LoadPersonaPickerEntries(payload) => {
                 self.handle_load_persona_picker_entries(payload);
             }
-            // RescanPersonas is handled by persona-scan actor.
             _ => {}
         }
     }
@@ -130,9 +95,6 @@ impl PromptAssemblyActor {
             Event::ToolsRegistered(payload) => {
                 self.on_tools_registered(payload);
             }
-            Event::PromptStrategySwitched(payload) => {
-                self.on_prompt_strategy_switched(payload);
-            }
             Event::PromptTemplatesLoaded(payload) => {
                 self.on_prompt_templates_loaded(payload);
             }
@@ -141,15 +103,6 @@ impl PromptAssemblyActor {
             }
             _ => {}
         }
-    }
-
-    /// Loads context strategy picker entries into `AppState`.
-    fn handle_load_context_strategy_picker_entries(
-        &self,
-        _payload: &LoadContextStrategyPickerEntries,
-    ) {
-        let mut state = self.state.write();
-        load_strategy_picker_items(&self.services, &mut state);
     }
 
     /// Loads persona picker entries into `AppState`.
@@ -259,8 +212,6 @@ mod tests {
         let state = State::new(AppState::default());
         let deps = PromptAssemblyActorDeps {
             state: state.clone(),
-            factory: Some(Box::new(crate::feat::context::DefaultStrategyFactory)
-                as Box<dyn crate::feat::context::strategy::types::StrategyFactory>),
             services: TestServices::builder().build(),
         };
         let actor = PromptAssemblyActor::activate(deps, &mut ctx);

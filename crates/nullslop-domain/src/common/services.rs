@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 
-use crate::feat::context::DefaultStrategyDiscovery;
 use crate::feat::preferences_actor::{
     InMemoryUserPreferencesStorage, UserPreferencesStorageService,
 };
@@ -20,12 +19,9 @@ use crate::protocol::AppMsg;
 use tokio::runtime::Handle;
 
 pub mod actor_channel;
-pub mod strategy_registry;
 pub mod test_services;
 
 pub use actor_channel::ActorChannelService;
-
-use strategy_registry::StrategyRegistryService;
 
 /// Runtime services shared across the application.
 ///
@@ -33,21 +29,7 @@ use strategy_registry::StrategyRegistryService;
 /// and making it easy to swap implementations for testing.
 ///
 /// Production code should construct this via struct initialization syntax
-/// to get compiler-verified completeness:
-///
-/// ```ignore
-/// let services = Services {
-///     paths: AppPaths::default(),
-///     handle: handle.clone(),
-///     actor_channel,
-///     llm_service,
-///     provider_registry,
-///     api_keys,
-///     config_storage,
-///     session_store,
-///     strategy_registry,
-/// };
-/// ```
+/// to get compiler-verified completeness.
 ///
 /// Tests can use [`Services::new()`] which provides all-fake defaults,
 /// or [`test_services::TestServices::builder()`] to customize specific services.
@@ -69,8 +51,6 @@ pub struct Services {
     pub config_storage: ConfigStorageService,
     /// Session store for persisting chat session data.
     pub session_store: SessionStoreService,
-    /// Strategy discovery for listing available prompt assembly strategies.
-    pub strategy_registry: StrategyRegistryService,
     /// User preferences storage for persisting `nullslop.toml`.
     pub user_preferences_storage: UserPreferencesStorageService,
 }
@@ -122,7 +102,6 @@ impl Services {
             api_keys: ApiKeysService::new(ApiKeys::new()),
             config_storage: ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new())),
             session_store: SessionStoreService::new(Arc::new(test_services::FakeSessionStore)),
-            strategy_registry: StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery)),
             user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
                 InMemoryUserPreferencesStorage::new(),
             )),

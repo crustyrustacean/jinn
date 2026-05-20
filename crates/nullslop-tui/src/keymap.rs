@@ -101,7 +101,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("gg", Intent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
-            .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::ContextAssembly }, KeyCategory::General)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
             .bind("gb", Intent::TokenBudgetInputEnter, KeyCategory::Context)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)

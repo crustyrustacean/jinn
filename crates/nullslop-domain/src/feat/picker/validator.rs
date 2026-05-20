@@ -59,11 +59,6 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
 
     let has_selection = match kind {
         PickerKind::Provider => state.provider.provider_picker.selected_item().is_some(),
-        PickerKind::ContextAssembly => state
-            .frontend
-            .context_strategy_picker
-            .selected_item()
-            .is_some(),
         PickerKind::Keymap => state.frontend.keymap_picker.selected_item().is_some(),
         PickerKind::Session => state.frontend.session_picker.selected_item().is_some(),
         PickerKind::Persona => state.frontend.persona_picker.selected_item().is_some(),

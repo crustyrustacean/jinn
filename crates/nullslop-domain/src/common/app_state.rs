@@ -77,7 +77,6 @@ pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
 use crate::protocol::KeymapEntry;
 use crate::protocol::SessionEntry;
-use crate::protocol::StrategyEntry;
 
 /// Session lifecycle state — owned by the session-actor.
 ///
@@ -405,7 +404,6 @@ pub struct FrontendState {
 
     /// Context strategy picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (strategy picker navigation).
-    pub context_strategy_picker: nullslop_selection_widget::SelectionState<StrategyEntry>,
     /// Persona picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (persona picker navigation).
     pub persona_picker: nullslop_selection_widget::SelectionState<PersonaEntry>,
@@ -499,7 +497,6 @@ impl Default for FrontendState {
             keymap_picker: nullslop_selection_widget::SelectionState::new(),
             keymap_picker_show_all: false,
             session_picker: nullslop_selection_widget::SelectionState::new(),
-            context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
             scope_stack: ScopeStack::default(),
@@ -573,8 +570,7 @@ impl AppState {
         let kind = self.frontend.scope_stack.picker_kind().copied()?;
         match kind {
             PickerKind::Provider => Some(&mut self.provider.provider_picker),
-            PickerKind::ContextAssembly => Some(&mut self.frontend.context_strategy_picker),
-            PickerKind::Keymap => Some(&mut self.frontend.keymap_picker),
+                        PickerKind::Keymap => Some(&mut self.frontend.keymap_picker),
             PickerKind::Session => Some(&mut self.frontend.session_picker),
             PickerKind::Persona => Some(&mut self.frontend.persona_picker),
             PickerKind::Theme => Some(&mut self.frontend.theme_picker),
