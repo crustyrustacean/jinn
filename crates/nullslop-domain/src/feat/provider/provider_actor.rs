@@ -89,8 +89,6 @@ impl ProviderActor {
             }
             // Commands NOT subscribed to — these should not arrive.
             Command::SendMessage(..)
-            | Command::SwitchPromptStrategy(..)
-            | Command::RestoreStrategyState(..)
             | Command::PinChatEntry(..)
             | Command::UnpinChatEntry(..)
             | Command::EnqueueUserMessage(..)
@@ -109,7 +107,6 @@ impl ProviderActor {
             | Command::SessionLoadCompleted(..)
             | Command::SessionLoadRequested(..)
             | Command::LoadSessionPickerEntries(..)
-            | Command::LoadContextStrategyPickerEntries(..)
             | Command::ScanSkills
             | Command::RescanPersonas(..)
             | Command::LoadPersonaPickerEntries(..)

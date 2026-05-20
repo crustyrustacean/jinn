@@ -32,7 +32,7 @@ use nullslop_domain::LlmMessage;
 use nullslop_domain::LlmServiceFactoryService;
 use nullslop_domain::PinChatEntry;
 use nullslop_domain::PinPosition;
-use nullslop_domain::PromptStrategyId;
+use nullslop_domain::feat::context::protocol::strategy_id::PromptStrategyId;
 use nullslop_domain::ProviderRegistry;
 use nullslop_domain::ProviderRegistryService;
 use nullslop_domain::ProvidersConfig;

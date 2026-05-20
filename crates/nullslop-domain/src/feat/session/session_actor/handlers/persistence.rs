@@ -2,7 +2,6 @@
 
 use super::super::SessionPersistenceActor;
 use crate::SessionLoadRequested;
-use crate::feat::context::protocol::command::{RestoreStrategyState, SwitchPromptStrategy};
 use crate::protocol::Command;
 
 impl SessionPersistenceActor {
@@ -79,16 +78,6 @@ impl SessionPersistenceActor {
 
                 let _ =
                     ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
-                // Also emit RestoreStrategyState and SwitchPromptStrategy.
-                let _ = ctx.send_command(Command::RestoreStrategyState(RestoreStrategyState {
-                    session_id: evt.session_id.clone(),
-                    strategy_id: strategy_id.clone(),
-                    blob: strategy_blob,
-                }));
-                let _ = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
-                    session_id: evt.session_id.clone(),
-                    strategy_id,
-                }));
             }
             Ok(None) => {
                 tracing::warn!(
