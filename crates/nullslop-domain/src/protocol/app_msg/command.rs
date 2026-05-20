@@ -125,6 +125,8 @@ pub enum Command {
     CancelCompaction(CancelCompaction),
     /// Close a session from the sessions map.
     CloseSession(CloseSession),
+    /// Archive a session without running teardown.
+    ArchiveSession(crate::feat::session::protocol::archive_session::ArchiveSession),
     /// Save a newly-created lifecycle session immediately.
     SaveNewLifecycleSession(SaveNewLifecycleSession),
 }
@@ -172,6 +174,7 @@ impl Command {
             Self::EndCompaction(..) => Some(EndCompaction::NAME),
             Self::CancelCompaction(..) => Some(CancelCompaction::NAME),
             Self::CloseSession(..) => Some(CloseSession::NAME),
+            Self::ArchiveSession(..) => Some(crate::feat::session::protocol::archive_session::ArchiveSession::NAME),
             Self::SaveNewLifecycleSession(..) => Some(SaveNewLifecycleSession::NAME),
         }
     }
@@ -269,6 +272,9 @@ impl std::fmt::Display for Command {
             }
             Command::CloseSession(payload) => {
                 write!(f, "close session {}", payload.session_id)
+            }
+            Command::ArchiveSession(payload) => {
+                write!(f, "archive session {}", payload.session_id)
             }
             Command::SaveNewLifecycleSession(payload) => {
                 write!(f, "save new lifecycle session {}", payload.session_id)
