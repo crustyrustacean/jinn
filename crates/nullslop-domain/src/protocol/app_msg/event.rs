@@ -28,7 +28,8 @@ use crate::feat::context::protocol::event::{
 pub use crate::common::actor::event_msg::EventMsg;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::provider::protocol::event::{
-    ModelCacheLoaded, ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
+    ModelCacheLoaded, ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
+    StreamToken,
 };
 use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownFinished,
