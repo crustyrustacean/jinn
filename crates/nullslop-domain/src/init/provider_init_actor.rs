@@ -10,6 +10,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
+use crate::feat::provider::protocol::event::ModelCacheLoaded;
 use crate::feat::provider_infra::{ModelCache, ProviderRegistry};
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
@@ -101,6 +102,11 @@ impl ProviderInitActor {
         if let Some(ref c) = cache {
             tracing::info!(providers = c.entries.len(), "loaded model cache");
             self.services.provider_registry.merge_cache(c);
+            if let Err(e) = ctx.send_event(Event::ModelCacheLoaded(ModelCacheLoaded {
+                cache: c.clone(),
+            })) {
+                tracing::warn!(err = ?e, "provider-init failed to emit ModelCacheLoaded");
+            }
         }
 
         // Load user preferences.
