@@ -26,8 +26,6 @@ fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     nullslop_domain::feat::provider::render::render_provider_picker(frame, area, state);
 }
 
-/// Renders the context strategy picker overlay (delegates to slice).
-
 /// Renders the keymap picker overlay (delegates to slice).
 fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     nullslop_domain::feat::picker::render::render_keymap_picker(frame, area, state);

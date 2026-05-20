@@ -31,8 +31,6 @@ pub use scope::Scope;
 mod app_tests;
 
 #[cfg(test)]
-
-#[cfg(test)]
 mod render_tests;
 
 #[cfg(test)]
