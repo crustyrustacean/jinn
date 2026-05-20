@@ -19,6 +19,7 @@ use serde_json::Value as JsonValue;
 
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::strategy::types::StrategyState;
+use crate::feat::session::chat_history::ChatHistory;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{
@@ -199,7 +200,7 @@ pub struct SessionCore {
     pub(crate) created_at: Timestamp,
     /// All messages in this conversation.
     /// OWNER: session-actor (creates/removes entries, restores history)
-    pub(crate) history: Vec<ChatEntry>,
+    pub(crate) history: ChatHistory,
     /// Per-session model and strategy selection.
     /// OWNER: provider-actor (model), context-actor (strategy via SwitchPromptStrategy command)
     pub(crate) profile: SessionProfile,
@@ -254,7 +255,7 @@ impl Default for SessionCore {
             title: None,
             updated_at: Timestamp::now(),
             created_at: Timestamp::now(),
-            history: Vec::new(),
+            history: ChatHistory::new(),
             profile: SessionProfile::default(),
             cwd: std::path::PathBuf::from("."),
             token_ledger: Vec::new(),
@@ -458,6 +459,11 @@ impl ChatSessionState {
     /// to the new entry if the cursor was on the previous last entry (or history
     /// was empty). Otherwise, appends silently — preserving the user's scroll
     /// position and selection.
+    /// Push a chat entry onto the history.
+    ///
+    /// Future work: restrict to the session feature module and require external
+    /// code to use the `PushChatEntry` command (which also triggers persistence).
+    #[allow(clippy::missing_panics_doc)]
     pub fn push_entry(&mut self, entry: ChatEntry) -> usize {
         let prev_last = self.core.history.len().saturating_sub(1);
         let was_at_last = self.ui.selected_entry_index.is_none_or(|i| i == prev_last);
@@ -1234,7 +1240,7 @@ impl ChatSessionState {
     /// Replaces the current history with the given entries. Used by session
     /// persistence to rehydrate a session from disk.
     pub fn restore_history(&mut self, entries: Vec<ChatEntry>) {
-        self.core.history = entries;
+        self.core.history.replace_all(entries);
         if self.core.history.is_empty() {
             self.ui.selected_entry_index = None;
         } else {

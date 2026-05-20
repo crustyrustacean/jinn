@@ -90,7 +90,10 @@ impl UiElement<AppState> for ChatLogElement {
         let history = state.active_session().history();
 
         // Pre-pass: pair tool calls with their result status for background coloring.
-        let tool_result_statuses: std::collections::HashMap<String, crate::feat::session::tool_result_status::ToolResultStatus> = history
+        let tool_result_statuses: std::collections::HashMap<
+            String,
+            crate::feat::session::tool_result_status::ToolResultStatus,
+        > = history
             .iter()
             .filter_map(|entry| match &entry.kind {
                 ChatEntryKind::ToolResult { id, status, .. } => Some((id.clone(), *status)),

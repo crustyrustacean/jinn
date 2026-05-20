@@ -25,10 +25,11 @@ use serde_json::Value as JsonValue;
 use tokio::task::spawn_blocking;
 
 use crate::common::app_info::APP_NAME;
-use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::context::protocol::strategy_id::PromptStrategyId;
+use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::session::SessionUi;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
+use crate::feat::session::chat_history::ChatHistory;
 use crate::feat::session::chat_session::{
     ChatSessionState, LifecycleScriptState, SessionCore, SessionCoreEphemeral, SessionState,
 };
@@ -464,7 +465,7 @@ impl From<PersistableCore> for SessionCore {
             title: core.title,
             updated_at: core.updated_at,
             created_at: core.created_at,
-            history: vec![],
+            history: ChatHistory::new(),
             profile: core.profile,
             cwd: core.cwd,
             token_ledger: vec![],
@@ -611,7 +612,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 title,
                 updated_at,
                 created_at,
-                history: vec![],
+                history: ChatHistory::new(),
                 profile,
                 cwd: std::path::PathBuf::from(cwd),
                 token_ledger: vec![],
@@ -628,7 +629,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
         };
 
         // Overlay data from normalized tables (always loaded regardless of path).
-        core.history = ctx.entries;
+        core.history = ChatHistory::from_vec(ctx.entries);
         core.token_ledger = ctx.ledger;
 
         // Build ChatSessionState with all fields explicitly set.
@@ -771,7 +772,11 @@ fn load_summaries_blocking(
                 .created_at
                 .parse()
                 .unwrap_or_else(|_| jiff::Timestamp::now()),
-            session_state: if row.archived { SessionState::Archived } else { SessionState::Loaded },
+            session_state: if row.archived {
+                SessionState::Archived
+            } else {
+                SessionState::Loaded
+            },
         })
         .collect();
 
@@ -1018,7 +1023,11 @@ fn load_unarchived_summaries_blocking(
                 .created_at
                 .parse()
                 .unwrap_or_else(|_| jiff::Timestamp::now()),
-            session_state: if row.archived { SessionState::Archived } else { SessionState::Loaded },
+            session_state: if row.archived {
+                SessionState::Archived
+            } else {
+                SessionState::Loaded
+            },
         })
         .collect();
 

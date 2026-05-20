@@ -161,8 +161,10 @@ mod tests {
 
         // Then the title span has contrast-adjusted foreground on selected bg.
         let title_span = &row.spans[0];
-        let expected_fg =
-            crate::feat::theme::contrast::ensure_contrast(theme.muted_text, theme.picker_selected_bg);
+        let expected_fg = crate::feat::theme::contrast::ensure_contrast(
+            theme.muted_text,
+            theme.picker_selected_bg,
+        );
         assert_eq!(title_span.style.fg, Some(expected_fg));
         assert_eq!(title_span.style.bg, Some(theme.picker_selected_bg));
     }

@@ -760,11 +760,7 @@ impl SessionPersistenceActor {
 
             if let Some(teardown_cmd) = teardown_cmd {
                 let success = self
-                    .run_close_teardown_step(
-                        &payload.session_id,
-                        &teardown_cmd,
-                        &lifecycle_args,
-                    )
+                    .run_close_teardown_step(&payload.session_id, &teardown_cmd, &lifecycle_args)
                     .await;
 
                 if !success {
@@ -783,8 +779,7 @@ impl SessionPersistenceActor {
                 // Advance LifecycleScriptState: SetupRan → TeardownRan.
                 {
                     let mut state = self.state.write();
-                    if let Some(session) =
-                        state.session.sessions_mut().get_mut(&payload.session_id)
+                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
                     {
                         session.advance_lifecycle_after_teardown();
                     }
@@ -962,8 +957,6 @@ impl SessionPersistenceActor {
         }
     }
 
-
-
     /// SaveNewLifecycleSession: persist the session immediately.
     ///
     /// Called right after the IntentHandler creates a lifecycle session
@@ -971,8 +964,6 @@ impl SessionPersistenceActor {
     async fn handle_save_new_lifecycle_session(&self, payload: &SaveNewLifecycleSession) {
         self.save_active_session(&payload.session_id).await;
     }
-
-
 }
 
 #[cfg(test)]
@@ -2213,7 +2204,9 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("hello"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("hello"));
             assert_eq!(
                 state.active_session().lifecycle_script_state(),
                 crate::feat::session::chat_session::LifecycleScriptState::NothingRan
@@ -2236,20 +2229,17 @@ mod tests {
         assert!(!state.session.sessions().contains_key(&session_id));
         // And no teardown-related events were emitted.
         let events = sink.events();
-        let has_teardown_finished = events.iter().any(|e| {
-            matches!(
-                e,
-                crate::protocol::Event::SessionTeardownFinished(..)
-            )
-        });
-        assert!(!has_teardown_finished, "did not expect SessionTeardownFinished for NothingRan");
+        let has_teardown_finished = events
+            .iter()
+            .any(|e| matches!(e, crate::protocol::Event::SessionTeardownFinished(..)));
+        assert!(
+            !has_teardown_finished,
+            "did not expect SessionTeardownFinished for NothingRan"
+        );
         // And SessionArchived was emitted.
-        let has_archived = events.iter().any(|e| {
-            matches!(
-                e,
-                crate::protocol::Event::SessionArchived(..)
-            )
-        });
+        let has_archived = events
+            .iter()
+            .any(|e| matches!(e, crate::protocol::Event::SessionArchived(..)));
         assert!(has_archived, "expected SessionArchived");
     }
 
@@ -2262,7 +2252,9 @@ mod tests {
         let second_id = second.session_id().clone();
         let target_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("hello"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("hello"));
             state.session.sessions_mut().insert(second_id, second);
             state.session.active_session_id().clone()
         };
@@ -2306,10 +2298,13 @@ mod tests {
         assert!(has_closed, "expected SessionClosed");
 
         // And no teardown events were emitted.
-        let has_teardown = events.iter().any(|e| {
-            matches!(e, crate::protocol::Event::SessionTeardownFinished(..))
-        });
-        assert!(!has_teardown, "did not expect SessionTeardownFinished for archive");
+        let has_teardown = events
+            .iter()
+            .any(|e| matches!(e, crate::protocol::Event::SessionTeardownFinished(..)));
+        assert!(
+            !has_teardown,
+            "did not expect SessionTeardownFinished for archive"
+        );
     }
 
     #[tokio::test]
@@ -2342,10 +2337,13 @@ mod tests {
 
         // And only SessionClosed (no SessionArchived for empty).
         let events = sink.events();
-        let has_archived = events.iter().any(|e| {
-            matches!(e, crate::protocol::Event::SessionArchived(..))
-        });
-        assert!(!has_archived, "did not expect SessionArchived for empty session");
+        let has_archived = events
+            .iter()
+            .any(|e| matches!(e, crate::protocol::Event::SessionArchived(..)));
+        assert!(
+            !has_archived,
+            "did not expect SessionArchived for empty session"
+        );
 
         let has_closed = events.iter().any(|e| {
             matches!(
@@ -2367,7 +2365,9 @@ mod tests {
         let second_id = second.session_id().clone();
         let active_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("msg"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("msg"));
             state.session.sessions_mut().insert(second_id, second);
             state.session.active_session_id().clone()
         };
@@ -2395,7 +2395,9 @@ mod tests {
         let (_sink, ctx) = test_context();
         let only_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("msg"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("msg"));
             state.session.active_session_id().clone()
         };
 
@@ -2453,7 +2455,11 @@ mod tests {
 
         // Then LifecycleScriptState is still SetupRan.
         let state = actor.state.read();
-        let session = state.session.sessions().get(&session_id).expect("session exists");
+        let session = state
+            .session
+            .sessions()
+            .get(&session_id)
+            .expect("session exists");
         assert_eq!(
             session.lifecycle_script_state(),
             LifecycleScriptState::SetupRan
@@ -2497,9 +2503,16 @@ mod tests {
 
         // Then an error entry was pushed to the session's history.
         let state = actor.state.read();
-        let session = state.session.sessions().get(&session_id).expect("session exists");
+        let session = state
+            .session
+            .sessions()
+            .get(&session_id)
+            .expect("session exists");
         let last_entry = session.history().last().expect("has entries");
-        assert!(matches!(last_entry.kind, crate::protocol::ChatEntryKind::Error(_)));
+        assert!(matches!(
+            last_entry.kind,
+            crate::protocol::ChatEntryKind::Error(_)
+        ));
     }
 
     #[tokio::test]

@@ -284,12 +284,14 @@ mod tests {
     fn cache_miss_on_pending_tool_result_content_change() {
         // Given a cache with a pending ToolResult entry.
         let mut cache = EntryLineCache::new();
-        let mut entry =
-            ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Pending);
+        let mut entry = ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Pending);
         cache.insert(&entry, false, 80, 5);
 
         // When the entry's content changes (simulating tool output growth).
-        if let ChatEntryKind::ToolResult { ref mut content, .. } = entry.kind {
+        if let ChatEntryKind::ToolResult {
+            ref mut content, ..
+        } = entry.kind
+        {
             content.push_str(" more");
         }
 

@@ -5,6 +5,7 @@
 //! Also contains the session actor, intent handlers, validators, entry loaders,
 //! and picker rendering.
 
+pub mod chat_history;
 pub mod session_store;
 pub mod session_summary;
 
