@@ -122,8 +122,7 @@ impl LifecycleScriptState {
     pub fn advance_after_setup(&mut self) {
         assert!(
             matches!(self, Self::NothingRan),
-            "advance_after_setup: expected NothingRan, got {:?}",
-            self
+            "advance_after_setup: expected NothingRan, got {self:?}"
         );
         *self = Self::SetupRan;
     }
@@ -136,8 +135,7 @@ impl LifecycleScriptState {
     pub fn advance_after_teardown(&mut self) {
         assert!(
             matches!(self, Self::SetupRan),
-            "advance_after_teardown: expected SetupRan, got {:?}",
-            self
+            "advance_after_teardown: expected SetupRan, got {self:?}"
         );
         *self = Self::TeardownRan;
     }
