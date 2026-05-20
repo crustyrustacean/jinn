@@ -1875,3 +1875,133 @@ fn cancel_compacting_is_noop_when_idle() {
     assert!(drained.is_empty());
     assert_eq!(session.phase(), SessionPhase::Idle);
 }
+
+// --- LifecycleScriptState transition tests ---
+
+#[rstest::rstest]
+fn advance_after_setup_transitions_nothing_to_setup() {
+    // Given NothingRan.
+    let mut state = LifecycleScriptState::NothingRan;
+
+    // When advancing after setup.
+    state.advance_after_setup();
+
+    // Then state is SetupRan.
+    assert_eq!(state, LifecycleScriptState::SetupRan);
+}
+
+#[rstest::rstest]
+fn advance_after_teardown_transitions_setup_to_teardown() {
+    // Given SetupRan.
+    let mut state = LifecycleScriptState::SetupRan;
+
+    // When advancing after teardown.
+    state.advance_after_teardown();
+
+    // Then state is TeardownRan.
+    assert_eq!(state, LifecycleScriptState::TeardownRan);
+}
+
+#[rstest::rstest]
+#[should_panic(expected = "advance_after_setup: expected NothingRan")]
+fn advance_after_setup_panics_from_setup_ran() {
+    // Given SetupRan.
+    let mut state = LifecycleScriptState::SetupRan;
+
+    // When advancing after setup again — panics.
+    state.advance_after_setup();
+}
+
+#[rstest::rstest]
+#[should_panic(expected = "advance_after_setup: expected NothingRan")]
+fn advance_after_setup_panics_from_teardown_ran() {
+    // Given TeardownRan.
+    let mut state = LifecycleScriptState::TeardownRan;
+
+    // When advancing after setup — panics.
+    state.advance_after_setup();
+}
+
+#[rstest::rstest]
+#[should_panic(expected = "advance_after_teardown: expected SetupRan")]
+fn advance_after_teardown_panics_from_nothing_ran() {
+    // Given NothingRan.
+    let mut state = LifecycleScriptState::NothingRan;
+
+    // When advancing after teardown — panics.
+    state.advance_after_teardown();
+}
+
+#[rstest::rstest]
+#[should_panic(expected = "advance_after_teardown: expected SetupRan")]
+fn advance_after_teardown_panics_from_teardown_ran() {
+    // Given TeardownRan.
+    let mut state = LifecycleScriptState::TeardownRan;
+
+    // When advancing after teardown again — panics.
+    state.advance_after_teardown();
+}
+
+// --- SessionState default test ---
+
+#[rstest::rstest]
+fn session_state_defaults_to_loaded() {
+    // Given a new session.
+    let session = ChatSessionState::new();
+
+    // Then session state is Loaded.
+    assert_eq!(session.session_state(), SessionState::Loaded);
+}
+
+#[rstest::rstest]
+fn lifecycle_script_state_defaults_to_nothing_ran() {
+    // Given a new session.
+    let session = ChatSessionState::new();
+
+    // Then lifecycle script state is NothingRan.
+    assert_eq!(session.lifecycle_script_state(), LifecycleScriptState::NothingRan);
+}
+
+#[rstest::rstest]
+fn session_state_can_transition_to_archived_and_back() {
+    // Given a new session.
+    let mut session = ChatSessionState::new();
+
+    // When setting to Archived.
+    session.set_session_state(SessionState::Archived);
+
+    // Then it is Archived.
+    assert_eq!(session.session_state(), SessionState::Archived);
+
+    // When setting back to Loaded.
+    session.set_session_state(SessionState::Loaded);
+
+    // Then it is Loaded.
+    assert_eq!(session.session_state(), SessionState::Loaded);
+}
+
+#[rstest::rstest]
+fn chat_session_advance_lifecycle_after_setup() {
+    // Given a new session (NothingRan).
+    let mut session = ChatSessionState::new();
+    assert_eq!(session.lifecycle_script_state(), LifecycleScriptState::NothingRan);
+
+    // When advancing after setup.
+    session.advance_lifecycle_after_setup();
+
+    // Then state is SetupRan.
+    assert_eq!(session.lifecycle_script_state(), LifecycleScriptState::SetupRan);
+}
+
+#[rstest::rstest]
+fn chat_session_advance_lifecycle_after_teardown() {
+    // Given a session with SetupRan.
+    let mut session = ChatSessionState::new();
+    session.advance_lifecycle_after_setup();
+
+    // When advancing after teardown.
+    session.advance_lifecycle_after_teardown();
+
+    // Then state is TeardownRan.
+    assert_eq!(session.lifecycle_script_state(), LifecycleScriptState::TeardownRan);
+}

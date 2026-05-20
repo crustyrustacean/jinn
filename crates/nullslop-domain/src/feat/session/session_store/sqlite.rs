@@ -24,7 +24,7 @@ use tokio::task::spawn_blocking;
 use crate::common::app_info::APP_NAME;
 use crate::feat::session::SessionUi;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
-use crate::feat::session::chat_session::{ChatSessionState, SessionCore, SessionCoreEphemeral};
+use crate::feat::session::chat_session::{ChatSessionState, LifecycleScriptState, SessionCore, SessionCoreEphemeral, SessionState};
 use crate::feat::session::session_summary::SessionSummary;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntryId, SessionId};
@@ -424,6 +424,8 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     lifecycle_name,
                     lifecycle_args,
                     ephemeral: _ephemeral, // runtime-only state, not persisted
+                    session_state: _,
+                    lifecycle_script_state: _,
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
@@ -520,6 +522,8 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 lifecycle_name,
                 lifecycle_args: serde_json::from_str(&lifecycle_args).unwrap_or_default(),
                 ephemeral: SessionCoreEphemeral::default(),
+                session_state: SessionState::Loaded,
+                lifecycle_script_state: LifecycleScriptState::default(),
             },
             ui: SessionUi::default(),
         })

@@ -267,9 +267,9 @@ impl Actor for SessionPersistenceActor {
         }
     }
 
-    async fn on_shutdown(&mut self, _ctx: &ActorContext) {
-        self.run_pending_teardowns().await;
-    }
+    // on_shutdown: no lifecycle work on shutdown — just stop.
+    // Sessions persist in their current state (Loaded/Archived) in the DB.
+    // On next startup, all non-archived sessions are loaded.
 }
 
 impl SessionPersistenceActor {
@@ -914,65 +914,7 @@ impl SessionPersistenceActor {
         self.save_active_session(&payload.session_id).await;
     }
 
-    /// Runs teardown commands for all open sessions that have a lifecycle with teardown.
-    ///
-    /// Called during coordinated shutdown. Runs commands sequentially -
-    /// teardown order matters (each must complete before the next starts).
-    async fn run_pending_teardowns(&self) {
-        use crate::feat::session_lifecycle::command_template::CommandTemplate;
 
-        let teardown_jobs: Vec<(crate::protocol::SessionId, String, String)> = {
-            let state = self.state.read();
-            let mut jobs = Vec::new();
-            for (id, session) in state.session.sessions() {
-                let Some(lifecycle_name) = session.lifecycle_name() else {
-                    continue;
-                };
-                let teardown_cmd = state
-                    .frontend
-                    .preferences
-                    .session_lifecycles
-                    .iter()
-                    .find(|l| l.name == lifecycle_name)
-                    .and_then(|l| l.teardown_command.clone());
-                let Some(teardown_cmd) = teardown_cmd else {
-                    continue;
-                };
-                let args = session.lifecycle_args().to_vec();
-                let template = CommandTemplate::parse(&teardown_cmd);
-                let rendered = if args.is_empty() {
-                    teardown_cmd
-                } else {
-                    template.render(&args)
-                };
-                jobs.push((id.clone(), lifecycle_name.to_owned(), rendered));
-            }
-            jobs
-        };
-
-        for (session_id, lifecycle_name, command) in teardown_jobs {
-            tracing::info!(
-                session_id = %session_id,
-                lifecycle = %lifecycle_name,
-                "running teardown during shutdown"
-            );
-            match run_teardown_command(&command).await {
-                Ok(()) => {
-                    tracing::info!(
-                        session_id = %session_id,
-                        "teardown completed during shutdown"
-                    );
-                }
-                Err(report) => {
-                    tracing::warn!(
-                        session_id = %session_id,
-                        err = ?report,
-                        "teardown failed during shutdown"
-                    );
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]
