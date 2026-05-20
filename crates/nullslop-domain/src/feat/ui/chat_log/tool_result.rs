@@ -108,7 +108,7 @@ fn to_lines_expanded(
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
     let bg = status_background(status, &ctx.theme);
-    let style = Style::default().fg(ctx.theme.tool_block_fg).bg(bg);
+    let style = Style::default().fg(ctx.theme.tool_fg).bg(bg);
 
     // Name line.
     let mut lines = Vec::new();

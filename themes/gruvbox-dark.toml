@@ -19,7 +19,7 @@ streaming = "#8ec07c"          # cyan-green
 # Chat log backgrounds
 gutter_bg = [29, 32, 33]
 user_block_bg = [50, 48, 47]
-tool_block_fg = [102, 92, 84]
+tool_fg = [102, 92, 84]
 tool_success_bg = [40, 45, 38]
 tool_failure_bg = [52, 34, 34]
 truncation_fg = [73, 69, 64]
