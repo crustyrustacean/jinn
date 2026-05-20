@@ -502,6 +502,14 @@ mod tests {
 
     #[test]
     fn migrate_v10_consolidates_strategy_state() {
+        #[derive(QueryableByName)]
+        struct StateRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            strategy_state: String,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            profile: String,
+        }
+
         // Given a database with sessions containing mixed strategy state and profile.
         let (_dir, mut conn) = make_conn();
         run_migrations(&mut conn).unwrap(); // run through v9
@@ -521,13 +529,6 @@ mod tests {
         migrate_v10(&mut conn).expect("migrate v10");
 
         // Then strategy_state only has the compaction key.
-        #[derive(QueryableByName)]
-        struct StateRow {
-            #[diesel(sql_type = diesel::sql_types::Text)]
-            strategy_state: String,
-            #[diesel(sql_type = diesel::sql_types::Text)]
-            profile: String,
-        }
         let rows: Vec<StateRow> = sql_query(
             "SELECT strategy_state, profile FROM sessions WHERE id = 'test-1'",
         )
@@ -551,6 +552,12 @@ mod tests {
 
     #[test]
     fn migrate_v10_inserts_default_when_no_compaction_key() {
+        #[derive(QueryableByName)]
+        struct StateRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            strategy_state: String,
+        }
+
         // Given a database with a session having no compaction key in strategy_state.
         let (_dir, mut conn) = make_conn();
         run_migrations(&mut conn).unwrap();
@@ -569,11 +576,6 @@ mod tests {
         migrate_v10(&mut conn).expect("migrate v10");
 
         // Then strategy_state has a compaction key with default data.
-        #[derive(QueryableByName)]
-        struct StateRow {
-            #[diesel(sql_type = diesel::sql_types::Text)]
-            strategy_state: String,
-        }
         let rows: Vec<StateRow> = sql_query(
             "SELECT strategy_state FROM sessions WHERE id = 'test-2'",
         )
