@@ -6,7 +6,7 @@
 //! suspension and restarting it afterward.
 
 use std::io::{self, Stdout};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crossterm::{
     event::{
@@ -122,6 +122,7 @@ fn run_main_loop(
     app: &mut TuiApp,
 ) -> Result<(), Report<TuiRunError>> {
     let mut frame_count: u64 = 0;
+    let mut last_render: Option<Instant> = None;
 
     loop {
         let frame_start = Instant::now();
@@ -165,14 +166,22 @@ fn run_main_loop(
         }
 
         // ── Phase 4: Render ─────────────────────────────────────────────
-        let render_start = Instant::now();
-        terminal
-            .draw(|frame| {
-                app.render(frame);
-            })
-            .change_context(TuiRunError)
-            .attach("failed to draw frame")?;
-        let render_dur = render_start.elapsed();
+        let should_render = is_input
+            || last_render.is_none_or(|t| t.elapsed() >= Duration::from_millis(33));
+
+        let render_dur = if should_render {
+            let render_start = Instant::now();
+            terminal
+                .draw(|frame| {
+                    app.render(frame);
+                })
+                .change_context(TuiRunError)
+                .attach("failed to draw frame")?;
+            last_render = Some(Instant::now());
+            render_start.elapsed()
+        } else {
+            Duration::ZERO
+        };
 
         let total_frame = frame_start.elapsed();
         frame_count += 1;
