@@ -11,9 +11,9 @@ use crate::protocol::SessionEntry;
 
 use super::SessionStoreService;
 
-/// Loads session entries from the session store, sorted by archived status then `updated_at`.
+/// Loads session entries from the session store, sorted by session state then `updated_at`.
 ///
-/// Unarchived sessions appear first (sorted by `updated_at` descending),
+/// Loaded sessions appear first (sorted by `updated_at` descending),
 /// followed by archived sessions (sorted by `updated_at` descending).
 /// Errors are logged and result in an empty list.
 pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<SessionEntry> {
@@ -26,13 +26,13 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
                     title: summary.title,
                     updated_at: summary.updated_at,
                     theme: theme.clone(),
-                    archived: summary.archived,
+                    session_state: summary.session_state,
                 })
                 .collect();
-            // Unarchived first, then by updated_at descending within each group.
+            // Loaded first, then by updated_at descending within each group.
             entries.sort_by(|a, b| {
-                b.archived
-                    .cmp(&a.archived)
+                b.session_state
+                    .cmp(&a.session_state)
                     .then_with(|| b.updated_at.cmp(&a.updated_at))
             });
             entries
@@ -70,13 +70,13 @@ pub async fn load_session_entries_from_store(
                     title: summary.title,
                     updated_at: summary.updated_at,
                     theme: theme.clone(),
-                    archived: summary.archived,
+                    session_state: summary.session_state,
                 })
                 .collect();
-            // Unarchived first, then by updated_at descending within each group.
+            // Loaded first, then by updated_at descending within each group.
             entries.sort_by(|a, b| {
-                b.archived
-                    .cmp(&a.archived)
+                b.session_state
+                    .cmp(&a.session_state)
                     .then_with(|| b.updated_at.cmp(&a.updated_at))
             });
             entries
@@ -100,6 +100,7 @@ pub async fn load_session_picker_items_from_store(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use crate::feat::session::chat_session::SessionState;
     use crate::feat::theme::default_theme;
     use crate::protocol::SessionId;
     use nullslop_selection_widget::PickerItem;
@@ -114,7 +115,7 @@ mod tests {
             title: "My Chat".to_owned(),
             updated_at: jiff::Timestamp::now(),
             theme: default_theme(),
-            archived: false,
+            session_state: SessionState::Loaded,
         };
 
         // When calling display_label.
@@ -130,7 +131,7 @@ mod tests {
             title: "My Session".to_owned(),
             updated_at: jiff::Timestamp::now(),
             theme: default_theme(),
-            archived: false,
+            session_state: SessionState::Loaded,
         };
 
         // When rendering.

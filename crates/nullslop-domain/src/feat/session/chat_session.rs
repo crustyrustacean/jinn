@@ -87,6 +87,60 @@ pub enum StreamingError {
     EmptyLedger,
 }
 
+/// Whether a session is in memory or at rest in the database.
+///
+/// `Loaded` sessions appear in the sidebar and are available for interaction.
+/// `Archived` sessions exist only in the database and are hidden from the sidebar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionState {
+    #[default]
+    Loaded,
+    Archived,
+}
+
+/// The lifecycle script progression for a session.
+///
+/// One-way transitions enforced by [`advance_after_setup`](Self::advance_after_setup)
+/// and [`advance_after_teardown`](Self::advance_after_teardown).
+/// These methods are only called after the corresponding script succeeds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LifecycleScriptState {
+    #[default]
+    NothingRan,
+    SetupRan,
+    TeardownRan,
+}
+
+impl LifecycleScriptState {
+    /// Transition `NothingRan → SetupRan`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if current state is not `NothingRan`.
+    pub fn advance_after_setup(&mut self) {
+        assert!(
+            matches!(self, Self::NothingRan),
+            "advance_after_setup: expected NothingRan, got {self:?}"
+        );
+        *self = Self::SetupRan;
+    }
+
+    /// Transition `SetupRan → TeardownRan`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if current state is not `SetupRan`.
+    pub fn advance_after_teardown(&mut self) {
+        assert!(
+            matches!(self, Self::SetupRan),
+            "advance_after_teardown: expected SetupRan, got {self:?}"
+        );
+        *self = Self::TeardownRan;
+    }
+}
+
 /// Groups runtime-only fields that are specific to the current running instance
 /// and have no meaning across restarts (stream indices, queues, in-progress flags).
 /// The entire struct is skipped during serialization so individual fields cannot
@@ -180,6 +234,14 @@ pub struct SessionCore {
     /// OWNER: IntentHandler (set on session creation).
     #[serde(default)]
     pub(crate) lifecycle_args: Vec<String>,
+    /// Whether this session is loaded in memory or archived in the database.
+    /// OWNER: session-actor (transitions on close/archive/unarchive).
+    #[serde(default)]
+    pub(crate) session_state: SessionState,
+    /// Lifecycle script progression — one-way: NothingRan → SetupRan → TeardownRan.
+    /// OWNER: session-actor (advances only after script success).
+    #[serde(default)]
+    pub(crate) lifecycle_script_state: LifecycleScriptState,
     /// Runtime-only state — not persisted across restarts.
     #[serde(skip)]
     pub(crate) ephemeral: SessionCoreEphemeral,
@@ -201,6 +263,8 @@ impl Default for SessionCore {
             blobs: HashMap::new(),
             lifecycle_name: None,
             lifecycle_args: Vec::new(),
+            session_state: SessionState::Loaded,
+            lifecycle_script_state: LifecycleScriptState::NothingRan,
             ephemeral: SessionCoreEphemeral::default(),
         }
     }
@@ -1445,6 +1509,39 @@ impl ChatSessionState {
     /// Set the lifecycle args.
     pub fn set_lifecycle_args(&mut self, args: Vec<String>) {
         self.core.lifecycle_args = args;
+    }
+
+    /// Returns the session's memory state.
+    pub fn session_state(&self) -> SessionState {
+        self.core.session_state
+    }
+
+    /// Sets the session's memory state.
+    pub fn set_session_state(&mut self, state: SessionState) {
+        self.core.session_state = state;
+    }
+
+    /// Returns the lifecycle script state.
+    pub fn lifecycle_script_state(&self) -> LifecycleScriptState {
+        self.core.lifecycle_script_state
+    }
+
+    /// Advances lifecycle state after successful setup: `NothingRan → SetupRan`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if not currently `NothingRan`.
+    pub fn advance_lifecycle_after_setup(&mut self) {
+        self.core.lifecycle_script_state.advance_after_setup();
+    }
+
+    /// Advances lifecycle state after successful teardown: `SetupRan → TeardownRan`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if not currently `SetupRan`.
+    pub fn advance_lifecycle_after_teardown(&mut self) {
+        self.core.lifecycle_script_state.advance_after_teardown();
     }
 }
 

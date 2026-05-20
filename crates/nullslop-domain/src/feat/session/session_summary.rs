@@ -8,6 +8,7 @@
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
+use crate::feat::session::chat_session::SessionState;
 use crate::protocol::SessionId;
 
 /// Lightweight session metadata for index scanning.
@@ -28,10 +29,9 @@ pub struct SessionSummary {
     /// When this session was created. Set once at construction, never mutated.
     #[serde(default = "default_timestamp")]
     pub created_at: Timestamp,
-    /// Whether this session has been archived (closed by the user).
-    /// Archived sessions are hidden from the sidebar but appear in the picker.
-    #[serde(default)]
-    pub archived: bool,
+    /// Whether this session is loaded in memory or archived.
+    #[serde(default = "default_session_state")]
+    pub session_state: SessionState,
 }
 
 fn default_title() -> String {
@@ -40,6 +40,10 @@ fn default_title() -> String {
 
 fn default_timestamp() -> Timestamp {
     Timestamp::now()
+}
+
+fn default_session_state() -> SessionState {
+    SessionState::Loaded
 }
 
 #[cfg(test)]
