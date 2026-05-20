@@ -414,6 +414,9 @@ impl IntentHandler {
             Intent::SidebarSessionTeardown => {
                 feat::ui::sidebar::sessions::handle_session_teardown(state)
             }
+            Intent::SidebarSessionArchive => {
+                feat::ui::sidebar::sessions::handle_session_archive(state)
+            }
             Intent::SidebarConfirm => {
                 feat::ui::sidebar::sessions::handle_session_activate(state);
                 IntentResult::empty()

@@ -140,6 +140,8 @@ pub enum Intent {
     SidebarSessionClose,
     /// Re-run teardown for the selected session without closing it.
     SidebarSessionTeardown,
+    /// Archive the selected session without running teardown.
+    SidebarSessionArchive,
     /// Open the persona picker from the sidebar.
     SidebarPersonaEdit,
     /// Open the session lifecycle picker from the sidebar sessions section.
@@ -266,6 +268,7 @@ impl std::fmt::Display for Intent {
             Intent::PinsPinCycle => write!(f, "pins pin cycle"),
             Intent::SidebarSessionClose => write!(f, "sidebar session close"),
             Intent::SidebarSessionTeardown => write!(f, "sidebar session teardown"),
+            Intent::SidebarSessionArchive => write!(f, "sidebar session archive"),
             Intent::SidebarPersonaEdit => write!(f, "edit persona"),
             Intent::SidebarSessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
