@@ -1,23 +1,17 @@
-//! Event handlers — process streaming and tool call events.
+//! Event handlers — process streaming and model refresh events.
 
 use crate::common::actor::ActorContext;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
-use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use crate::feat::context::protocol::command::AssemblePrompt;
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::provider::protocol::event::{
     ModelsRefreshed, StreamCompleted, StreamCompletedReason, StreamToken,
 };
-use crate::feat::tools_actor::protocol::event::{
-    ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
-    ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
-};
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 
-use crate::protocol::{ChatEntry, Command, Event, SessionId, TableData};
+use crate::protocol::{ChatEntry, Command, TableData};
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::chat_session::SessionPhase;
@@ -233,129 +227,11 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Begins tracking a streaming tool call.
-    pub(in crate::feat::session::session_actor) fn on_tool_use_started(
-        &self,
-        event: &ToolUseStarted,
-    ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.begin_tool_call(event.index, &event.id, &event.name);
-    }
-
-    /// Finalizes the tool call entry with complete arguments.
-    ///
-    /// The placeholder entry was created by `on_tool_use_started`. This updates
-    /// it in place with the full arguments string, avoiding a duplicate entry.
-    pub(in crate::feat::session::session_actor) fn on_tool_call_received(
-        &self,
-        event: &ToolCallReceived,
-    ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.finalize_tool_call(
-            &event.tool_call.id,
-            &event.tool_call.name,
-            &event.tool_call.arguments,
-        );
-    }
-
-    /// Appends a partial JSON delta to a streaming tool call.
-    pub(in crate::feat::session::session_actor) fn on_tool_call_streaming(
-        &self,
-        event: &ToolCallStreaming,
-    ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        if let Err(e) = session.append_tool_call_delta(event.index, &event.partial_json) {
-            tracing::error!(err = ?e, "failed to append tool call delta");
-        }
-    }
-
-    /// Pushes a tool result entry into the session history.
-    pub(in crate::feat::session::session_actor) async fn on_tool_execution_completed(
-        &self,
-        event: &ToolExecutionCompleted,
-    ) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
-            session.finalize_tool_result(
-                &event.result.tool_call_id,
-                &event.result.name,
-                &event.result.content,
-                event.result.success,
-                event.result.full_content.clone(),
-                event.result.truncation.clone(),
-            );
-        }
-        self.save_active_session(&event.session_id).await;
-    }
-
-    /// Creates a pending ToolResult entry when a streaming tool starts executing.
-    pub(in crate::feat::session::session_actor) fn on_tool_execution_started(
-        &self,
-        event: &ToolExecutionStarted,
-    ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.begin_tool_result(&event.tool_call_id, &event.name);
-    }
-
-    /// Appends incremental output to a pending ToolResult entry.
-    pub(in crate::feat::session::session_actor) fn on_tool_execution_output(
-        &self,
-        event: &ToolExecutionOutput,
-    ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&event.session_id);
-        session.append_tool_result_output(&event.tool_call_id, &event.output);
-    }
-
-    /// All tools in a batch have finished — route the continuation through
-    /// context assembly so token counting and prompt strategy apply.
-    ///
-    /// By this point, the session history already contains `ToolCall`,
-    /// `ToolResult`, and `Assistant` entries from earlier event handlers,
-    /// and the session is already in sending state (set by `on_stream_completed`
-    /// for the `ToolUse` reason). We just need to emit `AssemblePrompt` with
-    /// the full session history.
-    pub(in crate::feat::session::session_actor) fn on_tool_batch_completed(
-        &self,
-        event: &ToolBatchCompleted,
-        ctx: &ActorContext,
-    ) {
-        tracing::trace!(
-            session_id = ?event.session_id,
-            result_count = event.results.len(),
-            "on_tool_batch_completed"
-        );
-
-        // Read history and model, then emit AssemblePrompt.
-        // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
-        let (history, model_name) = {
-            let state = self.state.read();
-            let session = state.session(&event.session_id);
-            (session.history().to_vec(), session.profile().model.clone())
-        };
-
-        if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
-            session_id: event.session_id.clone(),
-            history,
-            tools: vec![],
-            model_name,
-        })) {
-            tracing::warn!(
-                err = ?e,
-                "session-actor failed to emit AssemblePrompt from tool batch completion"
-            );
-        }
-    }
-
     /// Pushes a table entry after model refresh.
     ///
     /// Emits `PushChatEntry` commands so the entries are persisted.
     pub(in crate::feat::session::session_actor) fn on_models_refreshed(
+        &self,
         event: &ModelsRefreshed,
         ctx: &ActorContext,
     ) {
@@ -410,51 +286,5 @@ impl SessionPersistenceActor {
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for models refresh");
         }
-    }
-
-    /// Drain queued messages into a new turn: push each entry, then emit
-    /// `AssemblePrompt` with the full session history.
-    pub(in crate::feat::session::session_actor) async fn start_turn_from_queued(
-        &self,
-        session_id: &SessionId,
-        entries: &[ChatEntry],
-        ctx: &ActorContext,
-    ) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(session_id);
-            for entry in entries {
-                session.push_entry(entry.clone());
-            }
-            session.begin_sending();
-        }
-
-        let (history, model_name) = {
-            let state = self.state.read();
-            let session = state.session(session_id);
-            (session.history().to_vec(), session.profile().model.clone())
-        };
-
-        if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
-            session_id: session_id.clone(),
-            history,
-            tools: vec![],
-            model_name,
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit AssemblePrompt from queue drain");
-        }
-
-        // Emit ChatEntrySubmitted for each queued entry.
-        for entry in entries {
-            if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
-                session_id: session_id.clone(),
-                entry: entry.clone(),
-            })) {
-                tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted for queued message");
-            }
-        }
-
-        // Persist the queued entries for crash safety.
-        self.save_active_session(session_id).await;
     }
 }

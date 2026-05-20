@@ -18,6 +18,7 @@
 //! then emit. Never hold the lock during emission.
 
 mod handlers;
+mod helpers;
 
 use super::SessionStoreService;
 
@@ -64,13 +65,13 @@ use crate::protocol::{ChatEntry, Command, Event, PromptStrategyId};
 /// Also persists session snapshots to disk when session state changes.
 pub struct SessionPersistenceActor {
     /// Shared application state.
-    pub(super) state: State,
+    pub(in crate::feat::session::session_actor) state: State,
     /// Runtime services (user preferences storage for startup config loading).
-    pub(super) services: Option<Services>,
+    pub(in crate::feat::session::session_actor) services: Option<Services>,
     /// The session store service for writing session snapshots.
-    pub(super) store: Option<SessionStoreService>,
+    pub(in crate::feat::session::session_actor) store: Option<SessionStoreService>,
     /// Token counter for recording token usage in the session ledger.
-    pub(super) counter: TiktokenCounter,
+    pub(in crate::feat::session::session_actor) counter: TiktokenCounter,
 }
 
 /// Remove ANSI escape sequences from a string.
@@ -269,7 +270,7 @@ impl SessionPersistenceActor {
                 self.on_tool_execution_output(payload);
             }
             Event::ModelsRefreshed(payload) => {
-                Self::on_models_refreshed(payload, ctx);
+                self.on_models_refreshed(payload, ctx);
             }
             Event::EnvironmentLoaded(payload) => {
                 self.on_environment_loaded(&payload.config, ctx).await;
