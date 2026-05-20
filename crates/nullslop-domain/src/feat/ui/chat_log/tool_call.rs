@@ -8,7 +8,7 @@ use crate::feat::session::tool_result_status::ToolResultStatus;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, truncate_to_width};
+use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
 
 pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
     let display_text = format_tool_call_display(name, arguments);
@@ -21,7 +21,14 @@ pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'s
         None => Style::default().fg(fg),
     };
 
-    vec![Line::from(Span::styled(truncated, style))]
+    let mut lines = vec![Line::from(Span::styled(truncated, style))];
+
+    // Pad to full content width so the background spans the entire row.
+    if let Some(bg_color) = bg {
+        pad_line_to_width(&mut lines[0], ctx.content_width, Style::default().bg(bg_color));
+    }
+
+    lines
 }
 
 /// Format the tool call display string.
