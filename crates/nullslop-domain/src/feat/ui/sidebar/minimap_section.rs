@@ -65,10 +65,10 @@ impl MinimapCategory {
             ChatEntryKind::Error(..) => Some(Self::Error),
             ChatEntryKind::System(..) | ChatEntryKind::Transient(..) => Some(Self::System),
             ChatEntryKind::Skill { .. } => Some(Self::Skill),
-            // Excluded: Actor, Thinking, Table.
+            // Excluded: Actor, Thinking, Compaction.
             ChatEntryKind::Actor { .. }
             | ChatEntryKind::Thinking(..)
-            | ChatEntryKind::Table(..) => None,
+            | ChatEntryKind::Compaction { .. } => None,
         }
     }
 }
@@ -702,14 +702,10 @@ mod tests {
 
     #[rstest::rstest]
     fn excluded_types_are_filtered() {
-        // Given entries of excluded types (Actor, Thinking, Table).
+        // Given entries of excluded types (Actor, Thinking, Compaction).
         let history = vec![
             ChatEntry::actor("bash", "output"),
             ChatEntry::thinking("reasoning..."),
-            ChatEntry::table(crate::feat::session::chat_entry::TableData {
-                headers: vec![],
-                rows: vec![],
-            }),
         ];
 
         // When computing blocks.
