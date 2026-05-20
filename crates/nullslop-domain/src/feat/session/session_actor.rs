@@ -522,6 +522,7 @@ impl SessionPersistenceActor {
                 if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
                     session.set_cwd(cwd.clone());
                     session.push_entry(setup_complete_msg(&cwd));
+                    session.advance_lifecycle_after_setup();
                 }
                 drop(state);
 
