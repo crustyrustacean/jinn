@@ -42,7 +42,6 @@ impl AnthropicStreamParser {
     }
 
     /// Parse a single SSE data payload into an optional `StreamEvent`.
-    #[allow(clippy::too_many_lines)]
     pub fn parse_data(&mut self, json: &str) -> Option<StreamEvent> {
         let response: serde_json::Value = serde_json::from_str(json).ok()?;
 
@@ -53,134 +52,146 @@ impl AnthropicStreamParser {
             .unwrap_or(0) as usize;
 
         match response_type {
-            "message_start" => {
-                // Extract input token count from the initial message.
-                if let Some(usage) = response.get("message").and_then(|m| m.get("usage")) {
-                    self.input_tokens = usage
-                        .get("input_tokens")
-                        .and_then(serde_json::Value::as_u64);
-                }
-                None
-            }
-            "content_block_start" => {
-                let content_block = response.get("content_block")?;
-                let block_type = content_block
-                    .get("type")
-                    .and_then(|t| t.as_str())
+            "message_start" => self.handle_message_start(&response),
+            "content_block_start" => self.handle_content_block_start(index, &response),
+            "content_block_delta" => self.handle_content_block_delta(index, &response),
+            "content_block_stop" => self.handle_content_block_stop(index),
+            "message_delta" => self.handle_message_delta(&response),
+            _ => None,
+        }
+    }
+
+    fn handle_message_start(&mut self, response: &serde_json::Value) -> Option<StreamEvent> {
+        if let Some(usage) = response.get("message").and_then(|m| m.get("usage")) {
+            self.input_tokens = usage
+                .get("input_tokens")
+                .and_then(serde_json::Value::as_u64);
+        }
+        None
+    }
+
+    fn handle_content_block_start(
+        &mut self,
+        index: usize,
+        response: &serde_json::Value,
+    ) -> Option<StreamEvent> {
+        let content_block = response.get("content_block")?;
+        let block_type = content_block
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("");
+
+        if block_type == "tool_use" {
+            let id = content_block
+                .get("id")
+                .and_then(|i| i.as_str())
+                .unwrap_or("")
+                .to_owned();
+            let name = content_block
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_owned();
+
+            self.tool_states.insert(
+                index,
+                ToolUseState {
+                    id: id.clone(),
+                    name: name.clone(),
+                    json_buffer: String::new(),
+                },
+            );
+
+            Some(StreamEvent::ToolUseStart { index, id, name })
+        } else {
+            None
+        }
+    }
+
+    fn handle_content_block_delta(
+        &mut self,
+        index: usize,
+        response: &serde_json::Value,
+    ) -> Option<StreamEvent> {
+        let delta = response.get("delta")?;
+        let delta_type = delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+        match delta_type {
+            "text_delta" => delta
+                .get("text")
+                .and_then(|t| t.as_str())
+                .map(|t| StreamEvent::Text(t.to_owned())),
+            "input_json_delta" => {
+                let partial_json = delta
+                    .get("partial_json")
+                    .and_then(|p| p.as_str())
                     .unwrap_or("");
 
-                if block_type == "tool_use" {
-                    let id = content_block
-                        .get("id")
-                        .and_then(|i| i.as_str())
-                        .unwrap_or("")
-                        .to_owned();
-                    let name = content_block
-                        .get("name")
-                        .and_then(|n| n.as_str())
-                        .unwrap_or("")
-                        .to_owned();
-
-                    self.tool_states.insert(
-                        index,
-                        ToolUseState {
-                            id: id.clone(),
-                            name: name.clone(),
-                            json_buffer: String::new(),
-                        },
-                    );
-
-                    Some(StreamEvent::ToolUseStart { index, id, name })
-                } else {
+                if partial_json.is_empty() {
                     None
-                }
-            }
-            "content_block_delta" => {
-                let delta = response.get("delta")?;
-                let delta_type = delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
-
-                match delta_type {
-                    "text_delta" => delta
-                        .get("text")
-                        .and_then(|t| t.as_str())
-                        .map(|t| StreamEvent::Text(t.to_owned())),
-                    "input_json_delta" => {
-                        let partial_json = delta
-                            .get("partial_json")
-                            .and_then(|p| p.as_str())
-                            .unwrap_or("");
-
-                        if partial_json.is_empty() {
-                            None
-                        } else {
-                            if let Some(state) = self.tool_states.get_mut(&index) {
-                                state.json_buffer.push_str(partial_json);
-                            }
-                            Some(StreamEvent::ToolUseInputDelta {
-                                index,
-                                partial_json: partial_json.to_owned(),
-                            })
-                        }
+                } else {
+                    if let Some(state) = self.tool_states.get_mut(&index) {
+                        state.json_buffer.push_str(partial_json);
                     }
-                    _ => None,
-                }
-            }
-            "content_block_stop" => {
-                if let Some(state) = self.tool_states.remove(&index) {
-                    // Anthropic requires tool_use.input to be a JSON object.
-                    // Default to "{}" if no input deltas were received.
-                    let arguments = if state.json_buffer.is_empty() {
-                        "{}".to_owned()
-                    } else {
-                        state.json_buffer
-                    };
-                    Some(StreamEvent::ToolUseComplete {
+                    Some(StreamEvent::ToolUseInputDelta {
                         index,
-                        tool_call: ToolCall {
-                            id: state.id,
-                            name: state.name,
-                            arguments,
-                        },
+                        partial_json: partial_json.to_owned(),
                     })
-                } else {
-                    None
                 }
-            }
-            "message_delta" => {
-                let delta = response.get("delta")?;
-                let stop_reason = delta
-                    .get("stop_reason")
-                    .and_then(|s| s.as_str())
-                    .unwrap_or("end_turn");
-
-                // Extract output token count.
-                if let Some(usage) = response.get("usage") {
-                    self.output_tokens = usage
-                        .get("output_tokens")
-                        .and_then(serde_json::Value::as_u64);
-                }
-
-                let stop = match stop_reason {
-                    "tool_use" => StopReason::ToolUse,
-                    "end_turn" => StopReason::EndTurn,
-                    other => StopReason::Other(other.to_owned()),
-                };
-                let usage = if self.input_tokens.is_some() || self.output_tokens.is_some() {
-                    Some(StreamUsage {
-                        prompt_tokens: self.input_tokens,
-                        completion_tokens: self.output_tokens,
-                        cost: None,
-                    })
-                } else {
-                    None
-                };
-                Some(StreamEvent::Done {
-                    stop_reason: stop,
-                    usage,
-                })
             }
             _ => None,
         }
+    }
+
+    fn handle_content_block_stop(&mut self, index: usize) -> Option<StreamEvent> {
+        self.tool_states.remove(&index).map(|state| {
+            let arguments = if state.json_buffer.is_empty() {
+                "{}".to_owned()
+            } else {
+                state.json_buffer
+            };
+            StreamEvent::ToolUseComplete {
+                index,
+                tool_call: ToolCall {
+                    id: state.id,
+                    name: state.name,
+                    arguments,
+                },
+            }
+        })
+    }
+
+    fn handle_message_delta(&mut self, response: &serde_json::Value) -> Option<StreamEvent> {
+        let delta = response.get("delta")?;
+        let stop_reason = delta
+            .get("stop_reason")
+            .and_then(|s| s.as_str())
+            .unwrap_or("end_turn");
+
+        if let Some(usage) = response.get("usage") {
+            self.output_tokens = usage
+                .get("output_tokens")
+                .and_then(serde_json::Value::as_u64);
+        }
+
+        let stop = match stop_reason {
+            "tool_use" => StopReason::ToolUse,
+            "end_turn" => StopReason::EndTurn,
+            other => StopReason::Other(other.to_owned()),
+        };
+        let usage = if self.input_tokens.is_some() || self.output_tokens.is_some() {
+            Some(StreamUsage {
+                prompt_tokens: self.input_tokens,
+                completion_tokens: self.output_tokens,
+                cost: None,
+            })
+        } else {
+            None
+        };
+        Some(StreamEvent::Done {
+            stop_reason: stop,
+            usage,
+        })
     }
 }
 
