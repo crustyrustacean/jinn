@@ -9,11 +9,11 @@ pub(crate) mod actor;
 pub(crate) mod assistant;
 pub(crate) mod compaction;
 pub(crate) mod error_entry;
+pub(crate) mod history;
+#[cfg(test)]
+mod history_tests;
 pub(crate) mod line_count_cache;
 pub(crate) mod markdown;
-pub(crate) mod renderer;
-#[cfg(test)]
-mod renderer_tests;
 pub(crate) mod shared;
 pub(crate) mod skill;
 pub(crate) mod system;
@@ -24,7 +24,7 @@ pub(crate) mod tool_result;
 pub(crate) mod transient;
 pub(crate) mod user;
 
-pub use renderer::ChatLogElement;
+pub use history::ChatLogElement;
 pub use shared::GUTTER_WIDTH;
 
 use crate::common::AppUiRegistry;
