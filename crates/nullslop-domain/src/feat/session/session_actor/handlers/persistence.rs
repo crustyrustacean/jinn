@@ -69,13 +69,6 @@ impl SessionPersistenceActor {
                     tracing::warn!(err = ?e, "failed to unarchive session on load");
                 }
 
-                let strategy_id = session.active_strategy().clone();
-                let strategy_blob = session
-                    .strategy_state()
-                    .get(&strategy_id)
-                    .and_then(|s| serde_json::to_value(s).ok())
-                    .unwrap_or(serde_json::json!({}));
-
                 let _ =
                     ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
             }
