@@ -1959,7 +1959,10 @@ fn lifecycle_script_state_defaults_to_nothing_ran() {
     let session = ChatSessionState::new();
 
     // Then lifecycle script state is NothingRan.
-    assert_eq!(session.lifecycle_script_state(), LifecycleScriptState::NothingRan);
+    assert_eq!(
+        session.lifecycle_script_state(),
+        LifecycleScriptState::NothingRan
+    );
 }
 
 #[rstest::rstest]
@@ -1984,13 +1987,19 @@ fn session_state_can_transition_to_archived_and_back() {
 fn chat_session_advance_lifecycle_after_setup() {
     // Given a new session (NothingRan).
     let mut session = ChatSessionState::new();
-    assert_eq!(session.lifecycle_script_state(), LifecycleScriptState::NothingRan);
+    assert_eq!(
+        session.lifecycle_script_state(),
+        LifecycleScriptState::NothingRan
+    );
 
     // When advancing after setup.
     session.advance_lifecycle_after_setup();
 
     // Then state is SetupRan.
-    assert_eq!(session.lifecycle_script_state(), LifecycleScriptState::SetupRan);
+    assert_eq!(
+        session.lifecycle_script_state(),
+        LifecycleScriptState::SetupRan
+    );
 }
 
 #[rstest::rstest]
@@ -2003,5 +2012,8 @@ fn chat_session_advance_lifecycle_after_teardown() {
     session.advance_lifecycle_after_teardown();
 
     // Then state is TeardownRan.
-    assert_eq!(session.lifecycle_script_state(), LifecycleScriptState::TeardownRan);
+    assert_eq!(
+        session.lifecycle_script_state(),
+        LifecycleScriptState::TeardownRan
+    );
 }

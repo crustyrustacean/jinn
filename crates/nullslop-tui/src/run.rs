@@ -21,8 +21,8 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use wherror::Error;
 
 use crate::TuiApp;
-use crate::msg::Msg;
 use crate::app::scope_for_focus;
+use crate::msg::Msg;
 
 /// Error type for TUI run operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -152,8 +152,8 @@ fn run_main_loop(
         }
 
         // ── Phase 4: Render ─────────────────────────────────────────────
-        let should_render = is_input
-            || last_render.is_none_or(|t| t.elapsed() >= Duration::from_millis(33));
+        let should_render =
+            is_input || last_render.is_none_or(|t| t.elapsed() >= Duration::from_millis(33));
 
         if should_render {
             terminal

@@ -174,7 +174,9 @@ impl Command {
             Self::EndCompaction(..) => Some(EndCompaction::NAME),
             Self::CancelCompaction(..) => Some(CancelCompaction::NAME),
             Self::CloseSession(..) => Some(CloseSession::NAME),
-            Self::ArchiveSession(..) => Some(crate::feat::session::protocol::archive_session::ArchiveSession::NAME),
+            Self::ArchiveSession(..) => {
+                Some(crate::feat::session::protocol::archive_session::ArchiveSession::NAME)
+            }
             Self::SaveNewLifecycleSession(..) => Some(SaveNewLifecycleSession::NAME),
         }
     }

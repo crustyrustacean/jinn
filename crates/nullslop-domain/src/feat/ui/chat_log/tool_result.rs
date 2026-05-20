@@ -639,7 +639,10 @@ mod tests {
             .spans
             .iter()
             .any(|s| s.style.bg == Some(theme.tool_success_bg));
-        assert!(has_bg, "successful tool result should have green background");
+        assert!(
+            has_bg,
+            "successful tool result should have green background"
+        );
     }
 
     #[rstest::rstest]
