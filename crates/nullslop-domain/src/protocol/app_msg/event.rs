@@ -28,7 +28,8 @@ use crate::feat::context::protocol::event::{
 pub use crate::common::actor::event_msg::EventMsg;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::provider::protocol::event::{
-    ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted, StreamToken,
+    ModelCacheLoaded, ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
+    StreamToken,
 };
 use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownFinished,
@@ -81,6 +82,8 @@ pub enum Event {
     ProviderSwitched(ProviderSwitched),
     /// Models refresh completed.
     ModelsRefreshed(ModelsRefreshed),
+    /// Model cache loaded from disk at startup.
+    ModelCacheLoaded(ModelCacheLoaded),
     /// Prompt templates loaded after a rescan.
     PromptTemplatesLoaded(PromptTemplatesLoaded),
     /// All tool calls in a batch have completed execution.
@@ -143,6 +146,7 @@ impl Event {
             Self::ToolCallStreaming(..) => Some(ToolCallStreaming::TYPE_NAME),
             Self::ProviderSwitched(..) => Some(ProviderSwitched::TYPE_NAME),
             Self::ModelsRefreshed(..) => Some(ModelsRefreshed::TYPE_NAME),
+            Self::ModelCacheLoaded(..) => Some(ModelCacheLoaded::TYPE_NAME),
             Self::PromptTemplatesLoaded(..) => Some(PromptTemplatesLoaded::TYPE_NAME),
             Self::ToolBatchCompleted(..) => Some(ToolBatchCompleted::TYPE_NAME),
             Self::ToolExecutionCompleted(..) => Some(ToolExecutionCompleted::TYPE_NAME),
