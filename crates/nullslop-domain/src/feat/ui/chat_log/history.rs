@@ -22,6 +22,10 @@
 //!
 //! Text wraps within the available space.
 
+mod gutter;
+mod scroll_indicator;
+mod viewport;
+
 use std::collections::HashMap;
 
 use crate::common::app_state::AppState;
@@ -32,7 +36,7 @@ use crate::protocol::{ChatEntry, ChatEntryKind};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use super::line_count_cache::EntryLineCache;
@@ -41,6 +45,7 @@ use super::{
     actor, assistant, compaction, error_entry, skill, system, table, thinking, tool_call,
     tool_result, transient, user,
 };
+use viewport::ScrollState;
 
 /// Default number of lines to show for tool entries (calls and results) before truncating.
 const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
@@ -115,17 +120,6 @@ fn render_loading(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         .style(Style::default().fg(theme.muted_text))
         .block(Block::default().borders(Borders::NONE));
     frame.render_widget(loading, area);
-}
-
-// ---------------------------------------------------------------------------
-// Scroll state
-// ---------------------------------------------------------------------------
-
-/// Accumulated scroll computation results.
-struct ScrollState {
-    blank_count: usize,
-    max_offset: u16,
-    clamped: u16,
 }
 
 // ---------------------------------------------------------------------------
@@ -286,73 +280,30 @@ impl<'a> HistoryRender<'a> {
     }
 
     // -----------------------------------------------------------------------
-    // Step 3: Scroll math
+    // Step 3: Scroll math (delegates to viewport submodule)
     // -----------------------------------------------------------------------
 
-    /// Compute blank count, max offset, resolve scroll offset, and clamp.
-    /// Adjusts clamped offset for scroll-to-selected.
     fn compute_scroll(&mut self) {
-        let blank_count = self.area.height.saturating_sub(self.total_wrapped) as usize;
-        let total_display = self.total_wrapped + blank_count as u16;
-        let max_offset = total_display.saturating_sub(self.area.height);
-
-        let scroll_offset = self.state.active_session().scroll_offset();
-        let resolved = scroll_offset.unwrap_or(max_offset);
-        let mut clamped = resolved.min(max_offset);
-
-        // Scroll-to-selected: adjust clamped offset to keep selected entry visible.
-        if let Some(sel_idx) = self.selected_idx
-            && let Some(&(start, end)) = self.entry_line_ranges.get(sel_idx)
-        {
-            let abs_start = start + blank_count as u16;
-            let abs_end = end + blank_count as u16;
-            let entry_height = abs_end.saturating_sub(abs_start);
-            let viewport_top = clamped;
-            let viewport_bottom = clamped.saturating_add(self.area.height);
-
-            if entry_height <= self.area.height {
-                if abs_start < viewport_top {
-                    clamped = abs_start;
-                } else if abs_end > viewport_bottom {
-                    clamped = abs_end.saturating_sub(self.area.height);
-                }
-            } else if abs_start >= viewport_bottom {
-                clamped = abs_start;
-            } else if abs_end <= viewport_top {
-                clamped = abs_end.saturating_sub(self.area.height);
-            }
-        }
-
-        self.scroll = ScrollState {
-            blank_count,
-            max_offset,
-            clamped,
-        };
+        self.scroll = viewport::compute_scroll(
+            self.area.height,
+            self.total_wrapped,
+            self.selected_idx,
+            &self.entry_line_ranges,
+            self.state.active_session().scroll_offset(),
+        );
     }
 
     // -----------------------------------------------------------------------
-    // Step 4: Find visible entries
+    // Step 4: Find visible entries (delegates to viewport submodule)
     // -----------------------------------------------------------------------
 
-    /// Determine which entries overlap the current viewport.
     fn find_visible_indices(&mut self) {
-        let viewport_top = self.scroll.clamped;
-        let viewport_bottom = self.scroll.clamped.saturating_add(self.area.height);
-
-        self.visible_indices = self
-            .entry_line_ranges
-            .iter()
-            .enumerate()
-            .filter_map(|(i, &(start, end))| {
-                let abs_start = start + self.scroll.blank_count as u16;
-                let abs_end = end + self.scroll.blank_count as u16;
-                if abs_end > viewport_top && abs_start < viewport_bottom {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
-            .collect();
+        self.visible_indices = viewport::find_visible_indices(
+            &self.entry_line_ranges,
+            self.scroll.blank_count,
+            self.scroll.clamped,
+            self.area.height,
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -367,11 +318,12 @@ impl<'a> HistoryRender<'a> {
         if blank_count > 0 && viewport_top < blank_count as u16 {
             for _ in 0..blank_count {
                 self.content_lines.push(Line::from(""));
-                self.gutter_lines.push(Line::from(Span::styled(
-                    GUTTER_STR.to_string(),
-                    Style::default().fg(self.theme.border_unfocused),
-                )));
             }
+            self.gutter_lines.extend(gutter::build_blank_gutter_lines(
+                blank_count,
+                &self.theme,
+                GUTTER_STR,
+            ));
             self.lines_before_viewport = viewport_top;
         }
     }
@@ -387,8 +339,8 @@ impl<'a> HistoryRender<'a> {
             self.state.frontend.scope_stack.current(),
             crate::common::app_state::FocusScope::Normal
         );
-        let (gutter_active_color, gutter_inactive_color) =
-            { (self.theme.focus_accent, self.theme.border_unfocused) };
+        let gutter_active_color = self.theme.focus_accent;
+        let gutter_inactive_color = self.theme.border_unfocused;
 
         for &i in &self.visible_indices {
             let entry = &self.history[i];
@@ -420,15 +372,20 @@ impl<'a> HistoryRender<'a> {
                 entry_to_lines(entry, &ctx)
             };
 
-            // Build gutter lines for this entry.
-            let entry_gutter_lines = self.build_entry_gutter_lines(
-                &entry_content_lines,
-                entry,
+            // Build gutter lines for this entry (delegates to gutter submodule).
+            let is_pinned = entry.pin_position.is_some();
+            let gutter_ctx = gutter::GutterStyle {
+                is_pinned,
                 is_selected,
                 chat_log_active,
+                content_width: self.content_width,
+                theme: &self.theme,
                 gutter_active_color,
                 gutter_inactive_color,
-            );
+                gutter_str: GUTTER_STR,
+            };
+            let entry_gutter_lines =
+                gutter::build_entry_gutter_lines(&entry_content_lines, &gutter_ctx);
 
             // Track lines above viewport for scroll calculation.
             if abs_entry_start < viewport_top {
@@ -438,74 +395,6 @@ impl<'a> HistoryRender<'a> {
             self.content_lines.extend(entry_content_lines);
             self.gutter_lines.extend(entry_gutter_lines);
         }
-    }
-
-    /// Build gutter lines for a single entry, handling pin icon, selected style,
-    /// pin highlight, and wrap-overflow padding.
-    fn build_entry_gutter_lines(
-        &self,
-        entry_content_lines: &[Line<'static>],
-        entry: &ChatEntry,
-        is_selected: bool,
-        chat_log_active: bool,
-        gutter_active_color: ratatui::style::Color,
-        gutter_inactive_color: ratatui::style::Color,
-    ) -> Vec<Line<'static>> {
-        let is_pinned = entry.pin_position.is_some();
-        let gutter_style = if is_selected && chat_log_active {
-            Style::default().fg(gutter_active_color)
-        } else if is_selected {
-            Style::default().fg(gutter_inactive_color)
-        } else {
-            Style::default().fg(self.theme.border_unfocused)
-        };
-        let gutter_content = if is_pinned { "📌" } else { GUTTER_STR };
-
-        let pin_highlight_style = if is_selected && is_pinned && chat_log_active {
-            Style::default()
-                .fg(self.theme.gutter_bg)
-                .bg(gutter_active_color)
-        } else if is_selected && is_pinned {
-            Style::default()
-                .fg(self.theme.gutter_bg)
-                .bg(gutter_inactive_color)
-        } else {
-            Style::default()
-        };
-
-        let entry_wrapped: u16 = if self.content_width == 0 {
-            entry_content_lines.len() as u16
-        } else {
-            Paragraph::new(entry_content_lines.to_vec())
-                .wrap(Wrap { trim: false })
-                .line_count(self.content_width) as u16
-        };
-
-        let mut entry_gutter_lines = Vec::new();
-        let blank_gutter = Span::styled(GUTTER_STR.to_string(), gutter_style);
-        for (j, _) in entry_content_lines.iter().enumerate() {
-            let span = if j == 0 && is_pinned {
-                Span::styled(gutter_content.to_owned(), pin_highlight_style)
-            } else if j == 0 {
-                Span::styled(gutter_content.to_owned(), gutter_style)
-            } else {
-                blank_gutter.clone()
-            };
-            entry_gutter_lines.push(Line::from(span));
-        }
-
-        let logical_count = entry_content_lines.len() as u16;
-        if entry_wrapped > logical_count {
-            let extra = entry_wrapped - logical_count;
-            for _ in 0..extra {
-                entry_gutter_lines.push(Line::from(Span::styled(
-                    GUTTER_STR.to_string(),
-                    gutter_style,
-                )));
-            }
-        }
-
-        entry_gutter_lines
     }
 
     // -----------------------------------------------------------------------
@@ -529,28 +418,14 @@ impl<'a> HistoryRender<'a> {
             .scroll((paragraph_scroll, 0));
         frame.render_widget(chat_widget, self.content_area);
 
-        // Render a scroll indicator when the user has scrolled up from the bottom.
-        if self.scroll.clamped < self.scroll.max_offset {
-            let hidden = self.scroll.max_offset - self.scroll.clamped;
-            let label = format!(" ↑ {hidden} lines above ");
-            let label_len = label.len();
-            let indicator = Paragraph::new(Line::from(Span::styled(
-                label,
-                Style::default()
-                    .fg(self.theme.muted_text)
-                    .bg(self.theme.scroll_indicator_bg),
-            )));
-            let indicator_width = u16::try_from(label_len)
-                .unwrap_or(self.area.width)
-                .min(self.area.width);
-            let indicator_area = Rect {
-                x: self.area.x + self.area.width.saturating_sub(indicator_width),
-                y: self.area.y + self.area.height.saturating_sub(1),
-                width: indicator_width,
-                height: 1,
-            };
-            frame.render_widget(indicator, indicator_area);
-        }
+        // Render scroll indicator (delegates to scroll_indicator submodule).
+        scroll_indicator::render_scroll_indicator(
+            frame,
+            self.area,
+            self.scroll.clamped,
+            self.scroll.max_offset,
+            &self.theme,
+        );
     }
 }
 
