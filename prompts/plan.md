@@ -36,7 +36,7 @@ Your process is Dialectical:
       - **Gotchas:** Edge cases and out-of-scope anti-goals.
 
 2.  **Identify Patterns & Alternatives:**
-    - Identify existing architectural patterns that fit the request.
+    - Use tools to explore the codebase and identify existing architectural patterns that fit the request.
     - Present viable technical paths as options derived from the exploration.
 
 3.  **Propose High-Level Plan:**
