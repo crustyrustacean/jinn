@@ -46,7 +46,7 @@ impl StreamResponseParser {
     /// - `delta.reasoning_content` → `StreamEvent::Reasoning`
     /// - `delta.tool_calls[]` → `ToolUseStart`/`ToolUseInputDelta` (state tracked)
     /// - `finish_reason` → `ToolUseComplete` + `Done` (drains pending tool calls)
-    #[allow(clippy::manual_let_else)]
+    #[allow(clippy::manual_let_else, clippy::collapsible_if)]
     pub fn parse_data(&mut self, json: &str) -> Vec<StreamEvent> {
         let mut results = Vec::new();
 
@@ -176,17 +176,17 @@ impl StreamResponseParser {
         pending_indices.sort_unstable();
 
         for idx in pending_indices {
-            if let Some(state) = self.tool_states.remove(&idx) {
-                if state.started {
-                    results.push(StreamEvent::ToolUseComplete {
-                        index: idx,
-                        tool_call: ToolCall {
-                            id: state.id,
-                            name: state.name,
-                            arguments: state.arguments_buffer,
-                        },
-                    });
-                }
+            if let Some(state) = self.tool_states.remove(&idx)
+                .filter(|s| s.started)
+            {
+                results.push(StreamEvent::ToolUseComplete {
+                    index: idx,
+                    tool_call: ToolCall {
+                        id: state.id,
+                        name: state.name,
+                        arguments: state.arguments_buffer,
+                    },
+                });
             }
         }
 
