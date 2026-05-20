@@ -1,0 +1,99 @@
+//! Pure helper functions for building a single session entry line.
+//!
+//! Each function is pure (no side effects, no `&mut self`) and takes explicit
+//! parameters so it can be unit-tested in isolation.
+
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use throbber_widgets_tui::ThrobberState;
+
+use crate::feat::theme::Theme;
+use crate::feat::ui::sidebar::sessions::state::SessionEntry;
+
+use super::truncate::truncate_str;
+use super::super::{ACTIVE_PREFIX, INACTIVE_PREFIX};
+
+/// Builds the animated throbber indicator span for a session entry.
+///
+/// Returns a blank space when the session is idle, or an animated braille
+/// character when the session is working.
+pub(crate) fn indicator_span(is_idle: bool, throbber_state: &ThrobberState) -> Span<'static> {
+    if is_idle {
+        Span::raw(" ")
+    } else {
+        let set = throbber_widgets_tui::symbols::throbber::BRAILLE_EIGHT;
+        let mut idx = throbber_state.index();
+        let len = set.symbols.len() as i8;
+        idx %= len;
+        if idx < 0 {
+            idx += len;
+        }
+        let ch = set.symbols[idx as usize];
+        Span::styled(ch.to_string(), Style::default().fg(Color::Cyan))
+    }
+}
+
+/// Builds the arrow prefix span indicating whether a session is active.
+///
+/// Active sessions display `▸ `, inactive sessions display `  ` (aligned).
+pub(crate) fn arrow_span(is_active: bool, theme: &Theme) -> Span<'static> {
+    if is_active {
+        Span::styled(
+            ACTIVE_PREFIX.to_owned(),
+            Style::default().fg(theme.primary_text),
+        )
+    } else {
+        Span::styled(INACTIVE_PREFIX.to_owned(), Style::default())
+    }
+}
+
+/// Computes the title style based on entry state.
+///
+/// Priority: error+selected → red+reversed, error → red, selected → reversed,
+/// active → primary text, default → muted text.
+pub(crate) fn entry_title_style(
+    is_selected: bool,
+    is_active: bool,
+    last_entry_is_error: bool,
+    theme: &Theme,
+) -> Style {
+    if last_entry_is_error {
+        if is_selected {
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default().fg(Color::Red)
+        }
+    } else if is_selected {
+        Style::default().add_modifier(Modifier::REVERSED)
+    } else if is_active {
+        Style::default().fg(theme.primary_text)
+    } else {
+        Style::default().fg(theme.muted_text)
+    }
+}
+
+/// Assembles a complete session entry line from its components.
+///
+/// Combines the throbber indicator, arrow prefix, and styled truncated title
+/// into a single [`Line`] ready for rendering.
+pub(crate) fn assemble_entry_line(
+    entry: &SessionEntry,
+    is_selected: bool,
+    max_title_len: usize,
+    throbber_state: &ThrobberState,
+    theme: &Theme,
+) -> Line<'static> {
+    let indicator = indicator_span(entry.is_idle, throbber_state);
+    let arrow = arrow_span(entry.is_active, theme);
+    let style = entry_title_style(is_selected, entry.is_active, entry.last_entry_is_error, theme);
+    let truncated = truncate_str(&entry.title, max_title_len);
+
+    Line::from(vec![
+        indicator,
+        Span::raw(" "),
+        arrow,
+        Span::styled(truncated, style),
+    ])
+}
