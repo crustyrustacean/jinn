@@ -108,6 +108,7 @@ impl ProviderInitActor {
                 tracing::warn!(err = ?e, "provider-init failed to emit ModelCacheLoaded");
             }
         }
+        self.state.write().provider.model_cache = cache;
 
         // Load user preferences.
         let prefs = match self.services.user_preferences_storage.load() {
