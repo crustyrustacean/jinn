@@ -20,7 +20,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
-use crate::feat::provider::protocol::event::{ModelsRefreshed, ProviderSwitched};
+use crate::feat::provider::protocol::event::{ModelCacheLoaded, ModelsRefreshed, ProviderSwitched};
 use crate::protocol::{Command, Event};
 
 use super::loader::load_provider_picker_items;
@@ -53,6 +53,7 @@ impl Actor for ProviderActor {
         ctx.subscribe_command::<ProviderSwitch>();
         ctx.subscribe_command::<LoadProviderPickerEntries>();
         ctx.subscribe_event::<ModelsRefreshed>();
+        ctx.subscribe_event::<ModelCacheLoaded>();
 
         ctx.set_description("Manages provider selection, LLM factory, and model cache");
 
@@ -67,6 +68,9 @@ impl Actor for ProviderActor {
             ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx),
             ActorEnvelope::Event(Event::ModelsRefreshed(ref payload)) => {
                 self.handle_models_refreshed(payload);
+            }
+            ActorEnvelope::Event(Event::ModelCacheLoaded(ref payload)) => {
+                self.handle_model_cache_loaded(&payload.cache);
             }
             _ => {}
         }
@@ -159,6 +163,13 @@ impl ProviderActor {
             last_updated_at: Some(now),
         });
         // Also reload provider picker entries from updated model cache.
+        load_provider_picker_items(&self.services, &mut state);
+    }
+
+    /// ModelCacheLoaded: restore model cache from disk and reload picker entries.
+    fn handle_model_cache_loaded(&self, cache: &crate::feat::provider_infra::ModelCache) {
+        let mut state = self.state.write();
+        state.provider.model_cache = Some(cache.clone());
         load_provider_picker_items(&self.services, &mut state);
     }
 }
