@@ -1071,7 +1071,10 @@ fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionSt
     .attach("failed to delete empty sessions during shutdown")?;
 
     if result > 0 {
-        tracing::info!(count = result, "deleted empty unarchived sessions during shutdown");
+        tracing::info!(
+            count = result,
+            "deleted empty unarchived sessions during shutdown"
+        );
     }
 
     // Clean up orphaned entries (not referenced by any session).
