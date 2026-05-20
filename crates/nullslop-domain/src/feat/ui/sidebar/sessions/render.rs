@@ -5,6 +5,7 @@
 //! a `▸` prefix. Navigating with j/k immediately switches the active session.
 
 pub mod entry_line;
+pub mod scroll_tag;
 pub mod truncate;
 
 use std::time::Instant;
@@ -14,6 +15,7 @@ use crate::feat::ui::sidebar::section_trait::{SidebarSection, SidebarSectionId};
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
@@ -21,6 +23,7 @@ use throbber_widgets_tui::ThrobberState;
 
 use super::{ANIMATION_INTERVAL, MAX_VISIBLE_SESSIONS};
 use entry_line::assemble_entry_line;
+use scroll_tag::render_scroll_tag;
 
 /// The open sessions sidebar section.
 ///
@@ -123,44 +126,20 @@ impl SidebarSection for SessionsSection {
 
             if lines_above > 0 || lines_below > 0 {
                 let indicator_style = Style::default()
-                    .fg(ratatui::style::Color::Black)
+                    .fg(Color::Black)
                     .bg(theme.age_fresh);
 
                 if lines_above > 0 {
-                    let indicator_row = area.y + 2; // header + blank
-                    let label = "\u{2191}"; // ↑
-                    let indicator_width = 1u16;
-                    let indicator_area = Rect {
-                        x: area.x + area.width.saturating_sub(indicator_width),
-                        y: indicator_row,
-                        width: indicator_width,
-                        height: 1,
-                    };
-                    frame.render_widget(
-                        ratatui::widgets::Paragraph::new(Line::from(Span::styled(
-                            label,
-                            indicator_style,
-                        ))),
-                        indicator_area,
-                    );
+                    render_scroll_tag(frame, area, "\u{2191}", area.y + 2, indicator_style);
                 }
 
                 if lines_below > 0 {
-                    let last_entry_row = area.y + 2 + visible_count as u16 - 1;
-                    let label = "\u{2193}"; // ↓
-                    let indicator_width = 1u16;
-                    let indicator_area = Rect {
-                        x: area.x + area.width.saturating_sub(indicator_width),
-                        y: last_entry_row,
-                        width: indicator_width,
-                        height: 1,
-                    };
-                    frame.render_widget(
-                        ratatui::widgets::Paragraph::new(Line::from(Span::styled(
-                            label,
-                            indicator_style,
-                        ))),
-                        indicator_area,
+                    render_scroll_tag(
+                        frame,
+                        area,
+                        "\u{2193}",
+                        area.y + 2 + visible_count as u16 - 1,
+                        indicator_style,
                     );
                 }
             }
