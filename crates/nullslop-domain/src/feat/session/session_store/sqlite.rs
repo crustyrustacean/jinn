@@ -10,6 +10,7 @@
 //! if a column is added to a migration but missing from an INSERT or SELECT,
 //! the code will not compile.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -19,12 +20,19 @@ use diesel::r2d2::{self as diesel_r2d2, CustomizeConnection, Pool};
 use diesel::sql_query;
 use diesel::upsert::excluded;
 use error_stack::{Report, ResultExt as _};
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use tokio::task::spawn_blocking;
 
 use crate::common::app_info::APP_NAME;
+use crate::feat::context::strategy::types::StrategyState;
+use crate::feat::context::protocol::strategy_id::PromptStrategyId;
 use crate::feat::session::SessionUi;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
-use crate::feat::session::chat_session::{ChatSessionState, SessionCore, SessionCoreEphemeral, SessionState};
+use crate::feat::session::chat_session::{
+    ChatSessionState, LifecycleScriptState, SessionCore, SessionCoreEphemeral, SessionState,
+};
+use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::session_summary::SessionSummary;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntryId, SessionId};
@@ -296,6 +304,7 @@ struct SessionRow {
     lifecycle_args: String,
     archived: bool,
     lifecycle_script_state: String,
+    metadata: Option<String>,
 }
 
 /// Insert model for the `sessions` table.
@@ -315,6 +324,7 @@ struct NewSessionRow {
     lifecycle_args: String,
     archived: bool,
     lifecycle_script_state: String,
+    metadata: Option<String>,
 }
 
 /// Reading model for the `entries` table.
@@ -402,6 +412,74 @@ struct NewTokenLedgerRow {
 
 // ── Conversions ──────────────────────────────────────────────────────────
 
+// ── PersistableCore — JSON blob for session metadata ─────────────────────
+
+/// A subset of [`SessionCore`] fields suitable for JSON blob persistence.
+///
+/// Excludes `history`, `token_ledger`, and `ephemeral` which are stored in
+/// normalized tables or are runtime-only. This blob acts as a snapshot that
+/// can be deserialized back into a full `SessionCore` with defaults for the
+/// excluded fields.
+#[derive(Serialize, Deserialize)]
+struct PersistableCore {
+    session_id: SessionId,
+    title: Option<String>,
+    updated_at: jiff::Timestamp,
+    created_at: jiff::Timestamp,
+    profile: SessionProfile,
+    cwd: std::path::PathBuf,
+    parent_session: Option<SessionId>,
+    strategy_state: HashMap<PromptStrategyId, StrategyState>,
+    blobs: HashMap<String, JsonValue>,
+    lifecycle_name: Option<String>,
+    lifecycle_args: Vec<String>,
+    session_state: SessionState,
+    lifecycle_script_state: LifecycleScriptState,
+}
+
+impl From<&SessionCore> for PersistableCore {
+    fn from(core: &SessionCore) -> Self {
+        Self {
+            session_id: core.session_id.clone(),
+            title: core.title.clone(),
+            updated_at: core.updated_at,
+            created_at: core.created_at,
+            profile: core.profile.clone(),
+            cwd: core.cwd.clone(),
+            parent_session: core.parent_session.clone(),
+            strategy_state: core.strategy_state.clone(),
+            blobs: core.blobs.clone(),
+            lifecycle_name: core.lifecycle_name.clone(),
+            lifecycle_args: core.lifecycle_args.clone(),
+            session_state: core.session_state,
+            lifecycle_script_state: core.lifecycle_script_state,
+        }
+    }
+}
+
+impl From<PersistableCore> for SessionCore {
+    fn from(core: PersistableCore) -> Self {
+        Self {
+            session_id: core.session_id,
+            title: core.title,
+            updated_at: core.updated_at,
+            created_at: core.created_at,
+            history: vec![],
+            profile: core.profile,
+            cwd: core.cwd,
+            token_ledger: vec![],
+            parent_session: core.parent_session,
+            strategy_state: core.strategy_state,
+            blobs: core.blobs,
+            lifecycle_name: core.lifecycle_name,
+            lifecycle_args: core.lifecycle_args,
+            session_state: core.session_state,
+            lifecycle_script_state: core.lifecycle_script_state,
+            ephemeral: SessionCoreEphemeral::default(),
+        }
+    }
+}
+
 impl TryFrom<&ChatSessionState> for NewSessionRow {
     type Error = Report<SessionStoreError>;
 
@@ -432,6 +510,12 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
 
+        // Build the JSON metadata blob from a PersistableCore snapshot.
+        let persistable = PersistableCore::from(&session.core);
+        let metadata = serde_json::to_string(&persistable)
+            .change_context(SessionStoreError)
+            .attach("failed to serialize session metadata blob")?;
+
         Ok(Self {
             id: session_id.to_string(),
             title: title.clone(),
@@ -458,6 +542,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
             lifecycle_script_state: serde_json::to_string(&lifecycle_script_state)
                 .change_context(SessionStoreError)
                 .attach("failed to serialize lifecycle_script_state")?,
+            metadata: Some(metadata),
         })
     }
 }
@@ -490,38 +575,46 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             lifecycle_args,
             archived: _archived, // archive status is a persistence concern, not part of ChatSessionState
             lifecycle_script_state,
+            metadata,
         } = ctx.row;
 
-        let profile = serde_json::from_str(&profile)
-            .change_context(SessionStoreError)
-            .attach("failed to deserialize profile")?;
-        let strategy_state = serde_json::from_str(&strategy_state)
-            .change_context(SessionStoreError)
-            .attach("failed to deserialize strategy_state")?;
-        let blobs = serde_json::from_str(&blobs)
-            .change_context(SessionStoreError)
-            .attach("failed to deserialize blobs")?;
-        let updated_at = updated_at
-            .parse()
-            .change_context(SessionStoreError)
-            .attach("failed to parse updated_at")?;
-        let created_at = created_at
-            .parse()
-            .change_context(SessionStoreError)
-            .attach("failed to parse created_at")?;
+        // When a metadata JSON blob exists (v8+), deserialize it as the
+        // authoritative source of truth for SessionCore fields, then overlay
+        // the normalized-table data (entries, token_ledger).
+        let mut core = if let Some(ref json) = metadata {
+            let persistable: PersistableCore = serde_json::from_str(json)
+                .change_context(SessionStoreError)
+                .attach("failed to deserialize session metadata blob")?;
+            SessionCore::from(persistable)
+        } else {
+            // Legacy path — reconstruct from individual columns (pre-v8 data).
+            let profile = serde_json::from_str(&profile)
+                .change_context(SessionStoreError)
+                .attach("failed to deserialize profile")?;
+            let strategy_state = serde_json::from_str(&strategy_state)
+                .change_context(SessionStoreError)
+                .attach("failed to deserialize strategy_state")?;
+            let blobs = serde_json::from_str(&blobs)
+                .change_context(SessionStoreError)
+                .attach("failed to deserialize blobs")?;
+            let updated_at = updated_at
+                .parse()
+                .change_context(SessionStoreError)
+                .attach("failed to parse updated_at")?;
+            let created_at = created_at
+                .parse()
+                .change_context(SessionStoreError)
+                .attach("failed to parse created_at")?;
 
-        // Build ChatSessionState with all fields explicitly set.
-        // Every destructured binding from SessionRow is used here.
-        Ok(ChatSessionState {
-            core: SessionCore {
+            SessionCore {
                 session_id: SessionId::from(id.unwrap_or_default()),
                 title,
                 updated_at,
                 created_at,
-                history: ctx.entries,
+                history: vec![],
                 profile,
                 cwd: std::path::PathBuf::from(cwd),
-                token_ledger: ctx.ledger,
+                token_ledger: vec![],
                 parent_session: parent_session.map(SessionId::from),
                 strategy_state,
                 blobs,
@@ -531,7 +624,16 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 session_state: SessionState::Loaded,
                 lifecycle_script_state: serde_json::from_str(&lifecycle_script_state)
                     .unwrap_or_default(),
-            },
+            }
+        };
+
+        // Overlay data from normalized tables (always loaded regardless of path).
+        core.history = ctx.entries;
+        core.token_ledger = ctx.ledger;
+
+        // Build ChatSessionState with all fields explicitly set.
+        Ok(ChatSessionState {
+            core,
             ui: SessionUi::default(),
         })
     }
@@ -570,6 +672,7 @@ fn save_blocking(
                 sessions::lifecycle_args.eq(excluded(sessions::lifecycle_args)),
                 sessions::archived.eq(excluded(sessions::archived)),
                 sessions::lifecycle_script_state.eq(excluded(sessions::lifecycle_script_state)),
+                sessions::metadata.eq(excluded(sessions::metadata)),
             ))
             .execute(txn)?;
 
@@ -787,6 +890,25 @@ fn delete_blocking(
 ///
 /// Creates a new session with `parent_session` = source, copies junction rows
 /// up to and including `at_ordinal`. Entry data is shared (not duplicated).
+/// Patches a metadata JSON blob for a forked session.
+///
+/// Overrides `parent_session`, `session_id`, `created_at`, and `updated_at`
+/// so the forked session's metadata reflects its new identity.
+/// Falls back to `None` if deserialization or re-serialization fails.
+fn fork_metadata(
+    source_metadata: &Option<String>,
+    source_id_str: &str,
+    new_id_str: &str,
+) -> Option<String> {
+    let json = source_metadata.as_ref()?;
+    let mut core: PersistableCore = serde_json::from_str(json).ok()?;
+    core.parent_session = Some(SessionId::from(source_id_str.to_owned()));
+    core.session_id = SessionId::from(new_id_str.to_owned());
+    core.created_at = jiff::Timestamp::now();
+    core.updated_at = jiff::Timestamp::now();
+    serde_json::to_string(&core).ok()
+}
+
 fn fork_blocking(
     conn: &mut SqliteConnection,
     source_session_id: &SessionId,
@@ -827,6 +949,7 @@ fn fork_blocking(
                 lifecycle_args: source_meta.lifecycle_args,
                 archived: false,
                 lifecycle_script_state: source_meta.lifecycle_script_state,
+                metadata: fork_metadata(&source_meta.metadata, &source_str, &new_id_str),
             })
             .execute(txn)?;
 

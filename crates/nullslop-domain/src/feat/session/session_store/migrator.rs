@@ -61,6 +61,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionS
         migrate_v7(conn)?;
         record_version(conn, 7, "add_lifecycle_script_state_column")?;
     }
+    if current < 8 {
+        migrate_v8(conn)?;
+        record_version(conn, 8, "add_metadata_column")?;
+    }
     Ok(())
 }
 
@@ -264,6 +268,19 @@ fn migrate_v7(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
     Ok(())
 }
 
+/// v8: Add \`metadata\` column to sessions.
+///
+/// Stores a JSON blob of all session metadata. This eliminates the need
+/// for individual columns per field — new fields on `SessionCore` are
+/// automatically persisted via serde.
+fn migrate_v8(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query("ALTER TABLE sessions ADD COLUMN metadata TEXT")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v8: add metadata column to sessions")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
@@ -304,7 +321,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 8);
+        assert_eq!(rows.len(), 9);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -321,6 +338,8 @@ mod tests {
         assert_eq!(rows[6].name, "add_archived_column");
         assert_eq!(rows[7].version, 7);
         assert_eq!(rows[7].name, "add_lifecycle_script_state_column");
+        assert_eq!(rows[8].version, 8);
+        assert_eq!(rows[8].name, "add_metadata_column");
     }
 
     #[test]
@@ -344,7 +363,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 8);
+        assert_eq!(rows[0].count, 9);
     }
 
     #[test]
