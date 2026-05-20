@@ -58,6 +58,11 @@ impl SessionMap {
     }
 
     /// Infallible — the active session is always present.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the invariant is violated (active session ID not in map).
+    /// This indicates a programming error — the map should never be in this state.
     #[expect(
         clippy::expect_used,
         reason = "SessionMap invariant: active_session always valid"
@@ -69,6 +74,11 @@ impl SessionMap {
     }
 
     /// Infallible mutable access — the active session is always present.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the invariant is violated (active session ID not in map).
+    /// This indicates a programming error — the map should never be in this state.
     #[expect(
         clippy::expect_used,
         reason = "SessionMap invariant: active_session always valid"
@@ -217,8 +227,6 @@ impl SessionMap {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
-    use crate::common::app_state::AppState;
-
     fn default_map() -> SessionMap {
         let session = ChatSessionState::new();
         SessionMap::new(session, PathBuf::from("/"))

@@ -11,7 +11,7 @@ fn insert_char_appends_to_buffer() {
     let mut state = AppState::default();
 
     // When handling InsertChar('x').
-    let result = crate::feat::chat_input::intent::handle_insert_char('x', &mut state);
+    let _ = crate::feat::chat_input::intent::handle_insert_char('x', &mut state);
 
     // Then the character is in the input buffer.
     assert_eq!(state.active_chat_input().text(), "x");
@@ -36,7 +36,7 @@ fn delete_grapheme_removes_last_char() {
     state.active_chat_input_mut().insert_text("ab");
 
     // When handling DeleteGrapheme.
-    let result = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
 
     // Then the buffer is "a".
     assert_eq!(state.active_chat_input().text(), "a");
@@ -63,7 +63,7 @@ fn delete_grapheme_forward_removes_next_char() {
     state.active_chat_input_mut().move_cursor_to_start();
 
     // When handling DeleteGraphemeForward.
-    let result = crate::feat::chat_input::intent::handle_delete_grapheme_forward(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_delete_grapheme_forward(&mut state);
 
     // Then the buffer is "b".
     assert_eq!(state.active_chat_input().text(), "b");
@@ -191,7 +191,7 @@ fn move_cursor_left_moves_cursor() {
     assert_eq!(state.active_chat_input().cursor_pos(), 2);
 
     // When handling MoveCursorLeft.
-    let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
 
     // Then the cursor has moved.
     assert_eq!(state.active_chat_input().cursor_pos(), 1);
@@ -219,7 +219,7 @@ fn move_cursor_right_moves_cursor() {
     state.active_chat_input_mut().move_cursor_to_start();
 
     // When handling MoveCursorRight.
-    let result = crate::feat::chat_input::intent::handle_move_cursor_right(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_right(&mut state);
 
     // Then the cursor has moved.
     assert_eq!(state.active_chat_input().cursor_pos(), 1);
@@ -246,7 +246,7 @@ fn move_cursor_to_start_moves_cursor() {
     state.active_chat_input_mut().insert_text("hi");
 
     // When handling MoveCursorToStart.
-    let result = crate::feat::chat_input::intent::handle_move_cursor_to_start(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_to_start(&mut state);
 
     // Then cursor is at position 0.
     assert_eq!(state.active_chat_input().cursor_pos(), 0);
@@ -273,7 +273,7 @@ fn move_cursor_to_end_moves_cursor() {
     state.active_chat_input_mut().move_cursor_to_start();
 
     // When handling MoveCursorToEnd.
-    let result = crate::feat::chat_input::intent::handle_move_cursor_to_end(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_to_end(&mut state);
 
     // Then cursor is at the end.
     assert_eq!(state.active_chat_input().cursor_pos(), 1);
@@ -300,7 +300,7 @@ fn move_cursor_word_left_moves_cursor() {
     state.active_chat_input_mut().insert_text("hi");
 
     // When handling MoveCursorWordLeft.
-    let result = crate::feat::chat_input::intent::handle_move_cursor_word_left(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_word_left(&mut state);
 
     // Then cursor moves.
     assert_eq!(state.active_chat_input().cursor_pos(), 0);
@@ -327,7 +327,7 @@ fn move_cursor_word_right_moves_cursor() {
     state.active_chat_input_mut().move_cursor_to_start();
 
     // When handling MoveCursorWordRight.
-    let result = crate::feat::chat_input::intent::handle_move_cursor_word_right(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_word_right(&mut state);
 
     // Then cursor moves to end.
     assert_eq!(state.active_chat_input().cursor_pos(), 2);
@@ -357,7 +357,7 @@ fn cursor_left_reactivates_autocomplete_when_re_entering_token() {
     state.active_chat_input_mut().move_cursor_left(); // cursor on 'e'
 
     // When handling MoveCursorLeft.
-    let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
 
     // Then autocomplete is re-activated.
     assert!(
@@ -389,7 +389,7 @@ fn backspace_reactivates_autocomplete_when_re_entering_token() {
     state.active_chat_input_mut().insert_text("#code ");
 
     // When handling DeleteGrapheme (removes the space).
-    let result = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
 
     // Then autocomplete is re-activated.
     assert!(
@@ -424,7 +424,7 @@ fn cursor_move_away_from_token_does_not_reactivate() {
     crate::feat::chat_input::intent::handle_move_cursor_left(&mut state); // 'c'
     crate::feat::chat_input::intent::handle_move_cursor_left(&mut state); // '#'
     // Now cursor is on '#'. Move left one more to space.
-    let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
 
     // Then autocomplete is NOT active (cursor left the token region).
     assert!(
@@ -486,7 +486,7 @@ fn enter_insert_mode_sets_mode_to_input() {
     let mut state = AppState::default();
 
     // When handling EnterInsertMode.
-    let result = crate::feat::chat_input::intent::handle_enter_insert_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_insert_mode(&mut state);
 
     // Then scope_stack has Input on top.
     assert_eq!(
@@ -516,7 +516,7 @@ fn enter_normal_mode_returns_to_normal_scope() {
     state.frontend.scope_stack.push(FocusScope::Input);
 
     // When handling EnterNormalMode.
-    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
 
     // Then scope_stack is back to Normal.
     assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
@@ -549,7 +549,7 @@ fn enter_normal_mode_clears_picker_kind_when_leaving_picker() {
     });
 
     // When handling EnterNormalMode.
-    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
 
     // Then scope_stack is back to Normal (no picker).
     assert!(!state.frontend.scope_stack.is_picker());
@@ -584,7 +584,7 @@ fn enter_normal_mode_from_input_with_sidebar_returns_to_normal() {
     state.frontend.scope_stack.push(FocusScope::Input);
 
     // When handling EnterNormalMode.
-    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
 
     // Then scope_stack is back to Normal (not SidebarPersona).
     assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
@@ -711,7 +711,7 @@ fn normal_escape_does_not_clear_selection() {
     assert_eq!(state.active_session().selected_entry_index(), Some(0));
 
     // When handling NormalEscape.
-    let result = crate::feat::chat_input::intent::handle_normal_escape(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_normal_escape(&mut state);
 
     // Then the selection is preserved (always-selected invariant).
     assert_eq!(state.active_session().selected_entry_index(), Some(0));
@@ -743,7 +743,7 @@ fn normal_escape_sets_cancel_prompt_when_streaming() {
     state.active_session_mut().begin_streaming();
 
     // When handling NormalEscape.
-    let result = crate::feat::chat_input::intent::handle_normal_escape(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_normal_escape(&mut state);
 
     // Then the cancel prompt is set.
     assert!(state.frontend.cancel_stream_prompt);
@@ -768,7 +768,7 @@ fn normal_escape_noop_when_idle_and_no_selection() {
     let mut state = AppState::default();
 
     // When handling NormalEscape.
-    let result = crate::feat::chat_input::intent::handle_normal_escape(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_normal_escape(&mut state);
 
     // Then cancel prompt is not set.
     assert!(!state.frontend.cancel_stream_prompt);
@@ -794,7 +794,7 @@ fn slash_at_position_0_triggers_autocomplete() {
     let mut state = AppState::default();
 
     // When handling InsertChar('/').
-    let result = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
+    let _ = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
 
     // Then autocomplete is active with Slash trigger.
     let ac = state.active_chat_input().autocomplete();
@@ -824,7 +824,7 @@ fn slash_does_not_trigger_with_content() {
     state.active_chat_input_mut().insert_text("hello");
 
     // When handling InsertChar('/').
-    let result = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
+    let _ = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
 
     // Then autocomplete is NOT active.
     assert!(
@@ -888,7 +888,7 @@ fn slash_autocomplete_tab_completes_name() {
     crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
 
     // When confirming autocomplete (Tab).
-    let result = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
 
     // Then the buffer contains "/new".
     assert_eq!(state.active_chat_input().text(), "/new");
@@ -936,7 +936,7 @@ fn slash_autocomplete_reactivates_on_cursor_reentry() {
     // When moving cursor left back to 'e'.
     state.active_chat_input_mut().move_cursor_left(); // on space
     state.active_chat_input_mut().move_cursor_left(); // on 'e'
-    let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state); // on 'n'
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state); // on 'n'
 
     // Then autocomplete is re-activated.
     assert!(
@@ -974,7 +974,7 @@ fn slash_autocomplete_does_not_reactivate_after_cursor_leaves_token() {
     state.active_chat_input_mut().move_cursor_left(); // 'e'
     state.active_chat_input_mut().move_cursor_left(); // 'n'
     state.active_chat_input_mut().move_cursor_left(); // '/'
-    let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state); // space
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state); // space
 
     // Then autocomplete is NOT active (slash was not at position 0).
     assert!(
@@ -1105,7 +1105,7 @@ fn tab_completes_name_without_executing() {
     let old_id = state.session.active_session_id().clone();
 
     // When confirming autocomplete (Tab).
-    let result = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
 
     // Then the buffer contains "/new" (completed) but no session was created.
     assert_eq!(state.active_chat_input().text(), "/new");
@@ -1175,7 +1175,7 @@ fn paste_text_inserts_into_chat_input() {
     let mut state = AppState::default();
 
     // When handling PasteText with "hello\nworld".
-    let result = crate::feat::chat_input::intent::handle_paste_text("hello\nworld", &mut state);
+    let _ = crate::feat::chat_input::intent::handle_paste_text("hello\nworld", &mut state);
 
     // Then the buffer contains the pasted text with newlines preserved.
     assert_eq!(state.active_chat_input().text(), "hello\nworld");
@@ -1203,7 +1203,7 @@ fn paste_text_inserts_at_cursor_position() {
     state.active_chat_input_mut().move_cursor_right(); // cursor at 2
 
     // When handling PasteText with "XY".
-    let result = crate::feat::chat_input::intent::handle_paste_text("XY", &mut state);
+    let _ = crate::feat::chat_input::intent::handle_paste_text("XY", &mut state);
 
     // Then text is "heXYllo" and cursor is at 4.
     assert_eq!(state.active_chat_input().text(), "heXYllo");
@@ -1235,7 +1235,7 @@ fn hash_triggers_after_newline() {
     state.active_chat_input_mut().insert_text("hello\n");
 
     // When handling InsertChar('#').
-    let result = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
+    let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
 
     // Then autocomplete is active with Hash trigger.
     let ac = state.active_chat_input().autocomplete();
@@ -1266,7 +1266,7 @@ fn hash_triggers_after_newline_at_line_start() {
     state.active_chat_input_mut().insert_text("\n");
 
     // When handling InsertChar('#').
-    let result = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
+    let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
 
     // Then autocomplete is active.
     assert!(
@@ -1295,7 +1295,7 @@ fn hash_does_not_trigger_after_non_boundary_char() {
     state.active_chat_input_mut().insert_text("hello");
 
     // When handling InsertChar('#').
-    let result = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
+    let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
 
     // Then autocomplete is NOT active (preceded by 'o', not a boundary).
     assert!(
@@ -1325,7 +1325,7 @@ fn hash_reactivates_when_cursor_enters_token_after_newline() {
 
     // When moving cursor left into the "#code" token.
     // Cursor starts at end (position 11). Move left to 'e' (position 10).
-    let result = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
 
     // Then autocomplete is re-activated.
     assert!(
