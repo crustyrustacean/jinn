@@ -3,7 +3,7 @@
 use crate::common::app_state::{AppState, FocusScope};
 use crate::common::ui_element::UiElement;
 use crate::feat::session::tool_result_status::ToolResultStatus;
-use crate::feat::ui::chat_log::renderer::ChatLogElement;
+use crate::feat::ui::chat_log::history::ChatLogElement;
 use crate::feat::ui::chat_log::shared::GUTTER_WIDTH;
 use crate::protocol::{ChatEntry, PinPosition};
 use nullslop_testutil::setup_term;
