@@ -52,7 +52,7 @@ fn format_tool_call_display(name: &str, arguments: &str) -> String {
 /// Extract the "command" field from bash JSON arguments.
 fn extract_bash_command(arguments: &str) -> Option<String> {
     let parsed: serde_json::Value = serde_json::from_str(arguments).ok()?;
-    parsed.get("command")?.as_str().map(|s| s.to_owned())
+    parsed.get("command")?.as_str().map(std::borrow::ToOwned::to_owned)
 }
 
 /// Determine the background color from the paired result status.
