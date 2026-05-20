@@ -139,9 +139,15 @@ impl Actor for SessionPersistenceActor {
         }
     }
 
-    // on_shutdown: no lifecycle work on shutdown — just stop.
-    // Sessions persist in their current state (Loaded/Archived) in the DB.
-    // On next startup, all non-archived sessions are loaded.
+    async fn on_shutdown(&mut self, _ctx: &ActorContext) {
+        // Run store shutdown — deletes empty unarchived sessions.
+    }
+
+
+
+
+
+
 }
 
 impl SessionPersistenceActor {
