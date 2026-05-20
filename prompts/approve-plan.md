@@ -3,6 +3,8 @@ name = "approve-plan"
 description = "Generate a context-rich implementation specification from an approved plan."
 +++
 
+<instructions>
+
 The user has approved the High-Level Pitch discussed previously. Your task is to write the **Context-Rich Specification** to disk.
 
 ## Instructions
@@ -31,3 +33,5 @@ The specification must be a **standalone technical document**. A fresh agent wit
 - The document **must** include the "Acceptance Criteria" from the Pitch.
 - The document **must** include the "Phases" (with checkboxes) from the Pitch, but expanded with implementation specifics.
 - The document **must** have dedicated headers for all Mandatory Elements listed above.
+
+</instructions>
