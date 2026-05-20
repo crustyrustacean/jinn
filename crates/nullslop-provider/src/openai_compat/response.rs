@@ -120,11 +120,7 @@ impl StreamResponseParser {
         results
     }
 
-    fn handle_tool_call_delta(
-        &mut self,
-        tc: &serde_json::Value,
-        results: &mut Vec<StreamEvent>,
-    ) {
+    fn handle_tool_call_delta(&mut self, tc: &serde_json::Value, results: &mut Vec<StreamEvent>) {
         let index = tc
             .get("index")
             .and_then(serde_json::Value::as_u64)
@@ -176,9 +172,7 @@ impl StreamResponseParser {
         pending_indices.sort_unstable();
 
         for idx in pending_indices {
-            if let Some(state) = self.tool_states.remove(&idx)
-                .filter(|s| s.started)
-            {
+            if let Some(state) = self.tool_states.remove(&idx).filter(|s| s.started) {
                 results.push(StreamEvent::ToolUseComplete {
                     index: idx,
                     tool_call: ToolCall {

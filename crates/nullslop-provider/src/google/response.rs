@@ -97,10 +97,7 @@ impl GeminiStreamParser {
         results
     }
 
-    fn handle_function_call(
-        index: usize,
-        part: &serde_json::Value,
-    ) -> Option<Vec<StreamEvent>> {
+    fn handle_function_call(index: usize, part: &serde_json::Value) -> Option<Vec<StreamEvent>> {
         let fc = part.get("functionCall")?;
         let name = fc
             .get("name")
