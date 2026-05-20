@@ -10,6 +10,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::ProviderSwitch;
+use crate::feat::provider::protocol::event::ModelCacheLoaded;
 use crate::feat::provider_infra::{ModelCache, ProviderRegistry};
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
@@ -101,7 +102,13 @@ impl ProviderInitActor {
         if let Some(ref c) = cache {
             tracing::info!(providers = c.entries.len(), "loaded model cache");
             self.services.provider_registry.merge_cache(c);
+            if let Err(e) = ctx.send_event(Event::ModelCacheLoaded(ModelCacheLoaded {
+                cache: c.clone(),
+            })) {
+                tracing::warn!(err = ?e, "provider-init failed to emit ModelCacheLoaded");
+            }
         }
+        self.state.write().provider.model_cache = cache;
 
         // Load user preferences.
         let prefs = match self.services.user_preferences_storage.load() {
@@ -331,5 +338,57 @@ mod tests {
             has_no_api_keys,
             "expected PushChatEntry command with no-api-keys guidance"
         );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn emits_model_cache_loaded_when_cache_exists_on_disk() {
+        // Given a provider init actor with a cache file on disk.
+        let (mut actor, services, sink, ctx) = create_actor();
+
+        let mut cache = crate::feat::provider_infra::ModelCache::new();
+        cache.entries.insert(
+            "ollama".to_owned(),
+            vec![crate::feat::provider_infra::ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: None,
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+        let cache_path = services.paths.cache_path();
+        cache.save(&cache_path).expect("save cache");
+
+        let config = crate::feat::provider_infra::ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "ollama".to_owned(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+
+        // When processing EnvironmentLoaded.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::EnvironmentLoaded(EnvironmentLoaded { config })),
+                &ctx,
+            )
+            .await;
+
+        // Then a ModelCacheLoaded event was emitted.
+        let events = sink.events();
+        let found = events.iter().any(|e| {
+            matches!(
+                e,
+                Event::ModelCacheLoaded(payload) if payload.cache.entries.contains_key("ollama")
+            )
+        });
+        assert!(found, "expected ModelCacheLoaded event with ollama entries");
     }
 }
