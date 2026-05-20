@@ -50,7 +50,7 @@ mod tests {
             ("streaming", theme.streaming),
             ("gutter_bg", theme.gutter_bg),
             ("user_block_bg", theme.user_block_bg),
-            ("tool_block_fg", theme.tool_block_fg),
+            ("tool_fg", theme.tool_fg),
             ("tool_success_bg", theme.tool_success_bg),
             ("tool_failure_bg", theme.tool_failure_bg),
             ("tool_pending_bg", theme.tool_pending_bg),

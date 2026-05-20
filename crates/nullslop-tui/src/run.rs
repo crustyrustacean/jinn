@@ -6,7 +6,7 @@
 //! suspension and restarting it afterward.
 
 use std::io::{self, Stdout};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crossterm::{
     event::{
@@ -121,11 +121,9 @@ fn run_main_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app: &mut TuiApp,
 ) -> Result<(), Report<TuiRunError>> {
-    let mut frame_count: u64 = 0;
+    let mut last_render: Option<Instant> = None;
 
     loop {
-        let frame_start = Instant::now();
-
         // ── Phase 1: Wait for next message ──────────────────────────────
         let event = app
             .events
@@ -133,31 +131,20 @@ fn run_main_loop(
             .change_context(TuiRunError)
             .attach("event channel closed")?;
 
-        let recv_wait = frame_start.elapsed();
         let is_input = matches!(event, Msg::Input(crossterm::event::Event::Key(_)));
 
         // ── Phase 2: Handle event batch ─────────────────────────────────
-        let handle_start = Instant::now();
         app.handle_msg(event);
-
-        let mut batch_count = 1u32;
         while let Some(event) = app.events.try_recv() {
             app.handle_msg(event);
-            batch_count += 1;
         }
-        let handle_dur = handle_start.elapsed();
 
         // ── Phase 3: State read for quit/scope ──────────────────────────
-        let state_start = Instant::now();
         let state_read = app.core.state.read();
         let should_quit = state_read.frontend.should_quit;
         let scope = scope_for_focus(state_read.frontend.scope_stack.current());
         drop(state_read);
         app.which_key.set_scope(scope);
-        let state_dur = state_start.elapsed();
-
-        // Sync tab manager active tab from AppState.active_tab.
-        // Sync is no longer needed — tabs have been removed.
 
         // Check for pending suspend after event batch processing.
         if let Some(action) = app.suspend.take_action() {
@@ -165,32 +152,17 @@ fn run_main_loop(
         }
 
         // ── Phase 4: Render ─────────────────────────────────────────────
-        let render_start = Instant::now();
-        terminal
-            .draw(|frame| {
-                app.render(frame);
-            })
-            .change_context(TuiRunError)
-            .attach("failed to draw frame")?;
-        let render_dur = render_start.elapsed();
+        let should_render = is_input
+            || last_render.is_none_or(|t| t.elapsed() >= Duration::from_millis(33));
 
-        let total_frame = frame_start.elapsed();
-        frame_count += 1;
-
-        // Log every frame with input, or any frame > 50ms.
-        let slow_frame = total_frame.as_millis() > 50;
-        if is_input || slow_frame || frame_count % 600 == 0 {
-            tracing::info!(
-                recv_wait_us = recv_wait.as_micros() as u64,
-                handle_us = handle_dur.as_micros() as u64,
-                state_us = state_dur.as_micros() as u64,
-                render_us = render_dur.as_micros() as u64,
-                total_us = total_frame.as_micros() as u64,
-                batch_count,
-                frame_count,
-                is_input,
-                "PERF: main-loop frame"
-            );
+        if should_render {
+            terminal
+                .draw(|frame| {
+                    app.render(frame);
+                })
+                .change_context(TuiRunError)
+                .attach("failed to draw frame")?;
+            last_render = Some(Instant::now());
         }
 
         if should_quit {

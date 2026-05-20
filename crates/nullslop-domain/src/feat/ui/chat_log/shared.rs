@@ -1,5 +1,6 @@
 //! Shared rendering helpers for chat log entries.
 
+use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::theme::Theme;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -19,6 +20,9 @@ pub struct RenderContext {
     pub tool_entry_max_lines: u16,
     /// The current theme colors.
     pub theme: Theme,
+    /// Status of the paired tool result, used for status-based background.
+    /// `None` if unpaired or the tool is still pending.
+    pub paired_status: Option<ToolResultStatus>,
 }
 
 /// Split text on `\n` and produce styled lines with the given prefix.
@@ -123,6 +127,23 @@ pub fn unicode_segementation_display_width(s: &str) -> usize {
             }
         })
         .sum()
+}
+
+/// Truncate a string to `max_width` graphemes.
+///
+/// Returns the string unchanged if it fits.
+/// Returns an empty string if `max_width` is 0.
+pub fn truncate_to_width(s: &str, max_width: usize) -> String {
+    use unicode_segmentation::UnicodeSegmentation;
+    if max_width == 0 {
+        return String::new();
+    }
+    let graphemes: Vec<&str> = s.graphemes(true).collect();
+    if graphemes.len() <= max_width {
+        s.to_owned()
+    } else {
+        graphemes[..max_width].iter().copied().collect()
+    }
 }
 
 #[cfg(test)]

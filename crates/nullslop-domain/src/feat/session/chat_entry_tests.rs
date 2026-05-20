@@ -626,13 +626,13 @@ fn tool_result_deserializes_old_success_false_format() {
 }
 
 #[rstest::rstest]
-fn pending_tool_result_fingerprint_excludes_content() {
+fn pending_tool_result_fingerprint_includes_content() {
     // Given two pending ToolResult entries with different content.
     let entry1 = ChatEntry::tool_result("id", "bash", "line1", ToolResultStatus::Pending);
     let entry2 = ChatEntry::tool_result("id", "bash", "line1\nline2", ToolResultStatus::Pending);
 
-    // Then their fingerprints are identical (content excluded for pending).
-    assert_eq!(entry1.content_fingerprint(), entry2.content_fingerprint());
+    // Then their fingerprints differ (content included for all statuses).
+    assert_ne!(entry1.content_fingerprint(), entry2.content_fingerprint());
 }
 
 #[rstest::rstest]

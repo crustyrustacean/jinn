@@ -137,7 +137,6 @@ const TICK_INTERVAL: Duration = Duration::from_millis(100);
 )]
 fn run_event_poll(sender: &MsgSender, stop: Arc<AtomicBool>) {
     let mut next_tick = Instant::now() + TICK_INTERVAL;
-    let mut poll_iter: u64 = 0;
 
     while !stop.load(Ordering::Relaxed) {
         let now = Instant::now();
@@ -157,24 +156,6 @@ fn run_event_poll(sender: &MsgSender, stop: Arc<AtomicBool>) {
                 // Event available — read and forward.
                 match crossterm::event::read() {
                     Ok(evt) => {
-                        // PERF: stamp input events with send time for channel latency measurement.
-                        if matches!(
-                            evt,
-                            crossterm::event::Event::Key(_)
-                                | crossterm::event::Event::Mouse(_)
-                                | crossterm::event::Event::Paste(_)
-                        ) {
-                            tracing::info!(
-                                kind = match &evt {
-                                    crossterm::event::Event::Key(_) => "key",
-                                    crossterm::event::Event::Mouse(_) => "mouse",
-                                    crossterm::event::Event::Paste(_) => "paste",
-                                    _ => "other",
-                                },
-                                ?evt,
-                                "PERF: event-thread send input"
-                            );
-                        }
                         sender.send(Msg::Input(evt));
                     }
                     Err(e) => {
@@ -190,11 +171,6 @@ fn run_event_poll(sender: &MsgSender, stop: Arc<AtomicBool>) {
                 // Brief sleep to avoid busy-looping on persistent errors.
                 std::thread::sleep(Duration::from_millis(50));
             }
-        }
-
-        poll_iter += 1;
-        if poll_iter % 1000 == 0 {
-            tracing::info!(poll_iter, "PERF: event-thread alive");
         }
     }
 }

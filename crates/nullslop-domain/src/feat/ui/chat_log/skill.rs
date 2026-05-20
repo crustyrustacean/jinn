@@ -17,20 +17,22 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::shared::{RenderContext, pad_line_to_width};
+use super::shared::{RenderContext, truncate_to_width};
 
 /// Renders a skill entry as a collapsible block.
 ///
 /// When collapsed, shows only the skill name and a truncation indicator.
 /// When expanded, shows the full content.
 pub fn to_lines(name: &str, content: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
-    let bg = ctx.theme.tool_success_bg;
-    let style = Style::default().fg(ctx.theme.tool_block_fg).bg(bg);
+    let style = Style::default()
+        .fg(ctx.theme.tool_fg)
+        .bg(ctx.theme.tool_success_bg);
 
     let mut lines = Vec::new();
 
     // Name line (always shown).
-    lines.push(Line::from(Span::styled(name.to_owned(), style)));
+    let name_text = truncate_to_width(name, ctx.content_width as usize);
+    lines.push(Line::from(Span::styled(name_text, style)));
 
     let text = content.trim_start_matches('\n');
     let all_lines: Vec<&str> = text.split('\n').collect();
@@ -43,16 +45,13 @@ pub fn to_lines(name: &str, content: &str, ctx: &RenderContext) -> Vec<Line<'sta
     } else {
         // Show only the truncation indicator.
         let remaining = all_lines.len();
-        let truncation_style = Style::default().fg(ctx.theme.truncation_fg).bg(bg);
+        let truncation_style = Style::default()
+            .fg(ctx.theme.truncation_fg)
+            .bg(ctx.theme.tool_success_bg);
         lines.push(Line::from(Span::styled(
             format!("---({remaining} more lines)---"),
             truncation_style,
         )));
-    }
-
-    // Pad each line to full content width for BLOCK effect.
-    for line in &mut lines {
-        pad_line_to_width(line, ctx.content_width, Style::default().bg(bg));
     }
 
     lines
@@ -71,6 +70,7 @@ mod tests {
             is_expanded,
             tool_entry_max_lines: 5,
             theme: crate::feat::theme::default_theme(),
+            paired_status: None,
         }
     }
 
@@ -148,19 +148,25 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn name_line_has_block_background() {
+    fn name_line_has_correct_styling() {
         // Given a skill entry.
         let ctx = render_context(false);
+        let theme = crate::feat::theme::default_theme();
 
         // When converting to lines.
         let lines = to_lines("test-skill", "content", &ctx);
 
-        // Then the name line spans have tool_success_bg background.
-        let theme = crate::feat::theme::default_theme();
-        let has_bg = lines[0]
+        // Then the name line has tool_fg foreground and tool_success_bg background.
+        let name_line = &lines[0];
+        let has_fg = name_line
+            .spans
+            .iter()
+            .any(|s| s.style.fg == Some(theme.tool_fg));
+        let has_bg = name_line
             .spans
             .iter()
             .any(|s| s.style.bg == Some(theme.tool_success_bg));
+        assert!(has_fg, "name line should have tool_fg foreground");
         assert!(has_bg, "name line should have tool_success_bg background");
     }
 }

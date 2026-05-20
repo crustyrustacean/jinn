@@ -89,6 +89,15 @@ impl UiElement<AppState> for ChatLogElement {
         let selected_idx = state.active_session().selected_entry_index();
         let history = state.active_session().history();
 
+        // Pre-pass: pair tool calls with their result status for background coloring.
+        let tool_result_statuses: std::collections::HashMap<String, crate::feat::session::tool_result_status::ToolResultStatus> = history
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                ChatEntryKind::ToolResult { id, status, .. } => Some((id.clone(), *status)),
+                _ => None,
+            })
+            .collect();
+
         // Split area into gutter and content columns.
         let gutter_area = Rect {
             x: area.x,
@@ -135,12 +144,18 @@ impl UiElement<AppState> for ChatLogElement {
                     .preferences
                     .tool_entry_max_lines
                     .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
+                let paired_status = match &entry.kind {
+                    ChatEntryKind::ToolCall { id, .. } => tool_result_statuses.get(id).copied(),
+                    ChatEntryKind::ToolResult { status, .. } => Some(*status),
+                    _ => None,
+                };
                 let ctx = RenderContext {
                     content_width,
                     _is_selected: is_selected,
                     is_expanded,
                     tool_entry_max_lines: max_lines,
                     theme: state.frontend.theme.clone(),
+                    paired_status,
                 };
                 let lines = entry_to_lines(entry, &ctx);
                 let wrapped_count: u16 = if content_width == 0 {
@@ -268,12 +283,18 @@ impl UiElement<AppState> for ChatLogElement {
             let entry_content_lines = if let Some(lines) = miss_lines.remove(&i) {
                 lines
             } else {
+                let paired_status = match &entry.kind {
+                    ChatEntryKind::ToolCall { id, .. } => tool_result_statuses.get(id).copied(),
+                    ChatEntryKind::ToolResult { status, .. } => Some(*status),
+                    _ => None,
+                };
                 let ctx = RenderContext {
                     content_width,
                     _is_selected: is_selected,
                     is_expanded,
                     tool_entry_max_lines: max_lines,
                     theme: state.frontend.theme.clone(),
+                    paired_status,
                 };
                 entry_to_lines(entry, &ctx)
             };

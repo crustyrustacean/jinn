@@ -642,12 +642,7 @@ impl ChatEntry {
             } => {
                 name.hash(&mut hasher);
                 status.hash(&mut hasher);
-                // Exclude content from fingerprint when pending — content grows
-                // during streaming and would invalidate the line count cache
-                // on every output line.
-                if *status != ToolResultStatus::Pending {
-                    content.hash(&mut hasher);
-                }
+                content.hash(&mut hasher);
                 // Include truncation presence so the line count cache
                 // invalidates when the indicator line is added or removed.
                 truncation.is_some().hash(&mut hasher);
