@@ -65,10 +65,9 @@ impl MinimapCategory {
             ChatEntryKind::Error(..) => Some(Self::Error),
             ChatEntryKind::System(..) | ChatEntryKind::Transient(..) => Some(Self::System),
             ChatEntryKind::Skill { .. } => Some(Self::Skill),
-            // Excluded: Actor, Thinking, Compaction.
+            // Excluded: Actor, Thinking.
             ChatEntryKind::Actor { .. }
-            | ChatEntryKind::Thinking(..)
-            | ChatEntryKind::Compaction { .. } => None,
+            | ChatEntryKind::Thinking(..) => None,
         }
     }
 }
