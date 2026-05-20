@@ -93,7 +93,11 @@ mod tests {
         let _result = handle_refresh_models(&mut state);
 
         // Then a transient message was posted.
-        let last = state.active_session().history().last().expect("should have entry");
+        let last = state
+            .active_session()
+            .history()
+            .last()
+            .expect("should have entry");
         assert!(matches!(last.kind, ChatEntryKind::Transient(_)));
     }
 
