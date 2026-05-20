@@ -11,8 +11,6 @@ pub mod which_key;
 
 pub use app_layout::{AppLayout, MIN_HEIGHT, MIN_WIDTH};
 
-use std::time::Instant;
-
 use nullslop_domain::{FocusScope, Mode};
 use ratatui::Frame;
 
@@ -27,7 +25,6 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     }
 
     // Pre-render mutation: set wrap width and scroll offset using a write lock.
-    let write_lock_start = Instant::now();
     {
         let mut wstate = app.core.state.write();
         let max_input_height = area.height / 2;
@@ -47,11 +44,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         }
     }
 
-    let write_lock_dur = write_lock_start.elapsed();
-
-    let read_lock_start = Instant::now();
     let state = app.core.state.read();
-    let read_lock_dur = read_lock_start.elapsed();
 
     let max_input_height = area.height / 2;
     let layout = AppLayout::new(
@@ -136,28 +129,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // Release the state read lock before post-render steps.
     drop(state);
 
-    let read_hold_dur = read_lock_start.elapsed();
-
-    let post_render_start = Instant::now();
     app.selectable_rects.rebuild(rects);
     selection_highlight::apply_selection_highlight(app, frame.buffer_mut());
     clipboard::flush_pending_clipboard(app, frame.buffer_mut());
-    let post_render_dur = post_render_start.elapsed();
-
-    let total_render = write_lock_start.elapsed();
-    let write_us = write_lock_dur.as_micros() as u64;
-    let read_wait_us = read_lock_dur.as_micros() as u64;
-    let read_hold_us = read_hold_dur.as_micros() as u64;
-    let post_us = post_render_dur.as_micros() as u64;
-    let total_us = total_render.as_micros() as u64;
-    if total_us > 10_000 {
-        tracing::warn!(
-            write_us,
-            read_wait_us,
-            read_hold_us,
-            post_us,
-            total_us,
-            "PERF: render slow (>10ms)"
-        );
-    }
 }
