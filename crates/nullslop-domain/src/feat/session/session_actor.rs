@@ -389,7 +389,6 @@ impl SessionPersistenceActor {
             }
         };
 
-        let session_id;
         {
             let mut state = self.state.write();
 
@@ -402,7 +401,6 @@ impl SessionPersistenceActor {
                 let strategy_id = PromptStrategyId::new(strategy_str.clone());
                 session.switch_strategy(strategy_id.clone());
             }
-            session_id = state.session.active_session_id().clone();
         }
 
         // Load unarchived sessions from SQLite into memory.
@@ -440,20 +438,10 @@ impl SessionPersistenceActor {
                             .insert(session.session_id().clone(), session);
                     }
 
-                    // Remove the empty default session if other sessions exist.
-                    let default_is_empty = state
-                        .session
-                        .sessions()
-                        .get(&session_id)
-                        .is_some_and(super::chat_session::ChatSessionState::is_empty);
-                    if default_is_empty && state.session.sessions().len() > 1 {
-                        state.session.sessions_mut().remove(&session_id);
-                    }
-
-                    // Set active to the most recently updated unarchived session.
-                    if let Some(most_recent) = sorted.first() {
-                        state.session.set_active(most_recent.session_id.clone());
-                    }
+                    // NOTE: We intentionally do NOT switch the active session.
+                    // The user should land on the fresh welcome session.
+                    // Previously loaded sessions appear in the sidebar but
+                    // don't steal focus.
                 }
             }
         }
@@ -967,6 +955,215 @@ mod tests {
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChatEntry, ChatEntryKind, Command};
     use std::path::Path;
+    use std::sync::Arc;
+
+    // --- on_environment_loaded tests ---
+
+    /// A fake session store that returns pre-loaded sessions for testing.
+    struct PopulatedFakeStore {
+        summaries: Vec<crate::feat::session::session_summary::SessionSummary>,
+        sessions: Vec<ChatSessionState>,
+    }
+
+    impl PopulatedFakeStore {
+        fn new(sessions: Vec<ChatSessionState>) -> Self {
+            let summaries = sessions
+                .iter()
+                .map(|s| crate::feat::session::session_summary::SessionSummary {
+                    session_id: s.session_id().clone(),
+                    title: s.title().unwrap_or("Untitled Session").to_owned(),
+                    updated_at: *s.updated_at(),
+                    created_at: *s.created_at(),
+                    session_state: crate::feat::session::chat_session::SessionState::Loaded,
+                })
+                .collect();
+            Self {
+                summaries,
+                sessions,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
+        fn name(&self) -> &'static str {
+            "populated-fake"
+        }
+
+        async fn save(
+            &self,
+            _session: &ChatSessionState,
+        ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+        {
+            Ok(())
+        }
+
+        async fn load_summaries(
+            &self,
+        ) -> Result<
+            Vec<crate::feat::session::session_summary::SessionSummary>,
+            error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+        > {
+            Ok(self.summaries.clone())
+        }
+
+        async fn load_session(
+            &self,
+            session_id: &crate::protocol::SessionId,
+        ) -> Result<
+            Option<ChatSessionState>,
+            error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+        > {
+            Ok(self
+                .sessions
+                .iter()
+                .find(|s| s.session_id() == session_id)
+                .cloned())
+        }
+
+        async fn delete(
+            &self,
+            _session_id: &crate::protocol::SessionId,
+        ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+        {
+            Ok(())
+        }
+
+        async fn fork(
+            &self,
+            _source_session_id: &crate::protocol::SessionId,
+            _at_ordinal: usize,
+        ) -> Result<
+            crate::protocol::SessionId,
+            error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+        > {
+            Ok(crate::protocol::SessionId::new())
+        }
+
+        async fn set_archived(
+            &self,
+            _session_id: &crate::protocol::SessionId,
+            _archived: bool,
+        ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+        {
+            Ok(())
+        }
+
+        async fn load_unarchived_summaries(
+            &self,
+        ) -> Result<
+            Vec<crate::feat::session::session_summary::SessionSummary>,
+            error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+        > {
+            Ok(self.summaries.clone())
+        }
+    }
+
+    /// Builds a test actor with services (for preferences) and a populated store.
+    fn test_actor_with_store(
+        sessions: Vec<ChatSessionState>,
+    ) -> super::SessionPersistenceActor {
+        let services = crate::TestServices::builder()
+            .session_store(super::SessionStoreService::new(Arc::new(PopulatedFakeStore::new(sessions))))
+            .build();
+        let store = services.session_store.clone();
+        super::SessionPersistenceActor {
+            state: State::new(AppState::default()),
+            services: Some(services),
+            store: Some(store),
+            counter: TiktokenCounter::o200k_base(),
+        }
+    }
+
+    #[tokio::test]
+    async fn loading_unarchived_sessions_does_not_switch_active_session() {
+        // Given an actor with a default welcome session and one session in the store.
+        let store_session = ChatSessionState::new();
+        let actor = test_actor_with_store(vec![store_session]);
+        let (_sink, ctx) = test_context();
+
+        // Record the default session's ID before loading.
+        let default_id = actor.state.read().session.active_session_id().clone();
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the active session is still the default.
+        let state = actor.state.read();
+        assert_eq!(*state.session.active_session_id(), default_id);
+    }
+
+    #[tokio::test]
+    async fn loading_unarchived_sessions_does_not_remove_default_session() {
+        // Given an actor with a default welcome session and one session in the store.
+        let store_session = ChatSessionState::new();
+        let actor = test_actor_with_store(vec![store_session]);
+        let (_sink, ctx) = test_context();
+
+        let default_id = actor.state.read().session.active_session_id().clone();
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the default session still exists in the map.
+        let state = actor.state.read();
+        assert!(
+            state.session.sessions().contains_key(&default_id),
+            "default session should not be removed"
+        );
+    }
+
+    #[tokio::test]
+    async fn loading_unarchived_sessions_inserts_them_into_session_map() {
+        // Given an actor with a default session and two sessions in the store.
+        let store_session1 = ChatSessionState::new();
+        let store_id1 = store_session1.session_id().clone();
+        let store_session2 = ChatSessionState::new();
+        let store_id2 = store_session2.session_id().clone();
+        let actor = test_actor_with_store(vec![store_session1, store_session2]);
+        let (_sink, ctx) = test_context();
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then both loaded sessions are in the session map.
+        let state = actor.state.read();
+        assert!(
+            state.session.sessions().contains_key(&store_id1),
+            "first store session should be in map"
+        );
+        assert!(
+            state.session.sessions().contains_key(&store_id2),
+            "second store session should be in map"
+        );
+    }
 
     #[rstest::rstest]
     fn strip_ansi_removes_bold_codes() {
