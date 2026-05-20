@@ -706,66 +706,155 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// CloseSession: unified close handler.
+    /// CloseSession: state-driven close handler.
     ///
-    /// - Empty session → remove from map, no archive.
-    /// - Has teardown lifecycle → run teardown first, then archive on success.
-    /// - No teardown → archive in SQLite, then remove from map.
+    /// Uses `LifecycleScriptState` to decide whether to run teardown:
+    /// - `SetupRan` → run teardown, archive, remove from memory
+    /// - `NothingRan` or `TeardownRan` → archive, remove from memory (no teardown)
+    ///
+    /// Steps execute sequentially. On failure, the chain stops and the session
+    /// remains in its current state.
     async fn handle_close_session(&self, payload: &CloseSession, ctx: &ActorContext) {
-        // No-op if the session doesn't exist.
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
+        // Collect session info under read lock.
         let session_info = {
             let state = self.state.read();
             let Some(session) = state.session.sessions().get(&payload.session_id) else {
                 return;
             };
-            // Collect what we need before releasing the lock.
+            let script_state = session.lifecycle_script_state();
             let is_empty = session.history().is_empty();
             let lifecycle_name = session.lifecycle_name().map(str::to_owned);
             let lifecycle_args = session.lifecycle_args().to_vec();
-            (is_empty, lifecycle_name, lifecycle_args)
+            (script_state, is_empty, lifecycle_name, lifecycle_args)
         };
 
-        let (is_empty, lifecycle_name, lifecycle_args) = session_info;
+        let (script_state, is_empty, lifecycle_name, lifecycle_args) = session_info;
 
+        // Empty session — remove without archiving or teardown.
         if is_empty {
-            // Empty session — remove without archiving.
             self.close_session_inline(&payload.session_id, ctx);
             return;
         }
 
-        // Check for teardown lifecycle.
-        let teardown_cmd = lifecycle_name.as_deref().and_then(|name| {
-            let state = self.state.read();
-            state
-                .frontend
-                .preferences
-                .session_lifecycles
-                .iter()
-                .find(|l| l.name == name)
-                .and_then(|l| l.teardown_command.clone())
-        });
+        // Step 1: Run teardown if LifecycleScriptState is SetupRan.
+        if script_state == LifecycleScriptState::SetupRan {
+            let teardown_cmd = lifecycle_name.as_deref().and_then(|name| {
+                let state = self.state.read();
+                state
+                    .frontend
+                    .preferences
+                    .session_lifecycles
+                    .iter()
+                    .find(|l| l.name == name)
+                    .and_then(|l| l.teardown_command.clone())
+            });
 
-        if let Some(teardown_cmd) = teardown_cmd {
-            // Has teardown — run it, then archive on success.
-            self.close_session_with_teardown(
-                &payload.session_id,
-                &teardown_cmd,
-                &lifecycle_args,
-                ctx,
-            )
-            .await;
-        } else {
-            // No teardown — archive directly.
-            if let Some(ref store) = self.store
-                && let Err(e) = store.set_archived(&payload.session_id, true).await
-            {
-                tracing::warn!(err = ?e, "failed to archive session");
+            if let Some(teardown_cmd) = teardown_cmd {
+                let success = self
+                    .run_close_teardown_step(
+                        &payload.session_id,
+                        &teardown_cmd,
+                        &lifecycle_args,
+                    )
+                    .await;
+
+                if !success {
+                    // Teardown failed — error already pushed, chain stops.
+                    if let Err(e) =
+                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+                            session_id: payload.session_id.clone(),
+                            error: Some("teardown failed".to_owned()),
+                        }))
+                    {
+                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
+                    }
+                    return;
+                }
+
+                // Advance LifecycleScriptState: SetupRan → TeardownRan.
+                {
+                    let mut state = self.state.write();
+                    if let Some(session) =
+                        state.session.sessions_mut().get_mut(&payload.session_id)
+                    {
+                        session.advance_lifecycle_after_teardown();
+                    }
+                }
+
+                if let Err(e) =
+                    ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+                        session_id: payload.session_id.clone(),
+                        error: None,
+                    }))
+                {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
+                }
             }
-            self.close_session_inline(&payload.session_id, ctx);
-            if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
-                session_id: payload.session_id.clone(),
-            })) {
-                tracing::warn!(err = ?e, "session-actor failed to emit SessionArchived");
+            // If no teardown command exists but state is SetupRan, skip teardown and proceed to archive.
+        }
+
+        // Step 2: Archive in DB.
+        if let Some(ref store) = self.store
+            && let Err(e) = store.set_archived(&payload.session_id, true).await
+        {
+            tracing::warn!(err = ?e, "failed to archive session");
+        }
+
+        // Step 3: Remove from memory.
+        self.close_session_inline(&payload.session_id, ctx);
+
+        if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
+            session_id: payload.session_id.clone(),
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit SessionArchived");
+        }
+    }
+
+    /// Runs the teardown command as part of session close.
+    ///
+    /// Returns `true` on success, `false` on failure (error entry pushed to session).
+    async fn run_close_teardown_step(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        teardown_cmd: &str,
+        lifecycle_args: &[String],
+    ) -> bool {
+        use crate::feat::session_lifecycle::command_template::CommandTemplate;
+
+        // Push "running" info entry.
+        {
+            let mut state = self.state.write();
+            if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                session.push_entry(teardown_running_msg());
+            }
+        }
+
+        let template = CommandTemplate::parse(teardown_cmd);
+        let rendered = if lifecycle_args.is_empty() {
+            teardown_cmd.to_owned()
+        } else {
+            template.render(lifecycle_args)
+        };
+
+        match run_teardown_command(&rendered).await {
+            Ok(()) => true,
+            Err(report) => {
+                let error_msg =
+                    if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
+                        format_lifecycle_error(cmd_err)
+                    } else {
+                        strip_ansi(&format!("{report:#?}"))
+                    };
+                {
+                    let mut state = self.state.write();
+                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                        session.push_entry(ChatEntry::error(&error_msg));
+                    }
+                }
+                self.save_active_session(session_id).await;
+                false
             }
         }
     }
@@ -825,86 +914,7 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Run teardown command, then archive + close on success.
-    /// On failure, push error entry and emit teardown-finished with error.
-    async fn close_session_with_teardown(
-        &self,
-        session_id: &crate::protocol::SessionId,
-        teardown_cmd: &str,
-        lifecycle_args: &[String],
-        ctx: &ActorContext,
-    ) {
-        use crate::feat::session_lifecycle::command_template::CommandTemplate;
 
-        // Push "running" info entry.
-        {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
-                session.push_entry(teardown_running_msg());
-            }
-        }
-
-        let template = CommandTemplate::parse(teardown_cmd);
-        let rendered = if lifecycle_args.is_empty() {
-            teardown_cmd.to_owned()
-        } else {
-            template.render(lifecycle_args)
-        };
-
-        let result = run_teardown_command(&rendered).await;
-
-        match result {
-            Ok(()) => {
-                // Archive + close on success.
-                if let Some(ref store) = self.store
-                    && let Err(e) = store.set_archived(session_id, true).await
-                {
-                    tracing::warn!(err = ?e, "failed to archive session after teardown");
-                }
-                self.close_session_inline(session_id, ctx);
-
-                if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
-                    session_id: session_id.clone(),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionArchived");
-                }
-
-                if let Err(e) =
-                    ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                        session_id: session_id.clone(),
-                        error: None,
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                }
-            }
-            Err(report) => {
-                let error_msg =
-                    if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
-                        format_lifecycle_error(cmd_err)
-                    } else {
-                        strip_ansi(&format!("{report:#?}"))
-                    };
-                {
-                    let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
-                        session.push_entry(ChatEntry::error(&error_msg));
-                    }
-                }
-
-                self.save_active_session(session_id).await;
-
-                if let Err(e) =
-                    ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                        session_id: session_id.clone(),
-                        error: Some(error_msg),
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                }
-            }
-        }
-    }
 
     /// SaveNewLifecycleSession: persist the session immediately.
     ///
