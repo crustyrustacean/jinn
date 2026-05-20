@@ -17,6 +17,7 @@
 //! and substitutes both `$1` occurrences with the same arg.
 
 use std::fmt;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// A segment of a displayed command line, tagged with its parameter index.
 ///
@@ -105,21 +106,21 @@ impl CommandTemplate {
     #[must_use]
     pub fn parse(command: &str) -> Self {
         let mut params: Vec<Param> = Vec::new();
-        let chars: Vec<char> = command.chars().collect();
+        let graphemes: Vec<&str> = command.graphemes(true).collect();
         let mut i = 0;
 
-        while i < chars.len() {
-            if chars[i] == '$' && i + 1 < chars.len() {
-                let next = chars[i + 1];
-                if next.is_ascii_digit() && next != '0' {
-                    let n = (next as u8 - b'0') as usize;
+        while i < graphemes.len() {
+            if graphemes[i] == "$" && i + 1 < graphemes.len() {
+                let next = graphemes[i + 1];
+                if next.len() == 1 && next.as_bytes()[0].is_ascii_digit() && next != "0" {
+                    let n = (next.as_bytes()[0] - b'0') as usize;
                     let param = Param::Positional(n);
                     if !params.contains(&param) {
                         params.push(param);
                     }
                     i += 2;
                     continue;
-                } else if next == '@' || next == '*' {
+                } else if next == "@" || next == "*" {
                     let splat = Param::Splat;
                     if !params.contains(&splat) {
                         params.push(splat);
@@ -129,15 +130,15 @@ impl CommandTemplate {
                 }
             }
 
-            if chars[i] == '<' {
+            if graphemes[i] == "<" {
                 // Scan for closing `>`.
                 let start = i + 1;
                 let mut end = start;
-                while end < chars.len() && chars[end] != '>' {
+                while end < graphemes.len() && graphemes[end] != ">" {
                     end += 1;
                 }
-                if end > start && end < chars.len() {
-                    let name: String = chars[start..end].iter().collect();
+                if end > start && end < graphemes.len() {
+                    let name: String = graphemes[start..end].join("");
                     let param = Param::Named(name);
                     if !params.contains(&param) {
                         params.push(param);
@@ -329,7 +330,7 @@ impl CommandTemplate {
     /// substitutes it; otherwise keeps the placeholder text.
     fn tokenize_display_line(&self, line: &str, args: &[String]) -> Vec<DisplaySegment> {
         let mut segments = Vec::new();
-        let chars: Vec<char> = line.chars().collect();
+        let graphemes: Vec<&str> = line.graphemes(true).collect();
         let mut i = 0;
         let mut static_start = 0;
 
@@ -355,17 +356,17 @@ impl CommandTemplate {
             }
         }
 
-        while i < chars.len() {
-            if chars[i] == '<' {
+        while i < graphemes.len() {
+            if graphemes[i] == "<" {
                 // Potential placeholder — scan for '>'.
                 let start = i + 1;
                 let mut end = start;
-                while end < chars.len() && chars[end] != '>' {
+                while end < graphemes.len() && graphemes[end] != ">" {
                     end += 1;
                 }
 
-                if end < chars.len() && end > start {
-                    let token_text: String = chars[start..end].iter().collect();
+                if end < graphemes.len() && end > start {
+                    let token_text: String = graphemes[start..end].join("");
                     let full_token = format!("<{token_text}>");
 
                     // Check if this matches any known param.
@@ -374,7 +375,7 @@ impl CommandTemplate {
                     {
                         // Emit preceding static text.
                         if static_start < i {
-                            let text: String = chars[static_start..i].iter().collect();
+                            let text: String = graphemes[static_start..i].join("");
                             segments.push(DisplaySegment::static_text(text));
                         }
 
@@ -399,8 +400,8 @@ impl CommandTemplate {
         }
 
         // Emit remaining static text.
-        if static_start < chars.len() {
-            let text: String = chars[static_start..].iter().collect();
+        if static_start < graphemes.len() {
+            let text: String = graphemes[static_start..].join("");
             if !text.is_empty() {
                 segments.push(DisplaySegment::static_text(text));
             }
@@ -446,41 +447,46 @@ pub fn split_preserving_quotes(input: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
-    let mut chars = input.chars().peekable();
+    let graphemes: Vec<&str> = input.graphemes(true).collect();
+    let mut i = 0;
 
-    while let Some(ch) = chars.next() {
+    while i < graphemes.len() {
+        let g = graphemes[i];
         if in_quotes {
-            if ch == '\\' {
-                // Backslash escape inside quotes: next char is literal (skip backslash).
+            if g == "\\" {
+                // Backslash escape inside quotes: next grapheme is literal (skip backslash).
                 current.push('\\');
-                if let Some(escaped) = chars.next() {
-                    current.push(escaped);
+                i += 1;
+                if i < graphemes.len() {
+                    current.push_str(graphemes[i]);
                 }
-            } else if ch == '"' {
+            } else if g == "\"" {
                 // End of quoted section — keep the quote char.
-                current.push(ch);
+                current.push('"');
                 in_quotes = false;
             } else {
-                current.push(ch);
+                current.push_str(g);
             }
-        } else if ch == '\\' {
+        } else if g == "\\" {
             // Backslash escape outside quotes.
             current.push('\\');
-            if let Some(escaped) = chars.next() {
-                current.push(escaped);
+            i += 1;
+            if i < graphemes.len() {
+                current.push_str(graphemes[i]);
             }
-        } else if ch == '"' {
+        } else if g == "\"" {
             // Start of quoted section — keep the quote char.
-            current.push(ch);
+            current.push('"');
             in_quotes = true;
-        } else if ch.is_whitespace() {
+        } else if g.chars().next().is_some_and(char::is_whitespace) {
             if !current.is_empty() {
                 args.push(current.clone());
                 current.clear();
             }
         } else {
-            current.push(ch);
+            current.push_str(g);
         }
+        i += 1;
     }
 
     if !current.is_empty() {
@@ -511,41 +517,46 @@ pub fn parse_quoted_args(input: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
-    let mut chars = input.chars().peekable();
+    let graphemes: Vec<&str> = input.graphemes(true).collect();
+    let mut i = 0;
 
-    while let Some(ch) = chars.next() {
+    while i < graphemes.len() {
+        let g = graphemes[i];
         if in_quotes {
-            if ch == '\\' {
-                // Backslash escape inside quotes: next char is literal.
-                if let Some(escaped) = chars.next() {
-                    current.push(escaped);
+            if g == "\\" {
+                // Backslash escape inside quotes: next grapheme is literal.
+                i += 1;
+                if i < graphemes.len() {
+                    current.push_str(graphemes[i]);
                 } else {
                     // Trailing backslash — treat as literal.
                     current.push('\\');
                 }
-            } else if ch == '"' {
+            } else if g == "\"" {
                 // End of quoted section.
                 in_quotes = false;
             } else {
-                current.push(ch);
+                current.push_str(g);
             }
-        } else if ch == '\\' {
+        } else if g == "\\" {
             // Backslash escape outside quotes.
-            if let Some(escaped) = chars.next() {
-                current.push(escaped);
+            i += 1;
+            if i < graphemes.len() {
+                current.push_str(graphemes[i]);
             } else {
                 current.push('\\');
             }
-        } else if ch == '"' {
+        } else if g == "\"" {
             in_quotes = true;
-        } else if ch.is_whitespace() {
+        } else if g.chars().next().is_some_and(char::is_whitespace) {
             if !current.is_empty() {
                 args.push(current.clone());
                 current.clear();
             }
         } else {
-            current.push(ch);
+            current.push_str(g);
         }
+        i += 1;
     }
 
     if !current.is_empty() {
