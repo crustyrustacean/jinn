@@ -14,7 +14,7 @@ use super::entries;
 /// horizontal separator, scrollable results, and a footer line.
 pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let footer = entries::format_footer(
-        state.provider.last_refreshed_at.as_ref(),
+        state.provider.model_cache.as_ref(),
         area.width as usize,
         &state.frontend.theme,
     );

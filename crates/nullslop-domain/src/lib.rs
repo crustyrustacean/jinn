@@ -124,7 +124,7 @@ pub use feat::provider::protocol::command::{
     SendToLlmProvider,
 };
 pub use feat::provider::protocol::event::{
-    ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
+    ModelCacheLoaded, ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
     StreamCompletedReason, StreamToken,
 };
 pub use feat::session::protocol::session_fork_requested::SessionForkRequested;
