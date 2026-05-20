@@ -288,6 +288,20 @@ impl SessionStore for SqliteSessionStore {
         .change_context(SessionStoreError)
         .attach("spawn_blocking panicked during load_unarchived_summaries")?
     }
+
+    async fn shutdown(&self) -> Result<(), Report<SessionStoreError>> {
+        let pool = self.pool.clone();
+        spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(SessionStoreError)
+                .attach("failed to acquire connection from pool")?;
+            shutdown_blocking(&mut conn)
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("spawn_blocking panicked during shutdown")?
+    }
 }
 
 // ── Diesel model structs ─────────────────────────────────────────────────
@@ -354,11 +368,11 @@ struct NewEntryRow {
     kind: String,
 }
 
-/// Reading model for the `session_entries` table.
+/// Reading model for the `session_history` table.
 #[derive(Queryable)]
-#[diesel(table_name = crate::schema::session_entries)]
+#[diesel(table_name = crate::schema::session_history)]
 struct SessionEntryRow {
-    /// Diesel `Queryable` requires this field to match the `session_entries.session_id`
+    /// Diesel `Queryable` requires this field to match the `session_history.session_id`
     /// column returned by `SELECT *`. The Rust code already knows the session ID from
     /// the query filter, so this field is never read directly.
     #[expect(
@@ -372,9 +386,9 @@ struct SessionEntryRow {
     ignored: bool,
 }
 
-/// Insert model for the `session_entries` table.
+/// Insert model for the `session_history` table.
 #[derive(Insertable)]
-#[diesel(table_name = crate::schema::session_entries)]
+#[diesel(table_name = crate::schema::session_history)]
 struct NewSessionEntryRow {
     session_id: String,
     entry_id: String,
@@ -503,7 +517,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     title,
                     updated_at,
                     created_at,
-                    history: _history, // persisted via entries + session_entries tables below
+                    history: _history, // persisted via entries + session_history tables below
                     profile,
                     cwd,
                     token_ledger: _ledger, // persisted via token_ledger table below
@@ -663,7 +677,7 @@ fn save_blocking(
     let session_id_str = row.id.clone();
 
     conn.transaction::<_, diesel::result::Error, _>(|txn| {
-        use crate::schema::{entries, session_entries, sessions, token_ledger};
+        use crate::schema::{entries, session_history, sessions, token_ledger};
 
         // Upsert session metadata.
         insert_into(sessions::table)
@@ -687,7 +701,7 @@ fn save_blocking(
 
         // Delete existing junction rows and token ledger for this session.
         diesel::delete(
-            session_entries::table.filter(session_entries::session_id.eq(&session_id_str)),
+            session_history::table.filter(session_history::session_id.eq(&session_id_str)),
         )
         .execute(txn)?;
 
@@ -720,7 +734,7 @@ fn save_blocking(
                 .execute(txn)?;
 
             // Insert junction row.
-            insert_into(session_entries::table)
+            insert_into(session_history::table)
                 .values(&NewSessionEntryRow {
                     session_id: session_id_str.clone(),
                     entry_id: entry_id_str,
@@ -746,7 +760,7 @@ fn save_blocking(
 
         // Clean up orphaned entries (no longer referenced by any session).
         diesel::sql_query(
-            "DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_entries)",
+            "DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_history)",
         )
         .execute(txn)?;
 
@@ -796,7 +810,7 @@ fn load_session_blocking(
     conn: &mut SqliteConnection,
     session_id: &SessionId,
 ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
-    use crate::schema::{entries, session_entries, token_ledger};
+    use crate::schema::{entries, session_history, token_ledger};
 
     let session_id_str = session_id.to_string();
 
@@ -812,9 +826,9 @@ fn load_session_blocking(
 
     // Load entries via junction table, ordered by ordinal.
     let joined: Vec<(EntryRow, SessionEntryRow)> = entries::table
-        .inner_join(session_entries::table)
-        .filter(session_entries::session_id.eq(&session_id_str))
-        .order(session_entries::ordinal.asc())
+        .inner_join(session_history::table)
+        .filter(session_history::session_id.eq(&session_id_str))
+        .order(session_history::ordinal.asc())
         .load::<(EntryRow, SessionEntryRow)>(conn)
         .change_context(SessionStoreError)
         .attach("failed to query entries")?;
@@ -891,7 +905,7 @@ fn delete_blocking(
         .attach("failed to delete session")?;
 
     // Clean up orphaned entries.
-    diesel::sql_query("DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_entries)")
+    diesel::sql_query("DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_history)")
         .execute(conn)
         .change_context(SessionStoreError)
         .attach("failed to clean orphaned entries after delete")?;
@@ -927,7 +941,7 @@ fn fork_blocking(
     source_session_id: &SessionId,
     at_ordinal: usize,
 ) -> Result<SessionId, Report<SessionStoreError>> {
-    use crate::schema::{session_entries, sessions};
+    use crate::schema::{session_history, sessions};
 
     let source_str = source_session_id.to_string();
     let new_id = SessionId::new();
@@ -967,13 +981,13 @@ fn fork_blocking(
             .execute(txn)?;
 
         // Copy junction rows up to and including at_ordinal.
-        let junction_rows: Vec<SessionEntryRow> = session_entries::table
-            .filter(session_entries::session_id.eq(&source_str))
-            .filter(session_entries::ordinal.le(at_ordinal as i32))
+        let junction_rows: Vec<SessionEntryRow> = session_history::table
+            .filter(session_history::session_id.eq(&source_str))
+            .filter(session_history::ordinal.le(at_ordinal as i32))
             .load::<SessionEntryRow>(txn)?;
 
         for row in junction_rows {
-            insert_into(session_entries::table)
+            insert_into(session_history::table)
                 .values(&NewSessionEntryRow {
                     session_id: new_id_str.clone(),
                     entry_id: row.entry_id,
@@ -1040,4 +1054,31 @@ fn load_unarchived_summaries_blocking(
         .collect();
 
     Ok(summaries)
+}
+
+/// Deletes empty unarchived sessions and orphaned entries during shutdown.
+///
+/// An "empty" session is one with no rows in `session_history`. These can
+/// accumulate when `SaveNewLifecycleSession` persists a session before its
+/// setup command runs, and the app exits before the session gets any entries.
+fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    // Delete unarchived sessions that have no chat history entries.
+    let result = sql_query(
+        "DELETE FROM sessions WHERE archived = 0 AND id NOT IN (SELECT DISTINCT session_id FROM session_history)",
+    )
+    .execute(conn)
+    .change_context(SessionStoreError)
+    .attach("failed to delete empty sessions during shutdown")?;
+
+    if result > 0 {
+        tracing::info!(count = result, "deleted empty unarchived sessions during shutdown");
+    }
+
+    // Clean up orphaned entries (not referenced by any session).
+    sql_query("DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_history)")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to delete orphaned entries during shutdown")?;
+
+    Ok(())
 }

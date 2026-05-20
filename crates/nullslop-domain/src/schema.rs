@@ -9,7 +9,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    session_entries (session_id, entry_id) {
+    session_history (session_id, entry_id) {
         session_id -> Text,
         entry_id -> Text,
         ordinal -> Integer,
@@ -48,8 +48,8 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(session_entries -> entries (entry_id));
-diesel::joinable!(session_entries -> sessions (session_id));
+diesel::joinable!(session_history -> entries (entry_id));
+diesel::joinable!(session_history -> sessions (session_id));
 diesel::joinable!(token_ledger -> sessions (session_id));
 
-diesel::allow_tables_to_appear_in_same_query!(entries, session_entries, sessions, token_ledger,);
+diesel::allow_tables_to_appear_in_same_query!(entries, session_history, sessions, token_ledger,);

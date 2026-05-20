@@ -36,7 +36,6 @@ impl SessionPersistenceActor {
             }
         };
 
-        let session_id;
         {
             let mut state = self.state.write();
 
@@ -49,7 +48,6 @@ impl SessionPersistenceActor {
                 let strategy_id = PromptStrategyId::new(strategy_str.clone());
                 session.switch_strategy(strategy_id.clone());
             }
-            session_id = state.session.active_session_id().clone();
         }
 
         // Load unarchived sessions from SQLite into memory.
@@ -87,18 +85,10 @@ impl SessionPersistenceActor {
                             .insert(session.session_id().clone(), session);
                     }
 
-                    // Remove the empty default session if other sessions exist.
-                    let default_is_empty = state.session.sessions().get(&session_id).is_some_and(
-                        crate::feat::session::chat_session::ChatSessionState::is_empty,
-                    );
-                    if default_is_empty && state.session.sessions().len() > 1 {
-                        state.session.sessions_mut().remove(&session_id);
-                    }
-
-                    // Set active to the most recently updated unarchived session.
-                    if let Some(most_recent) = sorted.first() {
-                        state.session.set_active(most_recent.session_id.clone());
-                    }
+                    // NOTE: We intentionally do NOT switch the active session.
+                    // The user should land on the fresh welcome session.
+                    // Previously loaded sessions appear in the sidebar but
+                    // don't steal focus.
                 }
             }
         }
@@ -125,5 +115,102 @@ impl SessionPersistenceActor {
                 tracing::error!(err = ?e, "failed to send command");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::super::super::helpers::{test_actor_with_store, test_context};
+    use crate::feat::session::chat_session::ChatSessionState;
+
+    #[tokio::test]
+    async fn loading_unarchived_sessions_does_not_switch_active_session() {
+        // Given an actor with a default welcome session and one session in the store.
+        let store_session = ChatSessionState::new();
+        let (actor, _store) = test_actor_with_store(vec![store_session]);
+        let (_sink, ctx) = test_context();
+
+        // Record the default session's ID before loading.
+        let default_id = actor.state.read().session.active_session_id().clone();
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the active session is still the default.
+        let state = actor.state.read();
+        assert_eq!(*state.session.active_session_id(), default_id);
+    }
+
+    #[tokio::test]
+    async fn loading_unarchived_sessions_does_not_remove_default_session() {
+        // Given an actor with a default welcome session and one session in the store.
+        let store_session = ChatSessionState::new();
+        let (actor, _store) = test_actor_with_store(vec![store_session]);
+        let (_sink, ctx) = test_context();
+
+        let default_id = actor.state.read().session.active_session_id().clone();
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the default session still exists in the map.
+        let state = actor.state.read();
+        assert!(
+            state.session.sessions().contains_key(&default_id),
+            "default session should not be removed"
+        );
+    }
+
+    #[tokio::test]
+    async fn loading_unarchived_sessions_inserts_them_into_session_map() {
+        // Given an actor with a default session and two sessions in the store.
+        let store_session1 = ChatSessionState::new();
+        let store_id1 = store_session1.session_id().clone();
+        let store_session2 = ChatSessionState::new();
+        let store_id2 = store_session2.session_id().clone();
+        let (actor, _store) = test_actor_with_store(vec![store_session1, store_session2]);
+        let (_sink, ctx) = test_context();
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then both loaded sessions are in the session map.
+        let state = actor.state.read();
+        assert!(
+            state.session.sessions().contains_key(&store_id1),
+            "first store session should be in map"
+        );
+        assert!(
+            state.session.sessions().contains_key(&store_id2),
+            "second store session should be in map"
+        );
     }
 }

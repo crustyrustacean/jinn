@@ -106,4 +106,13 @@ impl SessionStoreService {
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
         self.svc.load_unarchived_summaries().await
     }
+
+    /// Shut down the store, performing any cleanup or flush operations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the cleanup fails.
+    pub async fn shutdown(&self) -> Result<(), Report<SessionStoreError>> {
+        self.svc.shutdown().await
+    }
 }
