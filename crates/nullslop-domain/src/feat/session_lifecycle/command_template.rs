@@ -149,8 +149,8 @@ impl CommandTemplate {
         let mut i = 0;
 
         while i < graphemes.len() {
-            if let Some((param, consumed)) = try_parse_dollar(&graphemes, i)
-                .or_else(|| try_parse_named(&graphemes, i))
+            if let Some((param, consumed)) =
+                try_parse_dollar(&graphemes, i).or_else(|| try_parse_named(&graphemes, i))
             {
                 if !params.contains(&param) {
                     params.push(param);
