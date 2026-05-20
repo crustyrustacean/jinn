@@ -50,7 +50,7 @@ pub fn sorted_entries(
 /// Returns a styled [`Line`] with the pipe separator in muted text.
 /// Format: `CTRL+R to refresh | Updated <timestamp> (<humantime> ago)`
 pub fn format_footer(
-    last_refreshed_at: Option<&jiff::Timestamp>,
+    model_cache: Option<&crate::feat::provider_infra::ModelCache>,
     width: usize,
     theme: &Theme,
 ) -> ratatui::text::Line<'static> {
@@ -60,8 +60,9 @@ pub fn format_footer(
     let gray = Style::default().fg(theme.muted_text);
     let orange = Style::default().fg(theme.accent_action);
 
-    if let Some(ts) = last_refreshed_at {
-        let elapsed = jiff::Timestamp::now() - *ts;
+    let ts = model_cache.and_then(|c| c.last_updated_at);
+    if let Some(ts) = ts {
+        let elapsed = jiff::Timestamp::now() - ts;
         let secs = elapsed.total(jiff::Unit::Second).unwrap_or(0.0).round() as u64;
         let duration = std::time::Duration::from_secs(secs);
         let human = humantime::format_duration(duration);
