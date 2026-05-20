@@ -1,0 +1,187 @@
+//! Session load and fork handlers — restore sessions from disk and fork session history.
+//!
+//! Handles restoring a loaded session into active state (validating CWD, emitting
+//! follow-up commands for strategy restoration) and forking a session at a specific
+//! point in its history.
+
+use crate::common::actor::ActorContext;
+use crate::feat::context::protocol::command::{RestoreStrategyState, SwitchPromptStrategy};
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::protocol::{ChatEntry, Command, Event};
+
+use super::super::SessionPersistenceActor;
+use crate::SessionForkRequested;
+
+impl SessionPersistenceActor {
+    /// SessionLoadCompleted: restore session state and emit follow-up commands.
+    pub(in crate::feat::session::session_actor) async fn handle_session_load_completed(
+        &self,
+        payload: &SessionLoadCompleted,
+        ctx: &ActorContext,
+    ) {
+        let session_id = payload.session.session_id().clone();
+        let strategy_id = payload.session.active_strategy().clone();
+        let original_cwd;
+
+        {
+            let mut state = self.state.write();
+            let loaded = payload.session.clone();
+
+            // Restore model — fallback to config if not in payload (old session migration).
+            let model = if loaded.model() == crate::feat::provider_infra::NO_PROVIDER_ID {
+                state
+                    .frontend
+                    .preferences
+                    .last_model
+                    .clone()
+                    .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned())
+            } else {
+                loaded.model().to_owned()
+            };
+
+            let title_text = loaded.title().unwrap_or("Untitled Session").to_owned();
+
+            // Insert loaded session into HashMap.
+            state
+                .session
+                .sessions_mut()
+                .insert(session_id.clone(), loaded);
+
+            // Add a system message about the restore.
+            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
+            let session = state
+                .session
+                .sessions_mut()
+                .get_mut(&session_id)
+                .expect("just inserted");
+            session.push_entry(ChatEntry::system(format!("Session restored: {title_text}")));
+            session.set_model(model);
+
+            // Read cwd before releasing the lock (for async existence check).
+            original_cwd = session.cwd().to_owned();
+
+            state.session.set_active(session_id.clone());
+            state.session.clear_load();
+        }
+
+        // Validate CWD — fallback to default if non-existent on disk.
+        // This check is async (tokio::fs), so it runs outside the state lock.
+        let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
+        if !cwd_exists {
+            let default_cwd = {
+                let state = self.state.read();
+                state.session.default_cwd().clone()
+            };
+            let mut state = self.state.write();
+            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
+            let session = state
+                .session
+                .sessions_mut()
+                .get_mut(&session_id)
+                .expect("just inserted");
+            session.push_entry(ChatEntry::system(format!(
+                "Warning: working directory '{}' not found, falling back to '{}'",
+                original_cwd.display(),
+                default_cwd.display()
+            )));
+            session.set_cwd(default_cwd);
+        }
+
+        // Notify other actors that the active session changed.
+        // (Moved outside the first lock block since we restructured.)
+        {
+            let _ = ctx.send_event(Event::ActiveSessionChanged(
+                crate::protocol::system::ActiveSessionChanged {
+                    session_id: session_id.clone(),
+                },
+            ));
+        }
+
+        // Serialize the strategy state for RestoreStrategyState.
+        let blob = {
+            let state = self.state.read();
+            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
+            let session = state
+                .session
+                .sessions()
+                .get(&session_id)
+                .expect("just inserted");
+            session
+                .strategy_state()
+                .get(&strategy_id)
+                .and_then(|s| serde_json::to_value(s).ok())
+                .unwrap_or(serde_json::json!({}))
+        };
+
+        if let Err(e) = ctx.send_command(Command::RestoreStrategyState(RestoreStrategyState {
+            session_id: session_id.clone(),
+            strategy_id: strategy_id.clone(),
+            blob,
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit RestoreStrategyState");
+        }
+
+        if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
+            session_id: session_id.clone(),
+            strategy_id,
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit SwitchPromptStrategy");
+        }
+
+        // Persist the restored session (includes the "Session restored" system entries).
+        self.save_active_session(&session_id).await;
+    }
+
+    /// SessionForkRequested: fork the session in SQLite, then load the new session.
+    ///
+    /// Calls `store.fork()` to create a new session with entries up to `at_ordinal`,
+    /// then emits `SessionLoadCompleted` to trigger the standard session-load flow.
+    pub(in crate::feat::session::session_actor) async fn on_session_fork_requested(
+        &self,
+        payload: &SessionForkRequested,
+        ctx: &ActorContext,
+    ) {
+        let Some(store) = &self.store else {
+            tracing::warn!("session-actor has no store — dropping fork request");
+            return;
+        };
+
+        // Fork in SQLite.
+        let new_id = match store
+            .fork(&payload.source_session_id, payload.at_ordinal)
+            .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::warn!(err = ?e, "failed to fork session");
+                // Clear loading state.
+                let mut state = self.state.write();
+                state.session.clear_load();
+                return;
+            }
+        };
+
+        // Load the forked session.
+        match store.load_session(&new_id).await {
+            Ok(Some(session)) => {
+                if let Err(e) = ctx.send_command(Command::SessionLoadCompleted(
+                    crate::feat::session::protocol::session_load_completed::SessionLoadCompleted {
+                        session,
+                    },
+                )) {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionLoadCompleted after fork");
+                }
+            }
+            Ok(None) => {
+                tracing::warn!("forked session not found after creation");
+                let mut state = self.state.write();
+                state.session.clear_load();
+            }
+            Err(e) => {
+                tracing::warn!(err = ?e, "failed to load forked session");
+                let mut state = self.state.write();
+                state.session.clear_load();
+            }
+        }
+    }
+}
