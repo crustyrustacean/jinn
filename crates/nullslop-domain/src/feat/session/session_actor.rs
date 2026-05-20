@@ -167,7 +167,7 @@ impl SessionPersistenceActor {
                 self.on_tool_execution_output(payload);
             }
             Event::ModelsRefreshed(payload) => {
-                self.on_models_refreshed(payload, ctx);
+                self.on_models_refreshed(payload);
             }
             Event::EnvironmentLoaded(payload) => {
                 self.on_environment_loaded(&payload.config, ctx).await;
