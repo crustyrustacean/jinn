@@ -674,3 +674,83 @@ async fn fork_inherits_lifecycle_metadata() {
     assert_eq!(forked.lifecycle_name(), Some("fossil branch"));
     assert_eq!(forked.lifecycle_args(), &["dev".to_owned()]);
 }
+
+// --- Lifecycle script state persistence ---
+
+#[rstest::rstest]
+#[tokio::test]
+async fn lifecycle_script_state_setup_ran_round_trips() {
+    // Given a session with SetupRan.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Lifecycle State".to_owned());
+    session.push_entry(ChatEntry::user("hello"));
+    session.advance_lifecycle_after_setup();
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then lifecycle_script_state is SetupRan.
+    assert_eq!(
+        loaded.lifecycle_script_state(),
+        crate::feat::session::chat_session::LifecycleScriptState::SetupRan
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn lifecycle_script_state_nothing_ran_round_trips() {
+    // Given a session with NothingRan (default).
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let session = make_session(&session_id, "Default State");
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then lifecycle_script_state is NothingRan.
+    assert_eq!(
+        loaded.lifecycle_script_state(),
+        crate::feat::session::chat_session::LifecycleScriptState::NothingRan
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fork_inherits_lifecycle_script_state() {
+    // Given a store with a session that has SetupRan.
+    let (_dir, store) = make_store();
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new();
+    source.set_session_id(source_id.clone());
+    source.set_title("Source".to_owned());
+    source.push_entry(ChatEntry::user("hello"));
+    source.advance_lifecycle_after_setup();
+    store.save(&source).await.expect("save source");
+
+    // When forking.
+    let forked_id = store.fork(&source_id, 0).await.expect("fork");
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+
+    // Then the forked session inherits SetupRan.
+    assert_eq!(
+        forked.lifecycle_script_state(),
+        crate::feat::session::chat_session::LifecycleScriptState::SetupRan
+    );
+}

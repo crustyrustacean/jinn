@@ -48,13 +48,17 @@ pub(crate) struct SessionEntry {
     pub(crate) last_entry_is_error: bool,
 }
 
-/// Collects all open sessions sorted by `created_at` descending (newest first).
+/// Collects all loaded sessions sorted by `created_at` descending (newest first).
+///
+/// Only includes sessions with `SessionState::Loaded` — archived sessions
+/// are not in the `SessionMap` and thus excluded automatically.
 pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     let active_id = state.session.active_session_id();
     let mut entries: Vec<SessionEntry> = state
         .session
         .sessions()
         .iter()
+        .filter(|(_, session)| session.session_state() == crate::feat::session::chat_session::SessionState::Loaded)
         .map(|(id, session): (&_, &_)| SessionEntry {
             id: id.clone(),
             title: session.title().unwrap_or("Untitled Session").to_owned(),
@@ -602,6 +606,32 @@ pub fn handle_session_teardown(state: &mut AppState) -> crate::protocol::IntentR
             },
         ),
     ])
+}
+
+/// Handles `SidebarSessionArchive` — archives the selected session without teardown.
+///
+/// Validates that the close can proceed, then emits an `ArchiveSession` command.
+/// The actor handles DB archival and memory removal.
+///
+/// # Panics
+/// Panics if `sessions_section.selected_index` is `None`.
+pub fn handle_session_archive(state: &mut AppState) -> crate::protocol::IntentResult {
+    use crate::feat::session::protocol::archive_session::ArchiveSession;
+    use crate::protocol::Command;
+
+    // Validate — same preconditions as session close.
+    if validate_session_close(state).is_err() {
+        return crate::protocol::IntentResult::empty();
+    }
+
+    let index = state.frontend.sessions_section.selected_index.unwrap();
+    let sessions = sorted_open_sessions(state);
+    let target_id = sessions[index].id.clone();
+
+    // Emit ArchiveSession — the actor handles archival without teardown.
+    crate::protocol::IntentResult::with_commands(vec![Command::ArchiveSession(ArchiveSession {
+        session_id: target_id,
+    })])
 }
 
 /// Handles `SidebarSessionNewWithLifecycle` — opens the lifecycle picker
