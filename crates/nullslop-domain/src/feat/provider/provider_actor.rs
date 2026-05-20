@@ -186,7 +186,7 @@ mod tests {
     use crate::common::services::Services;
     use crate::common::state::State;
     use crate::feat::provider_infra::{ModelCache, ModelInfo, ProviderEntry, ProvidersConfig};
-    use crate::protocol::{Command, Event};
+    use crate::protocol::Event;
 
     use super::{ProviderActor, ProviderActorDeps};
 
