@@ -9,7 +9,6 @@
 //! This actor is the **sole writer** of the following `AppState` fields:
 //! - `active_provider`
 //! - `model_cache`
-//! - `last_refreshed_at`
 //! - `provider_picker` entries (via the loader)
 //!
 //! # Lock discipline
@@ -159,7 +158,6 @@ impl ProviderActor {
             entries: event.results.clone(),
             last_updated_at: Some(now),
         });
-        state.provider.last_refreshed_at = Some(now);
         // Also reload provider picker entries from updated model cache.
         load_provider_picker_items(&self.services, &mut state);
     }

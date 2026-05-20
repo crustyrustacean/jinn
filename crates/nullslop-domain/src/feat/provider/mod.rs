@@ -39,12 +39,8 @@ use crate::PickerEntry;
 #[derive(Debug)]
 pub struct ProviderState {
     /// Last known model cache from discovery.
-    /// OWNER: provider-actor (updates from ModelsRefreshed event).
+    /// OWNER: provider-actor (updates from ModelsRefreshed / ModelCacheLoaded events).
     pub model_cache: Option<crate::feat::provider_infra::ModelCache>,
-
-    /// When the model list was last refreshed (UTC).
-    /// OWNER: provider-actor (updates from ModelsRefreshed event).
-    pub last_refreshed_at: Option<jiff::Timestamp>,
 
     /// Provider picker state (items, filter text, selection index).
     /// OWNER: provider-actor (loads entries via LoadProviderPickerEntries),
@@ -56,7 +52,6 @@ impl Default for ProviderState {
     fn default() -> Self {
         Self {
             model_cache: None,
-            last_refreshed_at: None,
             provider_picker: nullslop_selection_widget::SelectionState::new(),
         }
     }

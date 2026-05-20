@@ -687,7 +687,7 @@ fn sorted_entries_sorts_by_model_name_within_blocks() {
 
 #[rstest::rstest]
 fn format_footer_without_timestamp_shows_never() {
-    // Given no last_refreshed_at timestamp.
+    // Given no model cache.
     // When formatting the footer.
     let line = format_footer(None, 80, &default_theme());
 
@@ -699,13 +699,15 @@ fn format_footer_without_timestamp_shows_never() {
 
 #[rstest::rstest]
 fn format_footer_with_timestamp_shows_age() {
-    // Given a recent timestamp (1 second ago).
+    // Given a model cache with a recent timestamp (1 second ago).
     let ts = jiff::Timestamp::now()
         .checked_sub(jiff::Span::new().try_seconds(1).unwrap())
         .unwrap();
+    let mut cache = crate::feat::provider_infra::ModelCache::new();
+    cache.last_updated_at = Some(ts);
 
     // When formatting the footer.
-    let line = format_footer(Some(&ts), 120, &default_theme());
+    let line = format_footer(Some(&cache), 120, &default_theme());
 
     // Then the footer contains "Updated" and "ago".
     let text: String = line.spans.iter().map(|s| &*s.content).collect();
