@@ -62,6 +62,25 @@ fn format_budget(count: usize) -> String {
     }
 }
 
+/// Look up the context_length for the active model from the model cache.
+///
+/// Returns `Some(context_length)` if the cache is populated and the active model
+/// is found with a non-None context_length. Returns `None` otherwise.
+fn resolve_context_limit(
+    model_cache: Option<&crate::feat::provider_infra::ModelCache>,
+    active_model: &str,
+) -> Option<u32> {
+    model_cache.and_then(|cache| {
+        let provider_name = active_model.split('/').next()?;
+        let models = cache.entries.get(provider_name)?;
+        let model_suffix = &active_model[(provider_name.len() + 1)..];
+        models
+            .iter()
+            .find(|m| m.id == model_suffix)
+            .and_then(|m| m.context_length)
+    })
+}
+
 impl UiElement<AppState> for StatusBarElement {
     fn name(&self) -> String {
         "status-bar".to_owned()
@@ -98,33 +117,27 @@ impl UiElement<AppState> for StatusBarElement {
             format_tokens(agg.total_received()),
         );
 
-        let context_display = if let Some(ctx_size) = state.active_session().context_size() {
-            let ctx_used = u64::from(ctx_size);
-            let ctx_limit = state.provider.model_cache.as_ref().and_then(|cache| {
-                // active_model is "provider/model" — extract provider name.
-                let provider_name = active_model.split('/').next()?;
-                let models = cache.entries.get(provider_name)?;
-                // Find the model matching the full ID.
-                let model_suffix = &active_model[(provider_name.len() + 1)..];
-                models
-                    .iter()
-                    .find(|m| m.id == model_suffix)
-                    .and_then(|m| m.context_length)
-            });
+        let ctx_size = state.active_session().context_size();
+        let ctx_limit = resolve_context_limit(state.provider.model_cache.as_ref(), &active_model);
 
-            if let Some(max_tokens) = ctx_limit {
-                let max_u64 = u64::from(max_tokens);
+        let context_display = match (ctx_size, ctx_limit) {
+            (Some(used), Some(max)) => {
+                let ctx_used = u64::from(used);
+                let max_u64 = u64::from(max);
                 let pct = if max_u64 > 0 {
                     format!("{:.1}%", (ctx_used as f64 / max_u64 as f64) * 100.0)
                 } else {
                     "0.0%".to_owned()
                 };
-                format!("{}/{}", pct, format_budget(max_tokens as usize))
-            } else {
-                "0.0%/MAX".to_owned()
+                format!("{}/{}", pct, format_budget(max as usize))
             }
-        } else {
-            "0.0%/MAX".to_owned()
+            (None, Some(max)) => {
+                format!("0.0%/{}", format_budget(max as usize))
+            }
+            (Some(used), None) => {
+                format!("{}/???", format_tokens(u64::from(used)))
+            }
+            (None, None) => "0/???".to_owned(),
         };
         token_info = format!("{token_info} {context_display}");
 
