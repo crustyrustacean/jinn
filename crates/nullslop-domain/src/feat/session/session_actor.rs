@@ -2415,4 +2415,149 @@ mod tests {
         assert_eq!(state.session.sessions().len(), 1);
         assert_ne!(*state.session.active_session_id(), only_id);
     }
+
+    // --- Teardown failure/success during close ---
+
+    #[tokio::test]
+    async fn close_session_leaves_lifecycle_at_setup_ran_when_teardown_fails() {
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
+        // Given a session with SetupRan, a lifecycle, and a failing teardown command.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.set_lifecycle_name(Some("test".to_owned()));
+            session.advance_lifecycle_after_setup();
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("exit 1".to_owned()),
+            }];
+            state.session.active_session_id().clone()
+        };
+
+        // When handling CloseSession.
+        actor
+            .handle_close_session(
+                &crate::feat::session::protocol::close_session::CloseSession {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then LifecycleScriptState is still SetupRan.
+        let state = actor.state.read();
+        let session = state.session.sessions().get(&session_id).expect("session exists");
+        assert_eq!(
+            session.lifecycle_script_state(),
+            LifecycleScriptState::SetupRan
+        );
+
+        // And the session is still in memory.
+        assert!(state.session.sessions().contains_key(&session_id));
+    }
+
+    #[tokio::test]
+    async fn close_session_with_teardown_failure_pushes_error_entry() {
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+
+        // Given a session with SetupRan and a failing teardown.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.set_lifecycle_name(Some("test".to_owned()));
+            session.advance_lifecycle_after_setup();
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("exit 1".to_owned()),
+            }];
+            state.session.active_session_id().clone()
+        };
+
+        // When handling CloseSession.
+        actor
+            .handle_close_session(
+                &crate::feat::session::protocol::close_session::CloseSession {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then an error entry was pushed to the session's history.
+        let state = actor.state.read();
+        let session = state.session.sessions().get(&session_id).expect("session exists");
+        let last_entry = session.history().last().expect("has entries");
+        assert!(matches!(last_entry.kind, crate::protocol::ChatEntryKind::Error(_)));
+    }
+
+    #[tokio::test]
+    async fn close_session_advances_lifecycle_when_teardown_succeeds() {
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
+        // Given a session with SetupRan and a succeeding teardown command.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let second_session = ChatSessionState::new();
+        let session_id = {
+            let mut state = actor.state.write();
+            // Add a second session so close doesn't create a new one.
+            state
+                .session
+                .sessions_mut()
+                .insert(second_session.session_id().clone(), second_session);
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.set_lifecycle_name(Some("test".to_owned()));
+            session.advance_lifecycle_after_setup();
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("exit 0".to_owned()),
+            }];
+            state.session.active_session_id().clone()
+        };
+
+        // When handling CloseSession.
+        actor
+            .handle_close_session(
+                &crate::feat::session::protocol::close_session::CloseSession {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is removed from memory (close succeeded).
+        let state = actor.state.read();
+        assert!(!state.session.sessions().contains_key(&session_id));
+
+        // And SessionTeardownFinished was emitted with no error.
+        let events = sink.events();
+        let found = events.iter().any(|e| {
+            matches!(
+                e,
+                crate::protocol::Event::SessionTeardownFinished(
+                    crate::feat::session_lifecycle::protocol::event::SessionTeardownFinished {
+                        session_id: sid,
+                        error: None,
+                    }
+                ) if sid == &session_id
+            )
+        });
+        assert!(found, "expected SessionTeardownFinished with no error");
+    }
 }
