@@ -431,6 +431,8 @@ impl SessionPersistenceActor {
         }
 
         // Load unarchived sessions from SQLite into memory.
+        // These are sessions with `archived=false` — corresponding to `SessionState::Loaded`.
+        // On load they get the default `SessionState::Loaded` and `LifecycleScriptState::NothingRan`.
         if let Some(ref store) = self.store {
             let summaries = match store.load_unarchived_summaries().await {
                 Ok(s) => s,
