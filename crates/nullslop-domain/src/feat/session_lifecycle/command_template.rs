@@ -1395,4 +1395,161 @@ mod tests {
             vec!["\"foo bar".to_owned()]
         );
     }
+
+    // --- tokenize_spans ---
+
+    #[rstest::rstest]
+    fn tokenize_spans_no_placeholders_returns_single_static() {
+        // Given plain text with no angle brackets.
+        // When tokenizing.
+        let spans = tokenize_spans("hello world");
+        // Then a single Static span is returned.
+        assert_eq!(spans, vec![Span::Static("hello world".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_single_placeholder_with_surrounding_text() {
+        // Given text with one placeholder.
+        // When tokenizing.
+        let spans = tokenize_spans("hello <branch> world");
+        // Then three spans: static, placeholder, static.
+        assert_eq!(
+            spans,
+            vec![
+                Span::Static("hello ".to_owned()),
+                Span::Placeholder("branch".to_owned()),
+                Span::Static(" world".to_owned()),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_adjacent_placeholders() {
+        // Given two placeholders with no gap.
+        // When tokenizing.
+        let spans = tokenize_spans("<a><b>");
+        // Then two Placeholder spans with no Static between them.
+        assert_eq!(
+            spans,
+            vec![
+                Span::Placeholder("a".to_owned()),
+                Span::Placeholder("b".to_owned()),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_unclosed_bracket_is_static() {
+        // Given text with an unclosed angle bracket.
+        // When tokenizing.
+        let spans = tokenize_spans("a <unclosed b");
+        // Then the whole string is static (no match).
+        assert_eq!(spans, vec![Span::Static("a <unclosed b".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_empty_angles_are_static() {
+        // Given text with empty angle brackets.
+        // When tokenizing.
+        let spans = tokenize_spans("a <> b");
+        // Then empty <> is not matched (regex requires at least one char).
+        assert_eq!(spans, vec![Span::Static("a <> b".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_empty_string_returns_empty() {
+        // Given an empty string.
+        // When tokenizing.
+        let spans = tokenize_spans("");
+        // Then no spans are produced.
+        assert!(spans.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_only_placeholder() {
+        // Given text that is only a placeholder.
+        // When tokenizing.
+        let spans = tokenize_spans("<branch>");
+        // Then a single Placeholder span.
+        assert_eq!(spans, vec![Span::Placeholder("branch".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_placeholder_at_start_and_end() {
+        // Given text starting and ending with placeholders.
+        // When tokenizing.
+        let spans = tokenize_spans("<start> middle <end>");
+        // Then two placeholders with static in between.
+        assert_eq!(
+            spans,
+            vec![
+                Span::Placeholder("start".to_owned()),
+                Span::Static(" middle ".to_owned()),
+                Span::Placeholder("end".to_owned()),
+            ]
+        );
+    }
+
+    // --- substitute_spans ---
+
+    #[rstest::rstest]
+    fn substitute_spans_all_args_provided() {
+        // Given spans with two placeholders and both args available.
+        let spans = vec![
+            Span::Static("mkdir ".to_owned()),
+            Span::Placeholder("branch".to_owned()),
+        ];
+        let params = vec![Param::Named("branch".to_owned())];
+        let args = vec!["my-feature".to_owned()];
+
+        // When substituting.
+        let segments = substitute_spans(spans, &params, &args);
+
+        // Then the placeholder is replaced with the arg value.
+        assert_eq!(segments[0], DisplaySegment::static_text("mkdir "));
+        assert_eq!(segments[1], DisplaySegment::param("my-feature", 0));
+    }
+
+    #[rstest::rstest]
+    fn substitute_spans_missing_args_keep_placeholder() {
+        // Given spans with a placeholder but no args.
+        let spans = vec![
+            Span::Static("mkdir ".to_owned()),
+            Span::Placeholder("branch".to_owned()),
+        ];
+        let params = vec![Param::Named("branch".to_owned())];
+
+        // When substituting with no args.
+        let segments = substitute_spans(spans, &params, &[]);
+
+        // Then the placeholder text is preserved.
+        assert_eq!(segments[1], DisplaySegment::param("<branch>", 0));
+    }
+
+    #[rstest::rstest]
+    fn substitute_spans_splat_joins_remaining_args() {
+        // Given a Splat param and spans.
+        let spans = vec![Span::Placeholder("args".to_owned())];
+        let params = vec![Param::Splat];
+        let args = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+
+        // When substituting.
+        let segments = substitute_spans(spans, &params, &args);
+
+        // Then all args are joined with spaces.
+        assert_eq!(segments[0], DisplaySegment::param("a b c", 0));
+    }
+
+    #[rstest::rstest]
+    fn substitute_spans_unknown_placeholder_is_static() {
+        // Given a placeholder that doesn't match any param.
+        let spans = vec![Span::Placeholder("unknown".to_owned())];
+        let params: Vec<Param> = vec![];
+
+        // When substituting.
+        let segments = substitute_spans(spans, &params, &[]);
+
+        // Then it's treated as static text.
+        assert_eq!(segments[0], DisplaySegment::static_text("<unknown>"));
+    }
 }
