@@ -457,7 +457,7 @@ fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'static>> 
         ChatEntryKind::Table(data) => table::to_lines(data, ctx),
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
         ChatEntryKind::Skill { name, content, .. } => skill::to_lines(name, content, ctx),
-        ChatEntryKind::Transient(lines) => transient::to_lines(lines, ctx),
+        ChatEntryKind::Transient(text) => transient::to_lines(text, ctx),
         ChatEntryKind::Compaction {
             summary,
             entries_compacted,

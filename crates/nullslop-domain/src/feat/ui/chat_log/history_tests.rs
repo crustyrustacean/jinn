@@ -926,9 +926,9 @@ fn render_transient_entry_has_muted_text_color() {
     let state = {
         let mut s = AppState::default();
         s.active_session_mut()
-            .push_entry(ChatEntry::transient(vec![ratatui::text::Line::from(
+            .push_entry(ChatEntry::transient(
                 "Welcome to nullslop!",
-            )]));
+            ));
         s
     };
 
@@ -941,13 +941,13 @@ fn render_transient_entry_has_muted_text_color() {
         })
         .unwrap();
 
-    // Then the transient text appears with muted text color.
+    // Then the transient text appears with the theme text color.
     let buffer = terminal.backend().buffer().clone();
     let transient_cell = buffer.cell((G, 8)).expect("cell should exist");
     assert_eq!(transient_cell.symbol(), "W");
     assert_eq!(
         transient_cell.fg,
-        Color::Reset,
-        "transient entry should use default text color (no explicit styling)"
+        state.frontend.theme.primary_text,
+        "transient entry should use theme text color (from markdown renderer)"
     );
 }

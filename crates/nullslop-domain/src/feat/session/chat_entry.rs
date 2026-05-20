@@ -229,13 +229,13 @@ pub enum ChatEntryKind {
     },
     /// A transient UI-only message (not sent to the LLM).
     ///
-    /// Used for welcome messages and other ephemeral user-facing hints.
-    /// Excluded from prompt assembly, token estimation, LLM context,
-    /// and session persistence. Cannot be pinned.
+    /// Used for welcome messages, status notifications, and other ephemeral
+    /// user-facing hints. Excluded from prompt assembly, token estimation,
+    /// LLM context, and session persistence. Cannot be pinned.
     ///
-    /// Contains pre-built styled lines for rich formatting.
-    /// Falls back to plain text during serialization.
-    Transient(Vec<Line<'static>>),
+    /// Contains markdown text rendered at display time by the chat log renderer.
+    /// Supports markdown tables, inline formatting, and proper reflow on resize.
+    Transient(String),
     /// A compaction summary entry created by the compaction actor.
     ///
     /// Contains a structured summary of previous conversation history
@@ -492,13 +492,16 @@ impl ChatEntry {
     /// token estimation, and LLM context. They cannot be pinned and
     /// are not persisted.
     ///
-    /// Accepts pre-built styled lines for rich formatting.
+    /// Accepts markdown text for rich formatting through the markdown renderer.
     #[must_use]
-    pub fn transient(lines: Vec<Line<'static>>) -> Self {
+    pub fn transient<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
         Self {
             id: ChatEntryId::new(),
             timestamp: jiff::Timestamp::now(),
-            kind: ChatEntryKind::Transient(lines),
+            kind: ChatEntryKind::Transient(text.into()),
             pin_position: None,
             ignored: false,
         }
@@ -591,7 +594,7 @@ impl ChatEntry {
             | ChatEntryKind::Error(t)
             | ChatEntryKind::Assistant(t)
             | ChatEntryKind::Thinking(t) => t.clone(),
-            ChatEntryKind::Transient(lines) => lines_to_plain_text(lines),
+            ChatEntryKind::Transient(s) => s.clone(),
             ChatEntryKind::Actor { text, .. } => text.clone(),
             ChatEntryKind::Table(data) => data.to_plain_text(),
             ChatEntryKind::ToolCall {
@@ -624,7 +627,7 @@ impl ChatEntry {
             | ChatEntryKind::Error(t)
             | ChatEntryKind::Assistant(t)
             | ChatEntryKind::Thinking(t) => t.hash(&mut hasher),
-            ChatEntryKind::Transient(lines) => lines_to_plain_text(lines).hash(&mut hasher),
+            ChatEntryKind::Transient(s) => s.hash(&mut hasher),
             ChatEntryKind::Actor { text, .. } => text.hash(&mut hasher),
             ChatEntryKind::Table(data) => data.to_plain_text().hash(&mut hasher),
             ChatEntryKind::ToolCall {
@@ -806,9 +809,9 @@ impl Serialize for ChatEntryKind {
                 map.serialize_entry("Thinking", t)?;
                 map.end()
             }
-            ChatEntryKind::Transient(lines) => {
+            ChatEntryKind::Transient(s) => {
                 let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("Transient", &lines_to_plain_text(lines))?;
+                map.serialize_entry("Transient", s)?;
                 map.end()
             }
             ChatEntryKind::Compaction {
