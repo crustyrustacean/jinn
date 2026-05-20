@@ -90,6 +90,47 @@ pub struct CommandTemplate {
     params: Vec<Param>,
 }
 
+/// Try to parse a `$N`, `$@`, or `$*` token at position `i` in `graphemes`.
+///
+/// Returns `Some((Param, graphemes_consumed))` on success, `None` if position `i`
+/// is not a recognized dollar token.
+fn try_parse_dollar(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
+    if graphemes[i] != "$" || i + 1 >= graphemes.len() {
+        return None;
+    }
+    let next = graphemes[i + 1];
+    if next.len() == 1 && next.as_bytes()[0].is_ascii_digit() && next != "0" {
+        let n = (next.as_bytes()[0] - b'0') as usize;
+        Some((Param::Positional(n), 2))
+    } else if next == "@" || next == "*" {
+        Some((Param::Splat, 2))
+    } else {
+        None
+    }
+}
+
+/// Try to parse a `<name>` token at position `i` in `graphemes`.
+///
+/// Returns `Some((Param::Named(name), graphemes_consumed))` if a well-formed
+/// `<name>` token is found (non-empty name, closing `>` present).
+/// Returns `None` otherwise.
+fn try_parse_named(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
+    if graphemes[i] != "<" {
+        return None;
+    }
+    let start = i + 1;
+    let mut end = start;
+    while end < graphemes.len() && graphemes[end] != ">" {
+        end += 1;
+    }
+    if end > start && end < graphemes.len() {
+        let name: String = graphemes[start..end].join("");
+        Some((Param::Named(name), end - i + 1))
+    } else {
+        None
+    }
+}
+
 impl CommandTemplate {
     /// Parse a command string and extract parameters.
     ///
@@ -101,8 +142,6 @@ impl CommandTemplate {
     /// Parameters are deduplicated: if the same token appears multiple times,
     /// only the first occurrence is recorded. The order of first appearance
     /// defines the parameter order for arg assignment.
-    /// # Panics
-    ///
     #[must_use]
     pub fn parse(command: &str) -> Self {
         let mut params: Vec<Param> = Vec::new();
@@ -110,44 +149,15 @@ impl CommandTemplate {
         let mut i = 0;
 
         while i < graphemes.len() {
-            if graphemes[i] == "$" && i + 1 < graphemes.len() {
-                let next = graphemes[i + 1];
-                if next.len() == 1 && next.as_bytes()[0].is_ascii_digit() && next != "0" {
-                    let n = (next.as_bytes()[0] - b'0') as usize;
-                    let param = Param::Positional(n);
-                    if !params.contains(&param) {
-                        params.push(param);
-                    }
-                    i += 2;
-                    continue;
-                } else if next == "@" || next == "*" {
-                    let splat = Param::Splat;
-                    if !params.contains(&splat) {
-                        params.push(splat);
-                    }
-                    i += 2;
-                    continue;
+            if let Some((param, consumed)) = try_parse_dollar(&graphemes, i)
+                .or_else(|| try_parse_named(&graphemes, i))
+            {
+                if !params.contains(&param) {
+                    params.push(param);
                 }
+                i += consumed;
+                continue;
             }
-
-            if graphemes[i] == "<" {
-                // Scan for closing `>`.
-                let start = i + 1;
-                let mut end = start;
-                while end < graphemes.len() && graphemes[end] != ">" {
-                    end += 1;
-                }
-                if end > start && end < graphemes.len() {
-                    let name: String = graphemes[start..end].join("");
-                    let param = Param::Named(name);
-                    if !params.contains(&param) {
-                        params.push(param);
-                    }
-                    i = end + 1;
-                    continue;
-                }
-            }
-
             i += 1;
         }
 
