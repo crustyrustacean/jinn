@@ -42,56 +42,28 @@ pub use token_stats::{AggregatedTokenStats, TokenRecord, TokenStats, aggregate_s
 /// with the application. Uses [`crate::protocol::ChatEntry::info`] so the message is
 /// excluded from LLM context.
 pub fn welcome_msg() -> crate::protocol::ChatEntry {
-    use ratatui::style::{Modifier, Style};
-    use ratatui::text::{Line, Span};
+    crate::protocol::ChatEntry::transient(
+        "\
+**Welcome to nullslop!**
 
-    let muted = Style::default().fg(crate::feat::theme::default_theme().muted_text);
-    let primary = Style::default().fg(crate::feat::theme::default_theme().primary_text);
-    let bold = primary.add_modifier(Modifier::BOLD);
+\
+**   i       ** — enter insert mode
+\
+**   ESC     ** — cancel stream (press twice)
+\
+**   ?       ** — show all shortcuts
+\
+**   q       ** — quit
 
-    let dim = Style::default().fg(crate::feat::theme::default_theme().muted_text);
-
-    crate::protocol::ChatEntry::transient(vec![
-        Line::from(Span::styled("Welcome to nullslop!", bold)),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("   i       ", bold),
-            Span::styled("— ", muted),
-            Span::styled("enter insert mode", primary),
-        ]),
-        Line::from(vec![
-            Span::styled("   ESC     ", bold),
-            Span::styled("— ", muted),
-            Span::styled("cancel stream (press twice)", primary),
-        ]),
-        Line::from(vec![
-            Span::styled("   ?       ", bold),
-            Span::styled("— ", muted),
-            Span::styled("show all shortcuts", primary),
-        ]),
-        Line::from(vec![
-            Span::styled("   q       ", bold),
-            Span::styled("— ", muted),
-            Span::styled("quit", primary),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled("   Spatial Navigation", dim)),
-        Line::from(vec![
-            Span::styled("   Ctrl+K  ", bold),
-            Span::styled("— ", muted),
-            Span::styled("focus left (input or chat history)", primary),
-        ]),
-        Line::from(vec![
-            Span::styled("   Ctrl+L  ", bold),
-            Span::styled("— ", muted),
-            Span::styled("focus right (sidebar)", primary),
-        ]),
-        Line::from(vec![
-            Span::styled("   Ctrl+J  ", bold),
-            Span::styled("— ", muted),
-            Span::styled("focus input box", primary),
-        ]),
-    ])
+\
+**   Spatial Navigation**
+\
+**   Ctrl+K  ** — focus left (input or chat history)
+\
+**   Ctrl+L  ** — focus right (sidebar)
+\
+**   Ctrl+J  ** — focus input box",
+    )
 }
 
 /// Returns a guidance message for when no API keys are found.
@@ -100,33 +72,21 @@ pub fn welcome_msg() -> crate::protocol::ChatEntry {
 /// `providers.toml` for reference. Uses [`crate::protocol::ChatEntry::info`]
 /// so the message is excluded from LLM context.
 pub fn no_api_keys_msg() -> crate::protocol::ChatEntry {
-    use ratatui::style::{Modifier, Style};
-    use ratatui::text::{Line, Span};
-
-    let primary = Style::default().fg(crate::feat::theme::default_theme().primary_text);
-    let bold = primary.add_modifier(Modifier::BOLD);
-
     let config_path = crate::feat::provider_infra::config_path()
         .to_string_lossy()
         .into_owned();
 
-    crate::protocol::ChatEntry::transient(vec![
-        Line::from(Span::styled("No API keys found", bold)),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("Create a ", primary),
-            Span::styled(".env", bold),
-            Span::styled(
-                " file in your working directory with your API keys.",
-                primary,
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("See ", primary),
-            Span::styled(config_path, bold),
-            Span::styled(" for available environment variables.", primary),
-        ]),
-    ])
+    let content = format!(
+        "\
+**No API keys found**
+
+\
+Create a `.env` file in your working directory with your API keys.
+\
+See `{config_path}` for available environment variables."
+    );
+
+    crate::protocol::ChatEntry::transient(content)
 }
 
 #[cfg(test)]

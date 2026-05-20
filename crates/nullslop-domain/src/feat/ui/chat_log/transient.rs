@@ -1,19 +1,18 @@
-//! Transient entry rendering — styled lines with padding.
+//! Transient entry rendering — markdown-rendered text with padding.
 //!
-//! Transient entries are UI-only messages (welcome hints, etc.) that are
-//! excluded from prompt assembly and LLM context. They carry pre-built
-//! styled `Line`s for rich formatting and render with padding.
+//! Transient entries are UI-only messages (welcome hints, status notifications, etc.)
+//! that are excluded from prompt assembly and LLM context. They carry markdown text
+//! rendered at display time for proper reflow on resize.
 
-use ratatui::text::Line;
-
+use super::markdown::render_markdown;
 use super::shared::{Pad, RenderContext, pad_entry};
 
-/// Render pre-built transient lines with padding.
+/// Render transient markdown text with padding.
 ///
-/// Clones the lines (to satisfy `&mut Vec` padding) and adds blank
-/// padding above and below for visual spacing.
-pub fn to_lines(lines: &[Line<'static>], _ctx: &RenderContext) -> Vec<Line<'static>> {
-    let mut lines: Vec<Line<'static>> = lines.to_vec();
+/// Renders the markdown text through the markdown renderer using the current
+/// content width, then adds blank padding above and below for visual spacing.
+pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<ratatui::text::Line<'static>> {
+    let mut lines = render_markdown(text, ctx.content_width, &ctx.theme);
     pad_entry(&mut lines, Pad::Both);
     lines
 }

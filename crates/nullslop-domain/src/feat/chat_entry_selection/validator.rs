@@ -101,9 +101,9 @@ mod tests {
         let mut state = AppState::default();
         state
             .active_session_mut()
-            .push_entry(ChatEntry::transient(vec![ratatui::text::Line::from(
+            .push_entry(ChatEntry::transient(
                 "welcome",
-            )]));
+            ));
         state.active_session_mut().select_next_entry();
 
         // When validating pin selected.

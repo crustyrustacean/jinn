@@ -398,7 +398,7 @@ fn skill_entry_produces_system_message_with_xml() {
 fn transient_entries_are_skipped() {
     // Given a Transient entry alongside user and assistant entries.
     let entries = vec![
-        ChatEntry::transient(vec![ratatui::text::Line::from("welcome")]),
+        ChatEntry::transient("welcome"),
         ChatEntry::user("hello"),
         ChatEntry::assistant("hi"),
     ];
