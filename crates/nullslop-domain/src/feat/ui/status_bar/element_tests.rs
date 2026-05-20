@@ -347,10 +347,7 @@ fn render_shows_zero_percent_max_when_no_context_size() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
     // Then the context display shows 0/??? as fallback (no context_size, no model cache).
-    assert!(
-        row.contains("0/???"),
-        "expected 0/??? fallback, got: {row}"
-    );
+    assert!(row.contains("0/???"), "expected 0/??? fallback, got: {row}");
     // And token counts are still shown.
     assert!(row.contains("0 0") || row.contains("\u{2191}0 \u{2193}0"));
 }
@@ -676,7 +673,7 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-            .set_model("openrouter/anthropic/claude-sonnet-4".to_owned());
+        .set_model("openrouter/anthropic/claude-sonnet-4".to_owned());
 
     // And a model cache with context_length for the active model.
     let mut cache_entries = std::collections::HashMap::new();
@@ -701,10 +698,7 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
     // Then the status bar shows 0.0% with the real max.
-    assert!(
-        row.contains("0.0%/200k"),
-        "expected 0.0%/200k, got: {row}"
-    );
+    assert!(row.contains("0.0%/200k"), "expected 0.0%/200k, got: {row}");
 }
 
 #[rstest::rstest]
@@ -714,7 +708,7 @@ fn render_shows_used_over_unknown_when_no_context_length() {
     let mut state = AppState::default();
     state
         .active_session_mut()
-            .set_model("ollama/llama3".to_owned());
+        .set_model("ollama/llama3".to_owned());
     state.active_session_mut().set_context_size(15_000);
 
     // Model cache exists but has no context_length.
@@ -740,10 +734,7 @@ fn render_shows_used_over_unknown_when_no_context_length() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
     // Then the status bar shows the formatted usage with unknown limit.
-    assert!(
-        row.contains("15.0k/???"),
-        "expected 15.0k/???, got: {row}"
-    );
+    assert!(row.contains("15.0k/???"), "expected 15.0k/???, got: {row}");
 }
 
 // --- Token budget display tests ---

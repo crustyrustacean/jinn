@@ -142,12 +142,6 @@ impl Actor for SessionPersistenceActor {
     async fn on_shutdown(&mut self, _ctx: &ActorContext) {
         // Run store shutdown — deletes empty unarchived sessions.
     }
-
-
-
-
-
-
 }
 
 impl SessionPersistenceActor {
