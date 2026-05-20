@@ -72,15 +72,22 @@ impl IntentHandler {
                 if state.active_session().phase() == SessionPhase::Compacting {
                     // Cancel compaction.
                     let drained = state.active_session_mut().cancel_compacting();
-                    state
-                        .active_session_mut()
-                        .push_entry(crate::ChatEntry::system("Context compaction cancelled."));
-                    let mut commands = vec![Command::CancelCompaction(
-                        crate::feat::compaction_actor::protocol::command::CancelCompaction {
-                            session_id: session_id.clone(),
-                        },
-                    )];
+                    let mut commands = vec![
+                        Command::PushChatEntry(
+                            crate::feat::chat_input::protocol::command::PushChatEntry {
+                                session_id: session_id.clone(),
+                                entry: crate::ChatEntry::system("Context compaction cancelled."),
+                            },
+                        ),
+                        Command::CancelCompaction(
+                            crate::feat::compaction_actor::protocol::command::CancelCompaction {
+                                session_id: session_id.clone(),
+                            },
+                        ),
+                    ];
                     // If messages were queued, start a new turn.
+                    // Queued entries are pushed directly because AssemblePrompt
+                    // needs them in history immediately.
                     if !drained.is_empty() {
                         let entries: Vec<crate::ChatEntry> = drained.into_iter().collect();
                         for entry in &entries {
