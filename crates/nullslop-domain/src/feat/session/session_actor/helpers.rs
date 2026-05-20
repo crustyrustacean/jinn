@@ -86,8 +86,7 @@ pub(super) fn test_context() -> (
 /// A fake session store that returns pre-loaded sessions for testing.
 #[cfg(test)]
 pub(super) struct PopulatedFakeStore {
-    pub(super) summaries:
-        Vec<crate::feat::session::session_summary::SessionSummary>,
+    pub(super) summaries: Vec<crate::feat::session::session_summary::SessionSummary>,
     pub(super) sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
     pub(super) archived: std::sync::Mutex<Vec<crate::protocol::SessionId>>,
 }
@@ -181,10 +180,7 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
     ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
     {
         if archived {
-            self.archived
-                .lock()
-                .expect("lock")
-                .push(session_id.clone());
+            self.archived.lock().expect("lock").push(session_id.clone());
         }
         Ok(())
     }
