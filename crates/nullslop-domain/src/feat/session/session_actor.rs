@@ -234,11 +234,8 @@ impl SessionPersistenceActor {
             | Command::RegisterTools(..)
             | Command::ProviderSwitch(..)
             | Command::LoadProviderPickerEntries(..)
-            | Command::LoadContextStrategyPickerEntries(..)
             | Command::PinChatEntry(..)
             | Command::UnpinChatEntry(..)
-            | Command::SwitchPromptStrategy(..)
-            | Command::RestoreStrategyState(..)
             | Command::CancelToolBatch(..)
             | Command::ScanSkills
             | Command::RescanPersonas(..)

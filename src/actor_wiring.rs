@@ -22,7 +22,6 @@ use std::sync::Arc;
 use nullslop_domain::ApiKeysService;
 use nullslop_domain::AppState;
 use nullslop_domain::ConfigStorageService;
-use nullslop_domain::DefaultStrategyDiscovery;
 use nullslop_domain::Event;
 use nullslop_domain::LlmServiceFactoryService;
 use nullslop_domain::ProviderRegistryService;
@@ -33,12 +32,10 @@ use nullslop_domain::actor_channel::ActorChannelService;
 use nullslop_domain::common::actor::protocol::event::{
     ActorStarted, ActorStarting, AllActorsSpawned,
 };
-use nullslop_domain::feat::context::DefaultStrategyFactory;
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use nullslop_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use nullslop_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use nullslop_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
-use nullslop_domain::strategy_registry::StrategyRegistryService;
 use nullslop_domain::{
     ActorCounter, ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost,
     MessageSink, ShutdownTracker, State, spawn, spawn_forwarding_task, system_spawn,
@@ -88,7 +85,6 @@ pub fn create_core_with_actor_host(
     }
 
     // Build services (needed early for infrastructure actors).
-    let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
     let paths = nullslop_domain::AppPaths::default();
 
     // Set themes directory from AppPaths (used by theme picker intent).
@@ -106,7 +102,6 @@ pub fn create_core_with_actor_host(
         api_keys: api_keys.clone(),
         config_storage: config_storage.clone(),
         session_store: session_store.clone(),
-        strategy_registry: strategy_registry.clone(),
         user_preferences_storage: user_preferences_storage.clone(),
     };
 
@@ -240,10 +235,6 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         nullslop_domain::feat::context::context_actor::PromptAssemblyActorDeps {
             state: state.clone(),
-            factory: Some(Box::new(DefaultStrategyFactory)
-                as Box<
-                    dyn nullslop_domain::feat::context::strategy::types::StrategyFactory,
-                >),
             services: services.clone(),
         },
     );

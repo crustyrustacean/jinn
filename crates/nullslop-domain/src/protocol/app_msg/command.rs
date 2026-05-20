@@ -21,8 +21,8 @@ use crate::feat::compaction_actor::protocol::command::{
     BeginCompaction, CancelCompaction, CompactContext, EndCompaction,
 };
 use crate::feat::context::protocol::command::{
-    AssemblePrompt, LoadContextStrategyPickerEntries, LoadPersonaPickerEntries, PinChatEntry,
-    RescanPersonas, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, LoadPersonaPickerEntries, PinChatEntry,
+    RescanPersonas, UnpinChatEntry,
 };
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::provider::protocol::command::{
@@ -55,10 +55,6 @@ use crate::feat::tools_actor::protocol::command::{
 pub enum Command {
     /// Send a message to the AI provider.
     SendMessage(SendMessage),
-    /// Switch the prompt assembly strategy for a session.
-    SwitchPromptStrategy(SwitchPromptStrategy),
-    /// Restore a strategy's persisted state for a session.
-    RestoreStrategyState(RestoreStrategyState),
     /// Pin a chat entry so it survives context management.
     PinChatEntry(PinChatEntry),
     /// Remove the pin from a chat entry.
@@ -97,8 +93,6 @@ pub enum Command {
     LoadProviderPickerEntries(LoadProviderPickerEntries),
     /// Load entries for the session picker.
     LoadSessionPickerEntries(LoadSessionPickerEntries),
-    /// Load entries for the context strategy picker.
-    LoadContextStrategyPickerEntries(LoadContextStrategyPickerEntries),
     /// Request to load a full session from disk by byte offset.
     SessionLoadRequested(SessionLoadRequested),
     /// Scan the agent skills directory and reload skills.
@@ -137,8 +131,6 @@ impl Command {
     pub fn command_name(&self) -> Option<&'static str> {
         match self {
             Self::SendMessage(..) => Some(SendMessage::NAME),
-            Self::SwitchPromptStrategy(..) => Some(SwitchPromptStrategy::NAME),
-            Self::RestoreStrategyState(..) => Some(RestoreStrategyState::NAME),
             Self::PinChatEntry(..) => Some(PinChatEntry::NAME),
             Self::UnpinChatEntry(..) => Some(UnpinChatEntry::NAME),
             Self::EnqueueUserMessage(..) => Some(EnqueueUserMessage::NAME),
@@ -158,9 +150,6 @@ impl Command {
             Self::SessionLoadCompleted(..) => Some(SessionLoadCompleted::NAME),
             Self::LoadProviderPickerEntries(..) => Some(LoadProviderPickerEntries::NAME),
             Self::LoadSessionPickerEntries(..) => Some(LoadSessionPickerEntries::NAME),
-            Self::LoadContextStrategyPickerEntries(..) => {
-                Some(LoadContextStrategyPickerEntries::NAME)
-            }
             Self::SessionLoadRequested(..) => Some(SessionLoadRequested::NAME),
             Self::ScanSkills => Some(ScanSkills::NAME),
             Self::RescanPersonas(..) => Some(RescanPersonas::NAME),
@@ -186,8 +175,6 @@ impl std::fmt::Display for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Command::SendMessage(..) => write!(f, "send message"),
-            Command::SwitchPromptStrategy(..) => write!(f, "switch prompt strategy"),
-            Command::RestoreStrategyState(..) => write!(f, "restore strategy state"),
             Command::PinChatEntry(payload) => {
                 write!(
                     f,
@@ -239,9 +226,6 @@ impl std::fmt::Display for Command {
             Command::SessionLoadCompleted(..) => write!(f, "session load completed"),
             Command::LoadProviderPickerEntries(..) => write!(f, "load provider picker entries"),
             Command::LoadSessionPickerEntries(..) => write!(f, "load session picker entries"),
-            Command::LoadContextStrategyPickerEntries(..) => {
-                write!(f, "load context strategy picker entries")
-            }
             Command::SessionLoadRequested(..) => write!(f, "session load requested"),
             Command::ScanSkills => write!(f, "scan skills"),
             Command::RescanPersonas(..) => write!(f, "rescan personas"),
@@ -331,7 +315,6 @@ mod tests {
 
     #[rstest::rstest]
     #[case::provider(crate::PickerKind::Provider, "models")]
-    #[case::context_assembly(crate::PickerKind::ContextAssembly, "context-assembly")]
     #[case::keymap(crate::PickerKind::Keymap, "keybinds")]
     #[case::session(crate::PickerKind::Session, "sessions")]
     fn picker_kind_display(#[case] kind: crate::PickerKind, #[case] expected: &str) {

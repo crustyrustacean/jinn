@@ -1,4 +1,4 @@
-//! Keymap and context strategy picker rendering.
+//! Picker rendering for keymap, persona, and theme pickers.
 
 use crate::common::app_state::AppState;
 use nullslop_selection_widget::SelectionWidget;
@@ -6,31 +6,6 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::Line;
-
-use super::strategy_entries;
-
-/// Renders the context strategy picker overlay using [`SelectionWidget`].
-///
-/// Telescope-style layout: bordered popup with filter input at top,
-/// horizontal separator, scrollable strategy entries, and a footer showing
-/// the current strategy.
-pub fn render_context_strategy_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    // Find the active strategy's display name for the footer.
-    let active_name = state
-        .frontend
-        .context_strategy_picker
-        .items()
-        .iter()
-        .find(|e| e.is_active)
-        .map_or("unknown", |e| e.name.as_str());
-
-    let footer = strategy_entries::format_strategy_footer(active_name, &state.frontend.theme);
-    let widget = SelectionWidget::new(&state.frontend.context_strategy_picker)
-        .title(Line::from(" Context Assembly Strategy "))
-        .title_style(Style::default().fg(state.frontend.theme.popup_title))
-        .footer(footer);
-    widget.render(frame, area);
-}
 
 /// Renders the keymap picker overlay using [`SelectionWidget`].
 ///

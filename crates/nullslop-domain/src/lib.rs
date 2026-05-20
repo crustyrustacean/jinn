@@ -67,8 +67,6 @@ pub use feat::provider_infra::{
 };
 
 // Re-export context types
-pub use feat::context::DefaultStrategyDiscovery;
-pub use feat::context::DefaultStrategyFactory;
 
 // Re-export session types
 pub use feat::session::PoolConfig;
@@ -79,7 +77,6 @@ pub use feat::session::no_api_keys_msg;
 pub use feat::session::welcome_msg;
 
 // Re-export preferences types
-pub use feat::preferences_actor::ContextSlidingWindowConfig;
 pub use feat::preferences_actor::ContextTokenBudgetConfig;
 pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
 pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
@@ -93,7 +90,6 @@ pub use feat::persona::{Persona, PersonaEntry};
 
 // Re-export services submodules
 pub use common::services::actor_channel;
-pub use common::services::strategy_registry;
 
 // Re-export protocol types at crate root
 pub use protocol::entries_to_messages;
@@ -102,7 +98,7 @@ pub use protocol::{
     Key, KeyEvent, Mode, Modifiers, PickerKind, PinPosition, PromptTemplate,
 };
 pub use protocol::{
-    CommandMsg, CommandName, EventMsg, EventTypeName, KeymapEntry, PickerEntry, StrategyEntry,
+    CommandMsg, CommandName, EventMsg, EventTypeName, KeymapEntry, PickerEntry,
 };
 
 // Re-export domain types from their canonical locations
@@ -115,12 +111,11 @@ pub use feat::chat_input::protocol::command::{
 };
 pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
 pub use feat::context::protocol::command::{
-    AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, PinChatEntry, UnpinChatEntry,
 };
 pub use feat::context::protocol::event::{
-    PromptAssembled, PromptStrategySwitched, StrategyStateUpdated,
+    PromptAssembled,
 };
-pub use feat::context::protocol::strategy_id::PromptStrategyId;
 pub use feat::provider::llm_message::LlmMessage;
 pub use feat::provider::protocol::command::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,

@@ -8,8 +8,6 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use cucumber::World;
-use nullslop_domain::DefaultStrategyDiscovery;
-use nullslop_domain::common::services::strategy_registry::StrategyRegistryService;
 use nullslop_tui::{Scope, TuiApp};
 
 /// Cucumber world wrapping a full [`TuiApp`].
@@ -41,8 +39,7 @@ impl TuiWorld {
             aliases: vec![],
             default_provider: None,
         };
-        let strategy_registry = StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery));
-        let (actor_tx, _actor_rx) = kanal::unbounded::<nullslop_domain::AppMsg>();
+            let (actor_tx, _actor_rx) = kanal::unbounded::<nullslop_domain::AppMsg>();
 
         let temp_dir = tempfile::TempDir::new().expect("test temp dir");
         let paths = nullslop_domain::AppPaths::new_in(temp_dir.path());
@@ -63,7 +60,6 @@ impl TuiWorld {
             session_store: nullslop_domain::SessionStoreService::new(Arc::new(
                 nullslop_domain::SqliteSessionStore::new_in(&sessions_dir).expect("store"),
             )),
-            strategy_registry,
             user_preferences_storage: nullslop_domain::UserPreferencesStorageService::new(
                 Arc::new(nullslop_domain::InMemoryUserPreferencesStorage::new()),
             ),

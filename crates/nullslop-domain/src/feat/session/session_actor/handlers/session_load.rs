@@ -5,7 +5,6 @@
 //! point in its history.
 
 use crate::common::actor::ActorContext;
-use crate::feat::context::protocol::command::{RestoreStrategyState, SwitchPromptStrategy};
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::protocol::{ChatEntry, Command, Event};
 
@@ -20,7 +19,6 @@ impl SessionPersistenceActor {
         ctx: &ActorContext,
     ) {
         let session_id = payload.session.session_id().clone();
-        let strategy_id = payload.session.active_strategy().clone();
         let original_cwd;
 
         {
@@ -97,36 +95,7 @@ impl SessionPersistenceActor {
             ));
         }
 
-        // Serialize the strategy state for RestoreStrategyState.
-        let blob = {
-            let state = self.state.read();
-            #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
-            let session = state
-                .session
-                .sessions()
-                .get(&session_id)
-                .expect("just inserted");
-            session
-                .strategy_state()
-                .get(&strategy_id)
-                .and_then(|s| serde_json::to_value(s).ok())
-                .unwrap_or(serde_json::json!({}))
-        };
 
-        if let Err(e) = ctx.send_command(Command::RestoreStrategyState(RestoreStrategyState {
-            session_id: session_id.clone(),
-            strategy_id: strategy_id.clone(),
-            blob,
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit RestoreStrategyState");
-        }
-
-        if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
-            session_id: session_id.clone(),
-            strategy_id,
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SwitchPromptStrategy");
-        }
 
         // Persist the restored session (includes the "Session restored" system entries).
         self.save_active_session(&session_id).await;
