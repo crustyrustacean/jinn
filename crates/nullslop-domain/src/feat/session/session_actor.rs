@@ -21,9 +21,9 @@ mod handlers;
 mod helpers;
 
 // Re-export lifecycle helpers for tests (moved to handlers::lifecycle in Phase 1).
+#[cfg(test)]
 pub(in crate::feat::session::session_actor) use handlers::lifecycle::{
-    format_lifecycle_error, no_output_info, setup_complete_msg,
-    strip_ansi, teardown_running_msg, teardown_success_msg,
+    no_output_info, setup_complete_msg, strip_ansi, teardown_running_msg,
 };
 pub(crate) use handlers::lifecycle::setup_running_msg;
 
@@ -268,7 +268,6 @@ mod tests {
     use crate::feat::tools_actor::protocol::event::ToolBatchCompleted;
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChatEntry, ChatEntryKind, Command};
-    use ratatui::style::Color;
     use std::path::Path;
 
     #[rstest::rstest]
@@ -1774,7 +1773,6 @@ mod tests {
     #[tokio::test]
     async fn close_session_advances_lifecycle_when_teardown_succeeds() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
-        use crate::feat::session::chat_session::LifecycleScriptState;
 
         // Given a session with SetupRan and a succeeding teardown command.
         let actor = test_actor();
