@@ -10,8 +10,8 @@ use throbber_widgets_tui::ThrobberState;
 use crate::feat::theme::Theme;
 use crate::feat::ui::sidebar::sessions::state::SessionEntry;
 
-use super::truncate::truncate_str;
 use super::super::{ACTIVE_PREFIX, INACTIVE_PREFIX};
+use super::truncate::truncate_str;
 
 /// Builds the animated throbber indicator span for a session entry.
 ///
@@ -87,7 +87,12 @@ pub(crate) fn assemble_entry_line(
 ) -> Line<'static> {
     let indicator = indicator_span(entry.is_idle, throbber_state);
     let arrow = arrow_span(entry.is_active, theme);
-    let style = entry_title_style(is_selected, entry.is_active, entry.last_entry_is_error, theme);
+    let style = entry_title_style(
+        is_selected,
+        entry.is_active,
+        entry.last_entry_is_error,
+        theme,
+    );
     let truncated = truncate_str(&entry.title, max_title_len);
 
     Line::from(vec![

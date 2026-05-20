@@ -28,8 +28,8 @@ pub use close::{
 pub use navigate::{navigate, receive_cursor, scroll_to_cursor};
 pub use new_with_lifecycle::handle_sidebar_session_new_with_lifecycle;
 pub use render::SessionsSection;
-pub(crate) use state::sorted_open_sessions;
 pub use state::SessionsSectionState;
+pub(crate) use state::sorted_open_sessions;
 pub use teardown::handle_session_teardown;
 
 // ---------------------------------------------------------------------------
