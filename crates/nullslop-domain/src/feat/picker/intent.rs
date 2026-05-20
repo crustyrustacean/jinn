@@ -10,7 +10,6 @@ use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::context::protocol::command::{
-    LoadContextStrategyPickerEntries, SwitchPromptStrategy,
 };
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
@@ -37,9 +36,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
     match kind {
         PickerKind::Provider => {
             state.provider.provider_picker.reset();
-        }
-        PickerKind::ContextAssembly => {
-            state.frontend.context_strategy_picker.reset();
         }
         PickerKind::Keymap => {
             state.frontend.keymap_picker.reset();
@@ -77,11 +73,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Session => {
             IntentResult::with_commands(vec![Command::LoadSessionPickerEntries(
                 LoadSessionPickerEntries,
-            )])
-        }
-        PickerKind::ContextAssembly => {
-            IntentResult::with_commands(vec![Command::LoadContextStrategyPickerEntries(
-                LoadContextStrategyPickerEntries,
             )])
         }
         PickerKind::Persona => {
@@ -194,7 +185,7 @@ pub fn handle_backspace(state: &mut AppState) -> IntentResult {
 
 /// Confirms the active picker selection.
 ///
-/// Returns `(IntentResult, Option<Intent>)`. For Provider, ContextAssembly, and
+/// Returns `(IntentResult, Option<Intent>)`. For Provider and
 /// Session pickers, the second element is `None`. For Keymap picker, returns
 /// `(IntentResult::empty(), Some(selected_intent))` so the caller can re-dispatch.
 pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Intent>) {
@@ -204,7 +195,6 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
 
     match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => (confirm_provider(state), None),
-        Some(PickerKind::ContextAssembly) => (confirm_strategy(state), None),
         Some(PickerKind::Keymap) => confirm_keymap(state),
         Some(PickerKind::Session) => (confirm_session(state), None),
         Some(PickerKind::Persona) => (confirm_persona(state), None),
@@ -308,27 +298,6 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     ])
 }
 
-/// Confirms the selected strategy and dispatches a switch command.
-fn confirm_strategy(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.context_strategy_picker.selected_item() else {
-        return IntentResult::empty();
-    };
-    let strategy_id = entry.strategy_id.clone();
-    let session_id = state.session.active_session_id().clone();
-
-    state.frontend.scope_stack.pop();
-    IntentResult::with_commands(vec![
-        Command::SwitchPromptStrategy(SwitchPromptStrategy {
-            session_id,
-            strategy_id: strategy_id.clone(),
-        }),
-        Command::UpdatePreferences(UpdatePreferences {
-            updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                strategy_id.as_str().to_owned(),
-            ))],
-        }),
-    ])
-}
 
 /// Confirms a keymap selection. Returns the selected intent for the caller
 /// to re-dispatch, rather than dispatching it directly (avoids circular dep).

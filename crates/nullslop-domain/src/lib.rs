@@ -67,8 +67,6 @@ pub use feat::provider_infra::{
 };
 
 // Re-export context types
-pub use feat::context::DefaultStrategyDiscovery;
-pub use feat::context::DefaultStrategyFactory;
 
 // Re-export session types
 pub use feat::session::PoolConfig;
@@ -93,7 +91,6 @@ pub use feat::persona::{Persona, PersonaEntry};
 
 // Re-export services submodules
 pub use common::services::actor_channel;
-pub use common::services::strategy_registry;
 
 // Re-export protocol types at crate root
 pub use protocol::entries_to_messages;
@@ -102,7 +99,7 @@ pub use protocol::{
     Key, KeyEvent, Mode, Modifiers, PickerKind, PinPosition, PromptTemplate,
 };
 pub use protocol::{
-    CommandMsg, CommandName, EventMsg, EventTypeName, KeymapEntry, PickerEntry, StrategyEntry,
+    CommandMsg, CommandName, EventMsg, EventTypeName, KeymapEntry, PickerEntry,
 };
 
 // Re-export domain types from their canonical locations

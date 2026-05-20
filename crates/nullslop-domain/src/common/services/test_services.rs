@@ -8,7 +8,6 @@
 
 use std::sync::Arc;
 
-use crate::feat::context::{DefaultStrategyDiscovery, StrategyDiscovery};
 use crate::feat::preferences_actor::{
     InMemoryUserPreferencesStorage, UserPreferencesStorageService,
 };
@@ -26,7 +25,6 @@ use tokio::runtime::Handle;
 
 use super::Services;
 use super::actor_channel::ActorChannelService;
-use super::strategy_registry::StrategyRegistryService;
 
 /// A no-op session store for tests.
 ///
@@ -107,8 +105,6 @@ pub struct TestServices {
     llm_service: Option<LlmServiceFactoryService>,
     /// Custom session store service (if provided).
     session_store: Option<SessionStoreService>,
-    /// Custom strategy discovery (if provided).
-    strategy_discovery: Option<Arc<dyn StrategyDiscovery>>,
     /// Custom app paths (if provided).
     paths: Option<crate::common::app_paths::AppPaths>,
 }
@@ -125,7 +121,6 @@ impl Default for TestServices {
             actor_channel_sender: None,
             llm_service: None,
             session_store: None,
-            strategy_discovery: None,
             paths: None,
         }
     }
@@ -170,13 +165,6 @@ impl TestServices {
     #[must_use]
     pub fn session_store(mut self, store: SessionStoreService) -> Self {
         self.session_store = Some(store);
-        self
-    }
-
-    /// Set a custom strategy discovery.
-    #[must_use]
-    pub fn strategy_discovery(mut self, discovery: Arc<dyn StrategyDiscovery>) -> Self {
-        self.strategy_discovery = Some(discovery);
         self
     }
 
@@ -226,10 +214,6 @@ impl TestServices {
             session_store: self
                 .session_store
                 .unwrap_or_else(|| SessionStoreService::new(Arc::new(FakeSessionStore))),
-            strategy_registry: match self.strategy_discovery {
-                Some(d) => StrategyRegistryService::new(d),
-                None => StrategyRegistryService::new(Arc::new(DefaultStrategyDiscovery)),
-            },
             user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
                 InMemoryUserPreferencesStorage::new(),
             )),

@@ -41,7 +41,6 @@ use nullslop_domain::StateReadGuard;
 use nullslop_domain::StreamCompleted;
 use nullslop_domain::StreamCompletedReason;
 use nullslop_domain::StreamToken;
-use nullslop_domain::SwitchPromptStrategy;
 use nullslop_domain::ToolDefinition;
 use nullslop_domain::ToolResult;
 use nullslop_domain::UnpinChatEntry;
@@ -675,20 +674,6 @@ async fn when_submit_cancel_stream(world: &mut AppWorld) {
         .await;
 }
 
-/// Submits a SwitchPromptStrategy command.
-#[cucumber::when(expr = "the app submits a SwitchPromptStrategy with {word}")]
-async fn when_submit_switch_strategy(world: &mut AppWorld, strategy: String) {
-    let session_id = world.active_session_id();
-    let strategy_id = PromptStrategyId::new(&strategy);
-    world.submit_command(nullslop_domain::Command::SwitchPromptStrategy(
-        SwitchPromptStrategy {
-            session_id,
-            strategy_id,
-        },
-    ));
-    // Give the actor system time to process.
-    tokio::time::sleep(Duration::from_millis(50)).await;
-}
 
 /// Submits a ToolsRegistered event with a single tool definition.
 #[cucumber::when(expr = "the app submits a ToolsRegistered event with tool {string}")]

@@ -331,7 +331,6 @@ mod tests {
 
     #[rstest::rstest]
     #[case::provider(crate::PickerKind::Provider, "models")]
-    #[case::context_assembly(crate::PickerKind::ContextAssembly, "context-assembly")]
     #[case::keymap(crate::PickerKind::Keymap, "keybinds")]
     #[case::session(crate::PickerKind::Session, "sessions")]
     fn picker_kind_display(#[case] kind: crate::PickerKind, #[case] expected: &str) {

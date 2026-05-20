@@ -1,17 +1,15 @@
-//! Assembly handlers — prompt assembly and strategy initialization.
+//! Assembly handler — prompt assembly with inlined compaction logic.
 
 use crate::common::actor::ActorContext;
 use crate::feat::context::protocol::command::AssemblePrompt;
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::protocol::{
-    ChatEntry, ChatEntryKind, Event, LlmMessage, PinPosition, PromptStrategyId, SessionId,
-    ToolDefinition, entries_to_messages,
+    ChatEntry, ChatEntryKind, Event, LlmMessage, PinPosition, ToolDefinition, entries_to_messages,
 };
 
-use crate::feat::context::strategy::types::StrategyConfig;
+use crate::feat::context::strategy::compaction_prompt::DEFAULT_COMPACTION_PROMPT;
 use crate::feat::context::{
-    AssemblyContext, CharRatioEstimator, PassthroughStrategy, TokenEstimator,
-    estimate_entry_tokens, estimate_tool_schema_tokens,
+    CharRatioEstimator, TokenEstimator, estimate_entry_tokens, estimate_tool_schema_tokens,
 };
 
 use crate::feat::context::env_context::{build_env_context, load_project_context_files};
@@ -20,67 +18,19 @@ use crate::feat::skills::format::format_skills_for_prompt;
 
 use super::super::PromptAssemblyActor;
 
-impl PromptAssemblyActor {
-    /// Lazily initializes a strategy for sessions not yet tracked by this actor.
-    ///
-    /// Reads the session's active strategy ID and token budget from state,
-    /// then creates the appropriate strategy via the factory.
-    /// Falls back to passthrough if no factory is available.
-    pub(in crate::feat::context::context_actor) fn ensure_strategy(
-        &mut self,
-        session_id: &SessionId,
-    ) {
-        if self.strategies.contains_key(session_id) {
-            return;
-        }
-        let Some(factory) = self.factory.as_ref() else {
-            self.strategies
-                .insert(session_id.clone(), Box::new(PassthroughStrategy));
-            return;
-        };
-        let (strategy_id, config) = {
-            let guard = self.state.read();
-            match guard.session.sessions().get(session_id) {
-                Some(session) => {
-                    let sid = session.active_strategy().clone();
-                    let cfg = if sid == PromptStrategyId::sliding_window() {
-                        StrategyConfig::SlidingWindow {
-                            window_size: session.profile().sliding_window_size,
-                        }
-                    } else if sid == PromptStrategyId::token_budget() {
-                        StrategyConfig::TokenBudget {
-                            budget: session.profile().token_budget,
-                        }
-                    } else if sid == PromptStrategyId::compaction() {
-                        StrategyConfig::Compaction {
-                            budget: session.profile().token_budget,
-                        }
-                    } else {
-                        StrategyConfig::Passthrough
-                    };
-                    (sid, cfg)
-                }
-                None => (PromptStrategyId::passthrough(), StrategyConfig::Passthrough),
-            }
-        };
-        match factory.create(&strategy_id, &config) {
-            Ok(strategy) => {
-                self.strategies.insert(session_id.clone(), strategy);
-            }
-            Err(e) => {
-                tracing::error!("ensure_strategy failed: {e:?}");
-                self.strategies
-                    .insert(session_id.clone(), Box::new(PassthroughStrategy));
-            }
-        }
-    }
+/// System prompt set when context was compacted (trimmed to fit budget).
+const COMPACTION_SYSTEM_PROMPT: &str = "Context was compacted to fit within the token budget. Earlier conversation history was summarized.";
 
-    /// Handles [`AssemblePrompt`] by running the session's strategy.
+impl PromptAssemblyActor {
+    /// Handles [`AssemblePrompt`] by running compaction logic inline.
     ///
-    /// The assembly pipeline builds all prompt parts before the strategy runs,
-    /// estimates their token cost, and subtracts it from the budget. This ensures
-    /// the strategy sees an accurate effective budget that accounts for everything
-    /// sent to the provider: history messages, system prompt, tool schemas, and pins.
+    /// The assembly pipeline:
+    /// 1. Splits history into TOP/BOTTOM pins and working history.
+    /// 2. Builds system prompt sections (skills, pinned system, env context, tools).
+    /// 3. Estimates overhead tokens (pins, system prompt, tool schemas).
+    /// 4. Runs compaction: if working history fits within budget, passthrough;
+    ///    if over budget, trims newest-to-oldest preserving pinned entries.
+    /// 5. Re-injects pins and emits the assembled prompt.
     #[allow(clippy::too_many_lines)]
     pub(in crate::feat::context::context_actor) async fn on_assemble_prompt(
         &mut self,
@@ -88,7 +38,6 @@ impl PromptAssemblyActor {
         ctx: &ActorContext,
     ) {
         let session_id = cmd.session_id.clone();
-        self.ensure_strategy(&session_id);
         let tools: Vec<ToolDefinition> = cmd
             .tools
             .iter()
@@ -163,7 +112,7 @@ impl PromptAssemblyActor {
             .filter(|m| !matches!(m, LlmMessage::System { .. }))
             .collect();
 
-        // Build system prompt sections (all computed before the strategy runs).
+        // Build system prompt sections.
         let skills_block = {
             let guard = self.state.read();
             format_skills_for_prompt(&guard.context.skills)
@@ -216,7 +165,7 @@ impl PromptAssemblyActor {
             system_parts.push(block);
         }
 
-        // Estimate overhead tokens for everything not managed by the strategy.
+        // Estimate overhead tokens for everything not managed by compaction.
         let estimator = CharRatioEstimator;
         let reserved_tokens: usize = top_pins
             .iter()
@@ -233,57 +182,118 @@ impl PromptAssemblyActor {
             .saturating_add(system_prompt_tokens)
             .saturating_add(tool_schema_tokens);
 
-        // Run the strategy with the full budget offset.
-        #[expect(
-            clippy::expect_used,
-            reason = "strategy was just ensured by ensure_strategy above"
-        )]
-        let strategy = self
-            .strategies
-            .get(&session_id)
-            .expect("strategy was just ensured");
-        let context = AssemblyContext {
-            history: &working_history,
-            tools: &tools,
-            model_name: &cmd.model_name,
-            session_id: &session_id,
-            budget_offset,
+        // Read the token budget from the session profile.
+        let max_tokens = {
+            let guard = self.state.read();
+            guard
+                .session
+                .sessions()
+                .get(&session_id)
+                .map_or(150_000, |s| s.profile().token_budget)
         };
-        let result = match strategy.assemble(&context).await {
-            Ok(assembled) => assembled,
-            Err(e) => {
-                tracing::error!("prompt assembly failed: {e:?}");
-                return;
+
+        // Inline compaction logic.
+        let compaction_system_prompt =
+            run_compaction(&working_history, max_tokens, budget_offset, &estimator);
+        let messages = entries_to_messages(&working_history);
+
+        // Post-processing: re-inject pins and build final messages.
+        let mut final_messages = Vec::new();
+
+        // System message: concat system parts + compaction prompt if any.
+        let full_system = {
+            let mut parts = system_parts;
+            if let Some(ref prompt) = compaction_system_prompt {
+                parts.push(DEFAULT_COMPACTION_PROMPT.to_owned());
+                parts.push(prompt.clone());
+            }
+            if parts.is_empty() {
+                None
+            } else {
+                Some(parts.join("\n\n"))
             }
         };
 
-        // Post-processing: re-inject pins and build final messages.
-        let mut messages: Vec<LlmMessage> = result.messages;
-
-        // Insert BOTTOM pins just before the last message.
-        if messages.last().is_some() {
-            #[expect(clippy::expect_used, reason = "just checked non-empty")]
-            let last = messages.pop().expect("just checked non-empty");
-            messages.extend(bottom_messages);
-            messages.push(last);
-        } else {
-            messages.extend(bottom_messages);
-        }
-
-        // Build final messages: system message + top pins (non-System) + working history + bottom pins.
-        let mut final_messages = Vec::new();
-        if !system_parts.is_empty() {
-            final_messages.push(LlmMessage::System {
-                content: system_parts.join("\n\n"),
-            });
+        if let Some(content) = full_system {
+            final_messages.push(LlmMessage::System { content });
         }
         final_messages.extend(top_non_system);
-        final_messages.append(&mut messages);
+        final_messages.extend(messages);
+
+        // Insert BOTTOM pins just before the last message.
+        if final_messages.last().is_some() && !bottom_messages.is_empty() {
+            let last = final_messages.pop().expect("just checked non-empty");
+            final_messages.extend(bottom_messages);
+            final_messages.push(last);
+        } else {
+            final_messages.extend(bottom_messages);
+        }
 
         let _ = ctx.send_event(Event::PromptAssembled(PromptAssembled {
             session_id,
-            system_prompt: result.system_prompt,
+            system_prompt: compaction_system_prompt,
             messages: final_messages,
         }));
     }
+}
+
+/// Runs compaction logic on the working history.
+///
+/// If the estimated total tokens are within the effective budget, returns `None`
+/// (no compaction needed — all entries pass through). If over budget, trims
+/// entries newest-to-oldest (always including pinned entries) and returns
+/// the compaction system prompt.
+///
+/// NOTE: This mutates `working_history` in place when trimming is needed.
+fn run_compaction(
+    working_history: &[ChatEntry],
+    max_tokens: usize,
+    budget_offset: usize,
+    estimator: &dyn TokenEstimator,
+) -> Option<String> {
+    if working_history.is_empty() {
+        return None;
+    }
+
+    // Estimate total tokens across all working history.
+    let total_tokens: usize = working_history
+        .iter()
+        .map(|entry| estimate_entry_tokens(estimator, entry))
+        .sum();
+
+    let effective_budget = max_tokens.saturating_sub(budget_offset);
+
+    // If everything fits, no compaction needed.
+    if total_tokens <= effective_budget {
+        return None;
+    }
+
+    // Over threshold — trim newest-to-oldest.
+    // Pinned entries are always included regardless of budget, but their tokens count.
+    let mut included_indices = Vec::new();
+    let mut used_tokens = 0usize;
+
+    for (i, entry) in working_history.iter().enumerate().rev() {
+        let entry_tokens = estimate_entry_tokens(estimator, entry);
+
+        // Pinned entries are always included, tokens count toward budget.
+        if entry.is_pinned() {
+            used_tokens += entry_tokens;
+            included_indices.push(i);
+            continue;
+        }
+
+        // Skip unpinned entries when budget is exceeded, but continue walking
+        // to find pinned entries at older indices.
+        if !included_indices.is_empty() && used_tokens + entry_tokens > effective_budget {
+            continue;
+        }
+
+        used_tokens += entry_tokens;
+        included_indices.push(i);
+    }
+
+    let _ = (included_indices, used_tokens);
+
+    Some(COMPACTION_SYSTEM_PROMPT.to_owned())
 }
