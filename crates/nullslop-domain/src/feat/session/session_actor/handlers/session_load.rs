@@ -19,7 +19,6 @@ impl SessionPersistenceActor {
         ctx: &ActorContext,
     ) {
         let session_id = payload.session.session_id().clone();
-        let strategy_id = payload.session.active_strategy().clone();
         let original_cwd;
 
         {
