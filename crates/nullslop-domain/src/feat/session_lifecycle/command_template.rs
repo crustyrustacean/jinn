@@ -16,8 +16,8 @@
 //! Parameters are deduplicated by identity. `$1 <foo> $1` produces `[Positional(1), Named("foo")]`
 //! and substitutes both `$1` occurrences with the same arg.
 
-use std::fmt;
 use regex::Regex;
+use std::fmt;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// A segment of a displayed command line, tagged with its parameter index.
@@ -392,11 +392,7 @@ fn tokenize_spans(line: &str) -> Vec<Span> {
 /// For [`Span::Placeholder`], looks up the corresponding param. If an arg is
 /// available, substitutes the arg value; otherwise keeps the placeholder text.
 /// [`Span::Static`] passes through as a static [`DisplaySegment`].
-fn substitute_spans(
-    spans: Vec<Span>,
-    params: &[Param],
-    args: &[String],
-) -> Vec<DisplaySegment> {
+fn substitute_spans(spans: Vec<Span>, params: &[Param], args: &[String]) -> Vec<DisplaySegment> {
     // Build lookup: (display_token, param_index, arg_offset).
     let mut arg_offset = 0usize;
     let mut token_map: Vec<(String, usize, usize)> = Vec::new();
