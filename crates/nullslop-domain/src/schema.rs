@@ -32,6 +32,7 @@ diesel::table! {
         archived -> Bool,
         lifecycle_name -> Nullable<Text>,
         lifecycle_args -> Text,
+        lifecycle_script_state -> Text,
     }
 }
 
