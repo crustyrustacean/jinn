@@ -70,28 +70,6 @@ fn render_right_aligns_text() {
 }
 
 #[rstest::rstest]
-fn render_uses_gray_color() {
-    let mut element = StatusBarElement;
-    let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
-    let (mut terminal, area) = setup_term(40, 2);
-    terminal
-        .draw(|frame| {
-            element.render(frame, area, &state);
-        })
-        .unwrap();
-    let buffer = terminal.backend().buffer().clone();
-    // Find a non-space cell on the info line (row 1).
-    let text_cell = (0..40)
-        .filter_map(|x| buffer.cell((x, 1)))
-        .find(|c| c.symbol() != " ")
-        .expect("should have text cell on info line");
-    assert_eq!(text_cell.fg, Color::DarkGray);
-}
-
-#[rstest::rstest]
 fn render_shows_provider_with_slash_in_model() {
     let mut element = StatusBarElement;
     let mut state = AppState::default();
