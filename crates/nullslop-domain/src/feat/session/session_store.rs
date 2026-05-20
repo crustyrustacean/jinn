@@ -120,6 +120,19 @@ pub trait SessionStore: Send + Sync + 'static {
     async fn load_unarchived_summaries(
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>>;
+
+    /// Shut down the store, performing any cleanup or flush operations.
+    ///
+    /// Called once during application shutdown. Implementations may use
+    /// this to delete stale data, fsync, flush WAL, etc. The default
+    /// implementation is a no-op.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the cleanup fails.
+    async fn shutdown(&self) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
 }
 
 impl std::fmt::Debug for dyn SessionStore {

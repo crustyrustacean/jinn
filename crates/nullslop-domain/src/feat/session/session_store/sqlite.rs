@@ -288,6 +288,20 @@ impl SessionStore for SqliteSessionStore {
         .change_context(SessionStoreError)
         .attach("spawn_blocking panicked during load_unarchived_summaries")?
     }
+
+    async fn shutdown(&self) -> Result<(), Report<SessionStoreError>> {
+        let pool = self.pool.clone();
+        spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(SessionStoreError)
+                .attach("failed to acquire connection from pool")?;
+            shutdown_blocking(&mut conn)
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("spawn_blocking panicked during shutdown")?
+    }
 }
 
 // ── Diesel model structs ─────────────────────────────────────────────────
@@ -1040,4 +1054,31 @@ fn load_unarchived_summaries_blocking(
         .collect();
 
     Ok(summaries)
+}
+
+/// Deletes empty unarchived sessions and orphaned entries during shutdown.
+///
+/// An "empty" session is one with no rows in `session_history`. These can
+/// accumulate when `SaveNewLifecycleSession` persists a session before its
+/// setup command runs, and the app exits before the session gets any entries.
+fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    // Delete unarchived sessions that have no chat history entries.
+    let result = sql_query(
+        "DELETE FROM sessions WHERE archived = 0 AND id NOT IN (SELECT DISTINCT session_id FROM session_history)",
+    )
+    .execute(conn)
+    .change_context(SessionStoreError)
+    .attach("failed to delete empty sessions during shutdown")?;
+
+    if result > 0 {
+        tracing::info!(count = result, "deleted empty unarchived sessions during shutdown");
+    }
+
+    // Clean up orphaned entries (not referenced by any session).
+    sql_query("DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_history)")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to delete orphaned entries during shutdown")?;
+
+    Ok(())
 }
