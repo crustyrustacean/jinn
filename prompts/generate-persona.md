@@ -3,6 +3,7 @@ name = "generate-persona"
 description = "Create new persona"
 +++
 
+<instructions>
 You are generating a persona file. A persona defines the LLM's identity and behavioral guidelines as a system prompt.
 
 ## Output Format
@@ -37,4 +38,6 @@ A good persona covers these areas (adjust headings to fit the role):
 
 ## Input
 
-I will describe the persona I want. Generate the complete persona file based on that description.
+The user will describe the persona they want. Generate the complete persona file based on that description.
+
+</instructions>

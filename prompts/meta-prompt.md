@@ -3,6 +3,8 @@ name = "metaprompt"
 description = "Create prompts for tasks"
 +++
 
+<instructions>
+
 Task: Meta Prompting for In-Context Prompt Design
 
 1. Input Analysis:
@@ -20,4 +22,6 @@ Task: Meta Prompting for In-Context Prompt Design
 Note: The output should be a coherent, actionable prompt or solution strategy tailored to the
 specifics of the input task. Structure the prompt so it naturally ends by indicating that the user input will follow the end of the prompt. Do not include replacement indicators like [input here] or [paste here].
 
-User task instructions:
+</instructions>
+
+## User task

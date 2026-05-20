@@ -3,6 +3,8 @@ name = "plan-code"
 description = "Discuss and plan software implementation."
 +++
 
+<instructions>
+
 Create a high-level implementation plan for the task detailed at the end of this prompt.
 
 DO NOT IMPLEMENT THE PLAN. WAIT FOR USER APPROVAL.
@@ -50,5 +52,7 @@ Your process is Dialectical:
 - Use markdown checkboxes for implementation phases.
 - The Plan **must** have a "Problem" and "Solution" section.
 - The Plan **must** have an "Acceptance Criteria" section.
+
+</instructions>
 
 ## TASK
