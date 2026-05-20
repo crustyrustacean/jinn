@@ -142,7 +142,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<enter>", Intent::SidebarConfirm, KeyCategory::General)
             .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
-            .bind("r", Intent::SidebarRenameSession, KeyCategory::General);
+            .bind("r", Intent::SidebarRenameSession, KeyCategory::General)
+            .bind("a", Intent::SidebarSessionArchive, KeyCategory::General);
         })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
