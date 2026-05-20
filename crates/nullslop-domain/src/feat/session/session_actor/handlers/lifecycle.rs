@@ -1379,10 +1379,7 @@ mod tests {
         let has_archived = events
             .iter()
             .any(|e| matches!(e, crate::protocol::Event::SessionArchived(..)));
-        assert!(
-            has_archived,
-            "expected SessionArchived for empty session"
-        );
+        assert!(has_archived, "expected SessionArchived for empty session");
 
         let has_closed = events.iter().any(|e| {
             matches!(
@@ -1632,7 +1629,10 @@ mod tests {
             .await;
 
         // Then the session was archived in the store.
-        assert!(store.was_archived(&session_id), "empty session should be archived");
+        assert!(
+            store.was_archived(&session_id),
+            "empty session should be archived"
+        );
     }
 
     #[tokio::test]
@@ -1655,6 +1655,9 @@ mod tests {
             .await;
 
         // Then the session was archived in the store.
-        assert!(store.was_archived(&session_id), "empty session should be archived");
+        assert!(
+            store.was_archived(&session_id),
+            "empty session should be archived"
+        );
     }
 }

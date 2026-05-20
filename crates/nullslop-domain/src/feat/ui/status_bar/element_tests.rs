@@ -329,8 +329,8 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then the status bar shows 0.0%/MAX (no context_length available).
-    assert!(row.contains("0.0%/MAX"), "expected 0.0%/MAX, got: {row}");
+    // Then the status bar shows usage with unknown limit (no context_length available).
+    assert!(row.contains("5.0k/???"), "expected 5.0k/???, got: {row}");
 }
 
 #[rstest::rstest]
@@ -346,11 +346,8 @@ fn render_shows_zero_percent_max_when_no_context_size() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then the context display shows 0.0%/MAX as fallback.
-    assert!(
-        row.contains("0.0%/MAX"),
-        "expected 0.0%/MAX fallback, got: {row}"
-    );
+    // Then the context display shows 0/??? as fallback (no context_size, no model cache).
+    assert!(row.contains("0/???"), "expected 0/??? fallback, got: {row}");
     // And token counts are still shown.
     assert!(row.contains("0 0") || row.contains("\u{2191}0 \u{2193}0"));
 }
@@ -626,10 +623,10 @@ fn render_falls_back_when_no_context_limit_in_cache() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then the status bar falls back to 0.0%/MAX.
+    // Then the status bar shows usage with unknown limit (model found but no context_length).
     assert!(
-        row.contains("0.0%/MAX"),
-        "expected 0.0%/MAX fallback, got: {row}"
+        row.contains("5.0k/???"),
+        "expected 5.0k/??? fallback, got: {row}"
     );
 }
 
@@ -660,11 +657,84 @@ fn render_falls_back_when_no_model_cache() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then the status bar falls back to 0.0%/MAX.
+    // Then the status bar shows usage with unknown limit (no model cache at all).
     assert!(
-        row.contains("0.0%/MAX"),
-        "expected 0.0%/MAX fallback, got: {row}"
+        row.contains("5.0k/???"),
+        "expected 5.0k/??? fallback, got: {row}"
     );
+}
+
+// --- Context display: (None, Some) case ---
+
+#[rstest::rstest]
+fn render_shows_zero_percent_with_max_when_no_messages_sent() {
+    // Given a model with a known context length but no messages sent (no context_size).
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("openrouter/anthropic/claude-sonnet-4".to_owned());
+
+    // And a model cache with context_length for the active model.
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert(
+        "openrouter".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "anthropic/claude-sonnet-4".to_owned(),
+            context_length: Some(200_000),
+        }],
+    );
+    state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    });
+
+    let (mut terminal, area) = setup_term(100, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+    // Then the status bar shows 0.0% with the real max.
+    assert!(row.contains("0.0%/200k"), "expected 0.0%/200k, got: {row}");
+}
+
+#[rstest::rstest]
+fn render_shows_used_over_unknown_when_no_context_length() {
+    // Given a session with context_size but no context_length in the model cache.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state.active_session_mut().set_context_size(15_000);
+
+    // Model cache exists but has no context_length.
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert(
+        "ollama".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "llama3".to_owned(),
+            context_length: None,
+        }],
+    );
+    state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    });
+
+    let (mut terminal, area) = setup_term(100, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 100);
+    // Then the status bar shows the formatted usage with unknown limit.
+    assert!(row.contains("15.0k/???"), "expected 15.0k/???, got: {row}");
 }
 
 // --- Token budget display tests ---
