@@ -42,8 +42,8 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
 use super::{
-    actor, assistant, compaction, error_entry, skill, system, thinking, tool_call,
-    tool_result, transient, user,
+    actor, assistant, compaction, error_entry, skill, system, thinking, tool_call, tool_result,
+    transient, user,
 };
 use viewport::ScrollState;
 

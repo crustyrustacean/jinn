@@ -71,8 +71,6 @@ impl std::fmt::Display for PinPosition {
     }
 }
 
-
-
 /// A single entry in the chat history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatEntry {

@@ -926,9 +926,7 @@ fn render_transient_entry_has_muted_text_color() {
     let state = {
         let mut s = AppState::default();
         s.active_session_mut()
-            .push_entry(ChatEntry::transient(
-                "Welcome to nullslop!",
-            ));
+            .push_entry(ChatEntry::transient("Welcome to nullslop!"));
         s
     };
 
@@ -946,8 +944,7 @@ fn render_transient_entry_has_muted_text_color() {
     let transient_cell = buffer.cell((G, 8)).expect("cell should exist");
     assert_eq!(transient_cell.symbol(), "W");
     assert_eq!(
-        transient_cell.fg,
-        state.frontend.theme.primary_text,
+        transient_cell.fg, state.frontend.theme.primary_text,
         "transient entry should use theme text color (from markdown renderer)"
     );
 }

@@ -94,9 +94,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             // Error entries are ephemeral display / local status — not sent to the LLM.
             // Thinking entries are display-only — excluded from context assembly.
             // Transient entries are UI-only — excluded from prompt assembly.
-            ChatEntryKind::Error(_)
-            | ChatEntryKind::Thinking(_)
-            | ChatEntryKind::Transient(_) => {}
+            ChatEntryKind::Error(_) | ChatEntryKind::Thinking(_) | ChatEntryKind::Transient(_) => {}
             // Compaction entries produce a User message wrapping the summary.
             // The summary replaces all ignored entries before this point.
             ChatEntryKind::Compaction { summary, .. } => {
