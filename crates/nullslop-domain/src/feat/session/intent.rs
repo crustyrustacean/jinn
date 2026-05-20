@@ -18,7 +18,7 @@ pub fn handle_refresh_models(state: &mut AppState) -> IntentResult {
 
     state
         .active_session_mut()
-        .push_entry(ChatEntry::system("Refreshing models..."));
+        .push_entry(ChatEntry::transient("Refreshing models..."));
 
     IntentResult::with_commands(vec![Command::RefreshModels])
 }
@@ -38,7 +38,7 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::common::app_state::AppState;
-    use crate::protocol::{ChatEntry, Command, PickerKind};
+    use crate::protocol::{ChatEntry, ChatEntryKind, Command, PickerKind};
 
     use super::*;
 
@@ -84,17 +84,21 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn refresh_models_posts_system_message() {
+    fn refresh_models_posts_transient_message() {
         // Given a state with a provider.
         let mut state = AppState::default();
         state.active_session_mut().set_model("ollama".to_owned());
-        let initial_len = state.active_session().history().len();
 
         // When handling RefreshModels.
         let _result = handle_refresh_models(&mut state);
 
-        // Then a system message was posted.
-        assert_eq!(state.active_session().history().len(), initial_len + 1);
+        // Then a transient message was posted.
+        let last = state
+            .active_session()
+            .history()
+            .last()
+            .expect("should have entry");
+        assert!(matches!(last.kind, ChatEntryKind::Transient(_)));
     }
 
     #[rstest::rstest]

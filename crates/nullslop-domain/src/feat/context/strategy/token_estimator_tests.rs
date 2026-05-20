@@ -202,9 +202,7 @@ fn estimate_entry_tokens_for_thinking_is_zero() {
 fn estimate_entry_tokens_for_transient_is_zero() {
     // Given a char ratio estimator and a transient entry.
     let estimator = CharRatioEstimator;
-    let entry = ChatEntry::transient(vec![ratatui::text::Line::from(
-        "Welcome to nullslop! Press i to start typing.",
-    )]);
+    let entry = ChatEntry::transient("Welcome to nullslop! Press i to start typing.");
 
     // When estimating entry tokens.
     let tokens = estimate_entry_tokens(&estimator, &entry);

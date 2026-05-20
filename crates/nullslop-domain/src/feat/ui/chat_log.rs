@@ -17,7 +17,6 @@ pub(crate) mod markdown;
 pub(crate) mod shared;
 pub(crate) mod skill;
 pub(crate) mod system;
-pub(crate) mod table;
 pub(crate) mod thinking;
 pub(crate) mod tool_call;
 pub(crate) mod tool_result;

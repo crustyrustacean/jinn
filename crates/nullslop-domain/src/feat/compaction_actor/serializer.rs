@@ -80,7 +80,6 @@ pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
             | ChatEntryKind::Error(_)
             | ChatEntryKind::Thinking(_)
             | ChatEntryKind::Transient(_)
-            | ChatEntryKind::Table(_)
             | ChatEntryKind::Skill { .. }
             | ChatEntryKind::Compaction { .. } => {}
         }

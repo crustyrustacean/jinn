@@ -45,8 +45,6 @@ pub use crate::feat::picker::keymap_entry::KeymapEntry;
 pub use crate::feat::picker::strategy_entry::StrategyEntry;
 pub use crate::feat::provider::entries_to_messages::entries_to_messages;
 pub use crate::feat::provider::picker_entry::PickerEntry;
-pub use crate::feat::session::chat_entry::{
-    ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, TableData,
-};
+pub use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};
 pub use crate::feat::session::picker_entry::SessionEntry;
 pub use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
