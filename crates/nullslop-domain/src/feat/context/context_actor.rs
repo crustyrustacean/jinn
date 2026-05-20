@@ -24,6 +24,7 @@ pub struct PromptAssemblyActor {
     /// Shared application state.
     pub(super) state: State,
     /// Runtime services.
+    #[expect(dead_code, reason = "will be used for picker entry loading")]
     pub(super) services: Services,
 }
 
