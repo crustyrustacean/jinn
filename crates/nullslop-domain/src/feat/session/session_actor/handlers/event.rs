@@ -127,10 +127,8 @@ impl SessionPersistenceActor {
             if let Err(e) = session.append_thinking_token(&event.token) {
                 tracing::error!(err = ?e, "failed to append thinking token");
             }
-        } else {
-            if let Err(e) = session.append_stream_token(&event.token) {
-                tracing::error!(err = ?e, "failed to append stream token");
-            }
+        } else if let Err(e) = session.append_stream_token(&event.token) {
+            tracing::error!(err = ?e, "failed to append stream token");
         }
     }
 
@@ -198,10 +196,10 @@ impl SessionPersistenceActor {
             } else if let Some(output_tokens) = output_tokens {
                 // Finalize the last record if one exists (i.e., PromptAssembled fired first).
                 // If no record exists (e.g., session restored mid-stream), skip silently.
-                if !session.token_ledger().is_empty() {
-                    if let Err(e) = session.finalize_last_token_record(output_tokens, event.cost) {
-                        tracing::error!(err = ?e, "failed to finalize token record");
-                    }
+                if !session.token_ledger().is_empty()
+                    && let Err(e) = session.finalize_last_token_record(output_tokens, event.cost)
+                {
+                    tracing::error!(err = ?e, "failed to finalize token record");
                 }
             }
             let preserve_assistant = event.reason == StreamCompletedReason::Finished
@@ -358,7 +356,6 @@ impl SessionPersistenceActor {
     ///
     /// Emits `PushChatEntry` commands so the entries are persisted.
     pub(in crate::feat::session::session_actor) fn on_models_refreshed(
-        &self,
         event: &ModelsRefreshed,
         ctx: &ActorContext,
     ) {

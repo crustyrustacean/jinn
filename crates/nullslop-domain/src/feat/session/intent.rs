@@ -102,7 +102,7 @@ mod tests {
         // Given a state with a provider.
         let mut state = AppState::default();
         state.active_session_mut().set_model("ollama".to_owned());
-        let initial_len = state.active_session().history().len();
+        let _initial_len = state.active_session().history().len();
 
         // When handling RefreshModels.
         let result = handle_refresh_models(&mut state);
@@ -145,7 +145,7 @@ mod tests {
     fn rescan_prompt_templates_returns_rescan_command() {
         // Given a default state.
         let mut state = AppState::default();
-        let initial_len = state.active_session().history().len();
+        let _initial_len = state.active_session().history().len();
 
         // When handling RescanPromptTemplates.
         let result = handle_rescan_prompt_templates(&mut state);
