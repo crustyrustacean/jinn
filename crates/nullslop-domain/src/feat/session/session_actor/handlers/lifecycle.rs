@@ -369,19 +369,12 @@ impl SessionPersistenceActor {
                 return;
             };
             let script_state = session.lifecycle_script_state();
-            let is_empty = session.history().is_empty();
             let lifecycle_name = session.lifecycle_name().map(str::to_owned);
             let lifecycle_args = session.lifecycle_args().to_vec();
-            (script_state, is_empty, lifecycle_name, lifecycle_args)
+            (script_state, lifecycle_name, lifecycle_args)
         };
 
-        let (script_state, is_empty, lifecycle_name, lifecycle_args) = session_info;
-
-        // Empty session — remove without archiving or teardown.
-        if is_empty {
-            self.close_session_inline(&payload.session_id, ctx);
-            return;
-        }
+        let (script_state, lifecycle_name, lifecycle_args) = session_info;
 
         // Step 1: Run teardown if LifecycleScriptState is SetupRan.
         if script_state == LifecycleScriptState::SetupRan {
@@ -469,19 +462,6 @@ impl SessionPersistenceActor {
         payload: &ArchiveSession,
         ctx: &ActorContext,
     ) {
-        let is_empty = {
-            let state = self.state.read();
-            let Some(session) = state.session.sessions().get(&payload.session_id) else {
-                return;
-            };
-            session.history().is_empty()
-        };
-
-        if is_empty {
-            self.close_session_inline(&payload.session_id, ctx);
-            return;
-        }
-
         // Archive in SQLite.
         if let Some(ref store) = self.store
             && let Err(e) = store.set_archived(&payload.session_id, true).await
@@ -1367,7 +1347,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn archive_empty_session_removes_without_events() {
+    async fn archive_empty_session_removes_and_archives() {
         // Given an empty session.
         let actor = test_actor();
         let (sink, ctx) = test_context();
@@ -1389,19 +1369,19 @@ mod tests {
             )
             .await;
 
-        // Then the session is removed (close_session_inline for empty).
+        // Then the session is removed from memory.
         let state = actor.state.read();
         assert!(!state.session.sessions().contains_key(&target_id));
         drop(state);
 
-        // And only SessionClosed (no SessionArchived for empty).
+        // And SessionArchived is emitted (empty sessions are still archived in DB).
         let events = sink.events();
         let has_archived = events
             .iter()
             .any(|e| matches!(e, crate::protocol::Event::SessionArchived(..)));
         assert!(
-            !has_archived,
-            "did not expect SessionArchived for empty session"
+            has_archived,
+            "expected SessionArchived for empty session"
         );
 
         let has_closed = events.iter().any(|e| {
@@ -1628,5 +1608,53 @@ mod tests {
             )
         });
         assert!(found, "expected SessionTeardownFinished with no error");
+    }
+
+    // --- Empty session archive/close tests ---
+
+    #[tokio::test]
+    async fn archiving_empty_session_sets_archived_flag() {
+        // Given an actor with an empty session and a recording store.
+        use super::super::super::helpers::{test_actor_with_store, test_context};
+
+        let (actor, store) = test_actor_with_store(vec![]);
+        let session_id = actor.state.read().session.active_session_id().clone();
+        let (_sink, ctx) = test_context();
+
+        // When handling ArchiveSession.
+        actor
+            .handle_archive_session(
+                &crate::feat::session::protocol::archive_session::ArchiveSession {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session was archived in the store.
+        assert!(store.was_archived(&session_id), "empty session should be archived");
+    }
+
+    #[tokio::test]
+    async fn closing_empty_session_sets_archived_flag() {
+        // Given an actor with an empty session and a recording store.
+        use super::super::super::helpers::{test_actor_with_store, test_context};
+
+        let (actor, store) = test_actor_with_store(vec![]);
+        let session_id = actor.state.read().session.active_session_id().clone();
+        let (_sink, ctx) = test_context();
+
+        // When handling CloseSession.
+        actor
+            .handle_close_session(
+                &crate::feat::session::protocol::close_session::CloseSession {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session was archived in the store.
+        assert!(store.was_archived(&session_id), "empty session should be archived");
     }
 }

@@ -65,6 +65,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionS
         migrate_v8(conn)?;
         record_version(conn, 8, "add_metadata_column")?;
     }
+    if current < 9 {
+        migrate_v9(conn)?;
+        record_version(conn, 9, "rename_session_entries_to_session_history")?;
+    }
     Ok(())
 }
 
@@ -281,6 +285,18 @@ fn migrate_v8(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
     Ok(())
 }
 
+/// v9: Rename `session_entries` table to `session_history`.
+///
+/// The old name was ambiguous — it sounded like a table of sessions.
+/// The new name makes it clear this is the chat history junction table.
+fn migrate_v9(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query("ALTER TABLE session_entries RENAME TO session_history")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v9: rename session_entries to session_history")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
@@ -321,7 +337,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 9);
+        assert_eq!(rows.len(), 10);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -340,6 +356,8 @@ mod tests {
         assert_eq!(rows[7].name, "add_lifecycle_script_state_column");
         assert_eq!(rows[8].version, 8);
         assert_eq!(rows[8].name, "add_metadata_column");
+        assert_eq!(rows[9].version, 9);
+        assert_eq!(rows[9].name, "rename_session_entries_to_session_history");
     }
 
     #[test]
@@ -363,7 +381,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 9);
+        assert_eq!(rows[0].count, 10);
     }
 
     #[test]
@@ -390,7 +408,7 @@ mod tests {
 
         assert!(table_names.contains(&"_migrations"));
         assert!(table_names.contains(&"entries"));
-        assert!(table_names.contains(&"session_entries"));
+        assert!(table_names.contains(&"session_history"));
         assert!(table_names.contains(&"sessions"));
         assert!(table_names.contains(&"token_ledger"));
     }

@@ -80,3 +80,146 @@ pub(super) fn test_context() -> (
     let ctx = ActorContext::new("test-session-actor", sink.clone());
     (sink, ctx)
 }
+
+// --- Shared test store helpers ---
+
+/// A fake session store that returns pre-loaded sessions for testing.
+#[cfg(test)]
+pub(super) struct PopulatedFakeStore {
+    pub(super) summaries:
+        Vec<crate::feat::session::session_summary::SessionSummary>,
+    pub(super) sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
+    pub(super) archived: std::sync::Mutex<Vec<crate::protocol::SessionId>>,
+}
+
+#[cfg(test)]
+impl PopulatedFakeStore {
+    pub(super) fn new(sessions: Vec<crate::feat::session::chat_session::ChatSessionState>) -> Self {
+        let summaries = sessions
+            .iter()
+            .map(|s| crate::feat::session::session_summary::SessionSummary {
+                session_id: s.session_id().clone(),
+                title: s.title().unwrap_or("Untitled Session").to_owned(),
+                updated_at: *s.updated_at(),
+                created_at: *s.created_at(),
+                session_state: crate::feat::session::chat_session::SessionState::Loaded,
+            })
+            .collect();
+        Self {
+            summaries,
+            sessions,
+            archived: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    pub(super) fn was_archived(&self, id: &crate::protocol::SessionId) -> bool {
+        self.archived.lock().expect("lock").contains(id)
+    }
+}
+
+#[cfg(test)]
+#[async_trait::async_trait]
+impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
+    fn name(&self) -> &'static str {
+        "populated-fake"
+    }
+
+    async fn save(
+        &self,
+        _session: &crate::feat::session::chat_session::ChatSessionState,
+    ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+    {
+        Ok(())
+    }
+
+    async fn load_summaries(
+        &self,
+    ) -> Result<
+        Vec<crate::feat::session::session_summary::SessionSummary>,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(self.summaries.clone())
+    }
+
+    async fn load_session(
+        &self,
+        session_id: &crate::protocol::SessionId,
+    ) -> Result<
+        Option<crate::feat::session::chat_session::ChatSessionState>,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(self
+            .sessions
+            .iter()
+            .find(|s| s.session_id() == session_id)
+            .cloned())
+    }
+
+    async fn delete(
+        &self,
+        _session_id: &crate::protocol::SessionId,
+    ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+    {
+        Ok(())
+    }
+
+    async fn fork(
+        &self,
+        _source_session_id: &crate::protocol::SessionId,
+        _at_ordinal: usize,
+    ) -> Result<
+        crate::protocol::SessionId,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(crate::protocol::SessionId::new())
+    }
+
+    async fn set_archived(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        archived: bool,
+    ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
+    {
+        if archived {
+            self.archived
+                .lock()
+                .expect("lock")
+                .push(session_id.clone());
+        }
+        Ok(())
+    }
+
+    async fn load_unarchived_summaries(
+        &self,
+    ) -> Result<
+        Vec<crate::feat::session::session_summary::SessionSummary>,
+        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
+    > {
+        Ok(self.summaries.clone())
+    }
+}
+
+/// Builds a test actor with services and a populated store.
+/// Returns (actor, store) so tests can inspect store state.
+#[cfg(test)]
+pub(super) fn test_actor_with_store(
+    sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
+) -> (
+    super::SessionPersistenceActor,
+    std::sync::Arc<PopulatedFakeStore>,
+) {
+    let store = std::sync::Arc::new(PopulatedFakeStore::new(sessions));
+    let services = crate::TestServices::builder()
+        .session_store(super::SessionStoreService::new(store.clone()))
+        .build();
+    let service_store = services.session_store.clone();
+    (
+        super::SessionPersistenceActor {
+            state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
+            services: Some(services),
+            store: Some(service_store),
+            counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
+        },
+        store,
+    )
+}
