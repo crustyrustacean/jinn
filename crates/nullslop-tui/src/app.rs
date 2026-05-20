@@ -84,13 +84,23 @@ impl TuiApp {
                 if let Some(started) = load_started
                     && started.elapsed() >= std::time::Duration::from_secs(10)
                 {
+                    let session_id = {
+                        let state = self.core.state.read();
+                        state.session.active_session_id().clone()
+                    };
                     let mut state = self.core.state.write();
                     state.session.clear_load();
-                    state
-                        .active_session_mut()
-                        .push_entry(nullslop_domain::ChatEntry::system(
-                            "Failed to load session: timed out",
-                        ));
+                    let _ = self.core.sender().send(nullslop_domain::AppMsg::Command {
+                        command: nullslop_domain::Command::PushChatEntry(
+                            nullslop_domain::feat::chat_input::protocol::command::PushChatEntry {
+                                session_id,
+                                entry: nullslop_domain::ChatEntry::system(
+                                    "Failed to load session: timed out",
+                                ),
+                            },
+                        ),
+                        source: None,
+                    });
                 }
                 // Lazy cleanup of expired status notifications.
                 self.core

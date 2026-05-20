@@ -25,7 +25,11 @@ pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'s
 
     // Pad to full content width so the background spans the entire row.
     if let Some(bg_color) = bg {
-        pad_line_to_width(&mut lines[0], ctx.content_width, Style::default().bg(bg_color));
+        pad_line_to_width(
+            &mut lines[0],
+            ctx.content_width,
+            Style::default().bg(bg_color),
+        );
     }
 
     lines

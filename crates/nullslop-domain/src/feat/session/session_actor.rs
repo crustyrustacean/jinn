@@ -29,6 +29,7 @@ use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
+use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::protocol::command::SwitchPromptStrategy;
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -120,7 +121,7 @@ fn no_output_info(default_cwd: &std::path::Path) -> ChatEntry {
 }
 
 /// INFO entry shown while a setup command is running.
-fn setup_running_msg() -> ChatEntry {
+pub(crate) fn setup_running_msg() -> ChatEntry {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
@@ -274,6 +275,31 @@ impl Actor for SessionPersistenceActor {
 }
 
 impl SessionPersistenceActor {
+    /// Push a chat entry directly and save.
+    ///
+    /// For use when the push must happen before an `.await` (e.g., teardown
+    /// "running" message). Otherwise, prefer emitting a `PushChatEntry` command
+    /// which routes through `handle_push_chat_entry` and persists automatically.
+    async fn push_and_save(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        entry: ChatEntry,
+        ctx: &ActorContext,
+    ) {
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(session_id);
+            session.push_entry(entry.clone());
+        }
+        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+            session_id: session_id.clone(),
+            entry,
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
+        }
+        self.save_active_session(session_id).await;
+    }
+
     /// Dispatches a bus event to the appropriate handler.
     async fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
@@ -296,7 +322,7 @@ impl SessionPersistenceActor {
                 self.on_tool_execution_output(payload);
             }
             Event::ModelsRefreshed(payload) => {
-                self.on_models_refreshed(payload);
+                self.on_models_refreshed(payload, ctx);
             }
             Event::EnvironmentLoaded(payload) => {
                 self.on_environment_loaded(&payload.config, ctx).await;
@@ -322,7 +348,9 @@ impl SessionPersistenceActor {
                 self.handle_enqueue_user_message(payload, ctx).await;
             }
             Command::SetChatInputText(payload) => self.handle_set_chat_input_text(payload),
-            Command::PushChatEntry(payload) => self.handle_push_chat_entry(payload, ctx),
+            Command::PushChatEntry(payload) => {
+                self.handle_push_chat_entry(payload, ctx).await;
+            }
             Command::SendMessage(payload) => Self::handle_send_message(payload, ctx),
             Command::SessionLoadCompleted(payload) => {
                 self.handle_session_load_completed(payload, ctx).await;
@@ -343,7 +371,7 @@ impl SessionPersistenceActor {
                 self.handle_save_new_lifecycle_session(payload).await;
             }
             Command::BeginCompaction(payload) => {
-                self.handle_begin_compaction(payload);
+                self.handle_begin_compaction(payload).await;
             }
             Command::EndCompaction(payload) => {
                 self.handle_end_compaction(payload, ctx).await;
@@ -512,25 +540,29 @@ impl SessionPersistenceActor {
     /// On success, sets the session's CWD to the command's output.
     /// On failure, sets the default CWD and pushes an error entry.
     async fn handle_run_session_setup(&self, payload: &RunSessionSetup, ctx: &ActorContext) {
-        // Push "running" info entry so the user sees feedback immediately.
-        {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
-                session.push_entry(setup_running_msg());
-            }
-        }
+        // "running" entry is now emitted by the intent handler as a PushChatEntry
+        // command before this handler runs. No direct push needed here.
 
         let result = run_setup_command(&payload.command).await;
 
         match result {
             Ok(cwd) => {
-                let mut state = self.state.write();
-                if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
-                    session.set_cwd(cwd.clone());
-                    session.push_entry(setup_complete_msg(&cwd));
-                    session.advance_lifecycle_after_setup();
+                {
+                    let mut state = self.state.write();
+                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
+                    {
+                        session.set_cwd(cwd.clone());
+                        session.advance_lifecycle_after_setup();
+                    }
                 }
-                drop(state);
+
+                // Emit the completion entry via PushChatEntry (persists automatically).
+                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: payload.session_id.clone(),
+                    entry: setup_complete_msg(&cwd),
+                })) {
+                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for setup complete");
+                }
 
                 if let Err(e) =
                     ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
@@ -559,15 +591,23 @@ impl SessionPersistenceActor {
                     if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
                     {
                         session.set_cwd(default.clone());
-                        let entry = if is_no_output {
-                            no_output_info(&default)
-                        } else {
-                            ChatEntry::error(&error_msg)
-                        };
-                        session.push_entry(entry);
                     }
                     default
                 };
+
+                let entry = if is_no_output {
+                    no_output_info(&default_cwd)
+                } else {
+                    ChatEntry::error(&error_msg)
+                };
+
+                // Emit the error entry via PushChatEntry (persists automatically).
+                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: payload.session_id.clone(),
+                    entry,
+                })) {
+                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for setup error");
+                }
 
                 if let Err(e) =
                     ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
@@ -584,13 +624,9 @@ impl SessionPersistenceActor {
 
     #[allow(clippy::too_many_lines)]
     async fn handle_run_session_teardown(&self, payload: &RunSessionTeardown, ctx: &ActorContext) {
-        // Push "running" info entry so the user sees feedback immediately.
-        {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
-                session.push_entry(teardown_running_msg());
-            }
-        }
+        // Push "running" entry directly and save (before .await).
+        self.push_and_save(&payload.session_id, teardown_running_msg(), ctx)
+            .await;
 
         let result = run_teardown_command(&payload.command).await;
 
@@ -664,14 +700,12 @@ impl SessionPersistenceActor {
                         tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
                     }
                 } else {
-                    // Teardown-only success — keep session, push info entry.
-                    {
-                        let mut state = self.state.write();
-                        if let Some(session) =
-                            state.session.sessions_mut().get_mut(&payload.session_id)
-                        {
-                            session.push_entry(teardown_success_msg());
-                        }
+                    // Teardown-only success — emit entry via PushChatEntry (persists automatically).
+                    if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                        session_id: payload.session_id.clone(),
+                        entry: teardown_success_msg(),
+                    })) {
+                        tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown success");
                     }
 
                     if let Err(e) =
@@ -691,15 +725,15 @@ impl SessionPersistenceActor {
                     } else {
                         strip_ansi(&format!("{report:#?}"))
                     };
-                {
-                    let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
-                    {
-                        session.push_entry(ChatEntry::error(&error_msg));
-                    }
-                }
 
-                self.save_active_session(&payload.session_id).await;
+                // Emit error entry via PushChatEntry (persists automatically).
+                // Remove the old direct save — the command handler saves.
+                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: payload.session_id.clone(),
+                    entry: ChatEntry::error(&error_msg),
+                })) {
+                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown error");
+                }
 
                 if let Err(e) =
                     ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
@@ -764,6 +798,7 @@ impl SessionPersistenceActor {
                         &payload.session_id,
                         &teardown_cmd,
                         &lifecycle_args,
+                        ctx,
                     )
                     .await;
 
@@ -783,8 +818,7 @@ impl SessionPersistenceActor {
                 // Advance LifecycleScriptState: SetupRan → TeardownRan.
                 {
                     let mut state = self.state.write();
-                    if let Some(session) =
-                        state.session.sessions_mut().get_mut(&payload.session_id)
+                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
                     {
                         session.advance_lifecycle_after_teardown();
                     }
@@ -868,16 +902,13 @@ impl SessionPersistenceActor {
         session_id: &crate::protocol::SessionId,
         teardown_cmd: &str,
         lifecycle_args: &[String],
+        ctx: &ActorContext,
     ) -> bool {
         use crate::feat::session_lifecycle::command_template::CommandTemplate;
 
-        // Push "running" info entry.
-        {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
-                session.push_entry(teardown_running_msg());
-            }
-        }
+        // Push "running" entry directly and save (before .await).
+        self.push_and_save(session_id, teardown_running_msg(), ctx)
+            .await;
 
         let template = CommandTemplate::parse(teardown_cmd);
         let rendered = if lifecycle_args.is_empty() {
@@ -895,13 +926,14 @@ impl SessionPersistenceActor {
                     } else {
                         strip_ansi(&format!("{report:#?}"))
                     };
-                {
-                    let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
-                        session.push_entry(ChatEntry::error(&error_msg));
-                    }
+
+                // Emit error entry via PushChatEntry (persists automatically).
+                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: session_id.clone(),
+                    entry: ChatEntry::error(&error_msg),
+                })) {
+                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown error");
                 }
-                self.save_active_session(session_id).await;
                 false
             }
         }
@@ -962,8 +994,6 @@ impl SessionPersistenceActor {
         }
     }
 
-
-
     /// SaveNewLifecycleSession: persist the session immediately.
     ///
     /// Called right after the IntentHandler creates a lifecycle session
@@ -971,8 +1001,6 @@ impl SessionPersistenceActor {
     async fn handle_save_new_lifecycle_session(&self, payload: &SaveNewLifecycleSession) {
         self.save_active_session(&payload.session_id).await;
     }
-
-
 }
 
 #[cfg(test)]
@@ -984,6 +1012,7 @@ mod tests {
     use crate::common::actor::{ActorContext, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::state::State;
+    use crate::feat::chat_input::protocol::command::PushChatEntry;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
@@ -1422,7 +1451,7 @@ mod tests {
     async fn teardown_failure_pushes_error_entry_to_session() {
         // Given a session actor with a session.
         let actor = test_actor();
-        let (_sink, ctx) = test_context();
+        let (sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
             state.session.active_session_id().clone()
@@ -1441,11 +1470,16 @@ mod tests {
             )
             .await;
 
-        // Then the session has an error entry.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        let last = session.history().last().expect("has an entry");
-        assert!(matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("exit code")));
+        // Then a PushChatEntry command with an error entry was emitted.
+        let commands = sink.commands();
+        let has_error = commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                Command::PushChatEntry(PushChatEntry { entry, .. })
+                if matches!(&entry.kind, ChatEntryKind::Error(msg) if msg.contains("exit code"))
+            )
+        });
+        assert!(has_error, "expected PushChatEntry command with error entry");
     }
 
     #[tokio::test]
@@ -1852,12 +1886,14 @@ mod tests {
         };
 
         // When handling BeginCompaction.
-        actor.handle_begin_compaction(
-            &crate::feat::compaction_actor::protocol::command::BeginCompaction {
-                session_id: session_id.clone(),
-                gathered_indices: vec![0, 1],
-            },
-        );
+        actor
+            .handle_begin_compaction(
+                &crate::feat::compaction_actor::protocol::command::BeginCompaction {
+                    session_id: session_id.clone(),
+                    gathered_indices: vec![0, 1],
+                },
+            )
+            .await;
 
         // Then the session is in Compacting phase.
         let state = actor.state.read();
@@ -2213,7 +2249,9 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("hello"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("hello"));
             assert_eq!(
                 state.active_session().lifecycle_script_state(),
                 crate::feat::session::chat_session::LifecycleScriptState::NothingRan
@@ -2236,20 +2274,17 @@ mod tests {
         assert!(!state.session.sessions().contains_key(&session_id));
         // And no teardown-related events were emitted.
         let events = sink.events();
-        let has_teardown_finished = events.iter().any(|e| {
-            matches!(
-                e,
-                crate::protocol::Event::SessionTeardownFinished(..)
-            )
-        });
-        assert!(!has_teardown_finished, "did not expect SessionTeardownFinished for NothingRan");
+        let has_teardown_finished = events
+            .iter()
+            .any(|e| matches!(e, crate::protocol::Event::SessionTeardownFinished(..)));
+        assert!(
+            !has_teardown_finished,
+            "did not expect SessionTeardownFinished for NothingRan"
+        );
         // And SessionArchived was emitted.
-        let has_archived = events.iter().any(|e| {
-            matches!(
-                e,
-                crate::protocol::Event::SessionArchived(..)
-            )
-        });
+        let has_archived = events
+            .iter()
+            .any(|e| matches!(e, crate::protocol::Event::SessionArchived(..)));
         assert!(has_archived, "expected SessionArchived");
     }
 
@@ -2262,7 +2297,9 @@ mod tests {
         let second_id = second.session_id().clone();
         let target_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("hello"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("hello"));
             state.session.sessions_mut().insert(second_id, second);
             state.session.active_session_id().clone()
         };
@@ -2306,10 +2343,13 @@ mod tests {
         assert!(has_closed, "expected SessionClosed");
 
         // And no teardown events were emitted.
-        let has_teardown = events.iter().any(|e| {
-            matches!(e, crate::protocol::Event::SessionTeardownFinished(..))
-        });
-        assert!(!has_teardown, "did not expect SessionTeardownFinished for archive");
+        let has_teardown = events
+            .iter()
+            .any(|e| matches!(e, crate::protocol::Event::SessionTeardownFinished(..)));
+        assert!(
+            !has_teardown,
+            "did not expect SessionTeardownFinished for archive"
+        );
     }
 
     #[tokio::test]
@@ -2342,10 +2382,13 @@ mod tests {
 
         // And only SessionClosed (no SessionArchived for empty).
         let events = sink.events();
-        let has_archived = events.iter().any(|e| {
-            matches!(e, crate::protocol::Event::SessionArchived(..))
-        });
-        assert!(!has_archived, "did not expect SessionArchived for empty session");
+        let has_archived = events
+            .iter()
+            .any(|e| matches!(e, crate::protocol::Event::SessionArchived(..)));
+        assert!(
+            !has_archived,
+            "did not expect SessionArchived for empty session"
+        );
 
         let has_closed = events.iter().any(|e| {
             matches!(
@@ -2367,7 +2410,9 @@ mod tests {
         let second_id = second.session_id().clone();
         let active_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("msg"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("msg"));
             state.session.sessions_mut().insert(second_id, second);
             state.session.active_session_id().clone()
         };
@@ -2395,7 +2440,9 @@ mod tests {
         let (_sink, ctx) = test_context();
         let only_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("msg"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("msg"));
             state.session.active_session_id().clone()
         };
 
@@ -2453,7 +2500,11 @@ mod tests {
 
         // Then LifecycleScriptState is still SetupRan.
         let state = actor.state.read();
-        let session = state.session.sessions().get(&session_id).expect("session exists");
+        let session = state
+            .session
+            .sessions()
+            .get(&session_id)
+            .expect("session exists");
         assert_eq!(
             session.lifecycle_script_state(),
             LifecycleScriptState::SetupRan
@@ -2469,7 +2520,7 @@ mod tests {
 
         // Given a session with SetupRan and a failing teardown.
         let actor = test_actor();
-        let (_sink, ctx) = test_context();
+        let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -2495,11 +2546,16 @@ mod tests {
             )
             .await;
 
-        // Then an error entry was pushed to the session's history.
-        let state = actor.state.read();
-        let session = state.session.sessions().get(&session_id).expect("session exists");
-        let last_entry = session.history().last().expect("has entries");
-        assert!(matches!(last_entry.kind, crate::protocol::ChatEntryKind::Error(_)));
+        // Then an error entry was emitted via PushChatEntry command.
+        let commands = sink.commands();
+        let has_error = commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                Command::PushChatEntry(PushChatEntry { entry, .. })
+                if matches!(entry.kind, crate::protocol::ChatEntryKind::Error(_))
+            )
+        });
+        assert!(has_error, "expected PushChatEntry command with error entry");
     }
 
     #[tokio::test]

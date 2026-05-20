@@ -7,6 +7,7 @@
 use wherror::Error;
 
 use crate::common::app_state::AppState;
+use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
@@ -154,6 +155,10 @@ pub fn handle_session_lifecycle_setup(
         return IntentResult::with_commands(vec![
             Command::SaveNewLifecycleSession(SaveNewLifecycleSession {
                 session_id: new_id.clone(),
+            }),
+            Command::PushChatEntry(PushChatEntry {
+                session_id: new_id.clone(),
+                entry: crate::feat::session::session_actor::setup_running_msg(),
             }),
             Command::RunSessionSetup(RunSessionSetup {
                 session_id: new_id,
@@ -367,14 +372,15 @@ mod tests {
             state.active_session().lifecycle_name(),
             Some("fossil branch")
         );
-        // And SaveNewLifecycleSession then RunSessionSetup are emitted.
-        assert_eq!(result.commands.len(), 2);
+        // And SaveNewLifecycleSession, PushChatEntry, then RunSessionSetup are emitted.
+        assert_eq!(result.commands.len(), 3);
         assert!(matches!(
             &result.commands[0],
             Command::SaveNewLifecycleSession(_)
         ));
+        assert!(matches!(&result.commands[1], Command::PushChatEntry(_)));
         assert!(matches!(
-            &result.commands[1],
+            &result.commands[2],
             Command::RunSessionSetup(RunSessionSetup {
                 command,
                 ..
@@ -406,9 +412,9 @@ mod tests {
             &result.commands[0],
             Command::SaveNewLifecycleSession(_)
         ));
-        // And RunSessionSetup is emitted second with rendered args.
+        // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
-            &result.commands[1],
+            &result.commands[2],
             Command::RunSessionSetup(RunSessionSetup {
                 command,
                 args,
@@ -566,9 +572,9 @@ mod tests {
             &result.commands[0],
             Command::SaveNewLifecycleSession(_)
         ));
-        // And RunSessionSetup is emitted second with rendered args.
+        // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
-            &result.commands[1],
+            &result.commands[2],
             Command::RunSessionSetup(RunSessionSetup {
                 command,
                 args,
@@ -875,9 +881,9 @@ mod tests {
             &result.commands[0],
             Command::SaveNewLifecycleSession(_)
         ));
-        // And RunSessionSetup is emitted second with rendered args.
+        // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
-            &result.commands[1],
+            &result.commands[2],
             Command::RunSessionSetup(RunSessionSetup {
                 command,
                 args,
@@ -921,9 +927,9 @@ mod tests {
             &result.commands[0],
             Command::SaveNewLifecycleSession(_)
         ));
-        // And RunSessionSetup is emitted second with rendered args.
+        // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
-            &result.commands[1],
+            &result.commands[2],
             Command::RunSessionSetup(RunSessionSetup {
                 command,
                 args,
@@ -997,11 +1003,12 @@ mod tests {
             state.active_session().lifecycle_name(),
             Some("fossil branch")
         );
-        // And SaveNewLifecycleSession then RunSessionSetup are emitted.
+        // And SaveNewLifecycleSession, PushChatEntry, then RunSessionSetup are emitted.
         assert!(matches!(
             &result.commands[0],
             Command::SaveNewLifecycleSession(_)
         ));
-        assert!(matches!(&result.commands[1], Command::RunSessionSetup(..)));
+        assert!(matches!(&result.commands[1], Command::PushChatEntry(..)));
+        assert!(matches!(&result.commands[2], Command::RunSessionSetup(..)));
     }
 }

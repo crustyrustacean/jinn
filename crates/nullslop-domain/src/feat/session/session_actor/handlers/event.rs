@@ -1,6 +1,7 @@
 //! Event handlers — process streaming and tool call events.
 
 use crate::common::actor::ActorContext;
+use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::protocol::command::AssemblePrompt;
 use crate::feat::context::protocol::event::PromptAssembled;
@@ -224,7 +225,8 @@ impl SessionPersistenceActor {
 
         // If messages were drained, start a new turn.
         if !drained_entries.is_empty() {
-            self.start_turn_from_queued(&event.session_id, &drained_entries, ctx);
+            self.start_turn_from_queued(&event.session_id, &drained_entries, ctx)
+                .await;
         }
 
         // Persist session after stream finishes (not on cancel).
@@ -353,16 +355,21 @@ impl SessionPersistenceActor {
     }
 
     /// Pushes a table entry after model refresh.
+    ///
+    /// Emits `PushChatEntry` commands so the entries are persisted.
     pub(in crate::feat::session::session_actor) fn on_models_refreshed(
         &self,
         event: &ModelsRefreshed,
+        ctx: &ActorContext,
     ) {
         // No providers at all — push a simple system entry.
         if event.results.is_empty() && event.errors.is_empty() {
-            let mut state = self.state.write();
-            state
-                .session_mut_or_create(&event.session_id)
-                .push_entry(ChatEntry::system("Models refreshed: no providers found"));
+            if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                session_id: event.session_id.clone(),
+                entry: ChatEntry::system("Models refreshed: no providers found"),
+            })) {
+                tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for models refresh");
+            }
             return;
         }
 
@@ -400,15 +407,17 @@ impl SessionPersistenceActor {
         }
 
         let data = TableData { headers, rows };
-        let mut state = self.state.write();
-        state
-            .session_mut_or_create(&event.session_id)
-            .push_entry(ChatEntry::table(data));
+        if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: event.session_id.clone(),
+            entry: ChatEntry::table(data),
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for models refresh");
+        }
     }
 
     /// Drain queued messages into a new turn: push each entry, then emit
     /// `AssemblePrompt` with the full session history.
-    pub(in crate::feat::session::session_actor) fn start_turn_from_queued(
+    pub(in crate::feat::session::session_actor) async fn start_turn_from_queued(
         &self,
         session_id: &SessionId,
         entries: &[ChatEntry],
@@ -447,5 +456,8 @@ impl SessionPersistenceActor {
                 tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted for queued message");
             }
         }
+
+        // Persist the queued entries for crash safety.
+        self.save_active_session(session_id).await;
     }
 }
