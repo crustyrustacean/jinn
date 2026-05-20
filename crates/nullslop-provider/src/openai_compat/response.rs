@@ -46,11 +46,7 @@ impl StreamResponseParser {
     /// - `delta.reasoning_content` → `StreamEvent::Reasoning`
     /// - `delta.tool_calls[]` → `ToolUseStart`/`ToolUseInputDelta` (state tracked)
     /// - `finish_reason` → `ToolUseComplete` + `Done` (drains pending tool calls)
-    #[allow(
-        clippy::collapsible_if,
-        clippy::manual_let_else,
-        clippy::too_many_lines
-    )]
+    #[allow(clippy::manual_let_else)]
     pub fn parse_data(&mut self, json: &str) -> Vec<StreamEvent> {
         let mut results = Vec::new();
 
@@ -87,86 +83,14 @@ impl StreamResponseParser {
             // Tool call deltas.
             if let Some(tool_calls) = delta.get("tool_calls").and_then(|t| t.as_array()) {
                 for tc in tool_calls {
-                    let index = tc
-                        .get("index")
-                        .and_then(serde_json::Value::as_u64)
-                        .unwrap_or(0) as usize;
-
-                    let state = self.tool_states.entry(index).or_default();
-
-                    // First chunk: id and name.
-                    if let Some(id) = tc.get("id").and_then(|i| i.as_str()) {
-                        id.clone_into(&mut state.id);
-                    }
-
-                    let function = tc.get("function");
-
-                    if let Some(name) = function
-                        .and_then(|f| f.get("name"))
-                        .and_then(|n| n.as_str())
-                    {
-                        name.clone_into(&mut state.name);
-
-                        if !state.started {
-                            state.started = true;
-                            results.push(StreamEvent::ToolUseStart {
-                                index,
-                                id: state.id.clone(),
-                                name: state.name.clone(),
-                            });
-                        }
-                    }
-
-                    // Arguments delta.
-                    let arguments = function
-                        .and_then(|f| f.get("arguments"))
-                        .and_then(|a| a.as_str())
-                        .unwrap_or("");
-
-                    if !arguments.is_empty() {
-                        state.arguments_buffer.push_str(arguments);
-                        results.push(StreamEvent::ToolUseInputDelta {
-                            index,
-                            partial_json: arguments.to_owned(),
-                        });
-                    }
+                    self.handle_tool_call_delta(tc, &mut results);
                 }
             }
 
             // Finish reason.
             if let Some(finish_reason) = choice.get("finish_reason").and_then(|f| f.as_str()) {
                 if !finish_reason.is_empty() && !self.done_emitted {
-                    // Drain all pending tool calls.
-                    let mut pending_indices: Vec<usize> =
-                        self.tool_states.keys().copied().collect();
-                    pending_indices.sort_unstable();
-
-                    for idx in pending_indices {
-                        if let Some(state) = self.tool_states.remove(&idx) {
-                            if state.started {
-                                results.push(StreamEvent::ToolUseComplete {
-                                    index: idx,
-                                    tool_call: ToolCall {
-                                        id: state.id,
-                                        name: state.name,
-                                        arguments: state.arguments_buffer,
-                                    },
-                                });
-                            }
-                        }
-                    }
-
-                    let stop_reason = match finish_reason {
-                        "tool_calls" => StopReason::ToolUse,
-                        "stop" => StopReason::EndTurn,
-                        other => StopReason::Other(other.to_string()),
-                    };
-
-                    results.push(StreamEvent::Done {
-                        stop_reason,
-                        usage: None,
-                    });
-                    self.done_emitted = true;
+                    self.handle_finish_reason(finish_reason, &mut results);
                 }
             }
         }
@@ -196,20 +120,58 @@ impl StreamResponseParser {
         results
     }
 
-    /// Handle the `[DONE]` sentinel from SSE.
-    ///
-    /// If `finish_reason` already emitted a `Done`, this is a no-op
-    /// (prevents the OpenRouter double-Done bug).
-    /// Otherwise, drains any pending tool calls and emits `Done(EndTurn)`.
-    #[allow(clippy::collapsible_if)]
-    pub fn handle_done(&mut self) -> Vec<StreamEvent> {
-        if self.done_emitted {
-            return vec![];
+    fn handle_tool_call_delta(
+        &mut self,
+        tc: &serde_json::Value,
+        results: &mut Vec<StreamEvent>,
+    ) {
+        let index = tc
+            .get("index")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0) as usize;
+
+        let state = self.tool_states.entry(index).or_default();
+
+        // First chunk: id and name.
+        if let Some(id) = tc.get("id").and_then(|i| i.as_str()) {
+            id.clone_into(&mut state.id);
         }
 
-        let mut results = Vec::new();
+        let function = tc.get("function");
 
-        // Drain any remaining tool calls.
+        if let Some(name) = function
+            .and_then(|f| f.get("name"))
+            .and_then(|n| n.as_str())
+        {
+            name.clone_into(&mut state.name);
+
+            if !state.started {
+                state.started = true;
+                results.push(StreamEvent::ToolUseStart {
+                    index,
+                    id: state.id.clone(),
+                    name: state.name.clone(),
+                });
+            }
+        }
+
+        // Arguments delta.
+        let arguments = function
+            .and_then(|f| f.get("arguments"))
+            .and_then(|a| a.as_str())
+            .unwrap_or("");
+
+        if !arguments.is_empty() {
+            state.arguments_buffer.push_str(arguments);
+            results.push(StreamEvent::ToolUseInputDelta {
+                index,
+                partial_json: arguments.to_owned(),
+            });
+        }
+    }
+
+    fn drain_pending_tool_calls(&mut self) -> Vec<StreamEvent> {
+        let mut results = Vec::new();
         let mut pending_indices: Vec<usize> = self.tool_states.keys().copied().collect();
         pending_indices.sort_unstable();
 
@@ -228,11 +190,42 @@ impl StreamResponseParser {
             }
         }
 
-        let has_remaining_tools = !results.is_empty();
-        let stop_reason = if has_remaining_tools {
-            StopReason::ToolUse
-        } else {
+        results
+    }
+
+    fn handle_finish_reason(&mut self, finish_reason: &str, results: &mut Vec<StreamEvent>) {
+        // Drain all pending tool calls.
+        let drained = self.drain_pending_tool_calls();
+        results.extend(drained);
+
+        let stop_reason = match finish_reason {
+            "tool_calls" => StopReason::ToolUse,
+            "stop" => StopReason::EndTurn,
+            other => StopReason::Other(other.to_string()),
+        };
+
+        results.push(StreamEvent::Done {
+            stop_reason,
+            usage: None,
+        });
+        self.done_emitted = true;
+    }
+
+    /// Handle the `[DONE]` sentinel from SSE.
+    ///
+    /// If `finish_reason` already emitted a `Done`, this is a no-op
+    /// (prevents the OpenRouter double-Done bug).
+    /// Otherwise, drains any pending tool calls and emits `Done(EndTurn)`.
+    pub fn handle_done(&mut self) -> Vec<StreamEvent> {
+        if self.done_emitted {
+            return vec![];
+        }
+
+        let mut results = self.drain_pending_tool_calls();
+        let stop_reason = if results.is_empty() {
             StopReason::EndTurn
+        } else {
+            StopReason::ToolUse
         };
 
         results.push(StreamEvent::Done {
