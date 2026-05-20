@@ -85,11 +85,19 @@ impl SqliteSessionStore {
     }
 
     /// Creates a store at an explicit directory (for testing).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the directory cannot be created or the database pool cannot be built.
     pub fn new_in(dir: &Path) -> Result<Self, Report<SessionStoreError>> {
         Self::build_pool(dir, &PoolConfig::default())
     }
 
     /// Creates a store at an explicit directory with custom pool configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the directory cannot be created or the database pool cannot be built.
     pub fn new_with_config(
         dir: &Path,
         config: &PoolConfig,
@@ -901,7 +909,7 @@ fn delete_blocking(
 /// so the forked session's metadata reflects its new identity.
 /// Falls back to `None` if deserialization or re-serialization fails.
 fn fork_metadata(
-    source_metadata: &Option<String>,
+    source_metadata: Option<&String>,
     source_id_str: &str,
     new_id_str: &str,
 ) -> Option<String> {
@@ -954,7 +962,7 @@ fn fork_blocking(
                 lifecycle_args: source_meta.lifecycle_args,
                 archived: false,
                 lifecycle_script_state: source_meta.lifecycle_script_state,
-                metadata: fork_metadata(&source_meta.metadata, &source_str, &new_id_str),
+                metadata: fork_metadata(source_meta.metadata.as_ref(), &source_str, &new_id_str),
             })
             .execute(txn)?;
 
