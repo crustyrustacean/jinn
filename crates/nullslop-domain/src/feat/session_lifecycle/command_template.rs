@@ -17,6 +17,7 @@
 //! and substitutes both `$1` occurrences with the same arg.
 
 use std::fmt;
+use regex::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// A segment of a displayed command line, tagged with its parameter index.
@@ -53,6 +54,15 @@ impl DisplaySegment {
             param_index: Some(index),
         }
     }
+}
+
+/// A classified span from tokenizing a display-form command line.
+#[derive(Debug, Clone, PartialEq)]
+enum Span {
+    /// Static text between (or surrounding) placeholders.
+    Static(String),
+    /// A `<...>` placeholder. Contains the inner text (e.g., `"branch"` from `<branch>`).
+    Placeholder(String),
 }
 
 /// A single parameter extracted from a command template.
@@ -335,90 +345,100 @@ impl CommandTemplate {
 
     /// Tokenize a display-form line into `DisplaySegment`s.
     ///
-    /// Walks the text looking for `<...>` patterns. For each match, looks up
-    /// the corresponding param index. If a user-provided arg is available,
-    /// substitutes it; otherwise keeps the placeholder text.
+    /// Decomposes the line into [`Span`]s, then substitutes any args that are
+    /// available for the corresponding parameters.
     fn tokenize_display_line(&self, line: &str, args: &[String]) -> Vec<DisplaySegment> {
-        let mut segments = Vec::new();
-        let graphemes: Vec<&str> = line.graphemes(true).collect();
-        let mut i = 0;
-        let mut static_start = 0;
+        let spans = tokenize_spans(line);
+        substitute_spans(spans, &self.params, args)
+    }
+}
 
-        // Build a lookup: display token -> param index.
-        // E.g., Named("branch") -> ("<branch>", param_list_index).
-        //        Positional(1) -> ("<1>", param_list_index).
-        //        Splat -> ("<args>", param_list_index).
-        let mut arg_offset = 0usize;
-        let mut token_map: Vec<(String, usize, usize)> = Vec::new(); // (display_token, param_index, arg_offset_for_this_param)
-        for (pidx, param) in self.params.iter().enumerate() {
-            match param {
-                Param::Named(name) => {
-                    token_map.push((format!("<{name}>"), pidx, arg_offset));
-                    arg_offset += 1;
-                }
-                Param::Positional(n) => {
-                    token_map.push((format!("<{n}>"), pidx, arg_offset));
-                    arg_offset += 1;
-                }
-                Param::Splat => {
-                    token_map.push(("<args>".to_owned(), pidx, arg_offset));
-                }
+/// Tokenize a display-form line into [`Span`]s by finding all `<...>` patterns.
+///
+/// Pure function — no `&self`, no args, no param lookup.
+/// Unclosed `<` without a matching `>` is treated as static text (not a placeholder).
+fn tokenize_spans(line: &str) -> Vec<Span> {
+    static RE: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"<([^>]+)>").expect("invalid regex"));
+
+    let mut spans = Vec::new();
+    let mut last_end = 0;
+
+    for caps in RE.captures_iter(line) {
+        let m = caps.get(0).expect("capture group 0 always exists");
+        // Emit preceding static text if any.
+        if m.start() > last_end {
+            spans.push(Span::Static(line[last_end..m.start()].to_owned()));
+        }
+        let inner = caps
+            .get(1)
+            .expect("capture group 1 exists")
+            .as_str()
+            .to_owned();
+        spans.push(Span::Placeholder(inner));
+        last_end = m.end();
+    }
+
+    // Emit trailing static text if any.
+    if last_end < line.len() {
+        spans.push(Span::Static(line[last_end..].to_owned()));
+    }
+
+    spans
+}
+
+/// Substitute args into classified [`Span`]s, producing display-ready [`DisplaySegment`]s.
+///
+/// For [`Span::Placeholder`], looks up the corresponding param. If an arg is
+/// available, substitutes the arg value; otherwise keeps the placeholder text.
+/// [`Span::Static`] passes through as a static [`DisplaySegment`].
+fn substitute_spans(
+    spans: Vec<Span>,
+    params: &[Param],
+    args: &[String],
+) -> Vec<DisplaySegment> {
+    // Build lookup: (display_token, param_index, arg_offset).
+    let mut arg_offset = 0usize;
+    let mut token_map: Vec<(String, usize, usize)> = Vec::new();
+    for (pidx, param) in params.iter().enumerate() {
+        match param {
+            Param::Named(name) => {
+                token_map.push((format!("<{name}>"), pidx, arg_offset));
+                arg_offset += 1;
+            }
+            Param::Positional(n) => {
+                token_map.push((format!("<{n}>"), pidx, arg_offset));
+                arg_offset += 1;
+            }
+            Param::Splat => {
+                token_map.push(("<args>".to_owned(), pidx, arg_offset));
             }
         }
+    }
 
-        while i < graphemes.len() {
-            if graphemes[i] == "<" {
-                // Potential placeholder — scan for '>'.
-                let start = i + 1;
-                let mut end = start;
-                while end < graphemes.len() && graphemes[end] != ">" {
-                    end += 1;
-                }
-
-                if end < graphemes.len() && end > start {
-                    let token_text: String = graphemes[start..end].join("");
-                    let full_token = format!("<{token_text}>");
-
-                    // Check if this matches any known param.
-                    if let Some((_, param_idx, arg_off)) =
-                        token_map.iter().find(|(tok, _, _)| *tok == full_token)
-                    {
-                        // Emit preceding static text.
-                        if static_start < i {
-                            let text: String = graphemes[static_start..i].join("");
-                            segments.push(DisplaySegment::static_text(text));
-                        }
-
-                        // Determine display text: substitute arg if available.
+    spans
+        .into_iter()
+        .map(|span| match span {
+            Span::Static(text) => DisplaySegment::static_text(text),
+            Span::Placeholder(inner) => {
+                let full_token = format!("<{inner}>");
+                match token_map.iter().find(|(tok, _, _)| *tok == full_token) {
+                    Some((_, param_idx, arg_off)) => {
                         let display_text = if *arg_off < args.len() {
-                            match &self.params[*param_idx] {
+                            match &params[*param_idx] {
                                 Param::Splat => args[*arg_off..].join(" "),
                                 _ => args[*arg_off].clone(),
                             }
                         } else {
                             full_token.clone()
                         };
-
-                        segments.push(DisplaySegment::param(display_text, *param_idx));
-                        static_start = end + 1;
-                        i = end + 1;
-                        continue;
+                        DisplaySegment::param(display_text, *param_idx)
                     }
+                    None => DisplaySegment::static_text(full_token),
                 }
             }
-            i += 1;
-        }
-
-        // Emit remaining static text.
-        if static_start < graphemes.len() {
-            let text: String = graphemes[static_start..].join("");
-            if !text.is_empty() {
-                segments.push(DisplaySegment::static_text(text));
-            }
-        }
-
-        segments
-    }
+        })
+        .collect()
 }
 
 /// Shell-quote a value for safe interpolation into a `$SHELL -c` command.
