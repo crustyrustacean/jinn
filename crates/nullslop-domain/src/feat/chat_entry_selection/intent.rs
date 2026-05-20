@@ -292,7 +292,7 @@ mod tests {
                 ToolResultStatus::Success,
             ));
         state.active_session_mut().select_next_entry();
-        let entry_id = state.active_session().selected_entry_id().unwrap().clone();
+        let _entry_id = state.active_session().selected_entry_id().unwrap().clone();
 
         // When handling expand tool entry.
         let result = handle_expand_tool_entry(&mut state);
@@ -391,7 +391,7 @@ mod tests {
             "{\"cmd\": true}",
         ));
         state.active_session_mut().select_next_entry();
-        let entry_id = state.active_session().selected_entry_id().unwrap().clone();
+        let _entry_id = state.active_session().selected_entry_id().unwrap().clone();
 
         // When handling expand tool entry.
         let result = handle_expand_tool_entry(&mut state);

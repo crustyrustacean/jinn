@@ -312,7 +312,7 @@ mod tests {
         let (_dir, mut conn) = make_conn();
 
         // When running migrations.
-        run_migrations(&mut conn);
+        run_migrations(&mut conn).unwrap();
 
         // Then the _migrations table has 3 entries.
 
@@ -352,10 +352,10 @@ mod tests {
 
         // Given a database with migrations already applied.
         let (_dir, mut conn) = make_conn();
-        run_migrations(&mut conn);
+        run_migrations(&mut conn).unwrap();
 
         // When running migrations again.
-        run_migrations(&mut conn);
+        run_migrations(&mut conn).unwrap();
 
         // Then no duplicate entries are added.
 
@@ -378,7 +378,7 @@ mod tests {
         let (_dir, mut conn) = make_conn();
 
         // When running migrations.
-        run_migrations(&mut conn);
+        run_migrations(&mut conn).unwrap();
 
         // Then all expected tables exist.
 
