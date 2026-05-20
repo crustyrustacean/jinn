@@ -58,7 +58,9 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         .session
         .sessions()
         .iter()
-        .filter(|(_, session)| session.session_state() == crate::feat::session::chat_session::SessionState::Loaded)
+        .filter(|(_, session)| {
+            session.session_state() == crate::feat::session::chat_session::SessionState::Loaded
+        })
         .map(|(id, session): (&_, &_)| SessionEntry {
             id: id.clone(),
             title: session.title().unwrap_or("Untitled Session").to_owned(),

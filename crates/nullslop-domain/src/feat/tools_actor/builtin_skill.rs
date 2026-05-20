@@ -77,12 +77,24 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let body = strip_frontmatter(&content);
 
         // Pin the skill content as a TOP system entry in the session.
-        if let (Some(state), Some(session_id)) = (ctx.state, ctx.session_id) {
+        if let (Some(state), Some(session_id)) = (ctx.state, ctx.session_id.clone()) {
             let location = skill_path.to_string_lossy().to_string();
             let entry = ChatEntry::skill(&name, &location, body).with_pin(PinPosition::Top);
-            let mut guard = state.write();
-            let session = guard.session_mut_or_create(&session_id);
-            session.push_entry(entry);
+
+            // Emit PushChatEntry command so the session actor persists the entry.
+            if let Some(sink) = ctx.sink {
+                let _ = sink.send_command(crate::protocol::Command::PushChatEntry(
+                    crate::feat::chat_input::protocol::command::PushChatEntry {
+                        session_id: session_id.clone(),
+                        entry,
+                    },
+                ));
+            } else {
+                // Fallback: push directly (no persistence, but entry appears in UI).
+                let mut guard = state.write();
+                let session = guard.session_mut_or_create(&session_id);
+                session.push_entry(entry);
+            }
         }
 
         ToolResult {

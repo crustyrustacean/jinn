@@ -105,8 +105,9 @@ impl SessionPersistenceActor {
         session.chat_input_mut().replace_all(payload.text.clone());
     }
 
-    /// PushChatEntry: push entry to session history, emit ChatEntrySubmitted event.
-    pub(in crate::feat::session::session_actor) fn handle_push_chat_entry(
+    /// PushChatEntry: push entry to session history, emit ChatEntrySubmitted event,
+    /// and persist the session to disk.
+    pub(in crate::feat::session::session_actor) async fn handle_push_chat_entry(
         &self,
         payload: &PushChatEntry,
         ctx: &ActorContext,
@@ -123,6 +124,8 @@ impl SessionPersistenceActor {
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
         }
+
+        self.save_active_session(&payload.session_id).await;
     }
 
     /// SendMessage: backward compat — emit EnqueueUserMessage.
@@ -252,6 +255,9 @@ impl SessionPersistenceActor {
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SwitchPromptStrategy");
         }
+
+        // Persist the restored session (includes the "Session restored" system entries).
+        self.save_active_session(&session_id).await;
     }
 
     /// SessionForkRequested: fork the session in SQLite, then load the new session.
@@ -308,18 +314,22 @@ impl SessionPersistenceActor {
     }
 
     /// BeginCompaction: set phase to Compacting, push "Starting..." system entry,
-    /// mark gathered entries as ignored.
-    pub(in crate::feat::session::session_actor) fn handle_begin_compaction(
+    /// mark gathered entries as ignored, and persist.
+    pub(in crate::feat::session::session_actor) async fn handle_begin_compaction(
         &self,
         payload: &BeginCompaction,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&payload.session_id);
-        session.begin_compacting(payload.gathered_indices.clone());
-        session.push_entry(ChatEntry::system("Starting context compaction..."));
-        if !payload.gathered_indices.is_empty() {
-            session.mark_entries_ignored(&payload.gathered_indices);
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+            session.begin_compacting(payload.gathered_indices.clone());
+            session.push_entry(ChatEntry::system("Starting context compaction..."));
+            if !payload.gathered_indices.is_empty() {
+                session.mark_entries_ignored(&payload.gathered_indices);
+            }
         }
+
+        self.save_active_session(&payload.session_id).await;
     }
 
     /// EndCompaction: insert compaction entry or error entry, set phase to Idle,
@@ -379,7 +389,8 @@ impl SessionPersistenceActor {
 
         // If messages were queued during compaction, start a new turn.
         if !drained_entries.is_empty() {
-            self.start_turn_from_queued(&payload.session_id, &drained_entries, ctx);
+            self.start_turn_from_queued(&payload.session_id, &drained_entries, ctx)
+                .await;
         }
     }
 }
