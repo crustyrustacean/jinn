@@ -102,7 +102,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
-            .bind("gb", Intent::TokenBudgetInputEnter, KeyCategory::Context)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             // Sidebar resize
             .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
@@ -229,48 +228,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<c-c>", Intent::Quit, KeyCategory::General);
     });
 
-    // TokenBudgetInput scope — typing a numeric budget value.
-    keymap.scope(Scope::TokenBudgetInput, |b| {
-        b
-        .bind("<esc>", Intent::TokenBudgetInputLeave, KeyCategory::General)
-        .bind("<enter>", Intent::TokenBudgetInputConfirm, KeyCategory::Input)
-        .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
-        .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
-        .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
-        .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
-        .bind("0", Intent::InsertChar { ch: '0' }, KeyCategory::Input)
-        .bind("1", Intent::InsertChar { ch: '1' }, KeyCategory::Input)
-        .bind("2", Intent::InsertChar { ch: '2' }, KeyCategory::Input)
-        .bind("3", Intent::InsertChar { ch: '3' }, KeyCategory::Input)
-        .bind("4", Intent::InsertChar { ch: '4' }, KeyCategory::Input)
-        .bind("5", Intent::InsertChar { ch: '5' }, KeyCategory::Input)
-        .bind("6", Intent::InsertChar { ch: '6' }, KeyCategory::Input)
-        .bind("7", Intent::InsertChar { ch: '7' }, KeyCategory::Input)
-        .bind("8", Intent::InsertChar { ch: '8' }, KeyCategory::Input)
-        .bind("9", Intent::InsertChar { ch: '9' }, KeyCategory::Input);
-    });
-
-    // SlidingWindowInput scope — typing a numeric window size.
-    keymap.scope(Scope::SlidingWindowInput, |b| {
-        b
-        .bind("<esc>", Intent::SlidingWindowInputLeave, KeyCategory::General)
-        .bind("<enter>", Intent::SlidingWindowInputConfirm, KeyCategory::Input)
-        .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
-        .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
-        .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
-        .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
-        .bind("0", Intent::InsertChar { ch: '0' }, KeyCategory::Input)
-        .bind("1", Intent::InsertChar { ch: '1' }, KeyCategory::Input)
-        .bind("2", Intent::InsertChar { ch: '2' }, KeyCategory::Input)
-        .bind("3", Intent::InsertChar { ch: '3' }, KeyCategory::Input)
-        .bind("4", Intent::InsertChar { ch: '4' }, KeyCategory::Input)
-        .bind("5", Intent::InsertChar { ch: '5' }, KeyCategory::Input)
-        .bind("6", Intent::InsertChar { ch: '6' }, KeyCategory::Input)
-        .bind("7", Intent::InsertChar { ch: '7' }, KeyCategory::Input)
-        .bind("8", Intent::InsertChar { ch: '8' }, KeyCategory::Input)
-        .bind("9", Intent::InsertChar { ch: '9' }, KeyCategory::Input);
-    });
-
     // RenameSessionInput scope — editing a session title.
     keymap.scope(Scope::RenameSessionInput, |b| {
         b
@@ -331,8 +288,6 @@ pub fn collect_all_bindings(
         Scope::Picker,
         Scope::Input,
         Scope::ArgInput,
-        Scope::TokenBudgetInput,
-        Scope::SidebarResize,
     ] {
         collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries, theme);
     }

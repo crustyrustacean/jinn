@@ -5,7 +5,6 @@
 //! to initialize the context and preferences pipelines.
 
 use crate::common::actor::ActorContext;
-use crate::feat::context::protocol::command::SwitchPromptStrategy;
 use crate::protocol::{Command, PromptStrategyId};
 
 use super::super::SessionPersistenceActor;
@@ -97,23 +96,9 @@ impl SessionPersistenceActor {
         if let Err(e) = ctx.send_command(Command::UpdatePreferences(crate::feat::preferences_actor::protocol::command::UpdatePreferences {
                 updates: vec![
                     crate::feat::preferences_actor::protocol::command::PreferenceUpdate::SetLastModel(prefs.last_model.clone()),
-                    crate::feat::preferences_actor::protocol::command::PreferenceUpdate::SetLastStrategy(prefs.last_strategy.clone()),
                 ],
             })) {
             tracing::warn!(err = ?e, "session-actor failed to send UpdatePreferences on startup");
-        }
-
-        // Emit SwitchPromptStrategy so the context actor initializes the strategy.
-        if let Some(ref strategy_str) = prefs.last_strategy {
-            // Get the current active session (may have changed after loading unarchived sessions).
-            let active_id = self.state.read().session.active_session_id().clone();
-            let strategy_id = PromptStrategyId::new(strategy_str.clone());
-            if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
-                session_id: active_id,
-                strategy_id,
-            })) {
-                tracing::error!(err = ?e, "failed to send command");
-            }
         }
     }
 }

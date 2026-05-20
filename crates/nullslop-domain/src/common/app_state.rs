@@ -161,9 +161,7 @@ pub enum FocusScope {
     /// Arg input popup — collecting positional args for a lifecycle command.
     ArgInput,
     /// Token budget input popup — typing a numeric budget value.
-    TokenBudgetInput,
     /// Sliding window input popup — typing a numeric window size.
-    SlidingWindowInput,
     /// Rename session input popup — editing a session title.
     RenameSessionInput,
     /// Sidebar resize mode — adjusting sidebar width with h/l keys.
@@ -183,8 +181,6 @@ impl FocusScope {
             | Self::SidebarResize => Mode::Normal,
             Self::Input
             | Self::ArgInput
-            | Self::TokenBudgetInput
-            | Self::SlidingWindowInput
             | Self::RenameSessionInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
         }
@@ -202,8 +198,6 @@ impl std::fmt::Display for FocusScope {
             Self::SidebarMinimap => write!(f, "SidebarMinimap"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
-            Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
-            Self::SlidingWindowInput => write!(f, "SlidingWindowInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
         }
@@ -470,10 +464,8 @@ pub struct FrontendState {
 
     /// Token budget input popup state — active when `FocusScope::TokenBudgetInput` is on the scope stack.
     /// OWNER: IntentHandler (budget input editing, confirmation).
-    pub token_budget_input: TokenBudgetInputState,
     /// Sliding window input popup state — active when `FocusScope::SlidingWindowInput` is on the scope stack.
     /// OWNER: IntentHandler (window size input editing, confirmation).
-    pub sliding_window_input: SlidingWindowInputState,
     /// Rename session input popup state — active when `FocusScope::RenameSessionInput` is on the scope stack.
     /// OWNER: IntentHandler (rename input editing, confirmation).
     pub rename_session_input: RenameSessionInputState,
@@ -512,8 +504,6 @@ impl Default for FrontendState {
             system_themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
             arg_input: ArgInputState::default(),
-            token_budget_input: TokenBudgetInputState::default(),
-            sliding_window_input: SlidingWindowInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
             sidebar_width: 30,
         }

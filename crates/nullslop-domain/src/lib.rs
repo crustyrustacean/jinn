@@ -77,7 +77,6 @@ pub use feat::session::no_api_keys_msg;
 pub use feat::session::welcome_msg;
 
 // Re-export preferences types
-pub use feat::preferences_actor::ContextSlidingWindowConfig;
 pub use feat::preferences_actor::ContextTokenBudgetConfig;
 pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
 pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
@@ -112,12 +111,11 @@ pub use feat::chat_input::protocol::command::{
 };
 pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
 pub use feat::context::protocol::command::{
-    AssemblePrompt, PinChatEntry, RestoreStrategyState, SwitchPromptStrategy, UnpinChatEntry,
+    AssemblePrompt, PinChatEntry, UnpinChatEntry,
 };
 pub use feat::context::protocol::event::{
-    PromptAssembled, PromptStrategySwitched, StrategyStateUpdated,
+    PromptAssembled,
 };
-pub use feat::context::protocol::strategy_id::PromptStrategyId;
 pub use feat::provider::llm_message::LlmMessage;
 pub use feat::provider::protocol::command::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
