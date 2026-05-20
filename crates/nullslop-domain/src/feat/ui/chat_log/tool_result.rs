@@ -21,9 +21,7 @@ use crate::feat::tools_actor::truncation::format_size;
 use nullslop_provider::tool_types::TruncationMeta;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use unicode_segmentation::UnicodeSegmentation;
-
-use super::shared::{Pad, RenderContext, pad_entry_with, pad_line_to_width};
+use super::shared::{Pad, RenderContext, pad_entry_with, pad_line_to_width, truncate_to_width};
 
 pub fn to_lines(
     name: &str,
@@ -165,22 +163,6 @@ fn status_foreground(status: ToolResultStatus, theme: &Theme) -> ratatui::style:
     }
 }
 
-/// Truncate a string to `max_width` graphemes.
-///
-/// Returns the string unchanged if it fits.
-/// Returns an empty string if `max_width` is 0.
-fn truncate_to_width(s: &str, max_width: usize) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-    let graphemes: Vec<&str> = s.graphemes(true).collect();
-    if graphemes.len() <= max_width {
-        s.to_owned()
-    } else {
-        graphemes[..max_width].iter().copied().collect()
-    }
-}
-
 /// Format a human-readable label for content-level truncation.
 ///
 /// Shows how much of the original output is visible, e.g.:
@@ -209,6 +191,7 @@ mod tests {
             is_expanded,
             tool_entry_max_lines: max_lines,
             theme: crate::feat::theme::default_theme(),
+            paired_status: None,
         }
     }
 
