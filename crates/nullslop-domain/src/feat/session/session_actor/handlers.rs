@@ -1,3 +1,10 @@
-mod command;
+mod compaction;
+mod enqueue;
 mod event;
+mod lifecycle;
+mod misc;
 mod persistence;
+mod session_load;
+mod startup;
+mod streaming;
+mod tool_calls;
