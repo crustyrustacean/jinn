@@ -7,10 +7,27 @@
 use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt as _};
+use wherror::Error;
 
 use super::default_theme;
 use super::theme::{Theme, ThemeFile};
-use super::theme_error::ThemeError;
+
+/// Errors that can occur during theme loading and parsing.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ThemeError {
+    /// Theme file not found.
+    #[error("theme not found")]
+    NotFound,
+    /// TOML parsing error.
+    #[error("theme parse error")]
+    Parse,
+    /// Invalid color value.
+    #[error("invalid theme color")]
+    InvalidColor,
+    /// I/O error reading theme file.
+    #[error("theme I/O error")]
+    Io,
+}
 
 /// Discovers all theme TOML files in the given themes directory.
 ///

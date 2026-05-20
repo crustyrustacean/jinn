@@ -32,8 +32,7 @@ pub mod default_theme;
 pub mod loader;
 pub mod theme;
 pub mod theme_entry;
-pub mod theme_error;
-
+pub use loader::ThemeError;
 pub use color::ThemeColor;
 pub use default_theme::default_theme;
 pub use loader::{
@@ -41,4 +40,3 @@ pub use loader::{
 };
 pub use theme::Theme;
 pub use theme_entry::ThemeEntry;
-pub use theme_error::ThemeError;
