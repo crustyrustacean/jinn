@@ -832,3 +832,175 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
     // Then no commands are emitted (no teardown command to run).
     assert!(result.commands.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Pure render helper tests
+// ---------------------------------------------------------------------------
+
+use crate::feat::ui::sidebar::sessions::render::entry_line::{
+    arrow_span, entry_title_style, indicator_span,
+};
+use crate::feat::ui::sidebar::sessions::render::truncate::truncate_str;
+use ratatui::style::Modifier;
+use throbber_widgets_tui::ThrobberState;
+
+fn default_theme() -> crate::feat::theme::Theme {
+    AppState::default().frontend.theme
+}
+
+// --- entry_title_style ---
+
+#[rstest::rstest]
+fn title_style_is_red_reversed_when_error_and_selected() {
+    // Given an entry with error and selected.
+    let theme = default_theme();
+
+    // When computing title style.
+    let style = entry_title_style(true, false, true, &theme);
+
+    // Then the style is red + reversed.
+    assert_eq!(style.fg, Some(Color::Red));
+    assert!(style.add_modifier.contains(Modifier::REVERSED));
+}
+
+#[rstest::rstest]
+fn title_style_is_red_when_error_not_selected() {
+    // Given an entry with error but not selected.
+    let theme = default_theme();
+
+    // When computing title style.
+    let style = entry_title_style(false, false, true, &theme);
+
+    // Then the style is red, no reversed.
+    assert_eq!(style.fg, Some(Color::Red));
+    assert!(!style.add_modifier.contains(Modifier::REVERSED));
+}
+
+#[rstest::rstest]
+fn title_style_is_reversed_when_selected_no_error() {
+    // Given a selected entry without error.
+    let theme = default_theme();
+
+    // When computing title style.
+    let style = entry_title_style(true, false, false, &theme);
+
+    // Then the style is reversed, no specific fg.
+    assert!(style.add_modifier.contains(Modifier::REVERSED));
+    assert_eq!(style.fg, None);
+}
+
+#[rstest::rstest]
+fn title_style_is_primary_text_when_active_not_selected() {
+    // Given an active, not selected entry without error.
+    let theme = default_theme();
+
+    // When computing title style.
+    let style = entry_title_style(false, true, false, &theme);
+
+    // Then the style has primary text fg.
+    assert_eq!(style.fg, Some(theme.primary_text));
+}
+
+#[rstest::rstest]
+fn title_style_is_muted_text_when_inactive_not_selected() {
+    // Given an inactive, not selected entry without error.
+    let theme = default_theme();
+
+    // When computing title style.
+    let style = entry_title_style(false, false, false, &theme);
+
+    // Then the style has muted text fg.
+    assert_eq!(style.fg, Some(theme.muted_text));
+}
+
+// --- indicator_span ---
+
+#[rstest::rstest]
+fn indicator_span_returns_blank_space_when_idle() {
+    // Given an idle entry.
+    let throbber = ThrobberState::default();
+
+    // When computing indicator span.
+    let span = indicator_span(true, &throbber);
+
+    // Then it is a blank space.
+    assert_eq!(span.content, " ");
+}
+
+#[rstest::rstest]
+fn indicator_span_returns_throbber_character_when_working() {
+    // Given a working entry (not idle).
+    let throbber = ThrobberState::default();
+
+    // When computing indicator span.
+    let span = indicator_span(false, &throbber);
+
+    // Then it is a non-space character with Cyan fg.
+    assert_ne!(span.content, " ");
+    assert!(!span.content.is_empty());
+    assert_eq!(span.style.fg, Some(Color::Cyan));
+}
+
+// --- arrow_span ---
+
+#[rstest::rstest]
+fn arrow_span_returns_active_prefix_when_active() {
+    // Given an active session.
+    let theme = default_theme();
+
+    // When computing arrow span.
+    let span = arrow_span(true, &theme);
+
+    // Then it contains the active prefix.
+    assert_eq!(span.content, "\u{25b8} ");
+}
+
+#[rstest::rstest]
+fn arrow_span_returns_inactive_prefix_when_not_active() {
+    // Given an inactive session.
+    let theme = default_theme();
+
+    // When computing arrow span.
+    let span = arrow_span(false, &theme);
+
+    // Then it contains the inactive prefix (two spaces).
+    assert_eq!(span.content, "  ");
+}
+
+// --- truncate_str ---
+
+#[rstest::rstest]
+fn truncate_str_returns_original_when_short() {
+    // Given a string that fits within max_len.
+    let s = "hello";
+
+    // When truncating with max_len = 10.
+    let result = truncate_str(s, 10);
+
+    // Then the original string is returned.
+    assert_eq!(result, "hello");
+}
+
+#[rstest::rstest]
+fn truncate_str_appends_ellipsis_when_long() {
+    // Given a string that exceeds max_len.
+    let s = "hello world";
+
+    // When truncating with max_len = 5.
+    let result = truncate_str(s, 5);
+
+    // Then the result is 5 graphemes ending with ellipsis.
+    assert_eq!(result, "hell\u{2026}");
+}
+
+#[rstest::rstest]
+fn truncate_str_returns_empty_when_max_len_zero() {
+    // Given max_len of zero.
+    let s = "hello";
+
+    // When truncating with max_len = 0.
+    let result = truncate_str(s, 0);
+
+    // Then an empty string is returned.
+    assert_eq!(result, "");
+}

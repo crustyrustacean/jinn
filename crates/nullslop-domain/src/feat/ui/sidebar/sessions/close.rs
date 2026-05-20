@@ -1,0 +1,161 @@
+//! Session close validation and handlers.
+
+use crate::common::app_state::AppState;
+use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::ui::sidebar::sessions::navigate::scroll_to_cursor;
+use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
+
+/// Why a session close can be rejected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionCloseError {
+    /// The sessions section is not focused.
+    WrongSection,
+    /// No session is selected.
+    NoSelection,
+    /// The selected session is streaming or sending.
+    SessionBusy,
+}
+
+/// Validates that a session close can proceed.
+///
+/// # Errors
+///
+/// Returns [`SessionCloseError`] if the sessions section is not focused, no session is selected, or the session is busy.
+pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError> {
+    use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
+
+    // Sessions section must be focused.
+    if !matches!(
+        state.frontend.scope_stack.sidebar_section(),
+        Some(SidebarSectionId::Sessions)
+    ) {
+        return Err(SessionCloseError::WrongSection);
+    }
+
+    // A session must be selected.
+    let index = state
+        .frontend
+        .sessions_section
+        .selected_index
+        .ok_or(SessionCloseError::NoSelection)?;
+
+    // The selected session must be idle (not streaming/sending).
+    let sessions = sorted_open_sessions(state);
+    let entry = sessions.get(index).ok_or(SessionCloseError::NoSelection)?;
+    let session = state
+        .session
+        .sessions()
+        .get(&entry.id)
+        .ok_or(SessionCloseError::NoSelection)?;
+    if !matches!(session.phase(), SessionPhase::Idle) {
+        return Err(SessionCloseError::SessionBusy);
+    }
+
+    Ok(())
+}
+
+/// Handles `SidebarSessionClose` — closes the selected session.
+///
+/// Removes the session from the in-memory HashMap (keeps it in SQLite).
+/// Activates the next session in the sorted list, clamping the index.
+/// If the last session is closed, creates a new empty session.
+///
+/// # Panics
+///
+/// Panics if the selected index is out of bounds (should not happen after validation).
+pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResult {
+    // Validate.
+    if validate_session_close(state).is_err() {
+        return crate::protocol::IntentResult::empty();
+    }
+
+    let index = state.frontend.sessions_section.selected_index.unwrap();
+    let sessions = sorted_open_sessions(state);
+    let closing_id = sessions[index].id.clone();
+    let was_active = sessions[index].is_active;
+
+    // Remove from HashMap (keeps in SQLite).
+    state.session.sessions_mut().remove(&closing_id);
+
+    if state.session.sessions().is_empty() {
+        // Last session — create a new one with the last-used model/strategy.
+        let new_session = {
+            let model = state
+                .frontend
+                .preferences
+                .last_model
+                .clone()
+                .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
+            let strategy = state
+                .frontend
+                .preferences
+                .last_strategy
+                .as_deref()
+                .map_or_else(
+                    crate::protocol::PromptStrategyId::passthrough,
+                    crate::protocol::PromptStrategyId::new,
+                );
+            let token_budget = state.frontend.preferences.context_token_budget.budget;
+            let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
+            crate::feat::session::chat_session::ChatSessionState::new_with_profile(
+                crate::feat::session::profile::SessionProfile::from_config(
+                    model,
+                    strategy,
+                    token_budget,
+                    sliding_window_size,
+                ),
+            )
+        };
+        let new_id = new_session.session_id().clone();
+        state
+            .session
+            .sessions_mut()
+            .insert(new_id.clone(), new_session);
+        state.session.set_active(new_id);
+        state.frontend.sessions_section.selected_index = Some(0);
+    } else if was_active {
+        // Closed the active session — activate next one. Clamp index to valid range.
+        let remaining = sorted_open_sessions(state);
+        let clamped = index.min(remaining.len() - 1);
+        state.session.set_active(remaining[clamped].id.clone());
+        state.frontend.sessions_section.selected_index = Some(clamped);
+    } else {
+        // Closed a non-active session — keep active session, clamp cursor.
+        let remaining = sorted_open_sessions(state);
+        let clamped = index.min(remaining.len() - 1);
+        state.frontend.sessions_section.selected_index = Some(clamped);
+    }
+
+    scroll_to_cursor(state);
+
+    crate::protocol::IntentResult::empty()
+}
+
+/// Handles `SidebarSessionClose` — closes the selected session.
+///
+/// Validates that the close can proceed, gets the selected session ID,
+/// then emits a `CloseSession` command. The session actor handles teardown,
+/// archival, removal, and emits `SessionClosed` for the sidebar actor to
+/// clamp the cursor.
+///
+/// # Panics
+///
+/// Panics if `sessions_section.selected_index` is `None`.
+pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::protocol::IntentResult {
+    use crate::feat::session::protocol::close_session::CloseSession;
+    use crate::protocol::Command;
+
+    // Validate.
+    if validate_session_close(state).is_err() {
+        return crate::protocol::IntentResult::empty();
+    }
+
+    let index = state.frontend.sessions_section.selected_index.unwrap();
+    let sessions = sorted_open_sessions(state);
+    let closing_id = sessions[index].id.clone();
+
+    // Emit CloseSession — the actor handles teardown, archive, and removal.
+    crate::protocol::IntentResult::with_commands(vec![Command::CloseSession(CloseSession {
+        session_id: closing_id,
+    })])
+}
