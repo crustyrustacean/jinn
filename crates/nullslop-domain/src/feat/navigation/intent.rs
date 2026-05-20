@@ -85,11 +85,28 @@ mod tests {
         state.active_session_mut().scroll_down(20);
 
         // When handling ScrollUp.
-        let result = handle_scroll_up(&mut state);
+        let _result = handle_scroll_up(&mut state);
 
         // Then the scroll offset decreased.
         let offset_before = 20u16;
         assert!(state.active_session().scroll_offset().unwrap_or(0) < offset_before);
+    }
+
+    #[rstest::rstest]
+    fn scroll_up_returns_no_commands() {
+        // Given a state with entries.
+        let mut state = AppState::default();
+        for _ in 0..20 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("line"));
+        }
+        state.active_session_mut().scroll_down(20);
+
+        // When handling ScrollUp.
+        let result = handle_scroll_up(&mut state);
+
+        // Then no commands are emitted.
         assert!(result.commands.is_empty());
     }
 
@@ -155,10 +172,27 @@ mod tests {
         state.active_session_mut().scroll_down(50);
 
         // When handling ScrollToTop.
-        let result = handle_scroll_to_top(&mut state);
+        let _result = handle_scroll_to_top(&mut state);
 
         // Then scroll offset is at top.
         assert_eq!(state.active_session().scroll_offset(), Some(0));
+    }
+
+    #[rstest::rstest]
+    fn scroll_to_top_returns_no_commands() {
+        // Given a state scrolled down.
+        let mut state = AppState::default();
+        for _ in 0..20 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("line"));
+        }
+        state.active_session_mut().scroll_down(50);
+
+        // When handling ScrollToTop.
+        let result = handle_scroll_to_top(&mut state);
+
+        // Then no commands are emitted.
         assert!(result.commands.is_empty());
     }
 
@@ -174,10 +208,27 @@ mod tests {
         state.active_session_mut().scroll_up(10);
 
         // When handling ScrollToBottom.
-        let result = handle_scroll_to_bottom(&mut state);
+        let _result = handle_scroll_to_bottom(&mut state);
 
         // Then we're at bottom.
         assert!(state.active_session().is_at_bottom());
+    }
+
+    #[rstest::rstest]
+    fn scroll_to_bottom_returns_no_commands() {
+        // Given a state scrolled up from bottom.
+        let mut state = AppState::default();
+        for _ in 0..20 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("line"));
+        }
+        state.active_session_mut().scroll_up(10);
+
+        // When handling ScrollToBottom.
+        let result = handle_scroll_to_bottom(&mut state);
+
+        // Then no commands are emitted.
         assert!(result.commands.is_empty());
     }
 
@@ -187,10 +238,21 @@ mod tests {
         let mut state = AppState::default();
 
         // When handling EditInput.
-        let result = handle_edit_input(&mut state);
+        let _result = handle_edit_input(&mut state);
 
         // Then the edit_requested signal is set.
         assert!(state.frontend.tui_signals.edit_requested);
+    }
+
+    #[rstest::rstest]
+    fn edit_input_returns_no_commands() {
+        // Given a default state.
+        let mut state = AppState::default();
+
+        // When handling EditInput.
+        let result = handle_edit_input(&mut state);
+
+        // Then no commands are emitted.
         assert!(result.commands.is_empty());
     }
 }

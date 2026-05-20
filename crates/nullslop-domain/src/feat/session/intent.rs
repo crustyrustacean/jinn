@@ -84,7 +84,21 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn refresh_models_posts_system_message_and_returns_command() {
+    fn refresh_models_posts_system_message() {
+        // Given a state with a provider.
+        let mut state = AppState::default();
+        state.active_session_mut().set_model("ollama".to_owned());
+        let initial_len = state.active_session().history().len();
+
+        // When handling RefreshModels.
+        let _result = handle_refresh_models(&mut state);
+
+        // Then a system message was posted.
+        assert_eq!(state.active_session().history().len(), initial_len + 1);
+    }
+
+    #[rstest::rstest]
+    fn refresh_models_returns_refresh_command() {
         // Given a state with a provider.
         let mut state = AppState::default();
         state.active_session_mut().set_model("ollama".to_owned());
@@ -93,8 +107,6 @@ mod tests {
         // When handling RefreshModels.
         let result = handle_refresh_models(&mut state);
 
-        // Then a system message was posted.
-        assert_eq!(state.active_session().history().len(), initial_len + 1);
         // And a RefreshModels command is returned.
         assert!(
             result
@@ -117,7 +129,20 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn rescan_prompt_templates_posts_system_message_and_returns_command() {
+    fn rescan_prompt_templates_posts_system_message() {
+        // Given a default state.
+        let mut state = AppState::default();
+        let initial_len = state.active_session().history().len();
+
+        // When handling RescanPromptTemplates.
+        let _result = handle_rescan_prompt_templates(&mut state);
+
+        // Then a system message was posted.
+        assert_eq!(state.active_session().history().len(), initial_len + 1);
+    }
+
+    #[rstest::rstest]
+    fn rescan_prompt_templates_returns_rescan_command() {
         // Given a default state.
         let mut state = AppState::default();
         let initial_len = state.active_session().history().len();
@@ -125,8 +150,6 @@ mod tests {
         // When handling RescanPromptTemplates.
         let result = handle_rescan_prompt_templates(&mut state);
 
-        // Then a system message was posted.
-        assert_eq!(state.active_session().history().len(), initial_len + 1);
         // And a RescanPromptTemplates command is returned.
         assert!(
             result
