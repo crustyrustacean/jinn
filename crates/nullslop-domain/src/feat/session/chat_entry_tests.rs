@@ -155,7 +155,7 @@ fn tool_result_entry_has_tool_result_kind() {
 #[case::tool_call(ChatEntry::tool_call("id", "name", "args"))]
 #[case::tool_result(ChatEntry::tool_result("id", "name", "content", ToolResultStatus::Success))]
 #[case::skill(ChatEntry::skill("name", "/path", "content"))]
-#[case::info(ChatEntry::info(vec![Line::from("info")]))]
+#[case::transient(ChatEntry::transient(vec![Line::from("info")]))]
 fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     // Given an entry created with any ChatEntry constructor.
     // When checking pin_position.
@@ -377,48 +377,48 @@ fn skill_entry_serializes_correct_json_shape() {
     assert_eq!(skill["content"], "body");
 }
 
-// --- Info entry tests ---
+// --- Transient entry tests ---
 
 #[rstest::rstest]
-fn info_entry_has_info_kind() {
+fn transient_entry_has_transient_kind() {
     // Given text "welcome".
     let lines = vec![Line::from("welcome")];
 
-    // When creating an info entry.
-    let entry = ChatEntry::info(lines);
+    // When creating a transient entry.
+    let entry = ChatEntry::transient(lines);
 
-    // Then kind is Info.
-    assert!(matches!(entry.kind, ChatEntryKind::Info(_)));
+    // Then kind is Transient.
+    assert!(matches!(entry.kind, ChatEntryKind::Transient(_)));
     // And text() returns the plain text.
     assert_eq!(entry.text(), "welcome");
 }
 
 #[rstest::rstest]
-fn info_kind_str_returns_info() {
-    // Given an info entry.
-    let entry = ChatEntry::info(vec![Line::from("test")]);
-    assert_eq!(entry.kind_str(), "info");
+fn transient_kind_str_returns_transient() {
+    // Given a transient entry.
+    let entry = ChatEntry::transient(vec![Line::from("test")]);
+    assert_eq!(entry.kind_str(), "transient");
 }
 
 #[rstest::rstest]
-fn info_text_returns_content() {
-    // Given an info entry.
-    let entry = ChatEntry::info(vec![Line::from("some hint")]);
+fn transient_text_returns_content() {
+    // Given a transient entry.
+    let entry = ChatEntry::transient(vec![Line::from("some hint")]);
 
     // Then text() returns the content.
     assert_eq!(entry.text(), "some hint");
 }
 
 #[rstest::rstest]
-fn info_entry_serializes_roundtrip() {
-    // Given an info entry.
-    let entry = ChatEntry::info(vec![Line::from("Welcome to nullslop!")]);
+fn transient_entry_serializes_roundtrip() {
+    // Given a transient entry.
+    let entry = ChatEntry::transient(vec![Line::from("Welcome to nullslop!")]);
 
     // When serializing and deserializing.
     let json = serde_json::to_string(&entry).expect("serialize");
     let back: ChatEntry = serde_json::from_str(&json).expect("deserialize");
 
-    // Then the roundtrip converts Info to System (Info entries are not persisted).
+    // Then the roundtrip converts Transient to System (Transient entries are not persisted).
     assert_eq!(
         back.kind,
         ChatEntryKind::System("Welcome to nullslop!".to_owned())
@@ -426,26 +426,26 @@ fn info_entry_serializes_roundtrip() {
 }
 
 #[rstest::rstest]
-fn info_entry_pin_position_defaults_to_none() {
-    // Given an info entry.
-    let entry = ChatEntry::info(vec![Line::from("test")]);
+fn transient_entry_pin_position_defaults_to_none() {
+    // Given a transient entry.
+    let entry = ChatEntry::transient(vec![Line::from("test")]);
 
     // Then pin_position is None.
     assert_eq!(entry.pin_position, None);
 }
 
 #[rstest::rstest]
-fn info_entry_serializes_correct_json_shape() {
-    // Given an info entry.
-    let entry = ChatEntry::info(vec![Line::from("some info")]);
+fn transient_entry_serializes_correct_json_shape() {
+    // Given a transient entry.
+    let entry = ChatEntry::transient(vec![Line::from("some info")]);
 
     // When serializing just the kind.
     let json = serde_json::to_string(&entry.kind).expect("serialize");
 
-    // Then the JSON has the expected shape: {"Info": "..."}.
+    // Then the JSON has the expected shape: {"Transient": "..."}.
     let v: serde_json::Value = serde_json::from_str(&json).expect("parse");
-    assert!(v.get("Info").is_some(), "should have Info key");
-    assert_eq!(v["Info"], "some info");
+    assert!(v.get("Transient").is_some(), "should have Transient key");
+    assert_eq!(v["Transient"], "some info");
 }
 
 // --- is_pinnable tests ---
@@ -487,9 +487,9 @@ fn skill_entry_is_pinnable() {
 }
 
 #[rstest::rstest]
-fn info_entry_is_not_pinnable() {
-    // Given an info entry.
-    let entry = ChatEntry::info(vec![Line::from("welcome")]);
+fn transient_entry_is_not_pinnable() {
+    // Given a transient entry.
+    let entry = ChatEntry::transient(vec![Line::from("welcome")]);
 
     // Then it is not pinnable.
     assert!(!entry.is_pinnable());

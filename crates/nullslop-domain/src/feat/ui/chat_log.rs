@@ -9,7 +9,6 @@ pub(crate) mod actor;
 pub(crate) mod assistant;
 pub(crate) mod compaction;
 pub(crate) mod error_entry;
-pub(crate) mod info;
 pub(crate) mod line_count_cache;
 pub(crate) mod markdown;
 pub(crate) mod renderer;
@@ -22,6 +21,7 @@ pub(crate) mod table;
 pub(crate) mod thinking;
 pub(crate) mod tool_call;
 pub(crate) mod tool_result;
+pub(crate) mod transient;
 pub(crate) mod user;
 
 pub use renderer::ChatLogElement;

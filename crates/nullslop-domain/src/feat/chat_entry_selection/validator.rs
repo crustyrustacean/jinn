@@ -96,12 +96,14 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn pin_selected_rejects_info_entry() {
-        // Given a state with a selected info entry.
+    fn pin_selected_rejects_transient_entry() {
+        // Given a state with a selected transient entry.
         let mut state = AppState::default();
         state
             .active_session_mut()
-            .push_entry(ChatEntry::info(vec![ratatui::text::Line::from("welcome")]));
+            .push_entry(ChatEntry::transient(vec![ratatui::text::Line::from(
+                "welcome",
+            )]));
         state.active_session_mut().select_next_entry();
 
         // When validating pin selected.

@@ -395,10 +395,10 @@ fn skill_entry_produces_system_message_with_xml() {
 }
 
 #[rstest::rstest]
-fn info_entries_are_skipped() {
-    // Given an Info entry alongside user and assistant entries.
+fn transient_entries_are_skipped() {
+    // Given a Transient entry alongside user and assistant entries.
     let entries = vec![
-        ChatEntry::info(vec![ratatui::text::Line::from("welcome")]),
+        ChatEntry::transient(vec![ratatui::text::Line::from("welcome")]),
         ChatEntry::user("hello"),
         ChatEntry::assistant("hi"),
     ];
@@ -406,7 +406,7 @@ fn info_entries_are_skipped() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then Info is excluded, producing only user and assistant.
+    // Then Transient is excluded, producing only user and assistant.
     assert_eq!(messages.len(), 2);
     assert_eq!(
         messages[0],
