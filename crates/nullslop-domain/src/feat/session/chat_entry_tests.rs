@@ -1,7 +1,5 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
-use ratatui::text::Line;
-
 use super::chat_entry::*;
 use super::tool_result_status::ToolResultStatus;
 
@@ -155,7 +153,7 @@ fn tool_result_entry_has_tool_result_kind() {
 #[case::tool_call(ChatEntry::tool_call("id", "name", "args"))]
 #[case::tool_result(ChatEntry::tool_result("id", "name", "content", ToolResultStatus::Success))]
 #[case::skill(ChatEntry::skill("name", "/path", "content"))]
-#[case::transient(ChatEntry::transient(vec![Line::from("info")]))]
+#[case::transient(ChatEntry::transient("info"))]
 fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     // Given an entry created with any ChatEntry constructor.
     // When checking pin_position.
@@ -382,28 +380,28 @@ fn skill_entry_serializes_correct_json_shape() {
 #[rstest::rstest]
 fn transient_entry_has_transient_kind() {
     // Given text "welcome".
-    let lines = vec![Line::from("welcome")];
+    let text = "welcome";
 
     // When creating a transient entry.
-    let entry = ChatEntry::transient(lines);
+    let entry = ChatEntry::transient(text);
 
     // Then kind is Transient.
     assert!(matches!(entry.kind, ChatEntryKind::Transient(_)));
-    // And text() returns the plain text.
+    // And text() returns the text.
     assert_eq!(entry.text(), "welcome");
 }
 
 #[rstest::rstest]
 fn transient_kind_str_returns_transient() {
     // Given a transient entry.
-    let entry = ChatEntry::transient(vec![Line::from("test")]);
+    let entry = ChatEntry::transient("test");
     assert_eq!(entry.kind_str(), "transient");
 }
 
 #[rstest::rstest]
 fn transient_text_returns_content() {
     // Given a transient entry.
-    let entry = ChatEntry::transient(vec![Line::from("some hint")]);
+    let entry = ChatEntry::transient("some hint");
 
     // Then text() returns the content.
     assert_eq!(entry.text(), "some hint");
@@ -412,7 +410,7 @@ fn transient_text_returns_content() {
 #[rstest::rstest]
 fn transient_entry_serializes_roundtrip() {
     // Given a transient entry.
-    let entry = ChatEntry::transient(vec![Line::from("Welcome to nullslop!")]);
+    let entry = ChatEntry::transient("Welcome to nullslop!");
 
     // When serializing and deserializing.
     let json = serde_json::to_string(&entry).expect("serialize");
@@ -428,7 +426,7 @@ fn transient_entry_serializes_roundtrip() {
 #[rstest::rstest]
 fn transient_entry_pin_position_defaults_to_none() {
     // Given a transient entry.
-    let entry = ChatEntry::transient(vec![Line::from("test")]);
+    let entry = ChatEntry::transient("test");
 
     // Then pin_position is None.
     assert_eq!(entry.pin_position, None);
@@ -437,7 +435,7 @@ fn transient_entry_pin_position_defaults_to_none() {
 #[rstest::rstest]
 fn transient_entry_serializes_correct_json_shape() {
     // Given a transient entry.
-    let entry = ChatEntry::transient(vec![Line::from("some info")]);
+    let entry = ChatEntry::transient("some info");
 
     // When serializing just the kind.
     let json = serde_json::to_string(&entry.kind).expect("serialize");
@@ -489,7 +487,7 @@ fn skill_entry_is_pinnable() {
 #[rstest::rstest]
 fn transient_entry_is_not_pinnable() {
     // Given a transient entry.
-    let entry = ChatEntry::transient(vec![Line::from("welcome")]);
+    let entry = ChatEntry::transient("welcome");
 
     // Then it is not pinnable.
     assert!(!entry.is_pinnable());
