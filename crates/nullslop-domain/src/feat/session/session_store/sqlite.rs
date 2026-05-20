@@ -668,7 +668,7 @@ fn load_summaries_blocking(
                 .created_at
                 .parse()
                 .unwrap_or_else(|_| jiff::Timestamp::now()),
-            archived: row.archived,
+            session_state: if row.archived { SessionState::Archived } else { SessionState::Loaded },
         })
         .collect();
 
@@ -895,7 +895,7 @@ fn load_unarchived_summaries_blocking(
                 .created_at
                 .parse()
                 .unwrap_or_else(|_| jiff::Timestamp::now()),
-            archived: row.archived,
+            session_state: if row.archived { SessionState::Archived } else { SessionState::Loaded },
         })
         .collect();
 

@@ -91,7 +91,7 @@ pub enum StreamingError {
 ///
 /// `Loaded` sessions appear in the sidebar and are available for interaction.
 /// `Archived` sessions exist only in the database and are hidden from the sidebar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionState {
     #[default]
