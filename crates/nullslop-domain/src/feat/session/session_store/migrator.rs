@@ -69,6 +69,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionS
         migrate_v9(conn)?;
         record_version(conn, 9, "rename_session_entries_to_session_history")?;
     }
+    if current < 10 {
+        migrate_v10(conn)?;
+        record_version(conn, 10, "consolidate_to_compaction_strategy")?;
+    }
     Ok(())
 }
 
@@ -297,6 +301,87 @@ fn migrate_v9(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
     Ok(())
 }
 
+/// v10: Consolidate all sessions to compaction-only strategy.
+///
+/// Rewrites `strategy_state` JSON to remove non-compaction keys
+/// and sets `profile.strategy` to `"compaction"` for all sessions.
+/// This prepares the database for the removal of other strategy types
+/// from the Rust codebase.
+fn migrate_v10(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    #[derive(QueryableByName)]
+    struct SessionRow {
+        #[diesel(sql_type = diesel::sql_types::Integer)]
+        rowid: i32,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        strategy_state: String,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        profile: String,
+    }
+
+    let rows: Vec<SessionRow> =
+        sql_query("SELECT rowid, strategy_state, profile FROM sessions")
+            .load(conn)
+            .change_context(SessionStoreError)
+            .attach("v10: query sessions")?;
+
+    for row in rows {
+        let new_strategy_state = rewrite_strategy_state(&row.strategy_state);
+        let new_profile = rewrite_profile_strategy(&row.profile);
+
+        sql_query("UPDATE sessions SET strategy_state = ?, profile = ? WHERE rowid = ?")
+            .bind::<diesel::sql_types::Text, _>(&new_strategy_state)
+            .bind::<diesel::sql_types::Text, _>(&new_profile)
+            .bind::<diesel::sql_types::Integer, _>(&row.rowid)
+            .execute(conn)
+            .change_context(SessionStoreError)
+            .attach("v10: update session row")?;
+    }
+
+    Ok(())
+}
+
+/// Rewrites strategy_state JSON, keeping only the "compaction" key.
+///
+/// If no compaction key exists, inserts a default.
+/// Leaves unparseable JSON unchanged.
+fn rewrite_strategy_state(raw: &str) -> String {
+    let mut map: std::collections::HashMap<String, serde_json::Value> =
+        match serde_json::from_str(raw) {
+            Ok(m) => m,
+            Err(_) => return raw.to_owned(),
+        };
+
+    // Retain only the compaction key.
+    map.retain(|k, _| k == "compaction");
+
+    // If compaction key is missing, insert default.
+    if !map.contains_key("compaction") {
+        map.insert(
+            "compaction".to_owned(),
+            serde_json::json!({"compaction": {"compaction_count": 0}}),
+        );
+    }
+
+    serde_json::to_string(&map).unwrap_or_else(|_| raw.to_owned())
+}
+
+/// Rewrites profile JSON, setting strategy to "compaction".
+///
+/// Leaves unparseable JSON unchanged.
+fn rewrite_profile_strategy(raw: &str) -> String {
+    let mut map: serde_json::Map<String, serde_json::Value> = match serde_json::from_str(raw) {
+        Ok(serde_json::Value::Object(m)) => m,
+        _ => return raw.to_owned(),
+    };
+
+    map.insert(
+        "strategy".to_owned(),
+        serde_json::Value::String("compaction".to_owned()),
+    );
+
+    serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_else(|_| raw.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
@@ -337,7 +422,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 10);
+        assert_eq!(rows.len(), 11);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -358,6 +443,8 @@ mod tests {
         assert_eq!(rows[8].name, "add_metadata_column");
         assert_eq!(rows[9].version, 9);
         assert_eq!(rows[9].name, "rename_session_entries_to_session_history");
+        assert_eq!(rows[10].version, 10);
+        assert_eq!(rows[10].name, "consolidate_to_compaction_strategy");
     }
 
     #[test]
@@ -381,7 +468,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 10);
+        assert_eq!(rows[0].count, 11);
     }
 
     #[test]
@@ -411,5 +498,94 @@ mod tests {
         assert!(table_names.contains(&"session_history"));
         assert!(table_names.contains(&"sessions"));
         assert!(table_names.contains(&"token_ledger"));
+    }
+
+    #[test]
+    fn migrate_v10_consolidates_strategy_state() {
+        #[derive(QueryableByName)]
+        struct StateRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            strategy_state: String,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            profile: String,
+        }
+
+        // Given a database with sessions containing mixed strategy state and profile.
+        let (_dir, mut conn) = make_conn();
+        run_migrations(&mut conn).unwrap(); // run through v9
+
+        // Insert a session with passthrough strategy state and sliding_window profile strategy.
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, strategy_state, blobs, lifecycle_script_state) \
+             VALUES ('test-1', 'Test', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"strategy\": \"sliding_window\", \"model\": \"test\", \"persona_name\": \"coding-assistant\", \"token_budget\": 150000, \"sliding_window_size\": 5}', \
+             '{\"passthrough\": \"Passthrough\", \"compaction\": {\"compaction\": {\"compaction_count\": 2}}}', \
+             '{}', 'nothing_ran')",
+        )
+        .execute(&mut conn)
+        .expect("insert test session");
+
+        // When running migration v10.
+        migrate_v10(&mut conn).expect("migrate v10");
+
+        // Then strategy_state only has the compaction key.
+        let rows: Vec<StateRow> = sql_query(
+            "SELECT strategy_state, profile FROM sessions WHERE id = 'test-1'",
+        )
+        .load(&mut conn)
+        .expect("query");
+
+        assert_eq!(rows.len(), 1);
+
+        let state_map: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&rows[0].strategy_state).expect("parse state");
+        assert!(state_map.contains_key("compaction"));
+        assert!(!state_map.contains_key("passthrough"));
+        assert!(!state_map.contains_key("sliding_window"));
+        assert!(!state_map.contains_key("token_budget"));
+
+        // And profile.strategy is "compaction".
+        let profile: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&rows[0].profile).expect("parse profile");
+        assert_eq!(profile["strategy"], "compaction");
+    }
+
+    #[test]
+    fn migrate_v10_inserts_default_when_no_compaction_key() {
+        #[derive(QueryableByName)]
+        struct StateRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            strategy_state: String,
+        }
+
+        // Given a database with a session having no compaction key in strategy_state.
+        let (_dir, mut conn) = make_conn();
+        run_migrations(&mut conn).unwrap();
+
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, strategy_state, blobs, lifecycle_script_state) \
+             VALUES ('test-2', 'Test', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{\"strategy\": \"passthrough\", \"model\": \"test\"}', \
+             '{\"passthrough\": \"Passthrough\"}', \
+             '{}', 'nothing_ran')",
+        )
+        .execute(&mut conn)
+        .expect("insert test session");
+
+        // When running migration v10.
+        migrate_v10(&mut conn).expect("migrate v10");
+
+        // Then strategy_state has a compaction key with default data.
+        let rows: Vec<StateRow> = sql_query(
+            "SELECT strategy_state FROM sessions WHERE id = 'test-2'",
+        )
+        .load(&mut conn)
+        .expect("query");
+
+        assert_eq!(rows.len(), 1);
+        let state_map: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&rows[0].strategy_state).expect("parse state");
+        assert!(state_map.contains_key("compaction"));
+        assert!(!state_map.contains_key("passthrough"));
     }
 }

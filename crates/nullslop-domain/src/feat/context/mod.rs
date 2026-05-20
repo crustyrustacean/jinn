@@ -6,16 +6,18 @@
 //!
 //! 1. **Pin splitting** — entries are separated into TOP pins, BOTTOM pins,
 //!    and working history based on [`PinPosition`](crate::protocol::PinPosition).
-//! 2. **Strategy assembly** — the active strategy (passthrough, sliding window,
-//!    token budget, compaction) filters/trims the working history within the
-//!    session's token budget.
+//! 2. **Compaction** — if the working history exceeds the session's token budget,
+//!    entries are trimmed newest-to-oldest (preserving pinned entries) and a
+//!    compaction system prompt is injected.
 //! 3. **System message construction** — a single [`LlmMessage::System`] is built
-//!    by concatenating three sections in priority order (lowest to highest):
+//!    by concatenating sections in priority order (lowest to highest):
 //!    - Skills block (`<available_skills>` XML catalog)
 //!    - Pinned System entry contents (from TOP-pinned `ChatEntryKind::System`)
 //!    - Environment context (date, CWD, persona body, project context files)
+//!    - Tool context block
+//!    - Compaction prompt (when trimming occurred)
 //! 4. **Message ordering** — the final array is:
-//!    `[System] → [TOP non-System pins] → [strategy output] → [BOTTOM pins] → [last message]`
+//!    `[System] → [TOP non-System pins] → [compacted working history] → [BOTTOM pins] → [last message]`
 //!
 //! Provider request builders defensively concatenate any remaining `System`
 //! messages (e.g., from BOTTOM or RELATIVE pins) into their provider-specific
@@ -23,12 +25,9 @@
 //!
 //! # Contents
 //!
-//! This module defines the [`PromptAssembly`] trait and supporting types for
-//! assembling conversation context. Each strategy implements this trait and
-//! can be switched at runtime per session.
-//!
-//! Also contains the **ContextActor** (prompt assembly, strategy management,
-//! pinning, templates) and **PromptScanActor** (template scanning).
+//! This module defines the compaction assembly logic and supporting types.
+//! Also contains the **ContextActor** (prompt assembly, pinning, templates)
+//! and **PromptScanActor** (template scanning).
 
 pub mod context_actor;
 pub mod env_context;
@@ -39,17 +38,9 @@ pub mod strategy;
 pub mod tool_prompt;
 
 pub use crate::protocol::PromptStrategyId;
-pub use strategy::compaction::CompactionStrategy;
 pub use strategy::compaction_data::CompactionSessionData;
-pub use strategy::discovery::DefaultStrategyDiscovery;
-pub use strategy::factory::DefaultStrategyFactory;
-pub use strategy::passthrough::PassthroughStrategy;
-pub use strategy::sliding_window::SlidingWindowStrategy;
-pub use strategy::token_budget::TokenBudgetStrategy;
+pub use strategy::compaction_prompt::DEFAULT_COMPACTION_PROMPT;
 pub use strategy::token_estimator::{
     CharRatioEstimator, TokenEstimator, estimate_entry_tokens, estimate_tool_schema_tokens,
 };
-pub use strategy::types::{
-    AssembledPrompt, AssemblyContext, PromptAssembly, PromptAssemblyError, StrategyConfig,
-    StrategyDiscovery, StrategyFactory, StrategyInfo, StrategyState,
-};
+pub use strategy::types::StrategyState;

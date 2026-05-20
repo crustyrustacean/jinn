@@ -22,7 +22,7 @@ use crate::common::actor::protocol::event::{
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::compaction_actor::protocol::event::CompactionCompleted;
 use crate::feat::context::protocol::event::{
-    PromptAssembled, PromptStrategySwitched, StrategyStateUpdated,
+    PromptAssembled,
 };
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::common::actor::event_msg::EventMsg;
@@ -99,9 +99,7 @@ pub enum Event {
     /// A prompt has been assembled and is ready to send.
     PromptAssembled(PromptAssembled),
     /// A session's prompt assembly strategy has been switched.
-    PromptStrategySwitched(PromptStrategySwitched),
     /// A strategy's session state has changed and should be persisted.
-    StrategyStateUpdated(StrategyStateUpdated),
     /// Agent skills have been scanned and loaded.
     SkillsLoaded(SkillsLoaded),
     /// Personas have been scanned and loaded from disk.
@@ -154,8 +152,6 @@ impl Event {
             Self::ToolExecutionOutput(..) => Some(ToolExecutionOutput::TYPE_NAME),
             Self::ToolsRegistered(..) => Some(ToolsRegistered::TYPE_NAME),
             Self::PromptAssembled(..) => Some(PromptAssembled::TYPE_NAME),
-            Self::PromptStrategySwitched(..) => Some(PromptStrategySwitched::TYPE_NAME),
-            Self::StrategyStateUpdated(..) => Some(StrategyStateUpdated::TYPE_NAME),
             Self::SkillsLoaded(..) => Some(SkillsLoaded::TYPE_NAME),
             Self::PersonasLoaded(..) => {
                 Some(crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME)

@@ -77,7 +77,6 @@ pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
 use crate::protocol::KeymapEntry;
 use crate::protocol::SessionEntry;
-use crate::protocol::StrategyEntry;
 
 /// Session lifecycle state — owned by the session-actor.
 ///
@@ -162,9 +161,7 @@ pub enum FocusScope {
     /// Arg input popup — collecting positional args for a lifecycle command.
     ArgInput,
     /// Token budget input popup — typing a numeric budget value.
-    TokenBudgetInput,
     /// Sliding window input popup — typing a numeric window size.
-    SlidingWindowInput,
     /// Rename session input popup — editing a session title.
     RenameSessionInput,
     /// Sidebar resize mode — adjusting sidebar width with h/l keys.
@@ -184,8 +181,6 @@ impl FocusScope {
             | Self::SidebarResize => Mode::Normal,
             Self::Input
             | Self::ArgInput
-            | Self::TokenBudgetInput
-            | Self::SlidingWindowInput
             | Self::RenameSessionInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
         }
@@ -203,8 +198,6 @@ impl std::fmt::Display for FocusScope {
             Self::SidebarMinimap => write!(f, "SidebarMinimap"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
-            Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
-            Self::SlidingWindowInput => write!(f, "SlidingWindowInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
         }
@@ -405,7 +398,6 @@ pub struct FrontendState {
 
     /// Context strategy picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (strategy picker navigation).
-    pub context_strategy_picker: nullslop_selection_widget::SelectionState<StrategyEntry>,
     /// Persona picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (persona picker navigation).
     pub persona_picker: nullslop_selection_widget::SelectionState<PersonaEntry>,
@@ -472,10 +464,8 @@ pub struct FrontendState {
 
     /// Token budget input popup state — active when `FocusScope::TokenBudgetInput` is on the scope stack.
     /// OWNER: IntentHandler (budget input editing, confirmation).
-    pub token_budget_input: TokenBudgetInputState,
     /// Sliding window input popup state — active when `FocusScope::SlidingWindowInput` is on the scope stack.
     /// OWNER: IntentHandler (window size input editing, confirmation).
-    pub sliding_window_input: SlidingWindowInputState,
     /// Rename session input popup state — active when `FocusScope::RenameSessionInput` is on the scope stack.
     /// OWNER: IntentHandler (rename input editing, confirmation).
     pub rename_session_input: RenameSessionInputState,
@@ -499,7 +489,6 @@ impl Default for FrontendState {
             keymap_picker: nullslop_selection_widget::SelectionState::new(),
             keymap_picker_show_all: false,
             session_picker: nullslop_selection_widget::SelectionState::new(),
-            context_strategy_picker: nullslop_selection_widget::SelectionState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
             scope_stack: ScopeStack::default(),
@@ -515,8 +504,6 @@ impl Default for FrontendState {
             system_themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
             arg_input: ArgInputState::default(),
-            token_budget_input: TokenBudgetInputState::default(),
-            sliding_window_input: SlidingWindowInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
             sidebar_width: 30,
         }
@@ -573,8 +560,7 @@ impl AppState {
         let kind = self.frontend.scope_stack.picker_kind().copied()?;
         match kind {
             PickerKind::Provider => Some(&mut self.provider.provider_picker),
-            PickerKind::ContextAssembly => Some(&mut self.frontend.context_strategy_picker),
-            PickerKind::Keymap => Some(&mut self.frontend.keymap_picker),
+                        PickerKind::Keymap => Some(&mut self.frontend.keymap_picker),
             PickerKind::Session => Some(&mut self.frontend.session_picker),
             PickerKind::Persona => Some(&mut self.frontend.persona_picker),
             PickerKind::Theme => Some(&mut self.frontend.theme_picker),

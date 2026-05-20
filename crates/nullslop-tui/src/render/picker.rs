@@ -9,9 +9,6 @@ use ratatui::layout::Rect;
 pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => render_provider_picker(frame, area, state),
-        Some(PickerKind::ContextAssembly) => {
-            render_context_strategy_picker(frame, area, state);
-        }
         Some(PickerKind::Keymap) => render_keymap_picker(frame, area, state),
         Some(PickerKind::Session) => render_session_picker(frame, area, state),
         Some(PickerKind::Persona) => render_persona_picker(frame, area, state),
@@ -27,11 +24,6 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
 /// Renders the provider picker overlay (delegates to slice).
 fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     nullslop_domain::feat::provider::render::render_provider_picker(frame, area, state);
-}
-
-/// Renders the context strategy picker overlay (delegates to slice).
-fn render_context_strategy_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    nullslop_domain::feat::picker::render::render_context_strategy_picker(frame, area, state);
 }
 
 /// Renders the keymap picker overlay (delegates to slice).

@@ -2,7 +2,6 @@
 
 use super::super::SessionPersistenceActor;
 use crate::SessionLoadRequested;
-use crate::feat::context::protocol::command::{RestoreStrategyState, SwitchPromptStrategy};
 use crate::protocol::Command;
 
 impl SessionPersistenceActor {
@@ -70,25 +69,8 @@ impl SessionPersistenceActor {
                     tracing::warn!(err = ?e, "failed to unarchive session on load");
                 }
 
-                let strategy_id = session.active_strategy().clone();
-                let strategy_blob = session
-                    .strategy_state()
-                    .get(&strategy_id)
-                    .and_then(|s| serde_json::to_value(s).ok())
-                    .unwrap_or(serde_json::json!({}));
-
                 let _ =
                     ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
-                // Also emit RestoreStrategyState and SwitchPromptStrategy.
-                let _ = ctx.send_command(Command::RestoreStrategyState(RestoreStrategyState {
-                    session_id: evt.session_id.clone(),
-                    strategy_id: strategy_id.clone(),
-                    blob: strategy_blob,
-                }));
-                let _ = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
-                    session_id: evt.session_id.clone(),
-                    strategy_id,
-                }));
             }
             Ok(None) => {
                 tracing::warn!(
