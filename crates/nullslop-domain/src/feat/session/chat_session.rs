@@ -580,6 +580,10 @@ impl ChatSessionState {
     /// # Panics
     ///
     /// Panics if the session is not streaming. This is a programming error.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`StreamingError`] if the session is not in a valid streaming state.
     #[expect(
         clippy::indexing_slicing,
         reason = "index comes from push_entry which always returns a valid index"
@@ -640,6 +644,10 @@ impl ChatSessionState {
     /// # Panics
     ///
     /// Panics if `begin_thinking()` has not been called.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`StreamingError`] if the session is not in a valid streaming state.
     #[expect(clippy::indexing_slicing, reason = "index set by begin_thinking")]
     pub fn append_thinking_token<S>(&mut self, token: S) -> Result<(), StreamingError>
     where
@@ -744,6 +752,10 @@ impl ChatSessionState {
     /// # Panics
     ///
     /// Returns an error if no tool call entry is tracked for the given stream index.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`StreamingError`] if the streaming state is invalid or the index is out of bounds.
     #[expect(
         clippy::indexing_slicing,
         reason = "index comes from push_entry which always returns a valid index"
@@ -1382,7 +1394,9 @@ impl ChatSessionState {
     ///
     /// Called when `StreamCompleted` arrives to finalize the pending record.
     ///
-    /// Returns an error if the ledger is empty.
+    /// # Errors
+    ///
+    /// Returns a [`StreamingError`] if the ledger is empty.
     pub fn finalize_last_token_record(
         &mut self,
         tokens_received: u32,

@@ -274,8 +274,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return error_tool_result(call.id, call.name, "command is empty".to_owned());
         }
 
-        let shell = shell_path();
-        let cwd = ctx.cwd.clone();
+        let (shell, cwd) = (shell_path(), ctx.cwd.clone());
 
         // Emit ToolExecutionStarted if we have a sink and session_id.
         emit_stream_event(

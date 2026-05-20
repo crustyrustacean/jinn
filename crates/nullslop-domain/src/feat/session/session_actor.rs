@@ -269,7 +269,7 @@ impl SessionPersistenceActor {
                 self.on_tool_execution_output(payload);
             }
             Event::ModelsRefreshed(payload) => {
-                self.on_models_refreshed(payload, ctx);
+                Self::on_models_refreshed(payload, ctx);
             }
             Event::EnvironmentLoaded(payload) => {
                 self.on_environment_loaded(&payload.config, ctx).await;
@@ -445,7 +445,7 @@ impl SessionPersistenceActor {
                         .session
                         .sessions()
                         .get(&session_id)
-                        .is_some_and(|s| s.is_empty());
+                        .is_some_and(super::chat_session::ChatSessionState::is_empty);
                     if default_is_empty && state.session.sessions().len() > 1 {
                         state.session.sessions_mut().remove(&session_id);
                     }
@@ -966,7 +966,6 @@ mod tests {
     use crate::feat::tools_actor::protocol::event::ToolBatchCompleted;
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChatEntry, ChatEntryKind, Command};
-    use ratatui::style::Color;
     use std::path::Path;
 
     #[rstest::rstest]
@@ -2472,7 +2471,6 @@ mod tests {
     #[tokio::test]
     async fn close_session_advances_lifecycle_when_teardown_succeeds() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
-        use crate::feat::session::chat_session::LifecycleScriptState;
 
         // Given a session with SetupRan and a succeeding teardown command.
         let actor = test_actor();
