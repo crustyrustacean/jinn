@@ -48,13 +48,17 @@ pub(crate) struct SessionEntry {
     pub(crate) last_entry_is_error: bool,
 }
 
-/// Collects all open sessions sorted by `created_at` descending (newest first).
+/// Collects all loaded sessions sorted by `created_at` descending (newest first).
+///
+/// Only includes sessions with `SessionState::Loaded` — archived sessions
+/// are not in the `SessionMap` and thus excluded automatically.
 pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     let active_id = state.session.active_session_id();
     let mut entries: Vec<SessionEntry> = state
         .session
         .sessions()
         .iter()
+        .filter(|(_, session)| session.session_state() == crate::feat::session::chat_session::SessionState::Loaded)
         .map(|(id, session): (&_, &_)| SessionEntry {
             id: id.clone(),
             title: session.title().unwrap_or("Untitled Session").to_owned(),
