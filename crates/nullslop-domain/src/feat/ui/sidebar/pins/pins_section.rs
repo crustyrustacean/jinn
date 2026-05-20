@@ -330,12 +330,14 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
     }
 }
 
-/// Truncates a string to the given max length, appending an ellipsis if needed.
+/// Truncates a string to the given max grapheme length, appending an ellipsis if needed.
 fn truncate_str(s: &str, max_len: usize) -> String {
+    use unicode_segmentation::UnicodeSegmentation;
+
     if s.len() <= max_len {
         s.to_owned()
     } else {
-        let truncated: String = s.chars().take(max_len.saturating_sub(1)).collect();
+        let truncated: String = s.graphemes(true).take(max_len.saturating_sub(1)).collect();
         format!("{truncated}\u{2026}")
     }
 }
