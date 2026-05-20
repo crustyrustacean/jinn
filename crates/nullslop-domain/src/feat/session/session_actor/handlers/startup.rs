@@ -121,135 +121,14 @@ impl SessionPersistenceActor {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
-    use super::super::super::helpers::{test_actor, test_context};
-    use crate::common::app_state::AppState;
-    use crate::common::state::State;
-    use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+    use super::super::super::helpers::{test_actor_with_store, test_context};
     use crate::feat::session::chat_session::ChatSessionState;
-    use crate::feat::session::session_store::SessionStore;
-    use std::sync::Arc;
-
-    /// A fake session store that returns pre-loaded sessions for testing.
-    struct PopulatedFakeStore {
-        summaries: Vec<crate::feat::session::session_summary::SessionSummary>,
-        sessions: Vec<ChatSessionState>,
-    }
-
-    impl PopulatedFakeStore {
-        fn new(sessions: Vec<ChatSessionState>) -> Self {
-            let summaries = sessions
-                .iter()
-                .map(|s| crate::feat::session::session_summary::SessionSummary {
-                    session_id: s.session_id().clone(),
-                    title: s.title().unwrap_or("Untitled Session").to_owned(),
-                    updated_at: *s.updated_at(),
-                    created_at: *s.created_at(),
-                    session_state: crate::feat::session::chat_session::SessionState::Loaded,
-                })
-                .collect();
-            Self {
-                summaries,
-                sessions,
-            }
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl SessionStore for PopulatedFakeStore {
-        fn name(&self) -> &'static str {
-            "populated-fake"
-        }
-
-        async fn save(
-            &self,
-            _session: &ChatSessionState,
-        ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
-        {
-            Ok(())
-        }
-
-        async fn load_summaries(
-            &self,
-        ) -> Result<
-            Vec<crate::feat::session::session_summary::SessionSummary>,
-            error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
-        > {
-            Ok(self.summaries.clone())
-        }
-
-        async fn load_session(
-            &self,
-            session_id: &crate::protocol::SessionId,
-        ) -> Result<
-            Option<ChatSessionState>,
-            error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
-        > {
-            Ok(self
-                .sessions
-                .iter()
-                .find(|s| s.session_id() == session_id)
-                .cloned())
-        }
-
-        async fn delete(
-            &self,
-            _session_id: &crate::protocol::SessionId,
-        ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
-        {
-            Ok(())
-        }
-
-        async fn fork(
-            &self,
-            _source_session_id: &crate::protocol::SessionId,
-            _at_ordinal: usize,
-        ) -> Result<
-            crate::protocol::SessionId,
-            error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
-        > {
-            Ok(crate::protocol::SessionId::new())
-        }
-
-        async fn set_archived(
-            &self,
-            _session_id: &crate::protocol::SessionId,
-            _archived: bool,
-        ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
-        {
-            Ok(())
-        }
-
-        async fn load_unarchived_summaries(
-            &self,
-        ) -> Result<
-            Vec<crate::feat::session::session_summary::SessionSummary>,
-            error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
-        > {
-            Ok(self.summaries.clone())
-        }
-    }
-
-    /// Builds a test actor with services and a populated store.
-    fn test_actor_with_store(
-        sessions: Vec<ChatSessionState>,
-    ) -> super::super::SessionPersistenceActor {
-        let services = crate::TestServices::builder()
-            .session_store(super::super::SessionStoreService::new(Arc::new(PopulatedFakeStore::new(sessions))))
-            .build();
-        let store = services.session_store.clone();
-        super::super::SessionPersistenceActor {
-            state: State::new(AppState::default()),
-            services: Some(services),
-            store: Some(store),
-            counter: TiktokenCounter::o200k_base(),
-        }
-    }
 
     #[tokio::test]
     async fn loading_unarchived_sessions_does_not_switch_active_session() {
         // Given an actor with a default welcome session and one session in the store.
         let store_session = ChatSessionState::new();
-        let actor = test_actor_with_store(vec![store_session]);
+        let (actor, _store) = test_actor_with_store(vec![store_session]);
         let (_sink, ctx) = test_context();
 
         // Record the default session's ID before loading.
@@ -276,7 +155,7 @@ mod tests {
     async fn loading_unarchived_sessions_does_not_remove_default_session() {
         // Given an actor with a default welcome session and one session in the store.
         let store_session = ChatSessionState::new();
-        let actor = test_actor_with_store(vec![store_session]);
+        let (actor, _store) = test_actor_with_store(vec![store_session]);
         let (_sink, ctx) = test_context();
 
         let default_id = actor.state.read().session.active_session_id().clone();
@@ -308,7 +187,7 @@ mod tests {
         let store_id1 = store_session1.session_id().clone();
         let store_session2 = ChatSessionState::new();
         let store_id2 = store_session2.session_id().clone();
-        let actor = test_actor_with_store(vec![store_session1, store_session2]);
+        let (actor, _store) = test_actor_with_store(vec![store_session1, store_session2]);
         let (_sink, ctx) = test_context();
 
         // When handling EnvironmentLoaded.
