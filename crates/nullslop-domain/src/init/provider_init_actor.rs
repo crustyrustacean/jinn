@@ -102,6 +102,7 @@ impl ProviderInitActor {
             tracing::info!(providers = c.entries.len(), "loaded model cache");
             self.services.provider_registry.merge_cache(c);
         }
+        self.state.write().provider.model_cache = cache;
 
         // Load user preferences.
         let prefs = match self.services.user_preferences_storage.load() {
