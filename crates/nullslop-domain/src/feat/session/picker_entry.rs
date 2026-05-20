@@ -3,6 +3,7 @@
 use std::ops::Range;
 
 use crate::feat::picker::style::{dim_style, selected_style};
+use crate::feat::session::chat_session::SessionState;
 use crate::feat::theme::Theme;
 use crate::protocol::SessionId;
 use nullslop_selection_widget::PickerItem;
@@ -20,8 +21,8 @@ pub struct SessionEntry {
     pub updated_at: jiff::Timestamp,
     /// Theme for rendering.
     pub theme: Theme,
-    /// Whether this session has been archived.
-    pub archived: bool,
+    /// Whether this session is loaded in memory or archived.
+    pub session_state: SessionState,
 }
 
 impl PickerItem for SessionEntry {

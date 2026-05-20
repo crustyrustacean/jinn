@@ -105,7 +105,7 @@ fn picker_confirm_succeeds_with_session_selection() {
         title: "Test Session".to_owned(),
         updated_at: jiff::Timestamp::now(),
         theme: default_theme(),
-        archived: false,
+        session_state: crate::feat::session::chat_session::SessionState::Loaded,
     }]);
 
     // When validating picker confirm.
