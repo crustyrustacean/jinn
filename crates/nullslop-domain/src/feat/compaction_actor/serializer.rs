@@ -184,7 +184,7 @@ mod tests {
         // Given content where byte 2000 falls in the middle of an em-dash (3 bytes).
         // 1999 ASCII 'x' chars + "—" (em-dash, 3 bytes) + more text.
         let mut content = "x".repeat(1999);
-        content.push_str("—");
+        content.push('—');
         content.push_str("more text");
 
         let entries = vec![ChatEntry::tool_result(

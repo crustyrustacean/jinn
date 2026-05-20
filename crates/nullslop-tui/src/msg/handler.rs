@@ -71,7 +71,7 @@ impl MsgHandler {
     /// # Panics
     ///
     /// Panics if the OS thread cannot be spawned (e.g. resource exhaustion).
-    #[allow(clippy::expect_used, reason = "thread spawn failure is fatal")]
+    #[expect(clippy::expect_used, reason = "thread spawn failure is fatal")]
     pub fn start_event_thread(&self) -> EventThreadGuard {
         let sender = self.sender();
         let stop = Arc::new(AtomicBool::new(false));
@@ -131,7 +131,7 @@ const TICK_INTERVAL: Duration = Duration::from_millis(100);
 ///
 /// Uses synchronous `crossterm::event::poll` / `read` instead of the async
 /// `EventStream`, so this thread never competes with tokio worker threads.
-#[allow(
+#[expect(
     clippy::needless_pass_by_value,
     reason = "Arc is moved into the thread closure"
 )]
