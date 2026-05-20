@@ -16,6 +16,7 @@
 //! Parameters are deduplicated by identity. `$1 <foo> $1` produces `[Positional(1), Named("foo")]`
 //! and substitutes both `$1` occurrences with the same arg.
 
+use regex::Regex;
 use std::fmt;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -53,6 +54,15 @@ impl DisplaySegment {
             param_index: Some(index),
         }
     }
+}
+
+/// A classified span from tokenizing a display-form command line.
+#[derive(Debug, Clone, PartialEq)]
+enum Span {
+    /// Static text between (or surrounding) placeholders.
+    Static(String),
+    /// A `<...>` placeholder. Contains the inner text (e.g., `"branch"` from `<branch>`).
+    Placeholder(String),
 }
 
 /// A single parameter extracted from a command template.
@@ -335,90 +345,96 @@ impl CommandTemplate {
 
     /// Tokenize a display-form line into `DisplaySegment`s.
     ///
-    /// Walks the text looking for `<...>` patterns. For each match, looks up
-    /// the corresponding param index. If a user-provided arg is available,
-    /// substitutes it; otherwise keeps the placeholder text.
+    /// Decomposes the line into [`Span`]s, then substitutes any args that are
+    /// available for the corresponding parameters.
     fn tokenize_display_line(&self, line: &str, args: &[String]) -> Vec<DisplaySegment> {
-        let mut segments = Vec::new();
-        let graphemes: Vec<&str> = line.graphemes(true).collect();
-        let mut i = 0;
-        let mut static_start = 0;
+        let spans = tokenize_spans(line);
+        substitute_spans(spans, &self.params, args)
+    }
+}
 
-        // Build a lookup: display token -> param index.
-        // E.g., Named("branch") -> ("<branch>", param_list_index).
-        //        Positional(1) -> ("<1>", param_list_index).
-        //        Splat -> ("<args>", param_list_index).
-        let mut arg_offset = 0usize;
-        let mut token_map: Vec<(String, usize, usize)> = Vec::new(); // (display_token, param_index, arg_offset_for_this_param)
-        for (pidx, param) in self.params.iter().enumerate() {
-            match param {
-                Param::Named(name) => {
-                    token_map.push((format!("<{name}>"), pidx, arg_offset));
-                    arg_offset += 1;
-                }
-                Param::Positional(n) => {
-                    token_map.push((format!("<{n}>"), pidx, arg_offset));
-                    arg_offset += 1;
-                }
-                Param::Splat => {
-                    token_map.push(("<args>".to_owned(), pidx, arg_offset));
-                }
+/// Tokenize a display-form line into [`Span`]s by finding all `<...>` patterns.
+///
+/// Pure function — no `&self`, no args, no param lookup.
+/// Unclosed `<` without a matching `>` is treated as static text (not a placeholder).
+fn tokenize_spans(line: &str) -> Vec<Span> {
+    static RE: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"<([^>]+)>").expect("invalid regex"));
+
+    let mut spans = Vec::new();
+    let mut last_end = 0;
+
+    for caps in RE.captures_iter(line) {
+        let m = caps.get(0).expect("capture group 0 always exists");
+        // Emit preceding static text if any.
+        if m.start() > last_end {
+            spans.push(Span::Static(line[last_end..m.start()].to_owned()));
+        }
+        let inner = caps
+            .get(1)
+            .expect("capture group 1 exists")
+            .as_str()
+            .to_owned();
+        spans.push(Span::Placeholder(inner));
+        last_end = m.end();
+    }
+
+    // Emit trailing static text if any.
+    if last_end < line.len() {
+        spans.push(Span::Static(line[last_end..].to_owned()));
+    }
+
+    spans
+}
+
+/// Substitute args into classified [`Span`]s, producing display-ready [`DisplaySegment`]s.
+///
+/// For [`Span::Placeholder`], looks up the corresponding param. If an arg is
+/// available, substitutes the arg value; otherwise keeps the placeholder text.
+/// [`Span::Static`] passes through as a static [`DisplaySegment`].
+fn substitute_spans(spans: Vec<Span>, params: &[Param], args: &[String]) -> Vec<DisplaySegment> {
+    // Build lookup: (display_token, param_index, arg_offset).
+    let mut arg_offset = 0usize;
+    let mut token_map: Vec<(String, usize, usize)> = Vec::new();
+    for (pidx, param) in params.iter().enumerate() {
+        match param {
+            Param::Named(name) => {
+                token_map.push((format!("<{name}>"), pidx, arg_offset));
+                arg_offset += 1;
+            }
+            Param::Positional(n) => {
+                token_map.push((format!("<{n}>"), pidx, arg_offset));
+                arg_offset += 1;
+            }
+            Param::Splat => {
+                token_map.push(("<args>".to_owned(), pidx, arg_offset));
             }
         }
+    }
 
-        while i < graphemes.len() {
-            if graphemes[i] == "<" {
-                // Potential placeholder — scan for '>'.
-                let start = i + 1;
-                let mut end = start;
-                while end < graphemes.len() && graphemes[end] != ">" {
-                    end += 1;
-                }
-
-                if end < graphemes.len() && end > start {
-                    let token_text: String = graphemes[start..end].join("");
-                    let full_token = format!("<{token_text}>");
-
-                    // Check if this matches any known param.
-                    if let Some((_, param_idx, arg_off)) =
-                        token_map.iter().find(|(tok, _, _)| *tok == full_token)
-                    {
-                        // Emit preceding static text.
-                        if static_start < i {
-                            let text: String = graphemes[static_start..i].join("");
-                            segments.push(DisplaySegment::static_text(text));
-                        }
-
-                        // Determine display text: substitute arg if available.
+    spans
+        .into_iter()
+        .map(|span| match span {
+            Span::Static(text) => DisplaySegment::static_text(text),
+            Span::Placeholder(inner) => {
+                let full_token = format!("<{inner}>");
+                match token_map.iter().find(|(tok, _, _)| *tok == full_token) {
+                    Some((_, param_idx, arg_off)) => {
                         let display_text = if *arg_off < args.len() {
-                            match &self.params[*param_idx] {
+                            match &params[*param_idx] {
                                 Param::Splat => args[*arg_off..].join(" "),
                                 _ => args[*arg_off].clone(),
                             }
                         } else {
                             full_token.clone()
                         };
-
-                        segments.push(DisplaySegment::param(display_text, *param_idx));
-                        static_start = end + 1;
-                        i = end + 1;
-                        continue;
+                        DisplaySegment::param(display_text, *param_idx)
                     }
+                    None => DisplaySegment::static_text(full_token),
                 }
             }
-            i += 1;
-        }
-
-        // Emit remaining static text.
-        if static_start < graphemes.len() {
-            let text: String = graphemes[static_start..].join("");
-            if !text.is_empty() {
-                segments.push(DisplaySegment::static_text(text));
-            }
-        }
-
-        segments
-    }
+        })
+        .collect()
 }
 
 /// Shell-quote a value for safe interpolation into a `$SHELL -c` command.
@@ -1374,5 +1390,162 @@ mod tests {
             split_preserving_quotes("\"foo bar"),
             vec!["\"foo bar".to_owned()]
         );
+    }
+
+    // --- tokenize_spans ---
+
+    #[rstest::rstest]
+    fn tokenize_spans_no_placeholders_returns_single_static() {
+        // Given plain text with no angle brackets.
+        // When tokenizing.
+        let spans = tokenize_spans("hello world");
+        // Then a single Static span is returned.
+        assert_eq!(spans, vec![Span::Static("hello world".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_single_placeholder_with_surrounding_text() {
+        // Given text with one placeholder.
+        // When tokenizing.
+        let spans = tokenize_spans("hello <branch> world");
+        // Then three spans: static, placeholder, static.
+        assert_eq!(
+            spans,
+            vec![
+                Span::Static("hello ".to_owned()),
+                Span::Placeholder("branch".to_owned()),
+                Span::Static(" world".to_owned()),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_adjacent_placeholders() {
+        // Given two placeholders with no gap.
+        // When tokenizing.
+        let spans = tokenize_spans("<a><b>");
+        // Then two Placeholder spans with no Static between them.
+        assert_eq!(
+            spans,
+            vec![
+                Span::Placeholder("a".to_owned()),
+                Span::Placeholder("b".to_owned()),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_unclosed_bracket_is_static() {
+        // Given text with an unclosed angle bracket.
+        // When tokenizing.
+        let spans = tokenize_spans("a <unclosed b");
+        // Then the whole string is static (no match).
+        assert_eq!(spans, vec![Span::Static("a <unclosed b".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_empty_angles_are_static() {
+        // Given text with empty angle brackets.
+        // When tokenizing.
+        let spans = tokenize_spans("a <> b");
+        // Then empty <> is not matched (regex requires at least one char).
+        assert_eq!(spans, vec![Span::Static("a <> b".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_empty_string_returns_empty() {
+        // Given an empty string.
+        // When tokenizing.
+        let spans = tokenize_spans("");
+        // Then no spans are produced.
+        assert!(spans.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_only_placeholder() {
+        // Given text that is only a placeholder.
+        // When tokenizing.
+        let spans = tokenize_spans("<branch>");
+        // Then a single Placeholder span.
+        assert_eq!(spans, vec![Span::Placeholder("branch".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_placeholder_at_start_and_end() {
+        // Given text starting and ending with placeholders.
+        // When tokenizing.
+        let spans = tokenize_spans("<start> middle <end>");
+        // Then two placeholders with static in between.
+        assert_eq!(
+            spans,
+            vec![
+                Span::Placeholder("start".to_owned()),
+                Span::Static(" middle ".to_owned()),
+                Span::Placeholder("end".to_owned()),
+            ]
+        );
+    }
+
+    // --- substitute_spans ---
+
+    #[rstest::rstest]
+    fn substitute_spans_all_args_provided() {
+        // Given spans with two placeholders and both args available.
+        let spans = vec![
+            Span::Static("mkdir ".to_owned()),
+            Span::Placeholder("branch".to_owned()),
+        ];
+        let params = vec![Param::Named("branch".to_owned())];
+        let args = vec!["my-feature".to_owned()];
+
+        // When substituting.
+        let segments = substitute_spans(spans, &params, &args);
+
+        // Then the placeholder is replaced with the arg value.
+        assert_eq!(segments[0], DisplaySegment::static_text("mkdir "));
+        assert_eq!(segments[1], DisplaySegment::param("my-feature", 0));
+    }
+
+    #[rstest::rstest]
+    fn substitute_spans_missing_args_keep_placeholder() {
+        // Given spans with a placeholder but no args.
+        let spans = vec![
+            Span::Static("mkdir ".to_owned()),
+            Span::Placeholder("branch".to_owned()),
+        ];
+        let params = vec![Param::Named("branch".to_owned())];
+
+        // When substituting with no args.
+        let segments = substitute_spans(spans, &params, &[]);
+
+        // Then the placeholder text is preserved.
+        assert_eq!(segments[1], DisplaySegment::param("<branch>", 0));
+    }
+
+    #[rstest::rstest]
+    fn substitute_spans_splat_joins_remaining_args() {
+        // Given a Splat param and spans.
+        let spans = vec![Span::Placeholder("args".to_owned())];
+        let params = vec![Param::Splat];
+        let args = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+
+        // When substituting.
+        let segments = substitute_spans(spans, &params, &args);
+
+        // Then all args are joined with spaces.
+        assert_eq!(segments[0], DisplaySegment::param("a b c", 0));
+    }
+
+    #[rstest::rstest]
+    fn substitute_spans_unknown_placeholder_is_static() {
+        // Given a placeholder that doesn't match any param.
+        let spans = vec![Span::Placeholder("unknown".to_owned())];
+        let params: Vec<Param> = vec![];
+
+        // When substituting.
+        let segments = substitute_spans(spans, &params, &[]);
+
+        // Then it's treated as static text.
+        assert_eq!(segments[0], DisplaySegment::static_text("<unknown>"));
     }
 }

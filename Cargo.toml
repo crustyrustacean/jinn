@@ -121,6 +121,7 @@ uuid = { version = "1.23.1", features = ["v7", "serde"] }
 # Tokenization
 tiktoken = "3"
 
+regex = "1"
 # Database
 diesel = { version = "2", features = ["sqlite", "r2d2"] }
 

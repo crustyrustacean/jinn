@@ -1903,6 +1903,7 @@ dependencies = [
  "ratatui-markdown",
  "ratatui-which-key",
  "reasoning-parser",
+ "regex",
  "rstest",
  "serde",
  "serde_json",
