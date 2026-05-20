@@ -20,43 +20,37 @@
 mod handlers;
 mod helpers;
 
-use super::SessionStoreService;
+// Re-export lifecycle helpers for tests (moved to handlers::lifecycle in Phase 1).
+pub(in crate::feat::session::session_actor) use handlers::lifecycle::{
+    format_lifecycle_error, no_output_info, setup_complete_msg,
+    strip_ansi, teardown_running_msg, teardown_success_msg,
+};
+pub(crate) use handlers::lifecycle::setup_running_msg;
 
-use crate::SessionForkRequested;
-use crate::SessionLoadRequested;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
-use crate::feat::chat_input::protocol::command::{
-    EnqueueUserMessage, PushChatEntry, SetChatInputText,
-};
-use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use crate::feat::context::protocol::command::SwitchPromptStrategy;
+use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
 use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
-use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
-use crate::feat::session::protocol::session_archived::SessionArchived;
-use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
-use crate::feat::session_lifecycle::command_runner::run_setup_command;
-use crate::feat::session_lifecycle::command_runner::run_teardown_command;
 use crate::feat::session_lifecycle::protocol::command::{
     RunSessionSetup, RunSessionTeardown, SaveNewLifecycleSession,
-};
-use crate::feat::session_lifecycle::protocol::event::{
-    SessionSetupCompleted, SessionTeardownFinished,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
 };
 use crate::init::EnvironmentLoaded;
-use crate::protocol::{ChatEntry, Command, Event, PromptStrategyId};
+use crate::protocol::{Command, Event};
+
+use super::SessionStoreService;
+use crate::SessionForkRequested;
+use crate::SessionLoadRequested;
 
 /// Session lifecycle and persistence actor.
 ///
@@ -72,75 +66,6 @@ pub struct SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) store: Option<SessionStoreService>,
     /// Token counter for recording token usage in the session ledger.
     pub(in crate::feat::session::session_actor) counter: TiktokenCounter,
-}
-
-/// Remove ANSI escape sequences from a string.
-fn strip_ansi(s: &str) -> String {
-    strip_ansi_escapes::strip_str(s)
-}
-
-/// Build a system chat entry for when a setup command produces no output.
-///
-/// Shows the fallback CWD message.
-fn no_output_info(default_cwd: &std::path::Path) -> ChatEntry {
-    ChatEntry::system(format!(
-        "No path returned by setup command. Using {} as cwd",
-        default_cwd.display()
-    ))
-}
-
-/// System entry shown while a setup command is running.
-pub(crate) fn setup_running_msg() -> ChatEntry {
-    ChatEntry::system("⚙️ Running setup script...")
-}
-
-/// System entry shown when a setup command completes successfully.
-fn setup_complete_msg(cwd: &std::path::Path) -> ChatEntry {
-    ChatEntry::system(format!(
-        "✅ Setup complete — Using {} as cwd",
-        cwd.display()
-    ))
-}
-
-/// System entry shown while a teardown command is running.
-fn teardown_running_msg() -> ChatEntry {
-    ChatEntry::system("⚙️ Running teardown script...")
-}
-
-/// System entry shown when a teardown-only command succeeds (session is kept open).
-fn teardown_success_msg() -> ChatEntry {
-    ChatEntry::system("✅ Teardown completed successfully.")
-}
-
-/// Format a `LifecycleCommandError` into a clean user-facing message.
-fn format_lifecycle_error(err: &LifecycleCommandError) -> String {
-    match err {
-        LifecycleCommandError::CommandFailed {
-            exit_code,
-            stdout,
-            stderr,
-        } => {
-            let mut parts = vec![format!("Command failed (exit code: {:?})", exit_code)];
-            if !stdout.is_empty() {
-                parts.push(format!("stdout:\n{}", strip_ansi(stdout)));
-            }
-            if !stderr.is_empty() {
-                parts.push(format!("stderr:\n{}", strip_ansi(stderr)));
-            }
-            parts.join("\n\n")
-        }
-        LifecycleCommandError::NoOutput => "Command produced no output".to_owned(),
-        LifecycleCommandError::InvalidPath { path } => {
-            format!(
-                "Path does not exist or cannot be resolved: {}",
-                path.display()
-            )
-        }
-        LifecycleCommandError::NotADirectory { path } => {
-            format!("Path is not a directory: {}", path.display())
-        }
-        LifecycleCommandError::ExecutionFailed => "Failed to execute command".to_owned(),
-    }
 }
 
 /// Dependencies for [`SessionPersistenceActor`].
@@ -223,31 +148,6 @@ impl Actor for SessionPersistenceActor {
 }
 
 impl SessionPersistenceActor {
-    /// Push a chat entry directly and save.
-    ///
-    /// For use when the push must happen before an `.await` (e.g., teardown
-    /// "running" message). Otherwise, prefer emitting a `PushChatEntry` command
-    /// which routes through `handle_push_chat_entry` and persists automatically.
-    async fn push_and_save(
-        &self,
-        session_id: &crate::protocol::SessionId,
-        entry: ChatEntry,
-        ctx: &ActorContext,
-    ) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(session_id);
-            session.push_entry(entry.clone());
-        }
-        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
-            session_id: session_id.clone(),
-            entry,
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
-        }
-        self.save_active_session(session_id).await;
-    }
-
     /// Dispatches a bus event to the appropriate handler.
     async fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
@@ -350,612 +250,13 @@ impl SessionPersistenceActor {
             | Command::CompactContext(..) => {}
         }
     }
-
-    /// Loads session picker entries from the session store into `AppState`.
-    async fn handle_load_session_picker_entries(&self, _payload: &LoadSessionPickerEntries) {
-        if let Some(ref store) = self.store {
-            let theme = {
-                let state = self.state.read();
-                state.frontend.theme.clone()
-            };
-            let entries =
-                crate::feat::session::entries::load_session_entries_from_store(store, &theme).await;
-            let mut state = self.state.write();
-            state.frontend.session_picker.set_items(entries);
-        }
-    }
-
-    /// Applies config defaults to the default session profile on startup.
-    ///
-    /// Loads user preferences and applies `last_model` and `last_strategy`
-    /// to the default session, then sends an `UpdatePreferences` command so
-    /// the preferences pipeline handles persistence and state sync.
-    ///
-    /// NOTE: Using `active_session_mut()` is acceptable here because this runs
-    /// at startup before any user interaction. There is only one session.
-    async fn on_environment_loaded(
-        &self,
-        _config: &crate::feat::provider_infra::ProvidersConfig,
-        ctx: &ActorContext,
-    ) {
-        let Some(ref services) = self.services else {
-            return;
-        };
-
-        let prefs = match services.user_preferences_storage.load() {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!(err = ?e, "session-actor failed to load preferences on startup");
-                return;
-            }
-        };
-
-        let session_id;
-        {
-            let mut state = self.state.write();
-
-            // Apply config defaults to the default session.
-            let session = state.active_session_mut();
-            if let Some(ref model) = prefs.last_model {
-                session.set_model(model.clone());
-            }
-            if let Some(ref strategy_str) = prefs.last_strategy {
-                let strategy_id = PromptStrategyId::new(strategy_str.clone());
-                session.switch_strategy(strategy_id.clone());
-            }
-            session_id = state.session.active_session_id().clone();
-        }
-
-        // Load unarchived sessions from SQLite into memory.
-        // These are sessions with `archived=false` — corresponding to `SessionState::Loaded`.
-        // On load they get the default `SessionState::Loaded` and `LifecycleScriptState::NothingRan`.
-        if let Some(ref store) = self.store {
-            let summaries = match store.load_unarchived_summaries().await {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!(err = ?e, "session-actor failed to load unarchived summaries on startup");
-                    return;
-                }
-            };
-
-            if !summaries.is_empty() {
-                // Sort by updated_at descending to find the most recent.
-                let mut sorted = summaries;
-                sorted.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-
-                // Load full sessions outside the lock.
-                let mut loaded = Vec::new();
-                for summary in &sorted {
-                    if let Ok(Some(session)) = store.load_session(&summary.session_id).await {
-                        loaded.push(session);
-                    }
-                }
-
-                if !loaded.is_empty() {
-                    let mut state = self.state.write();
-
-                    for session in loaded {
-                        state
-                            .session
-                            .sessions_mut()
-                            .insert(session.session_id().clone(), session);
-                    }
-
-                    // Remove the empty default session if other sessions exist.
-                    let default_is_empty = state
-                        .session
-                        .sessions()
-                        .get(&session_id)
-                        .is_some_and(super::chat_session::ChatSessionState::is_empty);
-                    if default_is_empty && state.session.sessions().len() > 1 {
-                        state.session.sessions_mut().remove(&session_id);
-                    }
-
-                    // Set active to the most recently updated unarchived session.
-                    if let Some(most_recent) = sorted.first() {
-                        state.session.set_active(most_recent.session_id.clone());
-                    }
-                }
-            }
-        }
-
-        // Send UpdatePreferences command so the pipeline handles persistence + state sync.
-        if let Err(e) = ctx.send_command(Command::UpdatePreferences(crate::feat::preferences_actor::protocol::command::UpdatePreferences {
-                updates: vec![
-                    crate::feat::preferences_actor::protocol::command::PreferenceUpdate::SetLastModel(prefs.last_model.clone()),
-                    crate::feat::preferences_actor::protocol::command::PreferenceUpdate::SetLastStrategy(prefs.last_strategy.clone()),
-                ],
-            })) {
-            tracing::warn!(err = ?e, "session-actor failed to send UpdatePreferences on startup");
-        }
-
-        // Emit SwitchPromptStrategy so the context actor initializes the strategy.
-        if let Some(ref strategy_str) = prefs.last_strategy {
-            // Get the current active session (may have changed after loading unarchived sessions).
-            let active_id = self.state.read().session.active_session_id().clone();
-            let strategy_id = PromptStrategyId::new(strategy_str.clone());
-            if let Err(e) = ctx.send_command(Command::SwitchPromptStrategy(SwitchPromptStrategy {
-                session_id: active_id,
-                strategy_id,
-            })) {
-                tracing::error!(err = ?e, "failed to send command");
-            }
-        }
-    }
-
-    /// RunSessionSetup: execute the lifecycle setup command asynchronously.
-    ///
-    /// On success, sets the session's CWD to the command's output.
-    /// On failure, sets the default CWD and pushes an error entry.
-    async fn handle_run_session_setup(&self, payload: &RunSessionSetup, ctx: &ActorContext) {
-        // "running" entry is now emitted by the intent handler as a PushChatEntry
-        // command before this handler runs. No direct push needed here.
-
-        let result = run_setup_command(&payload.command).await;
-
-        match result {
-            Ok(cwd) => {
-                {
-                    let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
-                    {
-                        session.set_cwd(cwd.clone());
-                        session.advance_lifecycle_after_setup();
-                    }
-                }
-
-                // Emit the completion entry via PushChatEntry (persists automatically).
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                    session_id: payload.session_id.clone(),
-                    entry: setup_complete_msg(&cwd),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for setup complete");
-                }
-
-                if let Err(e) =
-                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
-                        session_id: payload.session_id.clone(),
-                        cwd,
-                        error: None,
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
-                }
-            }
-            Err(report) => {
-                let is_no_output = matches!(
-                    report.downcast_ref::<LifecycleCommandError>(),
-                    Some(LifecycleCommandError::NoOutput)
-                );
-                let error_msg =
-                    if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
-                        format_lifecycle_error(cmd_err)
-                    } else {
-                        strip_ansi(&format!("{report:#?}"))
-                    };
-                let default_cwd = {
-                    let mut state = self.state.write();
-                    let default = state.session.default_cwd().clone();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
-                    {
-                        session.set_cwd(default.clone());
-                    }
-                    default
-                };
-
-                let entry = if is_no_output {
-                    no_output_info(&default_cwd)
-                } else {
-                    ChatEntry::error(&error_msg)
-                };
-
-                // Emit the error entry via PushChatEntry (persists automatically).
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                    session_id: payload.session_id.clone(),
-                    entry,
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for setup error");
-                }
-
-                if let Err(e) =
-                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
-                        session_id: payload.session_id.clone(),
-                        cwd: default_cwd,
-                        error: Some(error_msg),
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
-                }
-            }
-        }
-    }
-
-    #[allow(clippy::too_many_lines)]
-    async fn handle_run_session_teardown(&self, payload: &RunSessionTeardown, ctx: &ActorContext) {
-        // Push "running" entry directly and save (before .await).
-        self.push_and_save(&payload.session_id, teardown_running_msg(), ctx)
-            .await;
-
-        let result = run_teardown_command(&payload.command).await;
-
-        match result {
-            Ok(()) => {
-                if payload.close_on_success {
-                    // Teardown succeeded - remove session and switch active.
-                    {
-                        let mut state = self.state.write();
-                        state.session.sessions_mut().remove(&payload.session_id);
-                        if state.session.sessions().is_empty() {
-                            let model = state
-                                .frontend
-                                .preferences
-                                .last_model
-                                .clone()
-                                .unwrap_or_else(|| {
-                                    crate::feat::provider_infra::NO_PROVIDER_ID.to_owned()
-                                });
-                            let strategy = state
-                                .frontend
-                                .preferences
-                                .last_strategy
-                                .as_deref()
-                                .map_or_else(
-                                    crate::protocol::PromptStrategyId::passthrough,
-                                    crate::protocol::PromptStrategyId::new,
-                                );
-                            let token_budget =
-                                state.frontend.preferences.context_token_budget.budget;
-                            let sliding_window_size =
-                                state.frontend.preferences.context_sliding_window.size;
-                            let new_session = ChatSessionState::new_with_profile(
-                                crate::feat::session::profile::SessionProfile::from_config(
-                                    model,
-                                    strategy,
-                                    token_budget,
-                                    sliding_window_size,
-                                ),
-                            );
-                            let new_id = new_session.session_id().clone();
-                            state
-                                .session
-                                .sessions_mut()
-                                .insert(new_id.clone(), new_session);
-                            state.session.set_active(new_id);
-                        } else if *state.session.active_session_id() == payload.session_id {
-                            let next_id = state
-                                .session
-                                .sessions()
-                                .keys()
-                                .next()
-                                .expect("sessions is non-empty")
-                                .clone();
-                            state.session.set_active(next_id);
-                        }
-                    }
-
-                    if let Err(e) =
-                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                            session_id: payload.session_id.clone(),
-                            error: None,
-                        }))
-                    {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                    }
-
-                    if let Err(e) = ctx.send_event(Event::SessionClosed(SessionClosed {
-                        session_id: payload.session_id.clone(),
-                    })) {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
-                    }
-                } else {
-                    // Teardown-only success — emit entry via PushChatEntry (persists automatically).
-                    if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                        session_id: payload.session_id.clone(),
-                        entry: teardown_success_msg(),
-                    })) {
-                        tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown success");
-                    }
-
-                    if let Err(e) =
-                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                            session_id: payload.session_id.clone(),
-                            error: None,
-                        }))
-                    {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                    }
-                }
-            }
-            Err(report) => {
-                let error_msg =
-                    if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
-                        format_lifecycle_error(cmd_err)
-                    } else {
-                        strip_ansi(&format!("{report:#?}"))
-                    };
-
-                // Emit error entry via PushChatEntry (persists automatically).
-                // Remove the old direct save — the command handler saves.
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                    session_id: payload.session_id.clone(),
-                    entry: ChatEntry::error(&error_msg),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown error");
-                }
-
-                if let Err(e) =
-                    ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                        session_id: payload.session_id.clone(),
-                        error: Some(error_msg),
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                }
-            }
-        }
-    }
-
-    /// CloseSession: state-driven close handler.
-    ///
-    /// Uses `LifecycleScriptState` to decide whether to run teardown:
-    /// - `SetupRan` → run teardown, archive, remove from memory
-    /// - `NothingRan` or `TeardownRan` → archive, remove from memory (no teardown)
-    ///
-    /// Steps execute sequentially. On failure, the chain stops and the session
-    /// remains in its current state.
-    async fn handle_close_session(&self, payload: &CloseSession, ctx: &ActorContext) {
-        use crate::feat::session::chat_session::LifecycleScriptState;
-
-        // Collect session info under read lock.
-        let session_info = {
-            let state = self.state.read();
-            let Some(session) = state.session.sessions().get(&payload.session_id) else {
-                return;
-            };
-            let script_state = session.lifecycle_script_state();
-            let is_empty = session.history().is_empty();
-            let lifecycle_name = session.lifecycle_name().map(str::to_owned);
-            let lifecycle_args = session.lifecycle_args().to_vec();
-            (script_state, is_empty, lifecycle_name, lifecycle_args)
-        };
-
-        let (script_state, is_empty, lifecycle_name, lifecycle_args) = session_info;
-
-        // Empty session — remove without archiving or teardown.
-        if is_empty {
-            self.close_session_inline(&payload.session_id, ctx);
-            return;
-        }
-
-        // Step 1: Run teardown if LifecycleScriptState is SetupRan.
-        if script_state == LifecycleScriptState::SetupRan {
-            let teardown_cmd = lifecycle_name.as_deref().and_then(|name| {
-                let state = self.state.read();
-                state
-                    .frontend
-                    .preferences
-                    .session_lifecycles
-                    .iter()
-                    .find(|l| l.name == name)
-                    .and_then(|l| l.teardown_command.clone())
-            });
-
-            if let Some(teardown_cmd) = teardown_cmd {
-                let success = self
-                    .run_close_teardown_step(
-                        &payload.session_id,
-                        &teardown_cmd,
-                        &lifecycle_args,
-                        ctx,
-                    )
-                    .await;
-
-                if !success {
-                    // Teardown failed — error already pushed, chain stops.
-                    if let Err(e) =
-                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                            session_id: payload.session_id.clone(),
-                            error: Some("teardown failed".to_owned()),
-                        }))
-                    {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                    }
-                    return;
-                }
-
-                // Advance LifecycleScriptState: SetupRan → TeardownRan.
-                {
-                    let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
-                    {
-                        session.advance_lifecycle_after_teardown();
-                    }
-                }
-
-                if let Err(e) =
-                    ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                        session_id: payload.session_id.clone(),
-                        error: None,
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                }
-            }
-            // If no teardown command exists but state is SetupRan, skip teardown and proceed to archive.
-        }
-
-        // Step 2: Archive in DB.
-        if let Some(ref store) = self.store
-            && let Err(e) = store.set_archived(&payload.session_id, true).await
-        {
-            tracing::warn!(err = ?e, "failed to archive session");
-        }
-
-        // Step 3: Remove from memory.
-        self.close_session_inline(&payload.session_id, ctx);
-
-        if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
-            session_id: payload.session_id.clone(),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionArchived");
-        }
-    }
-
-    /// ArchiveSession: archive without running teardown.
-    ///
-    /// - Empty session → remove from map, no archive.
-    /// - Non-empty → archive in SQLite, remove from map, emit events.
-    ///
-    /// Does NOT check or advance `LifecycleScriptState`. The session is simply
-    /// put away — it can be unarchived later.
-    async fn handle_archive_session(
-        &self,
-        payload: &crate::feat::session::protocol::archive_session::ArchiveSession,
-        ctx: &ActorContext,
-    ) {
-        let is_empty = {
-            let state = self.state.read();
-            let Some(session) = state.session.sessions().get(&payload.session_id) else {
-                return;
-            };
-            session.history().is_empty()
-        };
-
-        if is_empty {
-            self.close_session_inline(&payload.session_id, ctx);
-            return;
-        }
-
-        // Archive in SQLite.
-        if let Some(ref store) = self.store
-            && let Err(e) = store.set_archived(&payload.session_id, true).await
-        {
-            tracing::warn!(err = ?e, "failed to archive session");
-        }
-
-        self.close_session_inline(&payload.session_id, ctx);
-
-        if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
-            session_id: payload.session_id.clone(),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionArchived");
-        }
-    }
-
-    /// Runs the teardown command as part of session close.
-    ///
-    /// Returns `true` on success, `false` on failure (error entry pushed to session).
-    async fn run_close_teardown_step(
-        &self,
-        session_id: &crate::protocol::SessionId,
-        teardown_cmd: &str,
-        lifecycle_args: &[String],
-        ctx: &ActorContext,
-    ) -> bool {
-        use crate::feat::session_lifecycle::command_template::CommandTemplate;
-
-        // Push "running" entry directly and save (before .await).
-        self.push_and_save(session_id, teardown_running_msg(), ctx)
-            .await;
-
-        let template = CommandTemplate::parse(teardown_cmd);
-        let rendered = if lifecycle_args.is_empty() {
-            teardown_cmd.to_owned()
-        } else {
-            template.render(lifecycle_args)
-        };
-
-        match run_teardown_command(&rendered).await {
-            Ok(()) => true,
-            Err(report) => {
-                let error_msg =
-                    if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
-                        format_lifecycle_error(cmd_err)
-                    } else {
-                        strip_ansi(&format!("{report:#?}"))
-                    };
-
-                // Emit error entry via PushChatEntry (persists automatically).
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::error(&error_msg),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown error");
-                }
-                false
-            }
-        }
-    }
-
-    /// Remove session from HashMap, create new if empty, switch active,
-    /// adjust sidebar cursor, and emit `SessionClosed`.
-    fn close_session_inline(&self, session_id: &crate::protocol::SessionId, ctx: &ActorContext) {
-        {
-            let mut state = self.state.write();
-            state.session.sessions_mut().remove(session_id);
-
-            if state.session.sessions().is_empty() {
-                let model = state
-                    .frontend
-                    .preferences
-                    .last_model
-                    .clone()
-                    .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
-                let strategy = state
-                    .frontend
-                    .preferences
-                    .last_strategy
-                    .as_deref()
-                    .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
-                let token_budget = state.frontend.preferences.context_token_budget.budget;
-                let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
-                let new_session = ChatSessionState::new_with_profile(
-                    crate::feat::session::profile::SessionProfile::from_config(
-                        model,
-                        strategy,
-                        token_budget,
-                        sliding_window_size,
-                    ),
-                );
-                let new_id = new_session.session_id().clone();
-                state
-                    .session
-                    .sessions_mut()
-                    .insert(new_id.clone(), new_session);
-                state.session.set_active(new_id);
-            } else if *state.session.active_session_id() == *session_id {
-                let next_id = state
-                    .session
-                    .sessions()
-                    .keys()
-                    .next()
-                    .expect("sessions is non-empty")
-                    .clone();
-                state.session.set_active(next_id);
-            }
-        }
-
-        if let Err(e) = ctx.send_event(Event::SessionClosed(SessionClosed {
-            session_id: session_id.clone(),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
-        }
-    }
-
-    /// SaveNewLifecycleSession: persist the session immediately.
-    ///
-    /// Called right after the IntentHandler creates a lifecycle session
-    /// so that the session metadata survives an app crash during setup.
-    async fn handle_save_new_lifecycle_session(&self, payload: &SaveNewLifecycleSession) {
-        self.save_active_session(&payload.session_id).await;
-    }
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::{
-        no_output_info, setup_complete_msg, setup_running_msg, strip_ansi, teardown_running_msg,
+        strip_ansi, setup_complete_msg, setup_running_msg, no_output_info, teardown_running_msg,
     };
     use crate::common::actor::{ActorContext, RecordingSink};
     use crate::common::app_state::AppState;
@@ -967,6 +268,7 @@ mod tests {
     use crate::feat::tools_actor::protocol::event::ToolBatchCompleted;
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChatEntry, ChatEntryKind, Command};
+    use ratatui::style::Color;
     use std::path::Path;
 
     #[rstest::rstest]
@@ -2472,6 +1774,7 @@ mod tests {
     #[tokio::test]
     async fn close_session_advances_lifecycle_when_teardown_succeeds() {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+        use crate::feat::session::chat_session::LifecycleScriptState;
 
         // Given a session with SetupRan and a succeeding teardown command.
         let actor = test_actor();
