@@ -115,6 +115,7 @@ impl ProviderActor {
             | Command::RunSessionSetup(..)
             | Command::RunSessionTeardown(..)
             | Command::CompactContext(..)
+            | Command::EnqueueCompaction(..)
             | Command::BeginCompaction(..)
             | Command::CancelCompaction(..)
             | Command::EndCompaction(..)
