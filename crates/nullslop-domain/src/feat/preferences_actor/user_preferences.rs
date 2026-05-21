@@ -144,6 +144,70 @@ impl Default for ContextSlidingWindowConfig {
     }
 }
 
+/// Default retry configuration values.
+const DEFAULT_RETRY_MAX_RETRIES: u32 = 5;
+const DEFAULT_RETRY_BASE_DELAY_SECS: u64 = 2;
+const DEFAULT_RETRY_MAX_DELAY_SECS: u64 = 60;
+const DEFAULT_RETRY_JITTER_FRACTION: f64 = 0.5;
+
+/// Retry configuration for LLM provider requests.
+///
+/// Serialized as `[request_retry]` in `nullslop.toml`.
+/// Controls exponential backoff behavior for transient errors.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestRetryConfig {
+    /// Maximum number of retry attempts. Default: 5.
+    #[serde(default = "default_retry_max_retries")]
+    pub max_retries: u32,
+    /// Base delay in seconds for exponential backoff. Default: 2.
+    #[serde(default = "default_retry_base_delay_secs")]
+    pub base_delay_secs: u64,
+    /// Maximum delay cap in seconds. Default: 60.
+    /// Overridden by provider-supplied Retry-After / error body hints.
+    #[serde(default = "default_retry_max_delay_secs")]
+    pub max_delay_secs: u64,
+    /// Jitter amount as a fraction (0.0 to 1.0). Default: 0.5.
+    #[serde(default = "default_retry_jitter_fraction")]
+    pub jitter_fraction: f64,
+}
+
+fn default_retry_max_retries() -> u32 {
+    DEFAULT_RETRY_MAX_RETRIES
+}
+fn default_retry_base_delay_secs() -> u64 {
+    DEFAULT_RETRY_BASE_DELAY_SECS
+}
+fn default_retry_max_delay_secs() -> u64 {
+    DEFAULT_RETRY_MAX_DELAY_SECS
+}
+fn default_retry_jitter_fraction() -> f64 {
+    DEFAULT_RETRY_JITTER_FRACTION
+}
+
+impl Default for RequestRetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: DEFAULT_RETRY_MAX_RETRIES,
+            base_delay_secs: DEFAULT_RETRY_BASE_DELAY_SECS,
+            max_delay_secs: DEFAULT_RETRY_MAX_DELAY_SECS,
+            jitter_fraction: DEFAULT_RETRY_JITTER_FRACTION,
+        }
+    }
+}
+
+impl RequestRetryConfig {
+    /// Convert to the provider-crate [`nullslop_provider::RetryConfig`].
+    #[must_use]
+    pub fn to_retry_config(&self) -> nullslop_provider::RetryConfig {
+        nullslop_provider::RetryConfig {
+            max_retries: self.max_retries,
+            base_delay: std::time::Duration::from_secs(self.base_delay_secs),
+            max_delay: std::time::Duration::from_secs(self.max_delay_secs),
+            jitter_fraction: self.jitter_fraction,
+        }
+    }
+}
+
 /// User preferences persisted in `nullslop.toml`.
 ///
 /// This file stores user behavior preferences that should survive
@@ -198,6 +262,9 @@ pub struct UserPreferences {
     /// New sessions inherit `size` as their default.
     #[serde(default)]
     pub context_sliding_window: ContextSlidingWindowConfig,
+    /// Retry configuration for LLM provider requests.
+    #[serde(default)]
+    pub request_retry: RequestRetryConfig,
 }
 
 /// Returns the path to the user preferences file.
@@ -331,6 +398,7 @@ mod tests {
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
 
         // When saving and reloading.
@@ -399,6 +467,7 @@ last_strategy = "sliding_window""#,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
 
         // When saving.
@@ -426,6 +495,7 @@ last_strategy = "sliding_window""#,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
 
         // When saving and reloading.
@@ -461,6 +531,7 @@ last_strategy = "sliding_window""#,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
 
         // When saving and reloading.
@@ -502,6 +573,7 @@ last_strategy = "sliding_window""#,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -574,6 +646,7 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
 
         // When saving and reloading.

@@ -217,6 +217,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::ContextTokenBudgetConfig;
+    use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::user_preferences::{
         CompactionConfig, ContextSlidingWindowConfig,
@@ -251,6 +252,7 @@ mod tests {
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
 
         // When saving and reloading.
@@ -298,6 +300,7 @@ mod tests {
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
 
         // When saving and reloading.
@@ -328,6 +331,7 @@ mod tests {
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -358,6 +362,7 @@ mod tests {
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -375,6 +380,7 @@ mod tests {
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -401,6 +407,7 @@ mod tests {
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
         service.save(&prefs).expect("save");
 
