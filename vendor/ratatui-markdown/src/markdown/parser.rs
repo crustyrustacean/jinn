@@ -113,6 +113,7 @@ impl MarkdownRenderer {
 
             if line.trim().starts_with(MD_FENCE) {
                 Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
+                Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                 in_code_block = true;
                 code_lang = line.trim().chars().skip(3).collect::<String>();
                 continue;
@@ -122,20 +123,14 @@ impl MarkdownRenderer {
 
             if trimmed.is_empty() {
                 Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
-                if !paragraph_lines.is_empty() {
-                    blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
-                    paragraph_lines.clear();
-                }
+                Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                 blocks.push(MarkdownBlock::BlankLine);
                 continue;
             }
 
             if is_line_only_image(trimmed) {
                 Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
-                if !paragraph_lines.is_empty() {
-                    blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
-                    paragraph_lines.clear();
-                }
+                Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                 if let Some((alt, path)) = parse_image_syntax(trimmed) {
                     blocks.push(MarkdownBlock::Image { alt, path });
                 }
@@ -147,20 +142,14 @@ impl MarkdownRenderer {
                 || trimmed.starts_with(MD_HRULE_UNDERSCORE)
             {
                 Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
-                if !paragraph_lines.is_empty() {
-                    blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
-                    paragraph_lines.clear();
-                }
+                Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                 blocks.push(MarkdownBlock::HorizontalRule);
                 continue;
             }
 
             if line.starts_with(MD_H3) {
                 Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
-                if !paragraph_lines.is_empty() {
-                    blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
-                    paragraph_lines.clear();
-                }
+                Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                 let text = trimmed.chars().skip(4).collect::<String>();
                 blocks.push(MarkdownBlock::Heading3(text));
                 continue;
@@ -168,10 +157,7 @@ impl MarkdownRenderer {
 
             if line.starts_with(MD_H2) {
                 Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
-                if !paragraph_lines.is_empty() {
-                    blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
-                    paragraph_lines.clear();
-                }
+                Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                 let text = trimmed.chars().skip(3).collect::<String>();
                 blocks.push(MarkdownBlock::Heading2(text));
                 continue;
@@ -179,10 +165,7 @@ impl MarkdownRenderer {
 
             if line.starts_with(MD_H1) {
                 Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
-                if !paragraph_lines.is_empty() {
-                    blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
-                    paragraph_lines.clear();
-                }
+                Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                 let text = trimmed.chars().skip(2).collect::<String>();
                 blocks.push(MarkdownBlock::Heading1(text));
                 continue;
@@ -190,10 +173,7 @@ impl MarkdownRenderer {
 
             if trimmed.starts_with('>') {
                 Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
-                if !paragraph_lines.is_empty() {
-                    blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
-                    paragraph_lines.clear();
-                }
+                Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                 let mut bq_lines: Vec<String> = Vec::new();
                 bq_lines.push(trimmed.to_string());
 
@@ -217,10 +197,7 @@ impl MarkdownRenderer {
                 || trimmed.starts_with(MD_LIST_PLUS)
             {
                 Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
-                if !paragraph_lines.is_empty() {
-                    blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
-                    paragraph_lines.clear();
-                }
+                Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                 let content = trimmed.chars().skip(2).collect::<String>();
                 blocks.push(MarkdownBlock::ListItem {
                     content,
@@ -234,10 +211,7 @@ impl MarkdownRenderer {
                 let prefix = &trimmed[..pos];
                 if pos > 0 && pos < 5 && prefix.parse::<u32>().is_ok() {
                     Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
-                    if !paragraph_lines.is_empty() {
-                        blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
-                        paragraph_lines.clear();
-                    }
+                    Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                     let number: u32 = prefix.parse().unwrap();
                     let content = trimmed[pos + 2..].to_string();
                     blocks.push(MarkdownBlock::ListItem {
@@ -250,10 +224,7 @@ impl MarkdownRenderer {
             }
 
             if Self::is_table_line(trimmed) {
-                if !paragraph_lines.is_empty() {
-                    blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
-                    paragraph_lines.clear();
-                }
+                Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
                 table_buffer.push(trimmed.to_string());
                 continue;
             }
@@ -263,9 +234,7 @@ impl MarkdownRenderer {
         }
 
         Self::flush_table(&mut table_buffer, &mut blocks, &mut paragraph_lines);
-        if !paragraph_lines.is_empty() {
-            blocks.push(MarkdownBlock::Paragraph(paragraph_lines));
-        }
+        Self::flush_paragraph(&mut paragraph_lines, &mut blocks);
 
         if in_code_block {
             blocks.push(MarkdownBlock::code_block(
@@ -476,6 +445,13 @@ impl MarkdownRenderer {
             }
         }
         false
+    }
+
+    fn flush_paragraph(paragraph_lines: &mut Vec<String>, blocks: &mut Vec<MarkdownBlock>) {
+        if !paragraph_lines.is_empty() {
+            blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
+            paragraph_lines.clear();
+        }
     }
 
     fn flush_table(
