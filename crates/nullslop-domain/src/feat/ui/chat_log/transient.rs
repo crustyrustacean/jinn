@@ -12,7 +12,8 @@ use super::shared::{Pad, RenderContext, pad_entry};
 /// Renders the markdown text through the markdown renderer using the current
 /// content width, then adds blank padding above and below for visual spacing.
 pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<ratatui::text::Line<'static>> {
-    let mut lines = render_markdown(text, ctx.content_width, &ctx.theme);
+    let text = super::shared::strip_ansi(text);
+    let mut lines = render_markdown(&text, ctx.content_width, &ctx.theme);
     pad_entry(&mut lines, Pad::Both);
     lines
 }

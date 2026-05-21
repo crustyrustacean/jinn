@@ -7,7 +7,8 @@ use super::markdown::render_markdown;
 use super::shared::{Pad, RenderContext, pad_entry_with, pad_line_to_width};
 
 pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
-    let mut lines = render_markdown(text, ctx.content_width, &ctx.theme);
+    let text = super::shared::strip_ansi(text);
+    let mut lines = render_markdown(&text, ctx.content_width, &ctx.theme);
     // Apply user block background to every line and pad to full width.
     let bg = Style::default().bg(ctx.theme.user_block_bg);
     for line in &mut lines {
