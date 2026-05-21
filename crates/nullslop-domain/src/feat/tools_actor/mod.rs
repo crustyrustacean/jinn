@@ -12,15 +12,15 @@
 //! (for resolving relative paths) and an optional timeout. The orchestrator
 //! reads CWD from shared [`State`] at dispatch time.
 
-mod builtin;
-pub(crate) mod builtin_bash;
-pub(crate) mod builtin_get_time;
-pub(crate) mod builtin_read;
+pub mod builtin;
+pub mod builtin_bash;
+pub mod builtin_get_time;
+pub mod builtin_read;
 #[cfg(test)]
 mod builtin_read_tests;
-pub(crate) mod builtin_skill;
-pub(crate) mod builtin_write;
-pub(crate) mod edit;
+pub mod builtin_skill;
+pub mod builtin_write;
+pub mod edit;
 #[cfg(test)]
 mod edit_tests;
 pub mod protocol;
@@ -44,7 +44,7 @@ use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition
 use crate::protocol::{Command, Event, SessionId};
 
 /// A boxed future returned by built-in tool execute functions.
-type BoxedToolFuture = Pin<Box<dyn Future<Output = ToolResult> + Send>>;
+pub type BoxedToolFuture = Pin<Box<dyn Future<Output = ToolResult> + Send>>;
 
 /// How a tool is registered and executed.
 pub(crate) enum ToolRegistration {
@@ -115,6 +115,9 @@ pub struct ToolOrchestratorActorDeps {
     pub state: State,
     /// Application paths for working directory.
     pub app_paths: crate::common::app_paths::AppPaths,
+    /// Override which built-in tools to register. `None` means register all.
+    /// Each entry is a tool name (e.g., `"bash"`, `"read"`, `"write"`).
+    pub builtin_filter: Option<Vec<String>>,
 }
 
 impl Actor for ToolOrchestratorActor {
@@ -135,7 +138,15 @@ impl Actor for ToolOrchestratorActor {
             app_paths: deps.app_paths,
         };
 
-        let builtins = builtin::builtin_tools();
+        let all_builtins = builtin::builtin_tools();
+        let builtins: Vec<_> = if let Some(ref filter) = deps.builtin_filter {
+            all_builtins
+                .into_iter()
+                .filter(|(def, _)| filter.contains(&def.name))
+                .collect()
+        } else {
+            all_builtins
+        };
         let builtin_definitions: Vec<ToolDefinition> =
             builtins.iter().map(|(d, _)| d.clone()).collect();
 
