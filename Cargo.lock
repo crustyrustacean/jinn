@@ -1869,6 +1869,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nullslop-bench"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "nullslop-domain",
+ "nullslop-provider",
+]
+
+[[package]]
 name = "nullslop-cli"
 version = "0.1.0"
 dependencies = [
