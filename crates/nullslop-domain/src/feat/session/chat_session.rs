@@ -927,7 +927,9 @@ impl ChatSessionState {
     // --- Queue ---
 
     /// Read-only access to the turn dispatch queue items.
-    pub fn queue(&self) -> &std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
+    pub fn queue(
+        &self,
+    ) -> &std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
         self.core.ephemeral.message_queue.items()
     }
 
@@ -947,12 +949,14 @@ impl ChatSessionState {
     }
 
     /// Pop the front item from the queue, if any.
-    pub fn dequeue(&mut self) -> Option<crate::feat::session::queue_item::QueueItem> {
+    pub(in crate::feat) fn dequeue(
+        &mut self,
+    ) -> Option<crate::feat::session::queue_item::QueueItem> {
         self.core.ephemeral.message_queue.pop()
     }
 
     /// Drain all queued items, returning them in order.
-    pub fn drain_queue(
+    pub(in crate::feat) fn drain_queue(
         &mut self,
     ) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
         self.core.ephemeral.message_queue.drain()

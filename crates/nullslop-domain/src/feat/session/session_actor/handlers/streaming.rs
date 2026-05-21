@@ -486,7 +486,12 @@ mod tests {
 
         // And no AssemblePrompt was emitted.
         let commands = sink.commands();
-        let has_assemble = commands.iter().any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(!has_assemble, "expected no AssemblePrompt after soft cancel");
+        let has_assemble = commands
+            .iter()
+            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+        assert!(
+            !has_assemble,
+            "expected no AssemblePrompt after soft cancel"
+        );
     }
 }
