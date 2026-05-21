@@ -126,7 +126,10 @@ mod tests {
         let row = buffer_row(&buffer, 0, 30);
 
         // Then the label shows "Compacting...".
-        assert!(row.contains("Compacting..."), "expected Compacting..., got: {row}");
+        assert!(
+            row.contains("Compacting..."),
+            "expected Compacting..., got: {row}"
+        );
     }
 
     #[rstest::rstest]
@@ -147,7 +150,10 @@ mod tests {
         let row = buffer_row(&buffer, 0, 30);
 
         // Then the label shows "Working...".
-        assert!(row.contains("Working..."), "expected Working..., got: {row}");
+        assert!(
+            row.contains("Working..."),
+            "expected Working..., got: {row}"
+        );
     }
 
     #[rstest::rstest]
@@ -169,6 +175,9 @@ mod tests {
         let content: String = (0..30)
             .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
             .collect();
-        assert!(content.trim().is_empty(), "expected empty buffer, got: {content}");
+        assert!(
+            content.trim().is_empty(),
+            "expected empty buffer, got: {content}"
+        );
     }
 }
