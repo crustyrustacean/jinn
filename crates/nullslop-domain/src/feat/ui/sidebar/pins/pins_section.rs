@@ -9,6 +9,7 @@ use crate::common::app_state::pin_sort_key;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::theme::Theme;
+use crate::feat::ui::chat_log::shared::strip_ansi;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
@@ -322,8 +323,9 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
 fn truncate_str(s: &str, max_len: usize) -> String {
     use unicode_segmentation::UnicodeSegmentation;
 
+    let s = strip_ansi(s);
     if s.len() <= max_len {
-        s.to_owned()
+        s
     } else {
         let truncated: String = s.graphemes(true).take(max_len.saturating_sub(1)).collect();
         format!("{truncated}\u{2026}")

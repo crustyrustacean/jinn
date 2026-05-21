@@ -102,6 +102,14 @@ pub fn pad_entry_with(lines: &mut Vec<Line<'static>>, pad: Pad, pad_line: Line<'
     }
 }
 
+/// Strip ANSI escape sequences from a string.
+///
+/// Used by all entry rendering functions to ensure TUI output
+/// never displays raw escape codes.
+pub fn strip_ansi(s: &str) -> String {
+    strip_ansi_escapes::strip_str(s)
+}
+
 /// Replace literal `\n` (backslash + n) sequences with actual newline characters.
 ///
 /// Tool call arguments and tool result content may contain JSON-encoded
@@ -152,7 +160,7 @@ mod tests {
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
-    use super::{Pad, multiline_styled, pad_entry, pad_entry_with};
+    use super::{Pad, multiline_styled, pad_entry, pad_entry_with, strip_ansi};
 
     #[rstest::rstest]
     fn pad_entry_both_adds_blank_line_above_and_below() {
@@ -236,6 +244,42 @@ mod tests {
         // And the last line has the same styled pad content.
         assert_eq!(lines[2].spans.len(), 1);
         assert_eq!(lines[2].spans[0].content, " ".repeat(80));
+    }
+
+    #[rstest::rstest]
+    fn strip_ansi_removes_color_codes() {
+        // Given text with ANSI color codes.
+        let input = "\x1b[31mError\x1b[0m: something failed";
+
+        // When stripping.
+        let result = strip_ansi(input);
+
+        // Then escape codes are removed.
+        assert_eq!(result, "Error: something failed");
+    }
+
+    #[rstest::rstest]
+    fn strip_ansi_removes_bold_codes() {
+        // Given text with ANSI bold codes.
+        let input = "\x1b[1mWarning\x1b[0m: check failed";
+
+        // When stripping.
+        let result = strip_ansi(input);
+
+        // Then escape codes are removed.
+        assert_eq!(result, "Warning: check failed");
+    }
+
+    #[rstest::rstest]
+    fn strip_ansi_passes_plain_text_through() {
+        // Given plain text with no escape codes.
+        let input = "Hello, world!";
+
+        // When stripping.
+        let result = strip_ansi(input);
+
+        // Then the text is unchanged.
+        assert_eq!(result, input);
     }
 
     #[rstest::rstest]
