@@ -573,6 +573,10 @@ impl ChatSessionState {
     /// Lazily creates the Assistant entry if this is the first token.
     ///
     /// Soft guard: if the session is not streaming, logs a warning and returns an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(StreamingError::NoStreamingEntry)` if the session is not in Streaming phase.
     #[expect(
         clippy::indexing_slicing,
         reason = "index comes from push_entry which always returns a valid index"
