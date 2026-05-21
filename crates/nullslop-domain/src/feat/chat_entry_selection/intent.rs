@@ -435,9 +435,15 @@ mod tests {
     fn fork_from_entry_returns_fork_command() {
         // Given a state with 3 entries, middle entry selected (index 1).
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("first"));
-        state.active_session_mut().push_entry(ChatEntry::assistant("second"));
-        state.active_session_mut().push_entry(ChatEntry::user("third"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("first"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("second"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("third"));
         // Select second entry (index 1).
         state.active_session_mut().select_prev_entry();
         assert_eq!(state.active_session().selected_entry_index(), Some(1));
@@ -492,9 +498,13 @@ mod tests {
         // Given a state with 5 entries, entry at index 3 selected.
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
-        state.active_session_mut().push_entry(ChatEntry::assistant("b"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
         state.active_session_mut().push_entry(ChatEntry::user("c"));
-        state.active_session_mut().push_entry(ChatEntry::assistant("d"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("d"));
         state.active_session_mut().push_entry(ChatEntry::user("e"));
         // Select entry at index 3 ("d").
         state.active_session_mut().select_prev_entry();

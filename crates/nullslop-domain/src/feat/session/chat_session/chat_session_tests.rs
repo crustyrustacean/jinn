@@ -279,7 +279,9 @@ fn enqueue_message_adds_to_queue() {
     assert_eq!(session.queue_len(), 0);
 
     // When enqueuing a message.
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("hello")));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("hello"),
+    ));
 
     // Then the queue has one message.
     assert_eq!(session.queue_len(), 1);
@@ -296,8 +298,12 @@ fn enqueue_message_adds_to_queue() {
 fn dequeue_message_returns_first_in_order() {
     // Given a session with two queued messages.
     let mut session = ChatSessionState::new();
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("first")));
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("second")));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("first"),
+    ));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("second"),
+    ));
 
     // When dequeuing a message.
     let msg = session.dequeue();
@@ -334,19 +340,28 @@ fn dequeue_message_returns_none_when_empty() {
 fn drain_returns_all_in_order() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("a")));
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("b")));
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("c")));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("a"),
+    ));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("b"),
+    ));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("c"),
+    ));
 
     // When draining the queue.
     let drained = session.drain_queue();
 
     // Then all messages are returned in order.
     assert_eq!(drained.len(), 3);
-    let entries: Vec<ChatEntry> = drained.into_iter().map(|item| match item {
-        crate::feat::session::queue_item::QueueItem::UserMessage(e) => e,
-        _ => panic!("expected UserMessage"),
-    }).collect();
+    let entries: Vec<ChatEntry> = drained
+        .into_iter()
+        .map(|item| match item {
+            crate::feat::session::queue_item::QueueItem::UserMessage(e) => e,
+            _ => panic!("expected UserMessage"),
+        })
+        .collect();
     assert_eq!(entries.len(), 3);
     assert_eq!(
         entries[0].kind,
@@ -375,9 +390,15 @@ fn drain_returns_all_in_order() {
 fn drain_empties_queue() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("a")));
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("b")));
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("c")));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("a"),
+    ));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("b"),
+    ));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("c"),
+    ));
 
     // When draining the queue.
     let _ = session.drain_queue();
@@ -1860,7 +1881,9 @@ fn cancel_compacting_drains_queue() {
     // Given a session in Compacting phase with a queued message.
     let mut session = ChatSessionState::new();
     session.begin_compacting(vec![]);
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("queued during compaction")));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("queued during compaction"),
+    ));
 
     // When cancelling compaction.
     let drained = session.cancel_compacting();

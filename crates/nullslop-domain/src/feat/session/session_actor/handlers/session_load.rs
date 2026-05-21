@@ -95,8 +95,6 @@ impl SessionPersistenceActor {
             ));
         }
 
-
-
         // Persist the restored session (includes the "Session restored" system entries).
         self.save_active_session(&session_id).await;
     }
