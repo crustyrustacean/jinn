@@ -1,12 +1,7 @@
 # Style Guide
 
-This document defines the _coding conventions_ and _patterns_ for the `nullslop` codebase. Always load the [ARCHITECTURE.md](./ARCHITECTURE.md) document for more detailed information that will help guide change requests and code reviews.
+This document defines the _coding conventions_, _patterns_, and _architecture_ for the `nullslop` codebase.
 
-IMPORTANT NOTES:
-
-- All async tasks are handled by actors. See ARCHITECTURE.md for more details.
-- The `IntentHandler` is the single decision point for all user input — it validates, mutates state, and returns commands.
-- Domain logic is handled by _sending a COMMAND_ to the actor system. This allows both sync & async workflows to occur from any point in the application.
 - IGNORE ALL CODE IN `vendor/` UNLESS IT'S SPECIFICALLY RELATED TO THE TASK.
 
 ## 1. Overview
@@ -198,9 +193,51 @@ let c = {
 };
 ```
 
-## 3. Data Flow
+## 3. Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full data flow diagram. The flow is unidirectional: user input → IntentHandler → commands → domain actors (session, provider, context) → write AppState → renderer.
+### Data Flow
+
+```
+  Keyboard / Mouse / Script
+         │
+         ▼
+  Keymap (produces Intent)
+         │
+         ▼
+  IntentHandler (sync, single match block)
+    ├── validator  → passes or rejects
+    ├── mutate AppState directly (scroll, cursor, mode, etc.)
+    └── return IntentResult { commands }
+         │
+         ▼
+  AppCore.sender  →  async forwarding task  →  ActorHost
+                                                    │
+                                          ┌──────���──┴─────────┐
+                                          │                   │
+                                   Domain actors          other actors
+                                          │                   ���
+                                          ▼                   ▼
+                                    write AppState        Commands/Events
+                                    (shared RwLock)             │
+                                          │                    │
+                                          └─────────┬──────────┘
+                                                    ▼
+                                            TUI renderer reads AppState
+```
+
+Unidirectional: frontend → actor system. No feedback loop.
+The shared AppState is the feedback — domain actors write their fields,
+the renderer reads it on the next tick.
+
+### Command/Event System
+
+**Intents are for user input only.** The `IntentHandler` validates, mutates `AppState` directly, and returns commands. It never accesses external services and never emits events.
+
+**All domain logic goes through commands.** When something needs to happen — send a message, switch provider, run a tool — the IntentHandler returns a `Command`. Commands are routed by the actor host to exactly one subscribed actor.
+
+**Actors handle all async operations.** They communicate through the actor host's pub/sub routing. Events are broadcast to all subscribers; commands route to exactly one. Actors may emit events or commands back onto the bus in response.
+
+**AppState is divided into owner-named sub-structs** (session, context, provider, frontend). Cross-boundary writes are a code review red flag.
 
 ## 4. Tests
 
