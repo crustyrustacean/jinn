@@ -56,8 +56,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         .sessions()
         .iter()
         .filter(|(_, session)| {
-            session.session_state()
-                == crate::feat::session::chat_session::SessionState::Loaded
+            session.session_state() == crate::feat::session::chat_session::SessionState::Loaded
         })
         .map(|(id, session): (&_, &_)| SessionEntry {
             id: id.clone(),
@@ -77,10 +76,8 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         .collect();
 
     // Index entries by ID for O(1) lookup.
-    let entry_map: HashMap<SessionId, SessionEntry> = entries
-        .into_iter()
-        .map(|e| (e.id.clone(), e))
-        .collect();
+    let entry_map: HashMap<SessionId, SessionEntry> =
+        entries.into_iter().map(|e| (e.id.clone(), e)).collect();
 
     // Build parent → children map and identify roots.
     let mut children_map: HashMap<SessionId, Vec<SessionId>> = HashMap::new();

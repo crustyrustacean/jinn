@@ -8,17 +8,19 @@ use jiff::Timestamp;
 use throbber_widgets_tui::ThrobberState;
 
 use crate::common::app_state::AppState;
-use crate::protocol::SessionId;
-use crate::feat::ui::sidebar::sessions::render::entry_line::{
-    assemble_entry_line, tree_prefix,
-};
+use crate::feat::ui::sidebar::sessions::render::entry_line::{assemble_entry_line, tree_prefix};
 use crate::feat::ui::sidebar::sessions::state::SessionEntry;
+use crate::protocol::SessionId;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn tree_entry(depth: usize, ancestor_continuations: Vec<bool>, is_last_child: bool) -> SessionEntry {
+fn tree_entry(
+    depth: usize,
+    ancestor_continuations: Vec<bool>,
+    is_last_child: bool,
+) -> SessionEntry {
     SessionEntry {
         id: SessionId::new(),
         title: "Test".to_owned(),
@@ -203,7 +205,12 @@ fn assembled_line_has_no_tree_prefix_for_root() {
     let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
 
     // Then the line has 4 spans: indicator, space, arrow, title (no tree prefix span).
-    assert_eq!(line.spans.len(), 4, "root entry should have 4 spans, got {}", line.spans.len());
+    assert_eq!(
+        line.spans.len(),
+        4,
+        "root entry should have 4 spans, got {}",
+        line.spans.len()
+    );
 }
 
 #[rstest::rstest]
@@ -227,7 +234,12 @@ fn assembled_line_has_tree_prefix_span_for_child() {
     let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
 
     // Then the line has 5 spans: indicator, space, arrow, tree prefix, title.
-    assert_eq!(line.spans.len(), 5, "child entry should have 5 spans, got {}", line.spans.len());
+    assert_eq!(
+        line.spans.len(),
+        5,
+        "child entry should have 5 spans, got {}",
+        line.spans.len()
+    );
 }
 
 // ---------------------------------------------------------------------------

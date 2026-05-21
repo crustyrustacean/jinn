@@ -168,7 +168,7 @@ impl UiElement<AppState> for StatusBarElement {
         let turn_count = turn_counter::compute_turn_count(state.active_session().history());
         let left_spans: Vec<Span> = vec![
             Span::styled(left, style),
-            Span::styled(format!(" ${total_cost:.4}"), style),
+            Span::styled(format!(" ${total_cost:.5}"), style),
             Span::styled(format!(" Turns: {turn_count}"), style),
         ];
 
