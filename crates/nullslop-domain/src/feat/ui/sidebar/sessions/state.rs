@@ -155,7 +155,7 @@ fn dfs_children(
     let child_count = children.len();
 
     // Determine if the parent has younger siblings for continuation lines.
-    let parent_is_last = result.last().map_or(true, |e| e.is_last_child);
+    let parent_is_last = result.last().is_none_or(|e| e.is_last_child);
     let mut continuations = ancestor_continuations;
     continuations.push(!parent_is_last);
 
@@ -168,7 +168,7 @@ fn dfs_children(
             continue;
         };
         entry.depth = continuations.len();
-        entry.ancestor_continuations = continuations.clone();
+        entry.ancestor_continuations.clone_from(&continuations);
         entry.is_last_child = is_last;
         result.push(entry);
         dfs_children(
