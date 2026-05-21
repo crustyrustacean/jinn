@@ -8,7 +8,6 @@ use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::aggregate_session_stats;
-use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::ui::status_bar::turn_counter;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
@@ -178,16 +177,7 @@ impl UiElement<AppState> for StatusBarElement {
         frame.render_widget(strategy_widget, info_area);
 
         let notification = state.frontend.active_status_notification();
-        let right_spans = if matches!(state.active_session().phase(), SessionPhase::Compacting) {
-            // Show "Compacting..." prominently when session is in Compacting phase.
-            vec![
-                Span::styled(
-                    "Compacting...",
-                    Style::default().fg(state.frontend.theme.warning),
-                ),
-                Span::styled(format!("  {model}"), style),
-            ]
-        } else if let Some(msg) = notification {
+        let right_spans = if let Some(msg) = notification {
             vec![
                 Span::styled(msg, Style::default().fg(state.frontend.theme.success)),
                 Span::styled(format!("  {model}"), style),
