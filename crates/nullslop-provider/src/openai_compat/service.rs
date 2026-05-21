@@ -134,13 +134,22 @@ impl OpenAiCompatibleService {
 
         let status = response.status();
         if !status.is_success() {
+            // Read Retry-After header before consuming the body.
+            let retry_after_header = response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(crate::service::parse_retry_after_header);
             let error_text = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "(no body)".to_owned());
-            return Err(Report::new(LlmServiceError::Provider)
-                .attach(format!("{} HTTP {status}", self.config.name))
-                .attach(error_text));
+            return Err(crate::service::classify_http_error(
+                status,
+                &error_text,
+                &self.config.name,
+                retry_after_header,
+            ));
         }
 
         Ok(response)
