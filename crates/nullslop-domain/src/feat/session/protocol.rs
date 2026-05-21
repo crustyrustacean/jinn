@@ -11,6 +11,7 @@ pub mod session_load_completed;
 pub mod session_load_requested;
 pub mod session_new;
 pub mod session_phase_changed;
+pub mod soft_cancel_turn;
 
 pub use archive_session::ArchiveSession;
 pub use close_session::CloseSession;

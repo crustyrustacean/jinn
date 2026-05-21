@@ -207,8 +207,14 @@ impl SessionPersistenceActor {
 
             // Tool use means the conversation continues — transition to sending
             // so the indicator shows activity while awaiting the followup.
+            // Unless soft-cancel was requested, in which case end the turn.
             if event.reason == StreamCompletedReason::ToolUse {
-                session.begin_sending();
+                if session.take_soft_cancel() {
+                    // Soft cancel: end turn, go to Idle.
+                    // QueueActor will see SessionPhaseChanged(Idle) and pop CompactionNeeded.
+                } else {
+                    session.begin_sending();
+                }
             }
 
             // When returning to Idle with no retry, drain queued messages
@@ -257,7 +263,7 @@ mod tests {
     use crate::feat::context::protocol::event::PromptAssembled;
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::chat_session::SessionPhase;
-    use crate::protocol::ChatEntry;
+    use crate::protocol::{ChatEntry, Command};
 
     #[tokio::test]
     async fn on_stream_completed_error_reason_finishes_streaming() {
@@ -440,5 +446,47 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Streaming);
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_tool_use_with_soft_cancel_goes_to_idle() {
+        // Given a session in streaming state with soft cancel requested.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.request_soft_cancel();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with ToolUse reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
+                id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: "{}".to_owned(),
+            }]),
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session is in Idle phase (not Sending).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Idle),
+            "expected Idle after soft cancel, got {:?}",
+            session.phase()
+        );
+
+        // And no AssemblePrompt was emitted.
+        let commands = sink.commands();
+        let has_assemble = commands.iter().any(|c| matches!(c, Command::AssemblePrompt(_)));
+        assert!(!has_assemble, "expected no AssemblePrompt after soft cancel");
     }
 }

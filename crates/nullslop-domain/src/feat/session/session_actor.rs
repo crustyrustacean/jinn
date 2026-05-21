@@ -100,6 +100,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<PersistSession>();
         ctx.subscribe_command::<CloseSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
+        ctx.subscribe_command::<crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn>();
 
         // Compaction command subscriptions.
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>(
@@ -220,6 +221,9 @@ impl SessionPersistenceActor {
             }
             Command::EndCompaction(payload) => {
                 self.handle_end_compaction(payload, ctx).await;
+            }
+            Command::SoftCancelTurn(payload) => {
+                self.handle_soft_cancel_turn(payload);
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::AssemblePrompt(..)

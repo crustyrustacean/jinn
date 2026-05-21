@@ -10,6 +10,7 @@ use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 use super::super::SessionPersistenceActor;
 use crate::feat::compaction_actor::protocol::command::{BeginCompaction, EndCompaction};
 use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn;
 
 impl SessionPersistenceActor {
     /// BeginCompaction: set phase to Compacting, push "Starting..." system entry,
@@ -93,6 +94,20 @@ impl SessionPersistenceActor {
 
         self.save_active_session(&payload.session_id).await;
     }
+
+    /// SoftCancelTurn: request graceful turn termination at the next pause point.
+    ///
+    /// Sets a flag on the session that is checked at `on_tool_batch_completed`
+    /// and `on_stream_completed`. When the flag is set, the turn ends (→ Idle)
+    /// instead of continuing, allowing auto-compaction to trigger mid-turn.
+    pub(in crate::feat::session::session_actor) fn handle_soft_cancel_turn(
+        &self,
+        payload: &SoftCancelTurn,
+    ) {
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&payload.session_id);
+        session.request_soft_cancel();
+    }
 }
 
 #[cfg(test)]
@@ -100,6 +115,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::super::super::helpers::{test_actor, test_context};
     use crate::feat::session::chat_session::SessionPhase;
+    use crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn;
     use crate::protocol::{ChatEntry, ChatEntryKind, Command};
 
     #[tokio::test]
@@ -408,5 +424,28 @@ mod tests {
             .expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Idle);
         assert!(!session.history().iter().any(ChatEntry::is_compaction));
+    }
+
+    #[tokio::test]
+    async fn soft_cancel_turn_sets_flag_on_session() {
+        // Given a session actor with a session.
+        let actor = test_actor();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling SoftCancelTurn.
+        actor.handle_soft_cancel_turn(&SoftCancelTurn {
+            session_id: session_id.clone(),
+        });
+
+        // Then the soft cancel flag is set.
+        let mut state = actor.state.write();
+        let session = state.session.get_mut(&session_id).expect("session exists");
+        assert!(
+            session.take_soft_cancel(),
+            "expected soft cancel flag to be set"
+        );
     }
 }

@@ -112,6 +112,35 @@ impl SessionPersistenceActor {
             "on_tool_batch_completed"
         );
 
+        // Check soft cancel: if requested, end the turn instead of continuing.
+        let soft_cancelled = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&event.session_id);
+            session.take_soft_cancel()
+        };
+
+        if soft_cancelled {
+            // Soft cancel: don't emit AssemblePrompt. Session is already in
+            // Sending phase; it will return to Idle when the QueueActor sees
+            // the SessionPhaseChanged event. But we need to explicitly end the
+            // turn — finish sending and go to Idle.
+            let (old_phase, new_phase) = {
+                let mut state = self.state.write();
+                let session = state.session_mut_or_create(&event.session_id);
+                let old_phase = session.phase();
+                // Finish the sending phase to return to Idle.
+                session.finish_sending();
+                (old_phase, session.phase())
+            };
+            super::super::helpers::emit_phase_changed(
+                ctx,
+                &event.session_id,
+                old_phase,
+                new_phase,
+            );
+            return;
+        }
+
         // Read history and model, then emit AssemblePrompt.
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
         let (history, model_name) = {
@@ -256,5 +285,49 @@ mod tests {
             "expected tokens_received > 2 (text only), got {}",
             ledger[0].tokens_received
         );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_with_soft_cancel_goes_to_idle() {
+        // Given a session in sending state with soft cancel requested.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            session.request_soft_cancel();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then the session is in Idle phase.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Idle),
+            "expected Idle after soft cancel, got {:?}",
+            session.phase()
+        );
+
+        // And no AssemblePrompt was emitted.
+        let commands = sink.commands();
+        let has_assemble = commands.iter().any(|c| matches!(c, Command::AssemblePrompt(_)));
+        assert!(!has_assemble, "expected no AssemblePrompt after soft cancel");
     }
 }

@@ -161,6 +161,10 @@ pub struct SessionCoreEphemeral {
     /// Maps tool_call_id to history index for pending streaming ToolResult entries.
     /// OWNER: session-actor.
     pub(crate) streaming_tool_result_indices: HashMap<String, usize>,
+    /// Set to true to request graceful turn termination at the next pause point.
+    /// Checked at `on_tool_batch_completed` and `on_stream_completed`.
+    /// OWNER: session-actor.
+    pub(crate) soft_cancel_requested: bool,
     /// Indices of entries marked as ignored during compaction.
     /// Used to un-ignore on cancel. Empty when not compacting.
     /// Not persisted — compaction is ephemeral.
@@ -1564,6 +1568,23 @@ impl ChatSessionState {
     /// Advances lifecycle state after successful teardown: `SetupRan → TeardownRan`.
     pub fn advance_lifecycle_after_teardown(&mut self) {
         self.core.lifecycle_script_state.advance_after_teardown();
+    }
+
+    /// Request graceful turn termination at the next pause point.
+    ///
+    /// The session actor checks this flag at `on_tool_batch_completed` and
+    /// `on_stream_completed`. When set, the turn ends (\u2192 Idle) instead of
+    /// continuing, allowing auto-compaction to trigger mid-turn.
+    pub fn request_soft_cancel(&mut self) {
+        self.core.ephemeral.soft_cancel_requested = true;
+    }
+
+    /// Take the soft cancel flag, clearing it.
+    ///
+    /// Returns `true` if a soft cancel was requested, and clears the flag.
+    /// Returns `false` if no cancel was requested.
+    pub fn take_soft_cancel(&mut self) -> bool {
+        std::mem::take(&mut self.core.ephemeral.soft_cancel_requested)
     }
 }
 
