@@ -8,7 +8,9 @@ use crate::common::actor::ActorContext;
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 
 use super::super::SessionPersistenceActor;
-use crate::feat::compaction_actor::protocol::command::{BeginCompaction, EndCompaction, EnqueueCompaction};
+use crate::feat::compaction_actor::protocol::command::{
+    BeginCompaction, EndCompaction, EnqueueCompaction,
+};
 use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::queue_item::QueueItem;
 
