@@ -22,13 +22,10 @@ pub struct RunSessionSetup {
 
 /// Request to run a lifecycle teardown command asynchronously.
 ///
-/// Sent by the `IntentHandler` when the user closes a session whose lifecycle
-/// has a `teardown_command`. The session-persistence actor receives this,
-/// runs the command, and removes the session on success.
-///
-/// When `close_on_success` is `true`, the session is removed after successful
-/// teardown. When `false`, the session is kept and a success info entry is
-/// pushed instead (teardown-only mode).
+/// Sent by the sidebar teardown handler when the user triggers teardown-only
+/// mode (`t` key). The session-persistence actor receives this, runs the command,
+/// advances `lifecycle_script_state` to `TeardownRan`, persists, and emits
+/// `SessionTeardownFinished`. The session is NOT removed from memory.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("session")]
 pub struct RunSessionTeardown {
@@ -38,24 +35,17 @@ pub struct RunSessionTeardown {
     pub command: String,
     /// Positional arguments (replayed from setup).
     pub args: Vec<String>,
-    /// Whether to close the session on successful teardown.
-    /// `true` for normal close (`x`), `false` for teardown-only (`t`).
-    #[serde(default = "default_true")]
-    pub close_on_success: bool,
 }
 
-fn default_true() -> bool {
-    true
-}
-
-/// Request to immediately persist a newly-created lifecycle session.
+/// Request to persist a session to SQLite immediately.
 ///
 /// Emitted by the `IntentHandler` alongside `RunSessionSetup` so the session
 /// is saved before the setup command even begins executing. This ensures the
 /// session's lifecycle metadata (name, args) survives an app crash during setup.
+/// Also used by other flows (teardown, archive) that need to persist state changes.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("session")]
-pub struct SaveNewLifecycleSession {
+pub struct PersistSession {
     /// The session to persist.
     pub session_id: SessionId,
 }

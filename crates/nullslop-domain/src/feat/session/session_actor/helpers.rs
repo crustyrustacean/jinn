@@ -89,6 +89,7 @@ pub(super) struct PopulatedFakeStore {
     pub(super) summaries: Vec<crate::feat::session::session_summary::SessionSummary>,
     pub(super) sessions: Vec<crate::feat::session::chat_session::ChatSessionState>,
     pub(super) archived: std::sync::Mutex<Vec<crate::protocol::SessionId>>,
+    pub(super) saved: std::sync::Mutex<Vec<crate::feat::session::chat_session::ChatSessionState>>,
 }
 
 #[cfg(test)]
@@ -108,11 +109,21 @@ impl PopulatedFakeStore {
             summaries,
             sessions,
             archived: std::sync::Mutex::new(Vec::new()),
+            saved: std::sync::Mutex::new(Vec::new()),
         }
     }
 
-    pub(super) fn was_archived(&self, id: &crate::protocol::SessionId) -> bool {
-        self.archived.lock().expect("lock").contains(id)
+    pub(super) fn last_saved_session(
+        &self,
+        id: &crate::protocol::SessionId,
+    ) -> Option<crate::feat::session::chat_session::ChatSessionState> {
+        self.saved
+            .lock()
+            .expect("lock")
+            .iter()
+            .rev()
+            .find(|s| s.session_id() == id)
+            .cloned()
     }
 }
 
@@ -125,9 +136,10 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
 
     async fn save(
         &self,
-        _session: &crate::feat::session::chat_session::ChatSessionState,
+        session: &crate::feat::session::chat_session::ChatSessionState,
     ) -> Result<(), error_stack::Report<crate::feat::session::session_store::SessionStoreError>>
     {
+        self.saved.lock().expect("lock").push(session.clone());
         Ok(())
     }
 
