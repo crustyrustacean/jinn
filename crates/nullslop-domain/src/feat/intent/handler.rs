@@ -269,6 +269,9 @@ impl IntentHandler {
             Intent::SidebarSessionArchive => {
                 feat::ui::sidebar::sessions::handle_session_archive(state)
             }
+            Intent::SidebarSessionContinue => {
+                feat::ui::sidebar::sessions::handle_session_continue(state)
+            }
             Intent::SidebarConfirm => {
                 feat::ui::sidebar::sessions::handle_session_activate(state);
                 IntentResult::empty()
