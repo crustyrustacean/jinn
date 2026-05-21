@@ -279,32 +279,35 @@ fn enqueue_message_adds_to_queue() {
     assert_eq!(session.queue_len(), 0);
 
     // When enqueuing a message.
-    session.enqueue_message(ChatEntry::user("hello"));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("hello")));
 
     // Then the queue has one message.
     assert_eq!(session.queue_len(), 1);
-    assert_eq!(
-        session.queue()[0].kind,
-        ChatEntryKind::User {
+    assert!(matches!(
+        &session.queue()[0],
+        crate::feat::session::queue_item::QueueItem::UserMessage(e) if e.kind == ChatEntryKind::User {
             display: "hello".to_owned(),
             expanded: "hello".to_owned()
         }
-    );
+    ));
 }
 
 #[rstest::rstest]
 fn dequeue_message_returns_first_in_order() {
     // Given a session with two queued messages.
     let mut session = ChatSessionState::new();
-    session.enqueue_message(ChatEntry::user("first"));
-    session.enqueue_message(ChatEntry::user("second"));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("first")));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("second")));
 
     // When dequeuing a message.
-    let msg = session.dequeue_message();
+    let msg = session.dequeue();
 
     // Then it returns the first message and the queue has one left.
     assert!(msg.is_some());
-    let entry = msg.unwrap();
+    let item = msg.unwrap();
+    let crate::feat::session::queue_item::QueueItem::UserMessage(entry) = item else {
+        panic!("expected UserMessage")
+    };
     assert_eq!(
         entry.kind,
         ChatEntryKind::User {
@@ -321,7 +324,7 @@ fn dequeue_message_returns_none_when_empty() {
     let mut session = ChatSessionState::new();
 
     // When dequeuing a message.
-    let msg = session.dequeue_message();
+    let msg = session.dequeue();
 
     // Then it returns None.
     assert!(msg.is_none());
@@ -331,31 +334,36 @@ fn dequeue_message_returns_none_when_empty() {
 fn drain_returns_all_in_order() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
-    session.enqueue_message(ChatEntry::user("a"));
-    session.enqueue_message(ChatEntry::user("b"));
-    session.enqueue_message(ChatEntry::user("c"));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("a")));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("b")));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("c")));
 
     // When draining the queue.
     let drained = session.drain_queue();
 
     // Then all messages are returned in order.
     assert_eq!(drained.len(), 3);
+    let entries: Vec<ChatEntry> = drained.into_iter().map(|item| match item {
+        crate::feat::session::queue_item::QueueItem::UserMessage(e) => e,
+        _ => panic!("expected UserMessage"),
+    }).collect();
+    assert_eq!(entries.len(), 3);
     assert_eq!(
-        drained[0].kind,
+        entries[0].kind,
         ChatEntryKind::User {
             display: "a".to_owned(),
             expanded: "a".to_owned()
         }
     );
     assert_eq!(
-        drained[1].kind,
+        entries[1].kind,
         ChatEntryKind::User {
             display: "b".to_owned(),
             expanded: "b".to_owned()
         }
     );
     assert_eq!(
-        drained[2].kind,
+        entries[2].kind,
         ChatEntryKind::User {
             display: "c".to_owned(),
             expanded: "c".to_owned()
@@ -367,9 +375,9 @@ fn drain_returns_all_in_order() {
 fn drain_empties_queue() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
-    session.enqueue_message(ChatEntry::user("a"));
-    session.enqueue_message(ChatEntry::user("b"));
-    session.enqueue_message(ChatEntry::user("c"));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("a")));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("b")));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("c")));
 
     // When draining the queue.
     let _ = session.drain_queue();
@@ -1852,14 +1860,17 @@ fn cancel_compacting_drains_queue() {
     // Given a session in Compacting phase with a queued message.
     let mut session = ChatSessionState::new();
     session.begin_compacting(vec![]);
-    session.enqueue_message(ChatEntry::user("queued during compaction"));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("queued during compaction")));
 
     // When cancelling compaction.
     let drained = session.cancel_compacting();
 
     // Then the queued message is returned.
     assert_eq!(drained.len(), 1);
-    assert_eq!(drained[0].text(), "queued during compaction");
+    let crate::feat::session::queue_item::QueueItem::UserMessage(entry) = &drained[0] else {
+        panic!("expected UserMessage")
+    };
+    assert_eq!(entry.text(), "queued during compaction");
 }
 
 #[rstest::rstest]

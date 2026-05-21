@@ -2,26 +2,70 @@
 
 use crate::common::actor::ActorContext;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
+use crate::feat::compaction_actor::protocol::command::CompactContext;
 use crate::feat::context::protocol::command::AssemblePrompt;
+use crate::feat::session::queue_item::QueueItem;
+use crate::feat::session::chat_session::SessionPhase;
 use crate::protocol::{ChatEntry, Command, Event, SessionId};
 
 use super::SessionPersistenceActor;
 
 impl SessionPersistenceActor {
-    /// Drain queued messages into a new turn: push each entry, then emit
-    /// `AssemblePrompt` with the full session history.
-    pub(in crate::feat::session::session_actor) async fn start_turn_from_queued(
+    /// Process the next item from the turn dispatch queue.
+    ///
+    /// Pulls one item from the front of the queue and dispatches it:
+    /// - `UserMessage` → push entry, set title, begin_sending, emit AssemblePrompt
+    /// - `ToolContinuation` → emit AssemblePrompt with current history
+    /// - `CompactionNeeded` → emit CompactContext
+    ///
+    /// No-op if the queue is empty.
+    pub(in crate::feat::session::session_actor) async fn process_queue(
         &self,
         session_id: &SessionId,
-        entries: &[ChatEntry],
+        ctx: &ActorContext,
+    ) {
+        let item = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(session_id);
+            session.dequeue()
+        };
+
+        let Some(item) = item else { return };
+
+        match item {
+            QueueItem::UserMessage(entry) => {
+                self.dispatch_user_message(session_id, &entry, ctx).await;
+            }
+            QueueItem::ToolContinuation => {
+                self.dispatch_tool_continuation(session_id, ctx).await;
+            }
+            QueueItem::CompactionNeeded => {
+                self.dispatch_compaction(session_id, ctx).await;
+            }
+        }
+    }
+
+    /// Dispatch a user message: push to history, set title, begin sending, emit AssemblePrompt.
+    pub(in crate::feat::session::session_actor) async fn dispatch_user_message(
+        &self,
+        session_id: &SessionId,
+        entry: &ChatEntry,
         ctx: &ActorContext,
     ) {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
-            for entry in entries {
-                session.push_entry(entry.clone());
+            // Set title on first user message.
+            if session.title().is_none() {
+                let title = match &entry.kind {
+                    crate::protocol::ChatEntryKind::User { display, .. } => {
+                        display.lines().next().unwrap_or("").to_owned()
+                    }
+                    _ => String::new(),
+                };
+                session.set_title(title);
             }
+            session.push_entry(entry.clone());
             session.begin_sending();
         }
 
@@ -37,21 +81,71 @@ impl SessionPersistenceActor {
             tools: vec![],
             model_name,
         })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit AssemblePrompt from queue drain");
+            tracing::warn!(err = ?e, "session-actor failed to emit AssemblePrompt");
         }
 
-        // Emit ChatEntrySubmitted for each queued entry.
-        for entry in entries {
-            if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
-                session_id: session_id.clone(),
-                entry: entry.clone(),
-            })) {
-                tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted for queued message");
-            }
+        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+            session_id: session_id.clone(),
+            entry: entry.clone(),
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
         }
 
-        // Persist the queued entries for crash safety.
         self.save_active_session(session_id).await;
+    }
+
+    /// Dispatch a tool continuation: emit AssemblePrompt with current history.
+    #[allow(clippy::unused_async)]
+    pub(in crate::feat::session::session_actor) async fn dispatch_tool_continuation(
+        &self,
+        session_id: &SessionId,
+        ctx: &ActorContext,
+    ) {
+        let (history, model_name) = {
+            let state = self.state.read();
+            let session = state.session(session_id);
+            (session.history().to_vec(), session.profile().model.clone())
+        };
+
+        if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
+            session_id: session_id.clone(),
+            history,
+            tools: vec![],
+            model_name,
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit AssemblePrompt from tool continuation");
+        }
+    }
+
+    /// Dispatch compaction: emit CompactContext if session is Idle.
+    ///
+    /// Skips if the session is already compacting (e.g. race condition
+    /// or duplicate CompactionNeeded in queue).
+    #[allow(clippy::unused_async)]
+    pub(in crate::feat::session::session_actor) async fn dispatch_compaction(
+        &self,
+        session_id: &SessionId,
+        ctx: &ActorContext,
+    ) {
+        let phase = {
+            let state = self.state.read();
+            state.session(session_id).phase()
+        };
+
+        if !matches!(phase, SessionPhase::Idle) {
+            tracing::warn!(
+                session_id = ?session_id,
+                current_phase = ?phase,
+                "CompactionNeeded dispatched but session is not Idle — skipping"
+            );
+            return;
+        }
+
+        if let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
+            session_id: session_id.clone(),
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit CompactContext");
+        }
     }
 }
 
