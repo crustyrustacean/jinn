@@ -30,8 +30,6 @@ pub enum Scope {
     PickerPersona,
     /// Picker — Theme selection.
     PickerTheme,
-    /// Picker — Session fork point selection.
-    PickerFork,
     /// Picker — Session lifecycle recipe selection.
     PickerLifecycle,
     /// Input mode — typing into the input buffer.
@@ -60,7 +58,6 @@ impl std::fmt::Display for Scope {
             Self::PickerSession => write!(f, "Picker(session)"),
             Self::PickerPersona => write!(f, "Picker(persona)"),
             Self::PickerTheme => write!(f, "Picker(theme)"),
-            Self::PickerFork => write!(f, "Picker(fork)"),
             Self::PickerLifecycle => write!(f, "Picker(lifecycle)"),
             Self::Input => write!(f, "Input"),
             Self::ArgInput => write!(f, "ArgInput"),
@@ -86,7 +83,6 @@ impl std::str::FromStr for Scope {
             "Picker(session)" => Ok(Self::PickerSession),
             "Picker(persona)" => Ok(Self::PickerPersona),
             "Picker(theme)" => Ok(Self::PickerTheme),
-            "Picker(fork)" => Ok(Self::PickerFork),
             "Picker(lifecycle)" => Ok(Self::PickerLifecycle),
             "Input" => Ok(Self::Input),
             "ArgInput" => Ok(Self::ArgInput),
