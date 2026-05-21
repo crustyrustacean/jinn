@@ -1,0 +1,26 @@
+[package]
+name = "nullslop-bench"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "nullslop-bench"
+path = "src/main.rs"
+
+[dependencies]
+nullslop-domain = { workspace = true }
+nullslop-provider = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+tokio = { workspace = true }
+futures = { workspace = true }
+kanal = { workspace = true }
+csv = { workspace = true }
+jiff = { workspace = true }
+ctrlc = { workspace = true }
+comfy-table = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
