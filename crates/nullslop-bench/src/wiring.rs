@@ -25,7 +25,6 @@ use nullslop_domain::common::actor::protocol::event::{
 };
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use nullslop_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
-use nullslop_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use nullslop_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
 use nullslop_domain::feat::tools_actor::tool_types::ToolDefinition;
 use nullslop_domain::{
@@ -158,17 +157,10 @@ pub fn create_bench_core(
         },
     );
 
-    let provider_init_result = spawn::<ProviderInitActor>(
-        "provider-init",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        ProviderInitActorDeps {
-            services: services.clone(),
-            state: state.clone(),
-        },
-    );
+    // Note: ProviderInitActor is NOT spawned here — the bench runner's
+    // create_shared_services already builds the registry, resolves API keys,
+    // and merges the model cache. Spawning ProviderInitActor would race to
+    // replace the registry and wipe cached models.
 
     let prefs_result =
         spawn::<nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActor>(
@@ -350,7 +342,6 @@ pub fn create_bench_core(
         vec![
             system_ready_result,
             env_init_result,
-            provider_init_result,
             prefs_result,
             prefs_sync_result,
             llm_result,
