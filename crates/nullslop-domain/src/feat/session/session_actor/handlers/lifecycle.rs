@@ -17,7 +17,7 @@ use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 use crate::feat::session_lifecycle::command_runner::run_setup_command;
 use crate::feat::session_lifecycle::command_runner::run_teardown_command;
 use crate::feat::session_lifecycle::protocol::command::{
-    RunSessionSetup, RunSessionTeardown, SaveNewLifecycleSession,
+    PersistSession, RunSessionSetup, RunSessionTeardown,
 };
 use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownFinished,
@@ -218,149 +218,94 @@ impl SessionPersistenceActor {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
+    /// RunSessionTeardown: teardown-only handler (`t` key).
+    ///
+    /// Runs the teardown command, advances `lifecycle_script_state` to `TeardownRan`,
+    /// persists the session, and emits `SessionTeardownFinished`. The session is
+    /// NOT removed from memory.
+    ///
+    /// If teardown fails, an error entry is pushed and `SessionTeardownFinished`
+    /// is emitted with the error. The session remains in memory with `SetupRan`.
     pub(in crate::feat::session::session_actor) async fn handle_run_session_teardown(
         &self,
         payload: &RunSessionTeardown,
         ctx: &ActorContext,
     ) {
-        // Push "running" entry directly and save (before .await).
-        self.push_and_save(&payload.session_id, teardown_running_msg(), ctx)
+        // Look up teardown command from session's lifecycle.
+        let (teardown_cmd, lifecycle_args) = {
+            let state = self.state.read();
+            let Some(session) = state.session.sessions().get(&payload.session_id) else {
+                return;
+            };
+            let lifecycle_name = session.lifecycle_name().map(str::to_owned);
+            let args = session.lifecycle_args().to_vec();
+            let teardown = lifecycle_name.as_deref().and_then(|name| {
+                state
+                    .frontend
+                    .preferences
+                    .session_lifecycles
+                    .iter()
+                    .find(|l| l.name == name)
+                    .and_then(|l| l.teardown_command.clone())
+            });
+            (teardown, args)
+        };
+
+        let Some(ref teardown_cmd) = teardown_cmd else {
+            return;
+        };
+
+        let success = self
+            .run_teardown_step(&payload.session_id, teardown_cmd, &lifecycle_args, ctx)
             .await;
 
-        let result = run_teardown_command(&payload.command).await;
-
-        match result {
-            Ok(()) => {
-                if payload.close_on_success {
-                    // Teardown succeeded - remove session and switch active.
-                    {
-                        let mut state = self.state.write();
-                        state.session.sessions_mut().remove(&payload.session_id);
-                        if state.session.sessions().is_empty() {
-                            let model = state
-                                .frontend
-                                .preferences
-                                .last_model
-                                .clone()
-                                .unwrap_or_else(|| {
-                                    crate::feat::provider_infra::NO_PROVIDER_ID.to_owned()
-                                });
-                            let strategy = state
-                                .frontend
-                                .preferences
-                                .last_strategy
-                                .as_deref()
-                                .map_or_else(
-                                    crate::protocol::PromptStrategyId::passthrough,
-                                    crate::protocol::PromptStrategyId::new,
-                                );
-                            let token_budget =
-                                state.frontend.preferences.context_token_budget.budget;
-                            let sliding_window_size =
-                                state.frontend.preferences.context_sliding_window.size;
-                            let new_session = ChatSessionState::new_with_profile(
-                                crate::feat::session::profile::SessionProfile::from_config(
-                                    model,
-                                    strategy,
-                                    token_budget,
-                                    sliding_window_size,
-                                ),
-                            );
-                            let new_id = new_session.session_id().clone();
-                            state
-                                .session
-                                .sessions_mut()
-                                .insert(new_id.clone(), new_session);
-                            state.session.set_active(new_id);
-                        } else if *state.session.active_session_id() == payload.session_id {
-                            let next_id = state
-                                .session
-                                .sessions()
-                                .keys()
-                                .next()
-                                .expect("sessions is non-empty")
-                                .clone();
-                            state.session.set_active(next_id);
-                        }
-                    }
-
-                    if let Err(e) =
-                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                            session_id: payload.session_id.clone(),
-                            error: None,
-                        }))
-                    {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                    }
-
-                    if let Err(e) = ctx.send_event(Event::SessionClosed(SessionClosed {
-                        session_id: payload.session_id.clone(),
-                    })) {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
-                    }
-                } else {
-                    // Teardown-only success — emit entry via PushChatEntry (persists automatically).
-                    if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                        session_id: payload.session_id.clone(),
-                        entry: teardown_success_msg(),
-                    })) {
-                        tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown success");
-                    }
-
-                    if let Err(e) =
-                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                            session_id: payload.session_id.clone(),
-                            error: None,
-                        }))
-                    {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                    }
-                }
-            }
-            Err(report) => {
-                let error_msg =
-                    if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
-                        format_lifecycle_error(cmd_err)
-                    } else {
-                        strip_ansi(&format!("{report:#?}"))
-                    };
-
-                // Emit error entry via PushChatEntry (persists automatically).
-                // Remove the old direct save — the command handler saves.
-                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+        if !success {
+            if let Err(e) =
+                ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
                     session_id: payload.session_id.clone(),
-                    entry: ChatEntry::error(&error_msg),
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown error");
-                }
-
-                if let Err(e) =
-                    ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                        session_id: payload.session_id.clone(),
-                        error: Some(error_msg),
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                }
+                    error: Some("teardown failed".to_owned()),
+                }))
+            {
+                tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
             }
+            return;
+        }
+
+        // Push success entry via PushChatEntry (persists automatically).
+        if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: payload.session_id.clone(),
+            entry: teardown_success_msg(),
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown success");
+        }
+
+        if let Err(e) =
+            ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+                session_id: payload.session_id.clone(),
+                error: None,
+            }))
+        {
+            tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
         }
     }
 
-    /// CloseSession: state-driven close handler.
+    /// CloseSession: close handler (`x` key).
     ///
-    /// Uses `LifecycleScriptState` to decide whether to run teardown:
-    /// - `SetupRan` → run teardown, archive, remove from memory
-    /// - `NothingRan` or `TeardownRan` → archive, remove from memory (no teardown)
+    /// Linear flow:
+    /// 1. If `SetupRan`: run teardown via `run_teardown_step` (which advances + persists)
+    /// 2. Set `session_state = Archived`, persist via `save_active_session`
+    /// 3. `remove_and_replace` from HashMap
+    /// 4. Emit `SessionArchived` + `SessionClosed`
     ///
-    /// Steps execute sequentially. On failure, the chain stops and the session
-    /// remains in its current state.
+    /// On teardown failure, emits `SessionTeardownFinished(error)` and returns early.
+    /// The session remains in memory with `SetupRan`.
+    #[allow(clippy::too_many_lines)]
     pub(in crate::feat::session::session_actor) async fn handle_close_session(
         &self,
         payload: &CloseSession,
         ctx: &ActorContext,
     ) {
-        use crate::feat::session::chat_session::LifecycleScriptState;
+        use crate::feat::session::chat_session::{LifecycleScriptState, SessionState};
 
         // Collect session info under read lock.
         let session_info = {
@@ -391,69 +336,63 @@ impl SessionPersistenceActor {
 
             if let Some(teardown_cmd) = teardown_cmd {
                 let success = self
-                    .run_close_teardown_step(
-                        &payload.session_id,
-                        &teardown_cmd,
-                        &lifecycle_args,
-                        ctx,
-                    )
+                    .run_teardown_step(&payload.session_id, &teardown_cmd, &lifecycle_args, ctx)
                     .await;
 
                 if !success {
-                    // Teardown failed — error already pushed, chain stops.
-                    if let Err(e) =
-                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+                    if let Err(e) = ctx.send_event(Event::SessionTeardownFinished(
+                        SessionTeardownFinished {
                             session_id: payload.session_id.clone(),
                             error: Some("teardown failed".to_owned()),
-                        }))
-                    {
+                        },
+                    )) {
                         tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
                     }
                     return;
                 }
-
-                // Advance LifecycleScriptState: SetupRan → TeardownRan.
-                {
-                    let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
-                    {
-                        session.advance_lifecycle_after_teardown();
-                    }
-                }
-
-                if let Err(e) =
-                    ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                        session_id: payload.session_id.clone(),
-                        error: None,
-                    }))
-                {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
-                }
             }
-            // If no teardown command exists but state is SetupRan, skip teardown and proceed to archive.
+            // If no teardown command exists but state is SetupRan, skip teardown and proceed.
+
+            if let Err(e) = ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+                session_id: payload.session_id.clone(),
+                error: None,
+            })) {
+                tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
+            }
         }
 
-        // Step 2: Archive in DB.
-        if let Some(ref store) = self.store
-            && let Err(e) = store.set_archived(&payload.session_id, true).await
+        // Step 2: Archive + persist.
         {
-            tracing::warn!(err = ?e, "failed to archive session");
+            let mut state = self.state.write();
+            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+                session.set_session_state(SessionState::Archived);
+            }
         }
+        self.save_active_session(&payload.session_id).await;
 
         // Step 3: Remove from memory.
-        self.close_session_inline(&payload.session_id, ctx);
+        self.remove_and_replace(&payload.session_id);
 
+        // Step 4: Notify.
         if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
             session_id: payload.session_id.clone(),
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SessionArchived");
         }
+
+        if let Err(e) = ctx.send_event(Event::SessionClosed(SessionClosed {
+            session_id: payload.session_id.clone(),
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
+        }
     }
 
     /// ArchiveSession: archive without running teardown.
     ///
-    /// - Empty session → remove from map, no archive.
-    /// - Non-empty → archive in SQLite, remove from map, emit events.
+    /// Linear flow:
+    /// 1. Set `session_state = Archived`, persist via `save_active_session`
+    /// 2. `remove_and_replace` from HashMap
+    /// 3. Emit `SessionArchived` + `SessionClosed`
     ///
     /// Does NOT check or advance `LifecycleScriptState`. The session is simply
     /// put away — it can be unarchived later.
@@ -462,26 +401,44 @@ impl SessionPersistenceActor {
         payload: &ArchiveSession,
         ctx: &ActorContext,
     ) {
-        // Archive in SQLite.
-        if let Some(ref store) = self.store
-            && let Err(e) = store.set_archived(&payload.session_id, true).await
+        use crate::feat::session::chat_session::SessionState;
+
+        // Step 1: Archive + persist.
         {
-            tracing::warn!(err = ?e, "failed to archive session");
+            let mut state = self.state.write();
+            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+                session.set_session_state(SessionState::Archived);
+            }
         }
+        self.save_active_session(&payload.session_id).await;
 
-        self.close_session_inline(&payload.session_id, ctx);
+        // Step 2: Remove from memory.
+        self.remove_and_replace(&payload.session_id);
 
+        // Step 3: Notify.
         if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
             session_id: payload.session_id.clone(),
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SessionArchived");
         }
+
+        if let Err(e) = ctx.send_event(Event::SessionClosed(SessionClosed {
+            session_id: payload.session_id.clone(),
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
+        }
     }
 
-    /// Runs the teardown command as part of session close.
+    /// Runs the teardown command and advances lifecycle state.
+    ///
+    /// This is the shared teardown helper used by both the close (`x`) and
+    /// teardown-only (`t`) flows. On success, it:
+    /// 1. Runs the teardown command
+    /// 2. Advances `lifecycle_script_state` to `TeardownRan`
+    /// 3. Persists the session via `save_active_session`
     ///
     /// Returns `true` on success, `false` on failure (error entry pushed to session).
-    pub(in crate::feat::session::session_actor) async fn run_close_teardown_step(
+    pub(in crate::feat::session::session_actor) async fn run_teardown_step(
         &self,
         session_id: &crate::protocol::SessionId,
         teardown_cmd: &str,
@@ -490,7 +447,7 @@ impl SessionPersistenceActor {
     ) -> bool {
         use crate::feat::session_lifecycle::command_template::CommandTemplate;
 
-        // Push "running" entry directly and save (before .await).
+        // Push “running” entry directly and save (before .await).
         self.push_and_save(session_id, teardown_running_msg(), ctx)
             .await;
 
@@ -502,7 +459,17 @@ impl SessionPersistenceActor {
         };
 
         match run_teardown_command(&rendered).await {
-            Ok(()) => true,
+            Ok(()) => {
+                // Advance lifecycle_script_state: SetupRan → TeardownRan.
+                {
+                    let mut state = self.state.write();
+                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                        session.advance_lifecycle_after_teardown();
+                    }
+                }
+                self.save_active_session(session_id).await;
+                true
+            }
             Err(report) => {
                 let error_msg =
                     if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
@@ -523,72 +490,64 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Remove session from HashMap, create new if empty, switch active,
-    /// adjust sidebar cursor, and emit `SessionClosed`.
-    pub(in crate::feat::session::session_actor) fn close_session_inline(
+    /// Remove session from HashMap, create replacement if empty, switch active session.
+    ///
+    /// Pure state mutation helper. Does NOT emit events — callers handle notifications.
+    pub(in crate::feat::session::session_actor) fn remove_and_replace(
         &self,
         session_id: &crate::protocol::SessionId,
-        ctx: &ActorContext,
     ) {
-        {
-            let mut state = self.state.write();
-            state.session.sessions_mut().remove(session_id);
+        let mut state = self.state.write();
+        state.session.sessions_mut().remove(session_id);
 
-            if state.session.sessions().is_empty() {
-                let model = state
-                    .frontend
-                    .preferences
-                    .last_model
-                    .clone()
-                    .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
-                let strategy = state
-                    .frontend
-                    .preferences
-                    .last_strategy
-                    .as_deref()
-                    .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
-                let token_budget = state.frontend.preferences.context_token_budget.budget;
-                let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
-                let new_session = ChatSessionState::new_with_profile(
-                    crate::feat::session::profile::SessionProfile::from_config(
-                        model,
-                        strategy,
-                        token_budget,
-                        sliding_window_size,
-                    ),
-                );
-                let new_id = new_session.session_id().clone();
-                state
-                    .session
-                    .sessions_mut()
-                    .insert(new_id.clone(), new_session);
-                state.session.set_active(new_id);
-            } else if *state.session.active_session_id() == *session_id {
-                let next_id = state
-                    .session
-                    .sessions()
-                    .keys()
-                    .next()
-                    .expect("sessions is non-empty")
-                    .clone();
-                state.session.set_active(next_id);
-            }
-        }
-
-        if let Err(e) = ctx.send_event(Event::SessionClosed(SessionClosed {
-            session_id: session_id.clone(),
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SessionClosed");
+        if state.session.sessions().is_empty() {
+            let model = state
+                .frontend
+                .preferences
+                .last_model
+                .clone()
+                .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
+            let strategy = state
+                .frontend
+                .preferences
+                .last_strategy
+                .as_deref()
+                .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
+            let token_budget = state.frontend.preferences.context_token_budget.budget;
+            let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
+            let new_session = ChatSessionState::new_with_profile(
+                crate::feat::session::profile::SessionProfile::from_config(
+                    model,
+                    strategy,
+                    token_budget,
+                    sliding_window_size,
+                ),
+            );
+            let new_id = new_session.session_id().clone();
+            state
+                .session
+                .sessions_mut()
+                .insert(new_id.clone(), new_session);
+            state.session.set_active(new_id);
+        } else if *state.session.active_session_id() == *session_id {
+            let next_id = state
+                .session
+                .sessions()
+                .keys()
+                .next()
+                .expect("sessions is non-empty")
+                .clone();
+            state.session.set_active(next_id);
         }
     }
 
-    /// SaveNewLifecycleSession: persist the session immediately.
+    /// PersistSession: persist the session immediately.
     ///
-    /// Called right after the IntentHandler creates a lifecycle session
-    /// so that the session metadata survives an app crash during setup.
-    pub(in crate::feat::session::session_actor) async fn handle_save_new_lifecycle_session(
+    /// Saves the full session blob (history, lifecycle state, archive flag)
+    /// to SQLite. Used by multiple flows: session creation, teardown, archive.
+    pub(in crate::feat::session::session_actor) async fn handle_persist_session(
         &self,
-        payload: &SaveNewLifecycleSession,
+        payload: &PersistSession,
     ) {
         self.save_active_session(&payload.session_id).await;
     }
@@ -726,6 +685,8 @@ mod tests {
     #[tokio::test]
     async fn teardown_failure_does_not_switch_active_session() {
         // Given a session actor with two sessions, second is targeted for teardown.
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+
         let actor = test_actor();
         let (sink, ctx) = test_context();
         let (target_id, original_active) = {
@@ -737,6 +698,18 @@ mod tests {
                 .session
                 .sessions_mut()
                 .insert(second_id.clone(), second);
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("exit 1".to_owned()),
+            }];
+            let session = state
+                .session
+                .sessions_mut()
+                .get_mut(&second_id)
+                .expect("second session");
+            session.set_lifecycle_name(Some("test".to_owned()));
             (second_id, original_active)
         };
 
@@ -747,7 +720,6 @@ mod tests {
                     session_id: target_id,
                     command: "exit 1".to_owned(),
                     args: vec![],
-                    close_on_success: true,
                 },
                 &ctx,
             )
@@ -771,11 +743,20 @@ mod tests {
 
     #[tokio::test]
     async fn teardown_failure_does_not_push_input_scope() {
-        // Given a session actor in Normal scope.
+        // Given a session actor in Normal scope with a lifecycle.
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+
         let actor = test_actor();
         let (_sink, ctx) = test_context();
         let session_id = {
-            let state = actor.state.read();
+            let mut state = actor.state.write();
+            state.active_session_mut().set_lifecycle_name(Some("test".to_owned()));
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("exit 1".to_owned()),
+            }];
             state.session.active_session_id().clone()
         };
 
@@ -786,7 +767,6 @@ mod tests {
                     session_id,
                     command: "exit 1".to_owned(),
                     args: vec![],
-                    close_on_success: true,
                 },
                 &ctx,
             )
@@ -802,11 +782,20 @@ mod tests {
 
     #[tokio::test]
     async fn teardown_failure_pushes_error_entry_to_session() {
-        // Given a session actor with a session.
+        // Given a session actor with a session and a lifecycle.
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+
         let actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
-            let state = actor.state.read();
+            let mut state = actor.state.write();
+            state.active_session_mut().set_lifecycle_name(Some("test".to_owned()));
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("exit 1".to_owned()),
+            }];
             state.session.active_session_id().clone()
         };
 
@@ -817,7 +806,6 @@ mod tests {
                     session_id: session_id.clone(),
                     command: "exit 1".to_owned(),
                     args: vec![],
-                    close_on_success: true,
                 },
                 &ctx,
             )
@@ -837,11 +825,20 @@ mod tests {
 
     #[tokio::test]
     async fn teardown_failure_emits_session_teardown_completed_with_error() {
-        // Given a session actor with a session.
+        // Given a session actor with a session and a lifecycle.
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+
         let actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
-            let state = actor.state.read();
+            let mut state = actor.state.write();
+            state.active_session_mut().set_lifecycle_name(Some("test".to_owned()));
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("exit 1".to_owned()),
+            }];
             state.session.active_session_id().clone()
         };
 
@@ -852,7 +849,6 @@ mod tests {
                     session_id: session_id.clone(),
                     command: "exit 1".to_owned(),
                     args: vec![],
-                    close_on_success: true,
                 },
                 &ctx,
             )
@@ -1084,7 +1080,7 @@ mod tests {
         );
     }
 
-    // --- Teardown-only (close_on_success: false) tests ---
+    // --- Teardown-only (t key) tests ---
 
     #[tokio::test]
     async fn teardown_only_success_does_not_remove_session() {
@@ -1100,14 +1096,13 @@ mod tests {
             state.session.sessions().len()
         };
 
-        // When teardown succeeds with close_on_success: false.
+        // When teardown succeeds.
         actor
             .handle_run_session_teardown(
                 &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
                     session_id: session_id.clone(),
                     command: "echo test".to_owned(),
                     args: vec![],
-                    close_on_success: false,
                 },
                 &ctx,
             )
@@ -1129,14 +1124,13 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When teardown succeeds with close_on_success: false.
+        // When teardown succeeds.
         actor
             .handle_run_session_teardown(
                 &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
                     session_id: session_id.clone(),
                     command: "echo test".to_owned(),
                     args: vec![],
-                    close_on_success: false,
                 },
                 &ctx,
             )
@@ -1159,22 +1153,31 @@ mod tests {
 
     #[tokio::test]
     async fn teardown_only_success_emits_session_teardown_completed() {
-        // Given a session actor with a session.
+        // Given a session actor with a session and a lifecycle.
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+
         let actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
-            let state = actor.state.read();
+            let mut state = actor.state.write();
+            state.active_session_mut().set_lifecycle_name(Some("test".to_owned()));
+            state.active_session_mut().advance_lifecycle_after_setup();
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("echo test".to_owned()),
+            }];
             state.session.active_session_id().clone()
         };
 
-        // When teardown succeeds with close_on_success: false.
+        // When teardown succeeds.
         actor
             .handle_run_session_teardown(
                 &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
                     session_id: session_id.clone(),
                     command: "echo test".to_owned(),
                     args: vec![],
-                    close_on_success: false,
                 },
                 &ctx,
             )
@@ -1198,22 +1201,31 @@ mod tests {
 
     #[tokio::test]
     async fn teardown_only_success_emits_push_chat_entry() {
-        // Given a session actor with a session.
+        // Given a session actor with a session and a lifecycle.
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+
         let actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
-            let state = actor.state.read();
+            let mut state = actor.state.write();
+            state.active_session_mut().set_lifecycle_name(Some("test".to_owned()));
+            state.active_session_mut().advance_lifecycle_after_setup();
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("echo test".to_owned()),
+            }];
             state.session.active_session_id().clone()
         };
 
-        // When teardown succeeds with close_on_success: false.
+        // When teardown succeeds.
         actor
             .handle_run_session_teardown(
                 &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
                     session_id: session_id.clone(),
                     command: "echo test".to_owned(),
                     args: vec![],
-                    close_on_success: false,
                 },
                 &ctx,
             )
@@ -1613,6 +1625,7 @@ mod tests {
     async fn archiving_empty_session_sets_archived_flag() {
         // Given an actor with an empty session and a recording store.
         use super::super::super::helpers::{test_actor_with_store, test_context};
+        use crate::feat::session::chat_session::SessionState;
 
         let (actor, store) = test_actor_with_store(vec![]);
         let session_id = actor.state.read().session.active_session_id().clone();
@@ -1628,17 +1641,18 @@ mod tests {
             )
             .await;
 
-        // Then the session was archived in the store.
-        assert!(
-            store.was_archived(&session_id),
-            "empty session should be archived"
-        );
+        // Then the session was saved with Archived state.
+        let saved = store
+            .last_saved_session(&session_id)
+            .expect("session should have been saved");
+        assert_eq!(saved.session_state(), SessionState::Archived);
     }
 
     #[tokio::test]
     async fn closing_empty_session_sets_archived_flag() {
         // Given an actor with an empty session and a recording store.
         use super::super::super::helpers::{test_actor_with_store, test_context};
+        use crate::feat::session::chat_session::SessionState;
 
         let (actor, store) = test_actor_with_store(vec![]);
         let session_id = actor.state.read().session.active_session_id().clone();
@@ -1654,10 +1668,111 @@ mod tests {
             )
             .await;
 
-        // Then the session was archived in the store.
-        assert!(
-            store.was_archived(&session_id),
-            "empty session should be archived"
+        // Then the session was saved with Archived state.
+        let saved = store
+            .last_saved_session(&session_id)
+            .expect("session should have been saved");
+        assert_eq!(saved.session_state(), SessionState::Archived);
+    }
+
+    // --- Teardown persistence tests ---
+
+    #[tokio::test]
+    async fn teardown_only_advances_lifecycle_to_teardown_ran() {
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
+        // Given a session with SetupRan and a succeeding teardown command.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.set_lifecycle_name(Some("test".to_owned()));
+            session.advance_lifecycle_after_setup();
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("exit 0".to_owned()),
+            }];
+            state.session.active_session_id().clone()
+        };
+
+        // When handling RunSessionTeardown.
+        actor
+            .handle_run_session_teardown(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
+                    session_id: session_id.clone(),
+                    command: "exit 0".to_owned(),
+                    args: vec![],
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then lifecycle_script_state is TeardownRan.
+        let state = actor.state.read();
+        let session = state
+            .session
+            .sessions()
+            .get(&session_id)
+            .expect("session exists");
+        assert_eq!(
+            session.lifecycle_script_state(),
+            LifecycleScriptState::TeardownRan
+        );
+
+        // And the session is still in memory (not removed).
+        assert!(state.session.sessions().contains_key(&session_id));
+    }
+
+    #[tokio::test]
+    async fn close_session_with_setup_ran_persists_teardown_ran() {
+        use super::super::super::helpers::{test_actor_with_store, test_context};
+        use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
+        use crate::feat::session::chat_session::LifecycleScriptState;
+
+        // Given a session with SetupRan, a succeeding teardown, and a recording store.
+        let (actor, store) = test_actor_with_store(vec![]);
+        let second = ChatSessionState::new();
+        let session_id = {
+            let mut state = actor.state.write();
+            state
+                .session
+                .sessions_mut()
+                .insert(second.session_id().clone(), second);
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.set_lifecycle_name(Some("test".to_owned()));
+            session.advance_lifecycle_after_setup();
+            state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
+                name: "test".to_owned(),
+                description: None,
+                setup_command: None,
+                teardown_command: Some("exit 0".to_owned()),
+            }];
+            state.session.active_session_id().clone()
+        };
+        let (_sink, ctx) = test_context();
+
+        // When handling CloseSession.
+        actor
+            .handle_close_session(
+                &crate::feat::session::protocol::close_session::CloseSession {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session was saved with TeardownRan lifecycle state.
+        let saved = store
+            .last_saved_session(&session_id)
+            .expect("session should have been saved");
+        assert_eq!(
+            saved.lifecycle_script_state(),
+            LifecycleScriptState::TeardownRan
         );
     }
 }

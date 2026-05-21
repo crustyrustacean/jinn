@@ -35,7 +35,7 @@ use crate::feat::session::protocol::session_fork_requested::SessionForkRequested
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session_lifecycle::protocol::command::{
-    RunSessionSetup, RunSessionTeardown, SaveNewLifecycleSession,
+    PersistSession, RunSessionSetup, RunSessionTeardown,
 };
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{
@@ -121,8 +121,8 @@ pub enum Command {
     CloseSession(CloseSession),
     /// Archive a session without running teardown.
     ArchiveSession(crate::feat::session::protocol::archive_session::ArchiveSession),
-    /// Save a newly-created lifecycle session immediately.
-    SaveNewLifecycleSession(SaveNewLifecycleSession),
+    /// Persist a session's full state to SQLite immediately.
+    PersistSession(PersistSession),
 }
 
 impl Command {
@@ -166,7 +166,7 @@ impl Command {
             Self::ArchiveSession(..) => {
                 Some(crate::feat::session::protocol::archive_session::ArchiveSession::NAME)
             }
-            Self::SaveNewLifecycleSession(..) => Some(SaveNewLifecycleSession::NAME),
+            Self::PersistSession(..) => Some(PersistSession::NAME),
         }
     }
 }
@@ -262,8 +262,8 @@ impl std::fmt::Display for Command {
             Command::ArchiveSession(payload) => {
                 write!(f, "archive session {}", payload.session_id)
             }
-            Command::SaveNewLifecycleSession(payload) => {
-                write!(f, "save new lifecycle session {}", payload.session_id)
+            Command::PersistSession(payload) => {
+                write!(f, "persist session {}", payload.session_id)
             }
         }
     }
