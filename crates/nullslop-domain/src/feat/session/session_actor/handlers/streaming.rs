@@ -147,7 +147,7 @@ impl SessionPersistenceActor {
         let should_save = event.reason == StreamCompletedReason::Finished
             || event.reason == StreamCompletedReason::Error;
 
-        // Count output tokens off the async thread (CPU-bound — offload to blocking thread).
+        // Count output tokens off the async thread
         // Count both text content and tool call arguments (JSON) which are a
         // significant portion of the model's output.
         let output_tokens: Option<tokio::task::JoinHandle<u32>> = if event.reason
@@ -182,7 +182,6 @@ impl SessionPersistenceActor {
             None => None,
         };
 
-        let should_process_queue;
         let (old_phase, new_phase);
         {
             let mut state = self.state.write();
@@ -239,16 +238,10 @@ impl SessionPersistenceActor {
                 }
             }
 
-            should_process_queue = event.reason == StreamCompletedReason::Finished;
             new_phase = session.phase();
         }
 
         super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
-
-        // If messages were drained, start a new turn.
-        if should_process_queue {
-            self.process_queue(&event.session_id, ctx).await;
-        }
 
         // Persist session after stream finishes (not on cancel).
         if should_save {

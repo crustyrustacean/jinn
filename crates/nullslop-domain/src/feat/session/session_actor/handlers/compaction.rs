@@ -8,32 +8,10 @@ use crate::common::actor::ActorContext;
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 
 use super::super::SessionPersistenceActor;
-use crate::feat::compaction_actor::protocol::command::{
-    BeginCompaction, EndCompaction, EnqueueCompaction,
-};
+use crate::feat::compaction_actor::protocol::command::{BeginCompaction, EndCompaction};
 use crate::feat::session::chat_session::SessionPhase;
-use crate::feat::session::queue_item::QueueItem;
 
 impl SessionPersistenceActor {
-    /// EnqueueCompaction: enqueue `CompactionNeeded` and process the queue.
-    ///
-    /// If the session is idle, the queue processes immediately and `CompactContext`
-    /// is dispatched. If the session is busy, the item waits in the queue until
-    /// the current operation finishes.
-    pub(in crate::feat::session::session_actor) async fn handle_enqueue_compaction(
-        &self,
-        payload: &EnqueueCompaction,
-        ctx: &ActorContext,
-    ) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.enqueue(QueueItem::CompactionNeeded);
-        }
-
-        self.process_queue(&payload.session_id, ctx).await;
-    }
-
     /// BeginCompaction: set phase to Compacting, push "Starting..." system entry,
     /// mark gathered entries as ignored, and persist.
     pub(in crate::feat::session::session_actor) async fn handle_begin_compaction(
@@ -68,7 +46,6 @@ impl SessionPersistenceActor {
         payload: &EndCompaction,
         ctx: &ActorContext,
     ) {
-        let should_process_queue: bool;
         let (old_phase, new_phase);
         {
             let mut state = self.state.write();
@@ -109,19 +86,12 @@ impl SessionPersistenceActor {
             }
             session.finish_compacting();
 
-            // Check if queue has items to process.
-            should_process_queue = session.queue_len() > 0;
             new_phase = session.phase();
         }
 
         super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
 
         self.save_active_session(&payload.session_id).await;
-
-        // If messages were queued during compaction, process the queue.
-        if should_process_queue {
-            self.process_queue(&payload.session_id, ctx).await;
-        }
     }
 }
 
@@ -239,10 +209,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn end_compaction_drains_queued_messages_on_success() {
+    async fn end_compaction_retains_queued_messages_on_success() {
         // Given a session in Compacting phase with a queued user message.
+        // The queue is no longer drained by the session actor — the QueueActor handles it.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -273,22 +244,18 @@ mod tests {
             )
             .await;
 
-        // Then AssemblePrompt was emitted for the queued message.
-        let commands = sink.commands();
-        let has_assemble = commands
-            .iter()
-            .any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(
-            has_assemble,
-            "expected AssemblePrompt command for queued message"
-        );
+        // Then the queue still has the item (QueueActor will pop it).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(session.queue_len(), 1, "expected queue to retain item for QueueActor");
     }
 
     #[tokio::test]
-    async fn end_compaction_drains_queued_messages_on_failure() {
+    async fn end_compaction_retains_queued_messages_on_failure() {
         // Given a session in Compacting phase with a queued user message.
+        // The queue is no longer drained by the session actor — the QueueActor handles it.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -311,15 +278,10 @@ mod tests {
             )
             .await;
 
-        // Then AssemblePrompt was emitted for the queued message.
-        let commands = sink.commands();
-        let has_assemble = commands
-            .iter()
-            .any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(
-            has_assemble,
-            "expected AssemblePrompt command for queued message after failure"
-        );
+        // Then the queue still has the item (QueueActor will pop it).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(session.queue_len(), 1, "expected queue to retain item for QueueActor");
     }
 
     #[tokio::test]
@@ -365,8 +327,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn end_compaction_drain_leaves_session_in_sending_state() {
+    async fn end_compaction_with_queue_leaves_session_in_idle_state() {
         // Given a session in Compacting phase with a queued user message.
+        // The session returns to Idle — the QueueActor will pop and dispatch.
         let actor = test_actor();
         let (_sink, ctx) = test_context();
         let session_id = {
@@ -399,10 +362,10 @@ mod tests {
             )
             .await;
 
-        // Then the session is in Sending state (start_turn_from_queued called begin_sending).
+        // Then the session is in Idle state (QueueActor will dispatch).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert!(matches!(session.phase(), SessionPhase::Sending));
+        assert!(matches!(session.phase(), SessionPhase::Idle));
     }
 
     #[tokio::test]
