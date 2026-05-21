@@ -60,6 +60,18 @@ pub struct CompactionResult {
     pub boundary_index: usize,
 }
 
+/// Request to enqueue a compaction for a session via the session queue.
+///
+/// Routed to the session actor, which enqueues `CompactionNeeded`
+/// and processes the queue. If the session is busy, the compaction
+/// waits until the session returns to Idle.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("enqueue-compaction")]
+pub struct EnqueueCompaction {
+    /// The session to compact.
+    pub session_id: SessionId,
+}
+
 /// Cancel an in-progress compaction for a session.
 ///
 /// Aborts the in-flight LLM summarization task. The session actor's

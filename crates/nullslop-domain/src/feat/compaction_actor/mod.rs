@@ -6,7 +6,7 @@ pub mod serializer;
 #[cfg(test)]
 mod mod_tests;
 
-pub use protocol::command::CompactContext;
+pub use protocol::command::{CompactContext, EnqueueCompaction};
 pub use protocol::event::CompactionCompleted;
 
 use error_stack::ResultExt as _;
@@ -214,7 +214,7 @@ impl CompactionActor {
         };
 
         if should_compact {
-            let _ = ctx.send_command(Command::CompactContext(CompactContext { session_id }));
+            let _ = ctx.send_command(Command::EnqueueCompaction(EnqueueCompaction { session_id }));
         }
     }
 

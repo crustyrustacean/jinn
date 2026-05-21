@@ -18,7 +18,7 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::compaction_actor::protocol::command::{
-    BeginCompaction, CancelCompaction, CompactContext, EndCompaction,
+    BeginCompaction, CancelCompaction, CompactContext, EndCompaction, EnqueueCompaction,
 };
 use crate::feat::context::protocol::command::{
     AssemblePrompt, LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry,
@@ -108,8 +108,10 @@ pub enum Command {
     RunSessionSetup(RunSessionSetup),
     /// Run a lifecycle teardown command asynchronously.
     RunSessionTeardown(RunSessionTeardown),
-    /// Compact the conversation context for a session.
+    /// Request to compact the conversation context for a session.
     CompactContext(CompactContext),
+    /// Enqueue a compaction via the session queue (waits for session to be idle).
+    EnqueueCompaction(EnqueueCompaction),
     /// Begin a context compaction — marks entries ignored, sets phase to Compacting.
     BeginCompaction(BeginCompaction),
     /// End a context compaction — inserts result entry, sets phase to Idle.
@@ -158,6 +160,7 @@ impl Command {
             Self::RunSessionSetup(..) => Some(RunSessionSetup::NAME),
             Self::RunSessionTeardown(..) => Some(RunSessionTeardown::NAME),
             Self::CompactContext(..) => Some(CompactContext::NAME),
+            Self::EnqueueCompaction(..) => Some(EnqueueCompaction::NAME),
             Self::BeginCompaction(..) => Some(BeginCompaction::NAME),
             Self::EndCompaction(..) => Some(EndCompaction::NAME),
             Self::CancelCompaction(..) => Some(CancelCompaction::NAME),
@@ -245,6 +248,9 @@ impl std::fmt::Display for Command {
             }
             Command::CompactContext(payload) => {
                 write!(f, "compact context for {}", payload.session_id)
+            }
+            Command::EnqueueCompaction(payload) => {
+                write!(f, "enqueue compaction for {}", payload.session_id)
             }
             Command::BeginCompaction(payload) => {
                 write!(f, "begin compaction for {}", payload.session_id)
