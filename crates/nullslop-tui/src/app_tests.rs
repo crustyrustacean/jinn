@@ -60,7 +60,8 @@ fn test_app() -> TuiApp {
 #[case::normal_chat(nullslop_domain::FocusScope::Normal, Scope::Normal)]
 #[case::sidebar(nullslop_domain::FocusScope::SidebarPersona, Scope::SidebarPersona)]
 #[case::input(nullslop_domain::FocusScope::Input, Scope::Input)]
-#[case::picker(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, Scope::Picker)]
+#[case::picker_provider(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, Scope::PickerProvider)]
+#[case::picker_keymap(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Keymap }, Scope::PickerKeymap)]
 #[case::sidebar_resize(nullslop_domain::FocusScope::SidebarResize, Scope::SidebarResize)]
 fn scope_for_focus_maps_correctly(
     #[case] focus: nullslop_domain::FocusScope,
