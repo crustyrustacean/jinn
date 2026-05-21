@@ -5,7 +5,7 @@ use nullslop_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 
 /// Renders the keymap picker overlay using [`SelectionWidget`].
 ///
@@ -18,10 +18,17 @@ pub fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
         .scope_stack
         .parent()
         .map_or_else(|| "unknown".to_owned(), std::string::ToString::to_string);
+    let accent = Style::default().fg(state.frontend.theme.accent_action);
     let footer = if state.frontend.keymap_picker_show_all {
-        Line::from(format!(" All scopes | CTRL+A to show {scope_name} "))
+        Line::from(Span::styled(
+            format!(" All scopes | CTRL+A to show {scope_name} "),
+            accent,
+        ))
     } else {
-        Line::from(format!(" Scope: {scope_name} | CTRL+A to show all "))
+        Line::from(Span::styled(
+            format!(" Scope: {scope_name} | CTRL+A to show all "),
+            accent,
+        ))
     };
     let widget = SelectionWidget::new(&state.frontend.keymap_picker)
         .title(Line::from(" Keymaps "))
