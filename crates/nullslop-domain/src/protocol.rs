@@ -40,7 +40,6 @@ pub use crate::feat::provider::llm_message::LlmMessage;
 pub use crate::feat::session::protocol::session_id::SessionId;
 
 // Re-export domain types used by the picker and UI
-pub use crate::feat::picker::keymap_entry::KeymapEntry;
 pub use crate::feat::provider::entries_to_messages::entries_to_messages;
 pub use crate::feat::provider::picker_entry::PickerEntry;
 pub use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition};

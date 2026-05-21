@@ -1,41 +1,11 @@
-//! Picker rendering for keymap, persona, and theme pickers.
+//! Picker rendering for persona and theme pickers.
 
 use crate::common::app_state::AppState;
 use nullslop_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::text::Line;
 use ratatui::style::Style;
-use ratatui::text::{Line, Span};
-
-/// Renders the keymap picker overlay using [`SelectionWidget`].
-///
-/// Telescope-style layout: bordered popup with filter input at top,
-/// horizontal separator, scrollable keymap entries, and a footer showing
-/// the scope filter mode.
-pub fn render_keymap_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let scope_name = state
-        .frontend
-        .scope_stack
-        .parent()
-        .map_or_else(|| "unknown".to_owned(), std::string::ToString::to_string);
-    let accent = Style::default().fg(state.frontend.theme.accent_action);
-    let footer = if state.frontend.keymap_picker_show_all {
-        Line::from(Span::styled(
-            format!(" All scopes | CTRL+A to show {scope_name} "),
-            accent,
-        ))
-    } else {
-        Line::from(Span::styled(
-            format!(" Scope: {scope_name} | CTRL+A to show all "),
-            accent,
-        ))
-    };
-    let widget = SelectionWidget::new(&state.frontend.keymap_picker)
-        .title(Line::from(" Keymaps "))
-        .title_style(Style::default().fg(state.frontend.theme.popup_title))
-        .footer(footer);
-    widget.render(frame, area);
-}
 
 /// Renders the persona picker overlay using [`SelectionWidget`].
 ///
