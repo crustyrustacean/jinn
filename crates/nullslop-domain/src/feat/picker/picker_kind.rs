@@ -1,6 +1,6 @@
 //! Picker kind — identifies which picker is currently active.
 //!
-//! A single set of `Picker*` commands, `Mode::Picker`, `Scope::Picker`,
+//! A single set of `Picker*` commands, `Mode::Picker`, per-picker `Scope`,
 //! and keymap bindings serve all pickers. [`PickerKind`] determines which
 //! `SelectionState` (from `nullslop-selection-widget`) the commands
 //! operate on.

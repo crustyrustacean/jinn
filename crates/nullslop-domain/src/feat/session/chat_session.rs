@@ -952,7 +952,9 @@ impl ChatSessionState {
     }
 
     /// Drain all queued items, returning them in order.
-    pub fn drain_queue(&mut self) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
+    pub fn drain_queue(
+        &mut self,
+    ) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
         std::mem::take(&mut self.core.ephemeral.message_queue)
     }
 
@@ -1085,7 +1087,9 @@ impl ChatSessionState {
     /// caller can start a new turn if needed.
     ///
     /// No-op if not currently compacting.
-    pub fn cancel_compacting(&mut self) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
+    pub fn cancel_compacting(
+        &mut self,
+    ) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
         if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
             return std::collections::VecDeque::new();
         }

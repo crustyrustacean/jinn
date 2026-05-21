@@ -657,10 +657,14 @@ fn enter_normal_mode_does_not_drain_queue() {
     state.active_session_mut().begin_streaming();
     state
         .active_session_mut()
-        .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("msg1")));
+        .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+            ChatEntry::user("msg1"),
+        ));
     state
         .active_session_mut()
-        .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("msg2")));
+        .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+            ChatEntry::user("msg2"),
+        ));
 
     // When handling EnterNormalMode.
     let _result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
@@ -681,10 +685,14 @@ fn enter_normal_mode_with_queue_emits_no_cancel_stream() {
     state.active_session_mut().begin_streaming();
     state
         .active_session_mut()
-        .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("msg1")));
+        .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+            ChatEntry::user("msg1"),
+        ));
     state
         .active_session_mut()
-        .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("msg2")));
+        .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+            ChatEntry::user("msg2"),
+        ));
 
     // When handling EnterNormalMode.
     let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);

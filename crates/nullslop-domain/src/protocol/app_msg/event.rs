@@ -21,9 +21,7 @@ use crate::common::actor::protocol::event::{
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::compaction_actor::protocol::event::CompactionCompleted;
-use crate::feat::context::protocol::event::{
-    PromptAssembled,
-};
+use crate::feat::context::protocol::event::PromptAssembled;
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::common::actor::event_msg::EventMsg;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
