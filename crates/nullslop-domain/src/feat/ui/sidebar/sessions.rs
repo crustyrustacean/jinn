@@ -7,6 +7,7 @@
 pub mod activate;
 pub mod archive;
 pub mod close;
+pub mod reconcile;
 pub mod r#continue;
 pub mod navigate;
 pub mod new_with_lifecycle;
@@ -28,6 +29,7 @@ pub use close::{
 };
 pub use r#continue::handle_session_continue;
 pub use navigate::{navigate, receive_cursor, scroll_to_cursor};
+pub use reconcile::reconcile_after_session_removal;
 pub use new_with_lifecycle::handle_sidebar_session_new_with_lifecycle;
 pub use render::SessionsSection;
 pub use state::SessionsSectionState;
