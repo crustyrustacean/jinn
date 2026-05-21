@@ -108,6 +108,9 @@ pub fn run_bench(
             let (status, passed) = match result.status {
                 RunStatus::Completed => {
                     let p = (task.verify)(&result.work_dir);
+                    if !p {
+                        print_errors(&result.errors);
+                    }
                     ("completed".to_owned(), p)
                 }
                 RunStatus::Timeout => ("timeout".to_owned(), false),
@@ -189,6 +192,8 @@ struct TaskRunResult {
     tokens_out: u64,
     cost: f64,
     status: RunStatus,
+    /// Error messages from the session history.
+    errors: Vec<String>,
 }
 
 /// Runs a single task against a single model.
@@ -277,6 +282,7 @@ fn run_single_task(
 
     // Extract stats before shutdown.
     let (turns, tokens_in, tokens_out, cost) = extract_stats(&core.state);
+    let errors = extract_errors(&core.state);
 
     // Tear down.
     wiring::shutdown_bench(&actor_host, &core.state, handle);
@@ -294,6 +300,7 @@ fn run_single_task(
         tokens_out,
         cost,
         status,
+        errors,
     }
 }
 
@@ -400,6 +407,30 @@ fn extract_stats(state: &State) -> (u32, u64, u64, f64) {
     .unwrap_or(u32::MAX);
 
     (turns, stats.total_sent, stats.total_received, cost)
+}
+
+/// Extracts error messages from the session history.
+fn extract_errors(state: &State) -> Vec<String> {
+    let guard = state.read();
+    let session = guard.active_session();
+    session
+        .history()
+        .iter()
+        .filter(|e| {
+            matches!(
+                e.kind,
+                nullslop_domain::feat::session::chat_entry::ChatEntryKind::Error(..)
+            )
+        })
+        .map(|e| e.text())
+        .collect()
+}
+
+/// Prints session errors to stderr.
+fn print_errors(errors: &[String]) {
+    for error in errors {
+        eprintln!("  error: {error}");
+    }
 }
 
 /// Validates that all requested models exist in the provider registry.
