@@ -1024,21 +1024,30 @@ fn state_with_tree() -> AppState {
     root_a.push_entry(ChatEntry::user("root a"));
     root_a.set_title("root a".to_owned());
     let root_a_id = root_a.session_id().clone();
-    state.session.sessions_mut().insert(root_a_id.clone(), root_a);
+    state
+        .session
+        .sessions_mut()
+        .insert(root_a_id.clone(), root_a);
 
     // Create child_a1 under root_a.
     let mut child_a1 = ChatSessionState::new();
     child_a1.set_title("child a1".to_owned());
     child_a1.set_parent_session(root_a_id.clone());
     let child_a1_id = child_a1.session_id().clone();
-    state.session.sessions_mut().insert(child_a1_id.clone(), child_a1);
+    state
+        .session
+        .sessions_mut()
+        .insert(child_a1_id.clone(), child_a1);
 
     // Create grandchild_a1a under child_a1.
     let mut grandchild = ChatSessionState::new();
     grandchild.set_title("grandchild a1a".to_owned());
     grandchild.set_parent_session(child_a1_id.clone());
     let grandchild_id = grandchild.session_id().clone();
-    state.session.sessions_mut().insert(grandchild_id, grandchild);
+    state
+        .session
+        .sessions_mut()
+        .insert(grandchild_id, grandchild);
 
     // Create child_a2 under root_a.
     let mut child_a2 = ChatSessionState::new();
@@ -1052,7 +1061,10 @@ fn state_with_tree() -> AppState {
     newest_root.push_entry(ChatEntry::user("root b"));
     newest_root.set_title("root b".to_owned());
     let newest_root_id = newest_root.session_id().clone();
-    state.session.sessions_mut().insert(newest_root_id.clone(), newest_root);
+    state
+        .session
+        .sessions_mut()
+        .insert(newest_root_id.clone(), newest_root);
 
     // Remove the default session (created at AppState::default).
     let default_id = state.session.active_session_id().clone();
@@ -1080,7 +1092,10 @@ fn tree_roots_sorted_by_created_at_descending() {
     // root_b was created last, root_a was created first.
     let roots: Vec<_> = sessions.iter().filter(|s| s.depth == 0).collect();
     assert_eq!(roots.len(), 2, "should have 2 roots");
-    assert!(roots[0].created_at >= roots[1].created_at, "roots should be sorted newest-first");
+    assert!(
+        roots[0].created_at >= roots[1].created_at,
+        "roots should be sorted newest-first"
+    );
 }
 
 #[rstest::rstest]
@@ -1140,7 +1155,10 @@ fn tree_dfs_order_is_correct() {
 
     assert!(root_a_pos < child_a1_pos, "root_a before child_a1");
     assert!(child_a1_pos < grandchild_pos, "child_a1 before grandchild");
-    assert!(grandchild_pos < child_a2_pos, "grandchild before child_a2 (DFS)");
+    assert!(
+        grandchild_pos < child_a2_pos,
+        "grandchild before child_a2 (DFS)"
+    );
 }
 
 #[rstest::rstest]
@@ -1150,7 +1168,10 @@ fn orphan_session_appears_as_root() {
     let mut orphan = ChatSessionState::new();
     orphan.set_title("orphan".to_owned());
     orphan.set_parent_session(crate::protocol::SessionId::new());
-    state.session.sessions_mut().insert(orphan.session_id().clone(), orphan);
+    state
+        .session
+        .sessions_mut()
+        .insert(orphan.session_id().clone(), orphan);
 
     // When collecting sorted sessions.
     let sessions = sorted_open_sessions(&state);
@@ -1158,7 +1179,11 @@ fn orphan_session_appears_as_root() {
     // Then the orphan appears as a root (depth 0).
     let orphan_entry = sessions.iter().find(|s| s.title.contains("orphan"));
     assert!(orphan_entry.is_some(), "orphan should appear");
-    assert_eq!(orphan_entry.unwrap().depth, 0, "orphan should be treated as root");
+    assert_eq!(
+        orphan_entry.unwrap().depth,
+        0,
+        "orphan should be treated as root"
+    );
 }
 
 // --- Navigation through tree ---
@@ -1180,7 +1205,11 @@ fn navigate_down_from_root_goes_to_first_child() {
     // Then the cursor is on the next entry (root_a's first child in DFS order).
     let new_sessions = sorted_open_sessions(&state);
     let new_index = state.frontend.sessions_section.selected_index.unwrap();
-    assert_eq!(new_index, root_a_index + 1, "cursor should move to next DFS entry");
+    assert_eq!(
+        new_index,
+        root_a_index + 1,
+        "cursor should move to next DFS entry"
+    );
     // And the entry is child_a1.
     assert!(
         new_sessions[new_index].title.contains("child a1"),
@@ -1204,7 +1233,11 @@ fn navigate_up_from_child_goes_to_parent() {
 
     // Then the cursor is on root_a (parent).
     let new_index = state.frontend.sessions_section.selected_index.unwrap();
-    assert_eq!(new_index, child_a1_index - 1, "cursor should move to parent");
+    assert_eq!(
+        new_index,
+        child_a1_index - 1,
+        "cursor should move to parent"
+    );
     let new_sessions = sorted_open_sessions(&state);
     assert!(
         new_sessions[new_index].title.contains("root a"),
@@ -1262,16 +1295,17 @@ fn close_root_session_promotes_children_to_roots() {
         .iter()
         .filter(|s| s.title.contains("child a") || s.title.contains("grandchild"))
         .collect();
-    assert!(!former_children.is_empty(), "former children should still be present");
+    assert!(
+        !former_children.is_empty(),
+        "former children should still be present"
+    );
     // All former children should now be roots or have adjusted depth.
     // The children of root_a become orphans → treated as roots.
     let child_a1_entry = remaining.iter().find(|s| s.title.contains("child a1"));
-    assert!(
-        child_a1_entry.is_some(),
-        "child_a1 should still exist"
-    );
+    assert!(child_a1_entry.is_some(), "child_a1 should still exist");
     assert_eq!(
-        child_a1_entry.unwrap().depth, 0,
+        child_a1_entry.unwrap().depth,
+        0,
         "child_a1 should now be a root (orphan)"
     );
 }
