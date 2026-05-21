@@ -125,7 +125,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .describe_group_with_category("g", "general", KeyCategory::General)
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
-            .bind("<leader>sf", Intent::OpenPicker { kind: PickerKind::SessionFork }, KeyCategory::General)
             .bind("<leader>sl", Intent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
             .bind("gg", Intent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
@@ -175,7 +174,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
             .bind("r", Intent::SidebarRenameSession, KeyCategory::General)
-            .bind("a", Intent::SidebarSessionArchive, KeyCategory::General);
+            .bind("a", Intent::SidebarSessionArchive, KeyCategory::General)
+            .bind("c", Intent::SidebarSessionContinue, KeyCategory::General);
         })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
@@ -222,11 +222,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .scope(Scope::PickerProvider, |b| {
             add_picker_base(b);
             b.bind("<c-r>", Intent::RefreshModels, KeyCategory::Model);
-        })
-        .scope(Scope::PickerFork, |b| {
-            add_picker_base(b);
-            b.bind("<c-a>", Intent::ToggleForkAssistantFilter, KeyCategory::General)
-             .bind("<c-u>", Intent::ToggleForkUserFilter, KeyCategory::General);
         })
         .scope(Scope::PickerSession, |b| {
             add_picker_base(b);
@@ -330,7 +325,6 @@ pub fn collect_all_bindings(
         Scope::PickerSession,
         Scope::PickerPersona,
         Scope::PickerTheme,
-        Scope::PickerFork,
         Scope::PickerLifecycle,
         Scope::Input,
         Scope::ArgInput,

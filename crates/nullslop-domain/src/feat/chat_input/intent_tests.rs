@@ -1410,3 +1410,128 @@ fn cursor_right_within_token_keeps_autocomplete_active() {
         "popup should stay open when cursor is within token"
     );
 }
+
+// --- ESC dismisses autocomplete (two-level ESC) ---
+
+#[rstest::rstest]
+fn enter_normal_mode_deactivates_hash_autocomplete() {
+    // Given a state in Input scope with hash autocomplete active.
+    use crate::common::app_state::FocusScope;
+
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Input);
+    state
+        .active_chat_input_mut()
+        .activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]);
+
+    // When handling EnterNormalMode.
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+    // Then autocomplete is deactivated.
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "ESC should deactivate hash autocomplete"
+    );
+}
+
+#[rstest::rstest]
+fn enter_normal_mode_with_hash_autocomplete_stays_in_input_scope() {
+    // Given a state in Input scope with hash autocomplete active.
+    use crate::common::app_state::FocusScope;
+
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Input);
+    state
+        .active_chat_input_mut()
+        .activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]);
+
+    // When handling EnterNormalMode.
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+    // Then scope is still Input (not Normal).
+    assert_eq!(
+        state.frontend.scope_stack.current(),
+        &FocusScope::Input,
+        "scope should stay in Input after dismissing autocomplete"
+    );
+}
+
+#[rstest::rstest]
+fn enter_normal_mode_deactivates_slash_autocomplete() {
+    // Given a state in Input scope with slash autocomplete active.
+    use crate::common::app_state::FocusScope;
+
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Input);
+    state
+        .active_chat_input_mut()
+        .activate_autocomplete(0, AutocompleteTrigger::Slash, vec![]);
+
+    // When handling EnterNormalMode.
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+    // Then autocomplete is deactivated.
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "ESC should deactivate slash autocomplete"
+    );
+}
+
+#[rstest::rstest]
+fn enter_normal_mode_with_slash_autocomplete_stays_in_input_scope() {
+    // Given a state in Input scope with slash autocomplete active.
+    use crate::common::app_state::FocusScope;
+
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Input);
+    state
+        .active_chat_input_mut()
+        .activate_autocomplete(0, AutocompleteTrigger::Slash, vec![]);
+
+    // When handling EnterNormalMode.
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+    // Then scope is still Input (not Normal).
+    assert_eq!(
+        state.frontend.scope_stack.current(),
+        &FocusScope::Input,
+        "scope should stay in Input after dismissing slash autocomplete"
+    );
+}
+
+#[rstest::rstest]
+fn enter_normal_mode_without_autocomplete_switches_to_normal() {
+    // Given a state in Input scope with no autocomplete.
+    use crate::common::app_state::FocusScope;
+
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Input);
+
+    // When handling EnterNormalMode.
+    let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+    // Then scope switches to Normal.
+    assert_eq!(
+        state.frontend.scope_stack.current(),
+        &FocusScope::Normal,
+        "ESC should switch to Normal when no autocomplete is active"
+    );
+}
+
+#[rstest::rstest]
+fn enter_normal_mode_dismissing_autocomplete_emits_no_commands() {
+    // Given a state in Input scope with hash autocomplete active.
+    use crate::common::app_state::FocusScope;
+
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Input);
+    state
+        .active_chat_input_mut()
+        .activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]);
+
+    // When handling EnterNormalMode.
+    let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+    // Then no commands are emitted.
+    assert!(result.commands.is_empty());
+}
