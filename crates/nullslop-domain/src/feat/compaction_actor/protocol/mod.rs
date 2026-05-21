@@ -3,4 +3,4 @@
 pub mod command;
 pub mod event;
 
-pub use command::{BeginCompaction, CompactContext, CompactionResult, EndCompaction};
+pub use command::{BeginCompaction, CompactContext, CompactionResult, EndCompaction, EnqueueCompaction};

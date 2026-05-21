@@ -1075,7 +1075,7 @@ fn submit_unknown_slash_command_clears_buffer() {
 }
 
 #[rstest::rstest]
-fn submit_compact_slash_command_sends_compact_context() {
+fn submit_compact_slash_command_sends_enqueue_compaction() {
     // Given a state with "/compact" in the buffer.
     let mut state = AppState::default();
     let session_id = state.session.active_session_id().clone();
@@ -1084,11 +1084,11 @@ fn submit_compact_slash_command_sends_compact_context() {
     // When handling SubmitMessage.
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
-    // Then a CompactContext command is dispatched.
+    // Then an EnqueueCompaction command is dispatched.
     assert_eq!(result.commands.len(), 1);
     assert!(
-        matches!(&result.commands[0], Command::CompactContext(cmd) if cmd.session_id == session_id),
-        "/compact should send CompactContext command"
+        matches!(&result.commands[0], Command::EnqueueCompaction(cmd) if cmd.session_id == session_id),
+        "/compact should send EnqueueCompaction command"
     );
 }
 

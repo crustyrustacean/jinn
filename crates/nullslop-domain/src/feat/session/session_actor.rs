@@ -105,6 +105,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>(
         );
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::EndCompaction>();
+        ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::EnqueueCompaction>();
 
         // Event subscriptions.
         ctx.subscribe_event::<PromptAssembled>();
@@ -220,6 +221,9 @@ impl SessionPersistenceActor {
             }
             Command::EndCompaction(payload) => {
                 self.handle_end_compaction(payload, ctx).await;
+            }
+            Command::EnqueueCompaction(payload) => {
+                self.handle_enqueue_compaction(payload, ctx).await;
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::AssemblePrompt(..)
