@@ -1,7 +1,8 @@
 //! Shared helpers used across multiple handler concern modules.
 
 use crate::common::actor::ActorContext;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
+use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
 use crate::protocol::{Event, SessionId};
 
 /// Emit a `SessionPhaseChanged` event if the phase actually changed.
@@ -22,6 +23,36 @@ pub(in crate::feat::session::session_actor) fn emit_phase_changed(
         )) {
             tracing::warn!(err = ?e, "failed to emit SessionPhaseChanged");
         }
+    }
+}
+
+/// Compute total estimated tokens for a session's history.
+pub(in crate::feat::session::session_actor) fn estimate_total_tokens(
+    session: &ChatSessionState,
+) -> usize {
+    let estimator = CharRatioEstimator;
+    session
+        .history()
+        .iter()
+        .map(|e| estimate_entry_tokens(&estimator, e))
+        .sum()
+}
+
+/// Emit a `HistoryAppended` event with the total estimated tokens.
+///
+/// Call this outside the write lock with the pre-computed token count.
+pub(in crate::feat::session::session_actor) fn emit_history_appended(
+    ctx: &ActorContext,
+    session_id: &SessionId,
+    total_estimated_tokens: usize,
+) {
+    if let Err(e) = ctx.send_event(Event::HistoryAppended(
+        crate::feat::session::protocol::history_appended::HistoryAppended {
+            session_id: session_id.clone(),
+            total_estimated_tokens,
+        },
+    )) {
+        tracing::warn!(err = ?e, "failed to emit HistoryAppended");
     }
 }
 

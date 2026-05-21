@@ -2,6 +2,7 @@
 
 pub mod archive_session;
 pub mod close_session;
+pub mod history_appended;
 pub mod load_session_picker_entries;
 pub mod session_archived;
 pub mod session_closed;
