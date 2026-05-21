@@ -206,8 +206,33 @@ impl SessionPersistenceActor {
                 session.begin_sending();
             }
 
-            // Drain queue only on Finished — the turn has ended successfully.
-            // Error and Canceled do not drain queued messages.
+            // When returning to Idle with no retry, drain queued messages
+            // back to the input buffer so the user can review and retry.
+            if matches!(
+                event.reason,
+                StreamCompletedReason::Error | StreamCompletedReason::Canceled
+            ) {
+                let drained = session.drain_queue();
+                let display_texts: Vec<&str> = drained
+                    .iter()
+                    .filter_map(|item| match item {
+                        crate::feat::session::queue_item::QueueItem::UserMessage(entry) => {
+                            match &entry.kind {
+                                crate::protocol::ChatEntryKind::User { display, .. } => {
+                                    Some(display.as_str())
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                let drained_text = display_texts.join("\n");
+                if !drained_text.is_empty() {
+                    session.chat_input_mut().replace_all(drained_text);
+                }
+            }
+
             should_process_queue = event.reason == StreamCompletedReason::Finished;
         }
 
@@ -262,7 +287,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_stream_completed_error_reason_does_not_drain_queue() {
+    async fn on_stream_completed_error_reason_drains_queue_to_input_buffer() {
         // Given a session actor with a session in streaming state and a queued message.
         let actor = test_actor();
         let (_sink, ctx) = test_context();
@@ -287,10 +312,79 @@ mod tests {
         };
         actor.on_stream_completed(&event, &ctx).await;
 
-        // Then the queued message is still in the queue.
+        // Then the queue is empty and the message text is in the input buffer.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.queue_len(), 1);
+        assert_eq!(session.queue_len(), 0);
+        assert_eq!(session.chat_input().text(), "queued message");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_error_with_multiple_queued_messages_joins_with_newline() {
+        // Given a session actor with a session in streaming state and two queued messages.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+                ChatEntry::user("first message"),
+            ));
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+                ChatEntry::user("second message"),
+            ));
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Error reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then both messages are joined with newline in the input buffer.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(session.queue_len(), 0);
+        assert_eq!(session.chat_input().text(), "first message\nsecond message");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_canceled_reason_drains_queue_to_input_buffer() {
+        // Given a session actor with a session in streaming state and a queued message.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+                ChatEntry::user("queued message"),
+            ));
+            assert_eq!(session.queue_len(), 1);
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Canceled reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the queue is empty and the message text is in the input buffer.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(session.queue_len(), 0);
+        assert_eq!(session.chat_input().text(), "queued message");
     }
 
     #[tokio::test]
