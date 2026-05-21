@@ -217,8 +217,8 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::ContextTokenBudgetConfig;
-    use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::common::app_info::PREFS_FILE_NAME;
+    use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
         CompactionConfig, ContextSlidingWindowConfig,
     };

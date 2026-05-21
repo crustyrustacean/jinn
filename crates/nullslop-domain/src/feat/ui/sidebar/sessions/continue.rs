@@ -53,15 +53,11 @@ mod tests {
         let mut state = AppState::default();
         // Create a second session.
         let second_id = crate::protocol::SessionId::new();
-        let mut second_session =
-            crate::feat::session::chat_session::ChatSessionState::new();
+        let mut second_session = crate::feat::session::chat_session::ChatSessionState::new();
         second_session.set_session_id(second_id.clone());
         state.session.insert(second_session);
         // Focus sidebar on sessions section.
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarSessions);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         // Navigate to select the second entry in the sorted list.
         navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
 
@@ -91,10 +87,7 @@ mod tests {
     fn noop_when_no_session_selected() {
         // Given a state with sidebar focused but no selected session.
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarSessions);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         // No selection set.
         assert!(state.frontend.sessions_section.selected_index.is_none());
 
@@ -109,10 +102,7 @@ mod tests {
     fn noop_when_not_in_sessions_section() {
         // Given a state with sidebar focused on a different section.
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarPersona);
+        state.frontend.scope_stack.push(FocusScope::SidebarPersona);
 
         // When handling session continue.
         let result = handle_session_continue(&mut state);
@@ -125,10 +115,7 @@ mod tests {
     fn scope_stack_unchanged_after_continue() {
         // Given a state with sidebar focused on sessions section.
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarSessions);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
         let scope_before = state.frontend.scope_stack.current().clone();
 
