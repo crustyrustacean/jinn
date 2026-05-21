@@ -356,3 +356,50 @@ fn toggle_keymap_scope_filter_preserves_filter_text() {
         "filter text should be preserved after toggle"
     );
 }
+
+#[rstest::rstest]
+fn keymap_picker_defaults_to_all_on_open() {
+    // Given an app in Normal scope.
+    let mut app = test_app();
+    app.which_key.set_scope(Scope::Normal);
+
+    // When opening the keymap picker.
+    app.route_intent(Intent::OpenPicker {
+        kind: PickerKind::Keymap,
+    });
+
+    // Then show_all is true by default.
+    let state = app.core.state.read();
+    assert!(
+        state.frontend.keymap_picker_show_all,
+        "should default to show_all=true"
+    );
+}
+
+#[rstest::rstest]
+fn toggle_keymap_scope_filter_noop_in_non_keymap_picker() {
+    // Given an app with the provider picker open and keymap state populated.
+    let mut app = test_app();
+    app.which_key.set_scope(Scope::Normal);
+
+    // Populate keymap entries and set show_all to false (simulating a previous toggle).
+    {
+        let mut state = app.core.state.write();
+        state.frontend.keymap_picker_show_all = false;
+        // Push provider picker onto scope stack.
+        state.frontend.scope_stack.push(
+            nullslop_domain::FocusScope::Picker { kind: PickerKind::Provider },
+        );
+    }
+    app.which_key.set_scope(Scope::PickerProvider);
+
+    // When handling ToggleKeymapScopeFilter in a non-keymap picker.
+    app.route_intent(Intent::ToggleKeymapScopeFilter);
+
+    // Then keymap_picker_show_all is unchanged (still false).
+    let state = app.core.state.read();
+    assert!(
+        !state.frontend.keymap_picker_show_all,
+        "should remain unchanged when picker is not Keymap"
+    );
+}
