@@ -425,23 +425,6 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (set on theme picker open, consumed on confirm/cancel).
     pub theme_preview_original: Option<Theme>,
 
-    /// Fork picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (fork picker navigation).
-    pub fork_picker:
-        nullslop_selection_widget::SelectionState<crate::feat::session::fork_entry::ForkEntry>,
-
-    /// All fork entries for the current session (pre-filter).
-    /// OWNER: IntentHandler (populated when fork picker opens).
-    pub all_fork_entries: Vec<crate::feat::session::fork_entry::ForkEntry>,
-
-    /// Whether user messages are shown in the fork picker.
-    /// OWNER: IntentHandler (toggled via ToggleForkUserFilter intent).
-    pub fork_show_user: bool,
-
-    /// Whether assistant messages are shown in the fork picker.
-    /// OWNER: IntentHandler (toggled via ToggleForkAssistantFilter intent).
-    pub fork_show_assistant: bool,
-
     /// Path to the themes directory (`~/.config/nullslop/themes/`).
     /// Set once during init from `AppPaths`. Used by the theme picker to discover themes.
     /// OWNER: Init code (set once at startup).
@@ -494,10 +477,6 @@ impl Default for FrontendState {
             cancel_stream_prompt: false,
             theme_picker: nullslop_selection_widget::SelectionState::new(),
             theme_preview_original: None,
-            fork_picker: nullslop_selection_widget::SelectionState::new(),
-            all_fork_entries: vec![],
-            fork_show_user: true,
-            fork_show_assistant: true,
             themes_dir: std::path::PathBuf::new(),
             system_themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
@@ -562,7 +541,7 @@ impl AppState {
             PickerKind::Session => Some(&mut self.frontend.session_picker),
             PickerKind::Persona => Some(&mut self.frontend.persona_picker),
             PickerKind::Theme => Some(&mut self.frontend.theme_picker),
-            PickerKind::SessionFork => Some(&mut self.frontend.fork_picker),
+
             PickerKind::SessionLifecycle => Some(&mut self.frontend.session_lifecycle_picker),
         }
     }
