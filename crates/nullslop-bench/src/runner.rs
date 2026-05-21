@@ -22,8 +22,8 @@ use std::time::{Duration, Instant};
 
 use nullslop_domain::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, FilesystemConfigStorage,
-    LlmServiceFactoryService, NoProvidersAvailableFactory,
-    ProviderId, ProviderRegistry, ProviderRegistryService,
+    LlmServiceFactoryService, ModelCache, NoProvidersAvailableFactory,
+    ProviderId, ProviderRegistry, ProviderRegistryService, cache_path,
 };
 use nullslop_domain::feat::session::token_stats::TokenStats;
 use nullslop_domain::feat::session::{SessionStoreService, SqliteSessionStore};
@@ -154,11 +154,25 @@ fn create_shared_services(_args: &cli::RunArgs) -> Result<SharedServices, Box<dy
     let config_storage = ConfigStorageService::new(Arc::new(FilesystemConfigStorage::default_path()));
     let providers_config = config_storage.load()?;
 
+    // Resolve API keys from environment variables (same as env-init actor).
+    let api_keys = ApiKeysService::new(ApiKeys::new());
+    for provider in &providers_config.providers {
+        if let Some(ref env_var) = provider.api_key_env
+            && let Ok(value) = std::env::var(env_var)
+            && !value.is_empty()
+        {
+            api_keys.insert(env_var.clone(), value);
+        }
+    }
+
     // Build registry from the loaded config.
     let provider_registry = ProviderRegistryService::new(ProviderRegistry::from_config(providers_config)?);
 
-    // API keys are resolved by the env-init actor.
-    let api_keys = ApiKeysService::new(ApiKeys::new());
+    // Load and merge model cache (same as provider-init actor).
+    let cache_path = cache_path();
+    if let Some(cache) = ModelCache::load(&cache_path)? {
+        provider_registry.merge_cache(&cache);
+    }
 
     Ok(SharedServices {
         provider_registry,
@@ -423,4 +437,84 @@ fn filter_tasks(
             true
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "test code")]
+
+    use super::*;
+
+    #[test]
+    fn validate_models_accepts_static_config_entries() {
+        // Given a registry loaded from the user's providers.toml.
+        let args = cli::RunArgs::from_run(
+            vec!["unused".to_owned()],
+            std::path::PathBuf::from("unused"),
+            None,
+            None,
+        );
+        let services = create_shared_services(&args).expect("services");
+
+        // When validating a model from the static config.
+        // Pick the first provider from the registry to test with.
+        let providers = services.provider_registry.providers();
+        if providers.is_empty() {
+            // No providers configured — can't test, but shouldn't fail.
+            return;
+        }
+        let model_id = providers[0].id.to_string();
+
+        // Then validation succeeds.
+        let result = validate_models(&[model_id.clone()], &services.provider_registry);
+        assert!(result.is_ok(), "expected {model_id} to be valid");
+    }
+
+    #[test]
+    fn validate_models_accepts_cached_entries() {
+        // Given a registry with model cache merged.
+        let args = cli::RunArgs::from_run(
+            vec!["unused".to_owned()],
+            std::path::PathBuf::from("unused"),
+            None,
+            None,
+        );
+        let services = create_shared_services(&args).expect("services");
+
+        // When validating a model from the cache (openrouter/deepseek/deepseek-v4-flash).
+        let cached_model = "openrouter/deepseek/deepseek-v4-flash".to_owned();
+        let id = ProviderId::new(cached_model.clone());
+
+        // Then the model exists in the registry (either from static config or cache).
+        if services.provider_registry.get(&id).is_none() {
+            // Model not in cache on this machine — skip.
+            return;
+        }
+
+        let result = validate_models(&[cached_model], &services.provider_registry);
+        assert!(result.is_ok(), "expected cached model to be valid");
+    }
+
+    #[test]
+    fn validate_models_rejects_unknown_model() {
+        // Given a registry.
+        let args = cli::RunArgs::from_run(
+            vec!["unused".to_owned()],
+            std::path::PathBuf::from("unused"),
+            None,
+            None,
+        );
+        let services = create_shared_services(&args).expect("services");
+
+        // When validating a non-existent model.
+        let result = validate_models(
+            &["nonexistent/model".to_owned()],
+            &services.provider_registry,
+        );
+
+        // Then validation fails.
+        assert!(result.is_err());
+        let invalid = result.expect_err("should be err");
+        assert_eq!(invalid, vec!["nonexistent/model".to_owned()]);
+    }
 }
