@@ -1845,7 +1845,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -1953,9 +1953,11 @@ dependencies = [
  "async-trait",
  "error-stack",
  "futures",
+ "jiff",
  "mockito",
  "parking_lot",
  "rand 0.9.4",
+ "regex",
  "reqwest",
  "rstest",
  "serde",
