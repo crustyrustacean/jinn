@@ -878,3 +878,31 @@ fn render_shows_cost_before_turns_indicator() {
         "cost should appear before Turns, got: {row}"
     );
 }
+
+#[rstest::rstest]
+fn status_bar_shows_model_during_compacting() {
+    // Given a session in Compacting phase with a model.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    state.active_session_mut().begin_compacting(vec![]);
+    let (mut terminal, area) = setup_term(80, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row = buffer_row(&buffer, 1, 80);
+    // Then the model name appears (not "Compacting...").
+    assert!(
+        row.contains("(ollama)/llama3"),
+        "expected model name, got: {row}"
+    );
+    assert!(
+        !row.contains("Compacting..."),
+        "should not show static Compacting text, got: {row}"
+    );
+}

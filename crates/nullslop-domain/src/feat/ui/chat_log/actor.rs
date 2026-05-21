@@ -6,9 +6,10 @@ use ratatui::text::Line;
 use super::shared::{Pad, RenderContext, multiline_styled, pad_entry};
 
 pub fn to_lines(source: &str, text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
+    let text = super::shared::strip_ansi(text);
     let prefix = format!("[actor] {source}: ");
     let mut lines = multiline_styled(
-        text,
+        &text,
         &prefix,
         "",
         Style::default().fg(ctx.theme.focus_accent),
