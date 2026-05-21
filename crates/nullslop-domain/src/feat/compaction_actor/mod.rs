@@ -24,11 +24,12 @@ use crate::feat::compaction_actor::protocol::command::{
     BeginCompaction, CancelCompaction, CompactionResult, EndCompaction,
 };
 use crate::feat::compaction_actor::serializer::serialize_entries_for_compaction;
-use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
+use crate::feat::context::strategy::token_estimator::CharRatioEstimator;
+use crate::feat::context::strategy::token_estimator::estimate_entry_tokens;
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
-use crate::feat::provider::protocol::event::StreamCompleted;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::protocol::{Command, Event};
 
 /// Errors during compaction.
@@ -67,7 +68,7 @@ impl Actor for CompactionActor {
         ctx.set_description("Summarizes conversation history into structured checkpoints");
         ctx.subscribe_command::<CompactContext>();
         ctx.subscribe_command::<CancelCompaction>();
-        ctx.subscribe_event::<StreamCompleted>();
+        ctx.subscribe_event::<HistoryAppended>();
 
         Self {
             state: deps.state,
@@ -82,8 +83,8 @@ impl Actor for CompactionActor {
             ActorEnvelope::Command(Command::CompactContext(ref payload)) => {
                 self.handle_compact_context(payload, ctx);
             }
-            ActorEnvelope::Event(Event::StreamCompleted(ref payload)) => {
-                self.handle_stream_completed(payload, ctx);
+            ActorEnvelope::Event(Event::HistoryAppended(ref payload)) => {
+                self.handle_history_appended(payload, ctx);
             }
             ActorEnvelope::Command(Command::CancelCompaction(ref payload)) => {
                 self.handle_cancel_compaction(payload);
@@ -154,18 +155,12 @@ impl CompactionActor {
         self.compaction_task = Some(task);
     }
 
-    /// Handle a `StreamCompleted` event for auto-trigger.
+    /// Handle a `HistoryAppended` event for auto-compaction trigger.
     ///
-    /// Only fires on `Finished` reason. Estimates total tokens and compares
-    /// against `threshold * token_budget`. If exceeded, sends `CompactContext`.
-    fn handle_stream_completed(&self, payload: &StreamCompleted, ctx: &ActorContext) {
-        use crate::feat::provider::protocol::event::StreamCompletedReason;
-
-        // Only trigger on normal completion, not tool use or errors.
-        if payload.reason != StreamCompletedReason::Finished {
-            return;
-        }
-
+    /// Compares the reported `total_estimated_tokens` against the configured
+    /// threshold. If exceeded, sends `EnqueueCompaction` (to queue compaction)
+    /// and `SoftCancelTurn` (to gracefully end the current turn if any).
+    fn handle_history_appended(&self, payload: &HistoryAppended, ctx: &ActorContext) {
         let (should_compact, session_id) = {
             let state = self.state.read();
             let session_id = payload.session_id.clone();
@@ -183,12 +178,7 @@ impl CompactionActor {
             let config = &state.frontend.preferences.compaction;
             let token_budget = state.frontend.preferences.context_token_budget.budget;
 
-            let estimator = CharRatioEstimator;
-            let total_tokens: usize = session
-                .history()
-                .iter()
-                .map(|e| estimate_entry_tokens(&estimator, e))
-                .sum();
+            let total_tokens = payload.total_estimated_tokens;
 
             #[allow(clippy::cast_precision_loss)]
             let threshold_tokens = (config.threshold * token_budget as f64) as usize;
@@ -215,7 +205,10 @@ impl CompactionActor {
         };
 
         if should_compact {
-            let _ = ctx.send_command(Command::EnqueueCompaction(EnqueueCompaction { session_id }));
+            let _ = ctx.send_command(Command::EnqueueCompaction(EnqueueCompaction { session_id: session_id.clone() }));
+            let _ = ctx.send_command(Command::SoftCancelTurn(
+                crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn { session_id },
+            ));
         }
     }
 
