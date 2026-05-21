@@ -129,6 +129,10 @@ impl SqliteSessionStore {
                 .execute(&mut conn)
                 .change_context(SessionStoreError)
                 .attach("failed to set foreign_keys pragma")?;
+            diesel::sql_query("PRAGMA busy_timeout=5000")
+                .execute(&mut conn)
+                .change_context(SessionStoreError)
+                .attach("failed to set busy_timeout pragma")?;
             migrator::run_migrations(&mut conn)?;
         }
 
@@ -161,6 +165,9 @@ impl CustomizeConnection<SqliteConnection, diesel_r2d2::Error> for SqliteConnect
             .execute(conn)
             .map_err(diesel_r2d2::Error::QueryError)?;
         diesel::sql_query("PRAGMA foreign_keys=ON")
+            .execute(conn)
+            .map_err(diesel_r2d2::Error::QueryError)?;
+        diesel::sql_query("PRAGMA busy_timeout=5000")
             .execute(conn)
             .map_err(diesel_r2d2::Error::QueryError)?;
         Ok(())
