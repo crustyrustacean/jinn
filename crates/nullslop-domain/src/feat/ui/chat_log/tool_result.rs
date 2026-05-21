@@ -51,6 +51,7 @@ fn to_lines_collapsed(
     let style = content_style(ctx);
 
     let text = super::shared::unescape_newlines(content);
+    let text = super::shared::strip_ansi(&text);
     let text = text.trim_start_matches('\n');
     let all_lines: Vec<&str> = text.split('\n').collect();
 
@@ -109,6 +110,7 @@ fn to_lines_expanded(
     let mut lines = Vec::new();
 
     let text = super::shared::unescape_newlines(content);
+    let text = super::shared::strip_ansi(&text);
     let text = text.trim_start_matches('\n');
     let all_lines: Vec<&str> = text.split('\n').collect();
 
