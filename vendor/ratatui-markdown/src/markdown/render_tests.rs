@@ -597,6 +597,54 @@ fn paragraph_then_hrule_parses_in_order() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+fn paragraph_then_code_block_renders_text_before_code() -> anyhow::Result<()> {
+    // Given text immediately followed by a code fence.
+    let lines = render_markdown("The code is:\n```rust\nlet foo = 1;\n```", 80);
+
+    // Then the first line contains the paragraph text.
+    let first_text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+    assert!(
+        first_text.contains("The code is:"),
+        "first rendered line should contain paragraph text, got: '{}'",
+        first_text
+    );
+
+    // And a later line contains the code block header.
+    let has_code_header = lines.iter().skip(1).any(|l| {
+        let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+        t.contains('\u{256d}') // ╭
+    });
+    assert!(
+        has_code_header,
+        "a line after the paragraph should contain the code block header"
+    );
+    Ok(())
+}
+
+#[test]
+fn paragraph_then_heading_renders_text_before_heading() -> anyhow::Result<()> {
+    // Given text immediately followed by a heading.
+    let lines = render_markdown("Some intro\n# Title", 80);
+
+    // Then the first line contains the paragraph text.
+    let first_text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+    assert!(
+        first_text.contains("Some intro"),
+        "first rendered line should contain paragraph text, got: '{}'",
+        first_text
+    );
+
+    // And the second line contains the heading.
+    let second_text: String = lines[1].spans.iter().map(|s| s.content.as_ref()).collect();
+    assert!(
+        second_text.contains("Title"),
+        "second rendered line should contain heading text, got: '{}'",
+        second_text
+    );
+    Ok(())
+}
+
 mod example_tree_list_tests {
     use super::*;
 
