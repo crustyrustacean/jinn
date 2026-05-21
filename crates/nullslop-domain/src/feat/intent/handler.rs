@@ -290,12 +290,6 @@ impl IntentHandler {
             Intent::ForkFromEntry => {
                 feat::chat_entry_selection::intent::handle_fork_from_entry(state)
             }
-            Intent::ToggleForkUserFilter => {
-                feat::picker::intent::handle_toggle_fork_user_filter(state)
-            }
-            Intent::ToggleForkAssistantFilter => {
-                feat::picker::intent::handle_toggle_fork_assistant_filter(state)
-            }
 
             // --- Session Lifecycle ---
             Intent::SessionLifecycleSetup {
