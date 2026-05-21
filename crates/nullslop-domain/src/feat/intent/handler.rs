@@ -288,6 +288,9 @@ impl IntentHandler {
             Intent::ExpandToolEntry => {
                 feat::chat_entry_selection::intent::handle_expand_tool_entry(state)
             }
+            Intent::ForkFromEntry => {
+                feat::chat_entry_selection::intent::handle_fork_from_entry(state)
+            }
             Intent::ToggleForkUserFilter => {
                 feat::picker::intent::handle_toggle_fork_user_filter(state)
             }

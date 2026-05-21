@@ -52,6 +52,35 @@ pub fn validate_expand_tool_entry(state: &AppState) -> Result<(), ExpandToolEntr
     Ok(())
 }
 
+/// Errors from validating a ForkFromEntry intent.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub enum ForkFromEntryError {
+    /// No chat entry is currently selected.
+    NoSelection,
+    /// The chat history is empty.
+    EmptyHistory,
+}
+
+/// Validates the ForkFromEntry intent.
+///
+/// Returns an error if the history is empty or no entry is selected.
+/// Any entry type can be forked from (unlike pinning, which restricts kinds).
+///
+/// # Errors
+///
+/// Returns an error if the history is empty or no entry is selected.
+pub fn validate_fork_from_entry(state: &AppState) -> Result<(), ForkFromEntryError> {
+    if state.active_session().history().is_empty() {
+        return Err(ForkFromEntryError::EmptyHistory);
+    }
+    state
+        .active_session()
+        .selected_entry()
+        .ok_or(ForkFromEntryError::NoSelection)?;
+    Ok(())
+}
+
 /// Errors from validating a ChatEntryPinSelected intent.
 #[derive(Debug, Error)]
 #[error(debug)]
@@ -86,6 +115,59 @@ pub fn validate_chat_entry_pin_selected(state: &AppState) -> Result<(), ChatEntr
         return Err(ChatEntryPinSelectedError::NotPinnable);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod fork_from_entry_tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use crate::common::app_state::AppState;
+    use crate::protocol::ChatEntry;
+
+    use super::*;
+
+    #[rstest::rstest]
+    fn fork_from_entry_rejects_empty_history() {
+        // Given an empty session.
+        let state = AppState::default();
+
+        // When validating fork from entry.
+        let result = validate_fork_from_entry(&state);
+
+        // Then validation fails with EmptyHistory.
+        assert!(matches!(result, Err(ForkFromEntryError::EmptyHistory)));
+    }
+
+    #[rstest::rstest]
+    fn fork_from_entry_rejects_no_selection() {
+        // Given a state with entries but no selection.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().clear_selection();
+
+        // When validating fork from entry.
+        let result = validate_fork_from_entry(&state);
+
+        // Then validation fails with NoSelection.
+        assert!(matches!(result, Err(ForkFromEntryError::NoSelection)));
+    }
+
+    #[rstest::rstest]
+    fn fork_from_entry_accepts_selected_entry() {
+        // Given a state with a selected entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating fork from entry.
+        let result = validate_fork_from_entry(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
+    }
 }
 
 #[cfg(test)]
