@@ -201,9 +201,6 @@ impl IntentHandler {
             Intent::PickerMoveDown => feat::picker::intent::handle_move_down(state),
             Intent::PickerMoveCursorLeft => feat::picker::intent::handle_move_cursor_left(state),
             Intent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
-            Intent::ToggleKeymapScopeFilter => {
-                feat::picker::intent::handle_toggle_keymap_scope_filter(state)
-            }
             Intent::SessionNew => feat::session::intent::handle_session_new(state),
             Intent::RefreshModels => feat::session::intent::handle_refresh_models(state),
             Intent::RescanPromptTemplates => {
