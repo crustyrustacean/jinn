@@ -758,7 +758,7 @@ fn new_with_lifecycle_opens_picker_when_sessions_section() {
 }
 
 #[rstest::rstest]
-fn teardown_only_emits_run_session_teardown_with_close_on_success_false() {
+fn teardown_only_emits_run_session_teardown() {
     // Given a session with a lifecycle that has a teardown command.
     let mut state = AppState::default();
     state.frontend.preferences.session_lifecycles.push(
@@ -787,13 +787,12 @@ fn teardown_only_emits_run_session_teardown_with_close_on_success_false() {
         &mut state,
     );
 
-    // Then a RunSessionTeardown command is emitted with close_on_success = false.
+    // Then a RunSessionTeardown command is emitted with the rendered teardown command.
     assert_eq!(result.commands.len(), 1);
     assert!(matches!(
         &result.commands[0],
         crate::protocol::Command::RunSessionTeardown(
             crate::feat::session_lifecycle::protocol::command::RunSessionTeardown {
-                close_on_success: false,
                 command,
                 args,
                 ..

@@ -120,7 +120,7 @@ impl ProviderActor {
             | Command::EndCompaction(..)
             | Command::CloseSession(..)
             | Command::ArchiveSession(..)
-            | Command::SaveNewLifecycleSession(..) => {}
+            | Command::PersistSession(..) => {}
         }
     }
 

@@ -156,6 +156,8 @@ pub enum Intent {
     ChatEntryPinSelected,
     /// Toggle expand/collapse of the selected tool entry (tool call or tool result).
     ExpandToolEntry,
+    /// Fork the session at the currently selected chat entry.
+    ForkFromEntry,
     /// Toggle user message visibility in the fork picker.
     ToggleForkUserFilter,
     /// Toggle assistant message visibility in the fork picker.
@@ -260,6 +262,7 @@ impl std::fmt::Display for Intent {
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),
             Intent::ExpandToolEntry => write!(f, "expand tool entry"),
+            Intent::ForkFromEntry => write!(f, "fork from entry"),
 
             Intent::ToggleForkUserFilter => write!(f, "toggle fork user filter"),
             Intent::ToggleForkAssistantFilter => write!(f, "toggle fork assistant filter"),
