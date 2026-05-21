@@ -8,7 +8,7 @@
 //! and [`SessionUi`] (IntentHandler) sub-structs to make cross-boundary
 //! writes visually obvious during code review.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicU16, Ordering};

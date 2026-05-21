@@ -10,6 +10,27 @@ use crate::protocol::{ChatEntry, Command, Event, SessionId};
 
 use super::SessionPersistenceActor;
 
+/// Emit a `SessionPhaseChanged` event if the phase actually changed.
+///
+/// Call this outside the write lock with the before/after phases captured inside.
+pub(in crate::feat::session::session_actor) fn emit_phase_changed(
+    ctx: &ActorContext,
+    session_id: &SessionId,
+    old_phase: SessionPhase,
+    new_phase: SessionPhase,
+) {
+    if old_phase != new_phase {
+        if let Err(e) = ctx.send_event(Event::SessionPhaseChanged(
+            crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged {
+                session_id: session_id.clone(),
+                new_phase,
+            },
+        )) {
+            tracing::warn!(err = ?e, "failed to emit SessionPhaseChanged");
+        }
+    }
+}
+
 impl SessionPersistenceActor {
     /// Process the next item from the turn dispatch queue.
     ///

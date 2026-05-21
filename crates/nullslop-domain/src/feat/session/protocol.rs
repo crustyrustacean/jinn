@@ -10,6 +10,7 @@ pub mod session_id;
 pub mod session_load_completed;
 pub mod session_load_requested;
 pub mod session_new;
+pub mod session_phase_changed;
 
 pub use archive_session::ArchiveSession;
 pub use close_session::CloseSession;

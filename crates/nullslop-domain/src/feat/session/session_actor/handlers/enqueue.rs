@@ -62,6 +62,11 @@ impl SessionPersistenceActor {
             }
         };
 
+        // Note: phase change emission for Idle → Sending will be handled
+        // by the QueueActor once it's introduced. For now, enqueue doesn't
+        // emit SessionPhaseChanged because the session actor still handles
+        // the full dispatch inline.
+
         let (history, model_name) = match action {
             EnqueueAction::AssemblePrompt => {
                 let state = self.state.read();
