@@ -9,6 +9,7 @@ mod fake;
 mod llm_message;
 mod no_providers;
 mod openai_compat;
+mod retry;
 mod sample;
 mod service;
 mod stream_event;
@@ -30,6 +31,8 @@ pub use sample::SampleLlmServiceFactory;
 pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
 pub use stream_event::{StopReason, StreamEvent, StreamUsage};
 pub use tool_types::{ToolCall, ToolDefinition, ToolResult};
+
+pub use retry::{NoOpOnRetry, OnRetry, RetryConfig, RetryingLlmService};
 
 /// Rich model metadata returned by provider model listing endpoints.
 ///
