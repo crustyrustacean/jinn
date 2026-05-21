@@ -80,6 +80,7 @@ pub use feat::session::welcome_msg;
 pub use feat::preferences_actor::ContextTokenBudgetConfig;
 pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
 pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
+pub use feat::preferences_actor::RequestRetryConfig;
 pub use feat::preferences_actor::UserPreferences;
 pub use feat::preferences_actor::UserPreferencesStorageService;
 pub use feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};

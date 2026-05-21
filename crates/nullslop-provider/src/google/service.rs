@@ -108,13 +108,21 @@ impl GoogleService {
 
         let status = response.status();
         if !status.is_success() {
+            let retry_after_header = response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(crate::service::parse_retry_after_header);
             let error_text = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "(no body)".to_owned());
-            return Err(Report::new(LlmServiceError::Provider)
-                .attach(format!("{PROVIDER_NAME} HTTP {status}"))
-                .attach(error_text));
+            return Err(crate::service::classify_http_error(
+                status,
+                &error_text,
+                PROVIDER_NAME,
+                retry_after_header,
+            ));
         }
 
         Ok(response)
