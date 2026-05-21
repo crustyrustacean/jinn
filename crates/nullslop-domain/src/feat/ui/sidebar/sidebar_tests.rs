@@ -6,6 +6,7 @@ use ratatui::style::Color;
 
 use crate::common::app_state::{AppState, FocusScope};
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::ui::sidebar;
 use crate::feat::ui::sidebar::intent::handle_sidebar_focus;
 use crate::feat::ui::sidebar::pins::PinsSection;
 use crate::feat::ui::sidebar::section_trait::SidebarIntent;
@@ -389,4 +390,97 @@ fn jump_to_sessions_retains_cursor_and_adjusts_scroll() {
         // And scroll_to_cursor was called to adjust offset.
         assert_eq!(state.frontend.sessions_section.scroll_offset, 4);
     }
+}
+
+// --- Layout position ---
+
+/// Creates a sidebar with all built-in sections registered.
+fn sidebar_with_all_sections() -> Sidebar {
+    let mut sidebar = Sidebar::new();
+    sidebar::register_sections(&mut sidebar);
+    sidebar
+}
+
+/// Finds the first row in the buffer that contains the given needle text.
+fn find_row_containing(buf: &ratatui::buffer::Buffer, width: u16, height: u16, needle: &str) -> Option<u16> {
+    for y in 0..height {
+        let row: String = (0..width)
+            .map(|x| buf.cell((x, y)).map_or(" ", ratatui::buffer::Cell::symbol))
+            .collect::<String>();
+        if row.contains(needle) {
+            return Some(y);
+        }
+    }
+    None
+}
+
+#[rstest::rstest]
+fn sessions_header_anchored_to_bottom() {
+    // Given a sidebar with all sections and default state (1 session).
+    let mut sidebar = sidebar_with_all_sections();
+    let state = AppState::default();
+
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &state);
+        })
+        .unwrap();
+
+    // Then the "Sessions" header appears near the bottom.
+    // With 1 session, content_height = 4. bottom_y = 40 - 4 = 36.
+    // Minimap is 0 (empty history), Persona is 4, Pins is 0 (no pins).
+    // So y_offset = 4, section_y = max(36, 4) = 36.
+    // Sessions header is at row 36.
+    let buf = terminal.backend().buffer();
+    let sessions_row = find_row_containing(buf, width, height, "Sessions");
+    assert!(
+        sessions_row.is_some(),
+        "should find 'Sessions' header in buffer"
+    );
+    assert_eq!(
+        sessions_row,
+        Some(36),
+        "Sessions header should be at row 36 (bottom-anchored)"
+    );
+}
+
+#[rstest::rstest]
+fn sessions_header_below_persona_when_sidebar_is_short() {
+    // Given a sidebar with all sections and a short area (8 rows).
+    let mut sidebar = sidebar_with_all_sections();
+    let state = AppState::default();
+
+    let width = 30u16;
+    let height = 8u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &state);
+        })
+        .unwrap();
+
+    // Then Sessions header appears below Persona (clamped to not overlap).
+    // Persona = 4 rows, content_height(Sessions) = 4.
+    // bottom_y = 8 - 4 = 4, section_y = max(4, 4) = 4.
+    let buf = terminal.backend().buffer();
+    let sessions_row = find_row_containing(buf, width, height, "Sessions");
+    assert!(
+        sessions_row.is_some(),
+        "should find 'Sessions' header in buffer"
+    );
+    // Sessions header should not be at row 0 (top), should be at row 4.
+    assert_eq!(
+        sessions_row,
+        Some(4),
+        "Sessions header should be at row 4 (just below Persona, clamped)"
+    );
 }
