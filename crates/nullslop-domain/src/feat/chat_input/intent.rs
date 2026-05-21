@@ -20,7 +20,7 @@ use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
-use crate::feat::compaction_actor::protocol::command::CompactContext;
+use crate::feat::compaction_actor::protocol::command::EnqueueCompaction;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::session::chat_session::SessionPhase;
 use crate::protocol::{ChatEntry, Command, IntentResult};
@@ -309,7 +309,7 @@ fn execute_slash_command(command: SlashCommand, state: &mut AppState) -> IntentR
     match command {
         SlashCommand::Compact => {
             let session_id = state.session.active_session_id().clone();
-            IntentResult::with_commands(vec![Command::CompactContext(CompactContext {
+            IntentResult::with_commands(vec![Command::EnqueueCompaction(EnqueueCompaction {
                 session_id,
             })])
         }

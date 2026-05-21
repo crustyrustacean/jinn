@@ -8,10 +8,32 @@ use crate::common::actor::ActorContext;
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 
 use super::super::SessionPersistenceActor;
-use crate::feat::compaction_actor::protocol::command::{BeginCompaction, EndCompaction};
+use crate::feat::compaction_actor::protocol::command::{
+    BeginCompaction, EndCompaction, EnqueueCompaction,
+};
 use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::queue_item::QueueItem;
 
 impl SessionPersistenceActor {
+    /// EnqueueCompaction: enqueue `CompactionNeeded` and process the queue.
+    ///
+    /// If the session is idle, the queue processes immediately and `CompactContext`
+    /// is dispatched. If the session is busy, the item waits in the queue until
+    /// the current operation finishes.
+    pub(in crate::feat::session::session_actor) async fn handle_enqueue_compaction(
+        &self,
+        payload: &EnqueueCompaction,
+        ctx: &ActorContext,
+    ) {
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+            session.enqueue(QueueItem::CompactionNeeded);
+        }
+
+        self.process_queue(&payload.session_id, ctx).await;
+    }
+
     /// BeginCompaction: set phase to Compacting, push "Starting..." system entry,
     /// mark gathered entries as ignored, and persist.
     pub(in crate::feat::session::session_actor) async fn handle_begin_compaction(

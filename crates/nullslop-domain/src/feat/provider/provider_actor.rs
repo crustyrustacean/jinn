@@ -115,6 +115,7 @@ impl ProviderActor {
             | Command::RunSessionSetup(..)
             | Command::RunSessionTeardown(..)
             | Command::CompactContext(..)
+            | Command::EnqueueCompaction(..)
             | Command::BeginCompaction(..)
             | Command::CancelCompaction(..)
             | Command::EndCompaction(..)
@@ -396,7 +397,11 @@ mod tests {
 
         // Then the model cache has context_length from the registry.
         let s = state.read();
-        let cache = s.provider.model_cache.as_ref().expect("cache should be set");
+        let cache = s
+            .provider
+            .model_cache
+            .as_ref()
+            .expect("cache should be set");
         assert_eq!(cache.entries["zai"][0].context_length, Some(128_000));
     }
 
@@ -440,7 +445,11 @@ mod tests {
 
         // Then the API value wins (8192), not the registry value (4096).
         let s = state.read();
-        let cache = s.provider.model_cache.as_ref().expect("cache should be set");
+        let cache = s
+            .provider
+            .model_cache
+            .as_ref()
+            .expect("cache should be set");
         assert_eq!(cache.entries["ollama"][0].context_length, Some(8192));
     }
 
@@ -470,7 +479,11 @@ mod tests {
 
         // Then the cache entry stays None.
         let s = state.read();
-        let cache = s.provider.model_cache.as_ref().expect("cache should be set");
+        let cache = s
+            .provider
+            .model_cache
+            .as_ref()
+            .expect("cache should be set");
         assert_eq!(cache.entries["ollama"][0].context_length, None);
     }
 
@@ -500,7 +513,11 @@ mod tests {
 
         // Then the cache entry is stored as-is, no panic.
         let s = state.read();
-        let cache = s.provider.model_cache.as_ref().expect("cache should be set");
+        let cache = s
+            .provider
+            .model_cache
+            .as_ref()
+            .expect("cache should be set");
         assert_eq!(cache.entries["groq"][0].context_length, None);
     }
 
@@ -544,7 +561,11 @@ mod tests {
 
         // Then the model cache in state has context_length from the registry.
         let s = state.read();
-        let loaded = s.provider.model_cache.as_ref().expect("cache should be set");
+        let loaded = s
+            .provider
+            .model_cache
+            .as_ref()
+            .expect("cache should be set");
         assert_eq!(loaded.entries["zai"][0].context_length, Some(128_000));
     }
 
@@ -588,7 +609,11 @@ mod tests {
 
         // Then the cache value wins (8192), not the registry value (4096).
         let s = state.read();
-        let loaded = s.provider.model_cache.as_ref().expect("cache should be set");
+        let loaded = s
+            .provider
+            .model_cache
+            .as_ref()
+            .expect("cache should be set");
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(8192));
     }
 }
