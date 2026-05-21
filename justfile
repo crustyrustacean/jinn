@@ -37,6 +37,10 @@ ci: lint test
 cucumber:
     cargo test --test e2e -p nullslop-e2e
 
+# Run the bench suite
+bench *ARGS:
+    cargo run -p nullslop-bench -- {{ARGS}}
+
 # Create a new diesel migration
 diesel-create NAME:
     diesel migration generate {{NAME}} --migration-dir crates/nullslop-domain/migrations
