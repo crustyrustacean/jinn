@@ -40,6 +40,8 @@ pub struct Theme {
     // Chat log backgrounds
     /// Gutter column background (left margin).
     pub gutter_bg: Color,
+    /// Gutter color for entries included in context (not ignored or pinned).
+    pub gutter_context_included: Color,
     /// User message block background.
     pub user_block_bg: Color,
     /// Tool entry text foreground (tool calls, tool results, skills).
@@ -119,6 +121,8 @@ pub struct ThemeFile {
 
     #[serde(default)]
     pub gutter_bg: Option<ThemeColor>,
+    #[serde(default)]
+    pub gutter_context_included: Option<ThemeColor>,
     #[serde(default)]
     pub user_block_bg: Option<ThemeColor>,
     #[serde(default)]
@@ -210,6 +214,9 @@ impl ThemeFile {
             gutter_bg: self
                 .gutter_bg
                 .map_or(fallback.gutter_bg, super::color::ThemeColor::inner),
+            gutter_context_included: self
+                .gutter_context_included
+                .map_or(fallback.gutter_context_included, super::color::ThemeColor::inner),
             user_block_bg: self
                 .user_block_bg
                 .map_or(fallback.user_block_bg, super::color::ThemeColor::inner),
@@ -312,6 +319,9 @@ impl ThemeFile {
             gutter_bg: self
                 .gutter_bg
                 .map_or(Color::Reset, super::color::ThemeColor::inner),
+            gutter_context_included: self
+                .gutter_context_included
+                .map_or(Color::Reset, super::color::ThemeColor::inner),
             user_block_bg: self
                 .user_block_bg
                 .map_or(Color::Reset, super::color::ThemeColor::inner),
@@ -392,6 +402,7 @@ mod tests {
             warning: None,
             streaming: None,
             gutter_bg: None,
+            gutter_context_included: None,
             user_block_bg: None,
             tool_fg: None,
             tool_success_bg: None,
@@ -439,6 +450,7 @@ mod tests {
             warning: None,
             streaming: None,
             gutter_bg: None,
+            gutter_context_included: None,
             user_block_bg: None,
             tool_fg: None,
             tool_success_bg: None,
@@ -498,6 +510,7 @@ mod tests {
             warning: Some(ThemeColor(Color::Yellow)),
             streaming: Some(ThemeColor(Color::Cyan)),
             gutter_bg: Some(ThemeColor(Color::Rgb(25, 27, 30))),
+            gutter_context_included: Some(ThemeColor(Color::Rgb(30, 50, 110))),
             user_block_bg: Some(ThemeColor(Color::Rgb(52, 53, 65))),
             tool_fg: Some(ThemeColor(Color::Rgb(88, 95, 106))),
             tool_success_bg: Some(ThemeColor(Color::Rgb(40, 50, 40))),

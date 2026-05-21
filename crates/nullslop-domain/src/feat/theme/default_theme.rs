@@ -49,6 +49,7 @@ mod tests {
             ("warning", theme.warning),
             ("streaming", theme.streaming),
             ("gutter_bg", theme.gutter_bg),
+            ("gutter_context_included", theme.gutter_context_included),
             ("user_block_bg", theme.user_block_bg),
             ("tool_fg", theme.tool_fg),
             ("tool_success_bg", theme.tool_success_bg),
