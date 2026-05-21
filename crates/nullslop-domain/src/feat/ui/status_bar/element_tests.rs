@@ -897,6 +897,12 @@ fn status_bar_shows_model_during_compacting() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
     // Then the model name appears (not "Compacting...").
-    assert!(row.contains("(ollama)/llama3"), "expected model name, got: {row}");
-    assert!(!row.contains("Compacting..."), "should not show static Compacting text, got: {row}");
+    assert!(
+        row.contains("(ollama)/llama3"),
+        "expected model name, got: {row}"
+    );
+    assert!(
+        !row.contains("Compacting..."),
+        "should not show static Compacting text, got: {row}"
+    );
 }

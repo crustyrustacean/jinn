@@ -1,0 +1,172 @@
+//! Cursor reconciliation after session removal.
+//!
+//! Single source of truth for what happens to the sidebar cursor and active
+//! session after a session is removed from the map. All close/archive paths
+//! must call [`reconcile_after_session_removal`] instead of doing their own
+//! ad-hoc cursor or active-session logic.
+
+use crate::common::app_state::AppState;
+use crate::feat::ui::sidebar::sessions::navigate::scroll_to_cursor;
+use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
+
+/// Reconcile sidebar cursor and active session after a session is removed.
+///
+/// Must be called AFTER the session has been removed from the SessionMap
+/// (and a fresh session created if the map was empty).
+///
+/// - Clamps `selected_index` to `[0, sessions.len() - 1]`
+/// - If the current `active_session_id` is no longer in the sorted list,
+///   sets it to whichever session is now under the cursor
+/// - Scrolls viewport to make the cursor visible
+pub fn reconcile_after_session_removal(state: &mut AppState) {
+    let sessions = sorted_open_sessions(state);
+    if sessions.is_empty() {
+        state.frontend.sessions_section.selected_index = Some(0);
+        return;
+    }
+
+    let current = state.frontend.sessions_section.selected_index.unwrap_or(0);
+    let clamped = current.min(sessions.len() - 1);
+    state.frontend.sessions_section.selected_index = Some(clamped);
+
+    let active_id = state.session.active_session_id();
+    let active_in_list = sessions.iter().any(|s| &s.id == active_id);
+    if !active_in_list {
+        state.session.set_active(sessions[clamped].id.clone());
+    }
+
+    scroll_to_cursor(state);
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::feat::session::chat_session::ChatSessionState;
+
+    /// Helper: build state with N sessions, activate a specific one, set cursor.
+    fn state_with_sessions(
+        count: usize,
+        active_index: usize,
+        cursor_index: usize,
+    ) -> (AppState, Vec<crate::protocol::SessionId>) {
+        let mut state = AppState::default();
+        // Remove default session to control exact count.
+        let default_id = state.session.active_session_id().clone();
+        state.session.sessions_mut().remove(&default_id);
+
+        let mut ids = Vec::new();
+        for _ in 0..count {
+            let session = ChatSessionState::new();
+            let id = session.session_id().clone();
+            state.session.sessions_mut().insert(id.clone(), session);
+            ids.push(id);
+        }
+
+        let sorted = sorted_open_sessions(&state);
+        state
+            .session
+            .set_active(sorted[active_index].id.clone())
+            .then_some(())
+            .expect("active_index is valid");
+        state.frontend.sessions_section.selected_index = Some(cursor_index);
+
+        (state, sorted.into_iter().map(|s| s.id).collect())
+    }
+
+    #[rstest::rstest]
+    fn closing_active_session_clamps_cursor_and_sets_active() {
+        // Given 3 sessions with cursor at index 2, active session at index 2.
+        let (mut state, sorted_ids) = state_with_sessions(3, 2, 2);
+
+        // Simulate removing the active session (index 2).
+        let closing_id = sorted_ids[2].clone();
+        state.session.sessions_mut().remove(&closing_id);
+
+        // When reconciling.
+        reconcile_after_session_removal(&mut state);
+
+        // Then cursor is clamped to index 1.
+        assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
+        // And active session is now the one at index 1 in the sorted list.
+        let sorted = sorted_open_sessions(&state);
+        assert_eq!(state.session.active_session_id(), &sorted[1].id);
+    }
+
+    #[rstest::rstest]
+    fn closing_active_session_at_index_0_keeps_cursor_at_0() {
+        // Given 3 sessions with cursor at index 0, active session at index 0.
+        let (mut state, sorted_ids) = state_with_sessions(3, 0, 0);
+
+        // Simulate removing the active session (index 0).
+        let closing_id = sorted_ids[0].clone();
+        state.session.sessions_mut().remove(&closing_id);
+
+        // When reconciling.
+        reconcile_after_session_removal(&mut state);
+
+        // Then cursor stays at index 0.
+        assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
+        // And active session is now the one at index 0 in the new sorted list.
+        let sorted = sorted_open_sessions(&state);
+        assert_eq!(state.session.active_session_id(), &sorted[0].id);
+    }
+
+    #[rstest::rstest]
+    fn closing_non_active_session_preserves_active() {
+        // Given 3 sessions with cursor at index 2, active session at index 0.
+        let (mut state, sorted_ids) = state_with_sessions(3, 0, 2);
+
+        // Simulate removing the session at index 2 (non-active).
+        let closing_id = sorted_ids[2].clone();
+        state.session.sessions_mut().remove(&closing_id);
+
+        // When reconciling.
+        reconcile_after_session_removal(&mut state);
+
+        // Then cursor is clamped to index 1.
+        assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
+        // And active session is unchanged.
+        assert_eq!(state.session.active_session_id(), &sorted_ids[0]);
+    }
+
+    #[rstest::rstest]
+    fn closing_last_session_leaves_cursor_at_zero() {
+        // Given 1 session with cursor at index 0, active session at index 0.
+        let (mut state, sorted_ids) = state_with_sessions(1, 0, 0);
+
+        // Simulate removing the only session and creating a fresh one.
+        let closing_id = sorted_ids[0].clone();
+        state.session.sessions_mut().remove(&closing_id);
+        let fresh = ChatSessionState::new();
+        let fresh_id = fresh.session_id().clone();
+        state.session.sessions_mut().insert(fresh_id.clone(), fresh);
+        state.session.set_active(fresh_id);
+
+        // When reconciling.
+        reconcile_after_session_removal(&mut state);
+
+        // Then cursor is at index 0.
+        assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
+        // And active session is the fresh session.
+        let sorted = sorted_open_sessions(&state);
+        assert_eq!(sorted.len(), 1);
+        assert_eq!(state.session.active_session_id(), &sorted[0].id);
+    }
+
+    #[rstest::rstest]
+    fn reconcile_does_not_panic_with_none_cursor() {
+        // Given a state with 2 sessions but no cursor set.
+        let mut state = AppState::default();
+        let second = ChatSessionState::new();
+        let second_id = second.session_id().clone();
+        state.session.sessions_mut().insert(second_id, second);
+        state.frontend.sessions_section.selected_index = None;
+
+        // When reconciling (selected_index is None).
+        reconcile_after_session_removal(&mut state);
+
+        // Then cursor defaults to 0 (unwrap_or(0)).
+        assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
+    }
+}

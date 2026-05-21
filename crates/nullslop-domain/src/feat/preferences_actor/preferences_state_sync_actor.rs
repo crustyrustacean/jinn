@@ -105,6 +105,7 @@ mod tests {
     use crate::protocol::Event;
 
     use super::{PreferencesStateSyncActor, PreferencesStateSyncActorDeps};
+    use crate::feat::preferences_actor::RequestRetryConfig;
 
     /// Creates a test actor with shared state.
     fn create_actor() -> (PreferencesStateSyncActor, State, ActorContext) {
@@ -139,6 +140,7 @@ mod tests {
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
         actor
             .handle(
@@ -179,6 +181,7 @@ mod tests {
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
         actor
             .handle(
@@ -203,6 +206,7 @@ mod tests {
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
         };
         actor
             .handle(
