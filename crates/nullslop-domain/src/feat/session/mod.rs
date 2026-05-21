@@ -26,6 +26,7 @@ pub mod token_stats;
 #[cfg(test)]
 mod token_stats_tests;
 pub(crate) mod tool_result_status;
+pub mod turn_queue;
 pub mod validator;
 
 pub use chat_session::{ChatSessionState, SessionCore, SessionUi};

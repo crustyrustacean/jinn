@@ -1,0 +1,73 @@
+//! Turn dispatch queue — encapsulates the per-session turn queue.
+//!
+//! The turn queue holds pending operations (user messages, compaction requests,
+//! tool continuations) that should be dispatched when the session transitions
+//! to [`Idle`](super::chat_session::SessionPhase::Idle).
+//!
+//! # Visibility
+//!
+//! - **Public:** `enqueue`, `enqueue_front`, `len`, `is_empty` — anyone can add items.
+//! - **Restricted:** `pop`, `drain` — only the queue actor may consume items.
+//!
+//! During the migration (before the queue actor exists), `pop` and `drain` are
+//! visible within the `session` feature module. This will be tightened once the
+//! queue actor is introduced.
+
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+
+use super::queue_item::QueueItem;
+
+/// Per-session turn dispatch queue.
+///
+/// Wraps a [`VecDeque<QueueItem>`] with controlled visibility for consumption.
+/// Enqueuing is public; dequeuing is restricted to the queue owner.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TurnQueue {
+    inner: VecDeque<QueueItem>,
+}
+
+impl TurnQueue {
+    /// Push an item onto the back of the queue.
+    pub fn enqueue(&mut self, item: QueueItem) {
+        self.inner.push_back(item);
+    }
+
+    /// Push an item onto the front of the queue (for priority items like `CompactionNeeded`).
+    pub fn enqueue_front(&mut self, item: QueueItem) {
+        self.inner.push_front(item);
+    }
+
+    /// Number of items waiting in the queue.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Returns `true` if the queue contains no items.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Read-only access to the underlying deque (for rendering).
+    pub fn items(&self) -> &VecDeque<QueueItem> {
+        &self.inner
+    }
+
+    /// Pop the front item from the queue, if any.
+    ///
+    /// Restricted to the session feature module during migration.
+    /// Will be tightened to `queue_actor` once the queue actor is introduced.
+    pub(in crate::feat::session) fn pop(&mut self) -> Option<QueueItem> {
+        self.inner.pop_front()
+    }
+
+    /// Drain all queued items, returning them in order.
+    ///
+    /// Restricted to the session feature module during migration.
+    /// Will be tightened to `queue_actor` once the queue actor is introduced.
+    pub(in crate::feat::session) fn drain(&mut self) -> VecDeque<QueueItem> {
+        std::mem::take(&mut self.inner)
+    }
+}

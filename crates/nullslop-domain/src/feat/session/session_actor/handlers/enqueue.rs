@@ -62,6 +62,11 @@ impl SessionPersistenceActor {
             }
         };
 
+        // Note: phase change emission for Idle → Sending will be handled
+        // by the QueueActor once it's introduced. For now, enqueue doesn't
+        // emit SessionPhaseChanged because the session actor still handles
+        // the full dispatch inline.
+
         let (history, model_name) = match action {
             EnqueueAction::AssemblePrompt => {
                 let state = self.state.read();
@@ -113,11 +118,12 @@ impl SessionPersistenceActor {
         payload: &PushChatEntry,
         ctx: &ActorContext,
     ) {
-        {
+        let total_tokens = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.push_entry(payload.entry.clone());
-        }
+            super::super::helpers::estimate_total_tokens(session)
+        };
 
         if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
             session_id: payload.session_id.clone(),
@@ -125,6 +131,8 @@ impl SessionPersistenceActor {
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
         }
+
+        super::super::helpers::emit_history_appended(ctx, &payload.session_id, total_tokens);
 
         self.save_active_session(&payload.session_id).await;
     }
