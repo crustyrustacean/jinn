@@ -1048,20 +1048,20 @@ fn state_with_tree() -> AppState {
     state.session.sessions_mut().insert(child_a2_id, child_a2);
 
     // Create root_b with a title (newest root).
-    let mut root_b = ChatSessionState::new();
-    root_b.push_entry(ChatEntry::user("root b"));
-    root_b.set_title("root b".to_owned());
-    let root_b_id = root_b.session_id().clone();
-    state.session.sessions_mut().insert(root_b_id.clone(), root_b);
+    let mut newest_root = ChatSessionState::new();
+    newest_root.push_entry(ChatEntry::user("root b"));
+    newest_root.set_title("root b".to_owned());
+    let newest_root_id = newest_root.session_id().clone();
+    state.session.sessions_mut().insert(newest_root_id.clone(), newest_root);
 
     // Remove the default session (created at AppState::default).
     let default_id = state.session.active_session_id().clone();
-    if default_id != root_a_id && default_id != root_b_id {
+    if default_id != root_a_id && default_id != newest_root_id {
         state.session.sessions_mut().remove(&default_id);
     }
 
     // Set active to root_b.
-    state.session.set_active(root_b_id);
+    state.session.set_active(newest_root_id);
 
     state
 }
