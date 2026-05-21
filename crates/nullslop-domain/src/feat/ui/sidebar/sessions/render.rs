@@ -8,6 +8,9 @@ pub mod entry_line;
 pub mod scroll_tag;
 pub mod truncate;
 
+#[cfg(test)]
+mod entry_line_tests;
+
 use std::time::Instant;
 
 use crate::common::app_state::AppState;

@@ -74,10 +74,28 @@ pub(crate) fn entry_title_style(
     }
 }
 
+/// Builds the tree connector prefix for a session entry.
+///
+/// For root entries (depth 0), returns an empty string.
+/// For non-root entries, constructs:
+/// - For each ancestor level: `│` if ancestor has younger siblings, ` ` if not
+/// - For the entry's own level: `├` if has younger siblings, `└` if last child
+pub(crate) fn tree_prefix(entry: &SessionEntry) -> String {
+    if entry.depth == 0 {
+        return String::new();
+    }
+    let mut prefix = String::with_capacity(entry.depth);
+    for &continues in &entry.ancestor_continuations {
+        prefix.push(if continues { '│' } else { ' ' });
+    }
+    prefix.push(if entry.is_last_child { '└' } else { '├' });
+    prefix
+}
+
 /// Assembles a complete session entry line from its components.
 ///
-/// Combines the throbber indicator, arrow prefix, and styled truncated title
-/// into a single [`Line`] ready for rendering.
+/// Combines the throbber indicator, arrow prefix, tree connector prefix,
+/// and styled truncated title into a single [`Line`] ready for rendering.
 pub(crate) fn assemble_entry_line(
     entry: &SessionEntry,
     is_selected: bool,
@@ -87,18 +105,20 @@ pub(crate) fn assemble_entry_line(
 ) -> Line<'static> {
     let indicator = indicator_span(entry.is_idle, throbber_state);
     let arrow = arrow_span(entry.is_active, theme);
+    let tree = tree_prefix(entry);
+    let tree_len = tree.len();
     let style = entry_title_style(
         is_selected,
         entry.is_active,
         entry.last_entry_is_error,
         theme,
     );
-    let truncated = truncate_str(&entry.title, max_title_len);
+    let truncated = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len));
 
-    Line::from(vec![
-        indicator,
-        Span::raw(" "),
-        arrow,
-        Span::styled(truncated, style),
-    ])
+    let mut spans = vec![indicator, Span::raw(" "), arrow];
+    if !tree.is_empty() {
+        spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
+    }
+    spans.push(Span::styled(truncated, style));
+    Line::from(spans)
 }
