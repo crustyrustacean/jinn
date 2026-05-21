@@ -320,6 +320,18 @@ pub fn create_core_with_actor_host(
         },
     );
 
+    // Queue actor — dispatches queued turns when sessions become idle.
+    let queue_result = spawn::<nullslop_domain::feat::queue_actor::QueueActor>(
+        "queue",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        nullslop_domain::feat::queue_actor::QueueActorDeps {
+            state: state.clone(),
+        },
+    );
+
     // Sidebar state actor — keeps sidebar cursor in sync after session removal.
     let sidebar_state_result =
         spawn::<nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor>(
@@ -352,6 +364,7 @@ pub fn create_core_with_actor_host(
             persona_scan_result,
             prov_result,
             compaction_result,
+            queue_result,
             sidebar_state_result,
         ],
         handle.clone(),
