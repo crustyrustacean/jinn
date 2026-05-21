@@ -213,7 +213,9 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("queued during compaction")));
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+                ChatEntry::user("queued during compaction"),
+            ));
             session.begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
@@ -257,7 +259,9 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("queued during compaction")));
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+                ChatEntry::user("queued during compaction"),
+            ));
             session.begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
@@ -335,7 +339,9 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("queued during compaction")));
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+                ChatEntry::user("queued during compaction"),
+            ));
             session.begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };

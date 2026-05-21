@@ -69,7 +69,6 @@ impl IntentHandler {
         }
 
         match intent {
-
             // --- Arg Input (takes priority when ArgInput scope is active) ---
             Intent::InsertChar { ch }
                 if matches!(
@@ -385,16 +384,12 @@ fn handle_compaction_cancel(state: &mut AppState, session_id: SessionId) -> Inte
     // drained items are discarded (ESC = stop all the things).
 
     IntentResult::with_commands(vec![
-        Command::PushChatEntry(
-            crate::feat::chat_input::protocol::command::PushChatEntry {
-                session_id: session_id.clone(),
-                entry: crate::ChatEntry::system("Context compaction cancelled."),
-            },
-        ),
+        Command::PushChatEntry(crate::feat::chat_input::protocol::command::PushChatEntry {
+            session_id: session_id.clone(),
+            entry: crate::ChatEntry::system("Context compaction cancelled."),
+        }),
         Command::CancelCompaction(
-            crate::feat::compaction_actor::protocol::command::CancelCompaction {
-                session_id,
-            },
+            crate::feat::compaction_actor::protocol::command::CancelCompaction { session_id },
         ),
     ])
 }

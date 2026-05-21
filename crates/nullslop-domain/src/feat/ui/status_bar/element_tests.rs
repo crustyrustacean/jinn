@@ -271,8 +271,8 @@ fn render_shows_token_counts_with_zero_values() {
     let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows zero token counts.
     assert!(row.contains("\u{2191}0 \u{2193}0"));
-    // And cost is always shown as $0.0000.
-    assert!(row.contains("$0.0000"));
+    // And cost is always shown as $0.00000.
+    assert!(row.contains("$0.00000"));
 }
 
 #[rstest::rstest]
@@ -301,8 +301,8 @@ fn render_shows_token_counts_with_values() {
     // Then the status bar shows token counts.
     assert!(row.contains("1.5k"));
     assert!(row.contains("750"));
-    // And cost is shown as $0.0000 when no cost data.
-    assert!(row.contains("$0.0000"));
+    // And cost is shown as $0.00000 when no cost data.
+    assert!(row.contains("$0.00000"));
 }
 
 #[rstest::rstest]
@@ -804,10 +804,10 @@ fn render_always_shows_cost_even_when_zero() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    // Then cost is always shown as $0.0000.
+    // Then cost is always shown as $0.00000.
     assert!(
-        row.contains("$0.0000"),
-        "expected $0.0000 in status bar, got: {row}"
+        row.contains("$0.00000"),
+        "expected $0.00000 in status bar, got: {row}"
     );
 }
 
@@ -824,7 +824,7 @@ fn render_shows_cost_with_non_zero_value() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1500,
         tokens_received: 750,
-        cost: Some(0.0023),
+        cost: Some(0.00230),
     });
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -836,8 +836,8 @@ fn render_shows_cost_with_non_zero_value() {
     let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows the cost value.
     assert!(
-        row.contains("$0.0023"),
-        "expected $0.0023 in status bar, got: {row}"
+        row.contains("$0.00230"),
+        "expected $0.00230 in status bar, got: {row}"
     );
 }
 
@@ -860,7 +860,7 @@ fn render_shows_cost_before_turns_indicator() {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1000,
         tokens_received: 500,
-        cost: Some(0.0015),
+        cost: Some(0.00150),
     });
     let (mut terminal, area) = setup_term(80, 2);
     terminal
@@ -871,7 +871,7 @@ fn render_shows_cost_before_turns_indicator() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
     // Then cost appears before Turns in the rendered row.
-    let cost_pos = row.find("$0.0015").expect("cost should be present");
+    let cost_pos = row.find("$0.00150").expect("cost should be present");
     let turns_pos = row.find("Turns:").expect("Turns should be present");
     assert!(
         cost_pos < turns_pos,
