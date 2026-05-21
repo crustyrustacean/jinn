@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 use nullslop_domain::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, FilesystemConfigStorage,
     LlmServiceFactoryService, NoProvidersAvailableFactory,
-    ProviderId, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
+    ProviderId, ProviderRegistry, ProviderRegistryService,
 };
 use nullslop_domain::feat::session::token_stats::TokenStats;
 use nullslop_domain::feat::session::{SessionStoreService, SqliteSessionStore};
@@ -150,16 +150,12 @@ struct SharedServices {
 
 /// Creates service instances shared across all task/model runs.
 fn create_shared_services(_args: &cli::RunArgs) -> Result<SharedServices, Box<dyn std::error::Error>> {
-    // Provider registry starts empty — provider-init actor populates it from providers.toml.
-    let empty_config = ProvidersConfig {
-        providers: vec![],
-        aliases: vec![],
-        default_provider: None,
-    };
-    let provider_registry = ProviderRegistryService::new(ProviderRegistry::from_config(empty_config)?);
-
-    // Config storage reads providers.toml.
+    // Load provider config from the user's config directory.
     let config_storage = ConfigStorageService::new(Arc::new(FilesystemConfigStorage::default_path()));
+    let providers_config = config_storage.load()?;
+
+    // Build registry from the loaded config.
+    let provider_registry = ProviderRegistryService::new(ProviderRegistry::from_config(providers_config)?);
 
     // API keys are resolved by the env-init actor.
     let api_keys = ApiKeysService::new(ApiKeys::new());
