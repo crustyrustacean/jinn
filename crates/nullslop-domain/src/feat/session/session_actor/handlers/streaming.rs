@@ -44,9 +44,10 @@ impl SessionPersistenceActor {
             0
         });
 
-        {
+        let (old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
+            let old_phase = session.phase();
             match session.phase() {
                 SessionPhase::Sending => {
                     // Sending → Streaming transition.
@@ -75,7 +76,10 @@ impl SessionPersistenceActor {
                 cost: None,
             });
             session.set_context_size(input_tokens as u32);
-        }
+            (old_phase, session.phase())
+        };
+
+        super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
 
         let provider_id = {
             let state = self.state.read();
@@ -143,7 +147,7 @@ impl SessionPersistenceActor {
         let should_save = event.reason == StreamCompletedReason::Finished
             || event.reason == StreamCompletedReason::Error;
 
-        // Count output tokens off the async thread (CPU-bound — offload to blocking thread).
+        // Count output tokens off the async thread
         // Count both text content and tool call arguments (JSON) which are a
         // significant portion of the model's output.
         let output_tokens: Option<tokio::task::JoinHandle<u32>> = if event.reason
@@ -178,10 +182,11 @@ impl SessionPersistenceActor {
             None => None,
         };
 
-        let should_process_queue;
+        let (old_phase, new_phase);
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
+            old_phase = session.phase();
             if event.reason == StreamCompletedReason::Canceled {
                 session.push_entry(ChatEntry::error("Cancelled"));
             } else if event.reason == StreamCompletedReason::Error {
@@ -202,8 +207,14 @@ impl SessionPersistenceActor {
 
             // Tool use means the conversation continues — transition to sending
             // so the indicator shows activity while awaiting the followup.
+            // Unless soft-cancel was requested, in which case end the turn.
             if event.reason == StreamCompletedReason::ToolUse {
-                session.begin_sending();
+                if session.take_soft_cancel() {
+                    // Soft cancel: end turn, go to Idle.
+                    // QueueActor will see SessionPhaseChanged(Idle) and pop CompactionNeeded.
+                } else {
+                    session.begin_sending();
+                }
             }
 
             // When returning to Idle with no retry, drain queued messages
@@ -233,13 +244,10 @@ impl SessionPersistenceActor {
                 }
             }
 
-            should_process_queue = event.reason == StreamCompletedReason::Finished;
+            new_phase = session.phase();
         }
 
-        // If messages were drained, start a new turn.
-        if should_process_queue {
-            self.process_queue(&event.session_id, ctx).await;
-        }
+        super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
 
         // Persist session after stream finishes (not on cancel).
         if should_save {
@@ -255,7 +263,7 @@ mod tests {
     use crate::feat::context::protocol::event::PromptAssembled;
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::chat_session::SessionPhase;
-    use crate::protocol::ChatEntry;
+    use crate::protocol::{ChatEntry, Command};
 
     #[tokio::test]
     async fn on_stream_completed_error_reason_finishes_streaming() {
@@ -438,5 +446,52 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Streaming);
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_tool_use_with_soft_cancel_goes_to_idle() {
+        // Given a session in streaming state with soft cancel requested.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.request_soft_cancel();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with ToolUse reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
+                id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: "{}".to_owned(),
+            }]),
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session is in Idle phase (not Sending).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Idle),
+            "expected Idle after soft cancel, got {:?}",
+            session.phase()
+        );
+
+        // And no AssemblePrompt was emitted.
+        let commands = sink.commands();
+        let has_assemble = commands
+            .iter()
+            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+        assert!(
+            !has_assemble,
+            "expected no AssemblePrompt after soft cancel"
+        );
     }
 }
