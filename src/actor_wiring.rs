@@ -223,6 +223,7 @@ pub fn create_core_with_actor_host(
         nullslop_domain::feat::tools_actor::ToolOrchestratorActorDeps {
             state: state.clone(),
             app_paths: paths.clone(),
+            builtin_filter: None,
         },
     );
 
