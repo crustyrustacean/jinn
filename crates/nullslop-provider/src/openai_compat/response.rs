@@ -421,6 +421,44 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn finish_reason_stop_with_usage_cost_extracts_cost() {
+        // Given an SSE chunk with finish_reason stop and usage.cost.
+        let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":194,"completion_tokens":2,"cost":0.95}}"#;
+
+        // When parsing the chunk.
+        let events = parse_single(json);
+
+        // Then the Done event contains the cost from usage.
+        assert_eq!(events.len(), 1);
+        let usage = match &events[0] {
+            StreamEvent::Done { usage: Some(u), .. } => u.clone(),
+            _ => panic!("expected Done with usage"),
+        };
+        assert_eq!(usage.cost, Some(0.95));
+        assert_eq!(usage.prompt_tokens, Some(194));
+        assert_eq!(usage.completion_tokens, Some(2));
+    }
+
+    #[rstest::rstest]
+    fn finish_reason_stop_with_usage_but_no_cost_returns_none() {
+        // Given an SSE chunk with finish_reason stop and usage without cost.
+        let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":50}}"#;
+
+        // When parsing the chunk.
+        let events = parse_single(json);
+
+        // Then the Done event has usage with cost as None.
+        assert_eq!(events.len(), 1);
+        let usage = match &events[0] {
+            StreamEvent::Done { usage: Some(u), .. } => u.clone(),
+            _ => panic!("expected Done with usage"),
+        };
+        assert_eq!(usage.cost, None);
+        assert_eq!(usage.prompt_tokens, Some(100));
+        assert_eq!(usage.completion_tokens, Some(50));
+    }
+
+    #[rstest::rstest]
     fn full_tool_call_sequence() {
         let mut parser = StreamResponseParser::new();
 
