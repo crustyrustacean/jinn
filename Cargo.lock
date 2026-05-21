@@ -1873,8 +1873,11 @@ name = "nullslop-bench"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "futures",
  "nullslop-domain",
  "nullslop-provider",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
