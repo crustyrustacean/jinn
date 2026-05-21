@@ -13,6 +13,7 @@ use error_stack::ResultExt as _;
 use futures::{StreamExt, pin_mut};
 use nullslop_provider::LlmMessage;
 use nullslop_provider::LlmService;
+use nullslop_provider::{NoOpOnRetry, RetryingLlmService};
 use tokio::runtime::Handle;
 use wherror::Error;
 
@@ -243,13 +244,14 @@ async fn perform_compaction(
     sink: &std::sync::Arc<dyn crate::common::actor::message_sink::MessageSink>,
 ) -> Result<usize, error_stack::Report<CompactionError>> {
     // Read config and session state.
-    let (config, model_name, history_len) = {
+    let (config, model_name, history_len, retry_config) = {
         let state = state.read();
         let session = state.session(session_id);
         let config = state.frontend.preferences.compaction.clone();
         let model_name = session.profile().model.clone();
         let history_len = session.history().len();
-        (config, model_name, history_len)
+        let retry_config = state.frontend.preferences.request_retry.to_retry_config();
+        (config, model_name, history_len, retry_config)
     };
 
     if history_len == 0 {
@@ -372,6 +374,7 @@ async fn perform_compaction(
         previous_summary.as_deref(),
         &model_name,
         &config,
+        &retry_config,
     )
     .await?;
 
@@ -392,6 +395,7 @@ async fn perform_compaction(
 }
 
 /// Generate a summary using the LLM.
+#[allow(clippy::too_many_arguments)]
 async fn generate_summary(
     state: &State,
     services: &Services,
@@ -400,6 +404,7 @@ async fn generate_summary(
     previous_summary: Option<&str>,
     session_model: &str,
     config: &CompactionConfig,
+    retry_config: &nullslop_provider::RetryConfig,
 ) -> Result<String, error_stack::Report<CompactionError>> {
     // Try compaction model first, fall back to session model.
     let model_id = config.model.as_deref().unwrap_or(session_model);
@@ -424,6 +429,9 @@ async fn generate_summary(
             .change_context(CompactionError)
             .attach("failed to create LLM service for compaction")?
     };
+
+    // Wrap with retry decorator — compaction retries are logged at warn level.
+    let service = RetryingLlmService::new(service, retry_config.clone(), Box::new(NoOpOnRetry));
 
     // Build the prompt — prefer template from store, fall back to bundled default.
     let system_prompt = state

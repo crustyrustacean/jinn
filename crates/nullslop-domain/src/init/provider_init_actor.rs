@@ -202,7 +202,7 @@ mod tests {
                 max_tool_output_bytes: None,
                 compaction: CompactionConfig::default(),
                 context_sliding_window: ContextSlidingWindowConfig::default(),
-            request_retry: RequestRetryConfig::default(),
+                request_retry: RequestRetryConfig::default(),
             })
             .expect("save prefs");
 
