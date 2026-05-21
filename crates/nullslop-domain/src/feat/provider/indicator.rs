@@ -1,8 +1,9 @@
 //! Streaming indicator element with animated throbber.
 //!
 //! Renders an animated ASCII spinner alongside "Working..." when the active
-//! session is busy (sending or streaming), and renders nothing when idle.
-//! Queue count is shown when messages are waiting.
+//! session is busy (sending, streaming, or compacting), and renders nothing
+//! when idle. Queue count is shown when messages are waiting (not during
+//! compaction).
 
 use std::time::{Duration, Instant};
 
@@ -17,7 +18,7 @@ use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse};
 /// Minimum time between animation frame advances.
 const ANIMATION_INTERVAL: Duration = Duration::from_millis(80);
 
-/// Displays an animated streaming indicator when the active session is sending or streaming.
+/// Displays an animated streaming indicator when the active session is sending, streaming, or compacting.
 #[derive(Debug)]
 pub struct StreamingIndicatorElement {
     /// Visual-only state for the throbber animation step.
@@ -57,17 +58,20 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
     fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         let session = state.active_session();
+        let phase = session.phase();
         let queue_len = session.queue_len();
 
         let is_busy = matches!(
-            session.phase(),
-            SessionPhase::Sending | SessionPhase::Streaming
+            phase,
+            SessionPhase::Sending | SessionPhase::Streaming | SessionPhase::Compacting
         );
         if !is_busy {
             return;
         }
 
-        let label = if queue_len > 0 {
+        let label = if matches!(phase, SessionPhase::Compacting) {
+            " Compacting...".to_owned()
+        } else if queue_len > 0 {
             format!(" Working... ({queue_len} queued)")
         } else {
             " Working...".to_owned()
@@ -102,5 +106,69 @@ mod tests {
 
         // Then it is "streaming-indicator".
         assert_eq!(name, "streaming-indicator");
+    }
+
+    #[rstest::rstest]
+    fn renders_compacting_label_during_compacting_phase() {
+        // Given a session in Compacting phase.
+        use nullslop_testutil::{buffer_row, setup_term};
+
+        let mut element = StreamingIndicatorElement::new();
+        let mut state = AppState::default();
+        state.active_session_mut().begin_compacting(vec![]);
+        let (mut terminal, area) = setup_term(30, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row = buffer_row(&buffer, 0, 30);
+
+        // Then the label shows "Compacting...".
+        assert!(row.contains("Compacting..."), "expected Compacting..., got: {row}");
+    }
+
+    #[rstest::rstest]
+    fn renders_working_label_during_sending_phase() {
+        // Given a session in Sending phase.
+        use nullslop_testutil::{buffer_row, setup_term};
+
+        let mut element = StreamingIndicatorElement::new();
+        let mut state = AppState::default();
+        state.active_session_mut().begin_sending();
+        let (mut terminal, area) = setup_term(30, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row = buffer_row(&buffer, 0, 30);
+
+        // Then the label shows "Working...".
+        assert!(row.contains("Working..."), "expected Working..., got: {row}");
+    }
+
+    #[rstest::rstest]
+    fn does_not_render_during_idle_phase() {
+        // Given a session in Idle phase (default).
+        use nullslop_testutil::setup_term;
+
+        let mut element = StreamingIndicatorElement::new();
+        let state = AppState::default();
+        let (mut terminal, area) = setup_term(30, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+
+        // Then the rendered area is empty (all spaces).
+        let content: String = (0..30)
+            .filter_map(|x| buffer.cell((x, 0)).map(ratatui::buffer::Cell::symbol))
+            .collect();
+        assert!(content.trim().is_empty(), "expected empty buffer, got: {content}");
     }
 }
