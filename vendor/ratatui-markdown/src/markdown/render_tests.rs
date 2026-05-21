@@ -431,6 +431,172 @@ code here
     Ok(())
 }
 
+// ==================== Block Ordering Tests ====================
+
+#[test]
+fn paragraph_then_code_fence_parses_in_order() -> anyhow::Result<()> {
+    // Given text immediately followed by a code fence.
+    let renderer = MarkdownRenderer::new(80);
+    let blocks = renderer.parse("text\n```rust\ncode\n```");
+
+    // Then the paragraph comes first.
+    assert_eq!(blocks.len(), 2, "expected 2 blocks, got {}", blocks.len());
+    assert!(
+        matches!(&blocks[0], MarkdownBlock::Paragraph(lines) if lines.contains(&"text".to_string())),
+        "blocks[0] should be Paragraph containing 'text'"
+    );
+    // And the code block comes second.
+    assert!(
+        matches!(&blocks[1], MarkdownBlock::CodeBlock { lang, .. } if lang == "rust"),
+        "blocks[1] should be CodeBlock with lang='rust'"
+    );
+    Ok(())
+}
+
+#[test]
+fn code_fence_then_paragraph_parses_in_order() -> anyhow::Result<()> {
+    // Given a code fence followed by text.
+    let renderer = MarkdownRenderer::new(80);
+    let blocks = renderer.parse("```rust\ncode\n```\ntext");
+
+    // Then the code block comes first.
+    assert_eq!(blocks.len(), 2, "expected 2 blocks, got {}", blocks.len());
+    assert!(
+        matches!(&blocks[0], MarkdownBlock::CodeBlock { lang, .. } if lang == "rust"),
+        "blocks[0] should be CodeBlock"
+    );
+    // And the paragraph comes second.
+    assert!(
+        matches!(&blocks[1], MarkdownBlock::Paragraph(lines) if lines.contains(&"text".to_string())),
+        "blocks[1] should be Paragraph containing 'text'"
+    );
+    Ok(())
+}
+
+#[test]
+fn paragraph_then_code_fence_with_blank_line_parses_in_order() -> anyhow::Result<()> {
+    // Given text followed by a blank line then a code fence.
+    let renderer = MarkdownRenderer::new(80);
+    let blocks = renderer.parse("text\n\n```rust\ncode\n```");
+
+    // Then the paragraph comes first.
+    assert!(
+        matches!(&blocks[0], MarkdownBlock::Paragraph(lines) if lines.contains(&"text".to_string())),
+        "blocks[0] should be Paragraph"
+    );
+    // And a blank line is second.
+    assert!(
+        matches!(&blocks[1], MarkdownBlock::BlankLine),
+        "blocks[1] should be BlankLine"
+    );
+    // And the code block is third.
+    assert!(
+        matches!(&blocks[2], MarkdownBlock::CodeBlock { lang, .. } if lang == "rust"),
+        "blocks[2] should be CodeBlock"
+    );
+    Ok(())
+}
+
+#[test]
+fn paragraph_then_heading_parses_in_order() -> anyhow::Result<()> {
+    // Given text immediately followed by a heading.
+    let renderer = MarkdownRenderer::new(80);
+    let blocks = renderer.parse("text\n# heading");
+
+    // Then the paragraph comes first.
+    assert_eq!(blocks.len(), 2, "expected 2 blocks, got {}", blocks.len());
+    assert!(
+        matches!(&blocks[0], MarkdownBlock::Paragraph(lines) if lines.contains(&"text".to_string())),
+        "blocks[0] should be Paragraph"
+    );
+    // And the heading comes second.
+    assert!(
+        matches!(&blocks[1], MarkdownBlock::Heading1(h) if h == "heading"),
+        "blocks[1] should be Heading1('heading')"
+    );
+    Ok(())
+}
+
+#[test]
+fn paragraph_then_list_parses_in_order() -> anyhow::Result<()> {
+    // Given text immediately followed by a list item.
+    let renderer = MarkdownRenderer::new(80);
+    let blocks = renderer.parse("text\n- item");
+
+    // Then the paragraph comes first.
+    assert_eq!(blocks.len(), 2, "expected 2 blocks, got {}", blocks.len());
+    assert!(
+        matches!(&blocks[0], MarkdownBlock::Paragraph(lines) if lines.contains(&"text".to_string())),
+        "blocks[0] should be Paragraph"
+    );
+    // And the list item comes second.
+    assert!(
+        matches!(&blocks[1], MarkdownBlock::ListItem { content, .. } if content == "item"),
+        "blocks[1] should be ListItem('item')"
+    );
+    Ok(())
+}
+
+#[test]
+fn paragraph_then_blockquote_parses_in_order() -> anyhow::Result<()> {
+    // Given text immediately followed by a blockquote.
+    let renderer = MarkdownRenderer::new(80);
+    let blocks = renderer.parse("text\n> quote");
+
+    // Then the paragraph comes first.
+    assert_eq!(blocks.len(), 2, "expected 2 blocks, got {}", blocks.len());
+    assert!(
+        matches!(&blocks[0], MarkdownBlock::Paragraph(lines) if lines.contains(&"text".to_string())),
+        "blocks[0] should be Paragraph"
+    );
+    // And the blockquote comes second.
+    assert!(
+        matches!(&blocks[1], MarkdownBlock::Blockquote { level, .. } if *level == 1),
+        "blocks[1] should be Blockquote with level 1"
+    );
+    Ok(())
+}
+
+#[test]
+fn paragraph_then_table_parses_in_order() -> anyhow::Result<()> {
+    // Given text immediately followed by a table.
+    let renderer = MarkdownRenderer::new(80);
+    let blocks = renderer.parse("text\n| A | B |\n|---|---|\n| 1 | 2 |");
+
+    // Then the paragraph comes first.
+    assert_eq!(blocks.len(), 2, "expected 2 blocks, got {}", blocks.len());
+    assert!(
+        matches!(&blocks[0], MarkdownBlock::Paragraph(lines) if lines.contains(&"text".to_string())),
+        "blocks[0] should be Paragraph"
+    );
+    // And the table comes second.
+    assert!(
+        matches!(&blocks[1], MarkdownBlock::Table { .. }),
+        "blocks[1] should be Table"
+    );
+    Ok(())
+}
+
+#[test]
+fn paragraph_then_hrule_parses_in_order() -> anyhow::Result<()> {
+    // Given text immediately followed by a horizontal rule.
+    let renderer = MarkdownRenderer::new(80);
+    let blocks = renderer.parse("text\n***");
+
+    // Then the paragraph comes first.
+    assert_eq!(blocks.len(), 2, "expected 2 blocks, got {}", blocks.len());
+    assert!(
+        matches!(&blocks[0], MarkdownBlock::Paragraph(lines) if lines.contains(&"text".to_string())),
+        "blocks[0] should be Paragraph"
+    );
+    // And the horizontal rule comes second.
+    assert!(
+        matches!(&blocks[1], MarkdownBlock::HorizontalRule),
+        "blocks[1] should be HorizontalRule"
+    );
+    Ok(())
+}
+
 mod example_tree_list_tests {
     use super::*;
 
