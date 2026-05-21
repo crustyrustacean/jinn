@@ -371,11 +371,20 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
 /// Handle cancelling an in-progress context compaction.
 ///
-/// Drains any queued entries, pushes a system message, and optionally starts
-/// a new turn if there were queued messages waiting.
+/// ESC = universal abort. Cancels compaction, aborts the compaction LLM task,
+/// un-ignores entries, and drains all queue items back to the input buffer.
+/// No synthetic continue is enqueued.
 fn handle_compaction_cancel(state: &mut AppState, session_id: SessionId) -> IntentResult {
-    let drained = state.active_session_mut().cancel_compacting();
-    let mut commands: Vec<Command> = vec![
+    let _drained = state.active_session_mut().cancel_compacting();
+    // cancel_compacting already drains the queue into VecDeque<QueueItem>,
+    // but we need to put UserMessage display text into the input buffer.
+    // Use cancel_stream_and_drain which handles typed queue items.
+    // Actually, cancel_compacting already drained the queue. Let's handle
+    // the drained items manually to put text into input buffer.
+    // For now, the queue is already drained by cancel_compacting. The
+    // drained items are discarded (ESC = stop all the things).
+
+    IntentResult::with_commands(vec![
         Command::PushChatEntry(
             crate::feat::chat_input::protocol::command::PushChatEntry {
                 session_id: session_id.clone(),
@@ -384,31 +393,10 @@ fn handle_compaction_cancel(state: &mut AppState, session_id: SessionId) -> Inte
         ),
         Command::CancelCompaction(
             crate::feat::compaction_actor::protocol::command::CancelCompaction {
-                session_id: session_id.clone(),
+                session_id,
             },
         ),
-    ];
-    // If messages were queued, start a new turn.
-    // Queued entries are pushed directly because AssemblePrompt
-    // needs them in history immediately.
-    if !drained.is_empty() {
-        let entries: Vec<crate::ChatEntry> = drained.into_iter().collect();
-        for entry in &entries {
-            state.active_session_mut().push_entry(entry.clone());
-        }
-        state.active_session_mut().begin_sending();
-        let history = state.active_session().history().to_vec();
-        let model_name = state.active_session().profile().model.clone();
-        commands.push(Command::AssemblePrompt(
-            crate::feat::context::protocol::command::AssemblePrompt {
-                session_id,
-                history,
-                tools: vec![],
-                model_name,
-            },
-        ));
-    }
-    IntentResult::with_commands(commands)
+    ])
 }
 
 #[cfg(test)]

@@ -152,8 +152,8 @@ pub struct SessionCoreEphemeral {
     pub(crate) phase: SessionPhase,
     /// Index into `history` for the entry currently receiving stream tokens.
     pub(crate) streaming_entry_index: Option<usize>,
-    /// Messages waiting to be sent to the LLM, one at a time.
-    pub(crate) message_queue: VecDeque<crate::protocol::ChatEntry>,
+    /// Turn dispatch queue — drives all turn transitions through a single processor.
+    pub(crate) message_queue: VecDeque<crate::feat::session::queue_item::QueueItem>,
     /// Maps stream tool call index to history index for in-progress tool calls.
     pub(crate) streaming_tool_call_indices: HashMap<usize, usize>,
     /// Index into `history` for the entry currently receiving thinking tokens.
@@ -705,15 +705,21 @@ impl ChatSessionState {
     /// Cancel streaming and drain queued messages back to the input buffer.
     ///
     /// Used when the user interrupts or switches to Normal mode during an
-    /// active stream. The display text from drained entries is joined with
-    /// newlines and replaces whatever was in the input box.
+    /// active stream. The display text from drained `UserMessage` entries is
+    /// joined with newlines and replaces whatever was in the input box.
+    /// `ToolContinuation` and `CompactionNeeded` items are silently discarded.
     pub fn cancel_stream_and_drain(&mut self) {
         self.cancel_streaming();
         let drained = self.drain_queue();
         let display_texts: Vec<&str> = drained
             .iter()
-            .filter_map(|e| match &e.kind {
-                ChatEntryKind::User { display, .. } => Some(display.as_str()),
+            .filter_map(|item| match item {
+                crate::feat::session::queue_item::QueueItem::UserMessage(entry) => {
+                    match &entry.kind {
+                        ChatEntryKind::User { display, .. } => Some(display.as_str()),
+                        _ => None,
+                    }
+                }
                 _ => None,
             })
             .collect();
@@ -920,28 +926,33 @@ impl ChatSessionState {
 
     // --- Queue ---
 
-    /// Read-only access to the message queue.
-    pub fn queue(&self) -> &VecDeque<crate::protocol::ChatEntry> {
+    /// Read-only access to the turn dispatch queue.
+    pub fn queue(&self) -> &VecDeque<crate::feat::session::queue_item::QueueItem> {
         &self.core.ephemeral.message_queue
     }
 
-    /// Number of messages waiting in the queue.
+    /// Number of items waiting in the queue.
     pub fn queue_len(&self) -> usize {
         self.core.ephemeral.message_queue.len()
     }
 
-    /// Push a message onto the back of the queue.
-    pub fn enqueue_message(&mut self, entry: crate::protocol::ChatEntry) {
-        self.core.ephemeral.message_queue.push_back(entry);
+    /// Push an item onto the back of the queue.
+    pub fn enqueue(&mut self, item: crate::feat::session::queue_item::QueueItem) {
+        self.core.ephemeral.message_queue.push_back(item);
     }
 
-    /// Pop the front message from the queue, if any.
-    pub fn dequeue_message(&mut self) -> Option<crate::protocol::ChatEntry> {
+    /// Push an item onto the front of the queue (for priority items like `CompactionNeeded`).
+    pub fn enqueue_front(&mut self, item: crate::feat::session::queue_item::QueueItem) {
+        self.core.ephemeral.message_queue.push_front(item);
+    }
+
+    /// Pop the front item from the queue, if any.
+    pub fn dequeue(&mut self) -> Option<crate::feat::session::queue_item::QueueItem> {
         self.core.ephemeral.message_queue.pop_front()
     }
 
-    /// Drain all queued messages, returning them in order.
-    pub fn drain_queue(&mut self) -> std::collections::VecDeque<crate::protocol::ChatEntry> {
+    /// Drain all queued items, returning them in order.
+    pub fn drain_queue(&mut self) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
         std::mem::take(&mut self.core.ephemeral.message_queue)
     }
 
@@ -1074,7 +1085,7 @@ impl ChatSessionState {
     /// caller can start a new turn if needed.
     ///
     /// No-op if not currently compacting.
-    pub fn cancel_compacting(&mut self) -> std::collections::VecDeque<crate::protocol::ChatEntry> {
+    pub fn cancel_compacting(&mut self) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
         if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
             return std::collections::VecDeque::new();
         }
