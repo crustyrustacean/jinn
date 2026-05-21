@@ -117,27 +117,23 @@ pub enum LifecycleScriptState {
 impl LifecycleScriptState {
     /// Transition `NothingRan → SetupRan`.
     ///
-    /// # Panics
-    ///
-    /// Panics if current state is not `NothingRan`.
+    /// Soft guard: if current state is not `NothingRan`, logs a warning and returns.
     pub fn advance_after_setup(&mut self) {
-        assert!(
-            matches!(self, Self::NothingRan),
-            "advance_after_setup: expected NothingRan, got {self:?}"
-        );
+        if !matches!(self, Self::NothingRan) {
+            tracing::warn!(current = ?self, "advance_after_setup: expected NothingRan, ignoring");
+            return;
+        }
         *self = Self::SetupRan;
     }
 
     /// Transition `SetupRan → TeardownRan`.
     ///
-    /// # Panics
-    ///
-    /// Panics if current state is not `SetupRan`.
+    /// Soft guard: if current state is not `SetupRan`, logs a warning and returns.
     pub fn advance_after_teardown(&mut self) {
-        assert!(
-            matches!(self, Self::SetupRan),
-            "advance_after_teardown: expected SetupRan, got {self:?}"
-        );
+        if !matches!(self, Self::SetupRan) {
+            tracing::warn!(current = ?self, "advance_after_teardown: expected SetupRan, ignoring");
+            return;
+        }
         *self = Self::TeardownRan;
     }
 }
@@ -556,20 +552,19 @@ impl ChatSessionState {
     /// always appended in the correct order (thinking before assistant)
     /// without any index-shifting insertions.
     ///
-    /// # Panics
-    ///
-    /// Panics if the session is already streaming. This is a programming error —
-    /// the caller must ensure the previous stream has finished or been cancelled
-    /// before starting a new one.
+    /// Soft guard: if the session is not in Sending or Idle phase, logs a warning
+    /// and returns without changing state.
     pub fn begin_streaming(&mut self) {
-        assert!(
-            matches!(
-                self.core.ephemeral.phase,
-                SessionPhase::Sending | SessionPhase::Idle
-            ),
-            "begin_streaming called while not in Sending or Idle phase (current: {:?})",
-            self.core.ephemeral.phase
-        );
+        if !matches!(
+            self.core.ephemeral.phase,
+            SessionPhase::Sending | SessionPhase::Idle
+        ) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "begin_streaming called while not in Sending or Idle phase — ignoring"
+            );
+            return;
+        }
         self.core.ephemeral.phase = SessionPhase::Streaming;
     }
 
@@ -577,13 +572,7 @@ impl ChatSessionState {
     ///
     /// Lazily creates the Assistant entry if this is the first token.
     ///
-    /// # Panics
-    ///
-    /// Panics if the session is not streaming. This is a programming error.
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`StreamingError`] if the session is not in a valid streaming state.
+    /// Soft guard: if the session is not streaming, logs a warning and returns an error.
     #[expect(
         clippy::indexing_slicing,
         reason = "index comes from push_entry which always returns a valid index"
@@ -592,11 +581,13 @@ impl ChatSessionState {
     where
         S: AsRef<str>,
     {
-        assert!(
-            matches!(self.core.ephemeral.phase, SessionPhase::Streaming),
-            "append_stream_token called while not streaming (current: {:?})",
-            self.core.ephemeral.phase
-        );
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Streaming) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "append_stream_token called while not streaming — ignoring"
+            );
+            return Err(StreamingError::NoStreamingEntry);
+        }
         self.ensure_assistant_entry();
         let index = self
             .core
@@ -621,19 +612,20 @@ impl ChatSessionState {
     /// is created lazily later (on first `append_stream_token` or `finish_streaming`),
     /// so entries naturally appear in order: thinking before assistant.
     ///
-    /// # Panics
-    ///
-    /// Panics if the session is not streaming, or if thinking has already begun.
+    /// Soft guard: if the session is not streaming or thinking has already begun,
+    /// logs a warning and returns without changing state.
     pub fn begin_thinking(&mut self) {
-        assert!(
-            matches!(self.core.ephemeral.phase, SessionPhase::Streaming),
-            "begin_thinking called while not streaming (current: {:?})",
-            self.core.ephemeral.phase
-        );
-        assert!(
-            self.core.ephemeral.streaming_thinking_entry_index.is_none(),
-            "begin_thinking called while already thinking"
-        );
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Streaming) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "begin_thinking called while not streaming — ignoring"
+            );
+            return;
+        }
+        if self.core.ephemeral.streaming_thinking_entry_index.is_some() {
+            tracing::warn!("begin_thinking called while already thinking — ignoring");
+            return;
+        }
         let entry = ChatEntry::thinking("");
         let index = self.push_entry(entry);
         self.core.ephemeral.streaming_thinking_entry_index = Some(index);
@@ -962,29 +954,29 @@ impl ChatSessionState {
 
     /// Mark the session as having a prompt assembly in progress.
     ///
-    /// # Panics
-    ///
-    /// Panics if already sending, streaming, or assembling.
+    /// Soft guard: if not idle, logs a warning and returns without changing phase.
     pub fn begin_assembling(&mut self) {
-        assert!(
-            matches!(self.core.ephemeral.phase, SessionPhase::Idle),
-            "begin_assembling called while not idle (current: {:?})",
-            self.core.ephemeral.phase
-        );
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "begin_assembling called while not idle — ignoring"
+            );
+            return;
+        }
         self.core.ephemeral.phase = SessionPhase::Assembling;
     }
 
     /// Clear the assembling flag (called when prompt assembly completes).
     ///
-    /// # Panics
-    ///
-    /// Panics if called while not in the assembling state.
+    /// Soft guard: if not assembling, logs a warning and returns without changing phase.
     pub fn finish_assembling(&mut self) {
-        assert!(
-            matches!(self.core.ephemeral.phase, SessionPhase::Assembling),
-            "finish_assembling called while not assembling (current: {:?})",
-            self.core.ephemeral.phase
-        );
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Assembling) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "finish_assembling called while not assembling — ignoring"
+            );
+            return;
+        }
         self.core.ephemeral.phase = SessionPhase::Idle;
     }
 
@@ -1022,44 +1014,43 @@ impl ChatSessionState {
 
     /// Mark the session as having dispatched a message to the LLM.
     ///
-    /// # Panics
-    ///
-    /// Panics if already sending or streaming. This is a programming error —
-    /// the caller must ensure the session is idle before dispatching.
+    /// Soft guard: if not idle, logs a warning and returns without changing phase.
     pub fn begin_sending(&mut self) {
-        assert!(
-            matches!(self.core.ephemeral.phase, SessionPhase::Idle),
-            "begin_sending called while not idle (current: {:?})",
-            self.core.ephemeral.phase
-        );
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "begin_sending called while not idle — ignoring"
+            );
+            return;
+        }
         self.core.ephemeral.phase = SessionPhase::Sending;
     }
 
     /// Clear the sending flag (called when the first stream token arrives).
     ///
-    /// # Panics
-    ///
-    /// Panics if not currently sending.
+    /// Soft guard: if not sending, logs a warning and returns without changing phase.
     pub fn finish_sending(&mut self) {
-        assert!(
-            matches!(self.core.ephemeral.phase, SessionPhase::Sending),
-            "finish_sending called while not sending (current: {:?})",
-            self.core.ephemeral.phase
-        );
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Sending) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "finish_sending called while not sending — ignoring"
+            );
+            return;
+        }
         self.core.ephemeral.phase = SessionPhase::Idle;
     }
 
     /// Mark the session as compacting.
     ///
-    /// # Panics
-    ///
-    /// Panics if not currently idle.
+    /// Soft guard: if not idle, logs a warning and returns without changing phase.
     pub fn begin_compacting(&mut self, gathered_indices: Vec<usize>) {
-        assert!(
-            matches!(self.core.ephemeral.phase, SessionPhase::Idle),
-            "begin_compacting called while not idle (current: {:?})",
-            self.core.ephemeral.phase
-        );
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "begin_compacting called while not idle — ignoring"
+            );
+            return;
+        }
         self.core.ephemeral.phase = SessionPhase::Compacting;
         self.core.ephemeral.compaction_gathered_indices = gathered_indices;
     }
@@ -1562,19 +1553,11 @@ impl ChatSessionState {
     }
 
     /// Advances lifecycle state after successful setup: `NothingRan → SetupRan`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if not currently `NothingRan`.
     pub fn advance_lifecycle_after_setup(&mut self) {
         self.core.lifecycle_script_state.advance_after_setup();
     }
 
     /// Advances lifecycle state after successful teardown: `SetupRan → TeardownRan`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if not currently `SetupRan`.
     pub fn advance_lifecycle_after_teardown(&mut self) {
         self.core.lifecycle_script_state.advance_after_teardown();
     }

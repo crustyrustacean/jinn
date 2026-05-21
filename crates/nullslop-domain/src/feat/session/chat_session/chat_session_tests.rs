@@ -104,26 +104,28 @@ fn cancel_streaming_keeps_partial_text() {
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "begin_streaming called while not in Sending or Idle")]
-fn begin_streaming_twice_panics() {
+fn begin_streaming_twice_is_noop() {
     // Given a session that is already streaming.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
 
     // When calling begin_streaming again.
-    // Then it panics.
     session.begin_streaming();
+
+    // Then phase stays Streaming (no panic, no double-transition).
+    assert_eq!(session.phase(), SessionPhase::Streaming);
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "append_stream_token called while not streaming")]
-fn append_stream_token_when_not_streaming_panics() {
+fn append_stream_token_when_not_streaming_returns_error() {
     // Given a session that is not streaming.
     let mut session = ChatSessionState::new();
 
     // When calling append_stream_token.
-    // Then it panics.
-    session.append_stream_token("oops").expect("ok");
+    let result = session.append_stream_token("oops");
+
+    // Then it returns an error (no panic).
+    assert!(result.is_err());
 }
 
 #[rstest::rstest]
@@ -423,27 +425,54 @@ fn begin_sending_sets_is_sending() {
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "begin_sending called while not idle")]
-fn begin_sending_panics_when_already_sending() {
+fn begin_assembling_is_noop_when_sending() {
+    // Given a session that is sending.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+
+    // When calling begin_assembling.
+    session.begin_assembling();
+
+    // Then phase stays Sending (no panic).
+    assert_eq!(session.phase(), SessionPhase::Sending);
+}
+
+#[rstest::rstest]
+fn finish_assembling_is_noop_when_idle() {
+    // Given a session that is idle.
+    let mut session = ChatSessionState::new();
+
+    // When calling finish_assembling.
+    session.finish_assembling();
+
+    // Then phase stays Idle (no panic).
+    assert_eq!(session.phase(), SessionPhase::Idle);
+}
+
+#[rstest::rstest]
+fn begin_sending_is_noop_when_already_sending() {
     // Given a session that is already sending.
     let mut session = ChatSessionState::new();
     session.begin_sending();
 
     // When calling begin_sending again.
-    // Then it panics.
     session.begin_sending();
+
+    // Then phase stays Sending (no panic).
+    assert_eq!(session.phase(), SessionPhase::Sending);
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "begin_sending called while not idle")]
-fn begin_sending_panics_when_streaming() {
+fn begin_sending_is_noop_when_streaming() {
     // Given a session that is streaming.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
 
     // When calling begin_sending.
-    // Then it panics.
     session.begin_sending();
+
+    // Then phase stays Streaming (no panic).
+    assert_eq!(session.phase(), SessionPhase::Streaming);
 }
 
 #[rstest::rstest]
@@ -460,14 +489,15 @@ fn finish_sending_clears_flag() {
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "finish_sending called while not sending (current")]
-fn finish_sending_panics_when_not_sending() {
+fn finish_sending_is_noop_when_not_sending() {
     // Given a session that is not sending.
     let mut session = ChatSessionState::new();
 
     // When calling finish_sending.
-    // Then it panics.
     session.finish_sending();
+
+    // Then phase stays Idle (no panic).
+    assert_eq!(session.phase(), SessionPhase::Idle);
 }
 
 // --- Combined status tests ---
@@ -1788,27 +1818,30 @@ fn finish_compacting_returns_to_idle() {
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "begin_compacting called while not idle")]
-fn begin_compacting_panics_when_already_compacting() {
+fn begin_compacting_is_noop_when_already_compacting() {
     // Given a session already compacting.
     let mut session = ChatSessionState::new();
     session.begin_compacting(vec![]);
+    assert_eq!(session.phase(), SessionPhase::Compacting);
 
     // When calling begin_compacting again.
-    // Then it panics.
     session.begin_compacting(vec![]);
+
+    // Then phase stays Compacting (no panic, no double-transition).
+    assert_eq!(session.phase(), SessionPhase::Compacting);
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "begin_compacting called while not idle")]
-fn begin_compacting_panics_when_streaming() {
+fn begin_compacting_is_noop_when_streaming() {
     // Given a session that is streaming.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
 
     // When calling begin_compacting.
-    // Then it panics.
     session.begin_compacting(vec![]);
+
+    // Then phase stays Streaming (no panic).
+    assert_eq!(session.phase(), SessionPhase::Streaming);
 }
 
 #[rstest::rstest]
@@ -1937,43 +1970,51 @@ fn advance_after_teardown_transitions_setup_to_teardown() {
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "advance_after_setup: expected NothingRan")]
-fn advance_after_setup_panics_from_setup_ran() {
+fn advance_after_setup_is_noop_from_setup_ran() {
     // Given SetupRan.
     let mut state = LifecycleScriptState::SetupRan;
 
-    // When advancing after setup again — panics.
+    // When advancing after setup again.
     state.advance_after_setup();
+
+    // Then state stays SetupRan (no panic).
+    assert_eq!(state, LifecycleScriptState::SetupRan);
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "advance_after_setup: expected NothingRan")]
-fn advance_after_setup_panics_from_teardown_ran() {
+fn advance_after_setup_is_noop_from_teardown_ran() {
     // Given TeardownRan.
     let mut state = LifecycleScriptState::TeardownRan;
 
-    // When advancing after setup — panics.
+    // When advancing after setup.
     state.advance_after_setup();
+
+    // Then state stays TeardownRan (no panic).
+    assert_eq!(state, LifecycleScriptState::TeardownRan);
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "advance_after_teardown: expected SetupRan")]
-fn advance_after_teardown_panics_from_nothing_ran() {
+fn advance_after_teardown_is_noop_from_nothing_ran() {
     // Given NothingRan.
     let mut state = LifecycleScriptState::NothingRan;
 
-    // When advancing after teardown — panics.
+    // When advancing after teardown.
     state.advance_after_teardown();
+
+    // Then state stays NothingRan (no panic).
+    assert_eq!(state, LifecycleScriptState::NothingRan);
 }
 
 #[rstest::rstest]
-#[should_panic(expected = "advance_after_teardown: expected SetupRan")]
-fn advance_after_teardown_panics_from_teardown_ran() {
+fn advance_after_teardown_is_noop_from_teardown_ran() {
     // Given TeardownRan.
     let mut state = LifecycleScriptState::TeardownRan;
 
-    // When advancing after teardown again — panics.
+    // When advancing after teardown again.
     state.advance_after_teardown();
+
+    // Then state stays TeardownRan (no panic).
+    assert_eq!(state, LifecycleScriptState::TeardownRan);
 }
 
 // --- SessionState default test ---
