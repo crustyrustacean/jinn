@@ -77,18 +77,25 @@ pub(crate) fn entry_title_style(
 /// Builds the tree connector prefix for a session entry.
 ///
 /// For root entries (depth 0), returns an empty string.
-/// For non-root entries, constructs:
-/// - For each ancestor level: `│` if ancestor has younger siblings, ` ` if not
-/// - For the entry's own level: `├` if has younger siblings, `└` if last child
+/// For non-root entries, constructs non-compacted 3-char-wide segments:
+/// - Skips `ancestor_continuations[0]` (root-level) since roots have no prefix.
+/// - For each intermediate ancestor level: `│  ` if continuing, `   ` if not
+/// - For the entry's own level: `├─ ` if has younger siblings, `└─ ` if last child
 pub(crate) fn tree_prefix(entry: &SessionEntry) -> String {
     if entry.depth == 0 {
         return String::new();
     }
-    let mut prefix = String::with_capacity(entry.depth);
-    for &continues in &entry.ancestor_continuations {
-        prefix.push(if continues { '│' } else { ' ' });
+    // Skip ancestor_continuations[0] — the root-level continuation.
+    // Roots have no tree prefix, so there's nothing for that │ to connect to.
+    let mut prefix = String::with_capacity(entry.depth * 3);
+    for &continues in &entry.ancestor_continuations[1..] {
+        prefix.push_str(if continues { "│  " } else { "   " });
     }
-    prefix.push(if entry.is_last_child { '└' } else { '├' });
+    prefix.push_str(if entry.is_last_child {
+        "└─ "
+    } else {
+        "├─ "
+    });
     prefix
 }
 
