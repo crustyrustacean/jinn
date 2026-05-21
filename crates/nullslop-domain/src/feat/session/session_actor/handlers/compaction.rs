@@ -8,47 +8,31 @@ use crate::common::actor::ActorContext;
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
 
 use super::super::SessionPersistenceActor;
-use crate::feat::compaction_actor::protocol::command::{
-    BeginCompaction, EndCompaction, EnqueueCompaction,
-};
+use crate::feat::compaction_actor::protocol::command::{BeginCompaction, EndCompaction};
 use crate::feat::session::chat_session::SessionPhase;
-use crate::feat::session::queue_item::QueueItem;
+use crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn;
 
 impl SessionPersistenceActor {
-    /// EnqueueCompaction: enqueue `CompactionNeeded` and process the queue.
-    ///
-    /// If the session is idle, the queue processes immediately and `CompactContext`
-    /// is dispatched. If the session is busy, the item waits in the queue until
-    /// the current operation finishes.
-    pub(in crate::feat::session::session_actor) async fn handle_enqueue_compaction(
-        &self,
-        payload: &EnqueueCompaction,
-        ctx: &ActorContext,
-    ) {
-        {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            session.enqueue(QueueItem::CompactionNeeded);
-        }
-
-        self.process_queue(&payload.session_id, ctx).await;
-    }
-
     /// BeginCompaction: set phase to Compacting, push "Starting..." system entry,
     /// mark gathered entries as ignored, and persist.
     pub(in crate::feat::session::session_actor) async fn handle_begin_compaction(
         &self,
         payload: &BeginCompaction,
+        ctx: &ActorContext,
     ) {
-        {
+        let (old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
+            let old_phase = session.phase();
             session.begin_compacting(payload.gathered_indices.clone());
             session.push_entry(ChatEntry::system("Starting context compaction..."));
             if !payload.gathered_indices.is_empty() {
                 session.mark_entries_ignored(&payload.gathered_indices);
             }
-        }
+            (old_phase, session.phase())
+        };
+
+        super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
 
         self.save_active_session(&payload.session_id).await;
     }
@@ -63,10 +47,11 @@ impl SessionPersistenceActor {
         payload: &EndCompaction,
         ctx: &ActorContext,
     ) {
-        let should_process_queue: bool;
+        let (old_phase, new_phase);
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
+            old_phase = session.phase();
 
             // Guard: ignore stale EndCompaction if phase is no longer Compacting.
             if !matches!(session.phase(), SessionPhase::Compacting) {
@@ -102,16 +87,26 @@ impl SessionPersistenceActor {
             }
             session.finish_compacting();
 
-            // Check if queue has items to process.
-            should_process_queue = session.queue_len() > 0;
+            new_phase = session.phase();
         }
+
+        super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
 
         self.save_active_session(&payload.session_id).await;
+    }
 
-        // If messages were queued during compaction, process the queue.
-        if should_process_queue {
-            self.process_queue(&payload.session_id, ctx).await;
-        }
+    /// SoftCancelTurn: request graceful turn termination at the next pause point.
+    ///
+    /// Sets a flag on the session that is checked at `on_tool_batch_completed`
+    /// and `on_stream_completed`. When the flag is set, the turn ends (→ Idle)
+    /// instead of continuing, allowing auto-compaction to trigger mid-turn.
+    pub(in crate::feat::session::session_actor) fn handle_soft_cancel_turn(
+        &self,
+        payload: &SoftCancelTurn,
+    ) {
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&payload.session_id);
+        session.request_soft_cancel();
     }
 }
 
@@ -120,13 +115,14 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::super::super::helpers::{test_actor, test_context};
     use crate::feat::session::chat_session::SessionPhase;
+    use crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn;
     use crate::protocol::{ChatEntry, ChatEntryKind, Command};
 
     #[tokio::test]
     async fn begin_compaction_sets_compacting_phase_and_pushes_system_entry() {
         // Given a session actor with a session.
         let actor = test_actor();
-        let (_sink, _ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
             state.session.active_session_id().clone()
@@ -139,6 +135,7 @@ mod tests {
                     session_id: session_id.clone(),
                     gathered_indices: vec![0, 1],
                 },
+                &ctx,
             )
             .await;
 
@@ -228,10 +225,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn end_compaction_drains_queued_messages_on_success() {
+    async fn end_compaction_retains_queued_messages_on_success() {
         // Given a session in Compacting phase with a queued user message.
+        // The queue is no longer drained by the session actor — the QueueActor handles it.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -262,22 +260,22 @@ mod tests {
             )
             .await;
 
-        // Then AssemblePrompt was emitted for the queued message.
-        let commands = sink.commands();
-        let has_assemble = commands
-            .iter()
-            .any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(
-            has_assemble,
-            "expected AssemblePrompt command for queued message"
+        // Then the queue still has the item (QueueActor will pop it).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(
+            session.queue_len(),
+            1,
+            "expected queue to retain item for QueueActor"
         );
     }
 
     #[tokio::test]
-    async fn end_compaction_drains_queued_messages_on_failure() {
+    async fn end_compaction_retains_queued_messages_on_failure() {
         // Given a session in Compacting phase with a queued user message.
+        // The queue is no longer drained by the session actor — the QueueActor handles it.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -300,14 +298,13 @@ mod tests {
             )
             .await;
 
-        // Then AssemblePrompt was emitted for the queued message.
-        let commands = sink.commands();
-        let has_assemble = commands
-            .iter()
-            .any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(
-            has_assemble,
-            "expected AssemblePrompt command for queued message after failure"
+        // Then the queue still has the item (QueueActor will pop it).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(
+            session.queue_len(),
+            1,
+            "expected queue to retain item for QueueActor"
         );
     }
 
@@ -354,8 +351,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn end_compaction_drain_leaves_session_in_sending_state() {
+    async fn end_compaction_with_queue_leaves_session_in_idle_state() {
         // Given a session in Compacting phase with a queued user message.
+        // The session returns to Idle — the QueueActor will pop and dispatch.
         let actor = test_actor();
         let (_sink, ctx) = test_context();
         let session_id = {
@@ -388,10 +386,10 @@ mod tests {
             )
             .await;
 
-        // Then the session is in Sending state (start_turn_from_queued called begin_sending).
+        // Then the session is in Idle state (QueueActor will dispatch).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert!(matches!(session.phase(), SessionPhase::Sending));
+        assert!(matches!(session.phase(), SessionPhase::Idle));
     }
 
     #[tokio::test]
@@ -434,5 +432,28 @@ mod tests {
             .expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Idle);
         assert!(!session.history().iter().any(ChatEntry::is_compaction));
+    }
+
+    #[tokio::test]
+    async fn soft_cancel_turn_sets_flag_on_session() {
+        // Given a session actor with a session.
+        let actor = test_actor();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling SoftCancelTurn.
+        actor.handle_soft_cancel_turn(&SoftCancelTurn {
+            session_id: session_id.clone(),
+        });
+
+        // Then the soft cancel flag is set.
+        let mut state = actor.state.write();
+        let session = state.session.get_mut(&session_id).expect("session exists");
+        assert!(
+            session.take_soft_cancel(),
+            "expected soft cancel flag to be set"
+        );
     }
 }
