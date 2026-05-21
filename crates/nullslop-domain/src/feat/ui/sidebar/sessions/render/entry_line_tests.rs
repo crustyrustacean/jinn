@@ -66,25 +66,25 @@ fn tree_prefix_is_empty_for_root_entry() {
 #[rstest::rstest]
 fn tree_prefix_last_child_at_depth_1() {
     // Given a last child at depth 1.
-    let entry = tree_entry(1, vec![], true);
+    let entry = tree_entry(1, vec![true], true);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
 
-    // Then the prefix is └.
-    assert_eq!(prefix, "└");
+    // Then the prefix is └─ (root continuation skipped).
+    assert_eq!(prefix, "└─ ");
 }
 
 #[rstest::rstest]
 fn tree_prefix_not_last_child_at_depth_1() {
     // Given a non-last child at depth 1.
-    let entry = tree_entry(1, vec![], false);
+    let entry = tree_entry(1, vec![true], false);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
 
-    // Then the prefix is ├.
-    assert_eq!(prefix, "├");
+    // Then the prefix is ├─ (root continuation skipped).
+    assert_eq!(prefix, "├─ ");
 }
 
 // ---------------------------------------------------------------------------
@@ -93,38 +93,38 @@ fn tree_prefix_not_last_child_at_depth_1() {
 
 #[rstest::rstest]
 fn tree_prefix_last_child_with_continuing_ancestor() {
-    // Given a last child at depth 2 with a continuing ancestor.
-    let entry = tree_entry(2, vec![true], true);
+    // Given a last child at depth 2 with a continuing intermediate ancestor.
+    let entry = tree_entry(2, vec![true, true], true);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
 
-    // Then the prefix is │└.
-    assert_eq!(prefix, "│└");
+    // Then the prefix is │  └─ (root skipped, intermediate continues).
+    assert_eq!(prefix, "│  └─ ");
 }
 
 #[rstest::rstest]
 fn tree_prefix_last_child_with_non_continuing_ancestor() {
-    // Given a last child at depth 2 with a non-continuing ancestor.
-    let entry = tree_entry(2, vec![false], true);
+    // Given a last child at depth 2 with a non-continuing intermediate ancestor.
+    let entry = tree_entry(2, vec![true, false], true);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
 
-    // Then the prefix is  └ (space + └).
-    assert_eq!(prefix, " └");
+    // Then the prefix is    └─ (root skipped, intermediate is space).
+    assert_eq!(prefix, "   └─ ");
 }
 
 #[rstest::rstest]
 fn tree_prefix_not_last_child_with_continuing_ancestor() {
-    // Given a non-last child at depth 2 with a continuing ancestor.
-    let entry = tree_entry(2, vec![true], false);
+    // Given a non-last child at depth 2 with a continuing intermediate ancestor.
+    let entry = tree_entry(2, vec![true, true], false);
 
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
 
-    // Then the prefix is │├.
-    assert_eq!(prefix, "│├");
+    // Then the prefix is │  ├─ (root skipped, intermediate continues).
+    assert_eq!(prefix, "│  ├─ ");
 }
 
 // ---------------------------------------------------------------------------
@@ -139,8 +139,8 @@ fn tree_prefix_deep_chain_not_last() {
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
 
-    // Then continuation chars are correct: ││ ││├.
-    assert_eq!(prefix, "││ ││├");
+    // Then continuation chars are correct: │     │  │  ├─ (root skipped, 4 intermediate segments).
+    assert_eq!(prefix, "│     │  │  ├─ ");
 }
 
 #[rstest::rstest]
@@ -151,8 +151,8 @@ fn tree_prefix_deep_chain_last() {
     // When computing tree prefix.
     let prefix = tree_prefix(&entry);
 
-    // Then continuation chars are correct: ││ ││└.
-    assert_eq!(prefix, "││ ││└");
+    // Then continuation chars are correct: │     │  │  └─ (root skipped, 4 intermediate segments).
+    assert_eq!(prefix, "│     │  │  └─ ");
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         last_entry_is_error: false,
         parent_id: None,
         depth: 1,
-        ancestor_continuations: vec![],
+        ancestor_continuations: vec![true],
         is_last_child: true,
     };
     let theme = default_theme();
@@ -179,9 +179,12 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
     // When assembling the entry line.
     let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
 
-    // Then the line contains the └ tree character.
+    // Then the line contains the \u{2514}\u{2500} tree characters.
     let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-    assert!(text.contains('└'), "line should contain └, got: {text}");
+    assert!(
+        text.contains("\u{2514}\u{2500} "),
+        "line should contain \u{2514}\u{2500} , got: {text}"
+    );
 }
 
 #[rstest::rstest]
@@ -225,7 +228,7 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         last_entry_is_error: false,
         parent_id: None,
         depth: 1,
-        ancestor_continuations: vec![],
+        ancestor_continuations: vec![true],
         is_last_child: false,
     };
     let theme = default_theme();
@@ -307,7 +310,7 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         last_entry_is_error: false,
         parent_id: None,
         depth: 2,
-        ancestor_continuations: vec![true],
+        ancestor_continuations: vec![true, true],
         is_last_child: true,
     };
     let theme = default_theme();
@@ -340,7 +343,7 @@ fn tree_prefix_uses_muted_text_color() {
         last_entry_is_error: false,
         parent_id: None,
         depth: 1,
-        ancestor_continuations: vec![],
+        ancestor_continuations: vec![true],
         is_last_child: true,
     };
     let theme = default_theme();
