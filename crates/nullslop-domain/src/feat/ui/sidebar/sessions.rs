@@ -7,6 +7,7 @@
 pub mod activate;
 pub mod archive;
 pub mod close;
+pub mod r#continue;
 pub mod navigate;
 pub mod new_with_lifecycle;
 pub mod render;
@@ -25,6 +26,7 @@ pub use close::{
     SessionCloseError, handle_session_close, handle_session_close_with_lifecycle,
     validate_session_close,
 };
+pub use r#continue::handle_session_continue;
 pub use navigate::{navigate, receive_cursor, scroll_to_cursor};
 pub use new_with_lifecycle::handle_sidebar_session_new_with_lifecycle;
 pub use render::SessionsSection;
