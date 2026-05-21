@@ -6,7 +6,8 @@ use super::markdown::render_markdown;
 use super::shared::{Pad, RenderContext, pad_entry};
 
 pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
-    let mut lines = render_markdown(text, ctx.content_width, &ctx.theme);
+    let text = super::shared::strip_ansi(text);
+    let mut lines = render_markdown(&text, ctx.content_width, &ctx.theme);
     pad_entry(&mut lines, Pad::Both);
     lines
 }

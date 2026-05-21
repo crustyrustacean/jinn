@@ -40,13 +40,14 @@ pub fn to_lines(name: &str, arguments: &str, ctx: &RenderContext) -> Vec<Line<'s
 /// Bash: `$ <command>` (extracted from JSON arguments).
 /// Others: `<name> <arguments>` (with unescaped newlines).
 fn format_tool_call_display(name: &str, arguments: &str) -> String {
-    if name == "bash" {
+    let display = if name == "bash" {
         let command = extract_bash_command(arguments).unwrap_or_else(|| arguments.to_owned());
         format!("$ {command}")
     } else {
         let arguments = super::shared::unescape_newlines(arguments);
         format!("{name} {arguments}")
-    }
+    };
+    super::shared::strip_ansi(&display)
 }
 
 /// Extract the "command" field from bash JSON arguments.
