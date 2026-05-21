@@ -510,10 +510,13 @@ mod tests {
             // No providers configured — can't test, but shouldn't fail.
             return;
         }
-        let model_id = providers[0].id.to_string();
+        let Some(first) = providers.first() else {
+            return;
+        };
+        let model_id = first.id.to_string();
 
         // Then validation succeeds.
-        let result = validate_models(&[model_id.clone()], &services.provider_registry);
+        let result = validate_models(std::slice::from_ref(&model_id), &services.provider_registry);
         assert!(result.is_ok(), "expected {model_id} to be valid");
     }
 
