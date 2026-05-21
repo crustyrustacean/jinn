@@ -2,6 +2,7 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
+use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::protocol::{Command, IntentResult, PinPosition};
 
 use super::validator;
@@ -118,6 +119,36 @@ pub fn handle_expand_tool_entry(state: &mut AppState) -> IntentResult {
 
     state.active_session_mut().toggle_expand_entry(entry_id);
     IntentResult::empty()
+}
+
+/// Forks the session at the currently selected chat entry.
+///
+/// Emits a `SessionForkRequested` command with `at_ordinal` set to the
+/// selected entry's index in the history. The session actor handles the
+/// actual fork in SQLite and loads the new session.
+///
+/// # Panics
+///
+/// Panics if `selected_entry_index()` returns `None` after validation
+/// succeeds. This should never happen — the validator guarantees a
+/// selection exists.
+pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
+    if super::validator::validate_fork_from_entry(state).is_err() {
+        return IntentResult::empty();
+    }
+
+    let source_session_id = state.session.active_session_id().clone();
+    let at_ordinal = state
+        .active_session()
+        .selected_entry_index()
+        .expect("validator confirmed selection exists");
+
+    state.session.begin_load(source_session_id.clone());
+
+    IntentResult::with_commands(vec![Command::SessionForkRequested(SessionForkRequested {
+        source_session_id,
+        at_ordinal,
+    })])
 }
 
 #[cfg(test)]
@@ -398,5 +429,85 @@ mod tests {
 
         // Then no commands are emitted.
         assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn fork_from_entry_returns_fork_command() {
+        // Given a state with 3 entries, middle entry selected (index 1).
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("first"));
+        state.active_session_mut().push_entry(ChatEntry::assistant("second"));
+        state.active_session_mut().push_entry(ChatEntry::user("third"));
+        // Select second entry (index 1).
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(1));
+
+        // When handling fork from entry.
+        let result = handle_fork_from_entry(&mut state);
+
+        // Then a SessionForkRequested command is returned with at_ordinal == 1.
+        assert!(result.commands.iter().any(|c| {
+            matches!(
+                c,
+                Command::SessionForkRequested(
+                    crate::feat::session::protocol::session_fork_requested::SessionForkRequested {
+                        at_ordinal: 1,
+                        ..
+                    }
+                )
+            )
+        }));
+    }
+
+    #[rstest::rstest]
+    fn fork_from_entry_noop_with_no_selection() {
+        // Given a state with entries but no selection.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().clear_selection();
+
+        // When handling fork from entry.
+        let result = handle_fork_from_entry(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn fork_from_entry_noop_with_empty_history() {
+        // Given a state with no history.
+        let mut state = AppState::default();
+
+        // When handling fork from entry.
+        let result = handle_fork_from_entry(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn fork_from_entry_uses_selected_index_as_ordinal() {
+        // Given a state with 5 entries, entry at index 3 selected.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::assistant("b"));
+        state.active_session_mut().push_entry(ChatEntry::user("c"));
+        state.active_session_mut().push_entry(ChatEntry::assistant("d"));
+        state.active_session_mut().push_entry(ChatEntry::user("e"));
+        // Select entry at index 3 ("d").
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(3));
+
+        // When handling fork from entry.
+        let result = handle_fork_from_entry(&mut state);
+
+        // Then at_ordinal is 3.
+        let ordinal = result.commands.iter().find_map(|c| match c {
+            Command::SessionForkRequested(req) => Some(req.at_ordinal),
+            _ => None,
+        });
+        assert_eq!(ordinal, Some(3));
     }
 }

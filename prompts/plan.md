@@ -1,5 +1,5 @@
 +++
-name = "plan"
+name = "plan-code"
 description = "Discuss and plan software implementation."
 +++
 
