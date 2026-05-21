@@ -23,6 +23,7 @@ pub mod queue_item;
 pub mod render;
 pub mod session_actor;
 pub mod token_stats;
+pub mod turn_queue;
 #[cfg(test)]
 mod token_stats_tests;
 pub(crate) mod tool_result_status;
