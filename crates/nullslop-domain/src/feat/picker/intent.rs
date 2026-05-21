@@ -11,11 +11,9 @@ use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
-use crate::feat::session::fork_entry::ForkEntry;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
-use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::protocol::{ChatEntryKind, Command, Intent, IntentResult, PickerKind};
+use crate::protocol::{Command, Intent, IntentResult, PickerKind};
 
 use super::validator;
 
@@ -52,11 +50,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             // Load discovered themes as entries.
             load_theme_picker_entries(state);
         }
-        PickerKind::SessionFork => {
-            state.frontend.fork_picker.reset();
-            state.frontend.fork_show_user = true;
-            state.frontend.fork_show_assistant = true;
-        }
         PickerKind::SessionLifecycle => {
             state.frontend.session_lifecycle_picker.reset();
         }
@@ -79,13 +72,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             )])
         }
         PickerKind::Keymap | PickerKind::Theme => IntentResult::empty(),
-        PickerKind::SessionFork => {
-            // Populate from active session history (synchronous, no actor needed).
-            let entries = build_fork_entries(state);
-            state.frontend.all_fork_entries.clone_from(&entries);
-            state.frontend.fork_picker.set_items(entries);
-            IntentResult::empty()
-        }
         PickerKind::SessionLifecycle => {
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
@@ -197,7 +183,6 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Session) => (confirm_session(state), None),
         Some(PickerKind::Persona) => (confirm_persona(state), None),
         Some(PickerKind::Theme) => (confirm_theme(state), None),
-        Some(PickerKind::SessionFork) => (confirm_session_fork(state), None),
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         None => (IntentResult::empty(), None),
     }
@@ -371,88 +356,6 @@ fn confirm_session(state: &mut AppState) -> IntentResult {
     IntentResult::with_commands(vec![Command::SessionLoadRequested(SessionLoadRequested {
         session_id,
     })])
-}
-
-/// Builds fork entries from the active session's history.
-///
-/// Includes only User and Assistant entries, preserving their ordinal positions.
-fn build_fork_entries(state: &AppState) -> Vec<ForkEntry> {
-    let session = state.active_session();
-    session
-        .history()
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| {
-            matches!(
-                &e.kind,
-                ChatEntryKind::User { .. } | ChatEntryKind::Assistant(_)
-            )
-        })
-        .map(|(i, e)| ForkEntry {
-            ordinal: i,
-            text: e.text(),
-            is_user: matches!(&e.kind, ChatEntryKind::User { .. }),
-            theme: state.frontend.theme.clone(),
-        })
-        .collect()
-}
-
-/// Confirms the selected fork entry and dispatches a fork command.
-fn confirm_session_fork(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.fork_picker.selected_item() else {
-        return IntentResult::empty();
-    };
-    let source_session_id = state.session.active_session_id().clone();
-    let at_ordinal = entry.ordinal;
-
-    state.session.begin_load(source_session_id.clone());
-    state.frontend.scope_stack.pop();
-
-    IntentResult::with_commands(vec![Command::SessionForkRequested(SessionForkRequested {
-        source_session_id,
-        at_ordinal,
-    })])
-}
-
-/// Toggles user message visibility in the fork picker.
-///
-/// No-op if the fork picker is not active.
-pub fn handle_toggle_fork_user_filter(state: &mut AppState) -> IntentResult {
-    if state.frontend.scope_stack.picker_kind().copied() != Some(PickerKind::SessionFork) {
-        return IntentResult::empty();
-    }
-
-    state.frontend.fork_show_user = !state.frontend.fork_show_user;
-    apply_fork_filters(state);
-    IntentResult::empty()
-}
-
-/// Toggles assistant message visibility in the fork picker.
-///
-/// No-op if the fork picker is not active.
-pub fn handle_toggle_fork_assistant_filter(state: &mut AppState) -> IntentResult {
-    if state.frontend.scope_stack.picker_kind().copied() != Some(PickerKind::SessionFork) {
-        return IntentResult::empty();
-    }
-
-    state.frontend.fork_show_assistant = !state.frontend.fork_show_assistant;
-    apply_fork_filters(state);
-    IntentResult::empty()
-}
-
-/// Applies fork filter flags to rebuild the displayed entries.
-fn apply_fork_filters(state: &mut AppState) {
-    let filtered: Vec<ForkEntry> = state
-        .frontend
-        .all_fork_entries
-        .iter()
-        .filter(|e| {
-            (e.is_user && state.frontend.fork_show_user)
-                || (!e.is_user && state.frontend.fork_show_assistant)
-        })
-        .cloned()
-        .collect();
-    state.frontend.fork_picker.set_items(filtered);
 }
 
 /// Populates the lifecycle picker entries from user preferences.
