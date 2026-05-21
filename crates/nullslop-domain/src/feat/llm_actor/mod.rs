@@ -10,8 +10,9 @@ mod session;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
@@ -28,9 +29,44 @@ use crate::feat::tools_actor::protocol::event::{
 };
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition};
 use crate::protocol::{ChatEntry, Command, Event, SessionId};
+use error_stack::Report;
 use futures::StreamExt as _;
 
+use nullslop_provider::{LlmService, LlmServiceError, OnRetry, RetryingLlmService};
 use session::{SessionData, SessionState};
+
+/// OnRetry callback that pushes a system chat entry to notify the user.
+struct PushEntryOnRetry {
+    sink: Arc<dyn MessageSink>,
+    session_id: SessionId,
+}
+
+impl PushEntryOnRetry {
+    fn new(sink: Arc<dyn MessageSink>, session_id: SessionId) -> Self {
+        Self { sink, session_id }
+    }
+}
+
+impl OnRetry for PushEntryOnRetry {
+    fn on_retry(
+        &self,
+        attempt: u32,
+        max_retries: u32,
+        wait_duration: Duration,
+        error: &Report<LlmServiceError>,
+    ) {
+        let secs = wait_duration.as_secs();
+        let message = format!(
+            "LLM request failed ({error}), retrying in {secs}s (attempt {attempt}/{max_retries})"
+        );
+        let _ = self
+            .sink
+            .send_command(Command::PushChatEntry(PushChatEntry {
+                session_id: self.session_id.clone(),
+                entry: ChatEntry::system(message),
+            }));
+    }
+}
 
 /// LLM streaming actor.
 ///
@@ -136,10 +172,12 @@ impl LlmActor {
         provider_id: Option<&str>,
         ctx: &ActorContext,
     ) {
-        // Collect current tool definitions from shared state.
-        let tools: Vec<ToolDefinition> = {
+        // Collect current tool definitions and retry config from shared state.
+        let (tools, retry_config): (Vec<ToolDefinition>, nullslop_provider::RetryConfig) = {
             let guard = self.state.read();
-            guard.context.tool_definitions.values().cloned().collect()
+            let tools = guard.context.tool_definitions.values().cloned().collect();
+            let retry_config = guard.frontend.preferences.request_retry.to_retry_config();
+            (tools, retry_config)
         };
 
         let message_count = messages.len();
@@ -202,7 +240,7 @@ impl LlmActor {
         let sid = session_id.clone();
 
         let handle = tokio::spawn(async move {
-            let service = match factory.create() {
+            let service: Box<dyn LlmService> = match factory.create() {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(err = ?e, "failed to create LLM service");
@@ -220,6 +258,12 @@ impl LlmActor {
                     return;
                 }
             };
+
+            let service = RetryingLlmService::new(
+                service,
+                retry_config,
+                Box::new(PushEntryOnRetry::new(sink.clone(), sid.clone())),
+            );
 
             let stream = match service.chat_stream_with_tools(messages, tools).await {
                 Ok(s) => s,
