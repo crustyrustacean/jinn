@@ -269,6 +269,9 @@ impl IntentHandler {
             Intent::SidebarSessionArchive => {
                 feat::ui::sidebar::sessions::handle_session_archive(state)
             }
+            Intent::SidebarSessionContinue => {
+                feat::ui::sidebar::sessions::handle_session_continue(state)
+            }
             Intent::SidebarConfirm => {
                 feat::ui::sidebar::sessions::handle_session_activate(state);
                 IntentResult::empty()
@@ -289,12 +292,6 @@ impl IntentHandler {
             }
             Intent::ForkFromEntry => {
                 feat::chat_entry_selection::intent::handle_fork_from_entry(state)
-            }
-            Intent::ToggleForkUserFilter => {
-                feat::picker::intent::handle_toggle_fork_user_filter(state)
-            }
-            Intent::ToggleForkAssistantFilter => {
-                feat::picker::intent::handle_toggle_fork_assistant_filter(state)
             }
 
             // --- Session Lifecycle ---

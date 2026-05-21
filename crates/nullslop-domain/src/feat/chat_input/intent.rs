@@ -450,6 +450,13 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
 /// Simply switches out of the current mode. Does NOT cancel streams or drain
 /// queues — the cancel confirmation prompt handles that via `NormalEscape`.
 pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
+    // If autocomplete is active, dismiss it and stay in the current scope.
+    // Two-level ESC: first press closes popup, second press exits mode.
+    if state.active_chat_input().autocomplete().is_some() {
+        state.active_chat_input_mut().deactivate_autocomplete();
+        return IntentResult::empty();
+    }
+
     // If leaving the theme picker without confirming, restore the original theme.
     if state.frontend.scope_stack.picker_kind() == Some(&crate::protocol::PickerKind::Theme)
         && let Some(original) = state.frontend.theme_preview_original.take()
