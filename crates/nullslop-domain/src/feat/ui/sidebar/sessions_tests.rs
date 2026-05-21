@@ -1003,3 +1003,330 @@ fn truncate_str_returns_empty_when_max_len_zero() {
     // Then an empty string is returned.
     assert_eq!(result, "");
 }
+
+// ---------------------------------------------------------------------------
+// Tree integration tests
+// ---------------------------------------------------------------------------
+
+/// Helper: create a state with a known parent-child tree.
+///
+/// Creates:
+/// - root_a (oldest root)
+///   - child_a1 (oldest child of root_a)
+///     - grandchild_a1a
+///   - child_a2
+/// - root_b (newest root)
+fn state_with_tree() -> AppState {
+    let mut state = AppState::default();
+
+    // Create root_a with a title.
+    let mut root_a = ChatSessionState::new();
+    root_a.push_entry(ChatEntry::user("root a"));
+    root_a.set_title("root a".to_owned());
+    let root_a_id = root_a.session_id().clone();
+    state.session.sessions_mut().insert(root_a_id.clone(), root_a);
+
+    // Create child_a1 under root_a.
+    let mut child_a1 = ChatSessionState::new();
+    child_a1.set_title("child a1".to_owned());
+    child_a1.set_parent_session(root_a_id.clone());
+    let child_a1_id = child_a1.session_id().clone();
+    state.session.sessions_mut().insert(child_a1_id.clone(), child_a1);
+
+    // Create grandchild_a1a under child_a1.
+    let mut grandchild = ChatSessionState::new();
+    grandchild.set_title("grandchild a1a".to_owned());
+    grandchild.set_parent_session(child_a1_id.clone());
+    let grandchild_id = grandchild.session_id().clone();
+    state.session.sessions_mut().insert(grandchild_id, grandchild);
+
+    // Create child_a2 under root_a.
+    let mut child_a2 = ChatSessionState::new();
+    child_a2.set_title("child a2".to_owned());
+    child_a2.set_parent_session(root_a_id.clone());
+    let child_a2_id = child_a2.session_id().clone();
+    state.session.sessions_mut().insert(child_a2_id, child_a2);
+
+    // Create root_b with a title (newest root).
+    let mut newest_root = ChatSessionState::new();
+    newest_root.push_entry(ChatEntry::user("root b"));
+    newest_root.set_title("root b".to_owned());
+    let newest_root_id = newest_root.session_id().clone();
+    state.session.sessions_mut().insert(newest_root_id.clone(), newest_root);
+
+    // Remove the default session (created at AppState::default).
+    let default_id = state.session.active_session_id().clone();
+    if default_id != root_a_id && default_id != newest_root_id {
+        state.session.sessions_mut().remove(&default_id);
+    }
+
+    // Set active to root_b.
+    state.session.set_active(newest_root_id);
+
+    state
+}
+
+// --- Tree ordering ---
+
+#[rstest::rstest]
+fn tree_roots_sorted_by_created_at_descending() {
+    // Given state with two root sessions.
+    let state = state_with_tree();
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the roots appear first and are ordered newest-first.
+    // root_b was created last, root_a was created first.
+    let roots: Vec<_> = sessions.iter().filter(|s| s.depth == 0).collect();
+    assert_eq!(roots.len(), 2, "should have 2 roots");
+    assert!(roots[0].created_at >= roots[1].created_at, "roots should be sorted newest-first");
+}
+
+#[rstest::rstest]
+fn tree_children_sorted_by_created_at_ascending_under_parent() {
+    // Given state with root_a having two children.
+    let state = state_with_tree();
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Find root_a's children (depth 1, parent is root_a).
+    let root_a_id = sessions
+        .iter()
+        .find(|s| s.title.contains("root a"))
+        .map(|s| s.id.clone())
+        .expect("root a should exist");
+    let children: Vec<_> = sessions
+        .iter()
+        .filter(|s| s.parent_id.as_ref() == Some(&root_a_id))
+        .collect();
+
+    // Then children are sorted oldest-first.
+    assert_eq!(children.len(), 2, "root_a should have 2 children");
+    assert!(
+        children[0].created_at <= children[1].created_at,
+        "children should be sorted oldest-first"
+    );
+}
+
+#[rstest::rstest]
+fn tree_dfs_order_is_correct() {
+    // Given state with root_a -> child_a1 -> grandchild_a1a, child_a2, root_b.
+    let state = state_with_tree();
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then DFS order is: root_b (newest root), root_a, child_a1, grandchild_a1a, child_a2.
+    // Or root_a first, depending on creation timing.
+    // The invariant is: root_a appears before its children, child_a1 appears before grandchild_a1a.
+    let root_a_pos = sessions
+        .iter()
+        .position(|s| s.title.contains("root a"))
+        .expect("root a");
+    let child_a1_pos = sessions
+        .iter()
+        .position(|s| s.title.contains("child a1"))
+        .expect("child a1");
+    let grandchild_pos = sessions
+        .iter()
+        .position(|s| s.title.contains("grandchild"))
+        .expect("grandchild");
+    let child_a2_pos = sessions
+        .iter()
+        .position(|s| s.title.contains("child a2"))
+        .expect("child a2");
+
+    assert!(root_a_pos < child_a1_pos, "root_a before child_a1");
+    assert!(child_a1_pos < grandchild_pos, "child_a1 before grandchild");
+    assert!(grandchild_pos < child_a2_pos, "grandchild before child_a2 (DFS)");
+}
+
+#[rstest::rstest]
+fn orphan_session_appears_as_root() {
+    // Given a session with a parent that is not loaded.
+    let mut state = AppState::default();
+    let mut orphan = ChatSessionState::new();
+    orphan.set_title("orphan".to_owned());
+    orphan.set_parent_session(crate::protocol::SessionId::new());
+    state.session.sessions_mut().insert(orphan.session_id().clone(), orphan);
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the orphan appears as a root (depth 0).
+    let orphan_entry = sessions.iter().find(|s| s.title.contains("orphan"));
+    assert!(orphan_entry.is_some(), "orphan should appear");
+    assert_eq!(orphan_entry.unwrap().depth, 0, "orphan should be treated as root");
+}
+
+// --- Navigation through tree ---
+
+#[rstest::rstest]
+fn navigate_down_from_root_goes_to_first_child() {
+    // Given state with a tree and cursor on root_a.
+    let mut state = state_with_tree();
+    let sessions = sorted_open_sessions(&state);
+    let root_a_index = sessions
+        .iter()
+        .position(|s| s.title.contains("root a"))
+        .expect("root a");
+    state.frontend.sessions_section.selected_index = Some(root_a_index);
+
+    // When navigating down.
+    navigate(&SidebarIntent::MoveDown, &mut state);
+
+    // Then the cursor is on the next entry (root_a's first child in DFS order).
+    let new_sessions = sorted_open_sessions(&state);
+    let new_index = state.frontend.sessions_section.selected_index.unwrap();
+    assert_eq!(new_index, root_a_index + 1, "cursor should move to next DFS entry");
+    // And the entry is child_a1.
+    assert!(
+        new_sessions[new_index].title.contains("child a1"),
+        "next entry should be child_a1"
+    );
+}
+
+#[rstest::rstest]
+fn navigate_up_from_child_goes_to_parent() {
+    // Given state with a tree and cursor on child_a1.
+    let mut state = state_with_tree();
+    let sessions = sorted_open_sessions(&state);
+    let child_a1_index = sessions
+        .iter()
+        .position(|s| s.title.contains("child a1"))
+        .expect("child a1");
+    state.frontend.sessions_section.selected_index = Some(child_a1_index);
+
+    // When navigating up.
+    navigate(&SidebarIntent::MoveUp, &mut state);
+
+    // Then the cursor is on root_a (parent).
+    let new_index = state.frontend.sessions_section.selected_index.unwrap();
+    assert_eq!(new_index, child_a1_index - 1, "cursor should move to parent");
+    let new_sessions = sorted_open_sessions(&state);
+    assert!(
+        new_sessions[new_index].title.contains("root a"),
+        "previous entry should be root_a"
+    );
+}
+
+// --- Close sessions in tree ---
+
+#[rstest::rstest]
+fn close_child_session_clamps_cursor() {
+    // Given state with a tree, cursor on child_a1.
+    let mut state = state_with_tree();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    let sessions = sorted_open_sessions(&state);
+    let child_a1_index = sessions
+        .iter()
+        .position(|s| s.title.contains("child a1"))
+        .expect("child a1");
+    let child_a1_id = sessions[child_a1_index].id.clone();
+    state.frontend.sessions_section.selected_index = Some(child_a1_index);
+
+    // When closing child_a1.
+    handle_session_close(&mut state);
+
+    // Then child_a1 is removed.
+    assert!(!state.session.sessions().contains_key(&child_a1_id));
+    // And the cursor is clamped to valid range.
+    let remaining = sorted_open_sessions(&state);
+    let selected = state.frontend.sessions_section.selected_index.unwrap();
+    assert!(selected < remaining.len());
+}
+
+#[rstest::rstest]
+fn close_root_session_promotes_children_to_roots() {
+    // Given state with root_a having children.
+    let mut state = state_with_tree();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    let sessions = sorted_open_sessions(&state);
+    let root_a_index = sessions
+        .iter()
+        .position(|s| s.title.contains("root a"))
+        .expect("root a");
+    let root_a_id = sessions[root_a_index].id.clone();
+    state.frontend.sessions_section.selected_index = Some(root_a_index);
+
+    // When closing root_a.
+    handle_session_close(&mut state);
+
+    // Then root_a is removed.
+    assert!(!state.session.sessions().contains_key(&root_a_id));
+    // And its former children are now orphans (roots in the new tree).
+    let remaining = sorted_open_sessions(&state);
+    let former_children: Vec<_> = remaining
+        .iter()
+        .filter(|s| s.title.contains("child a") || s.title.contains("grandchild"))
+        .collect();
+    assert!(!former_children.is_empty(), "former children should still be present");
+    // All former children should now be roots or have adjusted depth.
+    // The children of root_a become orphans → treated as roots.
+    let child_a1_entry = remaining.iter().find(|s| s.title.contains("child a1"));
+    assert!(
+        child_a1_entry.is_some(),
+        "child_a1 should still exist"
+    );
+    assert_eq!(
+        child_a1_entry.unwrap().depth, 0,
+        "child_a1 should now be a root (orphan)"
+    );
+}
+
+// --- Activate child session ---
+
+#[rstest::rstest]
+fn activate_child_session_switches_active() {
+    // Given state with a tree, cursor on child_a1.
+    let mut state = state_with_tree();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    let sessions = sorted_open_sessions(&state);
+    let child_a1_index = sessions
+        .iter()
+        .position(|s| s.title.contains("child a1"))
+        .expect("child a1");
+    let child_a1_id = sessions[child_a1_index].id.clone();
+    state.frontend.sessions_section.selected_index = Some(child_a1_index);
+
+    // When activating.
+    handle_session_activate(&mut state);
+
+    // Then the active session is child_a1.
+    assert_eq!(*state.session.active_session_id(), child_a1_id);
+}
+
+// --- Render tree with mixed depths ---
+
+#[rstest::rstest]
+fn render_tree_shows_tree_characters() {
+    // Given state with a tree.
+    let mut section = SessionsSection::new();
+    let state = state_with_tree();
+
+    // When rendering.
+    let (mut terminal, area) = nullslop_testutil::setup_term(30, 15);
+    terminal
+        .draw(|frame| {
+            section.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then the buffer contains tree connector characters.
+    let buffer = terminal.backend().buffer();
+    let text: String = (0..15)
+        .flat_map(|y| {
+            (0..30).map(move |x| {
+                buffer
+                    .cell((x, y))
+                    .map_or(' ', |c| c.symbol().chars().next().unwrap_or(' '))
+            })
+        })
+        .collect();
+    assert!(
+        text.contains('├') || text.contains('└'),
+        "rendered output should contain tree connectors, got: {text}"
+    );
+}

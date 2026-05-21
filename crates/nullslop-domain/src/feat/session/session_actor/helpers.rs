@@ -4,8 +4,8 @@ use crate::common::actor::ActorContext;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::compaction_actor::protocol::command::CompactContext;
 use crate::feat::context::protocol::command::AssemblePrompt;
-use crate::feat::session::queue_item::QueueItem;
 use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::queue_item::QueueItem;
 use crate::protocol::{ChatEntry, Command, Event, SessionId};
 
 use super::SessionPersistenceActor;
