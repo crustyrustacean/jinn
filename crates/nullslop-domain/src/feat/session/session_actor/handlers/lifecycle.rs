@@ -279,12 +279,10 @@ impl SessionPersistenceActor {
             tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for teardown success");
         }
 
-        if let Err(e) =
-            ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                session_id: payload.session_id.clone(),
-                error: None,
-            }))
-        {
+        if let Err(e) = ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+            session_id: payload.session_id.clone(),
+            error: None,
+        })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
         }
     }
@@ -340,12 +338,12 @@ impl SessionPersistenceActor {
                     .await;
 
                 if !success {
-                    if let Err(e) = ctx.send_event(Event::SessionTeardownFinished(
-                        SessionTeardownFinished {
+                    if let Err(e) =
+                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
                             session_id: payload.session_id.clone(),
                             error: Some("teardown failed".to_owned()),
-                        },
-                    )) {
+                        }))
+                    {
                         tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
                     }
                     return;
@@ -353,10 +351,12 @@ impl SessionPersistenceActor {
             }
             // If no teardown command exists but state is SetupRan, skip teardown and proceed.
 
-            if let Err(e) = ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                session_id: payload.session_id.clone(),
-                error: None,
-            })) {
+            if let Err(e) =
+                ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+                    session_id: payload.session_id.clone(),
+                    error: None,
+                }))
+            {
                 tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
             }
         }
@@ -750,7 +750,9 @@ mod tests {
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().set_lifecycle_name(Some("test".to_owned()));
+            state
+                .active_session_mut()
+                .set_lifecycle_name(Some("test".to_owned()));
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
@@ -789,7 +791,9 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().set_lifecycle_name(Some("test".to_owned()));
+            state
+                .active_session_mut()
+                .set_lifecycle_name(Some("test".to_owned()));
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
@@ -832,7 +836,9 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().set_lifecycle_name(Some("test".to_owned()));
+            state
+                .active_session_mut()
+                .set_lifecycle_name(Some("test".to_owned()));
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
@@ -1160,7 +1166,9 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().set_lifecycle_name(Some("test".to_owned()));
+            state
+                .active_session_mut()
+                .set_lifecycle_name(Some("test".to_owned()));
             state.active_session_mut().advance_lifecycle_after_setup();
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
@@ -1208,7 +1216,9 @@ mod tests {
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().set_lifecycle_name(Some("test".to_owned()));
+            state
+                .active_session_mut()
+                .set_lifecycle_name(Some("test".to_owned()));
             state.active_session_mut().advance_lifecycle_after_setup();
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),

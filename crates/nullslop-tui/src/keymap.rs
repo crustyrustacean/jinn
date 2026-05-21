@@ -60,6 +60,35 @@ fn add_sidebar_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Int
         .bind("i", Intent::EnterInsertMode, KeyCategory::Input);
 }
 
+/// Adds shared picker keybindings common to all picker scopes.
+///
+/// Includes: escape, confirm, navigation (up/down), cursor (left/right),
+/// backspace, open keymap picker, new session, and catch-all char input.
+fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Intent, KeyCategory>) {
+    b.bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
+        .bind("<enter>", Intent::PickerConfirm, KeyCategory::Model)
+        .bind("<up>", Intent::PickerMoveUp, KeyCategory::Navigation)
+        .bind("<down>", Intent::PickerMoveDown, KeyCategory::Navigation)
+        .bind("<left>", Intent::PickerMoveCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::PickerMoveCursorRight, KeyCategory::Input)
+        .bind("<backspace>", Intent::PickerBackspace, KeyCategory::Input)
+        .bind(
+            "<c-p>",
+            Intent::OpenPicker {
+                kind: PickerKind::Keymap,
+            },
+            KeyCategory::General,
+        )
+        .bind("<c-n>", Intent::SessionNew, KeyCategory::General)
+        .catch_all(|key: KeyEvent| {
+            if let Key::Char(c) = key.key {
+                Some(Intent::PickerInsertChar { ch: c })
+            } else {
+                None
+            }
+        });
+}
+
 /// Builds and returns the full keymap with all scope bindings.
 #[must_use]
 #[rustfmt::skip]
@@ -183,27 +212,33 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             });
         });
 
+    // Picker scopes — each picker kind has its own scope for kind-specific bindings.
+    // Shared bindings (navigation, confirm, escape, char input) are in add_picker_base.
     keymap
-        .scope(Scope::Picker, |b| {
-            b.bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
-            .bind("<enter>", Intent::PickerConfirm, KeyCategory::Model)
-            .bind("<up>", Intent::PickerMoveUp, KeyCategory::Navigation)
-            .bind("<down>", Intent::PickerMoveDown, KeyCategory::Navigation)
-            .bind("<left>", Intent::PickerMoveCursorLeft, KeyCategory::Input)
-            .bind("<right>", Intent::PickerMoveCursorRight, KeyCategory::Input)
-            .bind("<backspace>", Intent::PickerBackspace, KeyCategory::Input)
-            .bind("<c-r>", Intent::RefreshModels, KeyCategory::Model)
-            .bind("<c-p>", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
-            .bind("<c-a>", Intent::ToggleForkAssistantFilter, KeyCategory::General)
-            .bind("<c-n>", Intent::SessionNew, KeyCategory::General)
-            .bind("<c-u>", Intent::ToggleForkUserFilter, KeyCategory::General)
-            .catch_all(|key: KeyEvent| {
-                if let Key::Char(c) = key.key {
-                    Some(Intent::PickerInsertChar { ch: c })
-                } else {
-                    None
-                }
-            });
+        .scope(Scope::PickerKeymap, |b| {
+            add_picker_base(b);
+            b.bind("<c-a>", Intent::ToggleKeymapScopeFilter, KeyCategory::General);
+        })
+        .scope(Scope::PickerProvider, |b| {
+            add_picker_base(b);
+            b.bind("<c-r>", Intent::RefreshModels, KeyCategory::Model);
+        })
+        .scope(Scope::PickerFork, |b| {
+            add_picker_base(b);
+            b.bind("<c-a>", Intent::ToggleForkAssistantFilter, KeyCategory::General)
+             .bind("<c-u>", Intent::ToggleForkUserFilter, KeyCategory::General);
+        })
+        .scope(Scope::PickerSession, |b| {
+            add_picker_base(b);
+        })
+        .scope(Scope::PickerPersona, |b| {
+            add_picker_base(b);
+        })
+        .scope(Scope::PickerTheme, |b| {
+            add_picker_base(b);
+        })
+        .scope(Scope::PickerLifecycle, |b| {
+            add_picker_base(b);
         });
 
     // ArgInput scope — typing positional args for a lifecycle command.
@@ -290,7 +325,13 @@ pub fn collect_all_bindings(
         Scope::SidebarPins,
         Scope::SidebarSessions,
         Scope::SidebarMinimap,
-        Scope::Picker,
+        Scope::PickerProvider,
+        Scope::PickerKeymap,
+        Scope::PickerSession,
+        Scope::PickerPersona,
+        Scope::PickerTheme,
+        Scope::PickerFork,
+        Scope::PickerLifecycle,
         Scope::Input,
         Scope::ArgInput,
     ] {

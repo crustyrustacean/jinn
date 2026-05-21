@@ -37,7 +37,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         }
         PickerKind::Keymap => {
             state.frontend.keymap_picker.reset();
-            state.frontend.keymap_picker_show_all = false;
+            state.frontend.keymap_picker_show_all = true;
         }
         PickerKind::Session => {
             state.frontend.session_picker.reset();
@@ -246,6 +246,10 @@ pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
 pub fn handle_toggle_keymap_scope_filter(state: &mut AppState) -> IntentResult {
     validator::validate_toggle_keymap_scope_filter(state);
 
+    if state.frontend.scope_stack.picker_kind().copied() != Some(PickerKind::Keymap) {
+        return IntentResult::empty();
+    }
+
     state.frontend.keymap_picker_show_all = !state.frontend.keymap_picker_show_all;
 
     let scope = state
@@ -295,7 +299,6 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
         }),
     ])
 }
-
 
 /// Confirms a keymap selection. Returns the selected intent for the caller
 /// to re-dispatch, rather than dispatching it directly (avoids circular dep).

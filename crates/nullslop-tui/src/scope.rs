@@ -20,8 +20,20 @@ pub enum Scope {
     SidebarSessions,
     /// Sidebar — Minimap section (display-only).
     SidebarMinimap,
-    /// Picker mode — filtering and selecting a provider.
-    Picker,
+    /// Picker — Provider/model selection.
+    PickerProvider,
+    /// Picker — Keymap search.
+    PickerKeymap,
+    /// Picker — Session browser.
+    PickerSession,
+    /// Picker — Persona selection.
+    PickerPersona,
+    /// Picker — Theme selection.
+    PickerTheme,
+    /// Picker — Session fork point selection.
+    PickerFork,
+    /// Picker — Session lifecycle recipe selection.
+    PickerLifecycle,
     /// Input mode — typing into the input buffer.
     Input,
     /// Arg input mode — typing positional args for a lifecycle command.
@@ -43,7 +55,13 @@ impl std::fmt::Display for Scope {
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
             Self::SidebarMinimap => write!(f, "SidebarMinimap"),
-            Self::Picker => write!(f, "Picker"),
+            Self::PickerProvider => write!(f, "Picker(provider)"),
+            Self::PickerKeymap => write!(f, "Picker(keymap)"),
+            Self::PickerSession => write!(f, "Picker(session)"),
+            Self::PickerPersona => write!(f, "Picker(persona)"),
+            Self::PickerTheme => write!(f, "Picker(theme)"),
+            Self::PickerFork => write!(f, "Picker(fork)"),
+            Self::PickerLifecycle => write!(f, "Picker(lifecycle)"),
             Self::Input => write!(f, "Input"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
@@ -63,7 +81,13 @@ impl std::str::FromStr for Scope {
             "SidebarPins" => Ok(Self::SidebarPins),
             "SidebarSessions" => Ok(Self::SidebarSessions),
             "SidebarMinimap" => Ok(Self::SidebarMinimap),
-            "Picker" => Ok(Self::Picker),
+            "Picker(provider)" => Ok(Self::PickerProvider),
+            "Picker(keymap)" => Ok(Self::PickerKeymap),
+            "Picker(session)" => Ok(Self::PickerSession),
+            "Picker(persona)" => Ok(Self::PickerPersona),
+            "Picker(theme)" => Ok(Self::PickerTheme),
+            "Picker(fork)" => Ok(Self::PickerFork),
+            "Picker(lifecycle)" => Ok(Self::PickerLifecycle),
             "Input" => Ok(Self::Input),
             "ArgInput" => Ok(Self::ArgInput),
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
