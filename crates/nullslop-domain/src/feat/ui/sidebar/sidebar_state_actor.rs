@@ -7,7 +7,7 @@
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::session::protocol::session_closed::SessionClosed;
-use crate::feat::ui::sidebar::sessions::{scroll_to_cursor, sorted_open_sessions};
+use crate::feat::ui::sidebar::sessions;
 use crate::protocol::Event;
 
 /// Actor that adjusts sidebar cursor state in response to session close.
@@ -40,19 +40,10 @@ impl Actor for SidebarStateActor {
 }
 
 impl SidebarStateActor {
-    /// Clamp `selected_index` to valid range and re-scroll.
+    /// Reconcile sidebar cursor and active session after a session is closed.
     fn handle_session_closed(&self, _payload: &SessionClosed) {
         let mut state = self.state.write();
-        let sessions = sorted_open_sessions(&state);
-        if sessions.is_empty() {
-            state.frontend.sessions_section.selected_index = Some(0);
-            return;
-        }
-
-        let current = state.frontend.sessions_section.selected_index.unwrap_or(0);
-        let clamped = current.min(sessions.len() - 1);
-        state.frontend.sessions_section.selected_index = Some(clamped);
-        scroll_to_cursor(&mut state);
+        sessions::reconcile_after_session_removal(&mut state);
     }
 }
 
