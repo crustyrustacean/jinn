@@ -359,7 +359,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn models_refreshed_fills_context_length_from_registry_when_api_returns_none() {
-        // Given a registry with zai provider that has context_length: Some(128000).
+        // Given a registry with zai provider that has context_length: Some(128_000).
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
                 name: "zai".to_owned(),
@@ -369,7 +369,7 @@ mod tests {
                 api_key_env: None,
                 requires_key: false,
                 extra_body: None,
-                context_length: Some(128000),
+                context_length: Some(128_000),
             }],
             aliases: vec![],
             default_provider: None,
@@ -397,7 +397,7 @@ mod tests {
         // Then the model cache has context_length from the registry.
         let s = state.read();
         let cache = s.provider.model_cache.as_ref().expect("cache should be set");
-        assert_eq!(cache.entries["zai"][0].context_length, Some(128000));
+        assert_eq!(cache.entries["zai"][0].context_length, Some(128_000));
     }
 
     #[rstest::rstest]
@@ -507,7 +507,7 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn model_cache_loaded_fills_context_length_from_registry_when_cache_has_none() {
-        // Given a registry with zai provider that has context_length: Some(128000).
+        // Given a registry with zai provider that has context_length: Some(128_000).
         let config = ProvidersConfig {
             providers: vec![ProviderEntry {
                 name: "zai".to_owned(),
@@ -517,7 +517,7 @@ mod tests {
                 api_key_env: None,
                 requires_key: false,
                 extra_body: None,
-                context_length: Some(128000),
+                context_length: Some(128_000),
             }],
             aliases: vec![],
             default_provider: None,
@@ -545,7 +545,7 @@ mod tests {
         // Then the model cache in state has context_length from the registry.
         let s = state.read();
         let loaded = s.provider.model_cache.as_ref().expect("cache should be set");
-        assert_eq!(loaded.entries["zai"][0].context_length, Some(128000));
+        assert_eq!(loaded.entries["zai"][0].context_length, Some(128_000));
     }
 
     #[rstest::rstest]
