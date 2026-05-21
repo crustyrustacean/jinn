@@ -300,7 +300,6 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     ])
 }
 
-
 /// Confirms a keymap selection. Returns the selected intent for the caller
 /// to re-dispatch, rather than dispatching it directly (avoids circular dep).
 fn confirm_keymap(state: &mut AppState) -> (IntentResult, Option<Intent>) {

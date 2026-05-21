@@ -179,9 +179,7 @@ impl FocusScope {
             | Self::SidebarSessions
             | Self::SidebarMinimap
             | Self::SidebarResize => Mode::Normal,
-            Self::Input
-            | Self::ArgInput
-            | Self::RenameSessionInput => Mode::Input,
+            Self::Input | Self::ArgInput | Self::RenameSessionInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
         }
     }
@@ -560,7 +558,7 @@ impl AppState {
         let kind = self.frontend.scope_stack.picker_kind().copied()?;
         match kind {
             PickerKind::Provider => Some(&mut self.provider.provider_picker),
-                        PickerKind::Keymap => Some(&mut self.frontend.keymap_picker),
+            PickerKind::Keymap => Some(&mut self.frontend.keymap_picker),
             PickerKind::Session => Some(&mut self.frontend.session_picker),
             PickerKind::Persona => Some(&mut self.frontend.persona_picker),
             PickerKind::Theme => Some(&mut self.frontend.theme_picker),

@@ -374,10 +374,7 @@ mod tests {
         );
         // And PersistSession, PushChatEntry, then RunSessionSetup are emitted.
         assert_eq!(result.commands.len(), 3);
-        assert!(matches!(
-            &result.commands[0],
-            Command::PersistSession(_)
-        ));
+        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
         assert!(matches!(&result.commands[1], Command::PushChatEntry(_)));
         assert!(matches!(
             &result.commands[2],
@@ -408,10 +405,7 @@ mod tests {
             handle_session_lifecycle_setup(&mut state, "fossil branch", &["my-branch".to_owned()]);
 
         // Then PersistSession is emitted first.
-        assert!(matches!(
-            &result.commands[0],
-            Command::PersistSession(_)
-        ));
+        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
         // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
             &result.commands[2],
@@ -568,10 +562,7 @@ mod tests {
             &["my-branch".to_owned(), "target-dir".to_owned()]
         );
         // Then PersistSession is emitted first.
-        assert!(matches!(
-            &result.commands[0],
-            Command::PersistSession(_)
-        ));
+        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
         // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
             &result.commands[2],
@@ -877,10 +868,7 @@ mod tests {
         // Then a command is emitted with the rendered args.
         assert!(!result.commands.is_empty(), "command should be emitted");
         // Then PersistSession is emitted first.
-        assert!(matches!(
-            &result.commands[0],
-            Command::PersistSession(_)
-        ));
+        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
         // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
             &result.commands[2],
@@ -923,10 +911,7 @@ mod tests {
             &["my branch".to_owned(), "target".to_owned()]
         );
         // Then PersistSession is emitted first.
-        assert!(matches!(
-            &result.commands[0],
-            Command::PersistSession(_)
-        ));
+        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
         // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
             &result.commands[2],
@@ -1004,10 +989,7 @@ mod tests {
             Some("fossil branch")
         );
         // And PersistSession, PushChatEntry, then RunSessionSetup are emitted.
-        assert!(matches!(
-            &result.commands[0],
-            Command::PersistSession(_)
-        ));
+        assert!(matches!(&result.commands[0], Command::PersistSession(_)));
         assert!(matches!(&result.commands[1], Command::PushChatEntry(..)));
         assert!(matches!(&result.commands[2], Command::RunSessionSetup(..)));
     }
