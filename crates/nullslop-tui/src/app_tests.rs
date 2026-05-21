@@ -265,8 +265,8 @@ fn mouse_events_not_handled_when_mouse_selection_disabled() {
 // --- Keymap scope toggle tests ---
 
 #[rstest::rstest]
-fn toggle_scope_filter_to_show_all_includes_multiple_scopes() {
-    // Given an app in Normal scope with keymap picker entries.
+fn toggle_scope_filter_to_current_scope_limits_to_origin_scope() {
+    // Given an app in Normal scope with keymap picker entries (default is show_all=true).
     let mut app = test_app();
     app.which_key.set_scope(Scope::Normal);
 
@@ -274,39 +274,7 @@ fn toggle_scope_filter_to_show_all_includes_multiple_scopes() {
         kind: PickerKind::Keymap,
     });
 
-    // When toggling the scope filter (false -> true).
-    app.route_intent(Intent::ToggleKeymapScopeFilter);
-
-    // Then show_all is true and entries include multiple scopes.
-    {
-        let state = app.core.state.read();
-        assert!(
-            state.frontend.keymap_picker_show_all,
-            "should be true after toggle"
-        );
-        let all_entries = state.frontend.keymap_picker.items();
-        assert!(!all_entries.is_empty(), "should have entries");
-        let scopes: std::collections::HashSet<&str> =
-            all_entries.iter().map(|e| e.scope.as_str()).collect();
-        assert!(
-            scopes.len() > 1,
-            "all scopes should include multiple scopes, got: {scopes:?}"
-        );
-    }
-}
-
-#[rstest::rstest]
-fn toggle_scope_filter_back_to_false_limits_to_normal_scope() {
-    // Given an app in Normal scope with keymap picker entries.
-    let mut app = test_app();
-    app.which_key.set_scope(Scope::Normal);
-
-    app.route_intent(Intent::OpenPicker {
-        kind: PickerKind::Keymap,
-    });
-
-    // When toggling twice (false -> true -> false).
-    app.route_intent(Intent::ToggleKeymapScopeFilter);
+    // When toggling the scope filter (true -> false).
     app.route_intent(Intent::ToggleKeymapScopeFilter);
 
     // Then show_all is false and entries are Normal-scope only (the origin scope).
@@ -314,7 +282,7 @@ fn toggle_scope_filter_back_to_false_limits_to_normal_scope() {
         let state = app.core.state.read();
         assert!(
             !state.frontend.keymap_picker_show_all,
-            "should be false after second toggle"
+            "should be false after toggle"
         );
         let scope_entries = state.frontend.keymap_picker.items();
         assert!(!scope_entries.is_empty(), "should have Normal entries");
@@ -325,6 +293,38 @@ fn toggle_scope_filter_back_to_false_limits_to_normal_scope() {
                 entry.scope
             );
         }
+    }
+}
+
+#[rstest::rstest]
+fn toggle_scope_filter_back_to_all_includes_multiple_scopes() {
+    // Given an app in Normal scope with keymap picker entries.
+    let mut app = test_app();
+    app.which_key.set_scope(Scope::Normal);
+
+    app.route_intent(Intent::OpenPicker {
+        kind: PickerKind::Keymap,
+    });
+
+    // When toggling twice (true -> false -> true).
+    app.route_intent(Intent::ToggleKeymapScopeFilter);
+    app.route_intent(Intent::ToggleKeymapScopeFilter);
+
+    // Then show_all is true and entries include multiple scopes.
+    {
+        let state = app.core.state.read();
+        assert!(
+            state.frontend.keymap_picker_show_all,
+            "should be true after second toggle"
+        );
+        let all_entries = state.frontend.keymap_picker.items();
+        assert!(!all_entries.is_empty(), "should have entries");
+        let scopes: std::collections::HashSet<&str> =
+            all_entries.iter().map(|e| e.scope.as_str()).collect();
+        assert!(
+            scopes.len() > 1,
+            "all scopes should include multiple scopes, got: {scopes:?}"
+        );
     }
 }
 
