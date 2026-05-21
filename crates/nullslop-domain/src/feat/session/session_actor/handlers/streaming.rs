@@ -178,7 +178,7 @@ impl SessionPersistenceActor {
             None => None,
         };
 
-        let drained_entries: Vec<ChatEntry>;
+        let should_process_queue;
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
@@ -208,17 +208,13 @@ impl SessionPersistenceActor {
 
             // Drain queue only on Finished — the turn has ended successfully.
             // Error and Canceled do not drain queued messages.
-            drained_entries = if event.reason == StreamCompletedReason::Finished {
-                session.drain_queue().into_iter().collect()
-            } else {
-                vec![]
-            };
+            should_process_queue =
+                event.reason == StreamCompletedReason::Finished;
         }
 
         // If messages were drained, start a new turn.
-        if !drained_entries.is_empty() {
-            self.start_turn_from_queued(&event.session_id, &drained_entries, ctx)
-                .await;
+        if should_process_queue {
+            self.process_queue(&event.session_id, ctx).await;
         }
 
         // Persist session after stream finishes (not on cancel).
@@ -275,7 +271,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.enqueue_message(ChatEntry::user("queued message"));
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("queued message")));
             assert_eq!(session.queue_len(), 1);
             state.session.active_session_id().clone()
         };
