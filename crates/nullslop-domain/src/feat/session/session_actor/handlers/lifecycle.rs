@@ -490,9 +490,13 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Remove session from HashMap, create replacement if empty, switch active session.
+    /// Remove session from HashMap, create replacement if empty, reconcile cursor.
     ///
     /// Pure state mutation helper. Does NOT emit events — callers handle notifications.
+    /// Delegates cursor and active-session reconciliation to
+    /// [`reconcile_after_session_removal`].
+    ///
+    /// [`reconcile_after_session_removal`]: crate::feat::ui::sidebar::sessions::reconcile_after_session_removal
     pub(in crate::feat::session::session_actor) fn remove_and_replace(
         &self,
         session_id: &crate::protocol::SessionId,
@@ -529,16 +533,9 @@ impl SessionPersistenceActor {
                 .sessions_mut()
                 .insert(new_id.clone(), new_session);
             state.session.set_active(new_id);
-        } else if *state.session.active_session_id() == *session_id {
-            let next_id = state
-                .session
-                .sessions()
-                .keys()
-                .next()
-                .expect("sessions is non-empty")
-                .clone();
-            state.session.set_active(next_id);
         }
+
+        crate::feat::ui::sidebar::sessions::reconcile_after_session_removal(&mut state);
     }
 
     /// PersistSession: persist the session immediately.
