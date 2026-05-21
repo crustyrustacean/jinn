@@ -7,7 +7,7 @@ use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 /// Handles `SidebarSessionTeardown` — re-runs teardown without closing the session.
 ///
 /// Validates that the close can proceed, looks up the selected session's
-/// teardown command, and emits `RunSessionTeardown` with `close_on_success: false`.
+/// teardown command, and emits `RunSessionTeardown` for the session actor to execute.
 /// If the session has no teardown command, this is a no-op.
 ///
 /// # Panics
@@ -61,7 +61,6 @@ pub fn handle_session_teardown(state: &mut AppState) -> crate::protocol::IntentR
                 session_id: target_id,
                 command: rendered,
                 args: lifecycle_args,
-                close_on_success: false,
             },
         ),
     ])

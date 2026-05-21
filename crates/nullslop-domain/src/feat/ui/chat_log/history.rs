@@ -458,10 +458,9 @@ fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'static>> 
         ChatEntryKind::Skill { name, content, .. } => skill::to_lines(name, content, ctx),
         ChatEntryKind::Transient(text) => transient::to_lines(text, ctx),
         ChatEntryKind::Compaction {
-            summary,
             entries_compacted,
             tokens_before,
-            model_used,
-        } => compaction::to_lines(summary, *entries_compacted, *tokens_before, model_used, ctx),
+            ..
+        } => compaction::to_lines(*entries_compacted, *tokens_before, ctx),
     }
 }

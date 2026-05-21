@@ -341,6 +341,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             .arg("-c")
             .arg(&command)
             .current_dir(&cwd)
+            // Disconnect stdin from the controlling TTY so child processes
+            // (and their entire process tree) are removed from the kernel's
+            // TTY input fd list. Without this, child processes inherit the
+            // parent's stdin fd, and under heavy spawn pressure (e.g. cargo
+            // nextest spawning hundreds of test binaries) the kernel's TTY
+            // input buffer overflows before the event thread can drain it,
+            // causing dropped keystrokes.
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn();
