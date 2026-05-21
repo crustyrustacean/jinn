@@ -160,10 +160,6 @@ pub enum Intent {
     ExpandToolEntry,
     /// Fork the session at the currently selected chat entry.
     ForkFromEntry,
-    /// Toggle user message visibility in the fork picker.
-    ToggleForkUserFilter,
-    /// Toggle assistant message visibility in the fork picker.
-    ToggleForkAssistantFilter,
 
     // --- Session Lifecycle ---
     /// Run a lifecycle setup command to create a new session.
@@ -266,8 +262,6 @@ impl std::fmt::Display for Intent {
             Intent::ExpandToolEntry => write!(f, "expand tool entry"),
             Intent::ForkFromEntry => write!(f, "fork from entry"),
 
-            Intent::ToggleForkUserFilter => write!(f, "toggle fork user filter"),
-            Intent::ToggleForkAssistantFilter => write!(f, "toggle fork assistant filter"),
             Intent::SessionLifecycleSetup { lifecycle_name, .. } => {
                 write!(f, "session lifecycle setup: {lifecycle_name}")
             }
