@@ -39,7 +39,7 @@ pub fn handle_session_teardown(state: &mut AppState) -> crate::protocol::IntentR
                 .session_lifecycles
                 .iter()
                 .find(|l| l.name == name)
-                .and_then(|l| l.teardown_command.clone())
+                .and_then(|l| l.teardown.clone())
         });
         (teardown, args)
     };
@@ -48,11 +48,16 @@ pub fn handle_session_teardown(state: &mut AppState) -> crate::protocol::IntentR
         return crate::protocol::IntentResult::empty();
     };
 
-    let template = CommandTemplate::parse(teardown_cmd);
-    let rendered = if lifecycle_args.is_empty() {
-        teardown_cmd.to_owned()
-    } else {
-        template.render(&lifecycle_args)
+    let rendered = match teardown_cmd {
+        crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(cmd) => {
+            let template = CommandTemplate::parse(cmd);
+            if lifecycle_args.is_empty() {
+                cmd.clone()
+            } else {
+                template.render(&lifecycle_args)
+            }
+        }
+        crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => id.to_string(),
     };
 
     crate::protocol::IntentResult::with_commands(vec![

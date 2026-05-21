@@ -37,12 +37,18 @@ pub struct SessionLifecycle {
     pub description: Option<String>,
     /// Command to run when creating a session. Last line of stdout becomes the CWD.
     /// May contain `$1`, `$2` positional args. `None` means no setup (blank lifecycle).
-    #[serde(default)]
-    pub setup_command: Option<String>,
+    ///
+    /// Supports both shell commands and builtin handlers.
+    /// See [`LifecycleCommand`] for details.
+    #[serde(rename = "setup_command", default)]
+    pub setup: Option<crate::feat::session_lifecycle::builtin::LifecycleCommand>,
     /// Command to run when closing a session. Receives the same args as setup.
     /// `None` means no teardown needed.
-    #[serde(default)]
-    pub teardown_command: Option<String>,
+    ///
+    /// Supports both shell commands and builtin handlers.
+    /// See [`LifecycleCommand`] for details.
+    #[serde(rename = "teardown_command", default)]
+    pub teardown: Option<crate::feat::session_lifecycle::builtin::LifecycleCommand>,
 }
 
 /// Default token budget for the token-budget context strategy.
@@ -520,10 +526,10 @@ last_strategy = "sliding_window""#,
             session_lifecycles: vec![SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: Some("Open a fossil branch in a new workdir".to_owned()),
-                setup_command: Some("~/.config/nullslop/scripts/fossil-branch.sh $1".to_owned()),
-                teardown_command: Some(
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("~/.config/nullslop/scripts/fossil-branch.sh $1".to_owned())),
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
                     "~/.config/nullslop/scripts/fossil-cleanup.sh $1".to_owned(),
-                ),
+                )),
             }],
             sidebar_width: None,
             context_token_budget: ContextTokenBudgetConfig::default(),
@@ -541,10 +547,10 @@ last_strategy = "sliding_window""#,
         // Then the lifecycle is preserved.
         assert_eq!(reloaded.session_lifecycles.len(), 1);
         assert_eq!(reloaded.session_lifecycles[0].name, "fossil branch");
-        assert_eq!(
-            reloaded.session_lifecycles[0].setup_command.as_deref(),
-            Some("~/.config/nullslop/scripts/fossil-branch.sh $1")
-        );
+        assert!(matches!(
+            reloaded.session_lifecycles[0].setup,
+            Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(ref s)) if s == "~/.config/nullslop/scripts/fossil-branch.sh $1"
+        ));
     }
 
     #[rstest::rstest]
@@ -613,10 +619,10 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
         // Then session_lifecycles is populated.
         assert_eq!(prefs.session_lifecycles.len(), 1);
         assert_eq!(prefs.session_lifecycles[0].name, "fossil branch");
-        assert_eq!(
-            prefs.session_lifecycles[0].setup_command.as_deref(),
-            Some("~/.config/nullslop/scripts/fossil-branch.sh $1")
-        );
+        assert!(matches!(
+            prefs.session_lifecycles[0].setup,
+            Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(ref s)) if s == "~/.config/nullslop/scripts/fossil-branch.sh $1"
+        ));
     }
 
     #[rstest::rstest]

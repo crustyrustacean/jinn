@@ -45,8 +45,13 @@ pub fn validate_arg_input(state: &AppState) -> Result<(), ArgInputError> {
         .session_lifecycles
         .iter()
         .find(|l| l.name == arg_state.lifecycle_name)
-        .and_then(|l| l.setup_command.as_ref())
-        .map_or(0, |cmd| CommandTemplate::parse(cmd).param_count());
+        .and_then(|l| l.setup.as_ref())
+        .map_or(0, |cmd| match cmd {
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(s) => {
+                CommandTemplate::parse(s).param_count()
+            }
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => 0,
+        });
 
     let arg_count = if arg_state.input.trim().is_empty() {
         0
@@ -93,7 +98,7 @@ pub fn handle_session_lifecycle_setup(
     }
 
     // Extract setup command before mutating state (borrow checker).
-    let setup_command = find_lifecycle(state, lifecycle_name).and_then(|l| l.setup_command.clone());
+    let setup_command = find_lifecycle(state, lifecycle_name).and_then(|l| l.setup.clone());
 
     let model = state
         .frontend
@@ -143,13 +148,18 @@ pub fn handle_session_lifecycle_setup(
         .scope_stack
         .push(crate::common::app_state::FocusScope::Input);
 
-    // If the lifecycle has a setup_command, emit it for async execution.
+    // If the lifecycle has a setup command, emit it for async execution.
     if let Some(ref setup_cmd) = setup_command {
-        let template = CommandTemplate::parse(setup_cmd);
-        let rendered = if args.is_empty() {
-            setup_cmd.to_owned()
-        } else {
-            template.render(args)
+        let rendered = match setup_cmd {
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(cmd) => {
+                let template = CommandTemplate::parse(cmd);
+                if args.is_empty() {
+                    cmd.clone()
+                } else {
+                    template.render(args)
+                }
+            }
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => id.to_string(),
         };
 
         return IntentResult::with_commands(vec![
@@ -358,8 +368,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup_command: Some("echo /tmp/workdir".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo /tmp/workdir".to_owned())),
+                teardown: None,
             });
 
         // When handling SessionLifecycleSetup.
@@ -396,8 +406,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup_command: Some("script.sh $1".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1".to_owned())),
+                teardown: None,
             });
 
         // When handling SessionLifecycleSetup with args.
@@ -474,8 +484,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup_command: Some("echo /tmp/workdir".to_owned()),
-                teardown_command: Some("cleanup.sh $1".to_owned()),
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo /tmp/workdir".to_owned())),
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("cleanup.sh $1".to_owned())),
             });
         let session_id = state.session.active_session_id().clone();
         state
@@ -547,8 +557,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup_command: Some("script.sh $1 $2".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1 $2".to_owned())),
+                teardown: None,
             });
         let old_id = state.session.active_session_id().clone();
 
@@ -590,8 +600,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: Some("script.sh $1".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1".to_owned())),
+                teardown: None,
             });
         let old_id = state.session.active_session_id().clone();
 
@@ -740,8 +750,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: Some("script.sh $1 $2".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1 $2".to_owned())),
+                teardown: None,
             });
 
         // When validating.
@@ -764,8 +774,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: Some("script.sh $1 $2".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1 $2".to_owned())),
+                teardown: None,
             });
 
         // When validating.
@@ -808,8 +818,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: Some("script.sh $@".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $@".to_owned())),
+                teardown: None,
             });
 
         // When validating.
@@ -832,8 +842,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: Some("script.sh <branch> <target>".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh <branch> <target>".to_owned())),
+                teardown: None,
             });
 
         // When validating.
@@ -857,8 +867,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: Some("script.sh $1 $2".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1 $2".to_owned())),
+                teardown: None,
             });
         let old_id = state.session.active_session_id().clone();
 
@@ -896,8 +906,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup_command: Some("script.sh $1 $2".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1 $2".to_owned())),
+                teardown: None,
             });
         let old_id = state.session.active_session_id().clone();
 
@@ -976,8 +986,8 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup_command: Some("echo /tmp/workdir".to_owned()),
-                teardown_command: None,
+                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo /tmp/workdir".to_owned())),
+                teardown: None,
             });
         let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
 
