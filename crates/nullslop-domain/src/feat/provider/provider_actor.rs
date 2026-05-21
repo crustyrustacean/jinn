@@ -121,7 +121,8 @@ impl ProviderActor {
             | Command::EndCompaction(..)
             | Command::CloseSession(..)
             | Command::ArchiveSession(..)
-            | Command::PersistSession(..) => {}
+            | Command::PersistSession(..)
+            | Command::SoftCancelTurn(..) => {}
         }
     }
 
