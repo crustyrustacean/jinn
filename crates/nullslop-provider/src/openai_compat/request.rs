@@ -15,6 +15,8 @@ pub struct ChatCompletionRequest {
     pub model: String,
     pub messages: Vec<serde_json::Value>,
     pub stream: bool,
+    /// Request usage data (token counts and cost) in streaming responses.
+    pub stream_options: StreamOptions,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -22,6 +24,15 @@ pub struct ChatCompletionRequest {
     /// Extra body fields merged from config (e.g., `enable_thinking`).
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Stream options for requesting usage data in streaming responses.
+///
+/// When `include_usage` is `true`, OpenAI-compatible providers include
+/// `usage` (with token counts and cost) in the final SSE chunk.
+#[derive(Debug, Serialize)]
+pub struct StreamOptions {
+    pub include_usage: bool,
 }
 
 /// Tool choice parameter.
@@ -81,6 +92,7 @@ pub fn build_request(
         model: model.to_owned(),
         messages: openai_messages,
         stream: true,
+        stream_options: StreamOptions { include_usage: true },
         tools: openai_tools,
         tool_choice,
         extra: extra_body.clone(),
@@ -255,6 +267,20 @@ mod tests {
             "First system.\n\nSecond system."
         );
         assert_eq!(req.messages[1]["role"], "user");
+    }
+
+    #[rstest::rstest]
+    fn build_request_includes_stream_options() {
+        // Given a basic request.
+        let messages = vec![LlmMessage::User {
+            content: "hello".into(),
+        }];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then stream_options requests usage data.
+        assert!(req.stream_options.include_usage);
     }
 
     #[rstest::rstest]
