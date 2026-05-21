@@ -124,6 +124,7 @@ tiktoken = "3"
 regex = "1"
 csv = "1"
 ctrlc = "3"
+comfy-table = "7"
 # Database
 diesel = { version = "2", features = ["sqlite", "r2d2"] }
 
