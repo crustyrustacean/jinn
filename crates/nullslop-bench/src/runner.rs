@@ -341,9 +341,25 @@ enum WaitOutcome {
     Timeout,
 }
 
-/// Polls the session phase until it reaches Idle or the timeout expires.
+/// Polls the session phase: first waits for it to leave Idle, then waits
+/// for it to return to Idle. This avoids a race where the actor hasn't
+/// processed the message yet and the session is still Idle from the start.
 fn wait_for_idle(state: &State, timeout: Duration) -> WaitOutcome {
     let deadline = Instant::now() + timeout;
+
+    // Phase 1: wait for the session to leave Idle (enter Sending/Streaming/etc).
+    while Instant::now() < deadline {
+        {
+            let guard = state.read();
+            let phase = guard.active_session().phase();
+            if !matches!(phase, SessionPhase::Idle) {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // Phase 2: wait for the session to return to Idle.
     loop {
         {
             let guard = state.read();
