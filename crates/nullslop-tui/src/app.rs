@@ -303,7 +303,6 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
             PickerKind::Session => Scope::PickerSession,
             PickerKind::Persona => Scope::PickerPersona,
             PickerKind::Theme => Scope::PickerTheme,
-            PickerKind::SessionFork => Scope::PickerFork,
             PickerKind::SessionLifecycle => Scope::PickerLifecycle,
         },
         FocusScope::Input => Scope::Input,

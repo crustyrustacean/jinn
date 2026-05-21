@@ -24,6 +24,8 @@ use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
 /// When collapsed, shows only the skill name and a truncation indicator.
 /// When expanded, shows the full content.
 pub fn to_lines(name: &str, content: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
+    let name = super::shared::strip_ansi(name);
+    let content = super::shared::strip_ansi(content);
     let style = Style::default()
         .fg(ctx.theme.tool_fg)
         .bg(ctx.theme.tool_success_bg);
@@ -31,7 +33,7 @@ pub fn to_lines(name: &str, content: &str, ctx: &RenderContext) -> Vec<Line<'sta
     let mut lines = Vec::new();
 
     // Name line (always shown).
-    let name_text = truncate_to_width(name, ctx.content_width as usize);
+    let name_text = truncate_to_width(&name, ctx.content_width as usize);
     lines.push(Line::from(Span::styled(name_text, style)));
 
     let text = content.trim_start_matches('\n');
