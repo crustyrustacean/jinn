@@ -154,20 +154,55 @@ impl ProviderActor {
     /// ModelsRefreshed: update model cache and reload provider picker entries.
     fn handle_models_refreshed(&self, event: &ModelsRefreshed) {
         let now = jiff::Timestamp::now();
-        let mut state = self.state.write();
-        state.provider.model_cache = Some(crate::feat::provider_infra::ModelCache {
+        let mut cache = crate::feat::provider_infra::ModelCache {
             entries: event.results.clone(),
             last_updated_at: Some(now),
-        });
+        };
+        {
+            let registry = self.services.provider_registry.read();
+            merge_context_lengths_from_registry(&mut cache, &registry);
+        }
+        let mut state = self.state.write();
+        state.provider.model_cache = Some(cache);
         // Also reload provider picker entries from updated model cache.
         load_provider_picker_items(&self.services, &mut state);
     }
 
     /// ModelCacheLoaded: restore model cache from disk and reload picker entries.
     fn handle_model_cache_loaded(&self, cache: &crate::feat::provider_infra::ModelCache) {
+        let mut cache = cache.clone();
+        {
+            let registry = self.services.provider_registry.read();
+            merge_context_lengths_from_registry(&mut cache, &registry);
+        }
         let mut state = self.state.write();
-        state.provider.model_cache = Some(cache.clone());
+        state.provider.model_cache = Some(cache);
         load_provider_picker_items(&self.services, &mut state);
+    }
+}
+
+/// Merge `context_length` from the registry's resolved providers into the
+/// model cache, filling in `None` slots where the API did not provide a value.
+///
+/// This is a conservative merge: API-provided values are never overwritten.
+/// Only `None` entries are filled from the registry (which sources its value
+/// from `providers.toml` manual overrides).
+fn merge_context_lengths_from_registry(
+    cache: &mut crate::feat::provider_infra::ModelCache,
+    registry: &crate::feat::provider_infra::ProviderRegistry,
+) {
+    for provider in registry.providers() {
+        let Some(registry_ctx) = provider.context_length else {
+            continue;
+        };
+        let Some(models) = cache.entries.get_mut(&provider.name) else {
+            continue;
+        };
+        for model in models.iter_mut() {
+            if model.id == provider.model && model.context_length.is_none() {
+                model.context_length = Some(registry_ctx);
+            }
+        }
     }
 }
 
@@ -185,7 +220,7 @@ mod tests {
     use crate::feat::provider_infra::{ModelCache, ModelInfo, ProviderEntry, ProvidersConfig};
     use crate::protocol::Event;
 
-    use super::{ProviderActor, ProviderActorDeps};
+    use super::{ModelsRefreshed, ProviderActor, ProviderActorDeps};
 
     fn create_actor() -> (
         ProviderActor,
@@ -260,6 +295,30 @@ mod tests {
         assert_eq!(loaded.entries["ollama"][0].id, "llama3");
     }
 
+    fn create_actor_with_config(
+        config: ProvidersConfig,
+    ) -> (
+        ProviderActor,
+        Services,
+        Arc<RecordingSink>,
+        ActorContext,
+        State,
+    ) {
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("provider", sink.clone() as Arc<dyn MessageSink>);
+        let services = Services::new();
+        let registry =
+            crate::feat::provider_infra::ProviderRegistry::from_config(config).expect("registry");
+        services.provider_registry.replace(registry);
+        let state = State::new(AppState::default());
+        let deps = ProviderActorDeps {
+            services: services.clone(),
+            state: state.clone(),
+        };
+        let actor = ProviderActor::activate(deps, &mut ctx);
+        (actor, services, sink, ctx, state)
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn model_cache_loaded_preserves_timestamp() {
@@ -293,5 +352,243 @@ mod tests {
         let s = state.read();
         let loaded = s.provider.model_cache.as_ref().unwrap();
         assert!(loaded.last_updated_at.is_some());
+    }
+
+    // --- Context length merge tests ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_fills_context_length_from_registry_when_api_returns_none() {
+        // Given a registry with zai provider that has context_length: Some(128000).
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "zai".to_owned(),
+                backend: "zai".to_owned(),
+                models: vec!["zai-1.5".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: Some(128000),
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
+
+        // When handling ModelsRefreshed with zai model that has context_length: None.
+        let mut results = std::collections::HashMap::new();
+        results.insert(
+            "zai".to_owned(),
+            vec![ModelInfo {
+                id: "zai-1.5".to_owned(),
+                context_length: None,
+            }],
+        );
+        let event = ModelsRefreshed {
+            session_id: state.read().session.active_session_id().clone(),
+            results,
+            errors: std::collections::HashMap::new(),
+        };
+        actor
+            .handle(ActorEnvelope::Event(Event::ModelsRefreshed(event)), &ctx)
+            .await;
+
+        // Then the model cache has context_length from the registry.
+        let s = state.read();
+        let cache = s.provider.model_cache.as_ref().expect("cache should be set");
+        assert_eq!(cache.entries["zai"][0].context_length, Some(128000));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_preserves_api_context_length_when_both_sources_have_value() {
+        // Given a registry with ollama provider that has context_length: Some(4096).
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "ollama".to_owned(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: Some(4096),
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
+
+        // When handling ModelsRefreshed where API returns context_length: Some(8192).
+        let mut results = std::collections::HashMap::new();
+        results.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: Some(8192),
+            }],
+        );
+        let event = ModelsRefreshed {
+            session_id: state.read().session.active_session_id().clone(),
+            results,
+            errors: std::collections::HashMap::new(),
+        };
+        actor
+            .handle(ActorEnvelope::Event(Event::ModelsRefreshed(event)), &ctx)
+            .await;
+
+        // Then the API value wins (8192), not the registry value (4096).
+        let s = state.read();
+        let cache = s.provider.model_cache.as_ref().expect("cache should be set");
+        assert_eq!(cache.entries["ollama"][0].context_length, Some(8192));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_leaves_none_when_neither_source_has_context_length() {
+        // Given a registry with provider that has context_length: None.
+        let (mut actor, _services, _sink, ctx, state) = create_actor();
+
+        // When handling ModelsRefreshed where API also returns context_length: None.
+        let mut results = std::collections::HashMap::new();
+        results.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: None,
+            }],
+        );
+        let event = ModelsRefreshed {
+            session_id: state.read().session.active_session_id().clone(),
+            results,
+            errors: std::collections::HashMap::new(),
+        };
+        actor
+            .handle(ActorEnvelope::Event(Event::ModelsRefreshed(event)), &ctx)
+            .await;
+
+        // Then the cache entry stays None.
+        let s = state.read();
+        let cache = s.provider.model_cache.as_ref().expect("cache should be set");
+        assert_eq!(cache.entries["ollama"][0].context_length, None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn models_refreshed_does_not_touch_provider_not_in_registry() {
+        // Given a registry with only ollama provider.
+        let (mut actor, _services, _sink, ctx, state) = create_actor();
+
+        // When handling ModelsRefreshed with results for groq (not in registry).
+        let mut results = std::collections::HashMap::new();
+        results.insert(
+            "groq".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: None,
+            }],
+        );
+        let event = ModelsRefreshed {
+            session_id: state.read().session.active_session_id().clone(),
+            results,
+            errors: std::collections::HashMap::new(),
+        };
+        actor
+            .handle(ActorEnvelope::Event(Event::ModelsRefreshed(event)), &ctx)
+            .await;
+
+        // Then the cache entry is stored as-is, no panic.
+        let s = state.read();
+        let cache = s.provider.model_cache.as_ref().expect("cache should be set");
+        assert_eq!(cache.entries["groq"][0].context_length, None);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_fills_context_length_from_registry_when_cache_has_none() {
+        // Given a registry with zai provider that has context_length: Some(128000).
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "zai".to_owned(),
+                backend: "zai".to_owned(),
+                models: vec!["zai-1.5".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: Some(128000),
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
+
+        // When handling ModelCacheLoaded with cache that has context_length: None.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "zai".to_owned(),
+            vec![ModelInfo {
+                id: "zai-1.5".to_owned(),
+                context_length: None,
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+
+        let event = crate::feat::provider::protocol::event::ModelCacheLoaded {
+            cache: cache.clone(),
+        };
+        actor
+            .handle(ActorEnvelope::Event(Event::ModelCacheLoaded(event)), &ctx)
+            .await;
+
+        // Then the model cache in state has context_length from the registry.
+        let s = state.read();
+        let loaded = s.provider.model_cache.as_ref().expect("cache should be set");
+        assert_eq!(loaded.entries["zai"][0].context_length, Some(128000));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn model_cache_loaded_preserves_cache_value_when_both_sources_have_value() {
+        // Given a registry with ollama provider that has context_length: Some(4096).
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "ollama".to_owned(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: Some(4096),
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
+
+        // When handling ModelCacheLoaded with cache that has context_length: Some(8192).
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: Some(8192),
+            }],
+        );
+        cache.last_updated_at = Some(jiff::Timestamp::now());
+
+        let event = crate::feat::provider::protocol::event::ModelCacheLoaded {
+            cache: cache.clone(),
+        };
+        actor
+            .handle(ActorEnvelope::Event(Event::ModelCacheLoaded(event)), &ctx)
+            .await;
+
+        // Then the cache value wins (8192), not the registry value (4096).
+        let s = state.read();
+        let loaded = s.provider.model_cache.as_ref().expect("cache should be set");
+        assert_eq!(loaded.entries["ollama"][0].context_length, Some(8192));
     }
 }
