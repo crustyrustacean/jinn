@@ -88,7 +88,6 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         );
     }
 
-
     // Rename session input popup overlay (+ selectable rect).
     if matches!(
         state.frontend.scope_stack.current(),

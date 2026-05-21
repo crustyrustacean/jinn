@@ -39,7 +39,7 @@ impl TuiWorld {
             aliases: vec![],
             default_provider: None,
         };
-            let (actor_tx, _actor_rx) = kanal::unbounded::<nullslop_domain::AppMsg>();
+        let (actor_tx, _actor_rx) = kanal::unbounded::<nullslop_domain::AppMsg>();
 
         let temp_dir = tempfile::TempDir::new().expect("test temp dir");
         let paths = nullslop_domain::AppPaths::new_in(temp_dir.path());
@@ -151,7 +151,7 @@ fn given_app_in_mode(world: &mut TuiWorld, mode: String) {
             drop(state);
             Scope::Input
         }
-        nullslop_domain::Mode::Picker => Scope::Picker,
+        nullslop_domain::Mode::Picker => Scope::PickerKeymap,
     };
     world.app.which_key.set_scope(scope);
 }
