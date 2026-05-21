@@ -246,7 +246,7 @@ impl SessionPersistenceActor {
                     .session_lifecycles
                     .iter()
                     .find(|l| l.name == name)
-                    .and_then(|l| l.teardown_command.clone())
+                    .and_then(|l| l.teardown.clone())
             });
             (teardown, args)
         };
@@ -255,8 +255,13 @@ impl SessionPersistenceActor {
             return;
         };
 
+        let crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) = teardown_cmd else {
+            // Builtin teardown will be handled in Phase 2.
+            return;
+        };
+
         let success = self
-            .run_teardown_step(&payload.session_id, teardown_cmd, &lifecycle_args, ctx)
+            .run_teardown_step(&payload.session_id, shell_cmd, &lifecycle_args, ctx)
             .await;
 
         if !success {
@@ -329,24 +334,37 @@ impl SessionPersistenceActor {
                     .session_lifecycles
                     .iter()
                     .find(|l| l.name == name)
-                    .and_then(|l| l.teardown_command.clone())
+                    .and_then(|l| l.teardown.clone())
             });
 
             if let Some(teardown_cmd) = teardown_cmd {
-                let success = self
-                    .run_teardown_step(&payload.session_id, &teardown_cmd, &lifecycle_args, ctx)
-                    .await;
+                match teardown_cmd {
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) => {
+                        let success = self
+                            .run_teardown_step(
+                                &payload.session_id,
+                                &shell_cmd,
+                                &lifecycle_args,
+                                ctx,
+                            )
+                            .await;
 
-                if !success {
-                    if let Err(e) =
-                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                            session_id: payload.session_id.clone(),
-                            error: Some("teardown failed".to_owned()),
-                        }))
-                    {
-                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
+                        if !success {
+                            if let Err(e) = ctx.send_event(Event::SessionTeardownFinished(
+                                SessionTeardownFinished {
+                                    session_id: payload.session_id.clone(),
+                                    error: Some("teardown failed".to_owned()),
+                                },
+                            )) {
+                                tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
+                            }
+                            return;
+                        }
                     }
-                    return;
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => {
+                        // Builtin teardown will be handled in Phase 2.
+                        // For now, emit SessionTeardownFinished(success) and continue.
+                    }
                 }
             }
             // If no teardown command exists but state is SetupRan, skip teardown and proceed.
@@ -698,8 +716,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("exit 1".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
             }];
             let session = state
                 .session
@@ -753,8 +771,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("exit 1".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
             }];
             state.session.active_session_id().clone()
         };
@@ -794,8 +812,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("exit 1".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
             }];
             state.session.active_session_id().clone()
         };
@@ -839,8 +857,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("exit 1".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
             }];
             state.session.active_session_id().clone()
         };
@@ -1170,8 +1188,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("echo test".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo test".to_owned())),
             }];
             state.session.active_session_id().clone()
         };
@@ -1220,8 +1238,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("echo test".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo test".to_owned())),
             }];
             state.session.active_session_id().clone()
         };
@@ -1492,8 +1510,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("exit 1".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
             }];
             state.session.active_session_id().clone()
         };
@@ -1540,8 +1558,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("exit 1".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
             }];
             state.session.active_session_id().clone()
         };
@@ -1590,8 +1608,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("exit 0".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 0".to_owned())),
             }];
             state.session.active_session_id().clone()
         };
@@ -1700,8 +1718,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("exit 0".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 0".to_owned())),
             }];
             state.session.active_session_id().clone()
         };
@@ -1756,8 +1774,8 @@ mod tests {
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup_command: None,
-                teardown_command: Some("exit 0".to_owned()),
+                setup: None,
+                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 0".to_owned())),
             }];
             state.session.active_session_id().clone()
         };
