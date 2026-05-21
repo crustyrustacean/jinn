@@ -13,7 +13,7 @@ use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
-use crate::feat::session_lifecycle::protocol::command::{RunSessionSetup, SaveNewLifecycleSession};
+use crate::feat::session_lifecycle::protocol::command::{PersistSession, RunSessionSetup};
 use crate::protocol::{Command, IntentResult, PromptStrategyId, SessionId};
 
 /// Errors that can occur when validating arg input.
@@ -153,7 +153,7 @@ pub fn handle_session_lifecycle_setup(
         };
 
         return IntentResult::with_commands(vec![
-            Command::SaveNewLifecycleSession(SaveNewLifecycleSession {
+            Command::PersistSession(PersistSession {
                 session_id: new_id.clone(),
             }),
             Command::PushChatEntry(PushChatEntry {
@@ -372,11 +372,11 @@ mod tests {
             state.active_session().lifecycle_name(),
             Some("fossil branch")
         );
-        // And SaveNewLifecycleSession, PushChatEntry, then RunSessionSetup are emitted.
+        // And PersistSession, PushChatEntry, then RunSessionSetup are emitted.
         assert_eq!(result.commands.len(), 3);
         assert!(matches!(
             &result.commands[0],
-            Command::SaveNewLifecycleSession(_)
+            Command::PersistSession(_)
         ));
         assert!(matches!(&result.commands[1], Command::PushChatEntry(_)));
         assert!(matches!(
@@ -407,10 +407,10 @@ mod tests {
         let result =
             handle_session_lifecycle_setup(&mut state, "fossil branch", &["my-branch".to_owned()]);
 
-        // Then SaveNewLifecycleSession is emitted first.
+        // Then PersistSession is emitted first.
         assert!(matches!(
             &result.commands[0],
-            Command::SaveNewLifecycleSession(_)
+            Command::PersistSession(_)
         ));
         // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
@@ -567,10 +567,10 @@ mod tests {
             state.active_session().lifecycle_args(),
             &["my-branch".to_owned(), "target-dir".to_owned()]
         );
-        // Then SaveNewLifecycleSession is emitted first.
+        // Then PersistSession is emitted first.
         assert!(matches!(
             &result.commands[0],
-            Command::SaveNewLifecycleSession(_)
+            Command::PersistSession(_)
         ));
         // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
@@ -876,10 +876,10 @@ mod tests {
 
         // Then a command is emitted with the rendered args.
         assert!(!result.commands.is_empty(), "command should be emitted");
-        // Then SaveNewLifecycleSession is emitted first.
+        // Then PersistSession is emitted first.
         assert!(matches!(
             &result.commands[0],
-            Command::SaveNewLifecycleSession(_)
+            Command::PersistSession(_)
         ));
         // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
@@ -922,10 +922,10 @@ mod tests {
             state.active_session().lifecycle_args(),
             &["my branch".to_owned(), "target".to_owned()]
         );
-        // Then SaveNewLifecycleSession is emitted first.
+        // Then PersistSession is emitted first.
         assert!(matches!(
             &result.commands[0],
-            Command::SaveNewLifecycleSession(_)
+            Command::PersistSession(_)
         ));
         // And RunSessionSetup is emitted third with rendered args.
         assert!(matches!(
@@ -1003,10 +1003,10 @@ mod tests {
             state.active_session().lifecycle_name(),
             Some("fossil branch")
         );
-        // And SaveNewLifecycleSession, PushChatEntry, then RunSessionSetup are emitted.
+        // And PersistSession, PushChatEntry, then RunSessionSetup are emitted.
         assert!(matches!(
             &result.commands[0],
-            Command::SaveNewLifecycleSession(_)
+            Command::PersistSession(_)
         ));
         assert!(matches!(&result.commands[1], Command::PushChatEntry(..)));
         assert!(matches!(&result.commands[2], Command::RunSessionSetup(..)));

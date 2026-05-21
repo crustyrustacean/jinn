@@ -36,7 +36,7 @@ use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session_lifecycle::protocol::command::{
-    RunSessionSetup, RunSessionTeardown, SaveNewLifecycleSession,
+    PersistSession, RunSessionSetup, RunSessionTeardown,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -97,7 +97,7 @@ impl Actor for SessionPersistenceActor {
         // Lifecycle command subscriptions.
         ctx.subscribe_command::<RunSessionSetup>();
         ctx.subscribe_command::<RunSessionTeardown>();
-        ctx.subscribe_command::<SaveNewLifecycleSession>();
+        ctx.subscribe_command::<PersistSession>();
         ctx.subscribe_command::<CloseSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
 
@@ -212,8 +212,8 @@ impl SessionPersistenceActor {
             Command::ArchiveSession(payload) => {
                 self.handle_archive_session(payload, ctx).await;
             }
-            Command::SaveNewLifecycleSession(payload) => {
-                self.handle_save_new_lifecycle_session(payload).await;
+            Command::PersistSession(payload) => {
+                self.handle_persist_session(payload).await;
             }
             Command::BeginCompaction(payload) => {
                 self.handle_begin_compaction(payload).await;
