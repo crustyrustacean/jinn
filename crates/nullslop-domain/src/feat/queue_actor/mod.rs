@@ -115,11 +115,7 @@ impl QueueActor {
     }
 
     /// Handle `EnqueueCompaction` — if idle, dispatch immediately; otherwise enqueue.
-    async fn handle_enqueue_compaction(
-        &self,
-        payload: &EnqueueCompaction,
-        ctx: &ActorContext,
-    ) {
+    async fn handle_enqueue_compaction(&self, payload: &EnqueueCompaction, ctx: &ActorContext) {
         let is_idle = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
@@ -288,12 +284,18 @@ mod tests {
         let has_assemble = commands
             .iter()
             .any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(has_assemble, "expected AssemblePrompt command for queued user message");
+        assert!(
+            has_assemble,
+            "expected AssemblePrompt command for queued user message"
+        );
 
         // And the queue is empty.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert!(session.queue_len() == 0, "expected queue to be empty after dispatch");
+        assert!(
+            session.queue_len() == 0,
+            "expected queue to be empty after dispatch"
+        );
     }
 
     #[tokio::test]
@@ -320,7 +322,10 @@ mod tests {
         let has_compact = commands
             .iter()
             .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(has_compact, "expected CompactContext command for queued CompactionNeeded");
+        assert!(
+            has_compact,
+            "expected CompactContext command for queued CompactionNeeded"
+        );
 
         // And the queue is empty.
         let state = actor.state.read();
@@ -353,7 +358,10 @@ mod tests {
         let has_assemble = commands
             .iter()
             .any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(!has_assemble, "expected no AssemblePrompt for non-Idle phase");
+        assert!(
+            !has_assemble,
+            "expected no AssemblePrompt for non-Idle phase"
+        );
 
         // And the queue still has the item.
         let state = actor.state.read();
@@ -530,7 +538,10 @@ mod tests {
         let has_compact = commands
             .iter()
             .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(!has_compact, "expected no CompactContext for non-idle session");
+        assert!(
+            !has_compact,
+            "expected no CompactContext for non-idle session"
+        );
     }
 
     #[tokio::test]
@@ -546,9 +557,7 @@ mod tests {
         };
 
         // When dispatching a tool continuation.
-        actor
-            .dispatch_tool_continuation(&session_id, &ctx)
-            .await;
+        actor.dispatch_tool_continuation(&session_id, &ctx).await;
 
         // Then AssemblePrompt was emitted with the history.
         let commands = sink.commands();

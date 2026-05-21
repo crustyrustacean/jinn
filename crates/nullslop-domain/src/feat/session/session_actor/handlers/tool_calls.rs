@@ -132,12 +132,7 @@ impl SessionPersistenceActor {
                 session.finish_sending();
                 (old_phase, session.phase())
             };
-            super::super::helpers::emit_phase_changed(
-                ctx,
-                &event.session_id,
-                old_phase,
-                new_phase,
-            );
+            super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
             return;
         }
 
@@ -327,7 +322,12 @@ mod tests {
 
         // And no AssemblePrompt was emitted.
         let commands = sink.commands();
-        let has_assemble = commands.iter().any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(!has_assemble, "expected no AssemblePrompt after soft cancel");
+        let has_assemble = commands
+            .iter()
+            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+        assert!(
+            !has_assemble,
+            "expected no AssemblePrompt after soft cancel"
+        );
     }
 }

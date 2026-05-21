@@ -263,7 +263,11 @@ mod tests {
         // Then the queue still has the item (QueueActor will pop it).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.queue_len(), 1, "expected queue to retain item for QueueActor");
+        assert_eq!(
+            session.queue_len(),
+            1,
+            "expected queue to retain item for QueueActor"
+        );
     }
 
     #[tokio::test]
@@ -297,7 +301,11 @@ mod tests {
         // Then the queue still has the item (QueueActor will pop it).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.queue_len(), 1, "expected queue to retain item for QueueActor");
+        assert_eq!(
+            session.queue_len(),
+            1,
+            "expected queue to retain item for QueueActor"
+        );
     }
 
     #[tokio::test]

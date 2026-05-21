@@ -132,11 +132,7 @@ impl SessionPersistenceActor {
             tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
         }
 
-        super::super::helpers::emit_history_appended(
-            ctx,
-            &payload.session_id,
-            total_tokens,
-        );
+        super::super::helpers::emit_history_appended(ctx, &payload.session_id, total_tokens);
 
         self.save_active_session(&payload.session_id).await;
     }

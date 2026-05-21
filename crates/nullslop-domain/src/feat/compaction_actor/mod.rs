@@ -205,7 +205,9 @@ impl CompactionActor {
         };
 
         if should_compact {
-            let _ = ctx.send_command(Command::EnqueueCompaction(EnqueueCompaction { session_id: session_id.clone() }));
+            let _ = ctx.send_command(Command::EnqueueCompaction(EnqueueCompaction {
+                session_id: session_id.clone(),
+            }));
             let _ = ctx.send_command(Command::SoftCancelTurn(
                 crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn { session_id },
             ));
