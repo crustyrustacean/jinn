@@ -2,7 +2,6 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::session::chat_session::SessionPhase;
-use crate::feat::ui::sidebar::sessions::navigate::scroll_to_cursor;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 
 /// Why a session close can be rejected.
@@ -72,7 +71,6 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
     let index = state.frontend.sessions_section.selected_index.unwrap();
     let sessions = sorted_open_sessions(state);
     let closing_id = sessions[index].id.clone();
-    let was_active = sessions[index].is_active;
 
     // Remove from HashMap (keeps in SQLite).
     state.session.sessions_mut().remove(&closing_id);
@@ -112,21 +110,9 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
             .sessions_mut()
             .insert(new_id.clone(), new_session);
         state.session.set_active(new_id);
-        state.frontend.sessions_section.selected_index = Some(0);
-    } else if was_active {
-        // Closed the active session — activate next one. Clamp index to valid range.
-        let remaining = sorted_open_sessions(state);
-        let clamped = index.min(remaining.len() - 1);
-        state.session.set_active(remaining[clamped].id.clone());
-        state.frontend.sessions_section.selected_index = Some(clamped);
-    } else {
-        // Closed a non-active session — keep active session, clamp cursor.
-        let remaining = sorted_open_sessions(state);
-        let clamped = index.min(remaining.len() - 1);
-        state.frontend.sessions_section.selected_index = Some(clamped);
     }
 
-    scroll_to_cursor(state);
+    super::reconcile_after_session_removal(state);
 
     crate::protocol::IntentResult::empty()
 }
