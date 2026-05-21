@@ -44,9 +44,10 @@ impl SessionPersistenceActor {
             0
         });
 
-        {
+        let (old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
+            let old_phase = session.phase();
             match session.phase() {
                 SessionPhase::Sending => {
                     // Sending → Streaming transition.
@@ -75,7 +76,10 @@ impl SessionPersistenceActor {
                 cost: None,
             });
             session.set_context_size(input_tokens as u32);
-        }
+            (old_phase, session.phase())
+        };
+
+        super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
 
         let provider_id = {
             let state = self.state.read();
@@ -179,9 +183,11 @@ impl SessionPersistenceActor {
         };
 
         let should_process_queue;
+        let (old_phase, new_phase);
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
+            old_phase = session.phase();
             if event.reason == StreamCompletedReason::Canceled {
                 session.push_entry(ChatEntry::error("Cancelled"));
             } else if event.reason == StreamCompletedReason::Error {
@@ -234,7 +240,10 @@ impl SessionPersistenceActor {
             }
 
             should_process_queue = event.reason == StreamCompletedReason::Finished;
+            new_phase = session.phase();
         }
+
+        super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
 
         // If messages were drained, start a new turn.
         if should_process_queue {

@@ -217,7 +217,7 @@ impl SessionPersistenceActor {
                 self.handle_persist_session(payload).await;
             }
             Command::BeginCompaction(payload) => {
-                self.handle_begin_compaction(payload).await;
+                self.handle_begin_compaction(payload, ctx).await;
             }
             Command::EndCompaction(payload) => {
                 self.handle_end_compaction(payload, ctx).await;

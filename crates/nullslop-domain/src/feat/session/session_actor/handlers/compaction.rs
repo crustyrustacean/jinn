@@ -39,16 +39,21 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) async fn handle_begin_compaction(
         &self,
         payload: &BeginCompaction,
+        ctx: &ActorContext,
     ) {
-        {
+        let (old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
+            let old_phase = session.phase();
             session.begin_compacting(payload.gathered_indices.clone());
             session.push_entry(ChatEntry::system("Starting context compaction..."));
             if !payload.gathered_indices.is_empty() {
                 session.mark_entries_ignored(&payload.gathered_indices);
             }
-        }
+            (old_phase, session.phase())
+        };
+
+        super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
 
         self.save_active_session(&payload.session_id).await;
     }
@@ -64,9 +69,11 @@ impl SessionPersistenceActor {
         ctx: &ActorContext,
     ) {
         let should_process_queue: bool;
+        let (old_phase, new_phase);
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
+            old_phase = session.phase();
 
             // Guard: ignore stale EndCompaction if phase is no longer Compacting.
             if !matches!(session.phase(), SessionPhase::Compacting) {
@@ -104,7 +111,10 @@ impl SessionPersistenceActor {
 
             // Check if queue has items to process.
             should_process_queue = session.queue_len() > 0;
+            new_phase = session.phase();
         }
+
+        super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
 
         self.save_active_session(&payload.session_id).await;
 
@@ -126,7 +136,7 @@ mod tests {
     async fn begin_compaction_sets_compacting_phase_and_pushes_system_entry() {
         // Given a session actor with a session.
         let actor = test_actor();
-        let (_sink, _ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
             state.session.active_session_id().clone()
@@ -139,6 +149,7 @@ mod tests {
                     session_id: session_id.clone(),
                     gathered_indices: vec![0, 1],
                 },
+                &ctx,
             )
             .await;
 
