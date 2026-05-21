@@ -92,7 +92,9 @@ pub fn build_request(
         model: model.to_owned(),
         messages: openai_messages,
         stream: true,
-        stream_options: StreamOptions { include_usage: true },
+        stream_options: StreamOptions {
+            include_usage: true,
+        },
         tools: openai_tools,
         tool_choice,
         extra: extra_body.clone(),

@@ -451,7 +451,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         let usage = match &events[0] {
             StreamEvent::Done { usage: Some(u), .. } => u.clone(),
-                _ => panic!("expected Done with usage"),
+            _ => panic!("expected Done with usage"),
         };
         assert_eq!(usage.cost, None);
         assert_eq!(usage.prompt_tokens, Some(100));
