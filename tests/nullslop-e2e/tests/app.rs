@@ -32,7 +32,6 @@ use nullslop_domain::LlmMessage;
 use nullslop_domain::LlmServiceFactoryService;
 use nullslop_domain::PinChatEntry;
 use nullslop_domain::PinPosition;
-use nullslop_domain::feat::context::protocol::strategy_id::PromptStrategyId;
 use nullslop_domain::ProviderRegistry;
 use nullslop_domain::ProviderRegistryService;
 use nullslop_domain::ProvidersConfig;
@@ -45,6 +44,7 @@ use nullslop_domain::ToolDefinition;
 use nullslop_domain::ToolResult;
 use nullslop_domain::UnpinChatEntry;
 use nullslop_domain::UserPreferencesStorageService;
+use nullslop_domain::feat::context::protocol::strategy_id::PromptStrategyId;
 use nullslop_tui::AppStatus;
 use nullslop_tui::MsgHandler;
 use nullslop_tui::Scope;
@@ -363,7 +363,7 @@ fn given_app_in_mode(world: &mut AppWorld, mode: String) {
             drop(state);
             Scope::Input
         }
-        nullslop_domain::Mode::Picker => Scope::Picker,
+        nullslop_domain::Mode::Picker => Scope::PickerKeymap,
     };
     world.app.which_key.set_scope(scope);
 }
@@ -673,7 +673,6 @@ async fn when_submit_cancel_stream(world: &mut AppWorld) {
         .wait_until(|s| s.active_session().phase() != nullslop_domain::SessionPhase::Streaming)
         .await;
 }
-
 
 /// Submits a ToolsRegistered event with a single tool definition.
 #[cucumber::when(expr = "the app submits a ToolsRegistered event with tool {string}")]

@@ -208,8 +208,7 @@ impl SessionPersistenceActor {
 
             // Drain queue only on Finished — the turn has ended successfully.
             // Error and Canceled do not drain queued messages.
-            should_process_queue =
-                event.reason == StreamCompletedReason::Finished;
+            should_process_queue = event.reason == StreamCompletedReason::Finished;
         }
 
         // If messages were drained, start a new turn.
@@ -271,7 +270,9 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("queued message")));
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+                ChatEntry::user("queued message"),
+            ));
             assert_eq!(session.queue_len(), 1);
             state.session.active_session_id().clone()
         };

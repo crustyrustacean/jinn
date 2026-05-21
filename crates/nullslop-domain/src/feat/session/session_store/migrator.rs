@@ -318,11 +318,10 @@ fn migrate_v10(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
         profile: String,
     }
 
-    let rows: Vec<SessionRow> =
-        sql_query("SELECT rowid, strategy_state, profile FROM sessions")
-            .load(conn)
-            .change_context(SessionStoreError)
-            .attach("v10: query sessions")?;
+    let rows: Vec<SessionRow> = sql_query("SELECT rowid, strategy_state, profile FROM sessions")
+        .load(conn)
+        .change_context(SessionStoreError)
+        .attach("v10: query sessions")?;
 
     for row in rows {
         let new_strategy_state = rewrite_strategy_state(&row.strategy_state);
@@ -529,11 +528,10 @@ mod tests {
         migrate_v10(&mut conn).expect("migrate v10");
 
         // Then strategy_state only has the compaction key.
-        let rows: Vec<StateRow> = sql_query(
-            "SELECT strategy_state, profile FROM sessions WHERE id = 'test-1'",
-        )
-        .load(&mut conn)
-        .expect("query");
+        let rows: Vec<StateRow> =
+            sql_query("SELECT strategy_state, profile FROM sessions WHERE id = 'test-1'")
+                .load(&mut conn)
+                .expect("query");
 
         assert_eq!(rows.len(), 1);
 
@@ -576,11 +574,10 @@ mod tests {
         migrate_v10(&mut conn).expect("migrate v10");
 
         // Then strategy_state has a compaction key with default data.
-        let rows: Vec<StateRow> = sql_query(
-            "SELECT strategy_state FROM sessions WHERE id = 'test-2'",
-        )
-        .load(&mut conn)
-        .expect("query");
+        let rows: Vec<StateRow> =
+            sql_query("SELECT strategy_state FROM sessions WHERE id = 'test-2'")
+                .load(&mut conn)
+                .expect("query");
 
         assert_eq!(rows.len(), 1);
         let state_map: serde_json::Map<String, serde_json::Value> =

@@ -297,7 +297,15 @@ impl TuiApp {
 /// Returns the keymap scope corresponding to the given focus scope.
 pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
     match focus {
-        FocusScope::Picker { .. } => Scope::Picker,
+        FocusScope::Picker { kind } => match kind {
+            PickerKind::Provider => Scope::PickerProvider,
+            PickerKind::Keymap => Scope::PickerKeymap,
+            PickerKind::Session => Scope::PickerSession,
+            PickerKind::Persona => Scope::PickerPersona,
+            PickerKind::Theme => Scope::PickerTheme,
+            PickerKind::SessionFork => Scope::PickerFork,
+            PickerKind::SessionLifecycle => Scope::PickerLifecycle,
+        },
         FocusScope::Input => Scope::Input,
         FocusScope::SidebarPersona => Scope::SidebarPersona,
         FocusScope::SidebarPins => Scope::SidebarPins,

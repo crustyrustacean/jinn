@@ -97,9 +97,7 @@ pub use protocol::{
     ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, Event, Intent, IntentResult,
     Key, KeyEvent, Mode, Modifiers, PickerKind, PinPosition, PromptTemplate,
 };
-pub use protocol::{
-    CommandMsg, CommandName, EventMsg, EventTypeName, KeymapEntry, PickerEntry,
-};
+pub use protocol::{CommandMsg, CommandName, EventMsg, EventTypeName, KeymapEntry, PickerEntry};
 
 // Re-export domain types from their canonical locations
 pub use common::actor::protocol::command::ProceedWithShutdown;
@@ -110,12 +108,8 @@ pub use feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
-pub use feat::context::protocol::command::{
-    AssemblePrompt, PinChatEntry, UnpinChatEntry,
-};
-pub use feat::context::protocol::event::{
-    PromptAssembled,
-};
+pub use feat::context::protocol::command::{AssemblePrompt, PinChatEntry, UnpinChatEntry};
+pub use feat::context::protocol::event::PromptAssembled;
 pub use feat::provider::llm_message::LlmMessage;
 pub use feat::provider::protocol::command::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
