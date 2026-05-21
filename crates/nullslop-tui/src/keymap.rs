@@ -66,21 +66,27 @@ fn add_sidebar_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Int
 /// backspace, open keymap picker, new session, and catch-all char input.
 fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Intent, KeyCategory>) {
     b.bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
-    .bind("<enter>", Intent::PickerConfirm, KeyCategory::Model)
-    .bind("<up>", Intent::PickerMoveUp, KeyCategory::Navigation)
-    .bind("<down>", Intent::PickerMoveDown, KeyCategory::Navigation)
-    .bind("<left>", Intent::PickerMoveCursorLeft, KeyCategory::Input)
-    .bind("<right>", Intent::PickerMoveCursorRight, KeyCategory::Input)
-    .bind("<backspace>", Intent::PickerBackspace, KeyCategory::Input)
-    .bind("<c-p>", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
-    .bind("<c-n>", Intent::SessionNew, KeyCategory::General)
-    .catch_all(|key: KeyEvent| {
-        if let Key::Char(c) = key.key {
-            Some(Intent::PickerInsertChar { ch: c })
-        } else {
-            None
-        }
-    });
+        .bind("<enter>", Intent::PickerConfirm, KeyCategory::Model)
+        .bind("<up>", Intent::PickerMoveUp, KeyCategory::Navigation)
+        .bind("<down>", Intent::PickerMoveDown, KeyCategory::Navigation)
+        .bind("<left>", Intent::PickerMoveCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::PickerMoveCursorRight, KeyCategory::Input)
+        .bind("<backspace>", Intent::PickerBackspace, KeyCategory::Input)
+        .bind(
+            "<c-p>",
+            Intent::OpenPicker {
+                kind: PickerKind::Keymap,
+            },
+            KeyCategory::General,
+        )
+        .bind("<c-n>", Intent::SessionNew, KeyCategory::General)
+        .catch_all(|key: KeyEvent| {
+            if let Key::Char(c) = key.key {
+                Some(Intent::PickerInsertChar { ch: c })
+            } else {
+                None
+            }
+        });
 }
 
 /// Builds and returns the full keymap with all scope bindings.

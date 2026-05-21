@@ -186,7 +186,6 @@ pub enum Intent {
     /// Exit sidebar resize mode, returning to Normal scope.
     SidebarResizeLeave,
 
-
     // --- Rename Session Input ---
     /// Open the rename session input popup.
     SidebarRenameSession,

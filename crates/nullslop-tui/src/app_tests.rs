@@ -387,9 +387,12 @@ fn toggle_keymap_scope_filter_noop_in_non_keymap_picker() {
         let mut state = app.core.state.write();
         state.frontend.keymap_picker_show_all = false;
         // Push provider picker onto scope stack.
-        state.frontend.scope_stack.push(
-            nullslop_domain::FocusScope::Picker { kind: PickerKind::Provider },
-        );
+        state
+            .frontend
+            .scope_stack
+            .push(nullslop_domain::FocusScope::Picker {
+                kind: PickerKind::Provider,
+            });
     }
     app.which_key.set_scope(Scope::PickerProvider);
 
