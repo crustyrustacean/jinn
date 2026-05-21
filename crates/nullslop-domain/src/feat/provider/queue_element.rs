@@ -30,22 +30,25 @@ impl UiElement<AppState> for QueueDisplayElement {
 
         let lines: Vec<Line> = queue
             .iter()
-            .map(|entry| {
-                let display_text = match &entry.kind {
-                    ChatEntryKind::User { display, .. } => display.as_str(),
-                    _ => "",
-                };
-                let first_line = display_text.lines().next().unwrap_or("");
-                let display = if first_line.len() > 60 {
-                    let truncated: String = first_line.graphemes(true).take(59).collect();
-                    format!("QUEUED: {truncated}…")
-                } else {
-                    format!("QUEUED: {first_line}")
-                };
-                Line::from(Span::styled(
-                    display,
-                    Style::default().fg(state.frontend.theme.muted_text),
-                ))
+            .filter_map(|item| match item {
+                crate::feat::session::queue_item::QueueItem::UserMessage(entry) => {
+                    let display_text = match &entry.kind {
+                        ChatEntryKind::User { display, .. } => display.as_str(),
+                        _ => "",
+                    };
+                    let first_line = display_text.lines().next().unwrap_or("");
+                    let display = if first_line.len() > 60 {
+                        let truncated: String = first_line.graphemes(true).take(59).collect();
+                        format!("QUEUED: {truncated}…")
+                    } else {
+                        format!("QUEUED: {first_line}")
+                    };
+                    Some(Line::from(Span::styled(
+                        display,
+                        Style::default().fg(state.frontend.theme.muted_text),
+                    )))
+                }
+                _ => None,
             })
             .collect();
 

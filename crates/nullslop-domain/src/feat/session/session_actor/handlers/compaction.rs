@@ -41,7 +41,7 @@ impl SessionPersistenceActor {
         payload: &EndCompaction,
         ctx: &ActorContext,
     ) {
-        let drained_entries: Vec<ChatEntry>;
+        let should_process_queue: bool;
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
@@ -80,16 +80,15 @@ impl SessionPersistenceActor {
             }
             session.finish_compacting();
 
-            // Drain any messages queued during compaction.
-            drained_entries = session.drain_queue().into_iter().collect();
+            // Check if queue has items to process.
+            should_process_queue = session.queue_len() > 0;
         }
 
         self.save_active_session(&payload.session_id).await;
 
-        // If messages were queued during compaction, start a new turn.
-        if !drained_entries.is_empty() {
-            self.start_turn_from_queued(&payload.session_id, &drained_entries, ctx)
-                .await;
+        // If messages were queued during compaction, process the queue.
+        if should_process_queue {
+            self.process_queue(&payload.session_id, ctx).await;
         }
     }
 }
@@ -214,7 +213,7 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.enqueue_message(ChatEntry::user("queued during compaction"));
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("queued during compaction")));
             session.begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
@@ -258,7 +257,7 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.enqueue_message(ChatEntry::user("queued during compaction"));
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("queued during compaction")));
             session.begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
@@ -336,7 +335,7 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.enqueue_message(ChatEntry::user("queued during compaction"));
+            session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(ChatEntry::user("queued during compaction")));
             session.begin_compacting(vec![]);
             state.session.active_session_id().clone()
         };
