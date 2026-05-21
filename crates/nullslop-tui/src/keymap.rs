@@ -184,7 +184,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         });
 
     keymap
-        .scope(Scope::Picker, |b| {
+        .scope(Scope::PickerKeymap, |b| {
             b.bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
             .bind("<enter>", Intent::PickerConfirm, KeyCategory::Model)
             .bind("<up>", Intent::PickerMoveUp, KeyCategory::Navigation)
@@ -290,7 +290,13 @@ pub fn collect_all_bindings(
         Scope::SidebarPins,
         Scope::SidebarSessions,
         Scope::SidebarMinimap,
-        Scope::Picker,
+        Scope::PickerProvider,
+        Scope::PickerKeymap,
+        Scope::PickerSession,
+        Scope::PickerPersona,
+        Scope::PickerTheme,
+        Scope::PickerFork,
+        Scope::PickerLifecycle,
         Scope::Input,
         Scope::ArgInput,
     ] {

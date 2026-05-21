@@ -151,7 +151,7 @@ fn given_app_in_mode(world: &mut TuiWorld, mode: String) {
             drop(state);
             Scope::Input
         }
-        nullslop_domain::Mode::Picker => Scope::Picker,
+        nullslop_domain::Mode::Picker => Scope::PickerKeymap,
     };
     world.app.which_key.set_scope(scope);
 }
