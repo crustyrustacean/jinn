@@ -149,7 +149,7 @@ pub struct SessionCoreEphemeral {
     /// Index into `history` for the entry currently receiving stream tokens.
     pub(crate) streaming_entry_index: Option<usize>,
     /// Turn dispatch queue — drives all turn transitions through a single processor.
-    pub(crate) message_queue: VecDeque<crate::feat::session::queue_item::QueueItem>,
+    pub(crate) message_queue: crate::feat::session::turn_queue::TurnQueue,
     /// Maps stream tool call index to history index for in-progress tool calls.
     pub(crate) streaming_tool_call_indices: HashMap<usize, usize>,
     /// Index into `history` for the entry currently receiving thinking tokens.
@@ -922,9 +922,9 @@ impl ChatSessionState {
 
     // --- Queue ---
 
-    /// Read-only access to the turn dispatch queue.
-    pub fn queue(&self) -> &VecDeque<crate::feat::session::queue_item::QueueItem> {
-        &self.core.ephemeral.message_queue
+    /// Read-only access to the turn dispatch queue items.
+    pub fn queue(&self) -> &std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
+        self.core.ephemeral.message_queue.items()
     }
 
     /// Number of items waiting in the queue.
@@ -934,24 +934,24 @@ impl ChatSessionState {
 
     /// Push an item onto the back of the queue.
     pub fn enqueue(&mut self, item: crate::feat::session::queue_item::QueueItem) {
-        self.core.ephemeral.message_queue.push_back(item);
+        self.core.ephemeral.message_queue.enqueue(item);
     }
 
     /// Push an item onto the front of the queue (for priority items like `CompactionNeeded`).
     pub fn enqueue_front(&mut self, item: crate::feat::session::queue_item::QueueItem) {
-        self.core.ephemeral.message_queue.push_front(item);
+        self.core.ephemeral.message_queue.enqueue_front(item);
     }
 
     /// Pop the front item from the queue, if any.
     pub fn dequeue(&mut self) -> Option<crate::feat::session::queue_item::QueueItem> {
-        self.core.ephemeral.message_queue.pop_front()
+        self.core.ephemeral.message_queue.pop()
     }
 
     /// Drain all queued items, returning them in order.
     pub fn drain_queue(
         &mut self,
     ) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
-        std::mem::take(&mut self.core.ephemeral.message_queue)
+        self.core.ephemeral.message_queue.drain()
     }
 
     // --- Assembling ---
