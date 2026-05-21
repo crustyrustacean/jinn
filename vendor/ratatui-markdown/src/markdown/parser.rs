@@ -447,10 +447,7 @@ impl MarkdownRenderer {
         false
     }
 
-    fn flush_paragraph(
-        paragraph_lines: &mut Vec<String>,
-        blocks: &mut Vec<MarkdownBlock>,
-    ) {
+    fn flush_paragraph(paragraph_lines: &mut Vec<String>, blocks: &mut Vec<MarkdownBlock>) {
         if !paragraph_lines.is_empty() {
             blocks.push(MarkdownBlock::Paragraph(paragraph_lines.clone()));
             paragraph_lines.clear();
