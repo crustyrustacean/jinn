@@ -105,15 +105,38 @@ impl SqliteSessionStore {
         Self::build_pool(dir, config)
     }
 
-    /// Builds the connection pool.
+    /// Opens or creates a database at the exact file path.
+    ///
+    /// Creates parent directories if they don't exist. The database file
+    /// is created by SQLite on first write (during migration).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the parent directory cannot be created or the database pool cannot be built.
+    pub fn open_or_create(file_path: &Path) -> Result<Self, Report<SessionStoreError>> {
+        if let Some(parent) = file_path.parent() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                std::fs::create_dir_all(parent)
+                    .change_context(SessionStoreError)
+                    .attach("failed to create database directory")?;
+            }
+        }
+        Self::connect_at(file_path, &PoolConfig::default())
+    }
+
+    /// Builds the connection pool at a directory (appends `sessions.db`).
     fn build_pool(dir: &Path, config: &PoolConfig) -> Result<Self, Report<SessionStoreError>> {
         if !dir.exists() {
             std::fs::create_dir_all(dir)
                 .change_context(SessionStoreError)
                 .attach("failed to create session directory")?;
         }
-        let path = dir.join(FILE_NAME);
-        let database_url = path.to_string_lossy().to_string();
+        Self::connect_at(&dir.join(FILE_NAME), config)
+    }
+
+    /// Connects to the database at an exact file path and builds the pool.
+    fn connect_at(file_path: &Path, config: &PoolConfig) -> Result<Self, Report<SessionStoreError>> {
+        let database_url = file_path.to_string_lossy().to_string();
 
         // Run migrations once on a bootstrap connection before building the pool.
         // This ensures the schema is ready before any pooled connections are created.
@@ -1091,4 +1114,54 @@ fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionSt
         .attach("failed to delete orphaned entries during shutdown")?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn open_or_create_creates_parent_dirs_and_database() {
+        // Given a nested nonexistent path.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("a").join("b").join("c").join("test.db");
+
+        // When opening the database.
+        let store = SqliteSessionStore::open_or_create(&db_path).expect("open_or_create");
+
+        // Then the parent directories were created.
+        assert!(db_path.parent().unwrap().exists());
+        // And the database is usable.
+        let summaries = store.load_summaries().await;
+        assert!(summaries.is_ok());
+    }
+
+    #[tokio::test]
+    async fn open_or_create_opens_existing_database() {
+        // Given a database created with new_in.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = SqliteSessionStore::new_in(dir.path()).expect("new_in");
+        // Verify it's usable.
+        assert!(store.load_summaries().await.is_ok());
+
+        // When opening the exact file path with open_or_create.
+        let db_file = dir.path().join("sessions.db");
+        let store2 = SqliteSessionStore::open_or_create(&db_file).expect("open_or_create");
+
+        // Then the database is usable.
+        assert!(store2.load_summaries().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn open_or_create_works_with_bare_filename() {
+        // Given a bare filename (no directory component).
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("test.db");
+
+        // When opening the database.
+        let store = SqliteSessionStore::open_or_create(&db_path).expect("open_or_create");
+
+        // Then the database is usable.
+        assert!(store.load_summaries().await.is_ok());
+    }
 }

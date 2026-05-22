@@ -147,6 +147,8 @@ impl AppWorld {
                 session_store,
                 user_preferences_storage,
                 None,
+                None,
+                None,
             );
 
             // Intentionally leaked: each AppWorld restart gets a completely fresh tokio runtime.
@@ -574,6 +576,8 @@ fn when_restart_app(world: &mut AppWorld) {
             config_storage,
             session_store,
             user_preferences_storage,
+            None,
+            None,
             None,
         );
 

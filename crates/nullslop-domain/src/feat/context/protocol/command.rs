@@ -1,31 +1,11 @@
-//! Command types for prompt assembly.
+//! Command types for context management.
 
 use serde::{Deserialize, Serialize};
 
-use crate::feat::tools_actor::tool_types::ToolDefinition;
-use crate::protocol::ChatEntry;
 use crate::protocol::ChatEntryId;
 use crate::protocol::CommandMsg;
 use crate::protocol::PinPosition;
 use crate::protocol::SessionId;
-
-/// Request to assemble a prompt from the given history.
-///
-/// Sent by the message queue handler when a message needs to go to the LLM.
-/// The `PromptAssemblyActor` receives this, runs compaction logic,
-/// and emits [`PromptAssembled`](super::PromptAssembled) when done.
-#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
-#[cmd("context")]
-pub struct AssemblePrompt {
-    /// The session this assembly is for.
-    pub session_id: SessionId,
-    /// The full conversation history to assemble from.
-    pub history: Vec<ChatEntry>,
-    /// Tool definitions available for this session.
-    pub tools: Vec<ToolDefinition>,
-    /// The name of the model being used.
-    pub model_name: String,
-}
 
 /// Pin a chat entry so it survives context management strategies.
 ///
