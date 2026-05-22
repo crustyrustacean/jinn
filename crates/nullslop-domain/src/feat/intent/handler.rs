@@ -328,6 +328,21 @@ impl IntentHandler {
             Intent::RenameSessionLeave => {
                 feat::rename_session_input::intent::handle_rename_session_leave(state)
             }
+            Intent::RenameInsertChar { ch } => {
+                feat::rename_session_input::intent::handle_insert_char(state, *ch)
+            }
+            Intent::RenameCursorLeft => {
+                feat::rename_session_input::intent::handle_cursor_left(state)
+            }
+            Intent::RenameCursorRight => {
+                feat::rename_session_input::intent::handle_cursor_right(state)
+            }
+            Intent::RenameDeleteGrapheme => {
+                feat::rename_session_input::intent::handle_delete(state)
+            }
+            Intent::RenameDeleteForward => {
+                feat::rename_session_input::intent::handle_delete_forward(state)
+            }
         }
     }
 }
@@ -394,7 +409,7 @@ fn handle_compaction_cancel(state: &mut AppState, session_id: SessionId) -> Inte
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
-    use crate::common::app_state::AppState;
+    use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use crate::feat::intent::IntentHandler;
     use crate::protocol::Intent;
 
@@ -435,6 +450,115 @@ mod tests {
 
         // Then the buffer has the pasted text.
         assert_eq!(state.active_chat_input().text(), "hello\nworld");
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn rename_insert_char_inserts_into_rename_input() {
+        // Given state in RenameSessionInput scope with partial input.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hel".to_owned(),
+            cursor_pos: 3,
+        };
+
+        // When handling RenameInsertChar { ch: 'o' }.
+        let result = IntentHandler::handle(&Intent::RenameInsertChar { ch: 'o' }, &mut state);
+
+        // Then rename input is "Helo" (not chat input).
+        assert_eq!(state.frontend.rename_session_input.input, "Helo");
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 4);
+        assert!(state.active_chat_input().is_empty());
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn rename_cursor_left_moves_cursor_in_rename_input() {
+        // Given state in RenameSessionInput scope with cursor at end.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hello".to_owned(),
+            cursor_pos: 5,
+        };
+
+        // When handling RenameCursorLeft.
+        let result = IntentHandler::handle(&Intent::RenameCursorLeft, &mut state);
+
+        // Then cursor moved left.
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 4);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn rename_cursor_right_moves_cursor_in_rename_input() {
+        // Given state in RenameSessionInput scope with cursor at start.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hi".to_owned(),
+            cursor_pos: 0,
+        };
+
+        // When handling RenameCursorRight.
+        let result = IntentHandler::handle(&Intent::RenameCursorRight, &mut state);
+
+        // Then cursor moved right.
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn rename_delete_grapheme_deletes_in_rename_input() {
+        // Given state in RenameSessionInput scope with cursor at end.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hello".to_owned(),
+            cursor_pos: 5,
+        };
+
+        // When handling RenameDeleteGrapheme.
+        let result = IntentHandler::handle(&Intent::RenameDeleteGrapheme, &mut state);
+
+        // Then last char deleted.
+        assert_eq!(state.frontend.rename_session_input.input, "Hell");
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 4);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn rename_delete_forward_deletes_in_rename_input() {
+        // Given state in RenameSessionInput scope with cursor at position 1.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hello".to_owned(),
+            cursor_pos: 1,
+        };
+
+        // When handling RenameDeleteForward.
+        let result = IntentHandler::handle(&Intent::RenameDeleteForward, &mut state);
+
+        // Then char after cursor deleted.
+        assert_eq!(state.frontend.rename_session_input.input, "Hllo");
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
         assert!(result.commands.is_empty());
     }
 }
