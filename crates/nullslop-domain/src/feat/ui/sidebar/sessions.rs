@@ -34,7 +34,7 @@ pub use close::{
 pub use r#continue::handle_session_continue;
 pub use navigate::{navigate, receive_cursor, scroll_to_cursor};
 pub use new_with_lifecycle::handle_sidebar_session_new_with_lifecycle;
-pub use preview::{render_session_preview, session_preview_popup_rect};
+pub use preview::{render_session_preview, render_session_preview_for_state, session_preview_popup_rect};
 pub use reconcile::reconcile_after_session_removal;
 pub use render::SessionsSection;
 pub use state::SessionsSectionState;
