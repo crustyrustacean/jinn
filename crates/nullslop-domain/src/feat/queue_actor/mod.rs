@@ -178,11 +178,15 @@ impl QueueActor {
             }
         };
 
+        let estimated_tokens = assembled.estimated_tokens();
+
         if let Err(e) =
             ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
                 session_id: session_id.clone(),
                 messages: assembled.messages,
                 provider_id,
+                estimated_tokens,
+                tool_definitions: assembled.tool_definitions,
             }))
         {
             tracing::warn!(err = ?e, "queue-actor failed to emit SendToLlmProvider");
@@ -224,11 +228,15 @@ impl QueueActor {
             }
         };
 
+        let estimated_tokens = assembled.estimated_tokens();
+
         if let Err(e) =
             ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
                 session_id: session_id.clone(),
                 messages: assembled.messages,
                 provider_id,
+                estimated_tokens,
+                tool_definitions: assembled.tool_definitions,
             }))
         {
             tracing::warn!(
