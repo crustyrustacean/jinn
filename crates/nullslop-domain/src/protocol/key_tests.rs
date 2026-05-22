@@ -198,6 +198,7 @@ fn parse_notation_case_insensitive() {
 #[case::unknown("foobar")]
 #[case::bare_ctrl("c-")]
 #[case::bare_shift("s-")]
+#[case::bare_meta("m-")]
 fn parse_notation_rejects_invalid_inputs(#[case] input: &str) {
     // Given an invalid notation.
     let result = KeyEvent::parse_notation(input);
@@ -206,4 +207,70 @@ fn parse_notation_rejects_invalid_inputs(#[case] input: &str) {
 
     // Then it returns None.
     assert!(result.is_none());
+}
+
+#[cfg(feature = "which-key")]
+#[rstest::rstest]
+fn parse_notation_m_s_returns_alt_s() {
+    // Given the notation "m-s".
+    let result = KeyEvent::parse_notation("m-s");
+
+    // When parsing.
+    let key_event = result.expect("should parse");
+
+    // Then it is Alt+Char('s').
+    assert_eq!(key_event.key, Key::Char('s'));
+    assert!(key_event.modifiers.alt);
+    assert!(!key_event.modifiers.ctrl);
+    assert!(!key_event.modifiers.shift);
+}
+
+#[cfg(feature = "which-key")]
+#[rstest::rstest]
+fn parse_notation_m_enter_returns_alt_enter() {
+    // Given the notation "m-enter".
+    let result = KeyEvent::parse_notation("m-enter");
+
+    // When parsing.
+    let key_event = result.expect("should parse");
+
+    // Then it is Alt+Enter.
+    assert_eq!(key_event.key, Key::Enter);
+    assert!(key_event.modifiers.alt);
+    assert!(!key_event.modifiers.ctrl);
+    assert!(!key_event.modifiers.shift);
+}
+
+#[cfg(feature = "which-key")]
+#[rstest::rstest]
+fn display_alt_char_shows_m_notation() {
+    // Given a KeyEvent with Alt+Char('s').
+    use ratatui_which_key::Key as _;
+    let key_event = KeyEvent {
+        key: Key::Char('s'),
+        modifiers: Modifiers::alt(),
+    };
+
+    // When displaying.
+    let display = key_event.display();
+
+    // Then it shows "<M-s>".
+    assert_eq!(display, "<M-s>");
+}
+
+#[cfg(feature = "which-key")]
+#[rstest::rstest]
+fn display_alt_named_key_shows_m_prefix() {
+    // Given a KeyEvent with Alt+Enter.
+    use ratatui_which_key::Key as _;
+    let key_event = KeyEvent {
+        key: Key::Enter,
+        modifiers: Modifiers::alt(),
+    };
+
+    // When displaying.
+    let display = key_event.display();
+
+    // Then it shows "M-Enter".
+    assert_eq!(display, "M-Enter");
 }

@@ -198,7 +198,7 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
     }
 }
 
-fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
+pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
     match id {
         SidebarSectionId::Minimap => {}
         SidebarSectionId::Persona => state.frontend.persona_section.cursor = None,
