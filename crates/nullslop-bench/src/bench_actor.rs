@@ -20,10 +20,11 @@ use nullslop_domain::protocol::{Command, Event, SessionId};
 use nullslop_domain::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, RecordingSink, State};
 
 use crate::csv::{BenchCsvWriter, BenchResult};
-use crate::task::BenchTask;
+use crate::task::{BenchTask, VerificationReport};
 use crate::tasks;
 
 /// A tracked bench session.
+#[allow(dead_code, reason = "timeout and verify used by bench lifecycle")]
 struct BenchSession {
     /// The bench task name (matches the lifecycle name).
     task_name: String,
@@ -32,7 +33,7 @@ struct BenchSession {
     /// Deadline for timeout — `start_time + task.timeout`.
     deadline: Instant,
     /// Verification function from the task definition.
-    verify: fn(&std::path::Path) -> bool,
+    verify: fn(&std::path::Path) -> VerificationReport,
     /// Per-task timeout duration.
     timeout: std::time::Duration,
 }
@@ -220,7 +221,26 @@ impl BenchActor {
         };
 
         // Run verification.
-        let passed = (tracked.verify)(&cwd);
+        let report = (tracked.verify)(&cwd);
+        let passed = report.passed();
+
+        // Log each check result.
+        for check in &report.checks {
+            if check.passed {
+                tracing::info!(
+                    task = %tracked.task_name,
+                    check = %check.name,
+                    "check passed"
+                );
+            } else {
+                tracing::warn!(
+                    task = %tracked.task_name,
+                    check = %check.name,
+                    detail = %check.detail,
+                    "check failed"
+                );
+            }
+        }
 
         // Determine status.
         let is_timeout = Instant::now() > tracked.deadline;
@@ -229,6 +249,8 @@ impl BenchActor {
         } else {
             "completed".to_owned()
         };
+
+        let _ = report; // Will be used in later phases for chat entries and CSV detail.
 
         let result = BenchResult {
             name: tracked.task_name.clone(),

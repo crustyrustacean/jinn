@@ -15,6 +15,7 @@ use nullslop_domain::feat::session_lifecycle::builtin::{
 use nullslop_domain::protocol::SessionId;
 
 use crate::fixture;
+use crate::task::VerificationReport;
 use crate::tasks;
 
 /// Registers all bench tasks as builtin lifecycle handlers.
@@ -42,7 +43,8 @@ pub fn register_bench_tasks(registry: &mut BuiltinRegistry) {
 pub struct BenchTaskHandler {
     name: String,
     fixture_dir: Option<String>,
-    verify: fn(&Path) -> bool,
+    #[allow(dead_code, reason = "verify is called by the bench actor, not this handler")]
+    verify: fn(&Path) -> VerificationReport,
 }
 
 impl std::fmt::Debug for BenchTaskHandler {
@@ -100,6 +102,10 @@ mod tests {
 
     use super::*;
 
+    fn noop_verify(_: &Path) -> VerificationReport {
+        VerificationReport::new("test", vec![])
+    }
+
     #[test]
     fn register_bench_tasks_populates_registry() {
         // Given an empty registry.
@@ -150,7 +156,7 @@ mod tests {
         let handler = BenchTaskHandler {
             name: "hello-world".to_owned(),
             fixture_dir: None,
-            verify: |_path| true,
+            verify: noop_verify,
         };
 
         // When running setup.
@@ -176,7 +182,7 @@ mod tests {
         let handler = BenchTaskHandler {
             name: "test".to_owned(),
             fixture_dir: None,
-            verify: |_path| true,
+            verify: noop_verify,
         };
 
         // When running teardown.
