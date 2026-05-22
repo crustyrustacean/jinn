@@ -147,10 +147,13 @@ pub struct MinimapArrow {
 ///
 /// Returns `Some(MinimapArrow)` with the arrow position if there are visible
 /// entries, or `None` if the history is empty.
+///
+/// `muted_text_color` is used for the scroll direction arrows (`▲`/`▼`).
 pub fn render_vertical_minimap(
     frame: &mut Frame<'_>,
     area: Rect,
     state: &AppState,
+    muted_text_color: Color,
 ) -> Option<MinimapArrow> {
     if state.session.is_loading() {
         return None;
@@ -199,10 +202,59 @@ pub fn render_vertical_minimap(
     let widget = Paragraph::new(lines);
     frame.render_widget(widget, area);
 
+    // Render scroll direction arrows.
+    render_scroll_arrows(frame, area, scroll_offset, total_blocks, viewport_height, muted_text_color);
+
     // Compute arrow row (offset from top of minimap area).
     let arrow_row = selected_block.saturating_sub(scroll_offset) as u16;
 
     Some(MinimapArrow { row: arrow_row })
+}
+
+/// Renders scroll direction arrows at the top/bottom of the minimap column.
+///
+/// `▲` appears at the top when entries exist above the viewport.
+/// `▼` appears at the bottom when entries exist below the viewport.
+/// These arrows replace whatever block was at that position.
+fn render_scroll_arrows(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    scroll_offset: usize,
+    total_blocks: usize,
+    viewport_height: usize,
+    muted_text_color: Color,
+) {
+    let has_above = scroll_offset > 0;
+    let has_below = scroll_offset + viewport_height < total_blocks;
+
+    if has_above {
+        let arrow_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: 1,
+            height: 1,
+        };
+        let arrow = Paragraph::new(Line::from(Span::styled(
+            "▲",
+            Style::default().fg(muted_text_color),
+        )));
+        frame.render_widget(arrow, arrow_area);
+    }
+
+    if has_below {
+        let bottom_y = area.y + area.height.saturating_sub(1);
+        let arrow_area = Rect {
+            x: area.x,
+            y: bottom_y,
+            width: 1,
+            height: 1,
+        };
+        let arrow = Paragraph::new(Line::from(Span::styled(
+            "▼",
+            Style::default().fg(muted_text_color),
+        )));
+        frame.render_widget(arrow, arrow_area);
+    }
 }
 
 /// Renders the `>` arrow overlay on the chat log area.
@@ -392,10 +444,11 @@ mod tests {
         height: u16,
     ) -> (Option<MinimapArrow>, Vec<String>) {
         let (mut terminal, area) = nullslop_testutil::setup_term(width, height);
+        let theme = default_theme();
         let mut arrow_result = None;
         terminal
             .draw(|frame| {
-                arrow_result = render_vertical_minimap(frame, area, state);
+                arrow_result = render_vertical_minimap(frame, area, state, theme.muted_text);
             })
             .unwrap();
         let buffer = terminal.backend().buffer();
@@ -542,5 +595,76 @@ mod tests {
             row_str.contains('>'),
             "expected '>' in row 3, got: {row_str}"
         );
+    }
+
+    // --- Scroll direction arrows ---
+
+    #[rstest::rstest]
+    fn scroll_down_arrow_appears_at_bottom_when_scrolled() {
+        // Given 20 entries, viewport height 5, selected near top.
+        let mut state = AppState::default();
+        for i in 0..20 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("msg {i}")));
+        }
+        // Select first entry so viewport is near the top.
+        state.active_session_mut().set_selected_entry_index(0);
+
+        // When rendering.
+        let (_arrow, rows) = render_to_buffer(&state, 1, 5);
+
+        // Then the bottom row has a ▼ character.
+        let bottom_row = &rows[4];
+        assert!(
+            bottom_row.contains('▼'),
+            "expected '▼' at bottom, got: {bottom_row}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn scroll_up_arrow_appears_at_top_when_scrolled() {
+        // Given 20 entries, selected near bottom.
+        let mut state = AppState::default();
+        for i in 0..20 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("msg {i}")));
+        }
+        // Select last entry — viewport is bottom-aligned.
+
+        // When rendering.
+        let (_arrow, rows) = render_to_buffer(&state, 1, 5);
+
+        // Then the top row has a ▲ character.
+        let top_row = &rows[0];
+        assert!(
+            top_row.contains('▲'),
+            "expected '▲' at top, got: {top_row}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn no_arrows_when_all_entries_fit() {
+        // Given 3 entries in a 10-row viewport.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("c"));
+
+        // When rendering.
+        let (_arrow, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then no scroll arrows appear.
+        let has_up_arrow = rows.iter().any(|r| r.contains('▲'));
+        let has_down_arrow = rows.iter().any(|r| r.contains('▼'));
+        assert!(!has_up_arrow, "should not have ▲");
+        assert!(!has_down_arrow, "should not have ▼");
     }
 }
