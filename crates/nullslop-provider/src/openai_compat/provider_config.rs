@@ -64,7 +64,10 @@ impl ProviderConfig {
             default_base_url: "https://openrouter.ai/api/v1/",
             chat_endpoint: "chat/completions",
             models_endpoint: "models",
-            custom_headers: vec![],
+            custom_headers: vec![(
+                "X-OpenRouter-Experimental-Metadata".to_owned(),
+                "enabled".to_owned(),
+            )],
         }
     }
 
@@ -194,6 +197,18 @@ impl ProviderConfig {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
+
+    #[rstest::rstest]
+    fn openrouter_config_includes_experimental_metadata_header() {
+        let config = ProviderConfig::openrouter();
+        assert!(
+            config
+                .custom_headers
+                .iter()
+                .any(|(k, v)| k == "X-OpenRouter-Experimental-Metadata" && v == "enabled"),
+            "OpenRouter config should include experimental metadata header"
+        );
+    }
 
     #[rstest::rstest]
     #[case(&Backend::OpenAI, "OpenAI", "https://api.openai.com/v1/")]
