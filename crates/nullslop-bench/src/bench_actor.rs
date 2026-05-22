@@ -450,14 +450,10 @@ impl BenchActor {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
-    use std::path::Path;
     use std::sync::Arc;
     use std::time::Duration;
 
-    use nullslop_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
-    use nullslop_domain::feat::session::chat_session::ChatSessionState;
     use nullslop_domain::RecordingSink;
-    use nullslop_domain::feat::session_lifecycle::builtin::LifecycleCommand;
 
     use super::*;
 
@@ -687,7 +683,7 @@ mod tests {
 
         // Manually set the deadline to the past to simulate timeout.
         if let Some(tracked) = actor.pending.get_mut(&session_id) {
-            tracked.deadline = Instant::now() - Duration::from_secs(1);
+            tracked.deadline = Instant::now().checked_sub(Duration::from_secs(1)).unwrap_or(Instant::now());
         }
 
         // When StreamCompleted fires.
