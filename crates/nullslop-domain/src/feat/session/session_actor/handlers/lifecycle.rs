@@ -139,13 +139,35 @@ impl SessionPersistenceActor {
         // "running" entry is now emitted by the intent handler as a PushChatEntry
         // command before this handler runs. No direct push needed here.
 
+        match payload.lifecycle_command {
+            Some(ref cmd) => match cmd {
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
+                    self.run_builtin_setup(&payload.session_id, id, &payload.args, ctx);
+                }
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(_) => {
+                    self.run_shell_setup(payload, ctx).await;
+                }
+            },
+            None => {
+                self.run_shell_setup(payload, ctx).await;
+            }
+        }
+    }
+
+    /// Runs a shell-based setup command via `run_setup_command`.
+    async fn run_shell_setup(
+        &self,
+        payload: &RunSessionSetup,
+        ctx: &ActorContext,
+    ) {
         let result = run_setup_command(&payload.command).await;
 
         match result {
             Ok(cwd) => {
                 {
                     let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
+                    if let Some(session) =
+                        state.session.sessions_mut().get_mut(&payload.session_id)
                     {
                         session.set_cwd(cwd.clone());
                         session.advance_lifecycle_after_setup();
@@ -184,7 +206,8 @@ impl SessionPersistenceActor {
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
+                    if let Some(session) =
+                        state.session.sessions_mut().get_mut(&payload.session_id)
                     {
                         session.set_cwd(default.clone());
                     }
@@ -208,6 +231,104 @@ impl SessionPersistenceActor {
                 if let Err(e) =
                     ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
                         session_id: payload.session_id.clone(),
+                        cwd: default_cwd,
+                        error: Some(error_msg),
+                    }))
+                {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
+                }
+            }
+        }
+    }
+
+    /// Runs a builtin lifecycle setup by looking up the handler in the registry.
+    fn run_builtin_setup(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        id: &crate::feat::session_lifecycle::builtin::BuiltinId,
+        args: &[String],
+        ctx: &ActorContext,
+    ) {
+        let Some(handler) = self.builtin_registry.get(id) else {
+            let error_msg = format!("unknown builtin lifecycle: {id}");
+            tracing::error!(%id, "builtin handler not found in registry");
+
+            let default_cwd = {
+                let mut state = self.state.write();
+                let default = state.session.default_cwd().clone();
+                if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                    session.set_cwd(default.clone());
+                }
+                default
+            };
+
+            if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                session_id: session_id.clone(),
+                entry: ChatEntry::error(&error_msg),
+            })) {
+                tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin setup error");
+            }
+
+            if let Err(e) =
+                ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+                    session_id: session_id.clone(),
+                    cwd: default_cwd,
+                    error: Some(error_msg),
+                }))
+            {
+                tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
+            }
+            return;
+        };
+
+        match handler.setup(session_id, args) {
+            Ok(cwd) => {
+                {
+                    let mut state = self.state.write();
+                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                        session.set_cwd(cwd.clone());
+                        session.advance_lifecycle_after_setup();
+                    }
+                }
+
+                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: session_id.clone(),
+                    entry: setup_complete_msg(&cwd),
+                })) {
+                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin setup complete");
+                }
+
+                if let Err(e) =
+                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+                        session_id: session_id.clone(),
+                        cwd,
+                        error: None,
+                    }))
+                {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
+                }
+            }
+            Err(report) => {
+                let error_msg = format!("builtin setup failed: {report:#?}");
+                let default_cwd = {
+                    let mut state = self.state.write();
+                    let default = state.session.default_cwd().clone();
+                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                        session.set_cwd(default.clone());
+                    }
+                    default
+                };
+
+                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: session_id.clone(),
+                    entry: ChatEntry::error(&error_msg),
+                })) {
+                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin setup error");
+                }
+
+                if let Err(e) =
+                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+                        session_id: session_id.clone(),
                         cwd: default_cwd,
                         error: Some(error_msg),
                     }))
@@ -255,25 +376,40 @@ impl SessionPersistenceActor {
             return;
         };
 
-        let crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) = teardown_cmd else {
-            // Builtin teardown will be handled in Phase 2.
-            return;
-        };
+        match teardown_cmd {
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) => {
+                let success = self
+                    .run_teardown_step(&payload.session_id, shell_cmd, &lifecycle_args, ctx)
+                    .await;
 
-        let success = self
-            .run_teardown_step(&payload.session_id, shell_cmd, &lifecycle_args, ctx)
-            .await;
-
-        if !success {
-            if let Err(e) =
-                ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
-                    session_id: payload.session_id.clone(),
-                    error: Some("teardown failed".to_owned()),
-                }))
-            {
-                tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
+                if !success {
+                    if let Err(e) =
+                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+                            session_id: payload.session_id.clone(),
+                            error: Some("teardown failed".to_owned()),
+                        }))
+                    {
+                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
+                    }
+                    return;
+                }
             }
-            return;
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
+                let success =
+                    self.run_builtin_teardown(&payload.session_id, &id, &lifecycle_args, ctx).await;
+
+                if !success {
+                    if let Err(e) =
+                        ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
+                            session_id: payload.session_id.clone(),
+                            error: Some("teardown failed".to_owned()),
+                        }))
+                    {
+                        tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
+                    }
+                    return;
+                }
+            }
         }
 
         // Push success entry via PushChatEntry (persists automatically).
@@ -289,6 +425,52 @@ impl SessionPersistenceActor {
             error: None,
         })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
+        }
+    }
+
+    /// Runs a builtin lifecycle teardown by looking up the handler in the registry.
+    ///
+    /// Returns `true` if teardown succeeded, `false` if it failed.
+    /// Advances `lifecycle_script_state` to `TeardownRan` on success.
+    async fn run_builtin_teardown(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        id: &crate::feat::session_lifecycle::builtin::BuiltinId,
+        args: &[String],
+        ctx: &ActorContext,
+    ) -> bool {
+        let Some(handler) = self.builtin_registry.get(id) else {
+            let error_msg = format!("unknown builtin lifecycle: {id}");
+            tracing::error!(%id, "builtin handler not found in registry for teardown");
+
+            if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                session_id: session_id.clone(),
+                entry: ChatEntry::error(&error_msg),
+            })) {
+                tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin teardown error");
+            }
+            return false;
+        };
+
+        if handler.teardown(session_id, args) {
+            // Advance lifecycle_script_state: SetupRan → TeardownRan.
+            {
+                let mut state = self.state.write();
+                if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                    session.advance_lifecycle_after_teardown();
+                }
+            }
+            self.save_active_session(session_id).await;
+            true
+        } else {
+            let error_msg = format!("builtin teardown failed for: {id}");
+            if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                session_id: session_id.clone(),
+                entry: ChatEntry::error(&error_msg),
+            })) {
+                tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin teardown failure");
+            }
+            false
         }
     }
 
@@ -361,9 +543,21 @@ impl SessionPersistenceActor {
                             return;
                         }
                     }
-                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => {
-                        // Builtin teardown will be handled in Phase 2.
-                        // For now, emit SessionTeardownFinished(success) and continue.
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(ref id) => {
+                        let success =
+                            self.run_builtin_teardown(&payload.session_id, id, &lifecycle_args, ctx).await;
+
+                        if !success {
+                            if let Err(e) = ctx.send_event(Event::SessionTeardownFinished(
+                                SessionTeardownFinished {
+                                    session_id: payload.session_id.clone(),
+                                    error: Some("teardown failed".to_owned()),
+                                },
+                            )) {
+                                tracing::warn!(err = ?e, "session-actor failed to emit SessionTeardownFinished");
+                            }
+                            return;
+                        }
                     }
                 }
             }

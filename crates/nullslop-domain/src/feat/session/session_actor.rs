@@ -63,6 +63,9 @@ pub struct SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) store: Option<SessionStoreService>,
     /// Token counter for recording token usage in the session ledger.
     pub(in crate::feat::session::session_actor) counter: TiktokenCounter,
+    /// Registry of builtin lifecycle handlers.
+    pub(in crate::feat::session::session_actor) builtin_registry:
+        crate::feat::session_lifecycle::builtin::BuiltinRegistry,
 }
 
 /// Dependencies for [`SessionPersistenceActor`].
@@ -75,6 +78,8 @@ pub struct SessionPersistenceActorDeps {
     pub store: Option<SessionStoreService>,
     /// Token counter for usage tracking.
     pub counter: TiktokenCounter,
+    /// Registry of builtin lifecycle handlers.
+    pub builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry,
 }
 
 impl Actor for SessionPersistenceActor {
@@ -129,6 +134,7 @@ impl Actor for SessionPersistenceActor {
             services: deps.services,
             store: deps.store,
             counter: deps.counter,
+            builtin_registry: deps.builtin_registry,
         }
     }
 

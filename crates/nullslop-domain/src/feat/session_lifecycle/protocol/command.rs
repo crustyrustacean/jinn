@@ -18,6 +18,10 @@ pub struct RunSessionSetup {
     pub command: String,
     /// Positional arguments for the command.
     pub args: Vec<String>,
+    /// The original lifecycle command, used to dispatch builtin vs shell.
+    /// `None` for backward compatibility with existing callers.
+    #[serde(default)]
+    pub lifecycle_command: Option<crate::feat::session_lifecycle::builtin::LifecycleCommand>,
 }
 
 /// Request to run a lifecycle teardown command asynchronously.

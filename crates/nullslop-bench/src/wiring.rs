@@ -261,6 +261,7 @@ pub fn create_bench_core(
             services: Some(services.clone()),
             store: Some(config.session_store.clone()),
             counter: token_counter,
+            builtin_registry: nullslop_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
         },
     );
 

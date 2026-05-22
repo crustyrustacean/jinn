@@ -4,8 +4,14 @@
 //! and builtin handlers identified by [`BuiltinId`]. The serde implementation ensures existing
 //! TOML configs (bare string commands) continue to work.
 
+use error_stack::Report;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::collections::HashMap;
 use std::fmt;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use crate::protocol::SessionId;
 
 /// Identifies a compiled-in lifecycle handler.
 ///
@@ -144,6 +150,80 @@ impl<'de> Deserialize<'de> for LifecycleCommand {
         }
 
         deserializer.deserialize_any(LifecycleCommandVisitor)
+    }
+}
+
+/// Error type for builtin handler failures.
+#[derive(Debug, wherror::Error)]
+#[error(debug)]
+pub struct BuiltinHandlerError;
+
+/// A builtin lifecycle handler.
+///
+/// Each builtin lifecycle (e.g., bench tasks) registers a handler that provides
+/// setup and teardown behavior. Setup returns a working directory path; teardown
+/// performs cleanup and verification.
+pub trait BuiltinHandler: Send + Sync {
+    /// Run setup for this builtin lifecycle.
+    ///
+    /// Returns the working directory path to set as the session's CWD.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if setup fails (e.g., fixture preparation fails).
+    fn setup(
+        &self,
+        session_id: &SessionId,
+        args: &[String],
+    ) -> Result<PathBuf, Report<BuiltinHandlerError>>;
+
+    /// Run teardown for this builtin lifecycle.
+    ///
+    /// Returns `true` if teardown succeeded, `false` if it failed.
+    fn teardown(&self, session_id: &SessionId, args: &[String]) -> bool;
+}
+
+/// Registry of builtin lifecycle handlers, keyed by [`BuiltinId`].
+///
+/// Created empty and populated before the actor system starts. Passed to the
+/// session actor via [`SessionPersistenceActorDeps`].
+///
+/// [`SessionPersistenceActorDeps`]: crate::feat::session::session_actor::SessionPersistenceActorDeps
+#[derive(Clone, Default)]
+pub struct BuiltinRegistry {
+    handlers: HashMap<BuiltinId, Arc<dyn BuiltinHandler>>,
+}
+
+impl BuiltinRegistry {
+    /// Creates a new empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Registers a builtin handler under the given id.
+    pub fn register(&mut self, id: impl Into<BuiltinId>, handler: Arc<dyn BuiltinHandler>) {
+        self.handlers.insert(id.into(), handler);
+    }
+
+    /// Looks up a handler by id.
+    #[must_use]
+    pub fn get(&self, id: &BuiltinId) -> Option<&Arc<dyn BuiltinHandler>> {
+        self.handlers.get(id)
+    }
+
+    /// Returns `true` if no handlers are registered.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.handlers.is_empty()
+    }
+}
+
+impl std::fmt::Debug for BuiltinRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BuiltinRegistry")
+            .field("count", &self.handlers.len())
+            .finish()
     }
 }
 
