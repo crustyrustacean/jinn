@@ -1408,7 +1408,13 @@ impl ChatSessionState {
     pub fn move_cursor_to_first_visible(&mut self) {
         let range = self.visible_entry_range();
         if !range.is_empty() {
-            self.ui.selected_entry_index = Some(range.start);
+            let mut idx = range.start;
+            while idx < range.end && self.core.history[idx].is_empty_assistant() {
+                idx += 1;
+            }
+            if idx < self.core.history.len() && !self.core.history[idx].is_empty_assistant() {
+                self.ui.selected_entry_index = Some(idx);
+            }
         }
     }
 
@@ -1418,7 +1424,13 @@ impl ChatSessionState {
     pub fn move_cursor_to_last_visible(&mut self) {
         let range = self.visible_entry_range();
         if !range.is_empty() {
-            self.ui.selected_entry_index = Some(range.end - 1);
+            let mut idx = range.end.saturating_sub(1);
+            while idx > range.start && self.core.history[idx].is_empty_assistant() {
+                idx = idx.saturating_sub(1);
+            }
+            if !self.core.history[idx].is_empty_assistant() {
+                self.ui.selected_entry_index = Some(idx);
+            }
         }
     }
 
@@ -1475,11 +1487,14 @@ impl ChatSessionState {
             return;
         }
         let max = self.core.history.len() - 1;
-        self.ui.selected_entry_index = Some(
-            self.ui
-                .selected_entry_index
-                .map_or(0, |i| i.saturating_add(1).min(max)),
-        );
+        let start = self.ui.selected_entry_index.map_or(0, |i| i.saturating_add(1).min(max));
+        let mut idx = start;
+        while idx < max && self.core.history[idx].is_empty_assistant() {
+            idx = idx.saturating_add(1);
+        }
+        if !self.core.history[idx].is_empty_assistant() {
+            self.ui.selected_entry_index = Some(idx);
+        }
     }
 
     /// Select the previous entry (moving toward older messages).
@@ -1491,11 +1506,17 @@ impl ChatSessionState {
         if self.core.history.is_empty() {
             return;
         }
-        self.ui.selected_entry_index = Some(
-            self.ui
-                .selected_entry_index
-                .map_or(self.core.history.len() - 1, |i| i.saturating_sub(1)),
+        let start = self.ui.selected_entry_index.map_or(
+            self.core.history.len().saturating_sub(1),
+            |i| i.saturating_sub(1),
         );
+        let mut idx = start;
+        while idx > 0 && self.core.history[idx].is_empty_assistant() {
+            idx = idx.saturating_sub(1);
+        }
+        if !self.core.history[idx].is_empty_assistant() {
+            self.ui.selected_entry_index = Some(idx);
+        }
     }
 
     /// Clear the entry selection.
