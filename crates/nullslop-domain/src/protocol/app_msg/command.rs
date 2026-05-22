@@ -33,6 +33,7 @@ use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPick
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn;
 use crate::feat::session_lifecycle::protocol::command::{
     PersistSession, RunSessionSetup, RunSessionTeardown,
 };
@@ -124,6 +125,8 @@ pub enum Command {
     ArchiveSession(crate::feat::session::protocol::archive_session::ArchiveSession),
     /// Persist a session's full state to SQLite immediately.
     PersistSession(PersistSession),
+    /// Request graceful termination of the current turn.
+    SoftCancelTurn(SoftCancelTurn),
 }
 
 impl Command {
@@ -169,6 +172,7 @@ impl Command {
                 Some(crate::feat::session::protocol::archive_session::ArchiveSession::NAME)
             }
             Self::PersistSession(..) => Some(PersistSession::NAME),
+            Self::SoftCancelTurn(..) => Some(SoftCancelTurn::NAME),
         }
     }
 }
@@ -269,6 +273,9 @@ impl std::fmt::Display for Command {
             }
             Command::PersistSession(payload) => {
                 write!(f, "persist session {}", payload.session_id)
+            }
+            Command::SoftCancelTurn(payload) => {
+                write!(f, "soft cancel turn for {}", payload.session_id)
             }
         }
     }
