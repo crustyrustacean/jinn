@@ -356,7 +356,7 @@ impl<'a> HistoryRender<'a> {
             let abs_entry_start = entry_start + self.scroll.blank_count as u16;
 
             // Get content lines — reuse from cache miss or render fresh.
-            let mut entry_content_lines = if let Some(lines) = self.miss_lines.remove(&i) {
+            let entry_content_lines = if let Some(lines) = self.miss_lines.remove(&i) {
                 lines
             } else {
                 let paired_status = self.paired_status_for_entry(entry);
@@ -381,7 +381,6 @@ impl<'a> HistoryRender<'a> {
                 content_width: self.content_width,
                 theme: &self.theme,
                 cursor_bg_color,
-                gutter_str: GUTTER_STR,
                 is_included_in_context,
                 gutter_context_color: self.theme.gutter_context_included,
             };
@@ -391,15 +390,6 @@ impl<'a> HistoryRender<'a> {
             // Track lines above viewport for scroll calculation.
             if abs_entry_start < viewport_top {
                 self.lines_before_viewport += viewport_top.saturating_sub(abs_entry_start);
-            }
-
-            if is_selected && chat_log_active {
-                let cursor_bg = Style::default().bg(cursor_bg_color);
-                for line in &mut entry_content_lines {
-                    for span in &mut line.spans {
-                        span.style = span.style.patch(cursor_bg);
-                    }
-                }
             }
 
             self.content_lines.extend(entry_content_lines);

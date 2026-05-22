@@ -62,7 +62,7 @@ fn chat_log_element_is_selectable() {
 }
 
 #[rstest::rstest]
-fn selected_entry_gutter_has_context_fg_and_content_has_yellow_bg() {
+fn selected_entry_gutter_col0_has_context_fg_and_col1_has_cursor_bg() {
     // Given a ChatLogElement with 2 entries, first selected.
     let mut element = ChatLogElement::new();
     let state = {
@@ -83,28 +83,28 @@ fn selected_entry_gutter_has_context_fg_and_content_has_yellow_bg() {
         })
         .unwrap();
 
-    // Then the selected entry's gutter has teal fg and no bg.
+    // Then the selected entry's gutter col 0 has teal fg and no bg.
     // 2 entries × 3 lines = 6, 4 blank above. Entry 0 at rows 4-6.
     let buffer = terminal.backend().buffer().clone();
-    let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
-    assert_eq!(gutter_cell.style().fg, Some(crate::feat::theme::default_theme().gutter_context_included));
-    assert_eq!(gutter_cell.style().bg, Some(Color::Reset));
+    let gutter_col0 = buffer.cell((0, 5)).expect("cell should exist");
+    assert_eq!(gutter_col0.style().fg, Some(crate::feat::theme::default_theme().gutter_context_included));
+    assert_eq!(gutter_col0.style().bg, Some(Color::Reset));
 
-    // And the selected entry's content column has yellow bg.
-    let content_cell = buffer.cell((G, 5)).expect("cell should exist");
-    assert_eq!(content_cell.style().bg, Some(Color::Yellow));
+    // And the selected entry's gutter col 1 has yellow bg (cursor).
+    let gutter_col1 = buffer.cell((1, 5)).expect("cell should exist");
+    assert_eq!(gutter_col1.style().bg, Some(Color::Yellow));
 
-    // And the unselected entry's gutter has the context included color and no bg.
-    let unselected_gutter = buffer.cell((0, 8)).expect("cell should exist");
+    // And the unselected entry's gutter col 0 has context fg and no bg.
+    let unselected_col0 = buffer.cell((0, 8)).expect("cell should exist");
     assert_eq!(
-        unselected_gutter.style().fg,
+        unselected_col0.style().fg,
         Some(crate::feat::theme::default_theme().gutter_context_included)
     );
-    assert_eq!(unselected_gutter.style().bg, Some(Color::Reset));
+    assert_eq!(unselected_col0.style().bg, Some(Color::Reset));
 
-    // And the unselected entry's content column has no yellow bg.
-    let unselected_content = buffer.cell((G, 8)).expect("cell should exist");
-    assert_ne!(unselected_content.style().bg, Some(Color::Yellow));
+    // And the unselected entry's gutter col 1 has no yellow bg.
+    let unselected_col1 = buffer.cell((1, 8)).expect("cell should exist");
+    assert_ne!(unselected_col1.style().bg, Some(Color::Yellow));
 }
 
 #[rstest::rstest]
@@ -437,15 +437,15 @@ fn render_scroll_to_selected_keeps_entry_visible() {
         })
         .unwrap();
 
-    // Then the selected entry's content column (yellow bg) should be visible in the viewport.
+    // Then the selected entry's gutter col 1 (yellow bg) should be visible in the viewport.
     let buffer = terminal.backend().buffer().clone();
-    let has_yellow_content = (0..5).any(|row| {
+    let has_yellow_gutter = (0..5).any(|row| {
         buffer
-            .cell((G, row))
+            .cell((1, row))
             .is_some_and(|c| c.style().bg == Some(Color::Yellow))
     });
     assert!(
-        has_yellow_content,
+        has_yellow_gutter,
         "selected entry should be visible in viewport when scroll-to-selected is active"
     );
 }
@@ -552,7 +552,7 @@ fn render_pinned_unselected_entry_gutter_has_default_bg() {
 }
 
 #[rstest::rstest]
-fn render_unpinned_selected_entry_gutter_has_no_bg_and_content_has_cursor_bg() {
+fn render_unpinned_selected_entry_gutter_col0_no_bg_col1_has_cursor_bg() {
     // Given a ChatLogElement with one unpinned user entry (auto-selected).
     let mut element = ChatLogElement::new();
     let state = {
@@ -570,22 +570,22 @@ fn render_unpinned_selected_entry_gutter_has_no_bg_and_content_has_cursor_bg() {
         })
         .unwrap();
 
-    // Then the unpinned selected entry's gutter has no background.
+    // Then the unpinned selected entry's gutter col 0 has no background.
     // 1 entry × 3 lines = 3, 7 blank above. Entry at rows 7-9.
     let buffer = terminal.backend().buffer().clone();
-    let gutter_cell = buffer.cell((0, 9)).expect("cell should exist");
+    let gutter_col0 = buffer.cell((0, 9)).expect("cell should exist");
     assert_eq!(
-        gutter_cell.style().bg,
+        gutter_col0.style().bg,
         Some(Color::Reset),
-        "unpinned selected entry gutter should have no background"
+        "unpinned selected entry gutter col 0 should have no background"
     );
 
-    // And the content column has yellow bg (cursor).
-    let content_cell = buffer.cell((G, 9)).expect("cell should exist");
+    // And the gutter col 1 has yellow bg (cursor).
+    let gutter_col1 = buffer.cell((1, 9)).expect("cell should exist");
     assert_eq!(
-        content_cell.style().bg,
+        gutter_col1.style().bg,
         Some(Color::Yellow),
-        "unpinned selected entry content should have yellow background (cursor)"
+        "unpinned selected entry gutter col 1 should have yellow background (cursor)"
     );
 }
 
@@ -733,15 +733,15 @@ fn render_scroll_to_selected_middle_entry_adjusts_viewport() {
         })
         .unwrap();
 
-    // Then the selected entry is visible (yellow content bg in viewport).
+    // Then the selected entry is visible (yellow gutter col 1 bg in viewport).
     let buffer = terminal.backend().buffer().clone();
-    let has_yellow_content = (0..10).any(|row| {
+    let has_yellow_gutter = (0..10).any(|row| {
         buffer
-            .cell((G, row))
+            .cell((1, row))
             .is_some_and(|c| c.style().bg == Some(Color::Yellow))
     });
     assert!(
-        has_yellow_content,
+        has_yellow_gutter,
         "selected middle entry should be visible in viewport after scroll-to-selected"
     );
 
