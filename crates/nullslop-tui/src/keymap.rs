@@ -129,6 +129,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
             // Sidebar resize
             .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
+            // Minimap navigation
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
             // Expand/collapse tool entry

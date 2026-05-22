@@ -158,8 +158,6 @@ pub enum FocusScope {
     SidebarPins,
     /// Sidebar — Sessions section focused.
     SidebarSessions,
-    /// Sidebar — Minimap section focused (display-only, skips through).
-    SidebarMinimap,
     /// Picker overlay active — kind distinguishes Provider/Session/Keymap/etc.
     Picker { kind: PickerKind },
     /// Arg input popup — collecting positional args for a lifecycle command.
@@ -181,7 +179,6 @@ impl FocusScope {
             | Self::SidebarPersona
             | Self::SidebarPins
             | Self::SidebarSessions
-            | Self::SidebarMinimap
             | Self::SidebarResize => Mode::Normal,
             Self::Input | Self::ArgInput | Self::RenameSessionInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
@@ -197,7 +194,6 @@ impl std::fmt::Display for FocusScope {
             Self::SidebarPersona => write!(f, "SidebarPersona"),
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
-            Self::SidebarMinimap => write!(f, "SidebarMinimap"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
@@ -289,7 +285,6 @@ impl ScopeStack {
             FocusScope::SidebarPersona
                 | FocusScope::SidebarPins
                 | FocusScope::SidebarSessions
-                | FocusScope::SidebarMinimap
         )
     }
 
@@ -300,7 +295,6 @@ impl ScopeStack {
             FocusScope::SidebarPersona => Some(SidebarSectionId::Persona),
             FocusScope::SidebarPins => Some(SidebarSectionId::Pins),
             FocusScope::SidebarSessions => Some(SidebarSectionId::Sessions),
-            FocusScope::SidebarMinimap => Some(SidebarSectionId::Minimap),
             _ => None,
         }
     }
@@ -314,7 +308,6 @@ impl ScopeStack {
                 SidebarSectionId::Persona => FocusScope::SidebarPersona,
                 SidebarSectionId::Pins => FocusScope::SidebarPins,
                 SidebarSectionId::Sessions => FocusScope::SidebarSessions,
-                SidebarSectionId::Minimap => FocusScope::SidebarMinimap,
             };
             self.stack.pop();
             self.stack.push(scope);
