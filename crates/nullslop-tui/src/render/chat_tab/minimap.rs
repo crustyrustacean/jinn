@@ -1,0 +1,25 @@
+//! TUI rendering adapter for the vertical minimap column and arrow overlay.
+
+use nullslop_domain::AppState;
+use nullslop_domain::feat::ui::vertical_minimap;
+use ratatui::Frame;
+use ratatui::layout::Rect;
+
+/// Renders the vertical minimap blocks and the `>` arrow overlay.
+///
+/// The minimap renders into `minimap_area`. The arrow renders as an overlay
+/// on the rightmost column of `chat_log_area`, pointing at the selected entry.
+pub(super) fn render_minimap(
+    frame: &mut Frame<'_>,
+    minimap_area: Rect,
+    chat_log_area: Rect,
+    state: &AppState,
+) {
+    let arrow_color = state.frontend.theme.border_unfocused;
+
+    let arrow = vertical_minimap::render_vertical_minimap(frame, minimap_area, state);
+
+    if let Some(ref arrow) = arrow {
+        vertical_minimap::render_minimap_arrow(frame, chat_log_area, arrow, arrow_color);
+    }
+}
