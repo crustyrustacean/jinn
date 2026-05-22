@@ -309,7 +309,7 @@ impl ToolOrchestratorActor {
     ) -> ToolContext {
         let (cwd, max_output_lines, max_output_bytes) = {
             let guard = self.state.read();
-            let cwd = guard.session.sessions().get(session_id).map_or_else(
+            let cwd = guard.session.get(session_id).map_or_else(
                 || guard.session.default_cwd().clone(),
                 |s: &ChatSessionState| s.cwd().to_owned(),
             );

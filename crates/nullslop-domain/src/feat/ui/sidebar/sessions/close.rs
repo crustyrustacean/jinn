@@ -43,7 +43,6 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
     let entry = sessions.get(index).ok_or(SessionCloseError::NoSelection)?;
     let session = state
         .session
-        .sessions()
         .get(&entry.id)
         .ok_or(SessionCloseError::NoSelection)?;
     if !matches!(session.phase(), SessionPhase::Idle) {
@@ -72,10 +71,9 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
     let sessions = sorted_open_sessions(state);
     let closing_id = sessions[index].id.clone();
 
-    // Remove from HashMap (keeps in SQLite).
-    state.session.sessions_mut().remove(&closing_id);
-
-    if state.session.sessions().is_empty() {
+    // Remove and replace if last session.
+    let was_last = state.session.session_count() == 1;
+    if was_last {
         // Last session — create a new one with the last-used model/strategy.
         let new_session = {
             let model = state
@@ -104,12 +102,9 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
                 ),
             )
         };
-        let new_id = new_session.session_id().clone();
-        state
-            .session
-            .sessions_mut()
-            .insert(new_id.clone(), new_session);
-        state.session.set_active(new_id);
+        state.session.remove_and_replace(&closing_id, new_session);
+    } else {
+        state.session.remove(&closing_id);
     }
 
     super::reconcile_after_session_removal(state);

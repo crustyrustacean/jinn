@@ -59,9 +59,12 @@ impl BuiltinHandler for BenchTaskHandler {
         _session_id: &SessionId,
         _args: &[String],
     ) -> Result<PathBuf, Report<BuiltinHandlerError>> {
-        let temp_dir = tempfile::tempdir().change_context(BuiltinHandlerError).attach(
-            format!("failed to create temp dir for bench task '{}'", self.name),
-        )?;
+        let temp_dir = tempfile::tempdir()
+            .change_context(BuiltinHandlerError)
+            .attach(format!(
+                "failed to create temp dir for bench task '{}'",
+                self.name
+            ))?;
 
         let work_dir = temp_dir.keep();
 

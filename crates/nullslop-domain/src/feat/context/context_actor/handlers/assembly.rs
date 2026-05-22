@@ -97,7 +97,6 @@ impl PromptAssemblyActor {
                 let guard = self.state.read();
                 guard
                     .session
-                    .sessions()
                     .get(&session_id)
                     .map_or_else(|| std::path::PathBuf::from("."), |s| s.cwd().to_path_buf())
             };
@@ -105,7 +104,6 @@ impl PromptAssemblyActor {
             let guard = self.state.read();
             let persona = guard
                 .session
-                .sessions()
                 .get(&session_id)
                 .and_then(|s| {
                     let name = s.persona_name();

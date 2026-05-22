@@ -25,10 +25,9 @@ use nullslop_domain::feat::session_lifecycle::protocol::event::SessionSetupCompl
 use nullslop_domain::{
     Actor, ActorContext, ActorEnvelope, NoDirectMsg, State,
 };
+use nullslop_domain::protocol::PromptStrategyId;
 use nullslop_domain::feat::session::session_actor::setup_running_msg;
 use nullslop_domain::protocol::{Command, Event, SessionId};
-
-use nullslop_domain::protocol::PromptStrategyId;
 use crate::csv::{BenchCsvWriter, BenchResult};
 use crate::orchestrator::BenchPlan;
 use crate::task::BenchTask;
@@ -193,8 +192,7 @@ impl BenchActor {
             let new_id = new_session.session_id().clone();
             state
                 .session
-                .sessions_mut()
-                .insert(new_id.clone(), new_session);
+                .insert(new_session);
             state.session.set_active(new_id.clone());
             new_id
         };
@@ -254,7 +252,7 @@ impl BenchActor {
         // Check if this session has a bench lifecycle name.
         let task_name = {
             let state = self.state.read();
-            let Some(session) = state.session.sessions().get(&payload.session_id) else {
+            let Some(session) = state.session.get(&payload.session_id) else {
                 return;
             };
             session.lifecycle_name().map(str::to_owned)
@@ -366,7 +364,7 @@ impl BenchActor {
         // Read token stats and model from state.
         let (token_stats, model, cwd) = {
             let state = self.state.read();
-            let Some(session) = state.session.sessions().get(&payload.session_id) else {
+            let Some(session) = state.session.get(&payload.session_id) else {
                 tracing::warn!(
                     session_id = %payload.session_id,
                     "bench session disappeared before result could be recorded"
@@ -447,8 +445,10 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use nullslop_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
     use nullslop_domain::feat::session::chat_session::ChatSessionState;
     use nullslop_domain::RecordingSink;
+    use nullslop_domain::feat::session_lifecycle::builtin::LifecycleCommand;
 
     use super::*;
 
