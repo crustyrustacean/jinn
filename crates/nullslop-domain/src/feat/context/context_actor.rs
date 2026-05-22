@@ -10,9 +10,7 @@ mod handlers;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
-use crate::feat::context::protocol::command::{
-    AssemblePrompt, LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry,
-};
+use crate::feat::context::protocol::command::{AssemblePrompt, LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry};
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
