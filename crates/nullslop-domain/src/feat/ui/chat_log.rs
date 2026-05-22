@@ -24,6 +24,7 @@ pub(crate) mod transient;
 pub(crate) mod user;
 
 pub use history::ChatLogElement;
+pub(crate) use history::entry_to_lines;
 pub use shared::GUTTER_WIDTH;
 
 use crate::common::AppUiRegistry;
