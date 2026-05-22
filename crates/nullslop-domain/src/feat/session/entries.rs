@@ -1,33 +1,35 @@
-//! Session entries — loading and formatting.
+//! Session entries — loading and formatting for the tree-structured picker.
 //!
 //! Contains loader functions for session picker entries.
-//! The [`SessionEntry`] struct and [`PickerItem`] implementation live
-//! in `nullslop-protocol`.
+//! The [`SessionTreeEntry`] struct and [`TreeItem`] implementation live
+//! in `picker_entry.rs`.
 
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
+use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::theme::Theme;
-use crate::protocol::SessionEntry;
 
 use super::SessionStoreService;
 
-/// Loads session entries from the session store, sorted by session state then `updated_at`.
+/// Loads session tree entries from the session store, sorted by session state then `updated_at`.
 ///
 /// Loaded sessions appear first (sorted by `updated_at` descending),
 /// followed by archived sessions (sorted by `updated_at` descending).
 /// Errors are logged and result in an empty list.
-pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<SessionEntry> {
+pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<SessionTreeEntry> {
     match services.session_store.load_summaries().await {
         Ok(summaries) => {
-            let mut entries: Vec<SessionEntry> = summaries
+            let mut entries: Vec<SessionTreeEntry> = summaries
                 .into_iter()
-                .map(|summary| SessionEntry {
-                    session_id: summary.session_id,
-                    title: summary.title,
-                    updated_at: summary.updated_at,
-                    theme: theme.clone(),
-                    session_state: summary.session_state,
-                    parent_id: summary.parent_session,
+                .map(|summary| {
+                    SessionTreeEntry::new(
+                        summary.session_id,
+                        summary.title,
+                        summary.updated_at,
+                        theme.clone(),
+                        summary.session_state,
+                        summary.parent_session,
+                    )
                 })
                 .collect();
             // Loaded first, then by updated_at descending within each group.
@@ -45,34 +47,36 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
     }
 }
 
-/// Loads session entries into the picker state, ready for display.
+/// Loads session tree entries into the picker state, ready for display.
 ///
 /// Reads from the session store via services and stores the entries via
-/// `SelectionState::set_items`.
+/// `TreePickerState::set_items`.
 pub async fn load_session_picker_items(services: &Services, state: &mut AppState) {
     let entries = load_session_entries(services, &state.frontend.theme).await;
     state.frontend.session_picker.set_items(entries);
 }
 
-/// Loads session entries from a session store service directly.
+/// Loads session tree entries from a session store service directly.
 ///
 /// Same as [`load_session_entries`] but accepts the store service directly
 /// instead of the full `Services` container.
 pub async fn load_session_entries_from_store(
     store: &SessionStoreService,
     theme: &Theme,
-) -> Vec<SessionEntry> {
+) -> Vec<SessionTreeEntry> {
     match store.load_summaries().await {
         Ok(summaries) => {
-            let mut entries: Vec<SessionEntry> = summaries
+            let mut entries: Vec<SessionTreeEntry> = summaries
                 .into_iter()
-                .map(|summary| SessionEntry {
-                    session_id: summary.session_id,
-                    title: summary.title,
-                    updated_at: summary.updated_at,
-                    theme: theme.clone(),
-                    session_state: summary.session_state,
-                    parent_id: summary.parent_session,
+                .map(|summary| {
+                    SessionTreeEntry::new(
+                        summary.session_id,
+                        summary.title,
+                        summary.updated_at,
+                        theme.clone(),
+                        summary.session_state,
+                        summary.parent_session,
+                    )
                 })
                 .collect();
             // Loaded first, then by updated_at descending within each group.
@@ -90,7 +94,7 @@ pub async fn load_session_entries_from_store(
     }
 }
 
-/// Loads session entries into the picker state from a session store service.
+/// Loads session tree entries into the picker state from a session store service.
 pub async fn load_session_picker_items_from_store(
     store: &SessionStoreService,
     state: &mut AppState,
@@ -103,23 +107,24 @@ pub async fn load_session_picker_items_from_store(
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::feat::session::chat_session::SessionState;
+    use crate::feat::session::picker_entry::SessionTreeEntry;
     use crate::feat::theme::default_theme;
     use crate::protocol::SessionId;
-    use nullslop_selection_widget::PickerItem;
+    use nullslop_selection_widget::TreeItem;
 
     use super::*;
 
     #[rstest::rstest]
     fn session_entry_display_label_returns_title() {
-        // Given a SessionEntry with a title.
-        let entry = SessionEntry {
-            session_id: SessionId::new(),
-            title: "My Chat".to_owned(),
-            updated_at: jiff::Timestamp::now(),
-            theme: default_theme(),
-            session_state: SessionState::Loaded,
-            parent_id: None,
-        };
+        // Given a SessionTreeEntry with a title.
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "My Chat".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            None,
+        );
 
         // When calling display_label.
         // Then it returns the title.
@@ -128,15 +133,15 @@ mod tests {
 
     #[rstest::rstest]
     fn render_row_contains_title() {
-        // Given a session entry.
-        let entry = SessionEntry {
-            session_id: SessionId::new(),
-            title: "My Session".to_owned(),
-            updated_at: jiff::Timestamp::now(),
-            theme: default_theme(),
-            session_state: SessionState::Loaded,
-            parent_id: None,
-        };
+        // Given a session tree entry.
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "My Session".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            None,
+        );
 
         // When rendering.
         let row = entry.render_row(false);

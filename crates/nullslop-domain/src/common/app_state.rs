@@ -76,7 +76,7 @@ pub use crate::feat::ui::sidebar::pins::state::PinsState;
 use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
-use crate::protocol::SessionEntry;
+use crate::feat::session::picker_entry::SessionTreeEntry;
 
 /// Session lifecycle state — owned by the session-actor.
 ///
@@ -377,7 +377,7 @@ pub struct FrontendState {
 
     /// Session picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (session picker navigation).
-    pub session_picker: nullslop_selection_widget::SelectionState<SessionEntry>,
+    pub session_picker: nullslop_selection_widget::TreePickerState<SessionTreeEntry>,
 
     /// Context strategy picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (strategy picker navigation).
@@ -451,7 +451,7 @@ impl Default for FrontendState {
             sessions_section: SessionsSectionState::default(),
             tui_signals: TuiSignals::new(),
             preferences: UserPreferences::default(),
-            session_picker: nullslop_selection_widget::SelectionState::new(),
+            session_picker: nullslop_selection_widget::TreePickerState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
             scope_stack: ScopeStack::default(),
