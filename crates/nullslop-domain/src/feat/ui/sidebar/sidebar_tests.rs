@@ -513,14 +513,18 @@ fn sessions_footer_highlights_s_in_accent_action() {
     // When rendering.
     terminal
         .draw(|frame| {
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &state);
+            sidebar.render(
+                frame,
+                ratatui::layout::Rect::new(0, 0, width, height),
+                &state,
+            );
         })
         .unwrap();
 
     // Then the S in Sessions has accent_action color.
     let buf = terminal.backend().buffer();
-    let sessions_row = find_row_containing(buf, width, height, "Sessions")
-        .expect("should find Sessions footer");
+    let sessions_row =
+        find_row_containing(buf, width, height, "Sessions").expect("should find Sessions footer");
 
     // Find the cell containing the highlighted S.
     let accent_action = state.frontend.theme.accent_action;

@@ -250,7 +250,11 @@ mod tests {
                 .push(SessionLifecycle {
                     name: lifecycle_name.to_owned(),
                     description: None,
-                    setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(cmd.to_owned())),
+                    setup: Some(
+                        crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                            cmd.to_owned(),
+                        ),
+                    ),
                     teardown: None,
                 });
         }
