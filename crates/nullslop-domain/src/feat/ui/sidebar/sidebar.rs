@@ -139,6 +139,10 @@ pub fn navigate_sidebar(direction: &SidebarIntent, state: &mut AppState) {
         let mut candidate = neighbor;
         while let Some(target) = candidate {
             if section_has_content(target, state) {
+                // Restore history position when leaving Pins.
+                if focused == SidebarSectionId::Pins {
+                    state.active_session_mut().restore_history_position();
+                }
                 clear_cursor(focused, state);
                 state.frontend.scope_stack.set_sidebar_section(target);
                 let enter_from = match direction {
@@ -248,7 +252,19 @@ pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
     let mut candidate = neighbor_fn(focused);
     while let Some(target) = candidate {
         if section_has_content(target, state) {
+            // Restore history position when leaving Pins.
+            if focused == SidebarSectionId::Pins && target != SidebarSectionId::Pins {
+                state.active_session_mut().restore_history_position();
+            }
+
             state.frontend.scope_stack.set_sidebar_section(target);
+
+            // Save history position when entering Pins without receive_cursor.
+            if target == SidebarSectionId::Pins
+                && !state.active_session().has_saved_history_position()
+            {
+                state.active_session_mut().save_history_position();
+            }
 
             // If target has no cursor, call receive_cursor as fallback.
             if !section_has_cursor(target, state) {
