@@ -16,6 +16,8 @@ pub(crate) struct GutterStyle<'a> {
     pub gutter_active_color: Color,
     pub gutter_inactive_color: Color,
     pub gutter_str: &'a str,
+    pub is_included_in_context: bool,
+    pub gutter_context_color: Color,
 }
 
 /// Build gutter lines for a single entry.
@@ -31,6 +33,8 @@ pub(crate) fn build_entry_gutter_lines(
         Style::default().fg(ctx.gutter_active_color)
     } else if ctx.is_selected {
         Style::default().fg(ctx.gutter_inactive_color)
+    } else if ctx.is_included_in_context {
+        Style::default().fg(ctx.gutter_context_color)
     } else {
         Style::default().fg(ctx.theme.border_unfocused)
     };
