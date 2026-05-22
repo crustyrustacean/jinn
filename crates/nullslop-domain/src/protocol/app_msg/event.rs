@@ -120,6 +120,10 @@ pub enum Event {
     SessionClosed(crate::feat::session::protocol::session_closed::SessionClosed),
     /// A session was archived in persistent storage.
     SessionArchived(crate::feat::session::protocol::session_archived::SessionArchived),
+    /// A session's phase changed (e.g., Idle → Sending).
+    SessionPhaseChanged(crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged),
+    /// A new entry was appended to a session's history.
+    HistoryAppended(crate::feat::session::protocol::history_appended::HistoryAppended),
 }
 
 impl Event {
@@ -170,6 +174,12 @@ impl Event {
             }
             Self::SessionArchived(..) => {
                 Some(crate::feat::session::protocol::session_archived::SessionArchived::TYPE_NAME)
+            }
+            Self::SessionPhaseChanged(..) => {
+                Some(crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged::TYPE_NAME)
+            }
+            Self::HistoryAppended(..) => {
+                Some(crate::feat::session::protocol::history_appended::HistoryAppended::TYPE_NAME)
             }
         }
     }

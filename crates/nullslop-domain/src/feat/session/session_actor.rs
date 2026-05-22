@@ -100,12 +100,12 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<PersistSession>();
         ctx.subscribe_command::<CloseSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
+        ctx.subscribe_command::<crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn>();
 
         // Compaction command subscriptions.
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>(
         );
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::EndCompaction>();
-        ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::EnqueueCompaction>();
 
         // Event subscriptions.
         ctx.subscribe_event::<PromptAssembled>();
@@ -217,13 +217,13 @@ impl SessionPersistenceActor {
                 self.handle_persist_session(payload).await;
             }
             Command::BeginCompaction(payload) => {
-                self.handle_begin_compaction(payload).await;
+                self.handle_begin_compaction(payload, ctx).await;
             }
             Command::EndCompaction(payload) => {
                 self.handle_end_compaction(payload, ctx).await;
             }
-            Command::EnqueueCompaction(payload) => {
-                self.handle_enqueue_compaction(payload, ctx).await;
+            Command::SoftCancelTurn(payload) => {
+                self.handle_soft_cancel_turn(payload);
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::AssemblePrompt(..)
@@ -245,7 +245,8 @@ impl SessionPersistenceActor {
             | Command::RescanPersonas(..)
             | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)
-            | Command::CompactContext(..) => {}
+            | Command::CompactContext(..)
+            | Command::EnqueueCompaction(..) => {}
         }
     }
 }
