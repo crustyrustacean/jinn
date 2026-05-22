@@ -56,7 +56,7 @@ pub struct NodeError;
 #[async_trait::async_trait]
 pub trait WorkflowNode: Send + Sync {
     /// Human-readable name for this node type (for debugging and UI).
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
 
     /// Declare the input ports this node accepts.
     fn input_ports(&self) -> Vec<crate::port::PortDef>;
@@ -98,7 +98,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl WorkflowNode for EchoNode {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "echo"
         }
 
@@ -117,9 +117,9 @@ mod tests {
         ) -> Result<PortValues, Report<NodeError>> {
             let value = inputs
                 .take_string("in")
-                .map_err(|_| Report::new(NodeError))?;
+                .map_err(|_port_err| Report::new(NodeError))?;
             let mut output = PortValues::new();
-            output.insert("out", PortValue::String(value));
+            output.insert("out".to_owned(), PortValue::String(value));
             Ok(output)
         }
     }
@@ -130,12 +130,13 @@ mod tests {
         let node = EchoNode;
         let ctx = TestContext;
         let mut inputs = PortValues::new();
-        inputs.insert("in", PortValue::String("hello".to_owned()));
+        inputs.insert("in".to_owned(), PortValue::String("hello".to_owned()));
 
         // When executing the node.
         let result = node.execute(inputs, &ctx).await;
 
         // Then it returns the input as output.
+        #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("echo should succeed");
         assert_eq!(outputs.get_string("out").unwrap(), "hello");
     }
