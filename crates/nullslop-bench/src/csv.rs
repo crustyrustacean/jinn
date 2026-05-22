@@ -29,10 +29,12 @@ pub struct BenchResult {
     pub passed: bool,
     /// Status: "completed" or "timeout".
     pub status: String,
+    /// Human-readable failure reasons (semicolon-joined). Empty on pass.
+    pub detail: String,
 }
 
 /// CSV column header, in order.
-const HEADER: [&str; 9] = [
+const HEADER: [&str; 10] = [
     "name",
     "model",
     "turns",
@@ -42,6 +44,7 @@ const HEADER: [&str; 9] = [
     "wall_time_ms",
     "passed",
     "status",
+    "detail",
 ];
 
 /// A progressive CSV writer that flushes after every row.
@@ -80,6 +83,7 @@ impl BenchCsvWriter {
             result.wall_time_ms.to_string().as_str(),
             if result.passed { "true" } else { "false" },
             result.status.as_str(),
+            result.detail.as_str(),
         ])?;
         self.writer.flush()?;
         Ok(())

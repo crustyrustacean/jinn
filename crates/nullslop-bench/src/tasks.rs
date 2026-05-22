@@ -13,7 +13,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use crate::task::{BenchTask, BenchTools};
+use crate::task::{BenchTask, BenchTools, CheckResult, VerificationReport};
 
 /// Returns all benchmark tasks.
 pub fn bench_tasks() -> Vec<BenchTask> {
@@ -33,7 +33,7 @@ fn one_shot_tasks() -> Vec<BenchTask> {
             messages: vec![
                 "Write a hello world program in Rust. Save it to src/main.rs and run it.",
             ],
-            fixture_dir: None,
+            fixture_dir: Some("hello-world"),
             timeout: Duration::from_secs(300),
             persona: None,
             tools: BenchTools {
@@ -241,129 +241,336 @@ fn redirect_tasks() -> Vec<BenchTask> {
     ]
 }
 
-// ── Verification functions ───────────────────────────────────────────────
+// ── Check helpers ───────────────────────────���────────────────────────────
 
-fn cargo_check(dir: &Path) -> bool {
-    std::process::Command::new("cargo")
+fn check_file_exists(dir: &Path, name: &str) -> CheckResult {
+    let check_name = format!("file_exists({name})");
+    let path = dir.join(name);
+    if path.is_file() {
+        tracing::info!(check = %check_name, "PASSED");
+        CheckResult::pass(check_name)
+    } else {
+        let detail = format!("expected file to exist: {}", path.display());
+        tracing::warn!(check = %check_name, %detail, "FAILED");
+        CheckResult::fail(check_name, detail)
+    }
+}
+
+fn check_file_contains(dir: &Path, name: &str, needle: &str) -> CheckResult {
+    let check_name = format!("file_contains({name}, {needle:?})");
+    let content = std::fs::read_to_string(dir.join(name)).unwrap_or_default();
+    if content.contains(needle) {
+        tracing::info!(check = %check_name, "PASSED");
+        CheckResult::pass(check_name)
+    } else {
+        let detail = format!(
+            "expected {name} to contain {needle:?}, content length: {} bytes",
+            content.len()
+        );
+        tracing::warn!(check = %check_name, %detail, "FAILED");
+        CheckResult::fail(check_name, detail)
+    }
+}
+
+fn check_cargo_check(dir: &Path) -> CheckResult {
+    let output = std::process::Command::new("cargo")
         .args(["check"])
         .current_dir(dir)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            tracing::info!(check = "cargo_check", "PASSED");
+            CheckResult::pass("cargo_check")
+        }
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let detail = format!(
+                "cargo check failed (exit {:?}): {}",
+                o.status.code(),
+                stderr.trim()
+            );
+            tracing::warn!(check = "cargo_check", %detail, "FAILED");
+            CheckResult::fail("cargo_check", detail)
+        }
+        Err(e) => {
+            let detail = format!("failed to execute cargo check: {e}");
+            tracing::warn!(check = "cargo_check", %detail, "FAILED");
+            CheckResult::fail("cargo_check", detail)
+        }
+    }
 }
 
-fn file_exists(dir: &Path, name: &str) -> bool {
-    dir.join(name).is_file()
+fn check_cargo_run(dir: &Path) -> CheckResult {
+    let output = std::process::Command::new("cargo")
+        .args(["run"])
+        .current_dir(dir)
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            tracing::info!(check = "cargo_run", "PASSED");
+            CheckResult::pass("cargo_run")
+        }
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let detail = format!(
+                "cargo run failed (exit {:?})\nstdout: {}\nstderr: {}",
+                o.status.code(),
+                stdout.trim(),
+                stderr.trim()
+            );
+            tracing::warn!(check = "cargo_run", %detail, "FAILED");
+            CheckResult::fail("cargo_run", detail)
+        }
+        Err(e) => {
+            let detail = format!("failed to execute cargo run: {e}");
+            tracing::warn!(check = "cargo_run", %detail, "FAILED");
+            CheckResult::fail("cargo_run", detail)
+        }
+    }
 }
 
-fn file_contains(dir: &Path, name: &str, needle: &str) -> bool {
-    let content = std::fs::read_to_string(dir.join(name)).unwrap_or_default();
-    content.contains(needle)
+fn check_python_run(dir: &Path, script: &str) -> CheckResult {
+    let check_name = format!("python_run({script})");
+    let output = std::process::Command::new("python3")
+        .arg(script)
+        .current_dir(dir)
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            tracing::info!(check = %check_name, "PASSED");
+            CheckResult::pass(check_name)
+        }
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let detail = format!(
+                "python3 {script} failed (exit {:?})\nstdout: {}\nstderr: {}",
+                o.status.code(),
+                stdout.trim(),
+                stderr.trim()
+            );
+            tracing::warn!(check = %check_name, %detail, "FAILED");
+            CheckResult::fail(check_name, detail)
+        }
+        Err(e) => {
+            let detail = format!("failed to execute python3 {script}: {e}");
+            tracing::warn!(check = %check_name, %detail, "FAILED");
+            CheckResult::fail(check_name, detail)
+        }
+    }
 }
+
+/// Check that stdout from a `cargo run` contains an expected string.
+fn check_cargo_run_contains(dir: &Path, expected: &str) -> CheckResult {
+    let check_name = format!("cargo_run_contains({expected:?})");
+    let output = std::process::Command::new("cargo")
+        .args(["run"])
+        .current_dir(dir)
+        .output();
+
+    match output {
+        Ok(o) if !o.status.success() => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let detail = format!(
+                "cargo run failed (exit {:?}): {}",
+                o.status.code(),
+                stderr.trim()
+            );
+            tracing::warn!(check = %check_name, %detail, "FAILED");
+            CheckResult::fail(check_name, detail)
+        }
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            if stdout.contains(expected) {
+                tracing::info!(check = %check_name, "PASSED");
+                CheckResult::pass(check_name)
+            } else {
+                let detail = format!(
+                    "expected stdout to contain {expected:?}\nactual stdout: {}",
+                    stdout.trim()
+                );
+                tracing::warn!(check = %check_name, %detail, "FAILED");
+                CheckResult::fail(check_name, detail)
+            }
+        }
+        Err(e) => {
+            let detail = format!("failed to execute cargo run: {e}");
+            tracing::warn!(check = %check_name, %detail, "FAILED");
+            CheckResult::fail(check_name, detail)
+        }
+    }
+}
+
+/// Check that stdout from a `python3` run contains an expected string.
+fn check_python_run_contains(dir: &Path, script: &str, expected: &str) -> CheckResult {
+    let check_name = format!("python_run_contains({script}, {expected:?})");
+    let output = std::process::Command::new("python3")
+        .arg(script)
+        .current_dir(dir)
+        .output();
+
+    match output {
+        Ok(o) if !o.status.success() => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let detail = format!(
+                "python3 {script} failed (exit {:?}): {}",
+                o.status.code(),
+                stderr.trim()
+            );
+            tracing::warn!(check = %check_name, %detail, "FAILED");
+            CheckResult::fail(check_name, detail)
+        }
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            if stdout.contains(expected) {
+                tracing::info!(check = %check_name, "PASSED");
+                CheckResult::pass(check_name)
+            } else {
+                let detail = format!(
+                    "expected stdout to contain {expected:?}\nactual stdout: {}",
+                    stdout.trim()
+                );
+                tracing::warn!(check = %check_name, %detail, "FAILED");
+                CheckResult::fail(check_name, detail)
+            }
+        }
+        Err(e) => {
+            let detail = format!("failed to execute python3 {script}: {e}");
+            tracing::warn!(check = %check_name, %detail, "FAILED");
+            CheckResult::fail(check_name, detail)
+        }
+    }
+}
+
+/// Custom check for FizzBuzz: verify that stdout contains "FizzBuzz" as a
+/// standalone line (not just as part of another word).
+fn check_fizzbuzz_output(dir: &Path) -> CheckResult {
+    let output = std::process::Command::new("cargo")
+        .args(["run"])
+        .current_dir(dir)
+        .output();
+
+    match output {
+        Ok(o) if !o.status.success() => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let detail = format!(
+                "cargo run failed (exit {:?}): {}",
+                o.status.code(),
+                stderr.trim()
+            );
+            tracing::warn!(check = "fizzbuzz_output", %detail, "FAILED");
+            CheckResult::fail("fizzbuzz_output", detail)
+        }
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            for line in stdout.lines() {
+                if line.trim() == "FizzBuzz" {
+                    tracing::info!(check = "fizzbuzz_output", "PASSED");
+                    return CheckResult::pass("fizzbuzz_output");
+                }
+            }
+            let detail = format!(
+                "expected \"FizzBuzz\" as a standalone line\nactual stdout:\n{}",
+                stdout.trim()
+            );
+            tracing::warn!(check = "fizzbuzz_output", %detail, "FAILED");
+            CheckResult::fail("fizzbuzz_output", detail)
+        }
+        Err(e) => {
+            let detail = format!("failed to execute cargo run: {e}");
+            tracing::warn!(check = "fizzbuzz_output", %detail, "FAILED");
+            CheckResult::fail("fizzbuzz_output", detail)
+        }
+    }
+}
+
+// ── Verification functions ───────────────────────────────────────────────
 
 // -- 1-shot verifiers --
 
-fn verify_hello_world(dir: &Path) -> bool {
-    file_exists(dir, "src/main.rs") && cargo_check(dir)
+fn verify_hello_world(dir: &Path) -> VerificationReport {
+    let checks = vec![
+        check_file_exists(dir, "src/main.rs"),
+        check_cargo_check(dir),
+    ];
+    VerificationReport::new("hello-world", checks)
 }
 
-fn verify_json_parser(dir: &Path) -> bool {
-    if !file_exists(dir, "src/main.rs") || !file_exists(dir, "input.json") {
-        return false;
-    }
-    cargo_check(dir)
+fn verify_json_parser(dir: &Path) -> VerificationReport {
+    let checks = vec![
+        check_file_exists(dir, "src/main.rs"),
+        check_file_exists(dir, "input.json"),
+        check_cargo_check(dir),
+    ];
+    VerificationReport::new("json-parser", checks)
 }
 
-fn verify_word_frequency(dir: &Path) -> bool {
-    if !file_exists(dir, "src/main.rs") || !file_exists(dir, "input.txt") {
-        return false;
-    }
-    cargo_check(dir)
+fn verify_word_frequency(dir: &Path) -> VerificationReport {
+    let checks = vec![
+        check_file_exists(dir, "src/main.rs"),
+        check_file_exists(dir, "input.txt"),
+        check_cargo_check(dir),
+    ];
+    VerificationReport::new("word-frequency", checks)
 }
 
-fn verify_http_server(dir: &Path) -> bool {
-    if !file_exists(dir, "src/main.rs") {
-        return false;
-    }
-    // Just needs to compile — we told it NOT to run.
-    cargo_check(dir)
+fn verify_http_server(dir: &Path) -> VerificationReport {
+    let checks = vec![
+        check_file_exists(dir, "src/main.rs"),
+        // Just needs to compile — we told it NOT to run.
+        check_cargo_check(dir),
+    ];
+    VerificationReport::new("http-server", checks)
 }
 
-fn verify_markdown_to_html(dir: &Path) -> bool {
-    file_exists(dir, "src/main.rs")
-        && file_exists(dir, "input.md")
-        && file_exists(dir, "output.html")
-        && cargo_check(dir)
+fn verify_markdown_to_html(dir: &Path) -> VerificationReport {
+    let checks = vec![
+        check_file_exists(dir, "src/main.rs"),
+        check_file_exists(dir, "input.md"),
+        check_file_exists(dir, "output.html"),
+        check_cargo_check(dir),
+    ];
+    VerificationReport::new("markdown-to-html", checks)
 }
 
 // -- fix-code verifiers --
 
-fn verify_fix_syntax_rust(dir: &Path) -> bool {
-    cargo_check(dir)
+fn verify_fix_syntax_rust(dir: &Path) -> VerificationReport {
+    let checks = vec![check_cargo_check(dir)];
+    VerificationReport::new("fix-syntax-broken-rust", checks)
 }
 
-fn verify_fix_syntax_python(dir: &Path) -> bool {
-    // Run the fixed python file and check it produces output.
-    std::process::Command::new("python3")
-        .arg("main.py")
-        .current_dir(dir)
-        .output()
-        .map(|o| {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            // Should print fib(0)=0 through fib(9)=34.
-            o.status.success() && stdout.contains('0') && stdout.contains("34")
-        })
-        .unwrap_or(false)
+fn verify_fix_syntax_python(dir: &Path) -> VerificationReport {
+    let checks = vec![
+        check_python_run(dir, "main.py"),
+        check_python_run_contains(dir, "main.py", "0"),
+        check_python_run_contains(dir, "main.py", "34"),
+    ];
+    VerificationReport::new("fix-syntax-broken-python", checks)
 }
 
-fn verify_fix_logic_fizzbuzz(dir: &Path) -> bool {
-    let Ok(output) = std::process::Command::new("cargo")
-        .args(["run"])
-        .current_dir(dir)
-        .output()
-    else {
-        return false;
-    };
-
-    if !output.status.success() {
-        return false;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Line for 15 must be "FizzBuzz" not "Fizz" or "Buzz".
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if trimmed == "Fizz" || trimmed == "Buzz" {
-            // Could be from 3, 5, 6, 9, etc. — acceptable.
-        }
-        if trimmed == "FizzBuzz" {
-            return true;
-        }
-    }
-    false
+fn verify_fix_logic_fizzbuzz(dir: &Path) -> VerificationReport {
+    let checks = vec![check_fizzbuzz_output(dir)];
+    VerificationReport::new("fix-logic-fizzbuzz", checks)
 }
 
-fn verify_fix_logic_sort(dir: &Path) -> bool {
-    let Ok(output) = std::process::Command::new("cargo")
-        .args(["run"])
-        .current_dir(dir)
-        .output()
-    else {
-        return false;
-    };
-
-    if !output.status.success() {
-        return false;
-    }
-
-    // Output should contain the sorted array.
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout.contains("11") && stdout.contains("90") && stdout.contains("Sorted")
+fn verify_fix_logic_sort(dir: &Path) -> VerificationReport {
+    let checks = vec![
+        check_cargo_run(dir),
+        check_cargo_run_contains(dir, "11"),
+        check_cargo_run_contains(dir, "90"),
+        check_cargo_run_contains(dir, "Sorted"),
+    ];
+    VerificationReport::new("fix-logic-sort", checks)
 }
 
 // -- redirect verifiers --
 
-fn verify_redirect_change_color(dir: &Path) -> bool {
+fn verify_redirect_change_color(dir: &Path) -> VerificationReport {
     let content = std::fs::read_to_string(dir.join("index.html")).unwrap_or_default();
 
     // Final state: background should be dark gray (#333333), heading should be orange.
@@ -374,10 +581,25 @@ fn verify_redirect_change_color(dir: &Path) -> bool {
     let heading_ok =
         content.contains("orange") || content.contains("#ff") || content.contains("#FF");
 
-    bg_ok && heading_ok
+    let checks = vec![
+        if bg_ok {
+            CheckResult::pass("background_dark_gray")
+        } else {
+            CheckResult::fail(
+                "background_dark_gray",
+                "expected background color #333/#333333/darkgray",
+            )
+        },
+        if heading_ok {
+            CheckResult::pass("heading_orange")
+        } else {
+            CheckResult::fail("heading_orange", "expected heading color orange")
+        },
+    ];
+    VerificationReport::new("redirect-change-color", checks)
 }
 
-fn verify_redirect_refactor(dir: &Path) -> bool {
+fn verify_redirect_refactor(dir: &Path) -> VerificationReport {
     let content = std::fs::read_to_string(dir.join("main.py")).unwrap_or_default();
 
     // Should have calculate_paint_needed (or similar paint function), NOT calculate_volume.
@@ -387,21 +609,32 @@ fn verify_redirect_refactor(dir: &Path) -> bool {
         || content.contains("litre");
     let no_volume = !content.contains("volume") && !content.contains("Volume");
 
-    has_paint && no_volume
+    let checks = vec![
+        if has_paint {
+            CheckResult::pass("has_paint_reference")
+        } else {
+            CheckResult::fail(
+                "has_paint_reference",
+                "expected paint/liter reference in main.py",
+            )
+        },
+        if no_volume {
+            CheckResult::pass("no_volume_reference")
+        } else {
+            CheckResult::fail(
+                "no_volume_reference",
+                "expected no volume/Volume reference in main.py",
+            )
+        },
+    ];
+    VerificationReport::new("redirect-refactor-function", checks)
 }
 
-fn verify_redirect_switch_language(dir: &Path) -> bool {
-    // The final program should be in Rust (src/main.rs exists and compiles).
-    // It should NOT be the Python version anymore (or at least the Rust version
-    // must be the one that works).
-    if !file_exists(dir, "src/main.rs") {
-        return false;
-    }
-
-    if !cargo_check(dir) {
-        return false;
-    }
-
-    // Should reference input.txt — the original fixture file.
-    file_contains(dir, "src/main.rs", "input.txt")
+fn verify_redirect_switch_language(dir: &Path) -> VerificationReport {
+    let checks = vec![
+        check_file_exists(dir, "src/main.rs"),
+        check_cargo_check(dir),
+        check_file_contains(dir, "src/main.rs", "input.txt"),
+    ];
+    VerificationReport::new("redirect-switch-language", checks)
 }
