@@ -349,9 +349,6 @@ mod tests {
         let has_send = commands
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            !has_send,
-            "expected no SendToLlmProvider after soft cancel"
-        );
+        assert!(!has_send, "expected no SendToLlmProvider after soft cancel");
     }
 }

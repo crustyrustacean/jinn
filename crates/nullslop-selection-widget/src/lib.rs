@@ -13,6 +13,13 @@ pub mod picker_ops;
 pub mod state;
 #[cfg(test)]
 mod state_tests;
+pub mod tree_item;
+pub mod tree_state;
+#[cfg(test)]
+mod tree_state_tests;
+pub mod tree_widget;
+#[cfg(test)]
+mod tree_widget_tests;
 pub mod widget;
 #[cfg(test)]
 mod widget_tests;
@@ -23,6 +30,9 @@ pub use highlight::{
 pub use item::{MatchRanges, PickerItem};
 pub use picker_ops::PickerOps;
 pub use state::SelectionState;
+pub use tree_item::TreeItem;
+pub use tree_state::{TreePickerState, VisibleEntry};
+pub use tree_widget::TreePickerWidget;
 pub use widget::{
     PICKER_H_PAD_FRAC, PICKER_MAX_HEIGHT_FRAC, PICKER_MIN_WIDTH, SelectionColors, SelectionWidget,
     compute_popup_rect,
