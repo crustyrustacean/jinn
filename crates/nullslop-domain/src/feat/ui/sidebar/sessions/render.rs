@@ -145,10 +145,16 @@ impl SidebarSection for SessionsSection {
         let before_s = format!("\u{2570}{}\u{0020}", "\u{2500}".repeat(left_dashes),);
         let after_s = format!("essions {}\u{256F}", "\u{2500}".repeat(right_dashes),);
 
+        let footer_color = if section_focused {
+            theme.focus_accent
+        } else {
+            theme.border_unfocused
+        };
+
         lines.push(Line::from(vec![
-            Span::styled(before_s, Style::default().fg(theme.primary_text)),
+            Span::styled(before_s, Style::default().fg(footer_color)),
             Span::styled("S".to_owned(), Style::default().fg(theme.accent_action)),
-            Span::styled(after_s, Style::default().fg(theme.primary_text)),
+            Span::styled(after_s, Style::default().fg(footer_color)),
         ]));
 
         let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
