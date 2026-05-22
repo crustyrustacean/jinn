@@ -38,6 +38,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui_markdown::theme::Generation;
 
 use super::line_count_cache::EntryLineCache;
 use super::markdown::MarkdownAstCache;
@@ -229,9 +230,9 @@ impl<'a> HistoryRender<'a> {
         for (i, entry) in self.history.iter().enumerate() {
             let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
 
-            if let Some(cached_count) = cache.get(entry, is_expanded, self.content_width) {
+            if let Some(hit) = cache.get(entry, is_expanded, self.content_width, Generation(1)) {
                 let start = wrapped_cursor;
-                let end = wrapped_cursor + cached_count;
+                let end = wrapped_cursor + hit.wrapped_count;
                 self.entry_line_ranges.push((start, end));
                 wrapped_cursor = end;
             } else {
@@ -259,7 +260,7 @@ impl<'a> HistoryRender<'a> {
                         .wrap(Wrap { trim: false })
                         .line_count(self.content_width) as u16
                 };
-                cache.insert(entry, is_expanded, self.content_width, wrapped_count);
+                cache.insert(entry, is_expanded, self.content_width, Generation(1), wrapped_count);
 
                 let start = wrapped_cursor;
                 let end = wrapped_cursor + wrapped_count;
