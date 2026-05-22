@@ -4,6 +4,7 @@
 //! that contain positional parameters (`$1`, `$2`, `$@`). Used by session
 //! lifecycle recipes to bootstrap and tear down working directories.
 
+pub mod builtin;
 pub mod command_runner;
 pub mod command_template;
 pub mod intent;

@@ -131,3 +131,5 @@ pub use feat::tools_actor::protocol::event::{
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered,
 };
 pub use feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};
+pub use feat::tools_actor::BoxedToolFuture;
+pub use feat::tools_actor::builtin::{builtin_tools, BuiltinToolEntry};

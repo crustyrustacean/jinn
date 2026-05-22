@@ -38,6 +38,7 @@ fn default_test_ctx() -> (
     let deps = ToolOrchestratorActorDeps {
         state,
         app_paths: crate::common::app_paths::AppPaths::default(),
+        builtin_filter: None,
     };
     (sink, ctx, deps)
 }

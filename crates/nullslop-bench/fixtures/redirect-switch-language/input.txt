@@ -1,0 +1,3 @@
+The quick brown fox jumps over the lazy dog.
+This is a test file for the word counter.
+It has several lines of text for counting.
