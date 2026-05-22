@@ -29,6 +29,7 @@ pub fn show_results(csv_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         "Time",
         "Passed",
         "Status",
+        "Detail",
     ]);
 
     for r in &results {
@@ -44,6 +45,7 @@ pub fn show_results(csv_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             Cell::new(time),
             Cell::new(check),
             Cell::new(&r.status),
+            Cell::new(&r.detail),
         ]);
     }
 
@@ -77,6 +79,7 @@ pub(crate) fn read_csv(path: &Path) -> Result<Vec<BenchResult>, Box<dyn std::err
             wall_time_ms: record.get(6).unwrap_or_default().parse().unwrap_or(0),
             passed,
             status: record.get(8).unwrap_or_default().to_owned(),
+            detail: record.get(9).unwrap_or_default().to_owned(),
         });
     }
 

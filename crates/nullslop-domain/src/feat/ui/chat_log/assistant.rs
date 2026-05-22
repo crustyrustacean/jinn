@@ -6,6 +6,9 @@ use super::markdown::render_markdown;
 use super::shared::{Pad, RenderContext, pad_entry};
 
 pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
+    if text.is_empty() {
+        return Vec::new();
+    }
     let text = super::shared::strip_ansi(text);
     let mut lines = render_markdown(&text, ctx.content_width, &ctx.theme);
     pad_entry(&mut lines, Pad::Both);
@@ -62,6 +65,22 @@ mod tests {
             lines.len(),
             3,
             "plain assistant should have 3 lines (pad + content + pad), got {}",
+            lines.len()
+        );
+    }
+
+    #[rstest::rstest]
+    fn empty_assistant_text_produces_zero_lines() {
+        // Given empty assistant text.
+        let ctx = render_context();
+
+        // When converting to lines.
+        let lines = super::to_lines("", &ctx);
+
+        // Then zero lines are produced (no padding, no content).
+        assert!(
+            lines.is_empty(),
+            "empty assistant should produce zero lines, got {}",
             lines.len()
         );
     }
