@@ -63,11 +63,16 @@ impl SessionPersistenceActor {
         };
 
         match store.load_session(&evt.session_id).await {
-            Ok(Some(session)) => {
+            Ok(Some(mut session)) => {
                 // Unarchive the session so it appears in the picker on next load.
                 if let Err(e) = store.set_archived(&evt.session_id, false).await {
                     tracing::warn!(err = ?e, "failed to unarchive session on load");
                 }
+
+                // Reset in-memory state so the sidebar filter includes this session.
+                session.set_session_state(
+                    crate::feat::session::chat_session::SessionState::Loaded,
+                );
 
                 let _ =
                     ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
