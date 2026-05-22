@@ -46,6 +46,7 @@ use nullslop_domain::{
 ///
 /// After spawning all actors, blocks the calling thread until the actor system
 /// signals readiness (or times out after 3 seconds).
+#[expect(clippy::too_many_arguments, reason = "TODO: refactor to options struct")]
 pub fn create_core_with_actor_host(
     handle: &tokio::runtime::Handle,
     llm_service: LlmServiceFactoryService,
@@ -56,6 +57,7 @@ pub fn create_core_with_actor_host(
     user_preferences_storage: UserPreferencesStorageService,
     bench_csv_path: Option<std::path::PathBuf>,
     bench_plan: Option<nullslop_bench::orchestrator::BenchPlan>,
+    bench_artifact_dir: Option<std::path::PathBuf>,
 ) -> (AppCore, Services, ActorHostService) {
     // Create channel first — actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
@@ -258,7 +260,7 @@ pub fn create_core_with_actor_host(
             builtin_registry: {
                 let mut registry =
                     nullslop_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
-                nullslop_bench::bench_tasks::register_bench_tasks(&mut registry);
+                nullslop_bench::bench_tasks::register_bench_tasks(&mut registry, bench_artifact_dir);
                 registry
             },
         },

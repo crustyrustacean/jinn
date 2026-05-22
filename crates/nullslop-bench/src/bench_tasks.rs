@@ -21,11 +21,12 @@ use crate::tasks;
 ///
 /// Call this before creating the actor system so the session actor can
 /// dispatch bench lifecycle setup/teardown to the correct handler.
-pub fn register_bench_tasks(registry: &mut BuiltinRegistry) {
+pub fn register_bench_tasks(registry: &mut BuiltinRegistry, artifact_dir: Option<PathBuf>) {
     for task in tasks::bench_tasks() {
         let handler = BenchTaskHandler {
             name: task.name.to_owned(),
             fixture_dir: task.fixture_dir.map(str::to_owned),
+            artifact_dir: artifact_dir.clone(),
         };
         registry.register(BuiltinId(task.name.to_owned()), Arc::new(handler));
     }
@@ -35,14 +36,17 @@ pub fn register_bench_tasks(registry: &mut BuiltinRegistry) {
 
 /// A [`BuiltinHandler`] backed by a bench task definition.
 ///
-/// On setup, creates a temp directory under the system temp dir and copies
-/// fixtures if the task has a fixture directory. On teardown, runs the task's
-/// verification function against the working directory.
+/// On setup, creates a working directory and copies fixtures if the task has a
+/// fixture directory. When `artifact_dir` is set, the directory is created under
+/// that path (for post-run inspection). Otherwise, falls back to `tempfile::tempdir()`.
+/// On teardown, runs the task's verification function against the working directory.
 pub struct BenchTaskHandler {
     /// Task name (for logging and error messages).
     name: String,
     /// Fixture directory name relative to `crates/nullslop-bench/fixtures/`.
     fixture_dir: Option<String>,
+    /// When set, create work directories here instead of /tmp.
+    artifact_dir: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for BenchTaskHandler {
@@ -53,20 +57,41 @@ impl std::fmt::Debug for BenchTaskHandler {
     }
 }
 
+/// Returns the first 10 characters of the session ID for use in directory names.
+/// Full IDs like `s-01923abc-def4-7def-8901-234567890abc` are unwieldy;
+/// `s-01923abc` is enough to be unique within a single bench run.
+fn session_id_short(id: &SessionId) -> String {
+    id.to_string().chars().take(10).collect()
+}
+
 impl BuiltinHandler for BenchTaskHandler {
     fn setup(
         &self,
-        _session_id: &SessionId,
+        session_id: &SessionId,
         _args: &[String],
     ) -> Result<PathBuf, Report<BuiltinHandlerError>> {
-        let temp_dir = tempfile::tempdir()
-            .change_context(BuiltinHandlerError)
-            .attach(format!(
-                "failed to create temp dir for bench task '{}'",
-                self.name
-            ))?;
-
-        let work_dir = temp_dir.keep();
+        let work_dir = match &self.artifact_dir {
+            Some(dir) => {
+                let short_id = session_id_short(session_id);
+                let work = dir.join(format!("{}-{short_id}", self.name));
+                std::fs::create_dir_all(&work)
+                    .change_context(BuiltinHandlerError)
+                    .attach(format!(
+                        "failed to create artifact dir for bench task '{}'",
+                        self.name
+                    ))?;
+                work
+            }
+            None => {
+                let temp_dir = tempfile::tempdir()
+                    .change_context(BuiltinHandlerError)
+                    .attach(format!(
+                        "failed to create temp dir for bench task '{}'",
+                        self.name
+                    ))?;
+                temp_dir.keep()
+            }
+        };
 
         fixture::prepare_fixture(self.fixture_dir.as_deref(), &work_dir)
             .change_context(BuiltinHandlerError)
@@ -106,7 +131,7 @@ mod tests {
         let mut registry = BuiltinRegistry::new();
 
         // When registering bench tasks.
-        register_bench_tasks(&mut registry);
+        register_bench_tasks(&mut registry, None);
 
         // Then the registry is not empty (has at least one handler).
         assert!(!registry.is_empty());
@@ -121,6 +146,7 @@ mod tests {
         let handler = BenchTaskHandler {
             name: "fix-syntax-broken-rust".to_owned(),
             fixture_dir: Some("fix-syntax-broken-rust".to_owned()),
+            artifact_dir: None,
         };
 
         // When running setup.
@@ -144,6 +170,7 @@ mod tests {
         let handler = BenchTaskHandler {
             name: "hello-world".to_owned(),
             fixture_dir: None,
+            artifact_dir: None,
         };
 
         // When running setup.
@@ -169,6 +196,7 @@ mod tests {
         let handler = BenchTaskHandler {
             name: "test".to_owned(),
             fixture_dir: None,
+            artifact_dir: None,
         };
 
         // When running teardown.
@@ -177,5 +205,36 @@ mod tests {
 
         // Then it returns true (current implementation).
         assert!(result);
+    }
+
+    #[test]
+    fn setup_with_artifact_dir_creates_dir_at_specified_path() {
+        // Given an artifact directory.
+        let artifact_root = tempfile::TempDir::new().expect("temp dir");
+        let handler = BenchTaskHandler {
+            name: "hello-world".to_owned(),
+            fixture_dir: None,
+            artifact_dir: Some(artifact_root.path().to_owned()),
+        };
+
+        // When running setup.
+        let session_id = SessionId::new();
+        let result = handler.setup(&session_id, &[]);
+
+        // Then it succeeds and the work dir is under the artifact root.
+        let work_dir = result.expect("setup should succeed");
+        assert!(
+            work_dir.starts_with(artifact_root.path()),
+            "work dir {work_dir:?} should be under artifact root {:?}",
+            artifact_root.path()
+        );
+        assert!(work_dir.is_dir());
+
+        // And the directory name contains the task name.
+        let dir_name = work_dir.file_name().expect("dir name").to_string_lossy();
+        assert!(
+            dir_name.starts_with("hello-world-"),
+            "dir name {dir_name} should start with hello-world-"
+        );
     }
 }

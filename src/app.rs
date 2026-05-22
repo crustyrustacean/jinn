@@ -130,6 +130,7 @@ impl App {
                     )),
                     None,
                     None,
+                    None,
                 );
                 let paths = &services.paths;
                 load_prompt_templates(
@@ -185,6 +186,7 @@ impl App {
                     )),
                     None,
                     None,
+                    None,
                 );
                 load_prompt_templates(
                     &core.state,
@@ -219,11 +221,18 @@ impl App {
                     task,
                     headless: _headless,
                     csv,
+                    artifact_dir,
                 } => {
                     // Ensure the db_path directory exists.
                     std::fs::create_dir_all(&db_path)
                         .change_context(AppError)
                         .attach("failed to create bench database directory")?;
+
+                    if let Some(ref dir) = artifact_dir {
+                        std::fs::create_dir_all(dir)
+                            .change_context(AppError)
+                            .attach("failed to create artifact directory")?;
+                    }
 
                     // Build the bench plan from models × tasks.
                     let plan = nullslop_bench::orchestrator::build_plan(&model, &task);
@@ -247,6 +256,7 @@ impl App {
                         )),
                         Some(csv),
                         Some(plan),
+                        artifact_dir,
                     );
                     let paths = &services.paths;
                     load_prompt_templates(

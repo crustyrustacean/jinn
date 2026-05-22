@@ -97,6 +97,12 @@ pub enum BenchCommands {
         /// CSV output path.
         #[arg(long, default_value = "bench-results.csv")]
         csv: PathBuf,
+
+        /// Directory for bench work artifacts (task working directories).
+        /// If set, task directories are created here instead of /tmp,
+        /// making them easy to inspect after a run.
+        #[arg(long)]
+        artifact_dir: Option<PathBuf>,
     },
 
     /// Display bench results in a terminal table.
