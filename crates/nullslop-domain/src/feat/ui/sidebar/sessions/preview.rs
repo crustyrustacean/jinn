@@ -5,15 +5,17 @@
 //! edge of the terminal (just left of the sidebar), and its bottom edge sits
 //! just above the sessions section. Displays the last 5 entries rendered using
 //! the same entry pipeline as the real chat log, truncated to the last 20 lines.
-//! A keybinds bar at the bottom shows available actions.
+//! A footer at the bottom shows keybinds across two lines and the session's
+//! active provider/model.
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 use crate::common::app_state::{AppState, FocusScope};
+use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::{ChatSessionState, SessionState};
 use crate::feat::theme::Theme;
 use crate::feat::ui::chat_log::entry_to_lines;
@@ -108,7 +110,7 @@ fn preview_width(frame_area: Rect) -> u16 {
 /// Shows a bordered popup with:
 /// - Session title in the top border
 /// - Up to 20 lines of content from the last 5 entries
-/// - A keybinds bar at the bottom
+/// - A footer with two lines of keybinds and a provider/model status line
 pub fn render_session_preview(
     frame: &mut Frame<'_>,
     popup_area: Rect,
@@ -126,12 +128,12 @@ pub fn render_session_preview(
     // Collect the last 5 entries and render them.
     let content_lines = build_preview_lines(session, inner_width, theme, tool_entry_max_lines);
 
-    // Split the popup into content area + keybinds bar.
-    let keybinds_bar_height = 1u16;
+    // Footer: 2 keybinds lines + 1 model line.
+    let footer_height = 3u16;
     let content_area_height = popup_area
         .height
         .saturating_sub(2) // borders
-        .saturating_sub(keybinds_bar_height);
+        .saturating_sub(footer_height);
 
     // Clear the popup area.
     frame.render_widget(Clear, popup_area);
@@ -169,32 +171,25 @@ pub fn render_session_preview(
         frame.render_widget(content_para, content_area);
     }
 
-    // Keybinds bar at the bottom of the inner area.
+    // Footer: keybinds + model line at the bottom of the inner area.
     render_keybinds_bar(frame, inner_area, theme);
+    render_model_line(frame, inner_area, session, theme);
 }
 
 /// Renders the keybinds bar at the bottom of the popup.
+///
+/// Two lines:
+/// - Line 1: `x close · a archive · i insert`
+/// - Line 2: `c continue · r rename`
 fn render_keybinds_bar(frame: &mut Frame<'_>, inner_area: Rect, theme: &Theme) {
-    let bar_y = inner_area.y + inner_area.height.saturating_sub(1);
-    let bar_area = Rect {
-        x: inner_area.x,
-        y: bar_y,
-        width: inner_area.width,
-        height: 1,
-    };
-
     let key_style = Style::default()
         .fg(theme.accent_action)
         .add_modifier(Modifier::BOLD);
     let sep_style = Style::default().fg(theme.muted_text);
 
-    let spans = vec![
-        Span::styled("c", key_style),
-        Span::styled(" continue", sep_style),
-        Span::styled(" · ", sep_style),
-        Span::styled("r", key_style),
-        Span::styled(" rename", sep_style),
-        Span::styled(" · ", sep_style),
+    // Line 1: x close · a archive · i insert
+    let line1_y = inner_area.y + inner_area.height.saturating_sub(3);
+    let line1_spans = vec![
         Span::styled("x", key_style),
         Span::styled(" close", sep_style),
         Span::styled(" · ", sep_style),
@@ -204,9 +199,63 @@ fn render_keybinds_bar(frame: &mut Frame<'_>, inner_area: Rect, theme: &Theme) {
         Span::styled("i", key_style),
         Span::styled(" insert", sep_style),
     ];
+    let line1_area = Rect {
+        x: inner_area.x,
+        y: line1_y,
+        width: inner_area.width,
+        height: 1,
+    };
+    frame.render_widget(Paragraph::new(Line::from(line1_spans)), line1_area);
 
-    let bar = Paragraph::new(Line::from(spans));
-    frame.render_widget(bar, bar_area);
+    // Line 2: c continue · r rename
+    let line2_y = inner_area.y + inner_area.height.saturating_sub(2);
+    let line2_spans = vec![
+        Span::styled("c", key_style),
+        Span::styled(" continue", sep_style),
+        Span::styled(" · ", sep_style),
+        Span::styled("r", key_style),
+        Span::styled(" rename", sep_style),
+    ];
+    let line2_area = Rect {
+        x: inner_area.x,
+        y: line2_y,
+        width: inner_area.width,
+        height: 1,
+    };
+    frame.render_widget(Paragraph::new(Line::from(line2_spans)), line2_area);
+}
+
+/// Renders the provider/model status line at the very bottom of the popup.
+///
+/// Shows the model in the same format as the main status bar:
+/// `({provider})/{model}` or `"no model selected"` when unset.
+/// Right-aligned using `muted_text` style.
+fn render_model_line(
+    frame: &mut Frame<'_>,
+    inner_area: Rect,
+    session: &ChatSessionState,
+    theme: &Theme,
+) {
+    let line_y = inner_area.y + inner_area.height.saturating_sub(1);
+    let line_area = Rect {
+        x: inner_area.x,
+        y: line_y,
+        width: inner_area.width,
+        height: 1,
+    };
+
+    let model = session.model();
+    let display = if model == NO_PROVIDER_ID {
+        "no model selected".to_owned()
+    } else if let Some((provider, model_suffix)) = model.split_once('/') {
+        format!("({provider})/{model_suffix}")
+    } else {
+        model.to_owned()
+    };
+
+    let style = Style::default().fg(theme.muted_text);
+    let line = Paragraph::new(Line::from(Span::styled(display, style))).alignment(Alignment::Right);
+    frame.render_widget(line, line_area);
 }
 
 /// Builds the preview content lines from the session's last entries.
@@ -262,8 +311,8 @@ pub fn session_preview_popup_rect(
 ) -> Rect {
     let popup_width = preview_width(frame_area);
 
-    // Total height: content + keybinds bar (1) + top border (1) + bottom border (1).
-    let desired_height = (content_line_count + 1 + 2) as u16;
+    // Total height: content + footer (3) + top border (1) + bottom border (1).
+    let desired_height = (content_line_count + 3 + 2) as u16;
     // Cap to available space above the sessions section (with 1-row gap).
     let max_height = sessions_top_y
         .saturating_sub(frame_area.y)
