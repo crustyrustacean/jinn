@@ -44,6 +44,13 @@ pub enum Commands {
         /// The shell to generate completions for.
         shell: clap_complete::Shell,
     },
+
+    /// Run benchmark tasks and view results.
+    Bench {
+        /// The bench subcommand to run.
+        #[command(subcommand)]
+        subcommand: BenchCommands,
+    },
 }
 
 /// Headless subcommands.
@@ -58,5 +65,42 @@ pub enum HeadlessCommands {
     Script {
         /// Path to a script file with one key sequence per line.
         path: String,
+    },
+}
+
+/// Bench subcommands.
+#[derive(Debug, Subcommand)]
+pub enum BenchCommands {
+    /// Run benchmark tasks through the actor pipeline.
+    Run {
+        /// Model(s) to benchmark (e.g., `openai/gpt-4o`).
+        #[arg(long)]
+        model: Vec<String>,
+
+        /// Task(s) to run (e.g., `hello-world`).
+        #[arg(long)]
+        task: Vec<String>,
+
+        /// Run without TUI.
+        #[arg(long)]
+        headless: bool,
+
+        /// CSV output path.
+        #[arg(long, default_value = "bench-results.csv")]
+        csv: PathBuf,
+    },
+
+    /// Display bench results in a terminal table.
+    Show {
+        /// CSV file to display.
+        csv: PathBuf,
+    },
+
+    /// Compare two bench result CSVs.
+    Compare {
+        /// First CSV file (baseline).
+        csv_a: PathBuf,
+        /// Second CSV file (comparison).
+        csv_b: PathBuf,
     },
 }
