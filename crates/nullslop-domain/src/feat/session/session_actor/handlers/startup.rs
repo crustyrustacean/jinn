@@ -5,6 +5,7 @@
 //! to initialize the context and preferences pipelines.
 
 use crate::common::actor::ActorContext;
+use crate::feat::context::env_context::load_project_context_files;
 use crate::protocol::{Command, PromptStrategyId};
 
 use super::super::SessionPersistenceActor;
@@ -47,6 +48,18 @@ impl SessionPersistenceActor {
                 let strategy_id = PromptStrategyId::new(strategy_str.clone());
                 session.switch_strategy(strategy_id.clone());
             }
+        }
+
+        // Load project context files (AGENTS.md/CLAUDE.md) from CWD tree into cache.
+        // This replaces per-assembly disk reads with a one-time startup load.
+        let cwd = {
+            let state = self.state.read();
+            state.active_session().cwd().to_path_buf()
+        };
+        let context_files = load_project_context_files(&cwd).await;
+        if !context_files.is_empty() {
+            let mut state = self.state.write();
+            state.context.context_files = context_files;
         }
 
         // Load unarchived sessions from SQLite into memory.
