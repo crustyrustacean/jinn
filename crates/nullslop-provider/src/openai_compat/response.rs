@@ -3,6 +3,17 @@
 //! Maps parsed SSE JSON payloads to [`StreamEvent`] variants. Handles
 //! tool call state tracking across multiple delta chunks and deduplication
 //! of `Done` events (OpenRouter sends `finish_reason` then `[DONE]`).
+//!
+//! ## Usage enrichment across chunks
+//!
+//! Some providers (notably OpenRouter with `X-OpenRouter-Experimental-Metadata: enabled`)
+//! send `finish_reason` in one SSE chunk and `usage` in a subsequent chunk. The parser
+//! defers emitting the `Done` event until `[DONE]` arrives (via [`handle_done`]),
+//! allowing usage data from any intermediate chunk to be attached before emission.
+//!
+//! For providers that send `finish_reason` and `usage` in the same chunk, the enrichment
+//! happens inline — the pending `Done` is created and enriched in a single `parse_data` call,
+//! then emitted by `handle_done`.
 
 use std::collections::HashMap;
 
@@ -23,13 +34,26 @@ struct ToolCallState {
     started: bool,
 }
 
+/// A pending `Done` event awaiting usage enrichment.
+#[derive(Debug, Clone, PartialEq)]
+struct PendingDone {
+    /// Why the stream stopped.
+    stop_reason: StopReason,
+    /// Usage data collected so far (may be enriched across multiple chunks).
+    usage: Option<StreamUsage>,
+}
+
 /// Stateful parser that tracks tool call accumulation across SSE chunks.
 #[derive(Debug, Default)]
 pub struct StreamResponseParser {
     /// Per-index tool call state.
     tool_states: HashMap<usize, ToolCallState>,
-    /// Whether a Done event has already been emitted (prevents duplicates).
-    done_emitted: bool,
+    /// Whether a Done event has been finalized (prevents duplicates).
+    done_finalized: bool,
+    /// A pending Done event, buffered until `[DONE]` arrives.
+    /// This allows usage data from subsequent SSE chunks (e.g. OpenRouter's
+    /// split-chunk format) to be attached before emission.
+    pending_done: Option<PendingDone>,
 }
 
 impl StreamResponseParser {
@@ -45,7 +69,11 @@ impl StreamResponseParser {
     /// - `delta.content` → `StreamEvent::Text`
     /// - `delta.reasoning_content` → `StreamEvent::Reasoning`
     /// - `delta.tool_calls[]` → `ToolUseStart`/`ToolUseInputDelta` (state tracked)
-    /// - `finish_reason` → `ToolUseComplete` + `Done` (drains pending tool calls)
+    /// - `finish_reason` → `ToolUseComplete` + pending `Done` (drains pending tool calls)
+    ///
+    /// The `Done` event is deferred: it is stored internally and emitted
+    /// when [`handle_done`] is called. This allows usage data from later
+    /// SSE chunks to be attached.
     #[allow(clippy::manual_let_else, clippy::collapsible_if)]
     pub fn parse_data(&mut self, json: &str) -> Vec<StreamEvent> {
         let mut results = Vec::new();
@@ -57,7 +85,11 @@ impl StreamResponseParser {
 
         let choices = match chunk.get("choices").and_then(|c| c.as_array()) {
             Some(c) => c,
-            None => return results,
+            None => {
+                // No choices — but we can still enrich pending_done with usage.
+                self.try_enrich_pending_usage(&chunk);
+                return results;
+            }
         };
 
         for choice in choices {
@@ -87,37 +119,38 @@ impl StreamResponseParser {
                 }
             }
 
-            // Finish reason.
+            // Finish reason — only handle the first one.
             if let Some(finish_reason) = choice.get("finish_reason").and_then(|f| f.as_str()) {
-                if !finish_reason.is_empty() && !self.done_emitted {
+                if !finish_reason.is_empty() && self.pending_done.is_none() && !self.done_finalized {
                     self.handle_finish_reason(finish_reason, &mut results);
                 }
             }
         }
 
-        // If we emitted a Done event, try to enrich it with usage data from the top-level object.
-        // OpenRouter sends `usage` alongside `choices` in the finish_reason chunk.
-        if let Some(done_event) = results
-            .iter_mut()
-            .find(|e| matches!(e, StreamEvent::Done { .. }))
-        {
-            if let Some(usage_val) = chunk.get("usage") {
-                let usage = StreamUsage {
-                    prompt_tokens: usage_val
-                        .get("prompt_tokens")
-                        .and_then(serde_json::Value::as_u64),
-                    completion_tokens: usage_val
-                        .get("completion_tokens")
-                        .and_then(serde_json::Value::as_u64),
-                    cost: usage_val.get("cost").and_then(serde_json::Value::as_f64),
-                };
-                if let StreamEvent::Done { usage: u, .. } = done_event {
-                    *u = Some(usage);
-                }
-            }
-        }
+        // Try to enrich the pending Done with usage data from this chunk.
+        self.try_enrich_pending_usage(&chunk);
 
         results
+    }
+
+    /// Try to attach usage data from a chunk to the pending Done event.
+    fn try_enrich_pending_usage(&mut self, chunk: &serde_json::Value) {
+        let Some(pending) = &mut self.pending_done else {
+            return;
+        };
+        let Some(usage_val) = chunk.get("usage") else {
+            return;
+        };
+        let usage = StreamUsage {
+            prompt_tokens: usage_val
+                .get("prompt_tokens")
+                .and_then(serde_json::Value::as_u64),
+            completion_tokens: usage_val
+                .get("completion_tokens")
+                .and_then(serde_json::Value::as_u64),
+            cost: usage_val.get("cost").and_then(serde_json::Value::as_f64),
+        };
+        pending.usage = Some(usage);
     }
 
     fn handle_tool_call_delta(&mut self, tc: &serde_json::Value, results: &mut Vec<StreamEvent>) {
@@ -198,23 +231,35 @@ impl StreamResponseParser {
             other => StopReason::Other(other.to_string()),
         };
 
-        results.push(StreamEvent::Done {
+        // Buffer the Done event instead of emitting immediately.
+        // It will be enriched with usage data from subsequent chunks
+        // and emitted when handle_done() is called.
+        self.pending_done = Some(PendingDone {
             stop_reason,
             usage: None,
         });
-        self.done_emitted = true;
     }
 
     /// Handle the `[DONE]` sentinel from SSE.
     ///
-    /// If `finish_reason` already emitted a `Done`, this is a no-op
-    /// (prevents the OpenRouter double-Done bug).
-    /// Otherwise, drains any pending tool calls and emits `Done(EndTurn)`.
+    /// Finalizes the stream: emits any pending `Done` event (enriched with
+    /// usage data from prior chunks), or creates a fallback `Done(EndTurn)`
+    /// if no `finish_reason` was ever received.
     pub fn handle_done(&mut self) -> Vec<StreamEvent> {
-        if self.done_emitted {
+        if self.done_finalized {
             return vec![];
         }
 
+        // If we have a pending Done (from finish_reason), emit it now.
+        if let Some(pending) = self.pending_done.take() {
+            self.done_finalized = true;
+            return vec![StreamEvent::Done {
+                stop_reason: pending.stop_reason,
+                usage: pending.usage,
+            }];
+        }
+
+        // No finish_reason was ever received — create a fallback Done.
         let mut results = self.drain_pending_tool_calls();
         let stop_reason = if results.is_empty() {
             StopReason::EndTurn
@@ -226,7 +271,7 @@ impl StreamResponseParser {
             stop_reason,
             usage: None,
         });
-        self.done_emitted = true;
+        self.done_finalized = true;
         results
     }
 }
@@ -239,6 +284,14 @@ mod tests {
     fn parse_single(json: &str) -> Vec<StreamEvent> {
         let mut parser = StreamResponseParser::new();
         parser.parse_data(json)
+    }
+
+    /// Parse a single chunk and then call handle_done to flush any pending Done.
+    fn parse_single_with_done(json: &str) -> Vec<StreamEvent> {
+        let mut parser = StreamResponseParser::new();
+        let mut events = parser.parse_data(json);
+        events.extend(parser.handle_done());
+        events
     }
 
     #[rstest::rstest]
@@ -305,12 +358,20 @@ mod tests {
 
     #[rstest::rstest]
     fn finish_reason_stop_produces_done_end_turn() {
+        // Given an SSE chunk with finish_reason stop.
+        let mut parser = StreamResponseParser::new();
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
-        let events = parse_single(json);
+        let events_data = parser.parse_data(json);
+        // Done is deferred — parse_data returns no Done event.
+        assert!(events_data.is_empty());
 
-        assert_eq!(events.len(), 1);
+        // When [DONE] sentinel arrives.
+        let events_done = parser.handle_done();
+
+        // Then Done is emitted with EndTurn.
+        assert_eq!(events_done.len(), 1);
         assert!(matches!(
-            &events[0],
+            &events_done[0],
             StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
                 usage: None
@@ -335,12 +396,17 @@ mod tests {
             r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
         let events = parser.parse_data(finish_json);
 
-        assert_eq!(events.len(), 2);
+        // ToolUseComplete is emitted immediately; Done is deferred.
+        assert_eq!(events.len(), 1);
         assert!(
             matches!(&events[0], StreamEvent::ToolUseComplete { index: 0, tool_call } if tool_call.name == "echo" && tool_call.arguments == "{\"x\":1}")
         );
+
+        // [DONE] flushes the pending Done.
+        let done_events = parser.handle_done();
+        assert_eq!(done_events.len(), 1);
         assert!(matches!(
-            &events[1],
+            &done_events[0],
             StreamEvent::Done {
                 stop_reason: StopReason::ToolUse,
                 ..
@@ -356,9 +422,13 @@ mod tests {
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
         parser.parse_data(json);
 
-        // [DONE] sentinel.
+        // [DONE] sentinel — flushes pending Done.
         let events = parser.handle_done();
-        assert!(events.is_empty());
+        assert_eq!(events.len(), 1);
+
+        // Second [DONE] is a no-op.
+        let events2 = parser.handle_done();
+        assert!(events2.is_empty());
     }
 
     #[rstest::rstest]
@@ -422,15 +492,20 @@ mod tests {
 
     #[rstest::rstest]
     fn finish_reason_stop_with_usage_cost_extracts_cost() {
-        // Given an SSE chunk with finish_reason stop and usage.cost.
+        // Given an SSE chunk with finish_reason stop and usage.cost in the same chunk.
+        let mut parser = StreamResponseParser::new();
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":194,"completion_tokens":2,"cost":0.95}}"#;
 
-        // When parsing the chunk.
-        let events = parse_single(json);
+        // When parsing the chunk then calling handle_done.
+        let events_data = parser.parse_data(json);
+        // Done is deferred.
+        assert!(events_data.is_empty());
+
+        let events_done = parser.handle_done();
 
         // Then the Done event contains the cost from usage.
-        assert_eq!(events.len(), 1);
-        let usage = match &events[0] {
+        assert_eq!(events_done.len(), 1);
+        let usage = match &events_done[0] {
             StreamEvent::Done { usage: Some(u), .. } => u.clone(),
             _ => panic!("expected Done with usage"),
         };
@@ -442,14 +517,18 @@ mod tests {
     #[rstest::rstest]
     fn finish_reason_stop_with_usage_but_no_cost_returns_none() {
         // Given an SSE chunk with finish_reason stop and usage without cost.
+        let mut parser = StreamResponseParser::new();
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":50}}"#;
 
-        // When parsing the chunk.
-        let events = parse_single(json);
+        // When parsing the chunk then calling handle_done.
+        let events_data = parser.parse_data(json);
+        assert!(events_data.is_empty());
+
+        let events_done = parser.handle_done();
 
         // Then the Done event has usage with cost as None.
-        assert_eq!(events.len(), 1);
-        let usage = match &events[0] {
+        assert_eq!(events_done.len(), 1);
+        let usage = match &events_done[0] {
             StreamEvent::Done { usage: Some(u), .. } => u.clone(),
             _ => panic!("expected Done with usage"),
         };
@@ -488,12 +567,80 @@ mod tests {
         let e4 = parser.parse_data(
             r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
         );
-        assert_eq!(e4.len(), 2);
+        assert_eq!(e4.len(), 1);
         let tc = match &e4[0] {
             StreamEvent::ToolUseComplete { tool_call, .. } => tool_call.clone(),
             _ => panic!("expected ToolUseComplete"),
         };
         assert_eq!(tc.name, "get_weather");
         assert_eq!(tc.arguments, "{\"city\":\"Paris\"}");
+
+        // 5. [DONE] flushes the pending Done.
+        let e5 = parser.handle_done();
+        assert_eq!(e5.len(), 1);
+        assert!(matches!(
+            &e5[0],
+            StreamEvent::Done {
+                stop_reason: StopReason::ToolUse,
+                ..
+            }
+        ));
+    }
+
+    // --- Split-chunk tests (OpenRouter format) ---
+
+    #[rstest::rstest]
+    fn openrouter_split_chunk_usage_in_separate_chunk_from_finish_reason() {
+        // Given OpenRouter-style SSE: finish_reason in chunk 1, usage+cost in chunk 2.
+        let mut parser = StreamResponseParser::new();
+
+        // Chunk 1: finish_reason "stop" without usage.
+        let chunk1 = r#"{"id":"x","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":null},"finish_reason":"stop","native_finish_reason":"stop"}]}"#;
+        let events1 = parser.parse_data(chunk1);
+        // Done is deferred — no events from parse_data.
+        assert!(events1.is_empty());
+
+        // Chunk 2: second finish_reason with usage.cost (OpenRouter sends both).
+        let chunk2 = r#"{"id":"x","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop","native_finish_reason":"stop"}],"usage":{"prompt_tokens":6,"completion_tokens":56,"total_tokens":62,"cost":0.00001308384}}"#;
+        let events2 = parser.parse_data(chunk2);
+        // No new events — pending_done is enriched with usage from this chunk.
+        assert!(events2.is_empty());
+
+        // [DONE] sentinel flushes the enriched pending Done.
+        let events_done = parser.handle_done();
+        assert_eq!(events_done.len(), 1);
+
+        let usage = match &events_done[0] {
+            StreamEvent::Done { usage: Some(u), .. } => u.clone(),
+            _ => panic!("expected Done with usage, got: {:?}", events_done[0]),
+        };
+        assert_eq!(usage.cost, Some(0.00001308384));
+        assert_eq!(usage.prompt_tokens, Some(6));
+        assert_eq!(usage.completion_tokens, Some(56));
+    }
+
+    #[rstest::rstest]
+    fn openrouter_split_chunk_usage_only_in_second_chunk() {
+        // Given usage arrives in a chunk WITHOUT a second finish_reason.
+        let mut parser = StreamResponseParser::new();
+
+        // Chunk 1: finish_reason without usage.
+        let chunk1 = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
+        parser.parse_data(chunk1);
+
+        // Chunk 2: usage only (no choices, no finish_reason).
+        let chunk2 = r#"{"id":"x","usage":{"prompt_tokens":10,"completion_tokens":20,"cost":0.005}}"#;
+        parser.parse_data(chunk2);
+
+        // [DONE] flushes with usage from chunk 2.
+        let events = parser.handle_done();
+        assert_eq!(events.len(), 1);
+        let usage = match &events[0] {
+            StreamEvent::Done { usage: Some(u), .. } => u.clone(),
+            _ => panic!("expected Done with usage"),
+        };
+        assert_eq!(usage.cost, Some(0.005));
+        assert_eq!(usage.prompt_tokens, Some(10));
+        assert_eq!(usage.completion_tokens, Some(20));
     }
 }
