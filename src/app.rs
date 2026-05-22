@@ -91,6 +91,12 @@ impl App {
         // Initial factory is the no-provider sentinel until actors resolve the real one.
         let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
 
+        // Guard: --db-path cannot be used with bench subcommands.
+        if matches!(&cli.command, Some(Commands::Bench { .. })) && cli.db_path.is_some() {
+            return Err(Report::new(AppError)
+                .attach("--db-path cannot be used with bench subcommands. Use 'bench tui <db_path>' instead"));
+        }
+
         // Create the session store — uses --db-path if provided, otherwise
         // the platform default. The --db-path flag lets users point the TUI
         // at a bench database to inspect results after a bench run.
