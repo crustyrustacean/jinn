@@ -20,8 +20,7 @@ pub(super) fn render_border(
         FocusScope::SidebarResize => sidebar_resize_accent,
         FocusScope::SidebarPersona
         | FocusScope::SidebarPins
-        | FocusScope::SidebarSessions
-        | FocusScope::MinimapNav => focus_accent,
+        | FocusScope::SidebarSessions => focus_accent,
         _ => border_unfocused,
     };
     let border_style = Style::default().fg(border_color);

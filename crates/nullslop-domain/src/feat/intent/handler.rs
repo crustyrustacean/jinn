@@ -344,11 +344,7 @@ impl IntentHandler {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
 
-            // --- Minimap Navigation ---
-            Intent::MinimapFocus => feat::minimap_nav::intent::handle_minimap_focus(state),
-            Intent::MinimapLeave => feat::minimap_nav::intent::handle_minimap_leave(state),
-            Intent::MinimapMoveUp => feat::minimap_nav::intent::handle_minimap_move_up(state),
-            Intent::MinimapMoveDown => feat::minimap_nav::intent::handle_minimap_move_down(state),
+
         }
     }
 }

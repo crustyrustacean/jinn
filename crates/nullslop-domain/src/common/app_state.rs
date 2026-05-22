@@ -153,8 +153,6 @@ pub enum FocusScope {
     SidebarPins,
     /// Sidebar — Sessions section focused.
     SidebarSessions,
-    /// Minimap navigation — moving through chat entries via the vertical minimap.
-    MinimapNav,
     /// Picker overlay active — kind distinguishes Provider/Session/Keymap/etc.
     Picker { kind: PickerKind },
     /// Arg input popup — collecting positional args for a lifecycle command.
@@ -176,7 +174,6 @@ impl FocusScope {
             | Self::SidebarPersona
             | Self::SidebarPins
             | Self::SidebarSessions
-            | Self::MinimapNav
             | Self::SidebarResize => Mode::Normal,
             Self::Input | Self::ArgInput | Self::RenameSessionInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
@@ -192,7 +189,6 @@ impl std::fmt::Display for FocusScope {
             Self::SidebarPersona => write!(f, "SidebarPersona"),
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
-            Self::MinimapNav => write!(f, "MinimapNav"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
