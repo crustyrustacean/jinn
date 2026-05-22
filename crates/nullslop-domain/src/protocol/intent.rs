@@ -112,6 +112,8 @@ pub enum Intent {
     // --- Sidebar ---
     /// Enter the sidebar scope.
     SidebarFocus,
+    /// Jump directly to the Sessions sidebar section from any scope.
+    SidebarFocusSessions,
     /// Leave the sidebar, returning to origin scope.
     SidebarLeave,
     /// Move selection down in the sidebar.
@@ -236,6 +238,7 @@ impl std::fmt::Display for Intent {
             Intent::RefreshModels => write!(f, "refresh models"),
             Intent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
             Intent::SidebarFocus => write!(f, "sidebar focus"),
+            Intent::SidebarFocusSessions => write!(f, "sidebar focus sessions"),
             Intent::SidebarLeave => write!(f, "sidebar leave"),
             Intent::SidebarMoveDown => write!(f, "sidebar move down"),
             Intent::SidebarMoveUp => write!(f, "sidebar move up"),
