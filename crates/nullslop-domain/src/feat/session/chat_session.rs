@@ -309,6 +309,20 @@ impl Default for SessionCore {
     }
 }
 
+/// Snapshot of chat log scroll position captured before entering the Pins section.
+///
+/// Used to restore the history viewport when the user navigates away from
+/// Pins to another sidebar section (Persona/Sessions). Discarded without
+/// restoring when the user leaves the sidebar entirely to Normal scope,
+/// indicating they wanted to view the pinned entry in the history.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SavedHistoryPosition {
+    /// The scroll offset at the time of capture.
+    pub(crate) scroll_offset: Option<u16>,
+    /// The selected entry index at the time of capture.
+    pub(crate) selected_entry_index: Option<usize>,
+}
+
 /// UI state for a session — owned by IntentHandler (exempt from ownership restrictions).
 ///
 /// These fields control visual presentation: scroll position, selection, input text.
@@ -347,6 +361,12 @@ pub struct SessionUi {
     /// When a tool result entry is expanded, its full content is shown
     /// instead of being truncated. This is ephemeral UI state — not persisted.
     pub(crate) expanded_entries: HashSet<ChatEntryId>,
+    /// Snapshot of chat log position before entering Pins sidebar section.
+    ///
+    /// `None` when not in a Pins browsing session. Set when the cursor enters
+    /// Pins, restored when the cursor leaves to another section, discarded
+    /// when leaving the sidebar to Normal.
+    pub(crate) saved_history_position: Option<SavedHistoryPosition>,
 }
 
 impl Clone for SessionUi {
@@ -365,6 +385,7 @@ impl Clone for SessionUi {
             viewport_height: AtomicU16::new(self.viewport_height.load(Ordering::Relaxed)),
             blank_count: AtomicU16::new(self.blank_count.load(Ordering::Relaxed)),
             expanded_entries: self.expanded_entries.clone(),
+            saved_history_position: self.saved_history_position.clone(),
         }
     }
 }
@@ -380,6 +401,7 @@ impl Default for SessionUi {
             viewport_height: AtomicU16::new(0),
             blank_count: AtomicU16::new(0),
             expanded_entries: HashSet::new(),
+            saved_history_position: None,
         }
     }
 }
@@ -1417,6 +1439,46 @@ impl ChatSessionState {
     /// Does not validate bounds — caller must ensure index is valid.
     pub fn set_selected_entry_index(&mut self, index: usize) {
         self.ui.selected_entry_index = Some(index);
+    }
+
+    // --- Saved history position ---
+
+    /// Saves the current chat log scroll position as the "pre-pin" snapshot.
+    ///
+    /// Call this before `sync_chat_log_cursor` changes the viewport.
+    /// No-op if a position is already saved (prevents overwriting during
+    /// a single Pins visit).
+    pub(crate) fn save_history_position(&mut self) {
+        if self.ui.saved_history_position.is_some() {
+            return;
+        }
+        self.ui.saved_history_position = Some(SavedHistoryPosition {
+            scroll_offset: self.ui.scroll_offset,
+            selected_entry_index: self.ui.selected_entry_index,
+        });
+    }
+
+    /// Restores the chat log to the saved "pre-pin" position, if one exists.
+    ///
+    /// Consumes the saved position (take semantics).
+    pub(crate) fn restore_history_position(&mut self) {
+        if let Some(saved) = self.ui.saved_history_position.take() {
+            self.ui.scroll_offset = saved.scroll_offset;
+            self.ui.selected_entry_index = saved.selected_entry_index;
+        }
+    }
+
+    /// Discards the saved position without restoring.
+    ///
+    /// Used when leaving the sidebar to Normal scope — the pin's position
+    /// should persist in the chat log.
+    pub(crate) fn discard_saved_history_position(&mut self) {
+        self.ui.saved_history_position = None;
+    }
+
+    /// Returns whether there is a saved history position.
+    pub(crate) fn has_saved_history_position(&self) -> bool {
+        self.ui.saved_history_position.is_some()
     }
 
     /// The index of the currently selected entry, if any.
