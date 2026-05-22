@@ -7,6 +7,7 @@ pub mod context;
 pub mod global;
 pub mod intent;
 pub mod llm_actor;
+pub mod minimap_nav;
 pub mod navigation;
 pub mod persona;
 pub mod picker;
