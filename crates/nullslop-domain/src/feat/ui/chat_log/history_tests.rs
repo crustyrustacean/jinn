@@ -83,18 +83,20 @@ fn selected_entry_gutter_is_yellow() {
         })
         .unwrap();
 
-    // Then the selected entry's gutter has yellow fg.
+    // Then the selected entry's gutter has teal fg and yellow bg.
     // 2 entries × 3 lines = 6, 4 blank above. Entry 0 at rows 4-6.
     let buffer = terminal.backend().buffer().clone();
     let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
-    assert_eq!(gutter_cell.style().fg, Some(Color::Yellow));
+    assert_eq!(gutter_cell.style().fg, Some(crate::feat::theme::default_theme().gutter_context_included));
+    assert_eq!(gutter_cell.style().bg, Some(Color::Yellow));
 
-    // And the unselected entry's gutter has the context included color (not ignored).
+    // And the unselected entry's gutter has the context included color (not ignored) and no bg.
     let unselected_gutter = buffer.cell((0, 8)).expect("cell should exist");
     assert_eq!(
         unselected_gutter.style().fg,
         Some(crate::feat::theme::default_theme().gutter_context_included)
     );
+    assert_eq!(unselected_gutter.style().bg, Some(Color::Reset));
 }
 
 #[rstest::rstest]
@@ -220,14 +222,16 @@ fn selected_entry_gutter_is_dark_gray_when_unfocused() {
         })
         .unwrap();
 
-    // Then the selected entry's gutter has dark gray fg (inactive border color, not yellow).
+    // Then the selected unfocused entry's gutter has context color fg and no bg.
+    // Entry is not ignored, so fg is teal. Unfocused means no cursor bg.
     // 2 entries × 3 lines = 6, 4 blank above. Entry 0 content at row 5.
     let buffer = terminal.backend().buffer().clone();
     let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
     assert_eq!(
         gutter_cell.style().fg,
-        Some(crate::feat::theme::default_theme().border_unfocused)
+        Some(crate::feat::theme::default_theme().gutter_context_included)
     );
+    assert_eq!(gutter_cell.style().bg, Some(Color::Reset));
 }
 
 #[rstest::rstest]
@@ -252,14 +256,16 @@ fn selected_entry_gutter_is_dark_gray_when_input_focused() {
         })
         .unwrap();
 
-    // Then the selected entry's gutter has dark gray fg (inactive border color).
+    // Then the selected unfocused entry's gutter has context color fg and no bg.
+    // Entry is not ignored, so fg is teal. Input focus means no cursor bg.
     // 2 entries × 3 lines = 6, 4 blank above. Entry 0 content at row 5.
     let buffer = terminal.backend().buffer().clone();
     let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
     assert_eq!(
         gutter_cell.style().fg,
-        Some(crate::feat::theme::default_theme().border_unfocused)
+        Some(crate::feat::theme::default_theme().gutter_context_included)
     );
+    assert_eq!(gutter_cell.style().bg, Some(Color::Reset));
 }
 
 #[rstest::rstest]
@@ -423,12 +429,12 @@ fn render_scroll_to_selected_keeps_entry_visible() {
         })
         .unwrap();
 
-    // Then the selected entry's gutter (yellow fg) should be visible in the viewport.
+    // Then the selected entry's gutter (yellow bg) should be visible in the viewport.
     let buffer = terminal.backend().buffer().clone();
     let has_yellow_gutter = (0..5).any(|row| {
         buffer
             .cell((0, row))
-            .is_some_and(|c| c.style().fg == Some(Color::Yellow))
+            .is_some_and(|c| c.style().bg == Some(Color::Yellow))
     });
     assert!(
         has_yellow_gutter,
@@ -526,12 +532,14 @@ fn render_pinned_unselected_entry_gutter_has_default_bg() {
         .unwrap();
 
     // Then the pinned (unselected) entry's gutter has no yellow background.
+    // 2 entries × 3 lines = 6, 4 blank above. Pinned entry (index 0) at rows 4-6.
+    // Check row 5 (middle of pinned entry), not row 8 (which is the selected entry).
     let buffer = terminal.backend().buffer().clone();
-    let gutter_cell = buffer.cell((0, 8)).expect("cell should exist");
-    assert_ne!(
+    let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
+    assert_eq!(
         gutter_cell.style().bg,
-        Some(Color::Yellow),
-        "pinned unselected entry gutter should not have yellow background"
+        Some(Color::Reset),
+        "pinned unselected entry gutter should have no background"
     );
 }
 
@@ -554,13 +562,14 @@ fn render_unpinned_selected_entry_gutter_has_no_focus_accent_bg() {
         })
         .unwrap();
 
-    // Then the unpinned selected entry's gutter has no yellow background.
+    // Then the unpinned selected entry's gutter has yellow background (cursor).
+    // 1 entry × 3 lines = 3, 7 blank above. Entry at rows 7-9.
     let buffer = terminal.backend().buffer().clone();
     let gutter_cell = buffer.cell((0, 9)).expect("cell should exist");
-    assert_ne!(
+    assert_eq!(
         gutter_cell.style().bg,
         Some(Color::Yellow),
-        "unpinned selected entry gutter should not have yellow background"
+        "unpinned selected entry gutter should have yellow background (cursor)"
     );
 }
 
@@ -585,14 +594,15 @@ fn render_pinned_selected_unfocused_entry_gutter_has_border_unfocused_bg() {
         })
         .unwrap();
 
-    // Then the pinned entry's gutter has border_unfocused background, not yellow.
+    // Then the pinned entry's gutter has no background (unfocused = no cursor bg).
+    // The pin icon uses gutter_style (not inverted) when unfocused.
     // 1 entry × 3 lines = 3, 7 blank above. Entry at rows 7-9, pin icon at row 7.
     let buffer = terminal.backend().buffer().clone();
     let gutter_cell = buffer.cell((0, 7)).expect("cell should exist");
     assert_eq!(
         gutter_cell.style().bg,
-        Some(crate::feat::theme::default_theme().border_unfocused),
-        "pinned selected unfocused entry gutter should have border_unfocused background"
+        Some(Color::Reset),
+        "pinned selected unfocused entry gutter should have no background"
     );
 }
 
@@ -707,12 +717,12 @@ fn render_scroll_to_selected_middle_entry_adjusts_viewport() {
         })
         .unwrap();
 
-    // Then the selected entry is visible (yellow gutter in viewport).
+    // Then the selected entry is visible (yellow gutter bg in viewport).
     let buffer = terminal.backend().buffer().clone();
     let has_yellow_gutter = (0..10).any(|row| {
         buffer
             .cell((0, row))
-            .is_some_and(|c| c.style().fg == Some(Color::Yellow))
+            .is_some_and(|c| c.style().bg == Some(Color::Yellow))
     });
     assert!(
         has_yellow_gutter,

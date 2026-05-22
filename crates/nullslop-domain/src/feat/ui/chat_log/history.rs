@@ -339,8 +339,7 @@ impl<'a> HistoryRender<'a> {
             self.state.frontend.scope_stack.current(),
             crate::common::app_state::FocusScope::Normal
         );
-        let gutter_active_color = self.theme.focus_accent;
-        let gutter_inactive_color = self.theme.border_unfocused;
+        let cursor_bg_color = self.theme.focus_accent;
 
         for &i in &self.visible_indices {
             let entry = &self.history[i];
@@ -381,8 +380,7 @@ impl<'a> HistoryRender<'a> {
                 chat_log_active,
                 content_width: self.content_width,
                 theme: &self.theme,
-                gutter_active_color,
-                gutter_inactive_color,
+                cursor_bg_color,
                 gutter_str: GUTTER_STR,
                 is_included_in_context,
                 gutter_context_color: self.theme.gutter_context_included,
