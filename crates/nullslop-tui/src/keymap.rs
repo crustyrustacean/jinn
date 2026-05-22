@@ -167,7 +167,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
             .bind("r", Intent::SidebarRenameSession, KeyCategory::General)
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::General)
-            .bind("c", Intent::SidebarSessionContinue, KeyCategory::General);
+            .bind("c", Intent::SidebarSessionContinue, KeyCategory::General)
+            // i activates session and enters insert mode (same as enter)
+            .bind("i", Intent::SidebarConfirm, KeyCategory::Input);
         })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
