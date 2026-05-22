@@ -333,7 +333,9 @@ fn load_lifecycle_picker_entries(state: &mut AppState) {
             .setup
             .as_ref()
             .and_then(|cmd| match cmd {
-                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(s) => Some(s.as_str()),
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(s) => {
+                    Some(s.as_str())
+                }
                 crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => None,
             })
             .is_some_and(|cmd| CommandTemplate::parse(cmd).has_params());
@@ -371,7 +373,9 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
             .find(|l| l.name == lifecycle_name)
             .and_then(|l| l.setup.as_ref())
             .and_then(|cmd| match cmd {
-                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(s) => Some(s.as_str()),
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(s) => {
+                    Some(s.as_str())
+                }
                 crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => None,
             })
             .map(|cmd| {

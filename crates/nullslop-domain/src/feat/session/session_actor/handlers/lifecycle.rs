@@ -160,11 +160,7 @@ impl SessionPersistenceActor {
     }
 
     /// Runs a shell-based setup command via `run_setup_command`.
-    async fn run_shell_setup(
-        &self,
-        payload: &RunSessionSetup,
-        ctx: &ActorContext,
-    ) {
+    async fn run_shell_setup(&self, payload: &RunSessionSetup, ctx: &ActorContext) {
         let result = run_setup_command(&payload.command).await;
 
         // Clear busy flag in all code paths.
@@ -179,8 +175,7 @@ impl SessionPersistenceActor {
             Ok(cwd) => {
                 {
                     let mut state = self.state.write();
-                    if let Some(session) =
-                        state.session.sessions_mut().get_mut(&payload.session_id)
+                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
                     {
                         session.set_cwd(cwd.clone());
                         session.advance_lifecycle_after_setup();
@@ -219,8 +214,7 @@ impl SessionPersistenceActor {
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
-                    if let Some(session) =
-                        state.session.sessions_mut().get_mut(&payload.session_id)
+                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
                     {
                         session.set_cwd(default.clone());
                     }
@@ -282,13 +276,11 @@ impl SessionPersistenceActor {
                 tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for builtin setup error");
             }
 
-            if let Err(e) =
-                ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
-                    session_id: session_id.clone(),
-                    cwd: default_cwd,
-                    error: Some(error_msg),
-                }))
-            {
+            if let Err(e) = ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: default_cwd,
+                error: Some(error_msg),
+            })) {
                 tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
             }
             return;
@@ -408,8 +400,9 @@ impl SessionPersistenceActor {
                 }
             }
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
-                let success =
-                    self.run_builtin_teardown(&payload.session_id, &id, &lifecycle_args, ctx).await;
+                let success = self
+                    .run_builtin_teardown(&payload.session_id, &id, &lifecycle_args, ctx)
+                    .await;
 
                 if !success {
                     if let Err(e) =
@@ -557,8 +550,9 @@ impl SessionPersistenceActor {
                         }
                     }
                     crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(ref id) => {
-                        let success =
-                            self.run_builtin_teardown(&payload.session_id, id, &lifecycle_args, ctx).await;
+                        let success = self
+                            .run_builtin_teardown(&payload.session_id, id, &lifecycle_args, ctx)
+                            .await;
 
                         if !success {
                             if let Err(e) = ctx.send_event(Event::SessionTeardownFinished(
@@ -948,7 +942,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "exit 1".to_owned(),
+                    ),
+                ),
             }];
             let session = state
                 .session
@@ -1003,7 +1001,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "exit 1".to_owned(),
+                    ),
+                ),
             }];
             state.session.active_session_id().clone()
         };
@@ -1044,7 +1046,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "exit 1".to_owned(),
+                    ),
+                ),
             }];
             state.session.active_session_id().clone()
         };
@@ -1089,7 +1095,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "exit 1".to_owned(),
+                    ),
+                ),
             }];
             state.session.active_session_id().clone()
         };
@@ -1420,7 +1430,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo test".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "echo test".to_owned(),
+                    ),
+                ),
             }];
             state.session.active_session_id().clone()
         };
@@ -1470,7 +1484,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo test".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "echo test".to_owned(),
+                    ),
+                ),
             }];
             state.session.active_session_id().clone()
         };
@@ -1742,7 +1760,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "exit 1".to_owned(),
+                    ),
+                ),
             }];
             state.session.active_session_id().clone()
         };
@@ -1790,7 +1812,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 1".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "exit 1".to_owned(),
+                    ),
+                ),
             }];
             state.session.active_session_id().clone()
         };
@@ -1840,7 +1866,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 0".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "exit 0".to_owned(),
+                    ),
+                ),
             }];
             state.session.active_session_id().clone()
         };
@@ -1950,7 +1980,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 0".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "exit 0".to_owned(),
+                    ),
+                ),
             }];
             state.session.active_session_id().clone()
         };
@@ -2006,7 +2040,11 @@ mod tests {
                 name: "test".to_owned(),
                 description: None,
                 setup: None,
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("exit 0".to_owned())),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "exit 0".to_owned(),
+                    ),
+                ),
             }];
             state.session.active_session_id().clone()
         };

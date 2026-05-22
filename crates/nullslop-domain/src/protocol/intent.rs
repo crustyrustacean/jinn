@@ -145,7 +145,7 @@ pub enum Intent {
     /// Open the persona picker from the sidebar.
     SidebarPersonaEdit,
     /// Open the session lifecycle picker from the sidebar sessions section.
-    SidebarSessionNewWithLifecycle,
+    SessionNewWithLifecycle,
     /// Queue a "Continue" user message to the session under the sidebar cursor.
     SidebarSessionContinue,
 
@@ -254,7 +254,7 @@ impl std::fmt::Display for Intent {
             Intent::SidebarSessionTeardown => write!(f, "sidebar session teardown"),
             Intent::SidebarSessionArchive => write!(f, "sidebar session archive"),
             Intent::SidebarPersonaEdit => write!(f, "edit persona"),
-            Intent::SidebarSessionNewWithLifecycle => write!(f, "new session with lifecycle"),
+            Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::SidebarSessionContinue => write!(f, "session continue"),
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
