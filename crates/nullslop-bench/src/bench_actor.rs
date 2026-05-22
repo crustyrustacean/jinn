@@ -156,7 +156,10 @@ impl BenchActor {
             return;
         }
 
-        let (task_name, model) = &plan.pairs[self.current_pair_index];
+        let (task_name, model) = plan
+            .pairs
+            .get(self.current_pair_index)
+            .expect("start_next_pair called with valid index");
         self.current_pair_index += 1;
 
         // Create session in AppState.
