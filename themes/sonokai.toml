@@ -19,6 +19,7 @@ streaming = "#a6d6d6"          # cyan
 
 # Chat log backgrounds
 gutter_bg = [37, 39, 46]       # ~#25272e (dark bg)
+gutter_context_included = [38, 115, 125]  # cool saturated teal — matches vivid palette
 user_block_bg = [48, 50, 58]   # slightly lighter bg
 tool_fg = [99, 101, 117] # comment
 tool_success_bg = [36, 50, 36]
