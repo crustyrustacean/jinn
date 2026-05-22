@@ -13,8 +13,7 @@ pub(crate) struct GutterStyle<'a> {
     pub chat_log_active: bool,
     pub content_width: u16,
     pub theme: &'a Theme,
-    pub gutter_active_color: Color,
-    pub gutter_inactive_color: Color,
+    pub cursor_bg_color: Color,
     pub gutter_str: &'a str,
     pub is_included_in_context: bool,
     pub gutter_context_color: Color,
@@ -29,15 +28,19 @@ pub(crate) fn build_entry_gutter_lines(
     entry_content_lines: &[Line<'static>],
     ctx: &GutterStyle<'_>,
 ) -> Vec<Line<'static>> {
-    let gutter_style = if ctx.is_selected && ctx.chat_log_active {
-        Style::default().fg(ctx.gutter_active_color)
-    } else if ctx.is_selected {
-        Style::default().fg(ctx.gutter_inactive_color)
-    } else if ctx.is_included_in_context {
-        Style::default().fg(ctx.gutter_context_color)
+    let fg = if ctx.is_included_in_context {
+        ctx.gutter_context_color
     } else {
-        Style::default().fg(ctx.theme.border_unfocused)
+        ctx.theme.border_unfocused
     };
+
+    let bg = if ctx.is_selected && ctx.chat_log_active {
+        ctx.cursor_bg_color
+    } else {
+        Color::Reset
+    };
+
+    let gutter_style = Style::default().fg(fg).bg(bg);
     let gutter_content = if ctx.is_pinned {
         "📌"
     } else {
@@ -47,13 +50,9 @@ pub(crate) fn build_entry_gutter_lines(
     let pin_highlight_style = if ctx.is_selected && ctx.is_pinned && ctx.chat_log_active {
         Style::default()
             .fg(ctx.theme.gutter_bg)
-            .bg(ctx.gutter_active_color)
-    } else if ctx.is_selected && ctx.is_pinned {
-        Style::default()
-            .fg(ctx.theme.gutter_bg)
-            .bg(ctx.gutter_inactive_color)
+            .bg(ctx.cursor_bg_color)
     } else {
-        Style::default()
+        gutter_style
     };
 
     let entry_wrapped: u16 = if ctx.content_width == 0 {
