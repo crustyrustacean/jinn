@@ -337,6 +337,7 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         nullslop_domain::feat::queue_actor::QueueActorDeps {
             state: state.clone(),
+            counter: token_counter.clone(),
         },
     );
 
