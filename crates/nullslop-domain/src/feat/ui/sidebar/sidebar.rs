@@ -194,7 +194,7 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
         SidebarSectionId::Minimap => false, // display-only, skip during navigation
         SidebarSectionId::Persona => true,
         SidebarSectionId::Pins => !state.sorted_pinned_ids().is_empty(),
-        SidebarSectionId::Sessions => !state.session.sessions().is_empty(),
+        SidebarSectionId::Sessions => !state.session.is_empty(),
     }
 }
 

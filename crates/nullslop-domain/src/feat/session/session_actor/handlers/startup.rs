@@ -80,8 +80,7 @@ impl SessionPersistenceActor {
                     for session in loaded {
                         state
                             .session
-                            .sessions_mut()
-                            .insert(session.session_id().clone(), session);
+                            .insert(session);
                     }
 
                     // NOTE: We intentionally do NOT switch the active session.
@@ -160,7 +159,7 @@ mod tests {
         // Then the default session still exists in the map.
         let state = actor.state.read();
         assert!(
-            state.session.sessions().contains_key(&default_id),
+            state.session.contains(&default_id),
             "default session should not be removed"
         );
     }
@@ -190,11 +189,11 @@ mod tests {
         // Then both loaded sessions are in the session map.
         let state = actor.state.read();
         assert!(
-            state.session.sessions().contains_key(&store_id1),
+            state.session.contains(&store_id1),
             "first store session should be in map"
         );
         assert!(
-            state.session.sessions().contains_key(&store_id2),
+            state.session.contains(&store_id2),
             "second store session should be in map"
         );
     }

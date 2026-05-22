@@ -36,9 +36,7 @@ const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 pub fn sessions_section_content_height(state: &AppState) -> u16 {
     let session_count = state
         .session
-        .sessions()
-        .values()
-        .filter(|s| s.session_state() == SessionState::Loaded)
+        .iter().filter(|(_, s)| s.session_state() == SessionState::Loaded)
         .count() as u16;
     let visible = session_count.min(MAX_VISIBLE_SESSIONS as u16);
     // entries(N).max(1) + footer(1)
