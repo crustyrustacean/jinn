@@ -1044,27 +1044,21 @@ fn state_with_tree() -> AppState {
     root_a.push_entry(ChatEntry::user("root a"));
     root_a.set_title("root a".to_owned());
     let root_a_id = root_a.session_id().clone();
-    state
-        .session
-        .insert(root_a);
+    state.session.insert(root_a);
 
     // Create child_a1 under root_a.
     let mut child_a1 = ChatSessionState::new();
     child_a1.set_title("child a1".to_owned());
     child_a1.set_parent_session(root_a_id.clone());
     let child_a1_id = child_a1.session_id().clone();
-    state
-        .session
-        .insert(child_a1);
+    state.session.insert(child_a1);
 
     // Create grandchild_a1a under child_a1.
     let mut grandchild = ChatSessionState::new();
     grandchild.set_title("grandchild a1a".to_owned());
     grandchild.set_parent_session(child_a1_id.clone());
     let _grandchild_id = grandchild.session_id().clone();
-    state
-        .session
-        .insert(grandchild);
+    state.session.insert(grandchild);
 
     // Create child_a2 under root_a.
     let mut child_a2 = ChatSessionState::new();
@@ -1078,9 +1072,7 @@ fn state_with_tree() -> AppState {
     newest_root.push_entry(ChatEntry::user("root b"));
     newest_root.set_title("root b".to_owned());
     let newest_root_id = newest_root.session_id().clone();
-    state
-        .session
-        .insert(newest_root);
+    state.session.insert(newest_root);
 
     // Remove the default session (created at AppState::default).
     let default_id = state.session.active_session_id().clone();
@@ -1184,9 +1176,7 @@ fn orphan_session_appears_as_root() {
     let mut orphan = ChatSessionState::new();
     orphan.set_title("orphan".to_owned());
     orphan.set_parent_session(crate::protocol::SessionId::new());
-    state
-        .session
-        .insert(orphan);
+    state.session.insert(orphan);
 
     // When collecting sorted sessions.
     let sessions = sorted_open_sessions(&state);

@@ -141,13 +141,14 @@ mod tests {
         let second_id = SessionId::new();
         let mut second_session = AppState::default();
         second_session.active_session_mut().begin_streaming();
-        let mut second_session: crate::feat::session::chat_session::ChatSessionState = second_session
-            .session
-            .sessions_mut()
-            .drain()
-            .map(|(_, v)| v)
-            .next()
-            .unwrap();
+        let mut second_session: crate::feat::session::chat_session::ChatSessionState =
+            second_session
+                .session
+                .sessions_mut()
+                .drain()
+                .map(|(_, v)| v)
+                .next()
+                .unwrap();
         second_session.set_session_id(second_id.clone());
         state.session.insert(second_session);
 

@@ -137,7 +137,9 @@ mod tests {
 
         // Simulate removing the only session and creating a fresh one.
         let closing_id = sorted_ids[0].clone();
-        state.session.remove_and_replace(&closing_id, ChatSessionState::new());
+        state
+            .session
+            .remove_and_replace(&closing_id, ChatSessionState::new());
         let _fresh_id = state.session.active_session_id().clone();
 
         // When reconciling.

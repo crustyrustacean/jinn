@@ -75,12 +75,8 @@ mod tests {
             let s2 = ChatSessionState::new();
             let s3 = ChatSessionState::new();
             let id3 = s3.session_id().clone();
-            state
-                .session
-                .insert(s1);
-            state
-                .session
-                .insert(s2);
+            state.session.insert(s1);
+            state.session.insert(s2);
             state.session.insert(s3);
             state.session.set_active(id3.clone());
             state.frontend.sessions_section.selected_index = Some(2);
@@ -118,7 +114,9 @@ mod tests {
         // Simulate session close + new session creation (as session actor would do).
         {
             let mut state = actor.state.write();
-            state.session.remove_and_replace(&removed_id, ChatSessionState::new());
+            state
+                .session
+                .remove_and_replace(&removed_id, ChatSessionState::new());
         }
 
         // When handling SessionClosed.
@@ -142,12 +140,8 @@ mod tests {
             let s2 = ChatSessionState::new();
             let s3 = ChatSessionState::new();
             let id3 = s3.session_id().clone();
-            state
-                .session
-                .insert(s1);
-            state
-                .session
-                .insert(s2);
+            state.session.insert(s1);
+            state.session.insert(s2);
             state.session.insert(s3);
             state.frontend.sessions_section.selected_index = Some(0);
             id3
