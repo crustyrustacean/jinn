@@ -14,9 +14,9 @@ use std::time::Instant;
 
 use crate::csv::{BenchCsvWriter, BenchResult};
 use crate::orchestrator::BenchPlan;
-use crate::task::BenchTask;
+use crate::task::{BenchTask, VerificationReport};
 use crate::tasks;
-use nullslop_domain::feat::chat_input::protocol::command::EnqueueUserMessage;
+use nullslop_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
 use nullslop_domain::feat::provider::protocol::command::CancelStream;
 use nullslop_domain::feat::provider::protocol::event::StreamCompleted;
 use nullslop_domain::feat::session::chat_session::{ChatSessionState, SessionPhase};
@@ -28,7 +28,7 @@ use nullslop_domain::feat::session_lifecycle::builtin::{BuiltinId, LifecycleComm
 use nullslop_domain::feat::session_lifecycle::protocol::command::RunSessionSetup;
 use nullslop_domain::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
 use nullslop_domain::protocol::PromptStrategyId;
-use nullslop_domain::protocol::{Command, Event, SessionId};
+use nullslop_domain::protocol::{ChatEntry, Command, Event, SessionId};
 use nullslop_domain::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, State};
 
 /// A tracked bench session.
@@ -40,7 +40,7 @@ struct BenchSession {
     /// Deadline for timeout — `start_time + task.timeout`.
     deadline: Instant,
     /// Verification function from the task definition.
-    verify: fn(&std::path::Path) -> bool,
+    verify: fn(&std::path::Path) -> VerificationReport,
     /// How many messages still need to be sent for this task.
     messages_remaining: usize,
     /// Index of the next message to send in the task's message list.
@@ -382,7 +382,26 @@ impl BenchActor {
         };
 
         // Run verification.
-        let passed = (tracked.verify)(&cwd);
+        let report = (tracked.verify)(&cwd);
+        let passed = report.passed();
+
+        // Log each check result.
+        for check in &report.checks {
+            if check.passed {
+                tracing::info!(
+                    task = %tracked.task_name,
+                    check = %check.name,
+                    "check passed"
+                );
+            } else {
+                tracing::warn!(
+                    task = %tracked.task_name,
+                    check = %check.name,
+                    detail = %check.detail,
+                    "check failed"
+                );
+            }
+        }
 
         // Determine status.
         let is_timeout = Instant::now() > tracked.deadline;
@@ -390,6 +409,46 @@ impl BenchActor {
             "timeout".to_owned()
         } else {
             "completed".to_owned()
+        };
+
+        // Push evaluation results into the session as system chat entries.
+        let failures: Vec<_> = report.failures().collect();
+        if failures.is_empty() {
+            let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                session_id: payload.session_id.clone(),
+                entry: ChatEntry::system(format!(
+                    "✅ Evaluation passed — {} checks",
+                    report.checks.len()
+                )),
+            }));
+        } else {
+            let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                session_id: payload.session_id.clone(),
+                entry: ChatEntry::system(format!(
+                    "❌ Evaluation failed — {}/{} checks failed",
+                    failures.len(),
+                    report.checks.len()
+                )),
+            }));
+            for failure in &failures {
+                let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: payload.session_id.clone(),
+                    entry: ChatEntry::system(format!(
+                        "  • {}: {}",
+                        failure.name, failure.detail
+                    )),
+                }));
+            }
+        }
+
+        let detail = if report.passed() {
+            String::new()
+        } else {
+            report
+                .failures()
+                .map(|f| format!("{}: {}", f.name, f.detail))
+                .collect::<Vec<_>>()
+                .join("; ")
         };
 
         let result = BenchResult {
@@ -402,6 +461,7 @@ impl BenchActor {
             wall_time_ms,
             passed,
             status,
+            detail,
         };
 
         tracing::info!(
@@ -857,5 +917,143 @@ mod tests {
             }) if command == "hello-world" && id == "hello-world")
         });
         assert!(found, "expected RunSessionSetup for hello-world");
+    }
+
+    #[tokio::test]
+    async fn success_pushes_checkmark_chat_entry() {
+        // Given a tracked bench session in a directory that passes hello-world verification.
+        let work_dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::create_dir_all(work_dir.path().join("src")).expect("create src dir");
+        std::fs::write(
+            work_dir.path().join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .expect("write Cargo.toml");
+        std::fs::write(
+            work_dir.path().join("src/main.rs"),
+            "fn main() {}",
+        )
+        .expect("write src/main.rs");
+
+        let state = State::new(nullslop_domain::AppState::default());
+        let session_id = {
+            let mut s = state.write();
+            let session = s.active_session_mut();
+            session.set_lifecycle_name(Some("hello-world".to_owned()));
+            session.set_cwd(work_dir.path().to_owned());
+            s.session.active_session_id().clone()
+        };
+
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink.clone()),
+        );
+
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: work_dir.path().to_owned(),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // When SessionPhaseChanged fires with Idle.
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then a PushChatEntry with "Evaluation passed" was sent.
+        let commands = sink.commands();
+        let found = commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                Command::PushChatEntry(PushChatEntry { session_id: sid, entry })
+                if sid == &session_id
+                    && matches!(&entry.kind, nullslop_domain::ChatEntryKind::System(t) if t.contains("Evaluation passed"))
+            )
+        });
+        assert!(found, "expected PushChatEntry with 'Evaluation passed' for passing session");
+    }
+
+    #[tokio::test]
+    async fn failure_pushes_x_chat_entries_with_details() {
+        // Given a tracked bench session whose CWD has no files (verify will fail).
+        let state = State::new(nullslop_domain::AppState::default());
+
+        // Use a temp dir so verification runs against an empty directory.
+        let temp_dir = tempfile::TempDir::new().expect("temp dir");
+        let session_id = {
+            let mut s = state.write();
+            let session = s.active_session_mut();
+            session.set_lifecycle_name(Some("hello-world".to_owned()));
+            // Set CWD to the temp dir — verification will fail because no files exist.
+            session.set_cwd(temp_dir.path().to_owned());
+            s.session.active_session_id().clone()
+        };
+
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink.clone()),
+        );
+
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: temp_dir.path().to_owned(),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // When SessionPhaseChanged fires with Idle.
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then a PushChatEntry with "❌" was sent.
+        let commands = sink.commands();
+        let failure_summary = commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                Command::PushChatEntry(PushChatEntry { session_id: sid, entry })
+                if sid == &session_id
+                    && matches!(&entry.kind, nullslop_domain::ChatEntryKind::System(t) if t.contains("Evaluation failed"))
+            )
+        });
+        assert!(failure_summary, "expected PushChatEntry with ❌ for failing session");
+
+        // And at least one detail entry with "•" was sent.
+        let detail_entry = commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                Command::PushChatEntry(PushChatEntry { session_id: sid, entry })
+                if sid == &session_id
+                    && matches!(&entry.kind, nullslop_domain::ChatEntryKind::System(t) if t.contains("file_exists"))
+            )
+        });
+        assert!(detail_entry, "expected PushChatEntry with • detail for failing session");
     }
 }
