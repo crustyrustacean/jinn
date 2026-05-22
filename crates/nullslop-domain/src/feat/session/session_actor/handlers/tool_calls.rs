@@ -171,11 +171,15 @@ impl SessionPersistenceActor {
             }
         };
 
+        let estimated_tokens = assembled.estimated_tokens();
+
         if let Err(e) =
             ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
                 session_id: event.session_id.clone(),
                 messages: assembled.messages,
                 provider_id,
+                estimated_tokens,
+                tool_definitions: assembled.tool_definitions,
             }))
         {
             tracing::warn!(

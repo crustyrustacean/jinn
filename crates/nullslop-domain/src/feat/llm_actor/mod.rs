@@ -132,12 +132,7 @@ impl LlmActor {
     fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
         match command {
             Command::SendToLlmProvider(payload) => {
-                self.start_stream(
-                    payload.session_id.clone(),
-                    payload.messages.clone(),
-                    payload.provider_id.as_deref(),
-                    ctx,
-                );
+                self.start_stream(payload, ctx);
             }
             Command::CancelStream(payload) => {
                 self.cancel_stream(&payload.session_id, ctx);
@@ -163,18 +158,18 @@ impl LlmActor {
     )]
     fn start_stream(
         &mut self,
-        session_id: SessionId,
-        messages: Vec<LlmMessage>,
-        provider_id: Option<&str>,
+        payload: &SendToLlmProvider,
         ctx: &ActorContext,
     ) {
-        // Collect current tool definitions and retry config from shared state.
-        let (tools, retry_config): (Vec<ToolDefinition>, nullslop_provider::RetryConfig) = {
+        // Read retry config from shared state (transport concern, not prompt concern).
+        let retry_config: nullslop_provider::RetryConfig = {
             let guard = self.state.read();
-            let tools = guard.context.tool_definitions.values().cloned().collect();
-            let retry_config = guard.frontend.preferences.request_retry.to_retry_config();
-            (tools, retry_config)
+            guard.frontend.preferences.request_retry.to_retry_config()
         };
+
+        let tools = payload.tool_definitions.clone();
+        let messages = payload.messages.clone();
+        let session_id = payload.session_id.clone();
 
         let message_count = messages.len();
         tracing::trace!(
@@ -193,7 +188,7 @@ impl LlmActor {
         self.sessions.insert(session_id.clone(), SessionData::new());
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
-        let factory = if let Some(pid) = provider_id {
+        let factory = if let Some(pid) = payload.provider_id.as_deref() {
             if let Some(ref services) = self.services {
                 let id = crate::feat::provider_infra::ProviderId::new(pid.to_owned());
                 let api_keys = services.api_keys.read();
@@ -229,7 +224,8 @@ impl LlmActor {
         } else {
             self.factory.clone()
         };
-        let model_id = provider_id
+        let model_id = payload.provider_id
+            .as_deref()
             .map(std::borrow::ToOwned::to_owned)
             .unwrap_or_default();
         let sink = ctx.sink();
