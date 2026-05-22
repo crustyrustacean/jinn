@@ -61,15 +61,19 @@ impl UiElement<AppState> for StreamingIndicatorElement {
         let phase = session.phase();
         let queue_len = session.queue_len();
 
-        let is_busy = matches!(
+        let is_lifecycle_busy = session.is_busy();
+
+        let is_phase_busy = matches!(
             phase,
             SessionPhase::Sending | SessionPhase::Streaming | SessionPhase::Compacting
         );
-        if !is_busy {
+        if !is_lifecycle_busy && !is_phase_busy {
             return;
         }
 
-        let label = if matches!(phase, SessionPhase::Compacting) {
+        let label = if is_lifecycle_busy {
+            " Working...".to_owned()
+        } else if matches!(phase, SessionPhase::Compacting) {
             " Compacting...".to_owned()
         } else if queue_len > 0 {
             format!(" Working... ({queue_len} queued)")
@@ -178,6 +182,30 @@ mod tests {
         assert!(
             content.trim().is_empty(),
             "expected empty buffer, got: {content}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn renders_working_for_marking_busy_when_idle() {
+        // Given a session with busy counter set but phase Idle.
+        use nullslop_testutil::{buffer_row, setup_term};
+
+        let mut element = StreamingIndicatorElement::new();
+        let mut state = AppState::default();
+        state.active_session_mut().mark_busy();
+        let (mut terminal, area) = setup_term(30, 1);
+        terminal
+            .draw(|frame| {
+                element.render(frame, area, &state);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row = buffer_row(&buffer, 0, 30);
+
+        // Then the label shows "Working...".
+        assert!(
+            row.contains("Working..."),
+            "expected Working..., got: {row}"
         );
     }
 }
