@@ -68,7 +68,8 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // Session preview popup — when sidebar sessions section is focused.
     nullslop_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
         frame,
-        layout.main,
+        layout.sidebar,
+        area,
         &state,
     );
 
