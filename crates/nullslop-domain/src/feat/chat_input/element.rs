@@ -88,12 +88,8 @@ impl UiElement<AppState> for ChatInputBoxElement {
             let visual_row = row.saturating_sub(scroll_offset);
             let prefix_width: usize = 2; // "> " = 2 columns
             let lines = state.active_chat_input().wrapped_lines();
-            let display_col = compute_display_col(
-                state.active_chat_input().text(),
-                &lines,
-                row,
-                col,
-            );
+            let display_col =
+                compute_display_col(state.active_chat_input().text(), &lines, row, col);
             let cursor_x = inner.x + (prefix_width + display_col) as u16;
             let cursor_y = inner.y + visual_row as u16;
             frame.set_cursor_position((cursor_x, cursor_y));
