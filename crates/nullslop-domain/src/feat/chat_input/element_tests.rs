@@ -491,3 +491,83 @@ fn no_indicators_when_content_fits() {
     assert_ne!(right_cell.symbol(), "↑");
     assert_ne!(right_cell.symbol(), "↓");
 }
+
+#[rstest::rstest]
+fn render_cursor_after_cjk() {
+    // Given a ChatInputBoxElement in Input mode with CJK text "中文".
+    let mut element = ChatInputBoxElement;
+    let state = {
+        let mut s = AppState::default();
+        s.frontend.scope_stack.push(FocusScope::Input);
+        s.active_chat_input_mut().insert_text("中文");
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then cursor is at position (6, 0): inner.x=0 + "> "=2 + "中文"=4 display cols.
+    terminal
+        .backend_mut()
+        .assert_cursor_position(ratatui::layout::Position { x: 6, y: 0 });
+}
+
+#[rstest::rstest]
+fn render_cursor_after_emoji() {
+    // Given a ChatInputBoxElement in Input mode with emoji "🎉🎉".
+    let mut element = ChatInputBoxElement;
+    let state = {
+        let mut s = AppState::default();
+        s.frontend.scope_stack.push(FocusScope::Input);
+        s.active_chat_input_mut().insert_text("🎉🎉");
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then cursor is at position (6, 0): inner.x=0 + "> "=2 + "🎉🎉"=4 display cols.
+    terminal
+        .backend_mut()
+        .assert_cursor_position(ratatui::layout::Position { x: 6, y: 0 });
+}
+
+#[rstest::rstest]
+fn render_cursor_mixed_ascii_cjk() {
+    // Given a ChatInputBoxElement in Input mode with mixed "a中b" and cursor at pos 2 (after "中").
+    let mut element = ChatInputBoxElement;
+    let state = {
+        let mut s = AppState::default();
+        s.frontend.scope_stack.push(FocusScope::Input);
+        s.active_chat_input_mut().insert_text("a中b");
+        // Cursor at end (pos 3). Move left once to pos 2 (after "中").
+        s.active_chat_input_mut().move_cursor_left();
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then cursor is at position (5, 0): inner.x=0 + "> "=2 + "a"=1 + "中"=2 = 5.
+    terminal
+        .backend_mut()
+        .assert_cursor_position(ratatui::layout::Position { x: 5, y: 0 });
+}
