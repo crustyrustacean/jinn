@@ -103,6 +103,7 @@ impl HeadlessWorld {
                 config_storage,
                 session_store,
                 user_preferences_storage,
+                None,
             );
 
             // Intentionally leaked: each world gets a fresh tokio runtime.

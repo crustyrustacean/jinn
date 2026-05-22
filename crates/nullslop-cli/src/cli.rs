@@ -73,11 +73,14 @@ pub enum HeadlessCommands {
 pub enum BenchCommands {
     /// Run benchmark tasks through the actor pipeline.
     Run {
-        /// Model(s) to benchmark (e.g., `openai/gpt-4o`).
-        #[arg(long)]
+        /// Database directory for bench sessions (isolated from user's real database).
+        db_path: PathBuf,
+
+        /// Model(s) to benchmark (e.g., `openai/gpt-4o`). At least one required.
+        #[arg(long, required = true)]
         model: Vec<String>,
 
-        /// Task(s) to run (e.g., `hello-world`).
+        /// Task(s) to run (e.g., `hello-world`). If omitted, runs all tasks.
         #[arg(long)]
         task: Vec<String>,
 
