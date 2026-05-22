@@ -9,8 +9,9 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use crate::feat::context::protocol::command::AssemblePrompt;
-use crate::feat::provider::protocol::command::SendMessage;
+use crate::feat::context::assemble::assemble_prompt;
+use crate::feat::provider::protocol::command::{SendMessage, SendToLlmProvider};
+use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
 
 use super::super::SessionPersistenceActor;
@@ -18,8 +19,8 @@ use crate::feat::session::chat_session::SessionPhase;
 
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
 enum EnqueueAction {
-    /// Session is idle — dispatch prompt assembly.
-    AssemblePrompt,
+    /// Session is idle — dispatch directly via assemble_prompt().
+    DispatchDirectly,
     /// Session is busy — message was queued.
     Queued,
 }
@@ -48,7 +49,7 @@ impl SessionPersistenceActor {
                     }
                     session.push_entry(payload.entry.clone());
                     session.begin_sending();
-                    EnqueueAction::AssemblePrompt
+                    EnqueueAction::DispatchDirectly
                 }
                 SessionPhase::Sending
                 | SessionPhase::Streaming
@@ -63,30 +64,60 @@ impl SessionPersistenceActor {
             }
         };
 
-        // Note: phase change emission for Idle → Sending will be handled
-        // by the QueueActor once it's introduced. For now, enqueue doesn't
-        // emit SessionPhaseChanged because the session actor still handles
-        // the full dispatch inline.
-
-        let (history, model_name) = match action {
-            EnqueueAction::AssemblePrompt => {
-                let state = self.state.read();
-                let history = state.session(&payload.session_id).history().to_vec();
-                let model_name = state.session(&payload.session_id).profile().model.clone();
-                (history, model_name)
-            }
-            EnqueueAction::Queued => (vec![], String::new()),
-        };
-
         match action {
-            EnqueueAction::AssemblePrompt => {
-                if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
-                    session_id: payload.session_id.clone(),
-                    history,
-                    tools: vec![],
-                    model_name,
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit AssemblePrompt");
+            EnqueueAction::DispatchDirectly => {
+                // Assemble the prompt directly and emit SendToLlmProvider.
+                let assembled = {
+                    let guard = self.state.read();
+                    assemble_prompt(&guard, &payload.session_id, &self.counter)
+                };
+
+                let (old_phase, new_phase) = {
+                    let mut state = self.state.write();
+                    let session = state.session_mut_or_create(&payload.session_id);
+                    let old_phase = session.phase();
+                    session.begin_streaming();
+                    session.push_token_record(TokenRecord {
+                        timestamp: jiff::Timestamp::now(),
+                        tokens_sent: assembled.estimated_tokens(),
+                        tokens_received: 0,
+                        cost: None,
+                    });
+                    session.set_context_size(assembled.estimated_tokens());
+                    (old_phase, session.phase())
+                };
+                super::super::helpers::emit_phase_changed(
+                    ctx,
+                    &payload.session_id,
+                    old_phase,
+                    new_phase,
+                );
+
+                let provider_id = {
+                    let state = self.state.read();
+                    let model = state.session(&payload.session_id).profile().model.clone();
+                    if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                        None
+                    } else {
+                        Some(model)
+                    }
+                };
+
+                let estimated_tokens = assembled.estimated_tokens();
+
+                if let Err(e) =
+                    ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+                        session_id: payload.session_id.clone(),
+                        messages: assembled.messages,
+                        provider_id,
+                        estimated_tokens,
+                        tool_definitions: assembled.tool_definitions,
+                    }))
+                {
+                    tracing::warn!(
+                        err = ?e,
+                        "session-actor failed to emit SendToLlmProvider"
+                    );
                 }
 
                 if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {

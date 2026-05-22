@@ -189,7 +189,7 @@ pub struct SessionCoreEphemeral {
     /// Index into `history` for the entry currently receiving thinking tokens.
     pub(crate) streaming_thinking_entry_index: Option<usize>,
     /// Cached context size in tokens (assembled prompt size).
-    /// Updated when PromptAssembled fires. Not persisted across restarts.
+    /// Updated when context is assembled. Not persisted across restarts.
     /// OWNER: session-actor.
     pub(crate) cached_context_size: Option<u32>,
     /// Maps tool_call_id to history index for pending streaming ToolResult entries.
@@ -247,7 +247,7 @@ pub struct SessionCore {
     #[serde(default = "default_cwd")]
     pub(crate) cwd: std::path::PathBuf,
     /// Token usage ledger — one immutable record per request/response pair.
-    /// OWNER: session-actor (records tokens on PromptAssembled and StreamCompleted).
+    /// OWNER: session-actor (records tokens on assembly and StreamCompleted).
     #[serde(default)]
     pub(crate) token_ledger: Vec<TokenRecord>,
     /// Parent session ID, if this session was forked from another.
