@@ -21,7 +21,7 @@ pub(super) fn render_border(
         FocusScope::SidebarPersona
         | FocusScope::SidebarPins
         | FocusScope::SidebarSessions
-        | FocusScope::SidebarMinimap => focus_accent,
+        | FocusScope::MinimapNav => focus_accent,
         _ => border_unfocused,
     };
     let border_style = Style::default().fg(border_color);

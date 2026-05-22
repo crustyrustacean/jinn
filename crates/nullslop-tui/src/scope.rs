@@ -18,8 +18,8 @@ pub enum Scope {
     SidebarPins,
     /// Sidebar — Sessions section.
     SidebarSessions,
-    /// Sidebar — Minimap section (display-only).
-    SidebarMinimap,
+    /// Minimap navigation mode — moving through chat entries via the vertical minimap.
+    MinimapNav,
     /// Picker — Provider/model selection.
     PickerProvider,
     /// Picker — Session browser.
@@ -50,7 +50,7 @@ impl std::fmt::Display for Scope {
             Self::SidebarPersona => write!(f, "SidebarPersona"),
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
-            Self::SidebarMinimap => write!(f, "SidebarMinimap"),
+            Self::MinimapNav => write!(f, "MinimapNav"),
             Self::PickerProvider => write!(f, "Picker(provider)"),
             Self::PickerSession => write!(f, "Picker(session)"),
             Self::PickerPersona => write!(f, "Picker(persona)"),
@@ -74,7 +74,7 @@ impl std::str::FromStr for Scope {
             "SidebarPersona" => Ok(Self::SidebarPersona),
             "SidebarPins" => Ok(Self::SidebarPins),
             "SidebarSessions" => Ok(Self::SidebarSessions),
-            "SidebarMinimap" => Ok(Self::SidebarMinimap),
+            "MinimapNav" => Ok(Self::MinimapNav),
             "Picker(provider)" => Ok(Self::PickerProvider),
             "Picker(session)" => Ok(Self::PickerSession),
             "Picker(persona)" => Ok(Self::PickerPersona),
