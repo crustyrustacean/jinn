@@ -17,10 +17,7 @@ use crate::show::read_csv;
 /// # Errors
 ///
 /// Returns an error if either file cannot be read or parsed.
-pub fn compare_results(
-    csv_a: &Path,
-    csv_b: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let results_a = read_csv(csv_a)?;
     let results_b = read_csv(csv_b)?;
 
@@ -41,7 +38,15 @@ pub fn compare_results(
     let mut table = Table::new();
     table.load_preset(UTF8_FULL_CONDENSED);
     table.set_header(vec![
-        "Task", "Model", "Turns", "Tokens ↑", "Tokens ↓", "Cost", "Time", "Passed", "Status",
+        "Task",
+        "Model",
+        "Turns",
+        "Tokens ↑",
+        "Tokens ↓",
+        "Cost",
+        "Time",
+        "Passed",
+        "Status",
     ]);
 
     for key in keys {
@@ -128,7 +133,6 @@ fn diff_cell<T>(a: T, b: T, style: DiffStyle) -> Cell
 where
     T: std::ops::Sub<Output = T> + PartialOrd + Copy + ToString,
 {
-    
     if b > a {
         let d = b - a;
         match style {

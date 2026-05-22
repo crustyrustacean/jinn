@@ -255,7 +255,8 @@ pub fn create_core_with_actor_host(
             store: Some(session_store.clone()),
             counter: token_counter,
             builtin_registry: {
-                let mut registry = nullslop_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
+                let mut registry =
+                    nullslop_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
                 nullslop_bench::bench_tasks::register_bench_tasks(&mut registry);
                 registry
             },
@@ -355,24 +356,24 @@ pub fn create_core_with_actor_host(
     // ── Build actor host ─────────────────────────────────────────────────
 
     let mut actors = vec![
-            system_ready_result,
-            env_init_result,
-            provider_init_result,
-            prefs_result,
-            prefs_sync_result,
-            llm_result,
-            discover_result,
-            orch_result,
-            prompt_result,
-            sp_result,
-            scan_result,
-            skills_result,
-            persona_scan_result,
-            prov_result,
-            compaction_result,
-            queue_result,
-            sidebar_state_result,
-        ];
+        system_ready_result,
+        env_init_result,
+        provider_init_result,
+        prefs_result,
+        prefs_sync_result,
+        llm_result,
+        discover_result,
+        orch_result,
+        prompt_result,
+        sp_result,
+        scan_result,
+        skills_result,
+        persona_scan_result,
+        prov_result,
+        compaction_result,
+        queue_result,
+        sidebar_state_result,
+    ];
 
     // ── Bench actor (conditional) ─────────────────────────────────────────
     if let Some(ref csv_path) = bench_csv_path {
@@ -390,11 +391,7 @@ pub fn create_core_with_actor_host(
         actors.push(bench_result);
     }
 
-    let host = InMemoryActorHost::from_actors_with_handle(
-        actors,
-        handle.clone(),
-        shutdown_tracker,
-    );
+    let host = InMemoryActorHost::from_actors_with_handle(actors, handle.clone(), shutdown_tracker);
     let host_arc: Arc<dyn nullslop_domain::ActorHost> = Arc::new(host);
 
     // Spawn the async forwarding task — continuously drains AppMsg channel → actor host.
