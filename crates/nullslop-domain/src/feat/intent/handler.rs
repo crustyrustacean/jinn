@@ -31,7 +31,7 @@
 
 use crate::AppState;
 use crate::feat::session::chat_session::SessionPhase;
-use crate::protocol::{Command, PinPosition, SessionId};
+use crate::protocol::{Command, PinPosition, PickerKind, SessionId};
 
 use crate::Intent;
 use crate::feat;
@@ -258,7 +258,7 @@ impl IntentHandler {
                 feat::ui::sidebar::pins::pins_section::handle_sidebar_persona_edit(state)
             }
             Intent::SessionNewWithLifecycle => {
-                feat::ui::sidebar::sessions::handle_sidebar_session_new_with_lifecycle(state)
+                feat::picker::intent::handle_open_picker(state, PickerKind::SessionLifecycle)
             }
             Intent::SidebarSessionClose => {
                 feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state)
