@@ -89,11 +89,11 @@ fn selected_entry_gutter_is_yellow() {
     let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
     assert_eq!(gutter_cell.style().fg, Some(Color::Yellow));
 
-    // And the unselected entry's gutter has dark gray fg.
+    // And the unselected entry's gutter has the context included color (not ignored).
     let unselected_gutter = buffer.cell((0, 8)).expect("cell should exist");
     assert_eq!(
         unselected_gutter.style().fg,
-        Some(crate::feat::theme::default_theme().border_unfocused)
+        Some(crate::feat::theme::default_theme().gutter_context_included)
     );
 }
 
