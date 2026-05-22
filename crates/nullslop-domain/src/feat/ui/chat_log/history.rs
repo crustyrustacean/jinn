@@ -39,8 +39,8 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-use ratatui_markdown::theme::Generation;
 use ratatui_markdown::RichTextTheme;
+use ratatui_markdown::theme::Generation;
 
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};

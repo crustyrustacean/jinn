@@ -2198,9 +2198,7 @@ fn save_history_position_does_not_overwrite_existing() {
 #[rstest::rstest]
 fn restore_is_noop_when_nothing_saved() {
     // Given a session with no saved position.
-    let mut session = ChatSessionState::builder()
-        .with_user_entry("first")
-        .build();
+    let mut session = ChatSessionState::builder().with_user_entry("first").build();
     session.ui.scroll_offset = Some(10);
     session.ui.selected_entry_index = Some(0);
 
