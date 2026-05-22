@@ -155,10 +155,11 @@ impl BenchActor {
             return;
         }
 
+        #[expect(clippy::expect_used, reason = "index verified above")]
         let (task_name, model) = plan
             .pairs
             .get(self.current_pair_index)
-            .expect("start_next_pair called with valid index");
+            .expect("index checked above");
         self.current_pair_index += 1;
 
         // Create session in AppState.
@@ -227,7 +228,6 @@ impl BenchActor {
 
     /// Enqueue a message for the given session.
     fn enqueue_message(
-        &self,
         session_id: &SessionId,
         message: &str,
         ctx: &ActorContext,
@@ -293,7 +293,7 @@ impl BenchActor {
 
         // Enqueue the first message for this session.
         if let Some(first_message) = task.messages.first() {
-            self.enqueue_message(&payload.session_id, first_message, ctx);
+            Self::enqueue_message(&payload.session_id, first_message, ctx);
             if let Some(tracked) = self.pending.get_mut(&payload.session_id) {
                 tracked.messages_remaining -= 1;
                 tracked.next_message_index += 1;
@@ -324,6 +324,7 @@ impl BenchActor {
     }
 
     /// Handle `SessionPhaseChanged` — finalize result when tracked session returns to Idle.
+    #[expect(clippy::unused_async, reason = "called via .await from the async handle method")]
     async fn handle_session_phase_changed(
         &mut self,
         payload: &SessionPhaseChanged,
@@ -343,20 +344,28 @@ impl BenchActor {
             let task_name = tracked.task_name.clone();
             let next_index = tracked.next_message_index;
 
-            if let Some(task) = self.task_lookup.get(&task_name) {
-                if let Some(message) = task.messages.get(next_index) {
-                    self.enqueue_message(&payload.session_id, message, ctx);
-                    if let Some(tracked) = self.pending.get_mut(&payload.session_id) {
-                        tracked.messages_remaining -= 1;
-                        tracked.next_message_index += 1;
-                    }
-                    return;
+            if let Some((message, task)) = self
+                .task_lookup
+                .get(&task_name)
+                .and_then(|task| task.messages.get(next_index).map(|m| (m, task)))
+            {
+                // We don't use `task` but need it for the `and_then` chain.
+                let _ = task;
+                Self::enqueue_message(&payload.session_id, message, ctx);
+                if let Some(tracked) = self.pending.get_mut(&payload.session_id) {
+                    tracked.messages_remaining -= 1;
+                    tracked.next_message_index += 1;
                 }
+                return;
             }
         }
 
         // All messages sent — finalize the result.
-        let tracked = self.pending.remove(&payload.session_id).expect("checked above");
+        #[expect(clippy::expect_used, reason = "existence verified above")]
+        let tracked = self
+            .pending
+            .remove(&payload.session_id)
+            .expect("session was checked above");
 
         let elapsed = tracked.start_time.elapsed();
         let wall_time_ms = elapsed.as_millis() as u64;
@@ -371,10 +380,10 @@ impl BenchActor {
                 );
                 return;
             };
-            let stats = TokenStats::from_ledger(session.token_ledger());
+            let token_summary = TokenStats::from_ledger(session.token_ledger());
             let model = session.profile().model.clone();
             let cwd = session.cwd().to_owned();
-            (stats, model, cwd)
+            (token_summary, model, cwd)
         };
 
         // Run verification.
@@ -412,10 +421,10 @@ impl BenchActor {
         );
 
         // Write CSV row if writer is available.
-        if let Some(ref mut writer) = self.csv_writer {
-            if let Err(e) = writer.write_row(&result) {
-                tracing::error!(error = %e, "failed to write CSV row");
-            }
+        if let Some(ref mut writer) = self.csv_writer
+            && let Err(e) = writer.write_row(&result)
+        {
+            tracing::error!(error = %e, "failed to write CSV row");
         }
 
         // Advance to the next pair.
