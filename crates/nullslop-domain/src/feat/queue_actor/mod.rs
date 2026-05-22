@@ -36,7 +36,6 @@ use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session::queue_item::QueueItem;
-use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
 use crate::protocol::{Command, Event};
 
