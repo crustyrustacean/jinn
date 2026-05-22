@@ -96,12 +96,7 @@ impl App {
         // at a bench database to inspect results after a bench run.
         let session_store = {
             let store = match &cli.db_path {
-                Some(path) => {
-                    std::fs::create_dir_all(path)
-                        .change_context(AppError)
-                        .attach("failed to create session database directory")?;
-                    SqliteSessionStore::new_in(path)
-                }
+                Some(path) => SqliteSessionStore::new_in(path),
                 None => SqliteSessionStore::new(),
             };
             SessionStoreService::new(Arc::new(
