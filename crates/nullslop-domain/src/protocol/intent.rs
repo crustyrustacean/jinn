@@ -205,15 +205,6 @@ pub enum Intent {
     /// Delete the grapheme after the cursor in rename input.
     RenameDeleteForward,
 
-    // --- Minimap Navigation ---
-    /// Enter minimap navigation mode from Normal scope.
-    MinimapFocus,
-    /// Leave minimap navigation mode, returning to Normal scope.
-    MinimapLeave,
-    /// Move selection up in the minimap.
-    MinimapMoveUp,
-    /// Move selection down in the minimap.
-    MinimapMoveDown,
 }
 
 impl std::fmt::Display for Intent {
@@ -302,10 +293,7 @@ impl std::fmt::Display for Intent {
             Intent::RenameCursorRight => write!(f, "rename cursor right"),
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
-            Intent::MinimapFocus => write!(f, "minimap focus"),
-            Intent::MinimapLeave => write!(f, "minimap leave"),
-            Intent::MinimapMoveUp => write!(f, "minimap move up"),
-            Intent::MinimapMoveDown => write!(f, "minimap move down"),
+
         }
     }
 }

@@ -130,7 +130,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Sidebar resize
             .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
             // Minimap navigation
-            .bind("<c-m>", Intent::MinimapFocus, KeyCategory::Navigation)
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
             // Expand/collapse tool entry
@@ -276,17 +275,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
                 None
             }
         });
-    });
-
-    // MinimapNav scope — navigating chat entries via the vertical minimap.
-    keymap.scope(Scope::MinimapNav, |b| {
-        b
-        .bind("j", Intent::MinimapMoveDown, KeyCategory::Navigation)
-        .bind("k", Intent::MinimapMoveUp, KeyCategory::Navigation)
-        .bind("<esc>", Intent::MinimapLeave, KeyCategory::General)
-        .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
-        .bind("q", Intent::Quit, KeyCategory::General)
-        .bind("<c-c>", Intent::Quit, KeyCategory::General);
     });
 
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
