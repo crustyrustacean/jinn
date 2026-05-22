@@ -5,7 +5,7 @@
 //! directory (with fixture files if applicable), and `teardown` runs the
 //! task's verification function against the working directory.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
@@ -26,7 +26,6 @@ pub fn register_bench_tasks(registry: &mut BuiltinRegistry) {
         let handler = BenchTaskHandler {
             name: task.name.to_owned(),
             fixture_dir: task.fixture_dir.map(str::to_owned),
-            verify: task.verify,
         };
         registry.register(BuiltinId(task.name.to_owned()), Arc::new(handler));
     }
@@ -40,9 +39,10 @@ pub fn register_bench_tasks(registry: &mut BuiltinRegistry) {
 /// fixtures if the task has a fixture directory. On teardown, runs the task's
 /// verification function against the working directory.
 pub struct BenchTaskHandler {
+    /// Task name (for logging and error messages).
     name: String,
+    /// Fixture directory name relative to `crates/nullslop-bench/fixtures/`.
     fixture_dir: Option<String>,
-    verify: fn(&Path) -> bool,
 }
 
 impl std::fmt::Debug for BenchTaskHandler {
@@ -121,11 +121,6 @@ mod tests {
         let handler = BenchTaskHandler {
             name: "fix-syntax-broken-rust".to_owned(),
             fixture_dir: Some("fix-syntax-broken-rust".to_owned()),
-            verify: tasks::bench_tasks()
-                .into_iter()
-                .find(|t| t.name == "fix-syntax-broken-rust")
-                .expect("task exists")
-                .verify,
         };
 
         // When running setup.
@@ -150,7 +145,6 @@ mod tests {
         let handler = BenchTaskHandler {
             name: "hello-world".to_owned(),
             fixture_dir: None,
-            verify: |_path| true,
         };
 
         // When running setup.
@@ -176,7 +170,6 @@ mod tests {
         let handler = BenchTaskHandler {
             name: "test".to_owned(),
             fixture_dir: None,
-            verify: |_path| true,
         };
 
         // When running teardown.
