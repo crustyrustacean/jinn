@@ -143,7 +143,7 @@ impl SidebarSection for SessionsSection {
         let left_dashes = dash_budget / 2;
         let right_dashes = dash_budget - left_dashes;
         let footer = format!(
-            "\u{2570}\u{2500}{}{}{}\u{256F}",
+            "\u{2570}{}{}{}\u{256F}",
             "\u{2500}".repeat(left_dashes),
             label,
             "\u{2500}".repeat(right_dashes),
