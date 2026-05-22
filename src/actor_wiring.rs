@@ -253,7 +253,11 @@ pub fn create_core_with_actor_host(
             services: Some(services.clone()),
             store: Some(session_store.clone()),
             counter: token_counter,
-            builtin_registry: nullslop_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
+            builtin_registry: {
+                let mut registry = nullslop_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
+                nullslop_bench::bench_tasks::register_bench_tasks(&mut registry);
+                registry
+            },
         },
     );
 

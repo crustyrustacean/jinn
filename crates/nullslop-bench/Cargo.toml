@@ -3,6 +3,10 @@ name = "nullslop-bench"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "nullslop_bench"
+path = "src/lib.rs"
+
 [[bin]]
 name = "nullslop-bench"
 path = "src/main.rs"
@@ -18,6 +22,10 @@ csv = { workspace = true }
 jiff = { workspace = true }
 ctrlc = { workspace = true }
 comfy-table = { workspace = true }
+error-stack = { workspace = true }
+wherror = { workspace = true }
+
+tempfile = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

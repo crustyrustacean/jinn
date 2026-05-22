@@ -5,17 +5,12 @@
 
 #![allow(clippy::exit, reason = "CLI uses exit for fatal errors")]
 
-mod cli;
-mod compare;
-mod csv;
-mod fixture;
-mod runner;
-mod show;
-mod task;
-mod tasks;
-mod wiring;
-
 use clap::Parser;
+
+use nullslop_bench::cli;
+use nullslop_bench::compare;
+use nullslop_bench::runner;
+use nullslop_bench::show;
 
 fn main() {
     let cli = cli::Cli::parse();
