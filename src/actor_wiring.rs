@@ -55,6 +55,7 @@ pub fn create_core_with_actor_host(
     session_store: SessionStoreService,
     user_preferences_storage: UserPreferencesStorageService,
     bench_csv_path: Option<std::path::PathBuf>,
+    bench_plan: Option<nullslop_bench::orchestrator::BenchPlan>,
 ) -> (AppCore, Services, ActorHostService) {
     // Create channel first — actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
@@ -375,7 +376,7 @@ pub fn create_core_with_actor_host(
         ];
 
     // ── Bench actor (conditional) ─────────────────────────────────────────
-    if let Some(ref csv_path) = bench_csv_path {
+    if bench_csv_path.is_some() {
         let bench_result = spawn::<nullslop_bench::bench_actor::BenchActor>(
             "bench",
             &sink,
@@ -384,7 +385,8 @@ pub fn create_core_with_actor_host(
             &shutdown_tracker,
             nullslop_bench::bench_actor::BenchActorDeps {
                 state: state.clone(),
-                csv_path: Some(csv_path.clone()),
+                csv_path: bench_csv_path.clone(),
+                plan: bench_plan,
             },
         );
         actors.push(bench_result);

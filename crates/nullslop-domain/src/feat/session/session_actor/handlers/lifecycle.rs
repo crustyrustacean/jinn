@@ -44,7 +44,7 @@ pub(in crate::feat::session::session_actor) fn no_output_info(
 }
 
 /// System entry shown while a setup command is running.
-pub(crate) fn setup_running_msg() -> ChatEntry {
+pub fn setup_running_msg() -> ChatEntry {
     ChatEntry::system("⚙️ Running setup script...")
 }
 

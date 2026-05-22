@@ -113,6 +113,7 @@ impl App {
                         FilesystemUserPreferencesStorage::default_path(),
                     )),
                     None,
+                    None,
                 );
                 let paths = &services.paths;
                 load_prompt_templates(
@@ -169,6 +170,7 @@ impl App {
                         FilesystemUserPreferencesStorage::default_path(),
                     )),
                     None,
+                    None,
                 );
                 load_prompt_templates(
                     &core.state,
@@ -199,8 +201,8 @@ impl App {
             Commands::Bench { subcommand } => match subcommand {
                 BenchCommands::Run {
                     db_path,
-                    model: _model,
-                    task: _task,
+                    model,
+                    task,
                     headless: _headless,
                     csv,
                 } => {
@@ -208,6 +210,13 @@ impl App {
                     std::fs::create_dir_all(&db_path)
                         .change_context(AppError)
                         .attach("failed to create bench database directory")?;
+
+                    // Build the bench plan from models × tasks.
+                    let plan = nullslop_bench::orchestrator::build_plan(&model, &task);
+                    tracing::info!(
+                        pairs = plan.pairs.len(),
+                        "built bench plan"
+                    );
 
                     let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
                         &self.handle(),
@@ -223,6 +232,7 @@ impl App {
                             FilesystemUserPreferencesStorage::default_path(),
                         )),
                         Some(csv),
+                        Some(plan),
                     );
                     let paths = &services.paths;
                     load_prompt_templates(
@@ -232,8 +242,6 @@ impl App {
                     );
                     load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
-                    // TODO: Create bench sessions for each task/model pair (Phase 3).
-                    // For now, just launch the TUI with the bench actor active.
                     let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
                     let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
                     let mut ui_registry = nullslop_domain::AppUiRegistry::new();
