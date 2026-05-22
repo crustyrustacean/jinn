@@ -730,7 +730,7 @@ fn new_with_lifecycle_noop_when_not_sessions_section() {
 
     // When handling the intent via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
-        &crate::Intent::SidebarSessionNewWithLifecycle,
+        &crate::Intent::SessionNewWithLifecycle,
         &mut state,
     );
 
@@ -752,7 +752,7 @@ fn new_with_lifecycle_opens_picker_when_sessions_section() {
 
     // When handling the intent via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
-        &crate::Intent::SidebarSessionNewWithLifecycle,
+        &crate::Intent::SessionNewWithLifecycle,
         &mut state,
     );
 

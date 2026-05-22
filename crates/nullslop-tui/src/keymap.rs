@@ -133,7 +133,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("f", Intent::ForkFromEntry, KeyCategory::General)
             // Session creation
             .bind("n", Intent::SessionNew, KeyCategory::General)
-            .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
+            .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
             // Escape: cancel selection
             .bind("<esc>", Intent::NormalEscape, KeyCategory::General);
         })
@@ -164,7 +164,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("t", Intent::SidebarSessionTeardown, KeyCategory::General)
             .bind("<enter>", Intent::SidebarConfirm, KeyCategory::General)
             .bind("n", Intent::SessionNew, KeyCategory::General)
-            .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
+            .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
             .bind("r", Intent::SidebarRenameSession, KeyCategory::General)
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::General)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::General)

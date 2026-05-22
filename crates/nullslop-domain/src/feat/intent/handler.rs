@@ -257,7 +257,7 @@ impl IntentHandler {
             Intent::SidebarPersonaEdit => {
                 feat::ui::sidebar::pins::pins_section::handle_sidebar_persona_edit(state)
             }
-            Intent::SidebarSessionNewWithLifecycle => {
+            Intent::SessionNewWithLifecycle => {
                 feat::ui::sidebar::sessions::handle_sidebar_session_new_with_lifecycle(state)
             }
             Intent::SidebarSessionClose => {
