@@ -40,18 +40,11 @@ impl SessionPersistenceActor {
             let title_text = loaded.title().unwrap_or("Untitled Session").to_owned();
 
             // Insert loaded session into HashMap.
-            state
-                .session
-                .sessions_mut()
-                .insert(session_id.clone(), loaded);
+            state.session.insert(loaded);
 
             // Add a system message about the restore.
             #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
-            let session = state
-                .session
-                .sessions_mut()
-                .get_mut(&session_id)
-                .expect("just inserted");
+            let session = state.session.get_mut(&session_id).expect("just inserted");
             session.push_entry(ChatEntry::system(format!("Session restored: {title_text}")));
             session.set_model(model);
 
@@ -72,11 +65,7 @@ impl SessionPersistenceActor {
             };
             let mut state = self.state.write();
             #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
-            let session = state
-                .session
-                .sessions_mut()
-                .get_mut(&session_id)
-                .expect("just inserted");
+            let session = state.session.get_mut(&session_id).expect("just inserted");
             session.push_entry(ChatEntry::system(format!(
                 "Warning: working directory '{}' not found, falling back to '{}'",
                 original_cwd.display(),

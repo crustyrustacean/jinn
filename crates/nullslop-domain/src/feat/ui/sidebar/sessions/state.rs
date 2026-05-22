@@ -53,7 +53,6 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     // Collect all loaded sessions into entries.
     let entries: Vec<SessionEntry> = state
         .session
-        .sessions()
         .iter()
         .filter(|(_, session)| {
             session.session_state() == crate::feat::session::chat_session::SessionState::Loaded
