@@ -189,7 +189,7 @@ pub struct SessionCoreEphemeral {
     /// Index into `history` for the entry currently receiving thinking tokens.
     pub(crate) streaming_thinking_entry_index: Option<usize>,
     /// Cached context size in tokens (assembled prompt size).
-    /// Updated when PromptAssembled fires. Not persisted across restarts.
+    /// Updated when context is assembled. Not persisted across restarts.
     /// OWNER: session-actor.
     pub(crate) cached_context_size: Option<u32>,
     /// Maps tool_call_id to history index for pending streaming ToolResult entries.
@@ -247,7 +247,7 @@ pub struct SessionCore {
     #[serde(default = "default_cwd")]
     pub(crate) cwd: std::path::PathBuf,
     /// Token usage ledger — one immutable record per request/response pair.
-    /// OWNER: session-actor (records tokens on PromptAssembled and StreamCompleted).
+    /// OWNER: session-actor (records tokens on assembly and StreamCompleted).
     #[serde(default)]
     pub(crate) token_ledger: Vec<TokenRecord>,
     /// Parent session ID, if this session was forked from another.
@@ -1250,6 +1250,76 @@ impl ChatSessionState {
     /// Scroll to the very bottom of the conversation (auto-scroll).
     pub fn scroll_to_bottom(&mut self) {
         self.ui.scroll_offset = None;
+    }
+
+    /// Scroll the chat log so that the currently selected entry is visible.
+    ///
+    /// Uses `entry_line_ranges` and `viewport_height` (set by the renderer
+    /// each frame) to compute the scroll offset that brings the selected
+    /// entry into view. This is essentially the same logic as the renderer's
+    /// scroll-to-selected adjustment, but applied as a state mutation for
+    /// intent handlers.
+    ///
+    /// No-op if no entry is selected or if line range data is unavailable.
+    pub fn scroll_to_selected(&mut self) {
+        let selected_idx = match self.ui.selected_entry_index {
+            Some(idx) => idx,
+            None => return,
+        };
+
+        let ranges = match self.ui.entry_line_ranges.read() {
+            Ok(guard) => guard.clone(),
+            Err(_) => return,
+        };
+
+        let &(start, end) = match ranges.get(selected_idx) {
+            Some(r) => r,
+            None => return,
+        };
+
+        let viewport_height = self.ui.viewport_height.load(Ordering::Relaxed);
+        let blank_count = self.ui.blank_count.load(Ordering::Relaxed);
+        let max_offset = self.ui.last_max_offset.load(Ordering::Relaxed);
+
+        if viewport_height == 0 {
+            return;
+        }
+
+        let abs_start = start.saturating_add(blank_count);
+        let abs_end = end.saturating_add(blank_count);
+        let entry_height = abs_end.saturating_sub(abs_start);
+
+        let current_offset = self.ui.scroll_offset.unwrap_or(max_offset);
+
+        let new_offset = if entry_height <= viewport_height {
+            // Entry fits in viewport — adjust only if it's outside.
+            if abs_start < current_offset {
+                abs_start
+            } else if abs_end > current_offset.saturating_add(viewport_height) {
+                abs_end.saturating_sub(viewport_height)
+            } else {
+                // Already visible — no change needed.
+                return;
+            }
+        } else {
+            // Entry is taller than viewport — align top.
+            if abs_start >= current_offset.saturating_add(viewport_height) {
+                abs_start
+            } else if abs_end <= current_offset {
+                abs_end.saturating_sub(viewport_height)
+            } else {
+                // Already overlapping — no change needed.
+                return;
+            }
+        };
+
+        let clamped = new_offset.min(max_offset);
+
+        if clamped >= max_offset {
+            self.ui.scroll_offset = None;
+        } else {
+            self.ui.scroll_offset = Some(clamped);
+        }
     }
 
     /// Update the cached maximum scroll offset from the renderer.

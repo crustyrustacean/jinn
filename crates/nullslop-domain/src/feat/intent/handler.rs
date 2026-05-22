@@ -343,6 +343,8 @@ impl IntentHandler {
             Intent::RenameDeleteForward => {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
+
+
         }
     }
 }

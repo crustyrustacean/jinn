@@ -17,6 +17,12 @@ pub struct Cli {
     #[arg(long)]
     pub log_dir: Option<PathBuf>,
 
+    /// Session database file. Defaults to the platform data directory.
+    /// Use this to inspect a bench database after a run, e.g.
+    /// `nullslop --db-path ./bench.db/sessions.db`.
+    #[arg(long, value_hint = clap::ValueHint::FilePath)]
+    pub db_path: Option<PathBuf>,
+
     /// The subcommand to run. If omitted, launches the TUI.
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -73,11 +79,15 @@ pub enum HeadlessCommands {
 pub enum BenchCommands {
     /// Run benchmark tasks through the actor pipeline.
     Run {
-        /// Model(s) to benchmark (e.g., `openai/gpt-4o`).
-        #[arg(long)]
+        /// Database file path for bench sessions (isolated from user's real database).
+        #[arg(value_hint = clap::ValueHint::FilePath)]
+        db_path: PathBuf,
+
+        /// Model(s) to benchmark (e.g., `openai/gpt-4o`). At least one required.
+        #[arg(long, required = true)]
         model: Vec<String>,
 
-        /// Task(s) to run (e.g., `hello-world`).
+        /// Task(s) to run (e.g., `hello-world`). If omitted, runs all tasks.
         #[arg(long)]
         task: Vec<String>,
 
@@ -88,6 +98,12 @@ pub enum BenchCommands {
         /// CSV output path.
         #[arg(long, default_value = "bench-results.csv")]
         csv: PathBuf,
+
+        /// Directory for bench work artifacts (task working directories).
+        /// If set, task directories are created here instead of /tmp,
+        /// making them easy to inspect after a run.
+        #[arg(long)]
+        artifact_dir: Option<PathBuf>,
     },
 
     /// Display bench results in a terminal table.
@@ -102,5 +118,12 @@ pub enum BenchCommands {
         csv_a: PathBuf,
         /// Second CSV file (comparison).
         csv_b: PathBuf,
+    },
+
+    /// Launch the TUI pointed at a bench database for inspection.
+    Tui {
+        /// Database file to open.
+        #[arg(value_hint = clap::ValueHint::FilePath)]
+        db_path: PathBuf,
     },
 }
