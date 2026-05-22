@@ -28,7 +28,6 @@ use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
-use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
@@ -118,7 +117,6 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::EndCompaction>();
 
         // Event subscriptions.
-        ctx.subscribe_event::<PromptAssembled>();
         ctx.subscribe_event::<StreamToken>();
         ctx.subscribe_event::<StreamCompleted>();
         ctx.subscribe_event::<ToolUseStarted>();
@@ -165,7 +163,6 @@ impl SessionPersistenceActor {
     /// Dispatches a bus event to the appropriate handler.
     async fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
-            Event::PromptAssembled(payload) => self.handle_prompt_assembled(payload, ctx).await,
             Event::StreamToken(payload) => self.on_stream_token(payload),
             Event::StreamCompleted(payload) => self.on_stream_completed(payload, ctx).await,
             Event::ToolUseStarted(payload) => self.on_tool_use_started(payload),
@@ -266,8 +263,8 @@ impl SessionPersistenceActor {
             }
 
             // Commands NOT subscribed to - these should not arrive.
-            Command::AssemblePrompt(..)
-            | Command::SendToLlmProvider(..)
+            Command::SendToLlmProvider(..)
+            | Command::AssemblePrompt(..)
             | Command::ExecuteTool(..)
             | Command::ProceedWithShutdown(..)
             | Command::CancelStream(..)

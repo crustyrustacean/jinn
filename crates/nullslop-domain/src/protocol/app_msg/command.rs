@@ -20,9 +20,7 @@ use crate::feat::chat_input::protocol::command::{
 use crate::feat::compaction_actor::protocol::command::{
     BeginCompaction, CancelCompaction, CompactContext, EndCompaction, EnqueueCompaction,
 };
-use crate::feat::context::protocol::command::{
-    AssemblePrompt, LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry,
-};
+use crate::feat::context::protocol::command::{AssemblePrompt, LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry};
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::provider::protocol::command::{
     CancelStream, LoadProviderPickerEntries, ProviderSwitch, RefreshModels, RescanPromptTemplates,
@@ -69,7 +67,7 @@ pub enum Command {
     CancelStream(CancelStream),
     /// Switch the active LLM provider.
     ProviderSwitch(ProviderSwitch),
-    /// Request prompt assembly from the context actor.
+    /// Send conversation context to the LLM provider.
     AssemblePrompt(AssemblePrompt),
     /// Send conversation context to the LLM provider.
     SendToLlmProvider(SendToLlmProvider),

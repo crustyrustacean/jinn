@@ -43,10 +43,6 @@ impl Actor for PromptAssemblyActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<AssemblePrompt>();
         ctx.subscribe_event::<ToolsRegistered>();
-        ctx.subscribe_event::<PersonasLoaded>();
-        ctx.subscribe_command::<PinChatEntry>();
-        ctx.subscribe_command::<UnpinChatEntry>();
-        ctx.subscribe_command::<LoadPersonaPickerEntries>();
         ctx.subscribe_event::<PromptTemplatesLoaded>();
 
         ctx.set_description("Context assembly, pinning, and templates");
@@ -76,15 +72,6 @@ impl PromptAssemblyActor {
         match cmd {
             Command::AssemblePrompt(payload) => {
                 self.on_assemble_prompt(payload, ctx).await;
-            }
-            Command::PinChatEntry(payload) => {
-                self.handle_pin_chat_entry(payload, ctx);
-            }
-            Command::UnpinChatEntry(payload) => {
-                self.handle_unpin_chat_entry(payload, ctx);
-            }
-            Command::LoadPersonaPickerEntries(payload) => {
-                self.handle_load_persona_picker_entries(payload);
             }
             _ => {}
         }

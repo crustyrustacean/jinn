@@ -22,18 +22,21 @@
 //!
 //! # Dispatch behavior
 //!
-//! - `UserMessage` → push entry, set title, begin sending, emit `AssemblePrompt`
-//! - `ToolContinuation` → emit `AssemblePrompt` with current history
+//! - `UserMessage` → push entry, set title, begin sending, call `assemble_prompt()` + emit `SendToLlmProvider`
+//! - `ToolContinuation` → call `assemble_prompt()` + emit `SendToLlmProvider`
 //! - `CompactionNeeded` → emit `CompactContext`
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::compaction_actor::protocol::command::{CompactContext, EnqueueCompaction};
-use crate::feat::context::protocol::command::AssemblePrompt;
+use crate::feat::context::assemble::assemble_prompt;
+use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session::queue_item::QueueItem;
+use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
 use crate::protocol::{Command, Event};
 
@@ -44,12 +47,16 @@ use crate::protocol::{Command, Event};
 pub struct QueueActor {
     /// Shared application state (read/write access to session queue and data).
     state: State,
+    /// Token counter for recording token usage in the session ledger.
+    counter: TiktokenCounter,
 }
 
 /// Dependencies for [`QueueActor`].
 pub struct QueueActorDeps {
     /// Shared application state.
     pub state: State,
+    /// Token counter for usage tracking.
+    pub counter: TiktokenCounter,
 }
 
 impl Actor for QueueActor {
@@ -61,7 +68,7 @@ impl Actor for QueueActor {
         ctx.subscribe_event::<SessionPhaseChanged>();
         ctx.subscribe_command::<EnqueueCompaction>();
 
-        Self { state: deps.state }
+        Self { state: deps.state, counter: deps.counter }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
@@ -133,7 +140,7 @@ impl QueueActor {
     }
 
     /// Dispatch a user message: push to history, set title, begin sending,
-    /// emit AssemblePrompt, emit ChatEntrySubmitted, emit PersistSession.
+    /// assemble prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
     #[allow(clippy::unused_async)]
     async fn dispatch_user_message(
         &self,
@@ -157,19 +164,29 @@ impl QueueActor {
             session.begin_sending();
         }
 
-        let (history, model_name) = {
-            let state = self.state.read();
-            let session = state.session(session_id);
-            (session.history().to_vec(), session.profile().model.clone())
+        let assembled = {
+            let guard = self.state.read();
+            assemble_prompt(&guard, session_id, &self.counter)
         };
 
-        if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
-            session_id: session_id.clone(),
-            history,
-            tools: vec![],
-            model_name,
-        })) {
-            tracing::warn!(err = ?e, "queue-actor failed to emit AssemblePrompt");
+        let provider_id = {
+            let state = self.state.read();
+            let model = state.session(session_id).profile().model.clone();
+            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                None
+            } else {
+                Some(model)
+            }
+        };
+
+        if let Err(e) =
+            ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: assembled.messages,
+                provider_id,
+            }))
+        {
+            tracing::warn!(err = ?e, "queue-actor failed to emit SendToLlmProvider");
         }
 
         if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
@@ -186,26 +203,39 @@ impl QueueActor {
         }
     }
 
-    /// Dispatch a tool continuation: emit AssemblePrompt with current history.
+    /// Dispatch a tool continuation: assemble prompt and emit SendToLlmProvider.
     #[allow(clippy::unused_async)]
     async fn dispatch_tool_continuation(
         &self,
         session_id: &crate::protocol::SessionId,
         ctx: &ActorContext,
     ) {
-        let (history, model_name) = {
-            let state = self.state.read();
-            let session = state.session(session_id);
-            (session.history().to_vec(), session.profile().model.clone())
+        let assembled = {
+            let guard = self.state.read();
+            assemble_prompt(&guard, session_id, &self.counter)
         };
 
-        if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
-            session_id: session_id.clone(),
-            history,
-            tools: vec![],
-            model_name,
-        })) {
-            tracing::warn!(err = ?e, "queue-actor failed to emit AssemblePrompt from tool continuation");
+        let provider_id = {
+            let state = self.state.read();
+            let model = state.session(session_id).profile().model.clone();
+            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                None
+            } else {
+                Some(model)
+            }
+        };
+
+        if let Err(e) =
+            ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+                session_id: session_id.clone(),
+                messages: assembled.messages,
+                provider_id,
+            }))
+        {
+            tracing::warn!(
+                err = ?e,
+                "queue-actor failed to emit SendToLlmProvider from tool continuation"
+            );
         }
     }
 
@@ -251,6 +281,7 @@ mod tests {
     fn test_actor() -> QueueActor {
         QueueActor {
             state: crate::common::state::State::new(AppState::default()),
+            counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
         }
     }
 
@@ -279,14 +310,14 @@ mod tests {
         };
         actor.handle_session_phase_changed(&payload, &ctx).await;
 
-        // Then AssemblePrompt was emitted for the queued message.
+        // Then SendToLlmProvider was emitted for the queued message.
         let commands = sink.commands();
-        let has_assemble = commands
+        let has_send = commands
             .iter()
-            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            has_assemble,
-            "expected AssemblePrompt command for queued user message"
+            has_send,
+            "expected SendToLlmProvider command for queued user message"
         );
 
         // And the queue is empty.
@@ -353,14 +384,14 @@ mod tests {
         };
         actor.handle_session_phase_changed(&payload, &ctx).await;
 
-        // Then no AssemblePrompt was emitted.
+        // Then no SendToLlmProvider was emitted.
         let commands = sink.commands();
-        let has_assemble = commands
+        let has_send = commands
             .iter()
-            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            !has_assemble,
-            "expected no AssemblePrompt for non-Idle phase"
+            !has_send,
+            "expected no SendToLlmProvider for non-Idle phase"
         );
 
         // And the queue still has the item.
@@ -545,7 +576,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_tool_continuation_emits_assemble_prompt() {
+    async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
         // Given a session in Idle phase with history.
         let actor = test_actor();
         let (sink, ctx) = test_context();
@@ -559,11 +590,11 @@ mod tests {
         // When dispatching a tool continuation.
         actor.dispatch_tool_continuation(&session_id, &ctx).await;
 
-        // Then AssemblePrompt was emitted with the history.
+        // Then SendToLlmProvider was emitted with the history.
         let commands = sink.commands();
-        let has_assemble = commands
+        let has_send = commands
             .iter()
-            .any(|c| matches!(c, Command::AssemblePrompt(_)));
-        assert!(has_assemble, "expected AssemblePrompt command");
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(has_send, "expected SendToLlmProvider command");
     }
 }

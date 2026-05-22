@@ -339,14 +339,14 @@ mod tests {
             )
             .await;
 
-        // Then no AssemblePrompt command was emitted.
+        // Then no SendToLlmProvider command was emitted.
         let commands = sink.commands();
-        let has_assemble = commands
+        let has_send = commands
             .iter()
-            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            !has_assemble,
-            "expected no AssemblePrompt when queue is empty"
+            !has_send,
+            "expected no SendToLlmProvider when queue is empty"
         );
     }
 
