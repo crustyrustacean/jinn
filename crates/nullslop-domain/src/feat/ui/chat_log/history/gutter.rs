@@ -34,13 +34,7 @@ pub(crate) fn build_entry_gutter_lines(
         ctx.theme.border_unfocused
     };
 
-    let bg = if ctx.is_selected && ctx.chat_log_active {
-        ctx.cursor_bg_color
-    } else {
-        Color::Reset
-    };
-
-    let gutter_style = Style::default().fg(fg).bg(bg);
+    let gutter_style = Style::default().fg(fg);
     let gutter_content = if ctx.is_pinned {
         "📌"
     } else {
