@@ -528,7 +528,6 @@ fn sessions_footer_highlights_s_in_accent_action() {
 
     // Find the cell containing the highlighted S.
     let accent_action = state.frontend.theme.accent_action;
-    let primary_text = state.frontend.theme.primary_text;
     let mut found_highlighted_s = false;
     for x in 0..width {
         let cell = buf.cell((x, sessions_row)).expect("cell");
@@ -542,18 +541,19 @@ fn sessions_footer_highlights_s_in_accent_action() {
         "should find an S cell with accent_action foreground in Sessions footer row"
     );
 
-    // And the surrounding characters use primary_text.
-    // Find a dash cell and verify it has primary_text color.
-    let mut found_primary_dash = false;
+    // And the surrounding box-drawing characters use border_unfocused
+    // (since the sidebar is not focused in this default state).
+    let border_unfocused = state.frontend.theme.border_unfocused;
+    let mut found_unfocused_dash = false;
     for x in 0..width {
         let cell = buf.cell((x, sessions_row)).expect("cell");
-        if cell.symbol() == "\u{2500}" && cell.fg == primary_text {
-            found_primary_dash = true;
+        if cell.symbol() == "\u{2500}" && cell.fg == border_unfocused {
+            found_unfocused_dash = true;
             break;
         }
     }
     assert!(
-        found_primary_dash,
-        "should find a dash cell with primary_text foreground in Sessions footer row"
+        found_unfocused_dash,
+        "should find a dash cell with border_unfocused foreground in Sessions footer row"
     );
 }
