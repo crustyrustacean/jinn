@@ -286,14 +286,6 @@ mod tests {
         parser.parse_data(json)
     }
 
-    /// Parse a single chunk and then call handle_done to flush any pending Done.
-    fn parse_single_with_done(json: &str) -> Vec<StreamEvent> {
-        let mut parser = StreamResponseParser::new();
-        let mut events = parser.parse_data(json);
-        events.extend(parser.handle_done());
-        events
-    }
-
     #[rstest::rstest]
     fn text_delta_produces_text_event() {
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}"#;
