@@ -120,19 +120,27 @@ impl ProviderInitActor {
         };
 
         // If last_model is set, send ProviderSwitch to apply it.
-        if let Some(ref model) = prefs.last_model {
-            let id = crate::feat::provider_infra::ProviderId::new(model.clone());
-            let api_keys = self.services.api_keys.read();
-            if self.services.provider_registry.is_available(&id, &api_keys) {
-                tracing::info!(last_model = %model, "provider-init resolving last_model");
-                if let Err(e) = ctx.send_command(Command::ProviderSwitch(ProviderSwitch {
-                    session_id: self.state.read().session.active_session_id().clone(),
-                    provider_id: model.clone(),
-                })) {
-                    tracing::warn!(err = ?e, "provider-init failed to send ProviderSwitch");
+        // Skip if the active session already has an explicit model (e.g., bench sessions
+        // created with a CLI-specified model). Those sessions must keep their model.
+        let active_session_model = {
+            let state = self.state.read();
+            state.active_session().profile().model.clone()
+        };
+        if active_session_model == crate::feat::provider_infra::NO_PROVIDER_ID {
+            if let Some(ref model) = prefs.last_model {
+                let id = crate::feat::provider_infra::ProviderId::new(model.clone());
+                let api_keys = self.services.api_keys.read();
+                if self.services.provider_registry.is_available(&id, &api_keys) {
+                    tracing::info!(last_model = %model, "provider-init resolving last_model");
+                    if let Err(e) = ctx.send_command(Command::ProviderSwitch(ProviderSwitch {
+                        session_id: self.state.read().session.active_session_id().clone(),
+                        provider_id: model.clone(),
+                    })) {
+                        tracing::warn!(err = ?e, "provider-init failed to send ProviderSwitch");
+                    }
+                } else {
+                    tracing::warn!(last_model = %model, "provider-init: last_model not available, skipping");
                 }
-            } else {
-                tracing::warn!(last_model = %model, "provider-init: last_model not available, skipping");
             }
         }
     }
@@ -391,5 +399,65 @@ mod tests {
             )
         });
         assert!(found, "expected ModelCacheLoaded event with ollama entries");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn does_not_send_provider_switch_when_session_has_explicit_model() {
+        // Given a provider init actor with preferences containing last_model
+        // but the active session already has an explicitly set model.
+        let (mut actor, services, sink, ctx, state) = create_actor_with_state();
+
+        // Set an explicit model on the active session (simulating bench actor).
+        state.write().active_session_mut().set_model("bench-model".to_owned());
+
+        services
+            .user_preferences_storage
+            .save(&UserPreferences {
+                last_model: Some("wrong-model".to_owned()),
+                last_strategy: None,
+                tool_entry_max_lines: None,
+                theme_name: None,
+                persona_name: None,
+                session_lifecycles: vec![],
+                sidebar_width: None,
+                context_token_budget: ContextTokenBudgetConfig::default(),
+                max_tool_output_lines: None,
+                max_tool_output_bytes: None,
+                compaction: CompactionConfig::default(),
+                context_sliding_window: ContextSlidingWindowConfig::default(),
+                request_retry: RequestRetryConfig::default(),
+            })
+            .expect("save prefs");
+
+        let config = crate::feat::provider_infra::ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "sample".to_owned(),
+                backend: "sample".to_owned(),
+                models: vec!["sample".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+
+        // When processing EnvironmentLoaded.
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::EnvironmentLoaded(EnvironmentLoaded { config })),
+                &ctx,
+            )
+            .await;
+
+        // Then no ProviderSwitch command was sent (session model was preserved).
+        let commands = sink.commands();
+        let found = commands
+            .iter()
+            .any(|c| matches!(c, Command::ProviderSwitch(..)));
+        assert!(!found, "expected no ProviderSwitch when session already has explicit model");
     }
 }
