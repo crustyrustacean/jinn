@@ -75,7 +75,6 @@ pub use crate::feat::ui::sidebar::pins::state::PinsState;
 use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
-use crate::protocol::KeymapEntry;
 use crate::protocol::SessionEntry;
 
 /// Session lifecycle state — owned by the session-actor.
@@ -378,18 +377,6 @@ pub struct FrontendState {
     /// This is a cache — the file is the authoritative source.
     pub preferences: UserPreferences,
 
-    /// All keymap entries, populated once at startup.
-    /// OWNER: IntentHandler (populated when keymap picker opens).
-    pub all_keymap_entries: Vec<KeymapEntry>,
-
-    /// Keymap picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (keymap picker navigation).
-    pub keymap_picker: nullslop_selection_widget::SelectionState<KeymapEntry>,
-
-    /// Whether the keymap picker shows all scopes or current scope only.
-    /// OWNER: IntentHandler (toggle filter).
-    pub keymap_picker_show_all: bool,
-
     /// Session picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (session picker navigation).
     pub session_picker: nullslop_selection_widget::SelectionState<SessionEntry>,
@@ -466,9 +453,6 @@ impl Default for FrontendState {
             sessions_section: SessionsSectionState::default(),
             tui_signals: TuiSignals::new(),
             preferences: UserPreferences::default(),
-            all_keymap_entries: vec![],
-            keymap_picker: nullslop_selection_widget::SelectionState::new(),
-            keymap_picker_show_all: false,
             session_picker: nullslop_selection_widget::SelectionState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
@@ -537,7 +521,6 @@ impl AppState {
         let kind = self.frontend.scope_stack.picker_kind().copied()?;
         match kind {
             PickerKind::Provider => Some(&mut self.provider.provider_picker),
-            PickerKind::Keymap => Some(&mut self.frontend.keymap_picker),
             PickerKind::Session => Some(&mut self.frontend.session_picker),
             PickerKind::Persona => Some(&mut self.frontend.persona_picker),
             PickerKind::Theme => Some(&mut self.frontend.theme_picker),
