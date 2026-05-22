@@ -16,6 +16,7 @@ use crate::protocol::{ChatEntryId, Mode, PickerKind, PinPosition, SessionId, Too
 use crate::common::session_map::SessionMap;
 use crate::common::tui_signals::TuiSignals;
 pub use crate::feat::chat_input::ChatInputBoxState;
+use crate::feat::context::env_context::ContextFile;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::persona::Persona;
 use crate::feat::persona::PersonaEntry;
@@ -100,7 +101,7 @@ pub type SessionState = SessionMap;
 
 /// Context assembly state — owned by the context-actor.
 ///
-/// Written to exclusively by `PromptAssemblyActor` and `IntentHandler`.
+/// Written to exclusively by `SessionActor` and `IntentHandler`.
 /// No other actor should mutate these fields.
 #[derive(Debug)]
 pub struct ContextAssemblyState {
@@ -120,6 +121,9 @@ pub struct ContextAssemblyState {
     /// Registered tool definitions, keyed by tool name.
     /// OWNER: tools-actor (populated on ToolsRegistered event), read by context-actor and llm-actor.
     pub tool_definitions: HashMap<String, ToolDefinition>,
+    /// Cached project context files (AGENTS.md, CLAUDE.md).
+    /// OWNER: populated on startup, refreshed on session/CWD change.
+    pub context_files: Vec<ContextFile>,
 }
 
 impl Default for ContextAssemblyState {
@@ -130,6 +134,7 @@ impl Default for ContextAssemblyState {
             personas: Vec::new(),
             active_persona: None,
             tool_definitions: HashMap::new(),
+            context_files: Vec::new(),
         }
     }
 }
@@ -153,8 +158,6 @@ pub enum FocusScope {
     SidebarPins,
     /// Sidebar — Sessions section focused.
     SidebarSessions,
-    /// Sidebar — Minimap section focused (display-only, skips through).
-    SidebarMinimap,
     /// Picker overlay active — kind distinguishes Provider/Session/Keymap/etc.
     Picker { kind: PickerKind },
     /// Arg input popup — collecting positional args for a lifecycle command.
@@ -176,7 +179,6 @@ impl FocusScope {
             | Self::SidebarPersona
             | Self::SidebarPins
             | Self::SidebarSessions
-            | Self::SidebarMinimap
             | Self::SidebarResize => Mode::Normal,
             Self::Input | Self::ArgInput | Self::RenameSessionInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
@@ -192,7 +194,6 @@ impl std::fmt::Display for FocusScope {
             Self::SidebarPersona => write!(f, "SidebarPersona"),
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
-            Self::SidebarMinimap => write!(f, "SidebarMinimap"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
@@ -284,7 +285,6 @@ impl ScopeStack {
             FocusScope::SidebarPersona
                 | FocusScope::SidebarPins
                 | FocusScope::SidebarSessions
-                | FocusScope::SidebarMinimap
         )
     }
 
@@ -295,7 +295,6 @@ impl ScopeStack {
             FocusScope::SidebarPersona => Some(SidebarSectionId::Persona),
             FocusScope::SidebarPins => Some(SidebarSectionId::Pins),
             FocusScope::SidebarSessions => Some(SidebarSectionId::Sessions),
-            FocusScope::SidebarMinimap => Some(SidebarSectionId::Minimap),
             _ => None,
         }
     }
@@ -309,7 +308,6 @@ impl ScopeStack {
                 SidebarSectionId::Persona => FocusScope::SidebarPersona,
                 SidebarSectionId::Pins => FocusScope::SidebarPins,
                 SidebarSectionId::Sessions => FocusScope::SidebarSessions,
-                SidebarSectionId::Minimap => FocusScope::SidebarMinimap,
             };
             self.stack.pop();
             self.stack.push(scope);
