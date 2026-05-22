@@ -441,6 +441,16 @@ impl BenchActor {
             }
         }
 
+        let detail = if report.passed() {
+            String::new()
+        } else {
+            report
+                .failures()
+                .map(|f| format!("{}: {}", f.name, f.detail))
+                .collect::<Vec<_>>()
+                .join("; ")
+        };
+
         let result = BenchResult {
             name: tracked.task_name.clone(),
             model,
@@ -451,6 +461,7 @@ impl BenchActor {
             wall_time_ms,
             passed,
             status,
+            detail,
         };
 
         tracing::info!(
