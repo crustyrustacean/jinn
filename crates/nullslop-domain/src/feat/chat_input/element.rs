@@ -19,6 +19,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 /// Display element for the user's message composition area.
 #[derive(Debug)]
@@ -86,7 +87,10 @@ impl UiElement<AppState> for ChatInputBoxElement {
             let scroll_offset = state.active_chat_input().scroll_offset();
             let visual_row = row.saturating_sub(scroll_offset);
             let prefix_width: usize = 2; // "> " = 2 columns
-            let cursor_x = inner.x + (prefix_width + col) as u16;
+            let lines = state.active_chat_input().wrapped_lines();
+            let display_col =
+                compute_display_col(state.active_chat_input().text(), &lines, row, col);
+            let cursor_x = inner.x + (prefix_width + display_col) as u16;
             let cursor_y = inner.y + visual_row as u16;
             frame.set_cursor_position((cursor_x, cursor_y));
         }
@@ -187,4 +191,24 @@ fn render_indicator_overlay(frame: &mut Frame<'_>, label: &str, inner: Rect, y: 
         height: 1,
     };
     frame.render_widget(indicator, indicator_area);
+}
+
+/// Converts a grapheme offset within a wrapped line to a display column.
+///
+/// Sums the display widths of graphemes from the start of the wrapped line
+/// up to `col` graphemes in. For ASCII text, this is equivalent to `col`.
+/// For wide characters (CJK, emoji), each grapheme may contribute 2+ columns.
+fn compute_display_col(text: &str, lines: &[WrappedLine], row: usize, col: usize) -> usize {
+    let Some(line) = lines.get(row) else {
+        return col;
+    };
+    let graphemes: Vec<&str> = text.graphemes(true).collect();
+    let end = (line.grapheme_start + col).min(graphemes.len());
+    if line.grapheme_start >= end {
+        return 0;
+    }
+    graphemes[line.grapheme_start..end]
+        .iter()
+        .map(|g| UnicodeWidthStr::width(*g))
+        .sum()
 }

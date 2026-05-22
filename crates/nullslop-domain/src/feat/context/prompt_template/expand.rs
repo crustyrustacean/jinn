@@ -1,61 +1,35 @@
 //! Token expansion — replaces `#name` tokens using templates from the store.
 
+use std::sync::LazyLock;
+
+use regex::Regex;
+
 use super::PromptTemplateStore;
+
+static TOKEN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(^|[ \n])#([^\s#]+)").expect("valid token regex"));
 
 /// Expands `#name` tokens in `text` using templates from the store.
 ///
-/// A valid token is a `#` followed by one or more non-whitespace, non-`#`
-/// characters. The `#` must be at the start of the string or preceded by a
-/// space. On exact name match, `#name` is replaced with the template body.
-/// Unknown names are left as literal `#name` text.
+/// A valid token is a `#` preceded by start-of-string, space, or newline,
+/// followed by one or more non-whitespace, non-`#` characters. On exact name
+/// match, `#name` is replaced with the template body. Unknown names are left
+/// as literal `#name` text.
 ///
 /// This is a pure function with no side effects.
 #[must_use]
 pub fn expand_tokens(text: &str, store: &PromptTemplateStore) -> String {
-    use unicode_segmentation::UnicodeSegmentation as _;
-
-    let mut result = String::with_capacity(text.len());
-    let graphemes: Vec<&str> = text.graphemes(true).collect();
-    let len = graphemes.len();
-    let mut i = 0;
-
-    while i < len {
-        let is_hash = graphemes.get(i) == Some(&"#");
-        let preceded_by_boundary = i == 0 || graphemes.get(i.wrapping_sub(1)) == Some(&" ");
-        let next_grapheme = graphemes.get(i + 1);
-        let has_valid_name_start =
-            next_grapheme.is_some() && next_grapheme != Some(&" ") && next_grapheme != Some(&"#");
-
-        if is_hash && preceded_by_boundary && has_valid_name_start {
-            let name_start = i + 1;
-            let mut name_end = name_start;
-            while name_end < len {
-                let g = graphemes.get(name_end);
-                if g.is_none() || g.is_some_and(|c| c.trim().is_empty() || *c == "#") {
-                    break;
-                }
-                name_end += 1;
-            }
-            let name: String = graphemes
-                .get(name_start..name_end)
-                .map(|s| s.join(""))
-                .unwrap_or_default();
-            if let Some(template) = store.find_by_name(&name) {
-                result.push_str(&template.body);
+    TOKEN_RE
+        .replace_all(text, |caps: &regex::Captures<'_>| {
+            let boundary = &caps[1];
+            let name = &caps[2];
+            if let Some(template) = store.find_by_name(name) {
+                format!("{boundary}{}", template.body)
             } else {
-                result.push('#');
-                result.push_str(&name);
+                caps[0].to_owned()
             }
-            i = name_end;
-        } else if let Some(&grapheme) = graphemes.get(i) {
-            result.push_str(grapheme);
-            i += 1;
-        } else {
-            i += 1;
-        }
-    }
-
-    result
+        })
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -235,5 +209,41 @@ mod expand_tokens_tests {
 
         // Then result is empty.
         assert_eq!(result, "");
+    }
+
+    #[rstest::rstest]
+    fn expand_tokens_after_newline() {
+        // Given a store with a "greeting" template.
+        let store = make_store(vec![("greeting", "A greeting", "Hello!")]);
+
+        // When expanding "foo\n#greeting".
+        let result = expand_tokens("foo\n#greeting", &store);
+
+        // Then the token after newline is replaced.
+        assert_eq!(result, "foo\nHello!");
+    }
+
+    #[rstest::rstest]
+    fn expand_tokens_after_newline_unknown_left_as_is() {
+        // Given a store with no matching templates.
+        let store = make_store(vec![]);
+
+        // When expanding "foo\n#unknown".
+        let result = expand_tokens("foo\n#unknown", &store);
+
+        // Then the token is left as-is.
+        assert_eq!(result, "foo\n#unknown");
+    }
+
+    #[rstest::rstest]
+    fn expand_tokens_tab_not_a_boundary() {
+        // Given a store with a "foo" template.
+        let store = make_store(vec![("foo", "Foo", "BAR")]);
+
+        // When expanding "foo\t#foo".
+        let result = expand_tokens("foo\t#foo", &store);
+
+        // Then the token after tab is NOT expanded (tab is not a boundary).
+        assert_eq!(result, "foo\t#foo");
     }
 }

@@ -1916,6 +1916,7 @@ dependencies = [
  "toml",
  "tracing",
  "unicode-segmentation",
+ "unicode-width",
  "uuid",
  "wherror",
 ]
