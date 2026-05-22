@@ -105,6 +105,7 @@ impl PopulatedFakeStore {
                 updated_at: *s.updated_at(),
                 created_at: *s.created_at(),
                 session_state: crate::feat::session::chat_session::SessionState::Loaded,
+                parent_session: s.parent_session().clone(),
             })
             .collect();
         Self {

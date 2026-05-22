@@ -27,6 +27,7 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
                     updated_at: summary.updated_at,
                     theme: theme.clone(),
                     session_state: summary.session_state,
+                    parent_id: summary.parent_session,
                 })
                 .collect();
             // Loaded first, then by updated_at descending within each group.
@@ -71,6 +72,7 @@ pub async fn load_session_entries_from_store(
                     updated_at: summary.updated_at,
                     theme: theme.clone(),
                     session_state: summary.session_state,
+                    parent_id: summary.parent_session,
                 })
                 .collect();
             // Loaded first, then by updated_at descending within each group.
@@ -116,6 +118,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             theme: default_theme(),
             session_state: SessionState::Loaded,
+            parent_id: None,
         };
 
         // When calling display_label.
@@ -132,6 +135,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             theme: default_theme(),
             session_state: SessionState::Loaded,
+            parent_id: None,
         };
 
         // When rendering.
