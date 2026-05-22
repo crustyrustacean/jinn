@@ -21,7 +21,6 @@ use crate::common::actor::protocol::event::{
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::compaction_actor::protocol::event::CompactionCompleted;
-use crate::feat::context::protocol::event::PromptAssembled;
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::common::actor::event_msg::EventMsg;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
@@ -94,8 +93,6 @@ pub enum Event {
     ToolExecutionOutput(ToolExecutionOutput),
     /// Tools were registered by an actor.
     ToolsRegistered(ToolsRegistered),
-    /// A prompt has been assembled and is ready to send.
-    PromptAssembled(PromptAssembled),
     /// A session's prompt assembly strategy has been switched.
     /// A strategy's session state has changed and should be persisted.
     /// Agent skills have been scanned and loaded.
@@ -153,7 +150,6 @@ impl Event {
             Self::ToolExecutionStarted(..) => Some(ToolExecutionStarted::TYPE_NAME),
             Self::ToolExecutionOutput(..) => Some(ToolExecutionOutput::TYPE_NAME),
             Self::ToolsRegistered(..) => Some(ToolsRegistered::TYPE_NAME),
-            Self::PromptAssembled(..) => Some(PromptAssembled::TYPE_NAME),
             Self::SkillsLoaded(..) => Some(SkillsLoaded::TYPE_NAME),
             Self::PersonasLoaded(..) => {
                 Some(crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME)
