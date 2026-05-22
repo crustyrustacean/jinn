@@ -185,7 +185,7 @@ fn render_keybinds_bar(frame: &mut Frame<'_>, inner_area: Rect, theme: &Theme) {
     };
 
     let key_style = Style::default()
-        .fg(theme.focus_accent)
+        .fg(theme.accent_action)
         .add_modifier(Modifier::BOLD);
     let sep_style = Style::default().fg(theme.muted_text);
 
