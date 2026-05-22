@@ -95,7 +95,6 @@ impl ProviderActor {
             | Command::SetChatInputText(..)
             | Command::PushChatEntry(..)
             | Command::CancelStream(..)
-            | Command::AssemblePrompt(..)
             | Command::SendToLlmProvider(..)
             | Command::RefreshModels
             | Command::RescanPromptTemplates

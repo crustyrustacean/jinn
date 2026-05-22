@@ -267,7 +267,6 @@ impl SessionPersistenceActor {
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::SendToLlmProvider(..)
-            | Command::AssemblePrompt(..)
             | Command::ExecuteTool(..)
             | Command::ProceedWithShutdown(..)
             | Command::CancelStream(..)

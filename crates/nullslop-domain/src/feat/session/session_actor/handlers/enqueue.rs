@@ -19,8 +19,8 @@ use crate::feat::session::chat_session::SessionPhase;
 
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
 enum EnqueueAction {
-    /// Session is idle — dispatch prompt assembly.
-    AssemblePrompt,
+    /// Session is idle — dispatch directly via assemble_prompt().
+    DispatchDirectly,
     /// Session is busy — message was queued.
     Queued,
 }
@@ -49,7 +49,7 @@ impl SessionPersistenceActor {
                     }
                     session.push_entry(payload.entry.clone());
                     session.begin_sending();
-                    EnqueueAction::AssemblePrompt
+                    EnqueueAction::DispatchDirectly
                 }
                 SessionPhase::Sending
                 | SessionPhase::Streaming
@@ -65,7 +65,7 @@ impl SessionPersistenceActor {
         };
 
         match action {
-            EnqueueAction::AssemblePrompt => {
+            EnqueueAction::DispatchDirectly => {
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();
