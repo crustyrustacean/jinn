@@ -18,7 +18,8 @@ pub(super) fn render_minimap(
     let arrow_color = state.frontend.theme.border_unfocused;
     let muted_text_color = state.frontend.theme.muted_text;
 
-    let arrow = vertical_minimap::render_vertical_minimap(frame, minimap_area, state, muted_text_color);
+    let arrow =
+        vertical_minimap::render_vertical_minimap(frame, minimap_area, state, muted_text_color);
 
     if let Some(ref arrow) = arrow {
         vertical_minimap::render_minimap_arrow(frame, chat_log_area, arrow, arrow_color);

@@ -67,7 +67,10 @@ impl Actor for QueueActor {
         ctx.subscribe_event::<SessionPhaseChanged>();
         ctx.subscribe_command::<EnqueueCompaction>();
 
-        Self { state: deps.state, counter: deps.counter }
+        Self {
+            state: deps.state,
+            counter: deps.counter,
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
@@ -180,15 +183,13 @@ impl QueueActor {
 
         let estimated_tokens = assembled.estimated_tokens();
 
-        if let Err(e) =
-            ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: assembled.messages,
-                provider_id,
-                estimated_tokens,
-                tool_definitions: assembled.tool_definitions,
-            }))
-        {
+        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: assembled.messages,
+            provider_id,
+            estimated_tokens,
+            tool_definitions: assembled.tool_definitions,
+        })) {
             tracing::warn!(err = ?e, "queue-actor failed to emit SendToLlmProvider");
         }
 
@@ -230,15 +231,13 @@ impl QueueActor {
 
         let estimated_tokens = assembled.estimated_tokens();
 
-        if let Err(e) =
-            ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
-                session_id: session_id.clone(),
-                messages: assembled.messages,
-                provider_id,
-                estimated_tokens,
-                tool_definitions: assembled.tool_definitions,
-            }))
-        {
+        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: assembled.messages,
+            provider_id,
+            estimated_tokens,
+            tool_definitions: assembled.tool_definitions,
+        })) {
             tracing::warn!(
                 err = ?e,
                 "queue-actor failed to emit SendToLlmProvider from tool continuation"

@@ -69,6 +69,7 @@ pub struct RenameSessionInputState {
     /// Byte offset for cursor position in the input.
     pub cursor_pos: usize,
 }
+use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::skills::Skill;
 use crate::feat::theme::Theme;
 pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
@@ -76,7 +77,6 @@ pub use crate::feat::ui::sidebar::pins::state::PinsState;
 use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
-use crate::protocol::SessionEntry;
 
 /// Session lifecycle state — owned by the session-actor.
 ///
@@ -282,9 +282,7 @@ impl ScopeStack {
     pub fn is_sidebar(&self) -> bool {
         matches!(
             self.current(),
-            FocusScope::SidebarPersona
-                | FocusScope::SidebarPins
-                | FocusScope::SidebarSessions
+            FocusScope::SidebarPersona | FocusScope::SidebarPins | FocusScope::SidebarSessions
         )
     }
 
@@ -377,7 +375,7 @@ pub struct FrontendState {
 
     /// Session picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (session picker navigation).
-    pub session_picker: nullslop_selection_widget::SelectionState<SessionEntry>,
+    pub session_picker: nullslop_selection_widget::TreePickerState<SessionTreeEntry>,
 
     /// Context strategy picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (strategy picker navigation).
@@ -451,7 +449,7 @@ impl Default for FrontendState {
             sessions_section: SessionsSectionState::default(),
             tui_signals: TuiSignals::new(),
             preferences: UserPreferences::default(),
-            session_picker: nullslop_selection_widget::SelectionState::new(),
+            session_picker: nullslop_selection_widget::TreePickerState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
             scope_stack: ScopeStack::default(),

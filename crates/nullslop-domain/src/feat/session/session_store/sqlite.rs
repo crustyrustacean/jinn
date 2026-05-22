@@ -135,7 +135,10 @@ impl SqliteSessionStore {
     }
 
     /// Connects to the database at an exact file path and builds the pool.
-    fn connect_at(file_path: &Path, config: &PoolConfig) -> Result<Self, Report<SessionStoreError>> {
+    fn connect_at(
+        file_path: &Path,
+        config: &PoolConfig,
+    ) -> Result<Self, Report<SessionStoreError>> {
         let database_url = file_path.to_string_lossy().to_string();
 
         // Run migrations once on a bootstrap connection before building the pool.
@@ -829,6 +832,7 @@ fn load_summaries_blocking(
             } else {
                 SessionState::Loaded
             },
+            parent_session: row.parent_session.map(SessionId::from),
         })
         .collect();
 
@@ -1080,6 +1084,7 @@ fn load_unarchived_summaries_blocking(
             } else {
                 SessionState::Loaded
             },
+            parent_session: row.parent_session.map(SessionId::from),
         })
         .collect();
 

@@ -155,11 +155,7 @@ impl LlmActor {
         clippy::too_many_lines,
         reason = "stream handling is inherently linear; splitting would obscure the flow"
     )]
-    fn start_stream(
-        &mut self,
-        payload: &SendToLlmProvider,
-        ctx: &ActorContext,
-    ) {
+    fn start_stream(&mut self, payload: &SendToLlmProvider, ctx: &ActorContext) {
         // Read retry config from shared state (transport concern, not prompt concern).
         let retry_config: nullslop_provider::RetryConfig = {
             let guard = self.state.read();
@@ -223,7 +219,8 @@ impl LlmActor {
         } else {
             self.factory.clone()
         };
-        let model_id = payload.provider_id
+        let model_id = payload
+            .provider_id
             .as_deref()
             .map(std::borrow::ToOwned::to_owned)
             .unwrap_or_default();

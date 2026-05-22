@@ -428,15 +428,13 @@ impl SessionPersistenceActor {
                             ))
                         }
                     });
-                    let _ = sink.send_command(
-                        crate::protocol::Command::FinishSessionTeardown(
-                            crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
-                                session_id,
-                                close_after: false,
-                                error,
-                            },
-                        ),
-                    );
+                    let _ = sink.send_command(crate::protocol::Command::FinishSessionTeardown(
+                        crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
+                            session_id,
+                            close_after: false,
+                            error,
+                        },
+                    ));
                 });
             }
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
@@ -698,11 +696,10 @@ impl SessionPersistenceActor {
 
         if let Some(ref error_msg) = payload.error {
             // Teardown failed — push error entry, emit failure, reset phase.
-            let _ = ctx
-                .send_command(Command::PushChatEntry(PushChatEntry {
-                    session_id: payload.session_id.clone(),
-                    entry: ChatEntry::error(format!("Teardown failed: {error_msg}")),
-                }));
+            let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                session_id: payload.session_id.clone(),
+                entry: ChatEntry::error(format!("Teardown failed: {error_msg}")),
+            }));
 
             let _ = ctx.send_event(Event::SessionTeardownFinished(SessionTeardownFinished {
                 session_id: payload.session_id.clone(),
