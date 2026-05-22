@@ -2,15 +2,15 @@
 
 use ratatui::text::Line;
 
-use super::markdown::render_markdown;
+use super::markdown::{MarkdownAstCache, render_markdown};
 use super::shared::{Pad, RenderContext, pad_entry};
 
-pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
+pub fn to_lines(text: &str, ctx: &RenderContext, cache: &mut MarkdownAstCache) -> Vec<Line<'static>> {
     if text.is_empty() {
         return Vec::new();
     }
     let text = super::shared::strip_ansi(text);
-    let mut lines = render_markdown(&text, ctx.content_width, &ctx.theme, None);
+    let mut lines = render_markdown(&text, ctx.content_width, &ctx.theme, Some(cache));
     pad_entry(&mut lines, Pad::Both);
     lines
 }
@@ -18,6 +18,7 @@ pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use crate::feat::ui::chat_log::markdown::MarkdownAstCache;
     use crate::feat::ui::chat_log::shared::RenderContext;
 
     fn render_context() -> RenderContext {
@@ -36,8 +37,10 @@ mod tests {
         // Given assistant text with leading newlines (as reasoning models produce).
         let ctx = render_context();
 
+        let mut cache = MarkdownAstCache::new();
+
         // When converting to lines.
-        let lines = super::to_lines("\n\nHello! How can I help you today?", &ctx);
+        let lines = super::to_lines("\n\nHello! How can I help you today?", &ctx, &mut cache);
 
         // Then there are exactly 3 lines: pad + content + pad.
         assert_eq!(
@@ -57,8 +60,10 @@ mod tests {
         // Given plain assistant text without any surrounding newlines.
         let ctx = render_context();
 
+        let mut cache = MarkdownAstCache::new();
+
         // When converting to lines.
-        let lines = super::to_lines("Hello!", &ctx);
+        let lines = super::to_lines("Hello!", &ctx, &mut cache);
 
         // Then there are exactly 3 lines: pad + content + pad.
         assert_eq!(
@@ -74,8 +79,10 @@ mod tests {
         // Given empty assistant text.
         let ctx = render_context();
 
+        let mut cache = MarkdownAstCache::new();
+
         // When converting to lines.
-        let lines = super::to_lines("", &ctx);
+        let lines = super::to_lines("", &ctx, &mut cache);
 
         // Then zero lines are produced (no padding, no content).
         assert!(
