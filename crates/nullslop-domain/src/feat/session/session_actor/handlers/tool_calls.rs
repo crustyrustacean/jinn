@@ -270,7 +270,7 @@ mod tests {
 
     #[tokio::test]
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
-        // Given a session with a token record (from PromptAssembled) in streaming state.
+        // Given a session with a token record (from prompt assembly) in streaming state.
         let actor = test_actor();
         let (_sink, ctx) = test_context();
         let session_id = {

@@ -22,7 +22,7 @@ impl SessionPersistenceActor {
         match session.phase() {
             SessionPhase::Streaming => {}
             SessionPhase::Sending => {
-                // Defensive: stream token arrived without PromptAssembled.
+                // Defensive: stream token arrived without phase transition.
                 session.begin_streaming();
             }
             _ => {
@@ -107,7 +107,7 @@ impl SessionPersistenceActor {
                 // Error entry is pushed by the LLM actor via PushChatEntry before
                 // emitting StreamCompleted(Error). Nothing to push here.
             } else if let Some(output_tokens) = output_tokens {
-                // Finalize the last record if one exists (i.e., PromptAssembled fired first).
+                // Finalize the last record if one exists (i.e., prompt assembled first).
                 // If no record exists (e.g., session restored mid-stream), skip silently.
                 if !session.token_ledger().is_empty()
                     && let Err(e) = session.finalize_last_token_record(output_tokens, event.cost)
