@@ -21,9 +21,10 @@ pub(crate) struct GutterStyle<'a> {
 /// Build gutter lines for a single entry.
 ///
 /// Each line is two spans: the indicator character (col 0, context fg) and a
-/// cursor bar (col 1, yellow fg when selected+focused, dim otherwise). The pin
-/// icon first line is an exception — when selected+focused it uses a single
-/// span with the cursor color fg since the double-wide emoji occupies both columns.
+/// cursor bar in col 1. The bar only appears when selected+focused — otherwise
+/// col 1 is a plain space. The pin icon first line is an exception: when
+/// selected+focused, it gets yellow bg and the pin emoji occupies both columns
+/// as a single span.
 pub(crate) fn build_entry_gutter_lines(
     entry_content_lines: &[Line<'static>],
     ctx: &GutterStyle<'_>,
@@ -36,17 +37,13 @@ pub(crate) fn build_entry_gutter_lines(
 
     let indicator_style = Style::default().fg(indicator_fg);
 
-    let cursor_style = if ctx.is_selected && ctx.chat_log_active {
-        Style::default().fg(ctx.cursor_color)
-    } else {
-        Style::default().fg(ctx.theme.border_unfocused)
-    };
+    let has_cursor = ctx.is_selected && ctx.chat_log_active;
 
-    // Pin icon first line: cursor color fg when selected+focused.
-    let pin_highlight_style = if ctx.is_selected && ctx.is_pinned && ctx.chat_log_active {
-        Style::default().fg(ctx.cursor_color)
+    // Cursor bar: ┃ with yellow fg when cursor present, plain space otherwise.
+    let (cursor_char, cursor_style) = if has_cursor {
+        ("┃", Style::default().fg(ctx.cursor_color))
     } else {
-        Style::default().fg(indicator_fg)
+        (" ", Style::default())
     };
 
     let entry_wrapped: u16 = if ctx.content_width == 0 {
@@ -58,21 +55,24 @@ pub(crate) fn build_entry_gutter_lines(
     };
 
     let indicator_char = "𜺏";
-    let cursor_char = "│";
 
     let mut entry_gutter_lines = Vec::new();
     for (j, _) in entry_content_lines.iter().enumerate() {
-        let line = if j == 0 && ctx.is_pinned && ctx.is_selected && ctx.chat_log_active {
-            // Pin icon first line, selected+focused: single span (double-wide emoji).
-            Line::from(Span::styled("📌".to_owned(), pin_highlight_style))
+        let line = if j == 0 && ctx.is_pinned && has_cursor {
+            // Pin icon first line, selected+focused: yellow bg (double-wide emoji).
+            let pin_style = Style::default()
+                .fg(ctx.theme.gutter_bg)
+                .bg(ctx.cursor_color);
+            Line::from(Span::styled("📌".to_owned(), pin_style))
         } else if j == 0 && ctx.is_pinned {
-            // Pin icon first line, not selected+focused: pin emoji + cursor bar.
+            // Pin icon first line, no cursor: pin emoji with context fg + bar/space.
+            let pin_style = Style::default().fg(indicator_fg);
             Line::from(vec![
-                Span::styled("📌".to_owned(), pin_highlight_style),
+                Span::styled("📌".to_owned(), pin_style),
                 Span::styled(cursor_char.to_owned(), cursor_style),
             ])
         } else {
-            // Normal line: indicator + cursor bar.
+            // Normal line: indicator + cursor bar/space.
             Line::from(vec![
                 Span::styled(indicator_char.to_owned(), indicator_style),
                 Span::styled(cursor_char.to_owned(), cursor_style),

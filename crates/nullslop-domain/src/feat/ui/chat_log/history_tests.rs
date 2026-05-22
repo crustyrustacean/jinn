@@ -500,15 +500,15 @@ fn render_pinned_selected_entry_gutter_has_focus_accent_bg() {
         })
         .unwrap();
 
-    // Then the pinned entry's gutter pin icon has yellow fg (cursor).
+    // Then the pinned entry's gutter pin icon has yellow bg (cursor).
     // Entry is 3 lines (pad + content + pad), starts at row 7 in 10-line viewport.
     // The pin icon appears on the first line of the entry (row 7).
     let buffer = terminal.backend().buffer().clone();
     let gutter_cell = buffer.cell((0, 7)).expect("cell should exist");
     assert_eq!(
-        gutter_cell.style().fg,
+        gutter_cell.style().bg,
         Some(Color::Yellow),
-        "pinned selected entry gutter should have yellow foreground (cursor)"
+        "pinned selected entry gutter should have yellow background (cursor)"
     );
 }
 
