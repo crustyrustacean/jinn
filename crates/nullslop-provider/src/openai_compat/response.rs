@@ -121,7 +121,8 @@ impl StreamResponseParser {
 
             // Finish reason — only handle the first one.
             if let Some(finish_reason) = choice.get("finish_reason").and_then(|f| f.as_str()) {
-                if !finish_reason.is_empty() && self.pending_done.is_none() && !self.done_finalized {
+                if !finish_reason.is_empty() && self.pending_done.is_none() && !self.done_finalized
+                {
                     self.handle_finish_reason(finish_reason, &mut results);
                 }
             }
@@ -621,7 +622,8 @@ mod tests {
         parser.parse_data(chunk1);
 
         // Chunk 2: usage only (no choices, no finish_reason).
-        let chunk2 = r#"{"id":"x","usage":{"prompt_tokens":10,"completion_tokens":20,"cost":0.005}}"#;
+        let chunk2 =
+            r#"{"id":"x","usage":{"prompt_tokens":10,"completion_tokens":20,"cost":0.005}}"#;
         parser.parse_data(chunk2);
 
         // [DONE] flushes with usage from chunk 2.
