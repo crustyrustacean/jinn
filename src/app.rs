@@ -300,6 +300,64 @@ impl App {
                     nullslop_bench::compare::compare_results(&csv_a, &csv_b)
                         .map_err(|e| error_stack::Report::new(AppError).attach(e.to_string()))?;
                 }
+                BenchCommands::Tui { db_path } => {
+                    let session_store = SessionStoreService::new(Arc::new(
+                        SqliteSessionStore::open_or_create(&db_path)
+                            .expect("failed to create session store"),
+                    ));
+                    let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
+                        &self.handle(),
+                        llm_service.clone(),
+                        provider_registry.clone(),
+                        resolved_api_keys.clone(),
+                        config_storage.clone(),
+                        session_store,
+                        UserPreferencesStorageService::new(Arc::new(
+                            FilesystemUserPreferencesStorage::default_path(),
+                        )),
+                        None,
+                        None,
+                        None,
+                    );
+                    let paths = &services.paths;
+                    load_prompt_templates(
+                        &core.state,
+                        &paths.prompts_dir(),
+                        &paths.system_prompts_dir(),
+                    );
+                    load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
+
+                    let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
+                    let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
+                    let mut ui_registry = nullslop_domain::AppUiRegistry::new();
+                    nullslop_domain::register_all_ui_elements(&mut ui_registry);
+                    let which_key = nullslop_tui::app::WhichKeyInstance::new(
+                        nullslop_tui::keymap::init(),
+                        nullslop_tui::Scope::Normal,
+                    );
+
+                    let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp {
+                        core,
+                        services,
+                        actor_host,
+                        ui_registry,
+                        events: nullslop_tui::MsgHandler::new(),
+                        which_key,
+                        suspend: nullslop_tui::suspend::Suspend::new(),
+                        event_thread: None,
+                        status: nullslop_tui::AppStatus::Starting,
+                        selection: nullslop_tui::selection::SelectionState::Idle,
+                        selectable_rects: Default::default(),
+                        pending_clipboard: false,
+                        config: tui_config,
+                        sidebar: {
+                            let mut s = nullslop_domain::feat::ui::sidebar::Sidebar::new();
+                            nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                            s
+                        },
+                    }));
+                    runner.run().change_context(AppError)?;
+                }
             },
         }
 

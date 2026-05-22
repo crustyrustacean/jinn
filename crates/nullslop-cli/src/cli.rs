@@ -118,4 +118,10 @@ pub enum BenchCommands {
         /// Second CSV file (comparison).
         csv_b: PathBuf,
     },
+
+    /// Launch the TUI pointed at a bench database for inspection.
+    Tui {
+        /// Database file to open.
+        db_path: PathBuf,
+    },
 }
