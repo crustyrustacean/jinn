@@ -17,7 +17,6 @@ use ratatui::Frame;
 use ratatui_which_key::{CrosstermKeymapExt as _, WhichKeyState};
 
 use crate::config::TuiConfig;
-use crate::keymap;
 use crate::msg::Msg;
 use crate::render;
 use crate::scope::Scope;
@@ -225,30 +224,6 @@ impl TuiApp {
             let mut state = self.core.state.write();
             let result = IntentHandler::handle(&intent, &mut state);
 
-            // Populate keymap picker entries if opening the keymap picker.
-            if matches!(
-                intent,
-                Intent::OpenPicker {
-                    kind: PickerKind::Keymap
-                }
-            ) {
-                let scope = *self.which_key.scope();
-                let intent_entries = if state.frontend.keymap_picker_show_all {
-                    keymap::collect_all_bindings(self.which_key.keymap(), &state.frontend.theme)
-                } else {
-                    keymap::collect_bindings_for_scope(
-                        self.which_key.keymap(),
-                        &scope,
-                        &state.frontend.theme,
-                    )
-                };
-                // Entries now carry Intent directly — store them in AppState.
-                state.frontend.keymap_picker.set_items(intent_entries);
-                // Also populate all_keymap_entries for scope toggle.
-                state.frontend.all_keymap_entries =
-                    keymap::collect_all_bindings(self.which_key.keymap(), &state.frontend.theme);
-            }
-
             // Cancel selection when mode changes away from Picker.
             if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape) {
                 self.selection = mem::take(&mut self.selection).cancel();
@@ -299,7 +274,6 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
     match focus {
         FocusScope::Picker { kind } => match kind {
             PickerKind::Provider => Scope::PickerProvider,
-            PickerKind::Keymap => Scope::PickerKeymap,
             PickerKind::Session => Scope::PickerSession,
             PickerKind::Persona => Scope::PickerPersona,
             PickerKind::Theme => Scope::PickerTheme,

@@ -8,10 +8,8 @@ use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
 use nullslop_domain::Intent;
 use nullslop_domain::PickerKind;
-use nullslop_domain::feat::theme::Theme;
 use nullslop_domain::{Key, KeyEvent};
 use ratatui_which_key::CrosstermKeymapExt as _;
-use ratatui_which_key::Key as WhichKeyKey;
 use ratatui_which_key::Keymap;
 
 use crate::scope::Scope;
@@ -63,7 +61,7 @@ fn add_sidebar_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Int
 /// Adds shared picker keybindings common to all picker scopes.
 ///
 /// Includes: escape, confirm, navigation (up/down), cursor (left/right),
-/// backspace, open keymap picker, new session, and catch-all char input.
+/// backspace, new session, and catch-all char input.
 fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Intent, KeyCategory>) {
     b.bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
         .bind("<enter>", Intent::PickerConfirm, KeyCategory::Model)
@@ -72,13 +70,6 @@ fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Inte
         .bind("<left>", Intent::PickerMoveCursorLeft, KeyCategory::Input)
         .bind("<right>", Intent::PickerMoveCursorRight, KeyCategory::Input)
         .bind("<backspace>", Intent::PickerBackspace, KeyCategory::Input)
-        .bind(
-            "<c-p>",
-            Intent::OpenPicker {
-                kind: PickerKind::Keymap,
-            },
-            KeyCategory::General,
-        )
         .bind("<c-n>", Intent::SessionNew, KeyCategory::General)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
@@ -104,8 +95,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("q", Intent::Quit, KeyCategory::General)
             .bind("<c-c>", Intent::Quit, KeyCategory::General)
             .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
-            .bind("<c-p>", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
-            .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
             .describe_group_with_category("<leader>s", "search", KeyCategory::General)
             .bind("<leader>sm", Intent::OpenPicker { kind: PickerKind::Provider }, KeyCategory::General)
             .bind("<leader>ss", Intent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
@@ -200,7 +189,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<tab>", Intent::AutocompleteConfirm, KeyCategory::Input)
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
-            .bind("<c-p>", Intent::OpenPicker { kind: PickerKind::Keymap }, KeyCategory::General)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
             .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .catch_all(|key: KeyEvent| {
@@ -215,10 +203,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     // Picker scopes — each picker kind has its own scope for kind-specific bindings.
     // Shared bindings (navigation, confirm, escape, char input) are in add_picker_base.
     keymap
-        .scope(Scope::PickerKeymap, |b| {
-            add_picker_base(b);
-            b.bind("<c-a>", Intent::ToggleKeymapScopeFilter, KeyCategory::General);
-        })
         .scope(Scope::PickerProvider, |b| {
             add_picker_base(b);
             b.bind("<c-r>", Intent::RefreshModels, KeyCategory::Model);
@@ -289,115 +273,4 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             _ => None,
         }
     })
-}
-
-/// Collects all fully-resolved leaf bindings from the keymap for a given scope.
-///
-/// Walks the keymap tree recursively, collecting only leaf entries (no prefix-only
-/// branch nodes). Each entry includes the full key sequence, description, scope,
-/// category, and the command it triggers.
-pub fn collect_bindings_for_scope(
-    keymap: &Keymap<KeyEvent, Scope, Intent, KeyCategory>,
-    scope: &Scope,
-    theme: &Theme,
-) -> Vec<nullslop_domain::KeymapEntry> {
-    let mut entries = Vec::new();
-    collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries, theme);
-    entries
-}
-
-/// Collects fully-resolved leaf bindings from all scopes.
-///
-/// Iterates over all known scopes and collects entries from each one.
-pub fn collect_all_bindings(
-    keymap: &Keymap<KeyEvent, Scope, Intent, KeyCategory>,
-    theme: &Theme,
-) -> Vec<nullslop_domain::KeymapEntry> {
-    let mut entries = Vec::new();
-    for scope in &[
-        Scope::Normal,
-        Scope::SidebarPersona,
-        Scope::SidebarPins,
-        Scope::SidebarSessions,
-        Scope::SidebarMinimap,
-        Scope::PickerProvider,
-        Scope::PickerKeymap,
-        Scope::PickerSession,
-        Scope::PickerPersona,
-        Scope::PickerTheme,
-        Scope::PickerLifecycle,
-        Scope::Input,
-        Scope::ArgInput,
-    ] {
-        collect_leaf_bindings(keymap.bindings(), *scope, "", &mut entries, theme);
-    }
-    entries
-}
-
-/// Recursively walks the keybinding tree, collecting fully-resolved leaf entries.
-///
-/// Only `KeyNode::Leaf` entries are collected — prefix-only branch nodes like `g`
-/// (which lead to sub-menus) are not included since they are not actionable.
-/// Branch nodes that also have `leaf_entries` for the given scope are included
-/// (those represent keys that are both a prefix and a terminal in different scopes).
-fn collect_leaf_bindings(
-    children: &[ratatui_which_key::KeyChild<KeyEvent, Scope, Intent, KeyCategory>],
-    scope: Scope,
-    prefix: &str,
-    out: &mut Vec<nullslop_domain::KeymapEntry>,
-    theme: &Theme,
-) {
-    for child in children {
-        let key_display = WhichKeyKey::display(&child.key);
-        let full_sequence = if prefix.is_empty() {
-            key_display.clone()
-        } else {
-            format!("{prefix}{key_display}")
-        };
-
-        match &child.node {
-            ratatui_which_key::KeyNode::Leaf(entries) => {
-                for entry in entries {
-                    if entry.scope == scope {
-                        out.push(nullslop_domain::KeymapEntry {
-                            key_sequence: full_sequence.clone(),
-                            description: entry.description.clone(),
-                            scope: entry.scope.to_string(),
-                            category: entry.category.to_string(),
-                            command: entry.action.clone(),
-                            search_text: format!("{} {}", full_sequence, entry.description),
-                            theme: theme.clone(),
-                        });
-                    }
-                }
-            }
-            ratatui_which_key::KeyNode::Branch {
-                children: branch_children,
-                leaf_entries,
-                category: branch_category,
-                ..
-            } => {
-                // Collect leaf entries attached to this branch for the given scope.
-                // These represent keys that act as both a prefix and a terminal action
-                // in different scopes.
-                for entry in leaf_entries {
-                    if entry.scope == scope {
-                        let cat = (*branch_category).unwrap_or(entry.category);
-                        out.push(nullslop_domain::KeymapEntry {
-                            key_sequence: full_sequence.clone(),
-                            description: entry.description.clone(),
-                            scope: entry.scope.to_string(),
-                            category: cat.to_string(),
-                            command: entry.action.clone(),
-                            search_text: format!("{} {}", full_sequence, entry.description),
-                            theme: theme.clone(),
-                        });
-                    }
-                }
-
-                // Recurse into children.
-                collect_leaf_bindings(branch_children, scope, &full_sequence, out, theme);
-            }
-        }
-    }
 }

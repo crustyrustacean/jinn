@@ -12,8 +12,6 @@ use serde::{Deserialize, Serialize};
 pub enum PickerKind {
     /// Provider/model picker.
     Provider,
-    /// Keymap search picker.
-    Keymap,
     /// Session browser picker.
     Session,
     /// Persona picker.
@@ -28,7 +26,6 @@ impl std::fmt::Display for PickerKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Provider => write!(f, "models"),
-            Self::Keymap => write!(f, "keybinds"),
             Self::Session => write!(f, "sessions"),
             Self::Persona => write!(f, "personas"),
             Self::Theme => write!(f, "themes"),
