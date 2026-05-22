@@ -65,7 +65,10 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         let is_phase_busy = matches!(
             phase,
-            SessionPhase::Sending | SessionPhase::Streaming | SessionPhase::Compacting | SessionPhase::TearingDown
+            SessionPhase::Sending
+                | SessionPhase::Streaming
+                | SessionPhase::Compacting
+                | SessionPhase::TearingDown
         );
         if !is_lifecycle_busy && !is_phase_busy {
             return;

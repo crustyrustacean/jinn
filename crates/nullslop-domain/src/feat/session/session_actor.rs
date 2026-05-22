@@ -20,7 +20,7 @@
 mod handlers;
 mod helpers;
 
-pub(crate) use handlers::lifecycle::setup_running_msg;
+pub use handlers::lifecycle::setup_running_msg;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
@@ -110,7 +110,8 @@ impl Actor for SessionPersistenceActor {
         // Context-related subscriptions (relocated from PromptAssemblyActor).
         ctx.subscribe_command::<crate::feat::context::protocol::command::PinChatEntry>();
         ctx.subscribe_command::<crate::feat::context::protocol::command::UnpinChatEntry>();
-        ctx.subscribe_command::<crate::feat::context::protocol::command::LoadPersonaPickerEntries>();
+        ctx.subscribe_command::<crate::feat::context::protocol::command::LoadPersonaPickerEntries>(
+        );
 
         // Compaction command subscriptions.
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>(
