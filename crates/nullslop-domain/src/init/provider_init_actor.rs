@@ -409,7 +409,10 @@ mod tests {
         let (mut actor, services, sink, ctx, state) = create_actor_with_state();
 
         // Set an explicit model on the active session (simulating bench actor).
-        state.write().active_session_mut().set_model("bench-model".to_owned());
+        state
+            .write()
+            .active_session_mut()
+            .set_model("bench-model".to_owned());
 
         services
             .user_preferences_storage
@@ -458,6 +461,9 @@ mod tests {
         let found = commands
             .iter()
             .any(|c| matches!(c, Command::ProviderSwitch(..)));
-        assert!(!found, "expected no ProviderSwitch when session already has explicit model");
+        assert!(
+            !found,
+            "expected no ProviderSwitch when session already has explicit model"
+        );
     }
 }

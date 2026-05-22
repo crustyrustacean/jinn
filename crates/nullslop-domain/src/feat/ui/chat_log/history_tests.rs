@@ -87,7 +87,10 @@ fn selected_entry_gutter_col0_has_context_fg_and_col1_has_cursor_bg() {
     // 2 entries × 3 lines = 6, 4 blank above. Entry 0 at rows 4-6.
     let buffer = terminal.backend().buffer().clone();
     let gutter_col0 = buffer.cell((0, 5)).expect("cell should exist");
-    assert_eq!(gutter_col0.style().fg, Some(crate::feat::theme::default_theme().gutter_context_included));
+    assert_eq!(
+        gutter_col0.style().fg,
+        Some(crate::feat::theme::default_theme().gutter_context_included)
+    );
 
     // And the selected entry's gutter col 1 has yellow fg (cursor).
     let gutter_col1 = buffer.cell((1, 5)).expect("cell should exist");
