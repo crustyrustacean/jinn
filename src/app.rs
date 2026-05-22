@@ -91,6 +91,24 @@ impl App {
         // Initial factory is the no-provider sentinel until actors resolve the real one.
         let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
 
+        // Create the session store — uses --db-path if provided, otherwise
+        // the platform default. The --db-path flag lets users point the TUI
+        // at a bench database to inspect results after a bench run.
+        let session_store = {
+            let store = match &cli.db_path {
+                Some(path) => {
+                    std::fs::create_dir_all(path)
+                        .change_context(AppError)
+                        .attach("failed to create session database directory")?;
+                    SqliteSessionStore::new_in(path)
+                }
+                None => SqliteSessionStore::new(),
+            };
+            SessionStoreService::new(Arc::new(
+                store.expect("failed to create session store"),
+            ))
+        };
+
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Completions { shell } => {
                 use clap::CommandFactory;
@@ -106,9 +124,7 @@ impl App {
                     provider_registry.clone(),
                     resolved_api_keys.clone(),
                     config_storage.clone(),
-                    SessionStoreService::new(Arc::new(
-                        SqliteSessionStore::new().expect("failed to create session store"),
-                    )),
+                    session_store.clone(),
                     UserPreferencesStorageService::new(Arc::new(
                         FilesystemUserPreferencesStorage::default_path(),
                     )),
@@ -163,9 +179,7 @@ impl App {
                     provider_registry,
                     resolved_api_keys,
                     config_storage,
-                    SessionStoreService::new(Arc::new(
-                        SqliteSessionStore::new().expect("failed to create session store"),
-                    )),
+                    session_store,
                     UserPreferencesStorageService::new(Arc::new(
                         FilesystemUserPreferencesStorage::default_path(),
                     )),
