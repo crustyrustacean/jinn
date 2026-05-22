@@ -20,6 +20,7 @@ streaming = "cyan"
 
 # Chat log backgrounds
 gutter_bg = [25, 27, 30]
+gutter_context_included = [30, 50, 110]
 user_block_bg = [52, 53, 65]
 tool_fg = [97, 105, 117]
 tool_success_bg = [44, 55, 44]

@@ -327,7 +327,6 @@ mod tests {
 
     #[rstest::rstest]
     #[case::provider(crate::PickerKind::Provider, "models")]
-    #[case::keymap(crate::PickerKind::Keymap, "keybinds")]
     #[case::session(crate::PickerKind::Session, "sessions")]
     fn picker_kind_display(#[case] kind: crate::PickerKind, #[case] expected: &str) {
         assert_eq!(kind.to_string(), expected);
