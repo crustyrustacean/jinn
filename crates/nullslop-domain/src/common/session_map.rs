@@ -187,11 +187,7 @@ impl SessionMap {
     ///
     /// Use this instead of `remove()` when the caller wants to control the
     /// profile of the fresh session (e.g. preserving model/strategy preferences).
-    pub fn remove_and_replace(
-        &mut self,
-        id: &SessionId,
-        fresh_session: ChatSessionState,
-    ) -> bool {
+    pub fn remove_and_replace(&mut self, id: &SessionId, fresh_session: ChatSessionState) -> bool {
         let removed = self.sessions.remove(id).is_some();
         if !removed {
             return false;
@@ -199,17 +195,12 @@ impl SessionMap {
 
         // If we removed the active session, switch to another.
         if id == &self.active_session {
-            self.active_session = self
-                .sessions
-                .keys()
-                .next()
-                .cloned()
-                .unwrap_or_else(|| {
-                    // Map is empty — insert the caller-provided fresh session.
-                    let fresh_id = fresh_session.session_id().clone();
-                    self.sessions.insert(fresh_id.clone(), fresh_session);
-                    fresh_id
-                });
+            self.active_session = self.sessions.keys().next().cloned().unwrap_or_else(|| {
+                // Map is empty — insert the caller-provided fresh session.
+                let fresh_id = fresh_session.session_id().clone();
+                self.sessions.insert(fresh_id.clone(), fresh_session);
+                fresh_id
+            });
         }
 
         true
@@ -228,12 +219,12 @@ impl SessionMap {
     }
 
     /// All sessions.
-    pub fn sessions(&self) -> &HashMap<SessionId, ChatSessionState> {
+    pub(crate) fn sessions(&self) -> &HashMap<SessionId, ChatSessionState> {
         &self.sessions
     }
 
-    /// Mutable access to all sessions.
-    pub fn sessions_mut(&mut self) -> &mut HashMap<SessionId, ChatSessionState> {
+    /// Mutable access to all sessions. `pub(crate)` to prevent external bypass of invariants.
+    pub(crate) fn sessions_mut(&mut self) -> &mut HashMap<SessionId, ChatSessionState> {
         &mut self.sessions
     }
 

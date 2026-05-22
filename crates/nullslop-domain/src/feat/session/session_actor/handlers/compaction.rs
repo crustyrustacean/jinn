@@ -425,10 +425,7 @@ mod tests {
 
         // Then no compaction entry was inserted and the session is still Idle.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Idle);
         assert!(!session.history().iter().any(ChatEntry::is_compaction));
     }

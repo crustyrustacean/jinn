@@ -132,9 +132,7 @@ pub fn handle_session_lifecycle_setup(
     });
     new_session.set_lifecycle_args(args.to_vec());
 
-    state
-        .session
-        .insert(new_session);
+    state.session.insert(new_session);
     state.session.set_active(new_id.clone());
     state.frontend.scope_stack.clear_overlays();
     state

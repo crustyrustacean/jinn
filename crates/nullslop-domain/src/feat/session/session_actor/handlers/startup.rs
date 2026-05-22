@@ -78,9 +78,7 @@ impl SessionPersistenceActor {
                     let mut state = self.state.write();
 
                     for session in loaded {
-                        state
-                            .session
-                            .insert(session);
+                        state.session.insert(session);
                     }
 
                     // NOTE: We intentionally do NOT switch the active session.

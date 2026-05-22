@@ -175,8 +175,7 @@ impl SessionPersistenceActor {
             Ok(cwd) => {
                 {
                     let mut state = self.state.write();
-                    if let Some(session) = state.session.get_mut(&payload.session_id)
-                    {
+                    if let Some(session) = state.session.get_mut(&payload.session_id) {
                         session.set_cwd(cwd.clone());
                         session.advance_lifecycle_after_setup();
                     }
@@ -214,8 +213,7 @@ impl SessionPersistenceActor {
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
-                    if let Some(session) = state.session.get_mut(&payload.session_id)
-                    {
+                    if let Some(session) = state.session.get_mut(&payload.session_id) {
                         session.set_cwd(default.clone());
                     }
                     default
@@ -927,9 +925,7 @@ mod tests {
             let original_active = state.session.active_session_id().clone();
             let second = ChatSessionState::new();
             let second_id = second.session_id().clone();
-            state
-                .session
-                .insert(second);
+            state.session.insert(second);
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
@@ -940,10 +936,7 @@ mod tests {
                     ),
                 ),
             }];
-            let session = state
-                .session
-                .get_mut(&second_id)
-                .expect("second session");
+            let session = state.session.get_mut(&second_id).expect("second session");
             session.set_lifecycle_name(Some("test".to_owned()));
             (second_id, original_active)
         };
@@ -1134,9 +1127,7 @@ mod tests {
         let second_id = second.session_id().clone();
         {
             let mut state = actor.state.write();
-            state
-                .session
-                .insert(second);
+            state.session.insert(second);
         }
 
         // When handling CloseSession for the second session.
@@ -1222,9 +1213,7 @@ mod tests {
         let second_id = second.session_id().clone();
         {
             let mut state = actor.state.write();
-            state
-                .session
-                .insert(second);
+            state.session.insert(second);
             state.session.set_active(second_id.clone());
         }
 
@@ -1253,9 +1242,7 @@ mod tests {
         let second_id = second.session_id().clone();
         {
             let mut state = actor.state.write();
-            state
-                .session
-                .insert(second);
+            state.session.insert(second);
         }
 
         // When handling CloseSession.
@@ -1769,10 +1756,7 @@ mod tests {
 
         // Then LifecycleScriptState is still SetupRan.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(
             session.lifecycle_script_state(),
             LifecycleScriptState::SetupRan
@@ -1841,9 +1825,7 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             // Add a second session so close doesn't create a new one.
-            state
-                .session
-                .insert(second_session);
+            state.session.insert(second_session);
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.set_lifecycle_name(Some("test".to_owned()));
@@ -1989,10 +1971,7 @@ mod tests {
 
         // Then lifecycle_script_state is TeardownRan.
         let state = actor.state.read();
-        let session = state
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(
             session.lifecycle_script_state(),
             LifecycleScriptState::TeardownRan
@@ -2013,9 +1992,7 @@ mod tests {
         let second = ChatSessionState::new();
         let session_id = {
             let mut state = actor.state.write();
-            state
-                .session
-                .insert(second);
+            state.session.insert(second);
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.set_lifecycle_name(Some("test".to_owned()));
