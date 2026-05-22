@@ -8,7 +8,7 @@
 //! and [`SessionUi`] (IntentHandler) sub-structs to make cross-boundary
 //! writes visually obvious during code review.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -149,7 +149,7 @@ pub struct SessionCoreEphemeral {
     /// Index into `history` for the entry currently receiving stream tokens.
     pub(crate) streaming_entry_index: Option<usize>,
     /// Turn dispatch queue — drives all turn transitions through a single processor.
-    pub(crate) message_queue: VecDeque<crate::feat::session::queue_item::QueueItem>,
+    pub(crate) message_queue: crate::feat::session::turn_queue::TurnQueue,
     /// Maps stream tool call index to history index for in-progress tool calls.
     pub(crate) streaming_tool_call_indices: HashMap<usize, usize>,
     /// Index into `history` for the entry currently receiving thinking tokens.
@@ -161,6 +161,10 @@ pub struct SessionCoreEphemeral {
     /// Maps tool_call_id to history index for pending streaming ToolResult entries.
     /// OWNER: session-actor.
     pub(crate) streaming_tool_result_indices: HashMap<String, usize>,
+    /// Set to true to request graceful turn termination at the next pause point.
+    /// Checked at `on_tool_batch_completed` and `on_stream_completed`.
+    /// OWNER: session-actor.
+    pub(crate) soft_cancel_requested: bool,
     /// Indices of entries marked as ignored during compaction.
     /// Used to un-ignore on cancel. Empty when not compacting.
     /// Not persisted — compaction is ephemeral.
@@ -922,9 +926,11 @@ impl ChatSessionState {
 
     // --- Queue ---
 
-    /// Read-only access to the turn dispatch queue.
-    pub fn queue(&self) -> &VecDeque<crate::feat::session::queue_item::QueueItem> {
-        &self.core.ephemeral.message_queue
+    /// Read-only access to the turn dispatch queue items.
+    pub fn queue(
+        &self,
+    ) -> &std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
+        self.core.ephemeral.message_queue.items()
     }
 
     /// Number of items waiting in the queue.
@@ -934,24 +940,26 @@ impl ChatSessionState {
 
     /// Push an item onto the back of the queue.
     pub fn enqueue(&mut self, item: crate::feat::session::queue_item::QueueItem) {
-        self.core.ephemeral.message_queue.push_back(item);
+        self.core.ephemeral.message_queue.enqueue(item);
     }
 
     /// Push an item onto the front of the queue (for priority items like `CompactionNeeded`).
     pub fn enqueue_front(&mut self, item: crate::feat::session::queue_item::QueueItem) {
-        self.core.ephemeral.message_queue.push_front(item);
+        self.core.ephemeral.message_queue.enqueue_front(item);
     }
 
     /// Pop the front item from the queue, if any.
-    pub fn dequeue(&mut self) -> Option<crate::feat::session::queue_item::QueueItem> {
-        self.core.ephemeral.message_queue.pop_front()
+    pub(in crate::feat) fn dequeue(
+        &mut self,
+    ) -> Option<crate::feat::session::queue_item::QueueItem> {
+        self.core.ephemeral.message_queue.pop()
     }
 
     /// Drain all queued items, returning them in order.
-    pub fn drain_queue(
+    pub(in crate::feat) fn drain_queue(
         &mut self,
     ) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
-        std::mem::take(&mut self.core.ephemeral.message_queue)
+        self.core.ephemeral.message_queue.drain()
     }
 
     // --- Assembling ---
@@ -1564,6 +1572,23 @@ impl ChatSessionState {
     /// Advances lifecycle state after successful teardown: `SetupRan → TeardownRan`.
     pub fn advance_lifecycle_after_teardown(&mut self) {
         self.core.lifecycle_script_state.advance_after_teardown();
+    }
+
+    /// Request graceful turn termination at the next pause point.
+    ///
+    /// The session actor checks this flag at `on_tool_batch_completed` and
+    /// `on_stream_completed`. When set, the turn ends (\u2192 Idle) instead of
+    /// continuing, allowing auto-compaction to trigger mid-turn.
+    pub fn request_soft_cancel(&mut self) {
+        self.core.ephemeral.soft_cancel_requested = true;
+    }
+
+    /// Take the soft cancel flag, clearing it.
+    ///
+    /// Returns `true` if a soft cancel was requested, and clears the flag.
+    /// Returns `false` if no cancel was requested.
+    pub fn take_soft_cancel(&mut self) -> bool {
+        std::mem::take(&mut self.core.ephemeral.soft_cancel_requested)
     }
 }
 
