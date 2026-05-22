@@ -174,6 +174,7 @@ pub fn handle_session_lifecycle_setup(
                 session_id: new_id,
                 command: rendered,
                 args: args.to_vec(),
+                lifecycle_command: Some(setup_cmd.clone()),
             }),
         ]);
     }
