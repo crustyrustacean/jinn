@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::provider::llm_message::LlmMessage;
+use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::{CommandMsg, SessionId};
 
 /// Switch the active LLM provider.
@@ -47,10 +48,16 @@ pub struct SendToLlmProvider {
     pub session_id: SessionId,
     /// The full conversation history, converted to LLM messages.
     pub messages: Vec<LlmMessage>,
+    /// Tool definitions available for the LLM to call.
+    #[serde(default)]
+    pub tool_definitions: Vec<ToolDefinition>,
     /// Optional provider override for per-message routing (future).
     /// Currently always `None` — uses the active provider.
     #[serde(default)]
     pub provider_id: Option<String>,
+    /// Estimated token count of all messages + tool schemas.
+    #[serde(default)]
+    pub estimated_tokens: u32,
 }
 
 /// Refresh the model list from all providers.

@@ -4,7 +4,9 @@
 //! execution tracking, result collection, and batch completion routing.
 
 use crate::common::actor::ActorContext;
-use crate::feat::context::protocol::command::AssemblePrompt;
+use crate::feat::context::assemble::assemble_prompt;
+use crate::feat::provider::protocol::command::SendToLlmProvider;
+use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
@@ -99,7 +101,7 @@ impl SessionPersistenceActor {
     /// By this point, the session history already contains `ToolCall`,
     /// `ToolResult`, and `Assistant` entries from earlier event handlers,
     /// and the session is already in sending state (set by `on_stream_completed`
-    /// for the `ToolUse` reason). We just need to emit `AssemblePrompt` with
+    /// for the `ToolUse` reason). We just need to assemble the prompt via
     /// the full session history.
     pub(in crate::feat::session::session_actor) fn on_tool_batch_completed(
         &self,
@@ -120,7 +122,7 @@ impl SessionPersistenceActor {
         };
 
         if soft_cancelled {
-            // Soft cancel: don't emit AssemblePrompt. Session is already in
+            // Soft cancel: don't assemble prompt. Session is already in
             // Sending phase; it will return to Idle when the QueueActor sees
             // the SessionPhaseChanged event. But we need to explicitly end the
             // turn — finish sending and go to Idle.
@@ -136,23 +138,53 @@ impl SessionPersistenceActor {
             return;
         }
 
-        // Read history and model, then emit AssemblePrompt.
+        // Assemble the prompt directly and emit SendToLlmProvider.
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
-        let (history, model_name) = {
-            let state = self.state.read();
-            let session = state.session(&event.session_id);
-            (session.history().to_vec(), session.profile().model.clone())
+        let assembled = {
+            let guard = self.state.read();
+            assemble_prompt(&guard, &event.session_id, &self.counter)
         };
 
-        if let Err(e) = ctx.send_command(Command::AssemblePrompt(AssemblePrompt {
-            session_id: event.session_id.clone(),
-            history,
-            tools: vec![],
-            model_name,
-        })) {
+        let (old_phase, new_phase) = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&event.session_id);
+            let old_phase = session.phase();
+            session.begin_streaming();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: assembled.estimated_tokens(),
+                tokens_received: 0,
+                cost: None,
+            });
+            session.set_context_size(assembled.estimated_tokens());
+            (old_phase, session.phase())
+        };
+        super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
+
+        let provider_id = {
+            let state = self.state.read();
+            let model = state.session(&event.session_id).profile().model.clone();
+            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                None
+            } else {
+                Some(model)
+            }
+        };
+
+        let estimated_tokens = assembled.estimated_tokens();
+
+        if let Err(e) =
+            ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+                session_id: event.session_id.clone(),
+                messages: assembled.messages,
+                provider_id,
+                estimated_tokens,
+                tool_definitions: assembled.tool_definitions,
+            }))
+        {
             tracing::warn!(
                 err = ?e,
-                "session-actor failed to emit AssemblePrompt from tool batch completion"
+                "session-actor failed to emit SendToLlmProvider from tool batch completion"
             );
         }
     }
@@ -170,7 +202,7 @@ mod tests {
     use crate::protocol::{ChatEntry, Command};
 
     #[tokio::test]
-    async fn on_tool_batch_completed_emits_assemble_prompt() {
+    async fn on_tool_batch_completed_emits_send_to_llm_provider() {
         // Given a session with tool call and result entries in history.
         let actor = test_actor();
         let (sink, ctx) = test_context();
@@ -198,14 +230,14 @@ mod tests {
         };
         actor.on_tool_batch_completed(&event, &ctx);
 
-        // Then an AssemblePrompt command was emitted.
+        // Then a SendToLlmProvider command was emitted.
         let commands = sink.commands();
-        let assemble = commands
+        let send = commands
             .iter()
-            .find(|c| matches!(c, Command::AssemblePrompt(_)));
+            .find(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            assemble.is_some(),
-            "expected AssemblePrompt command to be emitted"
+            send.is_some(),
+            "expected SendToLlmProvider command to be emitted"
         );
     }
 
@@ -230,15 +262,15 @@ mod tests {
         };
         actor.on_tool_batch_completed(&event, &ctx);
 
-        // Then the session is still in sending state.
+        // Then the session transitions to streaming (assemble + send are now synchronous).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert!(matches!(session.phase(), SessionPhase::Sending));
+        assert!(matches!(session.phase(), SessionPhase::Streaming));
     }
 
     #[tokio::test]
     async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
-        // Given a session with a token record (from PromptAssembled) in streaming state.
+        // Given a session with a token record (from prompt assembly) in streaming state.
         let actor = test_actor();
         let (_sink, ctx) = test_context();
         let session_id = {
@@ -320,14 +352,14 @@ mod tests {
             session.phase()
         );
 
-        // And no AssemblePrompt was emitted.
+        // And no SendToLlmProvider was emitted.
         let commands = sink.commands();
-        let has_assemble = commands
+        let has_send = commands
             .iter()
-            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            !has_assemble,
-            "expected no AssemblePrompt after soft cancel"
+            !has_send,
+            "expected no SendToLlmProvider after soft cancel"
         );
     }
 }

@@ -231,19 +231,6 @@ pub fn create_core_with_actor_host(
         },
     );
 
-    // Context / prompt assembly actor.
-    let prompt_result = spawn::<nullslop_domain::feat::context::context_actor::PromptAssemblyActor>(
-        "context",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        nullslop_domain::feat::context::context_actor::PromptAssemblyActorDeps {
-            state: state.clone(),
-            services: services.clone(),
-        },
-    );
-
     // Session persistence actor.
     let token_counter = TiktokenCounter::o200k_base();
     let sp_result = spawn::<nullslop_domain::feat::session::session_actor::SessionPersistenceActor>(
@@ -340,6 +327,7 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         nullslop_domain::feat::queue_actor::QueueActorDeps {
             state: state.clone(),
+            counter: token_counter.clone(),
         },
     );
 
@@ -367,7 +355,6 @@ pub fn create_core_with_actor_host(
         llm_result,
         discover_result,
         orch_result,
-        prompt_result,
         sp_result,
         scan_result,
         skills_result,

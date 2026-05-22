@@ -1,25 +1,9 @@
-//! Event types for prompt assembly.
+//! Event types for context management.
 
 use serde::{Deserialize, Serialize};
 
-use crate::feat::provider::llm_message::LlmMessage;
 use crate::protocol::EventMsg;
 use crate::protocol::SessionId;
-
-/// Emitted when a prompt has been assembled and is ready to send.
-///
-/// The message queue handler receives this event, finishes assembling,
-/// and submits the messages to the LLM provider.
-#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
-#[event_msg("context")]
-pub struct PromptAssembled {
-    /// The session this assembly is for.
-    pub session_id: SessionId,
-    /// System prompt, if any. Should be prepended as `LlmMessage::System`.
-    pub system_prompt: Option<String>,
-    /// The assembled messages ready for the LLM.
-    pub messages: Vec<LlmMessage>,
-}
 
 /// Emitted when a chat entry has been pinned or unpinned.
 ///
