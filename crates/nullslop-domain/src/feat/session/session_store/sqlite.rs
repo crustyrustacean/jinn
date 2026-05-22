@@ -806,6 +806,7 @@ fn load_summaries_blocking(
             } else {
                 SessionState::Loaded
             },
+            parent_session: row.parent_session.map(SessionId::from),
         })
         .collect();
 
@@ -1057,6 +1058,7 @@ fn load_unarchived_summaries_blocking(
             } else {
                 SessionState::Loaded
             },
+            parent_session: row.parent_session.map(SessionId::from),
         })
         .collect();
 

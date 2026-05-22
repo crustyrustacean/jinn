@@ -23,6 +23,8 @@ pub struct SessionEntry {
     pub theme: Theme,
     /// Whether this session is loaded in memory or archived.
     pub session_state: SessionState,
+    /// Parent session ID — `None` for root sessions.
+    pub parent_id: Option<SessionId>,
 }
 
 impl PickerItem for SessionEntry {
@@ -115,6 +117,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             theme: default_theme(),
             session_state: SessionState::Archived,
+            parent_id: None,
         };
 
         // When rendering (not selected).
@@ -134,6 +137,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             theme: default_theme(),
             session_state: SessionState::Loaded,
+            parent_id: None,
         };
 
         // When rendering (not selected).
@@ -154,6 +158,7 @@ mod tests {
             updated_at: jiff::Timestamp::now(),
             theme: theme.clone(),
             session_state: SessionState::Archived,
+            parent_id: None,
         };
 
         // When rendering (selected).
