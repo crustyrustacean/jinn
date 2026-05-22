@@ -19,7 +19,7 @@ use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use throbber_widgets_tui::ThrobberState;
@@ -83,17 +83,6 @@ impl SidebarSection for SessionsSection {
 
         let mut lines = Vec::new();
 
-        // Header.
-        lines.push(Line::from(vec![Span::styled(
-            " Sessions",
-            Style::default()
-                .fg(theme.primary_text)
-                .add_modifier(Modifier::BOLD),
-        )]));
-
-        // Blank separator.
-        lines.push(Line::from(""));
-
         if sessions.is_empty() {
             lines.push(Line::from(vec![Span::styled(
                 " No open sessions",
@@ -131,7 +120,7 @@ impl SidebarSection for SessionsSection {
                 let indicator_style = Style::default().fg(Color::Black).bg(theme.age_fresh);
 
                 if lines_above > 0 {
-                    render_scroll_tag(frame, area, "\u{2191}", area.y + 2, indicator_style);
+                    render_scroll_tag(frame, area, "\u{2191}", area.y, indicator_style);
                 }
 
                 if lines_below > 0 {
@@ -139,15 +128,31 @@ impl SidebarSection for SessionsSection {
                         frame,
                         area,
                         "\u{2193}",
-                        area.y + 2 + visible_count as u16 - 1,
+                        area.y + visible_count as u16 - 1,
                         indicator_style,
                     );
                 }
             }
         }
 
-        // Trailing gap.
-        lines.push(Line::from(""));
+        // Footer: ╰─── Sessions ───╯
+        let label = " Sessions ";
+        let width = area.width as usize;
+        let label_len = label.len();
+        let dash_budget = width.saturating_sub(2).saturating_sub(label_len);
+        let left_dashes = dash_budget / 2;
+        let right_dashes = dash_budget - left_dashes;
+        let footer = format!(
+            "\u{2570}\u{2500}{}{}{}\u{256F}",
+            "\u{2500}".repeat(left_dashes),
+            label,
+            "\u{2500}".repeat(right_dashes),
+        );
+
+        lines.push(Line::from(Span::styled(
+            footer,
+            Style::default().fg(theme.primary_text),
+        )));
 
         let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
         frame.render_widget(widget, area);
@@ -165,7 +170,7 @@ impl SidebarSection for SessionsSection {
             })
             .count() as u16;
         let visible = session_count.min(MAX_VISIBLE_SESSIONS as u16);
-        // header(1) + blank(1) + visible sessions(N) + trailing gap(1)
-        3 + visible.max(1) // max(1) for "No open sessions" message
+        // entries(N).max(1) + footer(1)
+        visible.max(1) + 1 // max(1) for the no-sessions placeholder line
     }
 }

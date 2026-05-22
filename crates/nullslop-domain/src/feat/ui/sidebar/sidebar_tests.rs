@@ -432,21 +432,21 @@ fn sessions_header_anchored_to_bottom() {
         })
         .unwrap();
 
-    // Then the "Sessions" header appears near the bottom.
-    // With 1 session, content_height = 4. bottom_y = 40 - 4 = 36.
+    // Then the footer appears near the bottom.
+    // With 1 session, content_height = 2 (1 entry + 1 footer). bottom_y = 40 - 2 = 38.
     // Minimap is 0 (empty history), Persona is 4, Pins is 0 (no pins).
-    // So y_offset = 4, section_y = max(36, 4) = 36.
-    // Sessions header is at row 36.
+    // So y_offset = 4, section_y = max(38, 4) = 38.
+    // Sessions footer is at row 39 (last line of the 2-row block at row 38-39).
     let buf = terminal.backend().buffer();
     let sessions_row = find_row_containing(buf, width, height, "Sessions");
     assert!(
         sessions_row.is_some(),
-        "should find 'Sessions' header in buffer"
+        "should find 'Sessions' footer in buffer"
     );
     assert_eq!(
         sessions_row,
-        Some(36),
-        "Sessions header should be at row 36 (bottom-anchored)"
+        Some(39),
+        "Sessions footer should be at row 39 (bottom-anchored)"
     );
 }
 
@@ -468,19 +468,20 @@ fn sessions_header_below_persona_when_sidebar_is_short() {
         })
         .unwrap();
 
-    // Then Sessions header appears below Persona (clamped to not overlap).
-    // Persona = 4 rows, content_height(Sessions) = 4.
-    // bottom_y = 8 - 4 = 4, section_y = max(4, 4) = 4.
+    // Then Sessions footer appears below Persona (clamped to not overlap).
+    // Persona = 4 rows, content_height(Sessions) = 2 (1 entry + footer).
+    // bottom_y = 8 - 2 = 6, section_y = max(6, 4) = 6.
+    // Footer is at row 7 (last line of the 2-row block at row 6-7).
     let buf = terminal.backend().buffer();
     let sessions_row = find_row_containing(buf, width, height, "Sessions");
     assert!(
         sessions_row.is_some(),
-        "should find 'Sessions' header in buffer"
+        "should find 'Sessions' footer in buffer"
     );
-    // Sessions header should not be at row 0 (top), should be at row 4.
+    // Sessions footer should not be at row 0 (top), should be at row 7.
     assert_eq!(
         sessions_row,
-        Some(4),
-        "Sessions header should be at row 4 (just below Persona, clamped)"
+        Some(7),
+        "Sessions footer should be at row 7 (just below Persona, clamped)"
     );
 }
