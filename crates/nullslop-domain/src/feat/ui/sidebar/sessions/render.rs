@@ -142,14 +142,8 @@ impl SidebarSection for SessionsSection {
         let dash_budget = width.saturating_sub(2).saturating_sub(label_len);
         let left_dashes = dash_budget / 2;
         let right_dashes = dash_budget - left_dashes;
-        let before_s = format!(
-            "\u{2570}{}\u{0020}",
-            "\u{2500}".repeat(left_dashes),
-        );
-        let after_s = format!(
-            "essions {}\u{256F}",
-            "\u{2500}".repeat(right_dashes),
-        );
+        let before_s = format!("\u{2570}{}\u{0020}", "\u{2500}".repeat(left_dashes),);
+        let after_s = format!("essions {}\u{256F}", "\u{2500}".repeat(right_dashes),);
 
         let footer_color = if sidebar_focused {
             theme.focus_accent
