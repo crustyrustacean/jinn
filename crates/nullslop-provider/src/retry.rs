@@ -580,7 +580,7 @@ mod tests {
             .expect("should return Some");
             sum += delay.as_secs_f64();
         }
-        let mean = sum / sample_count as f64;
+        let mean = sum / f64::from(sample_count);
         let tolerance = expected_mean * 0.2;
         assert!(
             (mean - expected_mean).abs() < tolerance,
