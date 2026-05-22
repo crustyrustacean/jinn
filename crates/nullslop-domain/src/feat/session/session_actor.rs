@@ -107,6 +107,11 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn>();
 
+        // Context-related subscriptions (relocated from PromptAssemblyActor).
+        ctx.subscribe_command::<crate::feat::context::protocol::command::PinChatEntry>();
+        ctx.subscribe_command::<crate::feat::context::protocol::command::UnpinChatEntry>();
+        ctx.subscribe_command::<crate::feat::context::protocol::command::LoadPersonaPickerEntries>();
+
         // Compaction command subscriptions.
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>(
         );
@@ -126,6 +131,11 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<crate::feat::context::protocol::event::ChatEntryPinChanged>();
         ctx.subscribe_event::<ModelsRefreshed>();
         ctx.subscribe_event::<EnvironmentLoaded>();
+
+        // Context-related subscriptions (relocated from PromptAssemblyActor).
+        ctx.subscribe_event::<crate::feat::tools_actor::protocol::event::ToolsRegistered>();
+        ctx.subscribe_event::<crate::feat::provider::protocol::event::PromptTemplatesLoaded>();
+        ctx.subscribe_event::<crate::feat::context::protocol::event::PersonasLoaded>();
 
         ctx.set_description("Session lifecycle and persistence");
 
@@ -182,6 +192,18 @@ impl SessionPersistenceActor {
             Event::ChatEntryPinChanged(payload) => {
                 self.save_active_session(&payload.session_id).await;
             }
+
+            // Context-related events (relocated from PromptAssemblyActor).
+            Event::ToolsRegistered(payload) => {
+                self.on_tools_registered(payload);
+            }
+            Event::PromptTemplatesLoaded(payload) => {
+                self.on_prompt_templates_loaded(payload);
+            }
+            Event::PersonasLoaded(payload) => {
+                self.on_personas_loaded(payload);
+            }
+
             _ => {}
         }
     }
@@ -231,6 +253,18 @@ impl SessionPersistenceActor {
             Command::SoftCancelTurn(payload) => {
                 self.handle_soft_cancel_turn(payload);
             }
+
+            // Context-related commands (relocated from PromptAssemblyActor).
+            Command::PinChatEntry(payload) => {
+                self.handle_pin_chat_entry(payload, ctx);
+            }
+            Command::UnpinChatEntry(payload) => {
+                self.handle_unpin_chat_entry(payload, ctx);
+            }
+            Command::LoadPersonaPickerEntries(payload) => {
+                self.handle_load_persona_picker_entries(payload);
+            }
+
             // Commands NOT subscribed to - these should not arrive.
             Command::AssemblePrompt(..)
             | Command::SendToLlmProvider(..)
@@ -244,12 +278,9 @@ impl SessionPersistenceActor {
             | Command::RegisterTools(..)
             | Command::ProviderSwitch(..)
             | Command::LoadProviderPickerEntries(..)
-            | Command::PinChatEntry(..)
-            | Command::UnpinChatEntry(..)
             | Command::CancelToolBatch(..)
             | Command::ScanSkills
             | Command::RescanPersonas(..)
-            | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)
             | Command::CompactContext(..)
             | Command::EnqueueCompaction(..) => {}
