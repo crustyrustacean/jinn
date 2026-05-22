@@ -1,6 +1,9 @@
 //! Bench task definitions — what to run and how to verify results.
 
-#![allow(dead_code, reason = "task types are used by bench_actor and bench_tasks modules")]
+#![allow(
+    dead_code,
+    reason = "task types are used by bench_actor and bench_tasks modules"
+)]
 
 use std::future::Future;
 use std::path::Path;

@@ -179,14 +179,83 @@ impl SessionMap {
         true
     }
 
+    /// Remove a session and replace with a caller-provided fresh session if
+    /// the map would become empty. If the removed session was active, switches
+    /// to the next available session. Atomically maintains the invariant.
+    ///
+    /// Returns `true` if the session was found and removed.
+    ///
+    /// Use this instead of `remove()` when the caller wants to control the
+    /// profile of the fresh session (e.g. preserving model/strategy preferences).
+    pub fn remove_and_replace(&mut self, id: &SessionId, fresh_session: ChatSessionState) -> bool {
+        let removed = self.sessions.remove(id).is_some();
+        if !removed {
+            return false;
+        }
+
+        // If we removed the active session, switch to another.
+        if id == &self.active_session {
+            self.active_session = self.sessions.keys().next().cloned().unwrap_or_else(|| {
+                // Map is empty — insert the caller-provided fresh session.
+                let fresh_id = fresh_session.session_id().clone();
+                self.sessions.insert(fresh_id.clone(), fresh_session);
+                fresh_id
+            });
+        }
+
+        true
+    }
+
+    /// Remove a session without creating a replacement or fixing the active
+    /// session. The caller **must** insert a replacement and call `set_active`
+    /// immediately afterward to restore the invariant.
+    ///
+    /// This is safe only when the caller has exclusive `&mut` access (no
+    /// concurrent readers can observe the temporary violation).
+    ///
+    /// Returns `true` if the session was found and removed.
+    pub fn remove_without_replacement(&mut self, id: &SessionId) -> bool {
+        self.sessions.remove(id).is_some()
+    }
+
     /// All sessions.
-    pub fn sessions(&self) -> &HashMap<SessionId, ChatSessionState> {
+    pub(crate) fn sessions(&self) -> &HashMap<SessionId, ChatSessionState> {
         &self.sessions
     }
 
-    /// Mutable access to all sessions.
-    pub fn sessions_mut(&mut self) -> &mut HashMap<SessionId, ChatSessionState> {
+    /// Mutable access to all sessions. `pub(crate)` to prevent external bypass of invariants.
+    pub(crate) fn sessions_mut(&mut self) -> &mut HashMap<SessionId, ChatSessionState> {
         &mut self.sessions
+    }
+
+    /// Iterate over all sessions.
+    pub fn iter(&self) -> impl Iterator<Item = (&SessionId, &ChatSessionState)> {
+        self.sessions.iter()
+    }
+
+    /// The number of sessions in the map.
+    pub fn session_count(&self) -> usize {
+        self.sessions.len()
+    }
+
+    /// Whether the map contains a session with the given ID.
+    pub fn contains(&self, id: &SessionId) -> bool {
+        self.sessions.contains_key(id)
+    }
+
+    /// Whether the map has no sessions.
+    ///
+    /// Should always return `false` after construction (the invariant guarantees
+    /// at least one session exists). Returns `true` only during transient states
+    /// before the invariant is restored (e.g. between `remove_without_replacement`
+    /// and a subsequent `insert`).
+    pub fn is_empty(&self) -> bool {
+        self.sessions.is_empty()
+    }
+
+    /// Returns the ID of an arbitrary session in the map, or `None` if empty.
+    pub fn any_session_id(&self) -> Option<SessionId> {
+        self.sessions.keys().next().cloned()
     }
 
     /// Whether a session is currently being loaded from disk.
@@ -329,5 +398,195 @@ mod tests {
 
         // Then a new session was created with that ID.
         assert_eq!(session.session_id(), &new_id);
+    }
+
+    // --- remove_and_replace tests ---
+
+    #[rstest::rstest]
+    fn remove_and_replace_creates_fresh_when_map_emptied() {
+        // Given a map with one session.
+        let mut map = default_map();
+        let id = map.active_session_id().clone();
+        let fresh = ChatSessionState::new();
+        let fresh_id = fresh.session_id().clone();
+
+        // When removing the only session with a fresh replacement.
+        let removed = map.remove_and_replace(&id, fresh);
+
+        // Then it was removed.
+        assert!(removed);
+        // And the map has exactly one session (the fresh one).
+        assert_eq!(map.session_count(), 1);
+        assert_eq!(map.active_session_id(), &fresh_id);
+    }
+
+    #[rstest::rstest]
+    fn remove_and_replace_switches_active_when_others_remain() {
+        // Given a map with two sessions.
+        let mut map = default_map();
+        let other = ChatSessionState::new();
+        let other_id = other.session_id().clone();
+        map.insert(other);
+        let active_id = map.active_session_id().clone();
+
+        // When removing the active session.
+        let fresh = ChatSessionState::new();
+        let removed = map.remove_and_replace(&active_id, fresh);
+
+        // Then active switches to the remaining session.
+        assert!(removed);
+        assert_eq!(map.active_session_id(), &other_id);
+        // And the fresh session was NOT inserted (others exist).
+        assert_eq!(map.session_count(), 1);
+    }
+
+    #[rstest::rstest]
+    fn remove_and_replace_returns_false_for_missing_id() {
+        // Given a map.
+        let mut map = default_map();
+
+        // When removing a non-existent ID.
+        let fresh = ChatSessionState::new();
+        let removed = map.remove_and_replace(&SessionId::new(), fresh);
+
+        // Then it returns false.
+        assert!(!removed);
+        // And the original session is untouched.
+        assert_eq!(map.session_count(), 1);
+    }
+
+    // --- remove_without_replacement tests ---
+
+    #[rstest::rstest]
+    fn remove_without_replacement_removes_session() {
+        // Given a map with two sessions.
+        let mut map = default_map();
+        let other = ChatSessionState::new();
+        let other_id = other.session_id().clone();
+        map.insert(other);
+        let active_id = map.active_session_id().clone();
+
+        // When removing the non-active session without replacement.
+        let removed = map.remove_without_replacement(&other_id);
+
+        // Then it was removed.
+        assert!(removed);
+        assert!(!map.contains(&other_id));
+        // And the active session is unchanged.
+        assert_eq!(map.active_session_id(), &active_id);
+    }
+
+    #[rstest::rstest]
+    fn remove_without_replacement_does_not_touch_active() {
+        // Given a map with one session.
+        let mut map = default_map();
+        let id = map.active_session_id().clone();
+
+        // When removing the active session without replacement.
+        let removed = map.remove_without_replacement(&id);
+
+        // Then it was removed.
+        assert!(removed);
+        // And active_session_id still points to the old ID (caller must fix).
+        assert_eq!(map.active_session_id(), &id);
+        // And the map is empty (caller must insert replacement).
+        assert!(map.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn remove_without_replacement_returns_false_for_missing() {
+        // Given a map.
+        let mut map = default_map();
+
+        // When removing a non-existent ID.
+        let removed = map.remove_without_replacement(&SessionId::new());
+
+        // Then it returns false.
+        assert!(!removed);
+    }
+
+    // --- query method tests ---
+
+    #[rstest::rstest]
+    fn iter_yields_all_sessions() {
+        // Given a map with two sessions.
+        let mut map = default_map();
+        let other = ChatSessionState::new();
+        let other_id = other.session_id().clone();
+        map.insert(other);
+
+        // When iterating.
+        let ids: Vec<_> = map.iter().map(|(id, _)| id.clone()).collect();
+
+        // Then both session IDs are present.
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(map.active_session_id()));
+        assert!(ids.contains(&other_id));
+    }
+
+    #[rstest::rstest]
+    fn session_count_matches_number_of_sessions() {
+        // Given a map with one session.
+        let map = default_map();
+
+        // When counting.
+        // Then it returns 1.
+        assert_eq!(map.session_count(), 1);
+    }
+
+    #[rstest::rstest]
+    fn contains_returns_true_for_existing_session() {
+        // Given a map.
+        let map = default_map();
+
+        // When checking if the active session exists.
+        // Then it returns true.
+        assert!(map.contains(map.active_session_id()));
+    }
+
+    #[rstest::rstest]
+    fn contains_returns_false_for_missing_session() {
+        // Given a map.
+        let map = default_map();
+
+        // When checking a random ID.
+        // Then it returns false.
+        assert!(!map.contains(&SessionId::new()));
+    }
+
+    #[rstest::rstest]
+    fn is_empty_returns_false_after_construction() {
+        // Given a default map.
+        let map = default_map();
+
+        // When checking emptiness.
+        // Then it returns false.
+        assert!(!map.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn any_session_id_returns_some_after_construction() {
+        // Given a default map.
+        let map = default_map();
+
+        // When getting any session ID.
+        let id = map.any_session_id();
+
+        // Then it returns a valid ID.
+        assert!(id.is_some());
+        assert!(map.contains(&id.unwrap()));
+    }
+
+    #[rstest::rstest]
+    fn any_session_id_returns_none_when_truly_empty() {
+        // Given a map with one session.
+        let mut map = default_map();
+        let id = map.active_session_id().clone();
+
+        // When removing without replacement (leaving the map empty).
+        map.remove_without_replacement(&id);
+
+        // Then any_session_id returns None.
+        assert!(map.any_session_id().is_none());
     }
 }

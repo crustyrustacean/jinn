@@ -53,13 +53,13 @@ mod tests {
         let mut state = AppState::default();
         // Remove default session to control exact count.
         let default_id = state.session.active_session_id().clone();
-        state.session.sessions_mut().remove(&default_id);
+        state.session.remove_without_replacement(&default_id);
 
         let mut ids = Vec::new();
         for _ in 0..count {
             let session = ChatSessionState::new();
             let id = session.session_id().clone();
-            state.session.sessions_mut().insert(id.clone(), session);
+            state.session.insert(session);
             ids.push(id);
         }
 
@@ -81,7 +81,7 @@ mod tests {
 
         // Simulate removing the active session (index 2).
         let closing_id = sorted_ids[2].clone();
-        state.session.sessions_mut().remove(&closing_id);
+        state.session.remove_without_replacement(&closing_id);
 
         // When reconciling.
         reconcile_after_session_removal(&mut state);
@@ -100,7 +100,7 @@ mod tests {
 
         // Simulate removing the active session (index 0).
         let closing_id = sorted_ids[0].clone();
-        state.session.sessions_mut().remove(&closing_id);
+        state.session.remove_without_replacement(&closing_id);
 
         // When reconciling.
         reconcile_after_session_removal(&mut state);
@@ -119,7 +119,7 @@ mod tests {
 
         // Simulate removing the session at index 2 (non-active).
         let closing_id = sorted_ids[2].clone();
-        state.session.sessions_mut().remove(&closing_id);
+        state.session.remove_without_replacement(&closing_id);
 
         // When reconciling.
         reconcile_after_session_removal(&mut state);
@@ -137,11 +137,10 @@ mod tests {
 
         // Simulate removing the only session and creating a fresh one.
         let closing_id = sorted_ids[0].clone();
-        state.session.sessions_mut().remove(&closing_id);
-        let fresh = ChatSessionState::new();
-        let fresh_id = fresh.session_id().clone();
-        state.session.sessions_mut().insert(fresh_id.clone(), fresh);
-        state.session.set_active(fresh_id);
+        state
+            .session
+            .remove_and_replace(&closing_id, ChatSessionState::new());
+        let _fresh_id = state.session.active_session_id().clone();
 
         // When reconciling.
         reconcile_after_session_removal(&mut state);
@@ -159,8 +158,8 @@ mod tests {
         // Given a state with 2 sessions but no cursor set.
         let mut state = AppState::default();
         let second = ChatSessionState::new();
-        let second_id = second.session_id().clone();
-        state.session.sessions_mut().insert(second_id, second);
+        let _second_id = second.session_id().clone();
+        state.session.insert(second);
         state.frontend.sessions_section.selected_index = None;
 
         // When reconciling (selected_index is None).

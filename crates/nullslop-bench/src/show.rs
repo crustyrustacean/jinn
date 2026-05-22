@@ -20,7 +20,15 @@ pub fn show_results(csv_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut table = Table::new();
     table.load_preset(UTF8_FULL_CONDENSED);
     table.set_header(vec![
-        "Task", "Model", "Turns", "Tokens ↑", "Tokens ↓", "Cost", "Time", "Passed", "Status",
+        "Task",
+        "Model",
+        "Turns",
+        "Tokens ↑",
+        "Tokens ↓",
+        "Cost",
+        "Time",
+        "Passed",
+        "Status",
     ]);
 
     for r in &results {
