@@ -456,6 +456,7 @@ mod tests {
     use nullslop_domain::RecordingSink;
 
     use super::*;
+    use crate::orchestrator::build_plan;
 
     /// Create a minimal test state with a session that has a bench lifecycle.
     fn test_state_with_session() -> (State, SessionId) {
@@ -710,5 +711,154 @@ mod tests {
             found,
             "expected CancelStream command for timed-out session"
         );
+    }
+
+    #[test]
+    fn first_message_enqueued_on_setup_completed() {
+        // Given a bench actor with a tracked session.
+        let (state, session_id) = test_state_with_session();
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink.clone()),
+        );
+
+        // When SessionSetupCompleted fires for the bench session.
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: PathBuf::from("/tmp"),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // Then the first message was enqueued via EnqueueUserMessage.
+        let commands = sink.commands();
+        let found = commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                Command::EnqueueUserMessage(EnqueueUserMessage { session_id: sid, .. })
+                if sid == &session_id
+            )
+        });
+        assert!(found, "expected EnqueueUserMessage for session");
+
+        // And messages_remaining is decremented.
+        let tracked = actor.pending.get(&session_id).expect("tracked");
+        assert_eq!(tracked.messages_remaining, 0, "hello-world has 1 message, should be 0 remaining");
+    }
+
+    #[tokio::test]
+    async fn multi_message_task_enqueues_all_messages_before_finalizing() {
+        // Given a bench actor with a tracked session for redirect-change-color (2 messages).
+        let state = State::new(nullslop_domain::AppState::default());
+        let session_id = {
+            let mut s = state.write();
+            let session = s.active_session_mut();
+            session.set_lifecycle_name(Some("redirect-change-color".to_owned()));
+            s.session.active_session_id().clone()
+        };
+
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink.clone()),
+        );
+
+        // When SessionSetupCompleted fires.
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: PathBuf::from("/tmp"),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // Then messages_remaining is 1 (first of 2 already sent).
+        let tracked = actor.pending.get(&session_id).expect("tracked");
+        assert_eq!(tracked.messages_remaining, 1);
+        assert_eq!(tracked.next_message_index, 1);
+
+        // When SessionPhaseChanged fires with Idle (intermediate).
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is still tracked (not yet finalized).
+        assert!(
+            actor.pending.contains_key(&session_id),
+            "session should still be pending after intermediate idle"
+        );
+
+        // And messages_remaining is now 0.
+        let tracked = actor.pending.get(&session_id).expect("tracked");
+        assert_eq!(tracked.messages_remaining, 0);
+
+        // When SessionPhaseChanged fires with Idle again (final).
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is removed from pending (finalized).
+        assert!(!actor.pending.contains_key(&session_id), "session should be removed after final idle");
+    }
+
+    #[test]
+    fn plan_driven_actor_starts_first_pair_on_activate() {
+        // Given a plan with 1 model and 1 task.
+        let plan = build_plan(
+            &["test-model".to_owned()],
+            &["hello-world".to_owned()],
+        );
+
+        let state = State::new(nullslop_domain::AppState::default());
+        let (sink, _ctx) = test_context();
+        let mut ctx = ActorContext::new("test", sink.clone());
+
+        // When activating the bench actor with the plan.
+        let actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: Some(plan),
+            },
+            &mut ctx,
+        );
+
+        // Then the current_pair_index has advanced to 1.
+        assert_eq!(actor.current_pair_index, 1);
+
+        // And RunSessionSetup was emitted.
+        let commands = sink.commands();
+        let found = commands.iter().any(|cmd| {
+            matches!(cmd, Command::RunSessionSetup(RunSessionSetup {
+                command,
+                lifecycle_command: Some(LifecycleCommand::Builtin(BuiltinId(id))),
+                ..
+            }) if command == "hello-world" && id == "hello-world")
+        });
+        assert!(found, "expected RunSessionSetup for hello-world");
     }
 }
