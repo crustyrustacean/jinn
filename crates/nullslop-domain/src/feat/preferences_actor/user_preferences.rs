@@ -517,10 +517,16 @@ last_strategy = "sliding_window""#,
             session_lifecycles: vec![SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: Some("Open a fossil branch in a new workdir".to_owned()),
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("~/.config/nullslop/scripts/fossil-branch.sh $1".to_owned())),
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
-                    "~/.config/nullslop/scripts/fossil-cleanup.sh $1".to_owned(),
-                )),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "~/.config/nullslop/scripts/fossil-branch.sh $1".to_owned(),
+                    ),
+                ),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "~/.config/nullslop/scripts/fossil-cleanup.sh $1".to_owned(),
+                    ),
+                ),
             }],
             sidebar_width: None,
             context_token_budget: ContextTokenBudgetConfig::default(),

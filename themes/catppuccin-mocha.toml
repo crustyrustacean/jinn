@@ -18,6 +18,7 @@ streaming = "#89dceb"          # Sky
 
 # Chat log backgrounds
 gutter_bg = [30, 30, 46]       # Base
+gutter_context_included = [40, 110, 120]  # muted teal — matches cool palette tones
 user_block_bg = [49, 50, 68]   # Surface0
 tool_fg = [147, 153, 178] # Overlay2
 tool_success_bg = [36, 50, 36]

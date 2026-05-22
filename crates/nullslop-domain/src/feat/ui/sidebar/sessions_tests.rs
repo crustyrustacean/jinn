@@ -720,39 +720,38 @@ fn activate_is_noop_when_not_sessions_section() {
     assert_eq!(*state.session.active_session_id(), original_active);
 }
 
-// --- SidebarSessionNewWithLifecycle ---
+// --- SessionNewWithLifecycle ---
 
 #[rstest::rstest]
-fn new_with_lifecycle_noop_when_not_sessions_section() {
-    // Given sidebar focused on persona section.
+fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
+    // Given default app state (Normal mode).
     let mut state = AppState::default();
-    state.frontend.scope_stack.push(FocusScope::SidebarPersona);
 
     // When handling the intent via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
-        &crate::Intent::SidebarSessionNewWithLifecycle,
+        &crate::Intent::SessionNewWithLifecycle,
         &mut state,
     );
 
-    // Then no picker is opened (scope stays sidebar, no picker overlay).
-    assert!(!state.frontend.scope_stack.is_picker());
-    // And no commands emitted.
+    // Then the picker scope is pushed with SessionLifecycle kind.
+    assert!(state.frontend.scope_stack.is_picker());
+    assert_eq!(
+        state.frontend.scope_stack.picker_kind(),
+        Some(&crate::protocol::PickerKind::SessionLifecycle)
+    );
+    // And no commands emitted (lifecycle entries are loaded synchronously).
     assert!(result.commands.is_empty());
 }
 
 #[rstest::rstest]
-fn new_with_lifecycle_opens_picker_when_sessions_section() {
+fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
     // Given sidebar focused on sessions section.
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::SidebarSessions);
-    state
-        .frontend
-        .scope_stack
-        .push(crate::common::app_state::FocusScope::SidebarSessions);
 
     // When handling the intent via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
-        &crate::Intent::SidebarSessionNewWithLifecycle,
+        &crate::Intent::SessionNewWithLifecycle,
         &mut state,
     );
 
@@ -774,8 +773,16 @@ fn teardown_only_emits_run_session_teardown() {
         crate::feat::preferences_actor::user_preferences::SessionLifecycle {
             name: "fossil branch".to_owned(),
             description: None,
-            setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo setup".to_owned())),
-            teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("cleanup.sh $1".to_owned())),
+            setup: Some(
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                    "echo setup".to_owned(),
+                ),
+            ),
+            teardown: Some(
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                    "cleanup.sh $1".to_owned(),
+                ),
+            ),
         },
     );
     state
@@ -818,7 +825,11 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
         crate::feat::preferences_actor::user_preferences::SessionLifecycle {
             name: "plain".to_owned(),
             description: None,
-            setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo setup".to_owned())),
+            setup: Some(
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                    "echo setup".to_owned(),
+                ),
+            ),
             teardown: None,
         },
     );

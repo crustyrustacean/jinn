@@ -57,7 +57,11 @@ fn add_sidebar_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Int
         // Input — enter input mode
         .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
         // Direct jump to Sessions section
-        .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation);
+        .bind(
+            "<M-s>",
+            Intent::SidebarFocusSessions,
+            KeyCategory::Navigation,
+        );
 }
 
 /// Adds shared picker keybindings common to all picker scopes.
@@ -133,7 +137,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("f", Intent::ForkFromEntry, KeyCategory::General)
             // Session creation
             .bind("n", Intent::SessionNew, KeyCategory::General)
-            .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
+            .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
             // Escape: cancel selection
             .bind("<esc>", Intent::NormalEscape, KeyCategory::General);
         })
@@ -164,7 +168,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("t", Intent::SidebarSessionTeardown, KeyCategory::General)
             .bind("<enter>", Intent::SidebarConfirm, KeyCategory::General)
             .bind("n", Intent::SessionNew, KeyCategory::General)
-            .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
+            .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
             .bind("r", Intent::SidebarRenameSession, KeyCategory::General)
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::General)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::General)

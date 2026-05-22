@@ -18,6 +18,7 @@ streaming = "#8ec07c"          # cyan-green
 
 # Chat log backgrounds
 gutter_bg = [29, 32, 33]
+gutter_context_included = [32, 108, 98]   # warm desaturated teal — matches earthy palette
 user_block_bg = [50, 48, 47]
 tool_fg = [102, 92, 84]
 tool_success_bg = [40, 45, 38]
