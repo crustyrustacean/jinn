@@ -10,7 +10,7 @@ pub fn to_lines(text: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
         return Vec::new();
     }
     let text = super::shared::strip_ansi(text);
-    let mut lines = render_markdown(&text, ctx.content_width, &ctx.theme);
+    let mut lines = render_markdown(&text, ctx.content_width, &ctx.theme, None);
     pad_entry(&mut lines, Pad::Both);
     lines
 }
