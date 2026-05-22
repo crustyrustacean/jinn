@@ -134,8 +134,7 @@ mod tests {
         // And the fixture files were copied.
         assert!(
             work_dir.join("src/main.rs").exists(),
-            "fixture src/main.rs should exist in {:?}",
-            work_dir
+            "fixture src/main.rs should exist in {work_dir:?}"
         );
     }
 
