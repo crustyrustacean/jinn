@@ -209,6 +209,9 @@ impl IntentHandler {
 
             // --- Sidebar ---
             Intent::SidebarFocus => feat::ui::sidebar::intent::handle_sidebar_focus(state),
+            Intent::SidebarFocusSessions => {
+                feat::ui::sidebar::intent::handle_sidebar_focus_sessions(state)
+            }
             Intent::SidebarLeave => feat::ui::sidebar::intent::handle_sidebar_leave(state),
             Intent::SidebarMoveDown => {
                 feat::ui::sidebar::navigate_sidebar(

@@ -55,7 +55,9 @@ fn add_sidebar_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Int
         // Input — external editor
         .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
         // Input — enter input mode
-        .bind("i", Intent::EnterInsertMode, KeyCategory::Input);
+        .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
+        // Direct jump to Sessions section
+        .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation);
 }
 
 /// Adds shared picker keybindings common to all picker scopes.
@@ -120,6 +122,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
             .bind("gcr", Intent::RescanPromptTemplates, KeyCategory::Context)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
+            .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
             // Sidebar resize
             .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
             // Pin selected entry
@@ -164,7 +167,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("N", Intent::SidebarSessionNewWithLifecycle, KeyCategory::General)
             .bind("r", Intent::SidebarRenameSession, KeyCategory::General)
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::General)
-            .bind("c", Intent::SidebarSessionContinue, KeyCategory::General);
+            .bind("c", Intent::SidebarSessionContinue, KeyCategory::General)
+            // i activates session and enters insert mode (same as enter)
+            .bind("i", Intent::SidebarConfirm, KeyCategory::Input);
         })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
@@ -190,6 +195,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
+            .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
             .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(c) = key.key {
