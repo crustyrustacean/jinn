@@ -62,12 +62,13 @@ fn empty_history_shows_title_and_keybinds_only() {
         "popup title should contain 'Empty Session', got: {top_row}"
     );
 
-    // And the keybinds bar appears in the bottom of the popup.
-    let bottom_inner_y = popup_area.y + popup_area.height - 2;
-    let bar_row = buffer_row(&buffer, bottom_inner_y, popup_area.x + popup_area.width);
+    // And the keybinds lines appear in the footer area.
+    // Keybinds line 2 (c continue · r rename) is 3 rows above the bottom border.
+    let keybinds_y = popup_area.y + popup_area.height - 3;
+    let keybinds_row = buffer_row(&buffer, keybinds_y, popup_area.x + popup_area.width);
     assert!(
-        bar_row.contains('c') || bar_row.contains('r') || bar_row.contains('x'),
-        "keybinds bar should contain key hints, got: {bar_row}"
+        keybinds_row.contains('c') || keybinds_row.contains('r'),
+        "keybinds line 2 should contain c or r, got: {keybinds_row}"
     );
 }
 
@@ -118,41 +119,59 @@ fn lines_truncated_to_twenty() {
     let (_buffer, popup_area) = render_preview(&session, 80, 30);
 
     // Then the content area does not exceed the available height.
-    // The popup should have been capped to fit within 30 - 4 = 26 rows max.
+    // The popup should have been capped to fit within 30 rows.
     assert!(
-        popup_area.height <= 26,
+        popup_area.height <= 28,
         "popup height should be capped, got: {}",
         popup_area.height
     );
 }
 
 #[rstest::rstest]
-fn keybinds_bar_contains_all_four_keybinds() {
+fn keybinds_line_one_shows_close_archive_insert() {
     // Given a session with one entry.
     let session = make_session_with_entries(1);
 
     // When rendering the preview.
     let (buffer, popup_area) = render_preview(&session, 80, 24);
 
-    // Then the keybinds bar (bottom inner row) contains all four keybind letters.
-    let bar_y = popup_area.y + popup_area.height - 2;
-    let bar_row = buffer_row(&buffer, bar_y, popup_area.x + popup_area.width);
+    // Then keybinds line 1 (4 rows above bottom border) contains x, a, i.
+    let line1_y = popup_area.y + popup_area.height - 4;
+    let line1_row = buffer_row(&buffer, line1_y, popup_area.x + popup_area.width);
 
     assert!(
-        bar_row.contains('c'),
-        "bar should contain 'c' keybind, got: {bar_row}"
+        line1_row.contains('x'),
+        "line 1 should contain 'x' keybind, got: {line1_row}"
     );
     assert!(
-        bar_row.contains('r'),
-        "bar should contain 'r' keybind, got: {bar_row}"
+        line1_row.contains('a'),
+        "line 1 should contain 'a' keybind, got: {line1_row}"
     );
     assert!(
-        bar_row.contains('x'),
-        "bar should contain 'x' keybind, got: {bar_row}"
+        line1_row.contains('i'),
+        "line 1 should contain 'i' keybind, got: {line1_row}"
+    );
+}
+
+#[rstest::rstest]
+fn keybinds_line_two_shows_continue_rename() {
+    // Given a session with one entry.
+    let session = make_session_with_entries(1);
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 24);
+
+    // Then keybinds line 2 (3 rows above bottom border) contains c, r.
+    let line2_y = popup_area.y + popup_area.height - 3;
+    let line2_row = buffer_row(&buffer, line2_y, popup_area.x + popup_area.width);
+
+    assert!(
+        line2_row.contains('c'),
+        "line 2 should contain 'c' keybind, got: {line2_row}"
     );
     assert!(
-        bar_row.contains('a'),
-        "bar should contain 'a' keybind, got: {bar_row}"
+        line2_row.contains('r'),
+        "line 2 should contain 'r' keybind, got: {line2_row}"
     );
 }
 
@@ -169,5 +188,40 @@ fn popup_title_shows_session_title() {
     assert!(
         top_row.contains("My Custom Session"),
         "popup top border should contain 'My Custom Session', got: {top_row}"
+    );
+}
+
+#[rstest::rstest]
+fn model_line_shows_provider_and_model() {
+    // Given a session with a specific model set.
+    let mut session = ChatSessionState::new();
+    session.set_model("ollama/llama3".to_owned());
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 24);
+
+    // Then the bottom inner row shows the provider/model format.
+    let model_y = popup_area.y + popup_area.height - 2;
+    let model_row = buffer_row(&buffer, model_y, popup_area.x + popup_area.width);
+    assert!(
+        model_row.contains("(ollama)/llama3"),
+        "model line should contain '(ollama)/llama3', got: {model_row}"
+    );
+}
+
+#[rstest::rstest]
+fn model_line_shows_no_model_selected_when_unset() {
+    // Given a default session (no provider selected).
+    let session = ChatSessionState::new();
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 24);
+
+    // Then the bottom inner row shows "no model selected".
+    let model_y = popup_area.y + popup_area.height - 2;
+    let model_row = buffer_row(&buffer, model_y, popup_area.x + popup_area.width);
+    assert!(
+        model_row.contains("no model selected"),
+        "model line should show 'no model selected', got: {model_row}"
     );
 }
