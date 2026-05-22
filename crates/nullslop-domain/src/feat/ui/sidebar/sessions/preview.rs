@@ -201,6 +201,9 @@ fn render_keybinds_bar(frame: &mut Frame<'_>, inner_area: Rect, theme: &Theme) {
         Span::styled(" · ", sep_style),
         Span::styled("a", key_style),
         Span::styled(" archive", sep_style),
+        Span::styled(" · ", sep_style),
+        Span::styled("i", key_style),
+        Span::styled(" insert", sep_style),
     ];
 
     let bar = Paragraph::new(Line::from(spans));
