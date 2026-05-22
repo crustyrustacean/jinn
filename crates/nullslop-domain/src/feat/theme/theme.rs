@@ -214,9 +214,10 @@ impl ThemeFile {
             gutter_bg: self
                 .gutter_bg
                 .map_or(fallback.gutter_bg, super::color::ThemeColor::inner),
-            gutter_context_included: self
-                .gutter_context_included
-                .map_or(fallback.gutter_context_included, super::color::ThemeColor::inner),
+            gutter_context_included: self.gutter_context_included.map_or(
+                fallback.gutter_context_included,
+                super::color::ThemeColor::inner,
+            ),
             user_block_bg: self
                 .user_block_bg
                 .map_or(fallback.user_block_bg, super::color::ThemeColor::inner),
