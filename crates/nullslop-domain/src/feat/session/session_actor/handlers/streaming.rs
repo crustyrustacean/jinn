@@ -1,105 +1,19 @@
-//! Streaming lifecycle handlers — manage prompt assembly, token streaming, and stream completion.
+//! Streaming lifecycle handlers — manage token streaming and stream completion.
 //!
-//! Handles the full streaming lifecycle: transitioning from sending to streaming on
-//! `PromptAssembled`, appending individual tokens to the assistant entry (including
-//! reasoning/thinking tokens), and finalizing the stream with token accounting and
-//! queue draining on `StreamCompleted`.
+//! Handles appending individual tokens to the assistant entry (including
+//! reasoning/thinking tokens), and finalizing the stream with token accounting
+//! and queue draining on `StreamCompleted`.
 
 use crate::common::actor::ActorContext;
-use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TokenCounter;
-use crate::feat::provider::protocol::command::SendToLlmProvider;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 
-use crate::protocol::{ChatEntry, Command};
+use crate::protocol::ChatEntry;
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::chat_session::SessionPhase;
 
 impl SessionPersistenceActor {
-    /// PromptAssembled (event): transition session from assembling to streaming,
-    /// count input tokens, record in ledger, emit SendToLlmProvider.
-    pub(in crate::feat::session::session_actor) async fn handle_prompt_assembled(
-        &self,
-        payload: &PromptAssembled,
-        ctx: &crate::common::actor::ActorContext,
-    ) {
-        // Count tokens in all assembled messages (CPU-bound — offload to blocking thread).
-        let messages = payload.messages.clone();
-        let counter = self.counter;
-        let input_tokens: usize = tokio::task::spawn_blocking(move || {
-            messages
-                .iter()
-                .map(|msg| match msg {
-                    crate::protocol::LlmMessage::System { content }
-                    | crate::protocol::LlmMessage::User { content }
-                    | crate::protocol::LlmMessage::Assistant { content, .. }
-                    | crate::protocol::LlmMessage::Tool { content, .. } => counter.count(content),
-                })
-                .sum()
-        })
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!(err = ?e, "spawn_blocking panicked during token counting");
-            0
-        });
-
-        let (old_phase, new_phase) = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            let old_phase = session.phase();
-            match session.phase() {
-                SessionPhase::Sending => {
-                    // Sending → Streaming transition.
-                    // Don't call finish_sending() here — begin_streaming() handles
-                    // the Sending → Streaming transition directly.
-                    session.begin_streaming();
-                }
-                SessionPhase::Assembling => {
-                    session.finish_assembling();
-                    session.begin_sending();
-                    session.begin_streaming();
-                }
-                other => {
-                    tracing::warn!(
-                        phase = ?other,
-                        "PromptAssembled received in unexpected phase, transitioning to Streaming"
-                    );
-                    session.begin_streaming();
-                }
-            }
-
-            session.push_token_record(crate::feat::session::token_stats::TokenRecord {
-                timestamp: jiff::Timestamp::now(),
-                tokens_sent: input_tokens as u32,
-                tokens_received: 0,
-                cost: None,
-            });
-            session.set_context_size(input_tokens as u32);
-            (old_phase, session.phase())
-        };
-
-        super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
-
-        let provider_id = {
-            let state = self.state.read();
-            let model = state.session(&payload.session_id).profile().model.clone();
-            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
-                None
-            } else {
-                Some(model)
-            }
-        };
-
-        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
-            session_id: payload.session_id.clone(),
-            messages: payload.messages.clone(),
-            provider_id,
-        })) {
-            tracing::warn!(err = ?e, "session-actor failed to emit SendToLlmProvider");
-        }
-    }
-
     /// Appends a streaming token to the session's assistant entry,
     /// or to the thinking entry if the token is flagged as reasoning.
     pub(in crate::feat::session::session_actor) fn on_stream_token(&self, event: &StreamToken) {
@@ -108,7 +22,7 @@ impl SessionPersistenceActor {
         match session.phase() {
             SessionPhase::Streaming => {}
             SessionPhase::Sending => {
-                // Defensive: stream token arrived without PromptAssembled.
+                // Defensive: stream token arrived without phase transition.
                 session.begin_streaming();
             }
             _ => {
@@ -134,7 +48,7 @@ impl SessionPersistenceActor {
     /// drains any queued messages into a new turn.
     ///
     /// For `Finished` reason, drains the message queue. If messages were queued,
-    /// pushes each as a separate user entry and starts a new `AssemblePrompt`.
+    /// pushes each as a separate user entry and triggers re-assembly.
     ///
     /// For `ToolUse` reason, transitions to sending state instead of fully idle,
     /// so the streaming indicator remains visible while the followup response
@@ -193,7 +107,7 @@ impl SessionPersistenceActor {
                 // Error entry is pushed by the LLM actor via PushChatEntry before
                 // emitting StreamCompleted(Error). Nothing to push here.
             } else if let Some(output_tokens) = output_tokens {
-                // Finalize the last record if one exists (i.e., PromptAssembled fired first).
+                // Finalize the last record if one exists (i.e., prompt assembled first).
                 // If no record exists (e.g., session restored mid-stream), skip silently.
                 if !session.token_ledger().is_empty()
                     && let Err(e) = session.finalize_last_token_record(output_tokens, event.cost)
@@ -260,7 +174,6 @@ impl SessionPersistenceActor {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::super::super::helpers::{test_actor, test_context};
-    use crate::feat::context::protocol::event::PromptAssembled;
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::chat_session::SessionPhase;
     use crate::protocol::{ChatEntry, Command};
@@ -396,59 +309,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handle_prompt_assembled_with_session_in_sending_transitions_to_streaming() {
-        // Given a session actor with a session in Sending phase (e.g., after tool use).
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_streaming();
-            session.finish_streaming(true);
-            session.begin_sending();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling PromptAssembled.
-        let payload = PromptAssembled {
-            session_id: session_id.clone(),
-            system_prompt: None,
-            messages: vec![],
-        };
-        actor.handle_prompt_assembled(&payload, &ctx).await;
-
-        // Then the session is in Streaming phase without panicking.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.phase(), SessionPhase::Streaming);
-    }
-
-    #[tokio::test]
-    async fn handle_prompt_assembled_with_session_in_assembling_transitions_to_streaming() {
-        // Given a session actor with a session in Assembling phase.
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            state.active_session_mut().begin_assembling();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling PromptAssembled.
-        let payload = PromptAssembled {
-            session_id: session_id.clone(),
-            system_prompt: None,
-            messages: vec![],
-        };
-        actor.handle_prompt_assembled(&payload, &ctx).await;
-
-        // Then the session is in Streaming phase.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.phase(), SessionPhase::Streaming);
-    }
-
-    #[tokio::test]
     async fn on_stream_completed_tool_use_with_soft_cancel_goes_to_idle() {
         // Given a session in streaming state with soft cancel requested.
         let actor = test_actor();
@@ -484,14 +344,14 @@ mod tests {
             session.phase()
         );
 
-        // And no AssemblePrompt was emitted.
+        // And no SendToLlmProvider was emitted.
         let commands = sink.commands();
-        let has_assemble = commands
+        let has_send = commands
             .iter()
-            .any(|c| matches!(c, Command::AssemblePrompt(_)));
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            !has_assemble,
-            "expected no AssemblePrompt after soft cancel"
+            !has_send,
+            "expected no SendToLlmProvider after soft cancel"
         );
     }
 }

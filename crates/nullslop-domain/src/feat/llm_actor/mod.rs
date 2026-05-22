@@ -1,7 +1,7 @@
 //! LLM streaming actor.
 //!
 //! Subscribes to [`SendToLlmProvider`] and [`CancelStream`] commands, and
-//! [`ToolsRegistered`] and [`StreamCompleted`] events. On send, creates an
+//! [`StreamCompleted`] events. On send, creates an
 //! LLM service via the factory and streams tokens and tool call events back
 //! as bus commands. When the LLM requests tool use, emits [`ExecuteToolBatch`]
 //! — the session actor handles the continuation via context assembly.
@@ -16,7 +16,6 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDi
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
-use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::provider_infra::LlmServiceFactoryService;
@@ -25,9 +24,9 @@ use crate::feat::provider_infra::StreamEvent;
 use crate::feat::tools_actor::protocol::command::CancelToolBatch;
 use crate::feat::tools_actor::protocol::command::ExecuteToolBatch;
 use crate::feat::tools_actor::protocol::event::{
-    ToolCallReceived, ToolCallStreaming, ToolUseStarted, ToolsRegistered,
+    ToolCallReceived, ToolCallStreaming, ToolUseStarted,
 };
-use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition};
+use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::{ChatEntry, Command, Event, SessionId};
 use error_stack::Report;
 use futures::StreamExt as _;
@@ -103,7 +102,6 @@ impl Actor for LlmActor {
         ctx.set_description("LLM streaming with tool support");
         ctx.subscribe_command::<SendToLlmProvider>();
         ctx.subscribe_command::<CancelStream>();
-        ctx.subscribe_event::<ToolsRegistered>();
         ctx.subscribe_event::<StreamCompleted>();
 
         Self {
@@ -133,12 +131,7 @@ impl LlmActor {
     fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
         match command {
             Command::SendToLlmProvider(payload) => {
-                self.start_stream(
-                    payload.session_id.clone(),
-                    payload.messages.clone(),
-                    payload.provider_id.as_deref(),
-                    ctx,
-                );
+                self.start_stream(payload, ctx);
             }
             Command::CancelStream(payload) => {
                 self.cancel_stream(&payload.session_id, ctx);
@@ -150,9 +143,6 @@ impl LlmActor {
     /// Dispatches incoming events to the appropriate handler.
     fn handle_event(&mut self, event: &Event) {
         match event {
-            Event::ToolsRegistered(payload) => {
-                self.handle_tools_registered(&payload.definitions);
-            }
             Event::StreamCompleted(payload) => {
                 self.handle_stream_completed(payload);
             }
@@ -167,18 +157,18 @@ impl LlmActor {
     )]
     fn start_stream(
         &mut self,
-        session_id: SessionId,
-        messages: Vec<LlmMessage>,
-        provider_id: Option<&str>,
+        payload: &SendToLlmProvider,
         ctx: &ActorContext,
     ) {
-        // Collect current tool definitions and retry config from shared state.
-        let (tools, retry_config): (Vec<ToolDefinition>, nullslop_provider::RetryConfig) = {
+        // Read retry config from shared state (transport concern, not prompt concern).
+        let retry_config: nullslop_provider::RetryConfig = {
             let guard = self.state.read();
-            let tools = guard.context.tool_definitions.values().cloned().collect();
-            let retry_config = guard.frontend.preferences.request_retry.to_retry_config();
-            (tools, retry_config)
+            guard.frontend.preferences.request_retry.to_retry_config()
         };
+
+        let tools = payload.tool_definitions.clone();
+        let messages = payload.messages.clone();
+        let session_id = payload.session_id.clone();
 
         let message_count = messages.len();
         tracing::trace!(
@@ -197,7 +187,7 @@ impl LlmActor {
         self.sessions.insert(session_id.clone(), SessionData::new());
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
-        let factory = if let Some(pid) = provider_id {
+        let factory = if let Some(pid) = payload.provider_id.as_deref() {
             if let Some(ref services) = self.services {
                 let id = crate::feat::provider_infra::ProviderId::new(pid.to_owned());
                 let api_keys = services.api_keys.read();
@@ -233,7 +223,8 @@ impl LlmActor {
         } else {
             self.factory.clone()
         };
-        let model_id = provider_id
+        let model_id = payload.provider_id
+            .as_deref()
             .map(std::borrow::ToOwned::to_owned)
             .unwrap_or_default();
         let sink = ctx.sink();
@@ -462,17 +453,6 @@ impl LlmActor {
         }
     }
 
-    /// Caches tool definitions from a [`ToolsRegistered`] event into shared state.
-    fn handle_tools_registered(&self, definitions: &[ToolDefinition]) {
-        let mut state = self.state.write();
-        for def in definitions {
-            state
-                .context
-                .tool_definitions
-                .insert(def.name.clone(), def.clone());
-        }
-    }
-
     /// Cancels the active stream for a session and emits a completion event.
     fn cancel_stream(&mut self, session_id: &SessionId, ctx: &ActorContext) {
         // If there's an active session, cancel any pending tool batches.
@@ -491,9 +471,6 @@ impl LlmActor {
             handle.abort();
         }
         let had_session = self.sessions.remove(session_id).is_some();
-        if let Some(handle) = self.tasks.remove(session_id) {
-            handle.abort();
-        }
         // Only emit StreamCompleted if there was actually an active session
         // to cancel. Avoids pushing a spurious "Cancelled" error entry when
         // the user presses ESC with nothing streaming.

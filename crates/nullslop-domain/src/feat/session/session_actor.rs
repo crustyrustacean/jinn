@@ -28,7 +28,6 @@ use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
-use crate::feat::context::protocol::event::PromptAssembled;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
@@ -108,13 +107,17 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn>();
 
+        // Context-related subscriptions (relocated from PromptAssemblyActor).
+        ctx.subscribe_command::<crate::feat::context::protocol::command::PinChatEntry>();
+        ctx.subscribe_command::<crate::feat::context::protocol::command::UnpinChatEntry>();
+        ctx.subscribe_command::<crate::feat::context::protocol::command::LoadPersonaPickerEntries>();
+
         // Compaction command subscriptions.
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>(
         );
         ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::EndCompaction>();
 
         // Event subscriptions.
-        ctx.subscribe_event::<PromptAssembled>();
         ctx.subscribe_event::<StreamToken>();
         ctx.subscribe_event::<StreamCompleted>();
         ctx.subscribe_event::<ToolUseStarted>();
@@ -127,6 +130,11 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<crate::feat::context::protocol::event::ChatEntryPinChanged>();
         ctx.subscribe_event::<ModelsRefreshed>();
         ctx.subscribe_event::<EnvironmentLoaded>();
+
+        // Context-related subscriptions (relocated from PromptAssemblyActor).
+        ctx.subscribe_event::<crate::feat::tools_actor::protocol::event::ToolsRegistered>();
+        ctx.subscribe_event::<crate::feat::provider::protocol::event::PromptTemplatesLoaded>();
+        ctx.subscribe_event::<crate::feat::context::protocol::event::PersonasLoaded>();
 
         ctx.set_description("Session lifecycle and persistence");
 
@@ -156,7 +164,6 @@ impl SessionPersistenceActor {
     /// Dispatches a bus event to the appropriate handler.
     async fn handle_event(&mut self, event: &Event, ctx: &ActorContext) {
         match event {
-            Event::PromptAssembled(payload) => self.handle_prompt_assembled(payload, ctx).await,
             Event::StreamToken(payload) => self.on_stream_token(payload),
             Event::StreamCompleted(payload) => self.on_stream_completed(payload, ctx).await,
             Event::ToolUseStarted(payload) => self.on_tool_use_started(payload),
@@ -183,6 +190,18 @@ impl SessionPersistenceActor {
             Event::ChatEntryPinChanged(payload) => {
                 self.save_active_session(&payload.session_id).await;
             }
+
+            // Context-related events (relocated from PromptAssemblyActor).
+            Event::ToolsRegistered(payload) => {
+                self.on_tools_registered(payload);
+            }
+            Event::PromptTemplatesLoaded(payload) => {
+                self.on_prompt_templates_loaded(payload);
+            }
+            Event::PersonasLoaded(payload) => {
+                self.on_personas_loaded(payload);
+            }
+
             _ => {}
         }
     }
@@ -232,12 +251,22 @@ impl SessionPersistenceActor {
             Command::SoftCancelTurn(payload) => {
                 self.handle_soft_cancel_turn(payload);
             }
+            // Context-related commands (relocated from PromptAssemblyActor).
+            Command::PinChatEntry(payload) => {
+                self.handle_pin_chat_entry(payload, ctx);
+            }
+            Command::UnpinChatEntry(payload) => {
+                self.handle_unpin_chat_entry(payload, ctx);
+            }
+            Command::LoadPersonaPickerEntries(payload) => {
+                self.handle_load_persona_picker_entries(payload);
+            }
+
             Command::FinishSessionTeardown(payload) => {
                 self.handle_finish_session_teardown(payload, ctx).await;
             }
             // Commands NOT subscribed to - these should not arrive.
-            Command::AssemblePrompt(..)
-            | Command::SendToLlmProvider(..)
+            Command::SendToLlmProvider(..)
             | Command::ExecuteTool(..)
             | Command::ProceedWithShutdown(..)
             | Command::CancelStream(..)
@@ -248,12 +277,9 @@ impl SessionPersistenceActor {
             | Command::RegisterTools(..)
             | Command::ProviderSwitch(..)
             | Command::LoadProviderPickerEntries(..)
-            | Command::PinChatEntry(..)
-            | Command::UnpinChatEntry(..)
             | Command::CancelToolBatch(..)
             | Command::ScanSkills
             | Command::RescanPersonas(..)
-            | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)
             | Command::CompactContext(..)
             | Command::EnqueueCompaction(..) => {}

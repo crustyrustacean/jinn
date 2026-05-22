@@ -109,8 +109,8 @@ pub use feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 pub use feat::chat_input::protocol::event::ChatEntrySubmitted;
-pub use feat::context::protocol::command::{AssemblePrompt, PinChatEntry, UnpinChatEntry};
-pub use feat::context::protocol::event::PromptAssembled;
+pub use feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
+pub use feat::context::assemble::AssembledPrompt;
 pub use feat::provider::llm_message::LlmMessage;
 pub use feat::provider::protocol::command::{
     CancelStream, ProviderSwitch, RefreshModels, RescanPromptTemplates, SendMessage,
