@@ -46,7 +46,10 @@ use nullslop_domain::{
 ///
 /// After spawning all actors, blocks the calling thread until the actor system
 /// signals readiness (or times out after 3 seconds).
-#[expect(clippy::too_many_arguments, reason = "TODO: refactor to options struct")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "TODO: refactor to options struct"
+)]
 pub fn create_core_with_actor_host(
     handle: &tokio::runtime::Handle,
     llm_service: LlmServiceFactoryService,
@@ -247,7 +250,10 @@ pub fn create_core_with_actor_host(
             builtin_registry: {
                 let mut registry =
                     nullslop_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
-                nullslop_bench::bench_tasks::register_bench_tasks(&mut registry, bench_artifact_dir);
+                nullslop_bench::bench_tasks::register_bench_tasks(
+                    &mut registry,
+                    bench_artifact_dir,
+                );
                 registry
             },
         },

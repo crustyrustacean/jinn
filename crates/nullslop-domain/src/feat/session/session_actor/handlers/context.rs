@@ -10,7 +10,9 @@
 
 use crate::common::actor::ActorContext;
 use crate::feat::context::prompt_template::PromptTemplateStore;
-use crate::feat::context::protocol::command::{LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry};
+use crate::feat::context::protocol::command::{
+    LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry,
+};
 use crate::feat::context::protocol::event::ChatEntryPinChanged;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
@@ -160,15 +162,15 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use std::sync::Arc;
 
-    use crate::common::actor::{ActorContext, Actor as _, MessageSink, RecordingSink};
+    use crate::common::actor::{Actor as _, ActorContext, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
     use crate::common::state::State;
     use crate::feat::context::protocol::event::PersonasLoaded;
     use crate::feat::persona::Persona;
 
-    use super::*;
     use super::super::super::SessionPersistenceActorDeps;
+    use super::*;
 
     fn make_persona(name: &str) -> Persona {
         Persona {

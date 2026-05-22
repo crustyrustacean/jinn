@@ -11,7 +11,8 @@ use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::context::tool_prompt::build_tool_context_block;
 use crate::feat::skills::format::format_skills_for_prompt;
 use crate::protocol::{
-    ChatEntry, ChatEntryKind, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
+    ChatEntry, ChatEntryKind, LlmMessage, PinPosition, SessionId, ToolDefinition,
+    entries_to_messages,
 };
 
 /// Fully assembled LLM prompt — everything a provider needs to make a request.
@@ -272,7 +273,10 @@ mod tests {
         let result = assemble_prompt(&guard, &session_id, &counter());
 
         // Then the first message is System and contains the skill.
-        assert!(!result.messages.is_empty(), "should have at least a system message");
+        assert!(
+            !result.messages.is_empty(),
+            "should have at least a system message"
+        );
         match &result.messages[0] {
             LlmMessage::System { content } => {
                 assert!(content.contains("test-skill"));
@@ -395,10 +399,10 @@ mod tests {
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
         {
             let mut guard = state.write();
-            guard.context.tool_definitions.insert(
-                "bash".to_owned(),
-                make_tool("bash"),
-            );
+            guard
+                .context
+                .tool_definitions
+                .insert("bash".to_owned(), make_tool("bash"));
         }
 
         // When assembling the prompt.

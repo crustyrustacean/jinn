@@ -173,15 +173,13 @@ impl SessionPersistenceActor {
 
         let estimated_tokens = assembled.estimated_tokens();
 
-        if let Err(e) =
-            ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
-                session_id: event.session_id.clone(),
-                messages: assembled.messages,
-                provider_id,
-                estimated_tokens,
-                tool_definitions: assembled.tool_definitions,
-            }))
-        {
+        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: event.session_id.clone(),
+            messages: assembled.messages,
+            provider_id,
+            estimated_tokens,
+            tool_definitions: assembled.tool_definitions,
+        })) {
             tracing::warn!(
                 err = ?e,
                 "session-actor failed to emit SendToLlmProvider from tool batch completion"
@@ -357,9 +355,6 @@ mod tests {
         let has_send = commands
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            !has_send,
-            "expected no SendToLlmProvider after soft cancel"
-        );
+        assert!(!has_send, "expected no SendToLlmProvider after soft cancel");
     }
 }
