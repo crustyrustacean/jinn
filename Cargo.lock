@@ -1920,6 +1920,7 @@ dependencies = [
  "error-stack",
  "jiff",
  "kanal",
+ "nullslop-bench",
  "nullslop-cli",
  "nullslop-domain",
  "nullslop-tui",
@@ -1942,6 +1943,7 @@ dependencies = [
  "comfy-table",
  "csv",
  "ctrlc",
+ "error-stack",
  "futures",
  "jiff",
  "kanal",
@@ -1949,6 +1951,7 @@ dependencies = [
  "nullslop-provider",
  "tempfile",
  "tokio",
+ "wherror",
 ]
 
 [[package]]

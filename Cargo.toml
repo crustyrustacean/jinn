@@ -22,6 +22,7 @@ path = "src/lib.rs"
 nullslop-cli = { workspace = true }
 nullslop-tui = { workspace = true }
 nullslop-domain = { workspace = true, features = ["which-key"] }
+nullslop-bench = { workspace = true }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
@@ -52,6 +53,7 @@ nullslop-cli = { path = "crates/nullslop-cli" }
 nullslop-protocol-derive = { path = "crates/nullslop-protocol-derive" }
 nullslop-selection-widget = { path = "crates/nullslop-selection-widget" }
 nullslop-testutil = { path = "crates/nullslop-testutil" }
+nullslop-bench = { path = "crates/nullslop-bench" }
 
 # Error handling
 wherror = "2.3.1"
