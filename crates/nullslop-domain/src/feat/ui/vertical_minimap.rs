@@ -85,6 +85,9 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
         .iter()
         .enumerate()
         .filter_map(|(i, entry)| {
+            if entry.is_empty_assistant() {
+                return None;
+            }
             MinimapCategory::from_kind(&entry.kind).map(|cat| VisibleEntry {
                 history_index: i,
                 category: cat,
@@ -649,5 +652,42 @@ mod tests {
         let has_down_arrow = rows.iter().any(|r| r.contains('▼'));
         assert!(!has_up_arrow, "should not have ▲");
         assert!(!has_down_arrow, "should not have ▼");
+    }
+
+    #[rstest::rstest]
+    fn empty_assistant_entry_produces_no_minimap_block() {
+        // Given a session with only an empty assistant entry.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::assistant(""));
+
+        // When rendering.
+        let (arrow, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then no arrow and no blocks.
+        assert!(arrow.is_none());
+        let block_count = rows.iter().filter(|r| r.contains('\u{2588}')).count();
+        assert_eq!(block_count, 0, "empty assistant should produce no minimap blocks");
+    }
+
+    #[rstest::rstest]
+    fn empty_assistant_mixed_with_other_entries() {
+        // Given a history with user, empty assistant, and tool call entries.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::assistant(""));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_call("tc-1", "bash", "{}"));
+
+        // When rendering in a 10-row viewport.
+        let (arrow, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then only 2 blocks (user and tool call). Empty assistant is excluded.
+        let block_count = rows.iter().filter(|r| r.contains('\u{2588}')).count();
+        assert_eq!(
+            block_count, 2,
+            "expected 2 blocks (user + tool call), got {block_count}"
+        );
+        assert!(arrow.is_some());
     }
 }
