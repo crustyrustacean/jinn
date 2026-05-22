@@ -665,3 +665,41 @@ fn tool_result_fingerprint_differs_with_truncation() {
     // Then their fingerprints differ (truncation presence affects hash).
     assert_ne!(entry1.content_fingerprint(), entry2.content_fingerprint());
 }
+
+// --- is_empty_assistant tests ---
+
+#[rstest::rstest]
+fn is_empty_assistant_true_for_empty_assistant() {
+    // Given an empty assistant entry.
+    let entry = ChatEntry::assistant("");
+
+    // Then is_empty_assistant returns true.
+    assert!(entry.is_empty_assistant());
+}
+
+#[rstest::rstest]
+fn is_empty_assistant_false_for_nonempty_assistant() {
+    // Given a non-empty assistant entry.
+    let entry = ChatEntry::assistant("hello");
+
+    // Then is_empty_assistant returns false.
+    assert!(!entry.is_empty_assistant());
+}
+
+#[rstest::rstest]
+fn is_empty_assistant_false_for_user_entry() {
+    // Given a user entry (even with empty display text).
+    let entry = ChatEntry::user("");
+
+    // Then is_empty_assistant returns false.
+    assert!(!entry.is_empty_assistant());
+}
+
+#[rstest::rstest]
+fn is_empty_assistant_false_for_system_entry() {
+    // Given a system entry.
+    let entry = ChatEntry::system("");
+
+    // Then is_empty_assistant returns false.
+    assert!(!entry.is_empty_assistant());
+}
