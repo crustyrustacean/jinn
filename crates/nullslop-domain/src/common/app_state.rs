@@ -307,8 +307,6 @@ impl ScopeStack {
                 SidebarSectionId::Persona => FocusScope::SidebarPersona,
                 SidebarSectionId::Pins => FocusScope::SidebarPins,
                 SidebarSectionId::Sessions => FocusScope::SidebarSessions,
-                // Minimap is no longer a sidebar section — no-op.
-                SidebarSectionId::Minimap => return,
             };
             self.stack.pop();
             self.stack.push(scope);
