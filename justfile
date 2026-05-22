@@ -191,6 +191,124 @@ install-defaults:
     @echo "Personas installed to ~/.config/nullslop/personas/"
     @echo "Prompts installed to ~/.config/nullslop/prompts/"
 
+# Report stale Fossil locks (hung processes + stale journal files)
+fossil-unlock:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    REPO="$(fossil status 2>/dev/null | sed -n 's/^repository: *//p')"
+    if [ -z "$REPO" ]; then
+        echo "Error: not inside a Fossil checkout" >&2; exit 1
+    fi
+
+    # Resolve symlinks
+    REPO="$(readlink -f "$REPO")"
+    CHECKOUT_ROOT="$(pwd)"
+
+    FOUND=0
+
+    # 1. Hung Fossil processes
+    echo '==> Checking for hung Fossil processes...'
+    PIDS=$(lsof "$REPO" 2>/dev/null | awk 'NR>1 && $1=="fossil" {print $2}' | sort -u) || true
+    if [ -n "$PIDS" ]; then
+        for pid in $PIDS; do
+            CMD=$(ps -p "$pid" -o args= 2>/dev/null || echo "<exited>")
+            echo "  stale PID $pid: $CMD"
+            FOUND=$((FOUND + 1))
+        done
+    else
+        echo "  none found"
+    fi
+
+    # 2. Stale journal / WAL / SHM files
+    echo '==> Checking for stale journal files...'
+    STALE=$(find "$CHECKOUT_ROOT" -maxdepth 3 \
+        \( -name '.fslckout-journal' -o -name '.fslckout-wal' -o -name '.fslckout-shm' \
+        -o -name '*.fossil-journal' -o -name '*.fossil-wal' -o -name '*.fossil-shm' \) \
+        2>/dev/null || true)
+    # Also check the repo file itself
+    for ext in journal wal shm; do
+        f="${REPO}-${ext}"
+        [ -f "$f" ] && STALE="$STALE\n$f"
+    done
+    if [ -n "$STALE" ]; then
+        echo -e "$STALE" | while read -r f; do
+            [ -z "$f" ] && continue
+            echo "  stale: $f"
+            FOUND=$((FOUND + 1))
+        done
+    else
+        echo "  none found"
+    fi
+
+    echo ""
+    if [ "$FOUND" -gt 0 ]; then
+        echo "Found $FOUND issue(s). Run 'just fossil-unlock-fix' to resolve."
+    else
+        echo "No lock issues found."
+    fi
+
+# Fix stale Fossil locks (kill hung processes + remove stale journal files)
+fossil-unlock-fix:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    REPO="$(fossil status 2>/dev/null | sed -n 's/^repository: *//p')"
+    if [ -z "$REPO" ]; then
+        echo "Error: not inside a Fossil checkout" >&2; exit 1
+    fi
+
+    REPO="$(readlink -f "$REPO")"
+    CHECKOUT_ROOT="$(pwd)"
+
+    FIXED=0
+
+    # 1. Kill hung Fossil processes
+    PIDS=$(lsof "$REPO" 2>/dev/null | awk 'NR>1 && $1=="fossil" {print $2}' | sort -u) || true
+    if [ -n "$PIDS" ]; then
+        for pid in $PIDS; do
+            OWNER=$(stat -c '%U' "/proc/$pid" 2>/dev/null || echo "")
+            ME=$(whoami)
+            if [ "$OWNER" != "$ME" ]; then
+                echo "  skipping PID $pid (owned by $OWNER, not $ME)"
+                continue
+            fi
+            CMD=$(ps -p "$pid" -o args= 2>/dev/null || echo "<exited>")
+            kill "$pid" && echo "  killed PID $pid ($CMD)" || echo "  failed to kill PID $pid"
+            FIXED=$((FIXED + 1))
+        done
+    else
+        echo '  no hung processes found'
+    fi
+
+    # 2. Remove stale journal / WAL / SHM files
+    STALE=$(find "$CHECKOUT_ROOT" -maxdepth 3 \
+        \( -name '.fslckout-journal' -o -name '.fslckout-wal' -o -name '.fslckout-shm' \
+        -o -name '*.fossil-journal' -o -name '*.fossil-wal' -o -name '*.fossil-shm' \) \
+        2>/dev/null || true)
+    for ext in journal wal shm; do
+        f="${REPO}-${ext}"
+        [ -f "$f" ] && STALE="$STALE\n$f"
+    done
+    if [ -n "$STALE" ]; then
+        echo -e "$STALE" | while read -r f; do
+            [ -z "$f" ] && continue
+            rm -f "$f" && echo "  removed $f" || echo "  failed to remove $f"
+            FIXED=$((FIXED + 1))
+        done
+    else
+        echo '  no stale journal files found'
+    fi
+
+    # 3. Verify
+    echo ''
+    if fossil status >/dev/null 2>&1; then
+        echo "Lock cleared successfully ($FIXED fix(es) applied)."
+    else
+        echo 'Warning: database may still be locked. Check for processes manually.' >&2
+        exit 1
+    fi
+
 # Mirror trunk history to GitHub (one-way, force push)
 sync-github:
    #!/bin/bash
