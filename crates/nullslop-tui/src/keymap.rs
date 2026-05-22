@@ -57,7 +57,11 @@ fn add_sidebar_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Int
         // Input — enter input mode
         .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
         // Direct jump to Sessions section
-        .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation);
+        .bind(
+            "<M-s>",
+            Intent::SidebarFocusSessions,
+            KeyCategory::Navigation,
+        );
 }
 
 /// Adds shared picker keybindings common to all picker scopes.

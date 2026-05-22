@@ -773,8 +773,16 @@ fn teardown_only_emits_run_session_teardown() {
         crate::feat::preferences_actor::user_preferences::SessionLifecycle {
             name: "fossil branch".to_owned(),
             description: None,
-            setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo setup".to_owned())),
-            teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("cleanup.sh $1".to_owned())),
+            setup: Some(
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                    "echo setup".to_owned(),
+                ),
+            ),
+            teardown: Some(
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                    "cleanup.sh $1".to_owned(),
+                ),
+            ),
         },
     );
     state
@@ -817,7 +825,11 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
         crate::feat::preferences_actor::user_preferences::SessionLifecycle {
             name: "plain".to_owned(),
             description: None,
-            setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo setup".to_owned())),
+            setup: Some(
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                    "echo setup".to_owned(),
+                ),
+            ),
             teardown: None,
         },
     );
