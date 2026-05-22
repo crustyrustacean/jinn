@@ -139,7 +139,7 @@ impl SessionPersistenceActor {
         // Mark session as busy (spinner) before the .await.
         {
             let mut state = self.state.write();
-            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+            if let Some(session) = state.session.get_mut(&payload.session_id) {
                 session.mark_busy();
             }
         }
@@ -166,7 +166,7 @@ impl SessionPersistenceActor {
         // Clear busy flag in all code paths.
         {
             let mut state = self.state.write();
-            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+            if let Some(session) = state.session.get_mut(&payload.session_id) {
                 session.mark_busy_complete();
             }
         }
@@ -175,7 +175,7 @@ impl SessionPersistenceActor {
             Ok(cwd) => {
                 {
                     let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
+                    if let Some(session) = state.session.get_mut(&payload.session_id)
                     {
                         session.set_cwd(cwd.clone());
                         session.advance_lifecycle_after_setup();
@@ -214,7 +214,7 @@ impl SessionPersistenceActor {
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
-                    if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id)
+                    if let Some(session) = state.session.get_mut(&payload.session_id)
                     {
                         session.set_cwd(default.clone());
                     }
@@ -263,7 +263,7 @@ impl SessionPersistenceActor {
             let default_cwd = {
                 let mut state = self.state.write();
                 let default = state.session.default_cwd().clone();
-                if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                if let Some(session) = state.session.get_mut(session_id) {
                     session.set_cwd(default.clone());
                 }
                 default
@@ -290,7 +290,7 @@ impl SessionPersistenceActor {
             Ok(cwd) => {
                 {
                     let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                    if let Some(session) = state.session.get_mut(session_id) {
                         session.set_cwd(cwd.clone());
                         session.advance_lifecycle_after_setup();
                     }
@@ -318,7 +318,7 @@ impl SessionPersistenceActor {
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
-                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                    if let Some(session) = state.session.get_mut(session_id) {
                         session.set_cwd(default.clone());
                     }
                     default
@@ -360,7 +360,7 @@ impl SessionPersistenceActor {
         // Look up teardown command from session's lifecycle.
         let (teardown_cmd, lifecycle_args) = {
             let state = self.state.read();
-            let Some(session) = state.session.sessions().get(&payload.session_id) else {
+            let Some(session) = state.session.get(&payload.session_id) else {
                 return;
             };
             let lifecycle_name = session.lifecycle_name().map(str::to_owned);
@@ -462,7 +462,7 @@ impl SessionPersistenceActor {
             // Advance lifecycle_script_state: SetupRan → TeardownRan.
             {
                 let mut state = self.state.write();
-                if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                if let Some(session) = state.session.get_mut(session_id) {
                     session.advance_lifecycle_after_teardown();
                 }
             }
@@ -501,7 +501,7 @@ impl SessionPersistenceActor {
         // Collect session info under read lock.
         let session_info = {
             let state = self.state.read();
-            let Some(session) = state.session.sessions().get(&payload.session_id) else {
+            let Some(session) = state.session.get(&payload.session_id) else {
                 return;
             };
             let script_state = session.lifecycle_script_state();
@@ -583,7 +583,7 @@ impl SessionPersistenceActor {
         // Step 2: Archive + persist.
         {
             let mut state = self.state.write();
-            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+            if let Some(session) = state.session.get_mut(&payload.session_id) {
                 session.set_session_state(SessionState::Archived);
             }
         }
@@ -625,7 +625,7 @@ impl SessionPersistenceActor {
         // Step 1: Archive + persist.
         {
             let mut state = self.state.write();
-            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+            if let Some(session) = state.session.get_mut(&payload.session_id) {
                 session.set_session_state(SessionState::Archived);
             }
         }
@@ -680,7 +680,7 @@ impl SessionPersistenceActor {
         // Mark session as busy (spinner) before the .await.
         {
             let mut state = self.state.write();
-            if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+            if let Some(session) = state.session.get_mut(session_id) {
                 session.mark_busy();
             }
         }
@@ -690,7 +690,7 @@ impl SessionPersistenceActor {
                 // Clear busy flag.
                 {
                     let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                    if let Some(session) = state.session.get_mut(session_id) {
                         session.mark_busy_complete();
                     }
                 }
@@ -698,7 +698,7 @@ impl SessionPersistenceActor {
                 // Advance lifecycle_script_state: SetupRan → TeardownRan.
                 {
                     let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                    if let Some(session) = state.session.get_mut(session_id) {
                         session.advance_lifecycle_after_teardown();
                     }
                 }
@@ -709,7 +709,7 @@ impl SessionPersistenceActor {
                 // Clear busy flag.
                 {
                     let mut state = self.state.write();
-                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                    if let Some(session) = state.session.get_mut(session_id) {
                         session.mark_busy_complete();
                     }
                 }
@@ -745,9 +745,7 @@ impl SessionPersistenceActor {
         session_id: &crate::protocol::SessionId,
     ) {
         let mut state = self.state.write();
-        state.session.sessions_mut().remove(session_id);
-
-        if state.session.sessions().is_empty() {
+        let fresh_session = {
             let model = state
                 .frontend
                 .preferences
@@ -762,21 +760,16 @@ impl SessionPersistenceActor {
                 .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
             let token_budget = state.frontend.preferences.context_token_budget.budget;
             let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
-            let new_session = ChatSessionState::new_with_profile(
+            ChatSessionState::new_with_profile(
                 crate::feat::session::profile::SessionProfile::from_config(
                     model,
                     strategy,
                     token_budget,
                     sliding_window_size,
                 ),
-            );
-            let new_id = new_session.session_id().clone();
-            state
-                .session
-                .sessions_mut()
-                .insert(new_id.clone(), new_session);
-            state.session.set_active(new_id);
-        }
+            )
+        };
+        state.session.remove_and_replace(session_id, fresh_session);
 
         crate::feat::ui::sidebar::sessions::reconcile_after_session_removal(&mut state);
     }
@@ -936,8 +929,7 @@ mod tests {
             let second_id = second.session_id().clone();
             state
                 .session
-                .sessions_mut()
-                .insert(second_id.clone(), second);
+                .insert(second);
             state.frontend.preferences.session_lifecycles = vec![SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
@@ -950,7 +942,6 @@ mod tests {
             }];
             let session = state
                 .session
-                .sessions_mut()
                 .get_mut(&second_id)
                 .expect("second session");
             session.set_lifecycle_name(Some("test".to_owned()));
@@ -1145,8 +1136,7 @@ mod tests {
             let mut state = actor.state.write();
             state
                 .session
-                .sessions_mut()
-                .insert(second_id.clone(), second);
+                .insert(second);
         }
 
         // When handling CloseSession for the second session.
@@ -1161,9 +1151,9 @@ mod tests {
 
         // Then the second session is removed.
         let state = actor.state.read();
-        assert!(!state.session.sessions().contains_key(&second_id));
+        assert!(!state.session.contains(&second_id));
         // And the first session still exists.
-        assert_eq!(state.session.sessions().len(), 1);
+        assert_eq!(state.session.session_count(), 1);
         drop(state);
 
         // And SessionClosed is emitted.
@@ -1203,8 +1193,8 @@ mod tests {
 
         // Then the only session is removed and a new one is created.
         let state = actor.state.read();
-        assert!(!state.session.sessions().contains_key(&only_id));
-        assert_eq!(state.session.sessions().len(), 1);
+        assert!(!state.session.contains(&only_id));
+        assert_eq!(state.session.session_count(), 1);
         assert_ne!(*state.session.active_session_id(), only_id);
         drop(state);
 
@@ -1234,8 +1224,7 @@ mod tests {
             let mut state = actor.state.write();
             state
                 .session
-                .sessions_mut()
-                .insert(second_id.clone(), second);
+                .insert(second);
             state.session.set_active(second_id.clone());
         }
 
@@ -1252,7 +1241,7 @@ mod tests {
         // Then active session is switched to the remaining one.
         let state = actor.state.read();
         assert_ne!(*state.session.active_session_id(), second_id);
-        assert_eq!(state.session.sessions().len(), 1);
+        assert_eq!(state.session.session_count(), 1);
     }
 
     #[tokio::test]
@@ -1266,8 +1255,7 @@ mod tests {
             let mut state = actor.state.write();
             state
                 .session
-                .sessions_mut()
-                .insert(second_id.clone(), second);
+                .insert(second);
         }
 
         // When handling CloseSession.
@@ -1306,7 +1294,7 @@ mod tests {
         let fake_id = crate::protocol::SessionId::new();
         let original_len = {
             let state = actor.state.read();
-            state.session.sessions().len()
+            state.session.session_count()
         };
 
         // When handling CloseSession for a nonexistent session.
@@ -1321,7 +1309,7 @@ mod tests {
 
         // Then nothing changes.
         let state = actor.state.read();
-        assert_eq!(state.session.sessions().len(), original_len);
+        assert_eq!(state.session.session_count(), original_len);
         drop(state);
 
         // And no SessionClosed event is emitted.
@@ -1355,7 +1343,7 @@ mod tests {
         };
         let original_count = {
             let state = actor.state.read();
-            state.session.sessions().len()
+            state.session.session_count()
         };
 
         // When teardown succeeds.
@@ -1372,8 +1360,8 @@ mod tests {
 
         // Then the session is NOT removed.
         let state = actor.state.read();
-        assert!(state.session.sessions().contains_key(&session_id));
-        assert_eq!(state.session.sessions().len(), original_count);
+        assert!(state.session.contains(&session_id));
+        assert_eq!(state.session.session_count(), original_count);
     }
 
     #[tokio::test]
@@ -1551,7 +1539,7 @@ mod tests {
 
         // Then the session is removed from memory (archived).
         let state = actor.state.read();
-        assert!(!state.session.sessions().contains_key(&session_id));
+        assert!(!state.session.contains(&session_id));
         // And no teardown-related events were emitted.
         let events = sink.events();
         let has_teardown_finished = events
@@ -1574,13 +1562,13 @@ mod tests {
         let actor = test_actor();
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
-        let second_id = second.session_id().clone();
+        let _second_id = second.session_id().clone();
         let target_id = {
             let mut state = actor.state.write();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("hello"));
-            state.session.sessions_mut().insert(second_id, second);
+            state.session.insert(second);
             state.session.active_session_id().clone()
         };
 
@@ -1596,8 +1584,8 @@ mod tests {
 
         // Then the session is removed from memory.
         let state = actor.state.read();
-        assert!(!state.session.sessions().contains_key(&target_id));
-        assert_eq!(state.session.sessions().len(), 1);
+        assert!(!state.session.contains(&target_id));
+        assert_eq!(state.session.session_count(), 1);
         drop(state);
 
         // And SessionArchived and SessionClosed are emitted.
@@ -1638,10 +1626,10 @@ mod tests {
         let actor = test_actor();
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
-        let second_id = second.session_id().clone();
+        let _second_id = second.session_id().clone();
         let target_id = {
             let mut state = actor.state.write();
-            state.session.sessions_mut().insert(second_id, second);
+            state.session.insert(second);
             state.session.active_session_id().clone()
         };
 
@@ -1657,7 +1645,7 @@ mod tests {
 
         // Then the session is removed from memory.
         let state = actor.state.read();
-        assert!(!state.session.sessions().contains_key(&target_id));
+        assert!(!state.session.contains(&target_id));
         drop(state);
 
         // And SessionArchived is emitted (empty sessions are still archived in DB).
@@ -1684,13 +1672,13 @@ mod tests {
         let actor = test_actor();
         let (_sink, ctx) = test_context();
         let second = ChatSessionState::new();
-        let second_id = second.session_id().clone();
+        let _second_id = second.session_id().clone();
         let active_id = {
             let mut state = actor.state.write();
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("msg"));
-            state.session.sessions_mut().insert(second_id, second);
+            state.session.insert(second);
             state.session.active_session_id().clone()
         };
 
@@ -1707,7 +1695,7 @@ mod tests {
         // Then the active session switches to the remaining one.
         let state = actor.state.read();
         assert_ne!(*state.session.active_session_id(), active_id);
-        assert_eq!(state.session.sessions().len(), 1);
+        assert_eq!(state.session.session_count(), 1);
     }
 
     #[tokio::test]
@@ -1735,8 +1723,8 @@ mod tests {
 
         // Then a new session is created.
         let state = actor.state.read();
-        assert!(!state.session.sessions().contains_key(&only_id));
-        assert_eq!(state.session.sessions().len(), 1);
+        assert!(!state.session.contains(&only_id));
+        assert_eq!(state.session.session_count(), 1);
         assert_ne!(*state.session.active_session_id(), only_id);
     }
 
@@ -1783,7 +1771,6 @@ mod tests {
         let state = actor.state.read();
         let session = state
             .session
-            .sessions()
             .get(&session_id)
             .expect("session exists");
         assert_eq!(
@@ -1792,7 +1779,7 @@ mod tests {
         );
 
         // And the session is still in memory.
-        assert!(state.session.sessions().contains_key(&session_id));
+        assert!(state.session.contains(&session_id));
     }
 
     #[tokio::test]
@@ -1856,8 +1843,7 @@ mod tests {
             // Add a second session so close doesn't create a new one.
             state
                 .session
-                .sessions_mut()
-                .insert(second_session.session_id().clone(), second_session);
+                .insert(second_session);
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.set_lifecycle_name(Some("test".to_owned()));
@@ -1887,7 +1873,7 @@ mod tests {
 
         // Then the session is removed from memory (close succeeded).
         let state = actor.state.read();
-        assert!(!state.session.sessions().contains_key(&session_id));
+        assert!(!state.session.contains(&session_id));
 
         // And SessionTeardownFinished was emitted with no error.
         let events = sink.events();
@@ -2005,7 +1991,6 @@ mod tests {
         let state = actor.state.read();
         let session = state
             .session
-            .sessions()
             .get(&session_id)
             .expect("session exists");
         assert_eq!(
@@ -2014,7 +1999,7 @@ mod tests {
         );
 
         // And the session is still in memory (not removed).
-        assert!(state.session.sessions().contains_key(&session_id));
+        assert!(state.session.contains(&session_id));
     }
 
     #[tokio::test]
@@ -2030,8 +2015,7 @@ mod tests {
             let mut state = actor.state.write();
             state
                 .session
-                .sessions_mut()
-                .insert(second.session_id().clone(), second);
+                .insert(second);
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("hello"));
             session.set_lifecycle_name(Some("test".to_owned()));

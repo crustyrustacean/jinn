@@ -159,9 +159,7 @@ impl SidebarSection for SessionsSection {
         // Count only Loaded sessions, matching sorted_open_sessions filter.
         let session_count = state
             .session
-            .sessions()
-            .values()
-            .filter(|s| {
+            .iter().filter(|(_, s)| {
                 s.session_state() == crate::feat::session::chat_session::SessionState::Loaded
             })
             .count() as u16;

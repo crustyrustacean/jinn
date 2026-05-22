@@ -87,14 +87,9 @@ pub fn handle_session_lifecycle_setup(
     // meaningful state to clean up.
     if state.active_session().is_empty() {
         let old_id = state.session.active_session_id().clone();
-        state.session.sessions_mut().remove(&old_id);
+        state.session.remove_without_replacement(&old_id);
         // If that was the last session, we'll create a new one below.
-        // Ensure active_session points to something valid (it will be
-        // overwritten immediately, but the insert below expects the map
-        // to potentially be non-empty for the "switch" logic).
-        if let Some(next_id) = state.session.sessions().keys().next().cloned() {
-            state.session.set_active(next_id);
-        }
+        // The insert + set_active below will restore the invariant.
     }
 
     // Extract setup command before mutating state (borrow checker).
@@ -139,8 +134,7 @@ pub fn handle_session_lifecycle_setup(
 
     state
         .session
-        .sessions_mut()
-        .insert(new_id.clone(), new_session);
+        .insert(new_session);
     state.session.set_active(new_id.clone());
     state.frontend.scope_stack.clear_overlays();
     state
@@ -348,9 +342,9 @@ mod tests {
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
         // And the old empty session was auto-closed.
-        assert!(!state.session.sessions().contains_key(&old_id));
+        assert!(!state.session.contains(&old_id));
         // And only one session remains (the new one).
-        assert_eq!(state.session.sessions().len(), 1);
+        assert_eq!(state.session.session_count(), 1);
         // And no commands emitted (no setup command).
         assert!(result.commands.is_empty());
         // And the session has no lifecycle name.
@@ -518,7 +512,7 @@ mod tests {
         let result = handle_session_close(&mut state);
 
         // Then a CloseSession command is emitted (actor handles teardown).
-        assert!(state.session.sessions().contains_key(&session_id));
+        assert!(state.session.contains(&session_id));
         assert_eq!(result.commands.len(), 1);
         assert!(matches!(
             &result.commands[0],
@@ -531,7 +525,7 @@ mod tests {
         // Given a state with only one session.
         let mut state = AppState::default();
         let session_id = state.session.active_session_id().clone();
-        assert_eq!(state.session.sessions().len(), 1);
+        assert_eq!(state.session.session_count(), 1);
 
         // When handling SessionClose.
         let result = handle_session_close(&mut state);
@@ -998,9 +992,9 @@ mod tests {
         let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
 
         // Then the old empty session is removed.
-        assert!(!state.session.sessions().contains_key(&old_id));
+        assert!(!state.session.contains(&old_id));
         // And only one session remains.
-        assert_eq!(state.session.sessions().len(), 1);
+        assert_eq!(state.session.session_count(), 1);
     }
 
     #[rstest::rstest]
@@ -1016,9 +1010,9 @@ mod tests {
         let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
 
         // Then the old session is preserved.
-        assert!(state.session.sessions().contains_key(&old_id));
+        assert!(state.session.contains(&old_id));
         // And two sessions exist.
-        assert_eq!(state.session.sessions().len(), 2);
+        assert_eq!(state.session.session_count(), 2);
         // And the new session is active.
         assert_ne!(*state.session.active_session_id(), old_id);
     }
@@ -1027,7 +1021,7 @@ mod tests {
     fn auto_close_replaces_last_empty_session() {
         // Given a single empty session (app just started).
         let mut state = AppState::default();
-        assert_eq!(state.session.sessions().len(), 1);
+        assert_eq!(state.session.session_count(), 1);
 
         // When creating a new session with a lifecycle.
         state
@@ -1047,7 +1041,7 @@ mod tests {
         let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
 
         // Then only the new session remains (old empty one was auto-closed).
-        assert_eq!(state.session.sessions().len(), 1);
+        assert_eq!(state.session.session_count(), 1);
         // And the new session has the lifecycle name.
         assert_eq!(
             state.active_session().lifecycle_name(),

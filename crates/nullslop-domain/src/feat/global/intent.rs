@@ -139,23 +139,24 @@ mod tests {
 
         let mut state = AppState::default();
         let second_id = SessionId::new();
-        state.session.sessions_mut().insert(second_id.clone(), {
-            let mut s = AppState::default();
-            s.active_session_mut().begin_streaming();
-            s.session
-                .sessions_mut()
-                .drain()
-                .map(|(_, v)| v)
-                .next()
-                .unwrap()
-        });
+        let mut second_session = AppState::default();
+        second_session.active_session_mut().begin_streaming();
+        let mut second_session: crate::feat::session::chat_session::ChatSessionState = second_session
+            .session
+            .sessions_mut()
+            .drain()
+            .map(|(_, v)| v)
+            .next()
+            .unwrap();
+        second_session.set_session_id(second_id.clone());
+        state.session.insert(second_session);
 
         // When handling Interrupt targeting the second session.
         let result = super::handle_interrupt(&mut state, Some(&second_id));
 
         // Then the targeted session's stream is cancelled.
         assert!(matches!(
-            state.session.sessions()[&second_id].phase(),
+            state.session.get_unchecked(&second_id).phase(),
             SessionPhase::Idle
         ));
         // And a CancelStream command is returned for that session.

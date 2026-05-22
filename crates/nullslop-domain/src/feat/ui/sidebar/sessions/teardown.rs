@@ -26,7 +26,7 @@ pub fn handle_session_teardown(state: &mut AppState) -> crate::protocol::IntentR
 
     // Look up teardown command for the session.
     let (teardown_command, lifecycle_args) = {
-        let session = state.session.sessions().get(&target_id);
+        let session = state.session.get(&target_id);
         let Some(session) = session else {
             return crate::protocol::IntentResult::empty();
         };

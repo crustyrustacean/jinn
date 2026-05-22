@@ -427,7 +427,6 @@ mod tests {
         let state = actor.state.read();
         let session = state
             .session
-            .sessions()
             .get(&session_id)
             .expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Idle);
