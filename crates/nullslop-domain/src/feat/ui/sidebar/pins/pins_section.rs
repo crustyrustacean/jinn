@@ -65,6 +65,9 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
 
 /// Place the cursor on this section from a given direction.
 pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
+    // Save current history position before the pin cursor changes it.
+    state.active_session_mut().save_history_position();
+
     let sorted_ids = state.sorted_pinned_ids();
     match enter_from {
         EnterFrom::Top => {

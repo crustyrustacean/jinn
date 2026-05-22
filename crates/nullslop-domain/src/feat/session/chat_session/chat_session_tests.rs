@@ -2092,3 +2092,122 @@ fn chat_session_advance_lifecycle_after_teardown() {
         LifecycleScriptState::TeardownRan
     );
 }
+
+// ---------------------------------------------------------------------------
+// Saved history position
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn has_saved_history_position_returns_false_by_default() {
+    // Given a new session.
+    let session = ChatSessionState::new();
+
+    // Then no saved position exists.
+    assert!(!session.has_saved_history_position());
+}
+
+#[rstest::rstest]
+fn save_history_position_captures_current_state() {
+    // Given a session with known scroll offset and selected entry.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("first")
+        .with_user_entry("second")
+        .with_user_entry("third")
+        .build();
+    session.ui.scroll_offset = Some(10);
+    session.ui.selected_entry_index = Some(1);
+
+    // When saving history position.
+    session.save_history_position();
+
+    // Then the saved position matches the current state.
+    assert!(session.has_saved_history_position());
+    let saved = session.ui.saved_history_position.as_ref().expect("saved");
+    assert_eq!(saved.scroll_offset, Some(10));
+    assert_eq!(saved.selected_entry_index, Some(1));
+}
+
+#[rstest::rstest]
+fn restore_history_position_restores_and_clears() {
+    // Given a session with a saved position.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("first")
+        .with_user_entry("second")
+        .build();
+    session.ui.scroll_offset = Some(5);
+    session.ui.selected_entry_index = Some(0);
+    session.save_history_position();
+
+    // When modifying the state and then restoring.
+    session.ui.scroll_offset = Some(99);
+    session.ui.selected_entry_index = Some(1);
+    session.restore_history_position();
+
+    // Then the state is restored to the saved values.
+    assert_eq!(session.ui.scroll_offset, Some(5));
+    assert_eq!(session.ui.selected_entry_index, Some(0));
+    // And the saved position is cleared.
+    assert!(!session.has_saved_history_position());
+}
+
+#[rstest::rstest]
+fn discard_saved_history_position_clears_without_restoring() {
+    // Given a session with a saved position.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("first")
+        .with_user_entry("second")
+        .build();
+    session.ui.scroll_offset = Some(5);
+    session.ui.selected_entry_index = Some(0);
+    session.save_history_position();
+
+    // When modifying state and then discarding.
+    session.ui.scroll_offset = Some(99);
+    session.ui.selected_entry_index = Some(1);
+    session.discard_saved_history_position();
+
+    // Then the state is NOT restored.
+    assert_eq!(session.ui.scroll_offset, Some(99));
+    assert_eq!(session.ui.selected_entry_index, Some(1));
+    // And the saved position is cleared.
+    assert!(!session.has_saved_history_position());
+}
+
+#[rstest::rstest]
+fn save_history_position_does_not_overwrite_existing() {
+    // Given a session with a saved position.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("first")
+        .with_user_entry("second")
+        .build();
+    session.ui.scroll_offset = Some(5);
+    session.ui.selected_entry_index = Some(0);
+    session.save_history_position();
+
+    // When modifying state and saving again.
+    session.ui.scroll_offset = Some(99);
+    session.ui.selected_entry_index = Some(1);
+    session.save_history_position();
+
+    // Then the original saved position is kept.
+    let saved = session.ui.saved_history_position.as_ref().expect("saved");
+    assert_eq!(saved.scroll_offset, Some(5));
+    assert_eq!(saved.selected_entry_index, Some(0));
+}
+
+#[rstest::rstest]
+fn restore_is_noop_when_nothing_saved() {
+    // Given a session with no saved position.
+    let mut session = ChatSessionState::builder()
+        .with_user_entry("first")
+        .build();
+    session.ui.scroll_offset = Some(10);
+    session.ui.selected_entry_index = Some(0);
+
+    // When restoring with nothing saved.
+    session.restore_history_position();
+
+    // Then the state is unchanged.
+    assert_eq!(session.ui.scroll_offset, Some(10));
+    assert_eq!(session.ui.selected_entry_index, Some(0));
+}
