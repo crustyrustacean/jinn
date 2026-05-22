@@ -557,3 +557,150 @@ fn sessions_footer_highlights_s_in_accent_action() {
         "should find a dash cell with border_unfocused foreground in Sessions footer row"
     );
 }
+
+// ---------------------------------------------------------------------------
+// History position save/restore
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn entering_pins_saves_history_position() {
+    // Given persona focused with a known scroll offset and selected entry.
+    let mut state = state_with_pinned(3);
+    state.frontend.scope_stack.push(FocusScope::SidebarPersona);
+    state.frontend.persona_section.cursor = Some(0);
+    state.active_session_mut().ui.scroll_offset = Some(42);
+    state.active_session_mut().ui.selected_entry_index = Some(0);
+
+    // When navigating down into Pins.
+    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+
+    // Then the history position was saved before sync_chat_log_cursor changed it.
+    let saved = state
+        .active_session()
+        .ui
+        .saved_history_position
+        .as_ref()
+        .expect("saved");
+    assert_eq!(saved.scroll_offset, Some(42));
+    assert_eq!(saved.selected_entry_index, Some(0));
+    // And the selected entry was changed by sync_chat_log_cursor
+    // (or stayed at 0 if the pin is at index 0 — what matters is that save captured pre-change).
+    assert!(state.active_session().has_saved_history_position());
+}
+
+#[rstest::rstest]
+fn leaving_pins_to_persona_restores_history_position() {
+    // Given pins focused with a saved position.
+    let mut state = state_with_pinned(3);
+    state.frontend.scope_stack.push(FocusScope::SidebarPins);
+    let first_id = state.sorted_pinned_ids()[0].clone();
+    state.frontend.pins.select_by_id(first_id);
+    state.active_session_mut().ui.scroll_offset = Some(42);
+    state.active_session_mut().ui.selected_entry_index = Some(0);
+    state.active_session_mut().save_history_position();
+
+    // When navigating up to Persona.
+    navigate_sidebar(&SidebarIntent::MoveUp, &mut state);
+
+    // Then the history position is restored.
+    assert_eq!(state.active_session().scroll_offset(), Some(42));
+    assert_eq!(state.active_session().selected_entry_index(), Some(0));
+    // And the saved position is cleared.
+    assert!(!state.active_session().has_saved_history_position());
+}
+
+#[rstest::rstest]
+fn jump_from_pins_to_persona_restores_history_position() {
+    // Given pins focused with a saved position.
+    let mut state = state_with_pinned(3);
+    state.frontend.scope_stack.push(FocusScope::SidebarPins);
+    let first_id = state.sorted_pinned_ids()[0].clone();
+    state.frontend.pins.select_by_id(first_id);
+    state.active_session_mut().ui.scroll_offset = Some(42);
+    state.active_session_mut().ui.selected_entry_index = Some(0);
+    state.active_session_mut().save_history_position();
+
+    // When jumping to previous section (Persona).
+    jump_to_section(&SidebarIntent::MoveUp, &mut state);
+
+    // Then the history position is restored.
+    assert_eq!(state.active_session().scroll_offset(), Some(42));
+    assert_eq!(state.active_session().selected_entry_index(), Some(0));
+}
+
+#[rstest::rstest]
+fn sidebar_leave_discards_saved_position() {
+    // Given pins focused with a saved position.
+    let mut state = state_with_pinned(3);
+    state.frontend.scope_stack.push(FocusScope::SidebarPins);
+    let first_id = state.sorted_pinned_ids()[0].clone();
+    state.frontend.pins.select_by_id(first_id);
+    state.active_session_mut().ui.scroll_offset = Some(42);
+    state.active_session_mut().ui.selected_entry_index = Some(0);
+    state.active_session_mut().save_history_position();
+
+    // Modify state to simulate pin view.
+    state.active_session_mut().ui.scroll_offset = Some(10);
+    state.active_session_mut().ui.selected_entry_index = Some(2);
+
+    // When leaving the sidebar.
+    crate::feat::ui::sidebar::intent::handle_sidebar_leave(&mut state);
+
+    // Then the scroll stays at the pin's position (not restored).
+    assert_eq!(state.active_session().scroll_offset(), Some(10));
+    assert_eq!(state.active_session().selected_entry_index(), Some(2));
+    // And the saved position is discarded.
+    assert!(!state.active_session().has_saved_history_position());
+}
+
+#[rstest::rstest]
+fn full_cycle_saves_and_restores() {
+    // Given persona focused with original scroll position.
+    let mut state = state_with_pinned(3);
+    state.frontend.scope_stack.push(FocusScope::SidebarPersona);
+    state.frontend.persona_section.cursor = Some(0);
+    state.active_session_mut().ui.scroll_offset = Some(42);
+    state.active_session_mut().ui.selected_entry_index = Some(0);
+
+    // When navigating to Pins.
+    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    // Then position is saved.
+    assert!(state.active_session().has_saved_history_position());
+    // sync_chat_log_cursor changes selected_entry_index to the pin's history index
+    // (which may be 0 if the pin is the first entry).
+
+    // When navigating within pins (second pin) — does NOT restore.
+    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    assert!(state.active_session().has_saved_history_position());
+
+    // When navigating within pins (third pin, last) — does NOT restore.
+    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    assert!(state.active_session().has_saved_history_position());
+
+    // When navigating to Sessions (exhausting pins).
+    navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
+    // Then position is restored.
+    assert_eq!(state.active_session().scroll_offset(), Some(42));
+    assert_eq!(state.active_session().selected_entry_index(), Some(0));
+}
+
+#[rstest::rstest]
+fn jump_roundtrip_saves_and_restores() {
+    // Given persona focused.
+    let mut state = state_with_pinned(3);
+    state.frontend.scope_stack.push(FocusScope::SidebarPersona);
+    state.frontend.persona_section.cursor = Some(0);
+    state.active_session_mut().ui.scroll_offset = Some(42);
+    state.active_session_mut().ui.selected_entry_index = Some(0);
+
+    // When jumping to Pins.
+    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+    // Then position is saved (via receive_cursor fallback).
+    assert!(state.active_session().has_saved_history_position());
+
+    // When jumping back to Persona.
+    jump_to_section(&SidebarIntent::MoveUp, &mut state);
+    // Then position is restored.
+    assert_eq!(state.active_session().scroll_offset(), Some(42));
+    assert_eq!(state.active_session().selected_entry_index(), Some(0));
+}

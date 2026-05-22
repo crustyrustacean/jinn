@@ -30,6 +30,13 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
             SidebarSectionId::Persona
         };
         state.frontend.scope_stack.set_sidebar_section(section);
+
+        // Save history position when restoring to Pins with existing cursor.
+        if section == SidebarSectionId::Pins
+            && !state.active_session().has_saved_history_position()
+        {
+            state.active_session_mut().save_history_position();
+        }
     } else {
         // First entry — default to Persona at top.
         crate::feat::ui::sidebar::persona_section::receive_cursor(state, EnterFrom::Top);
@@ -44,7 +51,7 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
 /// Does NOT set the cancel stream prompt — cancel confirmation
 /// is handled exclusively by `NormalEscape`.
 pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
-    // Always return to Normal mode, regardless of previous scope.
+    state.active_session_mut().discard_saved_history_position();
     state.frontend.scope_stack.clear_overlays();
     IntentResult::empty()
 }
@@ -73,6 +80,11 @@ pub fn handle_sidebar_focus_sessions(state: &mut AppState) -> IntentResult {
 
         // Clear cursor on the section we're leaving.
         crate::feat::ui::sidebar::sidebar::clear_cursor(current_section, state);
+
+        // Restore history position when leaving Pins.
+        if current_section == SidebarSectionId::Pins {
+            state.active_session_mut().restore_history_position();
+        }
 
         // Switch to sessions.
         state
