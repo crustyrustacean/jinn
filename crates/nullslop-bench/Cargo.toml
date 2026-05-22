@@ -7,20 +7,12 @@ edition = "2024"
 name = "nullslop_bench"
 path = "src/lib.rs"
 
-[[bin]]
-name = "nullslop-bench"
-path = "src/main.rs"
-
 [dependencies]
 nullslop-domain = { workspace = true }
 nullslop-provider = { workspace = true }
-clap = { workspace = true, features = ["derive"] }
 tokio = { workspace = true }
-futures = { workspace = true }
-kanal = { workspace = true }
 csv = { workspace = true }
 jiff = { workspace = true }
-ctrlc = { workspace = true }
 comfy-table = { workspace = true }
 error-stack = { workspace = true }
 wherror = { workspace = true }
