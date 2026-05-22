@@ -191,6 +191,19 @@ pub enum Intent {
     RenameSessionConfirm,
     /// Cancel the rename session input popup.
     RenameSessionLeave,
+    /// Insert a character into the rename session input.
+    RenameInsertChar {
+        /// The character to insert.
+        ch: char,
+    },
+    /// Move cursor left in the rename session input.
+    RenameCursorLeft,
+    /// Move cursor right in the rename session input.
+    RenameCursorRight,
+    /// Delete the grapheme before the cursor in rename input.
+    RenameDeleteGrapheme,
+    /// Delete the grapheme after the cursor in rename input.
+    RenameDeleteForward,
 }
 
 impl std::fmt::Display for Intent {
@@ -274,6 +287,11 @@ impl std::fmt::Display for Intent {
             Intent::SidebarRenameSession => write!(f, "rename session"),
             Intent::RenameSessionConfirm => write!(f, "rename session confirm"),
             Intent::RenameSessionLeave => write!(f, "rename session leave"),
+            Intent::RenameInsertChar { ch } => write!(f, "rename insert '{ch}'"),
+            Intent::RenameCursorLeft => write!(f, "rename cursor left"),
+            Intent::RenameCursorRight => write!(f, "rename cursor right"),
+            Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
+            Intent::RenameDeleteForward => write!(f, "rename forward delete"),
         }
     }
 }

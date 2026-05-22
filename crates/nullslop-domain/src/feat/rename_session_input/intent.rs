@@ -170,8 +170,8 @@ mod tests {
         let mut state = AppState::default();
         for i in 1..count {
             let session = ChatSessionState::new();
-            let id = session.session_id().clone();
-            state.session.sessions_mut().insert(id, {
+            let _id = session.session_id().clone();
+            state.session.insert({
                 let mut s = ChatSessionState::new();
                 s.push_entry(ChatEntry::user(format!("message for session {i}")));
                 s
