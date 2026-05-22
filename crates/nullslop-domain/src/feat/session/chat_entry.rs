@@ -488,6 +488,17 @@ impl ChatEntry {
         matches!(self.kind, ChatEntryKind::Compaction { .. })
     }
 
+    /// Whether this entry is an Assistant entry with empty text.
+    ///
+    /// Empty assistant entries are created when the LLM responds with tool
+    /// calls but no text. They must remain in history for correct
+    /// `entries_to_messages` behavior (tool calls attach to the preceding
+    /// assistant message), but should be hidden from the UI.
+    #[must_use]
+    pub fn is_empty_assistant(&self) -> bool {
+        matches!(&self.kind, ChatEntryKind::Assistant(text) if text.is_empty())
+    }
+
     /// The pin position, if this entry is pinned.
     pub fn pin_position(&self) -> Option<PinPosition> {
         self.pin_position
