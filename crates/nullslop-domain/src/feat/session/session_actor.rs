@@ -101,6 +101,7 @@ impl Actor for SessionPersistenceActor {
         // Lifecycle command subscriptions.
         ctx.subscribe_command::<RunSessionSetup>();
         ctx.subscribe_command::<RunSessionTeardown>();
+        ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown>();
         ctx.subscribe_command::<PersistSession>();
         ctx.subscribe_command::<CloseSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
@@ -250,7 +251,6 @@ impl SessionPersistenceActor {
             Command::SoftCancelTurn(payload) => {
                 self.handle_soft_cancel_turn(payload);
             }
-
             // Context-related commands (relocated from PromptAssemblyActor).
             Command::PinChatEntry(payload) => {
                 self.handle_pin_chat_entry(payload, ctx);
@@ -262,6 +262,9 @@ impl SessionPersistenceActor {
                 self.handle_load_persona_picker_entries(payload);
             }
 
+            Command::FinishSessionTeardown(payload) => {
+                self.handle_finish_session_teardown(payload, ctx).await;
+            }
             // Commands NOT subscribed to - these should not arrive.
             Command::SendToLlmProvider(..)
             | Command::AssemblePrompt(..)
