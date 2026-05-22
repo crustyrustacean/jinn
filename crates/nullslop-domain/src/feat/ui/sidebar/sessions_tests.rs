@@ -512,6 +512,31 @@ fn render_footer_uses_border_unfocused_when_sidebar_not_focused() {
     assert_eq!(corner_cell.style().fg, Some(state.frontend.theme.border_unfocused));
 }
 
+#[rstest::rstest]
+fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
+    // Given a sessions section rendered while persona section is focused (not sessions).
+    let mut section = SessionsSection::new();
+    let state = {
+        let mut s = AppState::default();
+        s.frontend.scope_stack.push(FocusScope::SidebarPersona);
+        s
+    };
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(30, 5);
+    terminal
+        .draw(|frame| {
+            section.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then the footer box-drawing corner uses border_unfocused (not focus_accent).
+    let buffer = terminal.backend().buffer();
+    let corner_cell = buffer.cell((0, 1)).expect("corner cell should exist");
+    assert_eq!(corner_cell.symbol(), "\u{2570}");
+    assert_eq!(corner_cell.style().fg, Some(state.frontend.theme.border_unfocused));
+}
+
 // --- Close session ---
 
 #[rstest::rstest]
