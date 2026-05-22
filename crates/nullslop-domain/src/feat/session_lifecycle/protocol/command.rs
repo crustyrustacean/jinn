@@ -53,3 +53,20 @@ pub struct PersistSession {
     /// The session to persist.
     pub session_id: SessionId,
 }
+
+/// Result of an async teardown shell command, sent back to the session actor.
+///
+/// Emitted by the tokio task spawned during `handle_run_session_teardown` or
+/// `handle_close_session`. The session actor processes this to advance lifecycle
+/// state, emit events, and (if `close_after` is true) archive/remove the session.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("session")]
+pub struct FinishSessionTeardown {
+    /// The session that was being torn down.
+    pub session_id: SessionId,
+    /// Whether this teardown was triggered by a close operation.
+    /// When true, the handler archives/removes the session after advancing lifecycle.
+    pub close_after: bool,
+    /// Error message if teardown failed.
+    pub error: Option<String>,
+}

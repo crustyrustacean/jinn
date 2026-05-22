@@ -46,6 +46,8 @@ pub enum SessionPhase {
     Streaming,
     /// Context compaction is in progress.
     Compacting,
+    /// A lifecycle teardown script is running.
+    TearingDown,
 }
 
 impl std::str::FromStr for SessionPhase {
@@ -58,6 +60,7 @@ impl std::str::FromStr for SessionPhase {
             "sending" => Ok(Self::Sending),
             "streaming" => Ok(Self::Streaming),
             "compacting" => Ok(Self::Compacting),
+            "tearing_down" => Ok(Self::TearingDown),
             _ => Err(SessionPhaseParseError(s.to_owned())),
         }
     }
@@ -1112,6 +1115,35 @@ impl ChatSessionState {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.phase,
                 "finish_compacting called while not compacting — ignoring"
+            );
+            return;
+        }
+        self.core.ephemeral.phase = SessionPhase::Idle;
+    }
+
+    /// Mark the session as running a lifecycle teardown script.
+    ///
+    /// Soft guard: if not idle, logs a warning and returns without changing phase.
+    pub fn begin_tearing_down(&mut self) {
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "begin_tearing_down called while not idle — ignoring"
+            );
+            return;
+        }
+        self.core.ephemeral.phase = SessionPhase::TearingDown;
+    }
+
+    /// Mark teardown as finished, returning to `Idle`.
+    ///
+    /// Soft guard: if the session is not currently tearing down, logs a warning
+    /// and returns without changing phase.
+    pub fn finish_tearing_down(&mut self) {
+        if !matches!(self.core.ephemeral.phase, SessionPhase::TearingDown) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "finish_tearing_down called while not tearing down — ignoring"
             );
             return;
         }
