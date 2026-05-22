@@ -13,5 +13,6 @@
 //! - **Graph** — a validated DAG of nodes and edges (`WorkflowGraph`).
 //! - **Engine** — executes a graph, pushing data from sources to sinks.
 
+pub mod graph;
 pub mod node;
 pub mod port;
