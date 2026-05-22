@@ -16,6 +16,7 @@ use crate::protocol::{ChatEntryId, Mode, PickerKind, PinPosition, SessionId, Too
 use crate::common::session_map::SessionMap;
 use crate::common::tui_signals::TuiSignals;
 pub use crate::feat::chat_input::ChatInputBoxState;
+use crate::feat::context::env_context::ContextFile;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::persona::Persona;
 use crate::feat::persona::PersonaEntry;
@@ -120,6 +121,9 @@ pub struct ContextAssemblyState {
     /// Registered tool definitions, keyed by tool name.
     /// OWNER: tools-actor (populated on ToolsRegistered event), read by context-actor and llm-actor.
     pub tool_definitions: HashMap<String, ToolDefinition>,
+    /// Cached project context files (AGENTS.md, CLAUDE.md).
+    /// OWNER: populated on startup, refreshed on session/CWD change.
+    pub context_files: Vec<ContextFile>,
 }
 
 impl Default for ContextAssemblyState {
@@ -130,6 +134,7 @@ impl Default for ContextAssemblyState {
             personas: Vec::new(),
             active_persona: None,
             tool_definitions: HashMap::new(),
+            context_files: Vec::new(),
         }
     }
 }
