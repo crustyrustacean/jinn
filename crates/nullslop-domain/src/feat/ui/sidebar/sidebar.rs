@@ -84,16 +84,20 @@ impl Sidebar {
             y_offset += section_height;
         }
 
-        // Render the last section (Sessions) in all remaining space.
+        // Render the last section (Sessions) anchored to the bottom.
         if n > 0 {
             let last_idx = n - 1;
-            let remaining = area.height.saturating_sub(y_offset);
-            if remaining > 0 {
+            let height = heights[last_idx];
+            if height > 0 {
+                let bottom_y = area.height.saturating_sub(height);
+                let section_y = bottom_y.max(y_offset);
+                let available = area.height.saturating_sub(section_y);
+                let section_height = height.min(available);
                 let section_area = Rect {
                     x: area.x,
-                    y: area.y + y_offset,
+                    y: area.y + section_y,
                     width: area.width,
-                    height: remaining,
+                    height: section_height,
                 };
                 self.sections[last_idx].render(frame, section_area, state);
             }
