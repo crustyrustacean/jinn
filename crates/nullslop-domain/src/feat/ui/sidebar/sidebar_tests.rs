@@ -498,3 +498,58 @@ fn sessions_header_below_persona_when_sidebar_is_short() {
         "Sessions footer should be at row 7 (just below Persona, clamped)"
     );
 }
+
+#[rstest::rstest]
+fn sessions_footer_highlights_s_in_accent_action() {
+    // Given a sidebar with all sections and default state.
+    let mut sidebar = sidebar_with_all_sections();
+    let state = AppState::default();
+
+    let width = 30u16;
+    let height = 40u16;
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &state);
+        })
+        .unwrap();
+
+    // Then the S in Sessions has accent_action color.
+    let buf = terminal.backend().buffer();
+    let sessions_row = find_row_containing(buf, width, height, "Sessions")
+        .expect("should find Sessions footer");
+
+    // Find the cell containing the highlighted S.
+    let accent_action = state.frontend.theme.accent_action;
+    let primary_text = state.frontend.theme.primary_text;
+    let mut found_highlighted_s = false;
+    for x in 0..width {
+        let cell = buf.cell((x, sessions_row)).expect("cell");
+        if cell.symbol() == "S" && cell.fg == accent_action {
+            found_highlighted_s = true;
+            break;
+        }
+    }
+    assert!(
+        found_highlighted_s,
+        "should find an S cell with accent_action foreground in Sessions footer row"
+    );
+
+    // And the surrounding characters use primary_text.
+    // Find a dash cell and verify it has primary_text color.
+    let mut found_primary_dash = false;
+    for x in 0..width {
+        let cell = buf.cell((x, sessions_row)).expect("cell");
+        if cell.symbol() == "\u{2500}" && cell.fg == primary_text {
+            found_primary_dash = true;
+            break;
+        }
+    }
+    assert!(
+        found_primary_dash,
+        "should find a dash cell with primary_text foreground in Sessions footer row"
+    );
+}
