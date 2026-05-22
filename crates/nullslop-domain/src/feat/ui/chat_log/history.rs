@@ -27,6 +27,7 @@ mod scroll_indicator;
 mod viewport;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
@@ -39,9 +40,9 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui_markdown::theme::Generation;
+use ratatui_markdown::RichTextTheme;
 
 use super::line_count_cache::EntryLineCache;
-use super::markdown::MarkdownAstCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
 use super::{
     actor, assistant, compaction, error_entry, skill, system, thinking, tool_call, tool_result,
@@ -58,7 +59,6 @@ const GUTTER_STR: &str = "𜺏 ";
 #[derive(Debug)]
 pub struct ChatLogElement {
     pub(crate) line_cache: EntryLineCache,
-    pub(crate) markdown_cache: MarkdownAstCache,
 }
 
 impl Default for ChatLogElement {
@@ -68,12 +68,11 @@ impl Default for ChatLogElement {
 }
 
 impl ChatLogElement {
-    /// Create a new chat log element with a fresh line count cache and markdown AST cache.
+    /// Create a new chat log element with a fresh line count cache.
     #[must_use]
     pub fn new() -> Self {
         Self {
             line_cache: EntryLineCache::new(),
-            markdown_cache: MarkdownAstCache::new(),
         }
     }
 }
@@ -95,7 +94,7 @@ impl UiElement<AppState> for ChatLogElement {
 
         let mut render = HistoryRender::new(state, area);
         render.build_tool_result_map();
-        render.compute_line_ranges(&mut self.line_cache, &mut self.markdown_cache);
+        render.compute_line_ranges(&mut self.line_cache, state.frontend.theme.generation());
         render.compute_scroll();
 
         {
@@ -108,7 +107,7 @@ impl UiElement<AppState> for ChatLogElement {
 
         render.find_visible_indices();
         render.build_blank_lines();
-        render.render_visible_entries(&mut self.markdown_cache);
+        render.render_visible_entries();
         render.paint(frame);
     }
 }
@@ -155,6 +154,7 @@ struct HistoryRender<'a> {
     tool_result_statuses: HashMap<String, ToolResultStatus>,
     entry_line_ranges: Vec<(u16, u16)>,
     miss_lines: HashMap<usize, Vec<Line<'static>>>,
+    cached_lines: HashMap<usize, Arc<Vec<Line<'static>>>>,
     total_wrapped: u16,
     scroll: ScrollState,
     visible_indices: Vec<usize>,
@@ -189,6 +189,7 @@ impl<'a> HistoryRender<'a> {
             tool_result_statuses: HashMap::new(),
             entry_line_ranges: Vec::new(),
             miss_lines: HashMap::new(),
+            cached_lines: HashMap::new(),
             total_wrapped: 0,
             scroll: ScrollState {
                 blank_count: 0,
@@ -224,17 +225,24 @@ impl<'a> HistoryRender<'a> {
 
     /// Walk all entries, compute wrapped line counts (using cache where possible),
     /// and record the (start, end) wrapped-line range for each entry.
-    fn compute_line_ranges(&mut self, cache: &mut EntryLineCache, markdown_cache: &mut MarkdownAstCache) {
+    ///
+    /// On a cache hit with rendered lines, the lines are stored in `cached_lines`
+    /// for reuse in Pass 2. On a miss, lines are rendered, stored in both the cache
+    /// (via `insert_with_lines`) and `miss_lines`.
+    fn compute_line_ranges(&mut self, cache: &mut EntryLineCache, theme_generation: Generation) {
         let mut wrapped_cursor: u16 = 0;
 
         for (i, entry) in self.history.iter().enumerate() {
             let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
 
-            if let Some(hit) = cache.get(entry, is_expanded, self.content_width, Generation(1)) {
+            if let Some(hit) = cache.get(entry, is_expanded, self.content_width, theme_generation) {
                 let start = wrapped_cursor;
                 let end = wrapped_cursor + hit.wrapped_count;
                 self.entry_line_ranges.push((start, end));
                 wrapped_cursor = end;
+                if let Some(lines) = hit.lines {
+                    self.cached_lines.insert(i, lines);
+                }
             } else {
                 let is_selected = self.selected_idx == Some(i);
                 let max_lines = self
@@ -252,7 +260,7 @@ impl<'a> HistoryRender<'a> {
                     theme: self.theme.clone(),
                     paired_status,
                 };
-                let lines = entry_to_lines(entry, &ctx, markdown_cache);
+                let lines = entry_to_lines(entry, &ctx);
                 let wrapped_count: u16 = if self.content_width == 0 {
                     lines.len() as u16
                 } else {
@@ -260,7 +268,14 @@ impl<'a> HistoryRender<'a> {
                         .wrap(Wrap { trim: false })
                         .line_count(self.content_width) as u16
                 };
-                cache.insert(entry, is_expanded, self.content_width, Generation(1), wrapped_count);
+                cache.insert_with_lines(
+                    entry,
+                    is_expanded,
+                    self.content_width,
+                    theme_generation,
+                    wrapped_count,
+                    Arc::new(lines.clone()),
+                );
 
                 let start = wrapped_cursor;
                 let end = wrapped_cursor + wrapped_count;
@@ -337,7 +352,7 @@ impl<'a> HistoryRender<'a> {
     // -----------------------------------------------------------------------
 
     /// Build content and gutter lines for all visible entries.
-    fn render_visible_entries(&mut self, markdown_cache: &mut MarkdownAstCache) {
+    fn render_visible_entries(&mut self) {
         let viewport_top = self.scroll.clamped;
         let chat_log_active = matches!(
             self.state.frontend.scope_stack.current(),
@@ -359,8 +374,10 @@ impl<'a> HistoryRender<'a> {
             let (entry_start, _entry_end) = self.entry_line_ranges[i];
             let abs_entry_start = entry_start + self.scroll.blank_count as u16;
 
-            // Get content lines — reuse from cache miss or render fresh.
-            let entry_content_lines = if let Some(lines) = self.miss_lines.remove(&i) {
+            // Get content lines — cached lines → miss lines → render fresh.
+            let entry_content_lines = if let Some(lines) = self.cached_lines.remove(&i) {
+                Arc::unwrap_or_clone(lines)
+            } else if let Some(lines) = self.miss_lines.remove(&i) {
                 lines
             } else {
                 let paired_status = self.paired_status_for_entry(entry);
@@ -372,7 +389,7 @@ impl<'a> HistoryRender<'a> {
                     theme: self.theme.clone(),
                     paired_status,
                 };
-                entry_to_lines(entry, &ctx, markdown_cache)
+                entry_to_lines(entry, &ctx)
             };
 
             // Build gutter lines for this entry (delegates to gutter submodule).
@@ -441,13 +458,13 @@ impl<'a> HistoryRender<'a> {
 ///
 /// Each entry type is delegated to its own submodule. Lines returned here are
 /// content-width only — the gutter is rendered as a separate column.
-pub(crate) fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext, markdown_cache: &mut MarkdownAstCache) -> Vec<Line<'static>> {
+pub(crate) fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'static>> {
     match &entry.kind {
-        ChatEntryKind::User { display, .. } => user::to_lines(display, ctx, markdown_cache),
+        ChatEntryKind::User { display, .. } => user::to_lines(display, ctx),
         ChatEntryKind::System(text) => system::to_lines(text, ctx),
         ChatEntryKind::Error(text) => error_entry::to_lines(text, ctx),
         ChatEntryKind::Actor { source, text } => actor::to_lines(source, text, ctx),
-        ChatEntryKind::Assistant(text) => assistant::to_lines(text, ctx, markdown_cache),
+        ChatEntryKind::Assistant(text) => assistant::to_lines(text, ctx),
         ChatEntryKind::ToolCall {
             name, arguments, ..
         } => tool_call::to_lines(name, arguments, ctx),
@@ -460,7 +477,7 @@ pub(crate) fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext, markdown_ca
         } => tool_result::to_lines(name, content, *status, truncation.as_ref(), ctx),
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
         ChatEntryKind::Skill { name, content, .. } => skill::to_lines(name, content, ctx),
-        ChatEntryKind::Transient(text) => transient::to_lines(text, ctx, markdown_cache),
+        ChatEntryKind::Transient(text) => transient::to_lines(text, ctx),
         ChatEntryKind::Compaction {
             entries_compacted,
             tokens_before,
