@@ -14,9 +14,11 @@ pub const MIN_HEIGHT: u16 = 14;
 pub struct AppLayout {
     /// The left column: chat + indicator + queue + input + status bar.
     pub main: Rect,
+    /// The vertical minimap column (1 char wide, same height as chat log area).
+    pub minimap: Rect,
     /// The right column: sidebar (full height).
     pub sidebar: Rect,
-    /// The vertical border between main and sidebar (1 column wide).
+    /// The vertical border between minimap and sidebar (1 column wide).
     pub border: Rect,
     // Sub-areas of the main column:
     /// The content area (chat log + indicator + queue + bottom line).
@@ -38,10 +40,12 @@ impl AppLayout {
     ///
     /// Layout structure:
     /// ```text
-    /// main column | border | sidebar (full height)
-    ///   content   |        |
-    ///   input     |        |
-    ///   status    |        |
+    /// main column | minimap(1) | border | sidebar (full height)
+    ///   content   |   ▲        |        |
+    ///             |   █        |        |
+    ///             |   ▼        |        |
+    ///   input     |            |        |
+    ///   status    |            |        |
     /// ```
     ///
     /// `input_lines` is the number of visual lines the input box needs
@@ -50,32 +54,22 @@ impl AppLayout {
     /// `max_input_height` caps the input box height (e.g., 50% of terminal).
     #[must_use]
     pub fn new(area: Rect, input_lines: u16, max_input_height: u16, sidebar_width: u16) -> Self {
-        // Horizontal split: main column | border(1) | sidebar
+        // Horizontal split: main column | minimap(1) | border(1) | sidebar
         let sidebar_width = sidebar_width
             .min(area.width.saturating_sub(MIN_WIDTH))
             .max(MIN_SIDEBAR_WIDTH);
         let border_width: u16 = 1;
+        let minimap_width: u16 = 1;
         let main_width = area
             .width
             .saturating_sub(sidebar_width)
-            .saturating_sub(border_width);
+            .saturating_sub(border_width)
+            .saturating_sub(minimap_width);
 
         let main = Rect {
             x: area.x,
             y: area.y,
             width: main_width,
-            height: area.height,
-        };
-        let border = Rect {
-            x: area.x + main_width,
-            y: area.y,
-            width: border_width,
-            height: area.height,
-        };
-        let sidebar = Rect {
-            x: area.x + main_width + border_width,
-            y: area.y,
-            width: sidebar_width,
             height: area.height,
         };
 
@@ -87,8 +81,33 @@ impl AppLayout {
         ])
         .areas(main);
 
+        // Minimap column: same height as the chat log area (content minus
+        // the bottom indicator line and chat-bottom-line).
+        let bottom_lines: u16 = 2;
+        let chat_log_height = content.height.saturating_sub(bottom_lines);
+        let minimap = Rect {
+            x: main.x + main.width,
+            y: content.y,
+            width: minimap_width,
+            height: chat_log_height,
+        };
+
+        let border = Rect {
+            x: main.x + main.width + minimap_width,
+            y: area.y,
+            width: border_width,
+            height: area.height,
+        };
+        let sidebar = Rect {
+            x: main.x + main.width + minimap_width + border_width,
+            y: area.y,
+            width: sidebar_width,
+            height: area.height,
+        };
+
         Self {
             main,
+            minimap,
             sidebar,
             border,
             content,

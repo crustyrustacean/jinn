@@ -124,27 +124,23 @@ pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::er
 
 /// Style hint for diff formatting.
 enum DiffStyle {
+    /// Signed 64-bit integer diff.
     I64,
+    /// Unsigned 64-bit integer diff.
     U64,
 }
 
 /// Creates a cell showing the delta between two integer values.
-fn diff_cell<T>(a: T, b: T, style: DiffStyle) -> Cell
+fn diff_cell<T>(a: T, b: T, _style: DiffStyle) -> Cell
 where
-    T: std::ops::Sub<Output = T> + PartialOrd + Copy + ToString,
+    T: std::ops::Sub<Output = T> + PartialOrd + Copy + std::fmt::Display,
 {
     if b > a {
         let d = b - a;
-        match style {
-            DiffStyle::I64 => Cell::new(format!("+{}", d.to_string())).fg(Color::Red),
-            DiffStyle::U64 => Cell::new(format!("+{}", d.to_string())).fg(Color::Red),
-        }
+        Cell::new(format!("+{d}")).fg(Color::Red)
     } else if b < a {
         let d = a - b;
-        match style {
-            DiffStyle::I64 => Cell::new(format!("-{}", d.to_string())).fg(Color::Green),
-            DiffStyle::U64 => Cell::new(format!("-{}", d.to_string())).fg(Color::Green),
-        }
+        Cell::new(format!("-{d}")).fg(Color::Green)
     } else {
         Cell::new("0")
     }
@@ -164,14 +160,16 @@ fn diff_cell_f64(a: f64, b: f64) -> Cell {
 
 /// Creates a cell showing the delta between two millisecond durations.
 fn diff_cell_ms(a: u64, b: u64) -> Cell {
-    if b > a {
-        let d = b - a;
-        Cell::new(format!("+{d}ms")).fg(Color::Red)
-    } else if a > b {
-        let d = a - b;
-        Cell::new(format!("-{d}ms")).fg(Color::Green)
-    } else {
-        Cell::new("0ms")
+    match b.cmp(&a) {
+        std::cmp::Ordering::Greater => {
+            let d = b - a;
+            Cell::new(format!("+{d}ms")).fg(Color::Red)
+        }
+        std::cmp::Ordering::Less => {
+            let d = a - b;
+            Cell::new(format!("-{d}ms")).fg(Color::Green)
+        }
+        std::cmp::Ordering::Equal => Cell::new("0ms"),
     }
 }
 

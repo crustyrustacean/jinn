@@ -8,6 +8,7 @@ pub mod bench_tasks;
 pub mod compare;
 pub mod csv;
 pub mod fixture;
+pub mod orchestrator;
 pub mod show;
 pub mod task;
 pub mod tasks;

@@ -105,15 +105,13 @@ impl SessionPersistenceActor {
 
                 let estimated_tokens = assembled.estimated_tokens();
 
-                if let Err(e) =
-                    ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
-                        session_id: payload.session_id.clone(),
-                        messages: assembled.messages,
-                        provider_id,
-                        estimated_tokens,
-                        tool_definitions: assembled.tool_definitions,
-                    }))
-                {
+                if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+                    session_id: payload.session_id.clone(),
+                    messages: assembled.messages,
+                    provider_id,
+                    estimated_tokens,
+                    tool_definitions: assembled.tool_definitions,
+                })) {
                     tracing::warn!(
                         err = ?e,
                         "session-actor failed to emit SendToLlmProvider"

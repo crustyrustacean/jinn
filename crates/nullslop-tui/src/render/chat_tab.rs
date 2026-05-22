@@ -5,6 +5,7 @@ pub mod border;
 pub mod chat_bottom_line;
 pub mod chat_log;
 pub mod input_box;
+pub mod minimap;
 pub mod queue_display;
 pub mod sidebar;
 pub mod streaming_indicator;
@@ -137,4 +138,7 @@ pub(super) fn render_chat_tab(
 
     // Autocomplete popup.
     autocomplete::render_autocomplete(frame, layout.input, state);
+
+    // Vertical minimap column and `>` arrow overlay.
+    minimap::render_minimap(frame, layout.minimap, chat_log_area, state);
 }

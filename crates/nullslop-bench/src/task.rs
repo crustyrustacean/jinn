@@ -1,10 +1,5 @@
 //! Bench task definitions — what to run and how to verify results.
 
-#![allow(
-    dead_code,
-    reason = "task types are used by bench_actor and bench_tasks modules"
-)]
-
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
@@ -91,6 +86,7 @@ impl VerificationReport {
 }
 
 /// A single benchmark task definition.
+#[derive(Debug, Clone)]
 pub struct BenchTask {
     /// Human-readable task name (used in CSV, fixture paths, progress output).
     pub name: &'static str,
@@ -112,6 +108,7 @@ pub struct BenchTask {
 }
 
 /// Tool configuration for a bench task.
+#[derive(Debug, Clone)]
 pub struct BenchTools {
     /// Subset of built-in tool names to register (e.g., `["bash", "read", "write"]`).
     /// Empty means all built-in tools are registered.
@@ -121,7 +118,7 @@ pub struct BenchTools {
 }
 
 /// A custom tool provided by a bench task.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CustomTool {
     /// The tool's JSON-schema definition.
     pub definition: ToolDefinition,

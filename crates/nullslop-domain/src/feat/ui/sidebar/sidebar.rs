@@ -139,6 +139,10 @@ pub fn navigate_sidebar(direction: &SidebarIntent, state: &mut AppState) {
         let mut candidate = neighbor;
         while let Some(target) = candidate {
             if section_has_content(target, state) {
+                // Restore history position when leaving Pins.
+                if focused == SidebarSectionId::Pins {
+                    state.active_session_mut().restore_history_position();
+                }
                 clear_cursor(focused, state);
                 state.frontend.scope_stack.set_sidebar_section(target);
                 let enter_from = match direction {
@@ -164,7 +168,6 @@ fn dispatch_navigate(
     state: &mut AppState,
 ) -> SectionNavResult {
     match section {
-        SidebarSectionId::Minimap => super::minimap_section::navigate(intent, state),
         SidebarSectionId::Persona => persona_section::navigate(intent, state),
         SidebarSectionId::Pins => pins::navigate(intent, state),
         SidebarSectionId::Sessions => sessions::navigate(intent, state),
@@ -173,7 +176,6 @@ fn dispatch_navigate(
 
 fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
-        SidebarSectionId::Minimap => Some(SidebarSectionId::Persona),
         SidebarSectionId::Persona => Some(SidebarSectionId::Pins),
         SidebarSectionId::Pins => Some(SidebarSectionId::Sessions),
         SidebarSectionId::Sessions => None,
@@ -182,8 +184,7 @@ fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
 
 fn prev_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
-        SidebarSectionId::Minimap => None,
-        SidebarSectionId::Persona => Some(SidebarSectionId::Minimap),
+        SidebarSectionId::Persona => None,
         SidebarSectionId::Pins => Some(SidebarSectionId::Persona),
         SidebarSectionId::Sessions => Some(SidebarSectionId::Pins),
     }
@@ -191,7 +192,6 @@ fn prev_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
 
 fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
-        SidebarSectionId::Minimap => false, // display-only, skip during navigation
         SidebarSectionId::Persona => true,
         SidebarSectionId::Pins => !state.sorted_pinned_ids().is_empty(),
         SidebarSectionId::Sessions => !state.session.is_empty(),
@@ -200,7 +200,6 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
 
 pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
     match id {
-        SidebarSectionId::Minimap => {}
         SidebarSectionId::Persona => state.frontend.persona_section.cursor = None,
         SidebarSectionId::Pins => state.frontend.pins.clear_selection(),
         SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index = None,
@@ -209,7 +208,6 @@ pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
 
 fn receive_cursor(id: SidebarSectionId, enter_from: EnterFrom, state: &mut AppState) {
     match id {
-        SidebarSectionId::Minimap => super::minimap_section::receive_cursor(state, enter_from),
         SidebarSectionId::Persona => persona_section::receive_cursor(state, enter_from),
         SidebarSectionId::Pins => pins::receive_cursor(state, enter_from),
         SidebarSectionId::Sessions => sessions::receive_cursor(state, enter_from),
@@ -219,7 +217,6 @@ fn receive_cursor(id: SidebarSectionId, enter_from: EnterFrom, state: &mut AppSt
 /// Check if a section has a retained cursor.
 fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
-        SidebarSectionId::Minimap => false,
         SidebarSectionId::Persona => state.frontend.persona_section.cursor.is_some(),
         SidebarSectionId::Pins => state.frontend.pins.selected_id().is_some(),
         SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index.is_some(),
@@ -248,7 +245,19 @@ pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
     let mut candidate = neighbor_fn(focused);
     while let Some(target) = candidate {
         if section_has_content(target, state) {
+            // Restore history position when leaving Pins.
+            if focused == SidebarSectionId::Pins && target != SidebarSectionId::Pins {
+                state.active_session_mut().restore_history_position();
+            }
+
             state.frontend.scope_stack.set_sidebar_section(target);
+
+            // Save history position when entering Pins without receive_cursor.
+            if target == SidebarSectionId::Pins
+                && !state.active_session().has_saved_history_position()
+            {
+                state.active_session_mut().save_history_position();
+            }
 
             // If target has no cursor, call receive_cursor as fallback.
             if !section_has_cursor(target, state) {

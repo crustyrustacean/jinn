@@ -69,6 +69,7 @@ pub struct RenameSessionInputState {
     /// Byte offset for cursor position in the input.
     pub cursor_pos: usize,
 }
+use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::skills::Skill;
 use crate::feat::theme::Theme;
 pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
@@ -76,7 +77,6 @@ pub use crate::feat::ui::sidebar::pins::state::PinsState;
 use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
-use crate::protocol::SessionEntry;
 
 /// Session lifecycle state — owned by the session-actor.
 ///
@@ -158,8 +158,6 @@ pub enum FocusScope {
     SidebarPins,
     /// Sidebar — Sessions section focused.
     SidebarSessions,
-    /// Sidebar — Minimap section focused (display-only, skips through).
-    SidebarMinimap,
     /// Picker overlay active — kind distinguishes Provider/Session/Keymap/etc.
     Picker { kind: PickerKind },
     /// Arg input popup — collecting positional args for a lifecycle command.
@@ -181,7 +179,6 @@ impl FocusScope {
             | Self::SidebarPersona
             | Self::SidebarPins
             | Self::SidebarSessions
-            | Self::SidebarMinimap
             | Self::SidebarResize => Mode::Normal,
             Self::Input | Self::ArgInput | Self::RenameSessionInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
@@ -197,7 +194,6 @@ impl std::fmt::Display for FocusScope {
             Self::SidebarPersona => write!(f, "SidebarPersona"),
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
-            Self::SidebarMinimap => write!(f, "SidebarMinimap"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
@@ -286,10 +282,7 @@ impl ScopeStack {
     pub fn is_sidebar(&self) -> bool {
         matches!(
             self.current(),
-            FocusScope::SidebarPersona
-                | FocusScope::SidebarPins
-                | FocusScope::SidebarSessions
-                | FocusScope::SidebarMinimap
+            FocusScope::SidebarPersona | FocusScope::SidebarPins | FocusScope::SidebarSessions
         )
     }
 
@@ -300,7 +293,6 @@ impl ScopeStack {
             FocusScope::SidebarPersona => Some(SidebarSectionId::Persona),
             FocusScope::SidebarPins => Some(SidebarSectionId::Pins),
             FocusScope::SidebarSessions => Some(SidebarSectionId::Sessions),
-            FocusScope::SidebarMinimap => Some(SidebarSectionId::Minimap),
             _ => None,
         }
     }
@@ -314,7 +306,6 @@ impl ScopeStack {
                 SidebarSectionId::Persona => FocusScope::SidebarPersona,
                 SidebarSectionId::Pins => FocusScope::SidebarPins,
                 SidebarSectionId::Sessions => FocusScope::SidebarSessions,
-                SidebarSectionId::Minimap => FocusScope::SidebarMinimap,
             };
             self.stack.pop();
             self.stack.push(scope);
@@ -384,7 +375,7 @@ pub struct FrontendState {
 
     /// Session picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (session picker navigation).
-    pub session_picker: nullslop_selection_widget::SelectionState<SessionEntry>,
+    pub session_picker: nullslop_selection_widget::TreePickerState<SessionTreeEntry>,
 
     /// Context strategy picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (strategy picker navigation).
@@ -458,7 +449,7 @@ impl Default for FrontendState {
             sessions_section: SessionsSectionState::default(),
             tui_signals: TuiSignals::new(),
             preferences: UserPreferences::default(),
-            session_picker: nullslop_selection_widget::SelectionState::new(),
+            session_picker: nullslop_selection_widget::TreePickerState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
             scope_stack: ScopeStack::default(),

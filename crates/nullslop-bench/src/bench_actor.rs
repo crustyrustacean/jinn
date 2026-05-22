@@ -1,27 +1,35 @@
-//! Bench actor — tracks bench sessions, records results, and writes CSV output.
+//! Bench actor — orchestrates bench execution and records results.
+//!
+//! When given a [`BenchPlan`], the actor drives the full bench pipeline:
+//! creates sessions with bench lifecycle names, enqueues messages, waits for
+//! completion, runs verification, writes CSV rows, and advances to the next
+//! task/model pair.
 //!
 //! Subscribes to [`SessionSetupCompleted`], [`StreamCompleted`], and
-//! [`SessionPhaseChanged`] events. When a session is created with a bench
-//! lifecycle, the actor tracks it. When the session returns to `Idle`, the
-//! actor reads token stats, runs verification, and writes a CSV row.
+//! [`SessionPhaseChanged`] events.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Instant;
 
-use nullslop_domain::feat::provider::protocol::command::CancelStream;
-use nullslop_domain::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
-use nullslop_domain::feat::session::chat_session::SessionPhase;
-use nullslop_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
-use nullslop_domain::feat::session::token_stats::TokenStats;
-use nullslop_domain::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
-use nullslop_domain::protocol::{Command, Event, SessionId};
-use nullslop_domain::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, RecordingSink, State};
-
 use crate::csv::{BenchCsvWriter, BenchResult};
+use crate::orchestrator::BenchPlan;
 use crate::task::{BenchTask, VerificationReport};
 use crate::tasks;
+use nullslop_domain::feat::chat_input::protocol::command::EnqueueUserMessage;
+use nullslop_domain::feat::provider::protocol::command::CancelStream;
+use nullslop_domain::feat::provider::protocol::event::StreamCompleted;
+use nullslop_domain::feat::session::chat_session::{ChatSessionState, SessionPhase};
+use nullslop_domain::feat::session::profile::SessionProfile;
+use nullslop_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+use nullslop_domain::feat::session::session_actor::setup_running_msg;
+use nullslop_domain::feat::session::token_stats::TokenStats;
+use nullslop_domain::feat::session_lifecycle::builtin::{BuiltinId, LifecycleCommand};
+use nullslop_domain::feat::session_lifecycle::protocol::command::RunSessionSetup;
+use nullslop_domain::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
+use nullslop_domain::protocol::PromptStrategyId;
+use nullslop_domain::protocol::{Command, Event, SessionId};
+use nullslop_domain::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, State};
 
 /// A tracked bench session.
 struct BenchSession {
@@ -33,14 +41,17 @@ struct BenchSession {
     deadline: Instant,
     /// Verification function from the task definition.
     verify: fn(&std::path::Path) -> VerificationReport,
-    /// Per-task timeout duration.
-    timeout: std::time::Duration,
+    /// How many messages still need to be sent for this task.
+    messages_remaining: usize,
+    /// Index of the next message to send in the task's message list.
+    next_message_index: usize,
 }
 
 /// The bench actor.
 ///
-/// Observes bench lifecycle sessions, tracks timing and token usage,
-/// runs verification, and writes results to CSV.
+/// When given a plan, orchestrates bench execution by creating sessions,
+/// enqueuing messages, and recording results. Without a plan, acts as a
+/// passive observer (backward compatible with non-bench mode).
 pub struct BenchActor {
     /// Shared application state.
     state: State,
@@ -50,6 +61,10 @@ pub struct BenchActor {
     csv_writer: Option<BenchCsvWriter>,
     /// Lookup from task name → BenchTask definition.
     task_lookup: HashMap<String, BenchTask>,
+    /// The execution plan (models × tasks).
+    plan: Option<BenchPlan>,
+    /// Index into `plan.pairs` for the next pair to start.
+    current_pair_index: usize,
 }
 
 /// Dependencies for [`BenchActor`].
@@ -58,6 +73,8 @@ pub struct BenchActorDeps {
     pub state: State,
     /// Path to write CSV output. If `None`, results are logged but not written.
     pub csv_path: Option<PathBuf>,
+    /// The execution plan. If `None`, the actor is passive.
+    pub plan: Option<BenchPlan>,
 }
 
 impl Actor for BenchActor {
@@ -65,7 +82,7 @@ impl Actor for BenchActor {
     type Deps = BenchActorDeps;
 
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
-        ctx.set_description("Tracks bench sessions and writes CSV results");
+        ctx.set_description("Orchestrates bench sessions and writes CSV results");
         ctx.subscribe_event::<SessionSetupCompleted>();
         ctx.subscribe_event::<StreamCompleted>();
         ctx.subscribe_event::<SessionPhaseChanged>();
@@ -84,12 +101,23 @@ impl Actor for BenchActor {
             .map(|t| (t.name.to_owned(), t))
             .collect();
 
-        Self {
+        let plan = deps.plan;
+
+        let mut actor = Self {
             state: deps.state,
             pending: HashMap::new(),
             csv_writer,
             task_lookup,
+            plan,
+            current_pair_index: 0,
+        };
+
+        // If we have a plan, start the first pair immediately.
+        if actor.plan.is_some() {
+            actor.start_next_pair(ctx);
         }
+
+        actor
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
@@ -112,11 +140,101 @@ impl Actor for BenchActor {
 }
 
 impl BenchActor {
+    /// Start the next pair in the plan.
+    ///
+    /// Creates a new session in AppState with the correct model and lifecycle_name,
+    /// then emits setup commands. Does nothing if no plan or all pairs are done.
+    fn start_next_pair(&mut self, ctx: &ActorContext) {
+        let Some(ref plan) = self.plan else {
+            return;
+        };
+
+        if self.current_pair_index >= plan.pairs.len() {
+            return;
+        }
+
+        #[expect(clippy::expect_used, reason = "index verified above")]
+        let (task_name, model) = plan
+            .pairs
+            .get(self.current_pair_index)
+            .expect("index checked above");
+        self.current_pair_index += 1;
+
+        // Create session in AppState.
+        let session_id = {
+            let mut state = self.state.write();
+
+            // Use preferences for strategy, token budget, etc.
+            let strategy = state
+                .frontend
+                .preferences
+                .last_strategy
+                .as_deref()
+                .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
+            let persona_name = state
+                .context
+                .active_persona
+                .as_ref()
+                .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
+            let token_budget = state.frontend.preferences.context_token_budget.budget;
+            let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
+
+            let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
+                model.clone(),
+                strategy,
+                persona_name,
+                token_budget,
+                sliding_window_size,
+            ));
+            new_session.set_lifecycle_name(Some(task_name.clone()));
+
+            let new_id = new_session.session_id().clone();
+            state.session.insert(new_session);
+            state.session.set_active(new_id.clone());
+            new_id
+        };
+
+        tracing::info!(
+            session_id = %session_id,
+            task = %task_name,
+            model = %model,
+            "bench actor starting pair"
+        );
+
+        // Emit setup commands.
+        let lifecycle_command = LifecycleCommand::Builtin(BuiltinId(task_name.clone()));
+        let _ = ctx.send_command(Command::PersistSession(
+            nullslop_domain::feat::session_lifecycle::protocol::command::PersistSession {
+                session_id: session_id.clone(),
+            },
+        ));
+        let _ = ctx.send_command(Command::PushChatEntry(
+            nullslop_domain::feat::chat_input::protocol::command::PushChatEntry {
+                session_id: session_id.clone(),
+                entry: setup_running_msg(),
+            },
+        ));
+        let _ = ctx.send_command(Command::RunSessionSetup(RunSessionSetup {
+            session_id: session_id.clone(),
+            command: task_name.clone(),
+            args: vec![],
+            lifecycle_command: Some(lifecycle_command),
+        }));
+    }
+
+    /// Enqueue a message for the given session.
+    fn enqueue_message(session_id: &SessionId, message: &str, ctx: &ActorContext) {
+        let _ = ctx.send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
+            session_id: session_id.clone(),
+            entry: nullslop_domain::ChatEntry::user(message.to_owned()),
+        }));
+    }
+
     /// Handle `SessionSetupCompleted` — start tracking if this is a bench session.
     fn handle_session_setup_completed(
         &mut self,
         payload: &SessionSetupCompleted,
-        _ctx: &ActorContext,
+        ctx: &ActorContext,
     ) {
         // Skip sessions with setup errors.
         if payload.error.is_some() {
@@ -143,11 +261,13 @@ impl BenchActor {
 
         let now = Instant::now();
         let deadline = now + task.timeout;
+        let total_messages = task.messages.len();
 
         tracing::info!(
             session_id = %payload.session_id,
             task = %task_name,
             timeout_secs = task.timeout.as_secs(),
+            messages = total_messages,
             "bench actor tracking session"
         );
 
@@ -158,9 +278,19 @@ impl BenchActor {
                 start_time: now,
                 deadline,
                 verify: task.verify,
-                timeout: task.timeout,
+                messages_remaining: total_messages,
+                next_message_index: 0,
             },
         );
+
+        // Enqueue the first message for this session.
+        if let Some(first_message) = task.messages.first() {
+            Self::enqueue_message(&payload.session_id, first_message, ctx);
+            if let Some(tracked) = self.pending.get_mut(&payload.session_id) {
+                tracked.messages_remaining -= 1;
+                tracked.next_message_index += 1;
+            }
+        }
     }
 
     /// Handle `StreamCompleted` — check timeout for tracked sessions.
@@ -186,19 +316,51 @@ impl BenchActor {
     }
 
     /// Handle `SessionPhaseChanged` — finalize result when tracked session returns to Idle.
+    #[expect(
+        clippy::unused_async,
+        reason = "called via .await from the async handle method"
+    )]
     async fn handle_session_phase_changed(
         &mut self,
         payload: &SessionPhaseChanged,
-        _ctx: &ActorContext,
+        ctx: &ActorContext,
     ) {
         // Only care about Idle transitions for tracked sessions.
         if payload.new_phase != SessionPhase::Idle {
             return;
         }
 
-        let Some(tracked) = self.pending.remove(&payload.session_id) else {
+        let Some(tracked) = self.pending.get(&payload.session_id) else {
             return;
         };
+
+        // If there are more messages to send, enqueue the next one.
+        if tracked.messages_remaining > 0 {
+            let task_name = tracked.task_name.clone();
+            let next_index = tracked.next_message_index;
+
+            if let Some((message, task)) = self
+                .task_lookup
+                .get(&task_name)
+                .and_then(|task| task.messages.get(next_index).map(|m| (m, task)))
+            {
+                // We don't use `task` but need it for the `and_then` chain.
+                let _ = task;
+                Self::enqueue_message(&payload.session_id, message, ctx);
+                if let Some(tracked) = self.pending.get_mut(&payload.session_id) {
+                    tracked.messages_remaining -= 1;
+                    tracked.next_message_index += 1;
+                }
+                return;
+            }
+        }
+
+        // All messages sent — finalize the result.
+        #[expect(clippy::expect_used, reason = "existence verified above")]
+        let tracked = self
+            .pending
+            .remove(&payload.session_id)
+            .expect("session was checked above");
 
         let elapsed = tracked.start_time.elapsed();
         let wall_time_ms = elapsed.as_millis() as u64;
@@ -213,10 +375,10 @@ impl BenchActor {
                 );
                 return;
             };
-            let stats = TokenStats::from_ledger(session.token_ledger());
+            let token_summary = TokenStats::from_ledger(session.token_ledger());
             let model = session.profile().model.clone();
             let cwd = session.cwd().to_owned();
-            (stats, model, cwd)
+            (token_summary, model, cwd)
         };
 
         // Run verification.
@@ -257,7 +419,7 @@ impl BenchActor {
             turns: u32::try_from(token_stats.request_count).unwrap_or(u32::MAX),
             tokens_in: token_stats.total_sent,
             tokens_out: token_stats.total_received,
-            cost: 0.0, // TokenStats doesn't carry cost per-request here.
+            cost: 0.0,
             wall_time_ms,
             passed,
             status,
@@ -275,15 +437,27 @@ impl BenchActor {
         );
 
         // Write CSV row if writer is available.
-        if let Some(ref mut writer) = self.csv_writer {
-            if let Err(e) = writer.write_row(&result) {
-                tracing::error!(error = %e, "failed to write CSV row");
-            }
+        if let Some(ref mut writer) = self.csv_writer
+            && let Err(e) = writer.write_row(&result)
+        {
+            tracing::error!(error = %e, "failed to write CSV row");
         }
 
-        // Check if all bench sessions are done.
+        // Advance to the next pair.
+        self.start_next_pair(ctx);
+
+        // If no more pending sessions and no more pairs, signal completion.
         if self.pending.is_empty() {
-            tracing::info!("all bench sessions completed");
+            let has_more = self
+                .plan
+                .as_ref()
+                .is_some_and(|p| self.current_pair_index < p.pairs.len());
+
+            if !has_more {
+                tracing::info!("all bench sessions completed, signaling quit");
+                let mut state = self.state.write();
+                state.frontend.should_quit = true;
+            }
         }
     }
 }
@@ -292,14 +466,13 @@ impl BenchActor {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
-    use std::path::Path;
+    use std::sync::Arc;
     use std::time::Duration;
 
-    use nullslop_domain::feat::preferences_actor::user_preferences::SessionLifecycle;
-    use nullslop_domain::feat::session::chat_session::ChatSessionState;
-    use nullslop_domain::feat::session_lifecycle::builtin::LifecycleCommand;
+    use nullslop_domain::RecordingSink;
 
     use super::*;
+    use crate::orchestrator::build_plan;
 
     /// Create a minimal test state with a session that has a bench lifecycle.
     fn test_state_with_session() -> (State, SessionId) {
@@ -328,6 +501,7 @@ mod tests {
             BenchActorDeps {
                 state,
                 csv_path: None,
+                plan: None,
             },
             &mut ActorContext::new("test", sink),
         );
@@ -361,6 +535,7 @@ mod tests {
             BenchActorDeps {
                 state,
                 csv_path: None,
+                plan: None,
             },
             &mut ActorContext::new("test", sink),
         );
@@ -388,6 +563,7 @@ mod tests {
             BenchActorDeps {
                 state,
                 csv_path: None,
+                plan: None,
             },
             &mut ActorContext::new("test", sink),
         );
@@ -419,6 +595,7 @@ mod tests {
             BenchActorDeps {
                 state: state.clone(),
                 csv_path: Some(csv_path.clone()),
+                plan: None,
             },
             &mut ActorContext::new("test", sink),
         );
@@ -469,6 +646,7 @@ mod tests {
             BenchActorDeps {
                 state,
                 csv_path: None,
+                plan: None,
             },
             &mut ActorContext::new("test", sink),
         );
@@ -506,6 +684,7 @@ mod tests {
             BenchActorDeps {
                 state,
                 csv_path: None,
+                plan: None,
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -521,14 +700,16 @@ mod tests {
 
         // Manually set the deadline to the past to simulate timeout.
         if let Some(tracked) = actor.pending.get_mut(&session_id) {
-            tracked.deadline = Instant::now() - Duration::from_secs(1);
+            tracked.deadline = Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap_or(Instant::now());
         }
 
         // When StreamCompleted fires.
         actor.handle_stream_completed(
             &StreamCompleted {
                 session_id: session_id.clone(),
-                reason: StreamCompletedReason::Finished,
+                reason: nullslop_domain::feat::provider::protocol::event::StreamCompletedReason::Finished,
                 assistant_content: None,
                 tool_calls: None,
                 cost: None,
@@ -539,8 +720,163 @@ mod tests {
         // Then CancelStream was sent.
         let commands = sink.commands();
         let found = commands.iter().any(|cmd| {
-            matches!(cmd, Command::CancelStream(CancelStream { session_id: sid }) if sid == &session_id)
+            matches!(
+                cmd,
+                Command::CancelStream(CancelStream { session_id: sid }) if sid == &session_id
+            )
         });
         assert!(found, "expected CancelStream command for timed-out session");
+    }
+
+    #[test]
+    fn first_message_enqueued_on_setup_completed() {
+        // Given a bench actor with a tracked session.
+        let (state, session_id) = test_state_with_session();
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink.clone()),
+        );
+
+        // When SessionSetupCompleted fires for the bench session.
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: PathBuf::from("/tmp"),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // Then the first message was enqueued via EnqueueUserMessage.
+        let commands = sink.commands();
+        let found = commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                Command::EnqueueUserMessage(EnqueueUserMessage { session_id: sid, .. })
+                if sid == &session_id
+            )
+        });
+        assert!(found, "expected EnqueueUserMessage for session");
+
+        // And messages_remaining is decremented.
+        let tracked = actor.pending.get(&session_id).expect("tracked");
+        assert_eq!(
+            tracked.messages_remaining, 0,
+            "hello-world has 1 message, should be 0 remaining"
+        );
+    }
+
+    #[tokio::test]
+    async fn multi_message_task_enqueues_all_messages_before_finalizing() {
+        // Given a bench actor with a tracked session for redirect-change-color (2 messages).
+        let state = State::new(nullslop_domain::AppState::default());
+        let session_id = {
+            let mut s = state.write();
+            let session = s.active_session_mut();
+            session.set_lifecycle_name(Some("redirect-change-color".to_owned()));
+            s.session.active_session_id().clone()
+        };
+
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink.clone()),
+        );
+
+        // When SessionSetupCompleted fires.
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: PathBuf::from("/tmp"),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // Then messages_remaining is 1 (first of 2 already sent).
+        let tracked = actor.pending.get(&session_id).expect("tracked");
+        assert_eq!(tracked.messages_remaining, 1);
+        assert_eq!(tracked.next_message_index, 1);
+
+        // When SessionPhaseChanged fires with Idle (intermediate).
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is still tracked (not yet finalized).
+        assert!(
+            actor.pending.contains_key(&session_id),
+            "session should still be pending after intermediate idle"
+        );
+
+        // And messages_remaining is now 0.
+        let tracked = actor.pending.get(&session_id).expect("tracked");
+        assert_eq!(tracked.messages_remaining, 0);
+
+        // When SessionPhaseChanged fires with Idle again (final).
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is removed from pending (finalized).
+        assert!(
+            !actor.pending.contains_key(&session_id),
+            "session should be removed after final idle"
+        );
+    }
+
+    #[test]
+    fn plan_driven_actor_starts_first_pair_on_activate() {
+        // Given a plan with 1 model and 1 task.
+        let plan = build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]);
+
+        let state = State::new(nullslop_domain::AppState::default());
+        let (sink, _ctx) = test_context();
+        let mut ctx = ActorContext::new("test", sink.clone());
+
+        // When activating the bench actor with the plan.
+        let actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: Some(plan),
+            },
+            &mut ctx,
+        );
+
+        // Then the current_pair_index has advanced to 1.
+        assert_eq!(actor.current_pair_index, 1);
+
+        // And RunSessionSetup was emitted.
+        let commands = sink.commands();
+        let found = commands.iter().any(|cmd| {
+            matches!(cmd, Command::RunSessionSetup(RunSessionSetup {
+                command,
+                lifecycle_command: Some(LifecycleCommand::Builtin(BuiltinId(id))),
+                ..
+            }) if command == "hello-world" && id == "hello-world")
+        });
+        assert!(found, "expected RunSessionSetup for hello-world");
     }
 }

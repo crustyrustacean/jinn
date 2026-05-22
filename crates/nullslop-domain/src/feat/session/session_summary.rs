@@ -32,6 +32,12 @@ pub struct SessionSummary {
     /// Whether this session is loaded in memory or archived.
     #[serde(default = "default_session_state")]
     pub session_state: SessionState,
+    /// Parent session ID — `None` for root sessions.
+    ///
+    /// Deserialized from stored `ChatSessionState` JSON; defaults to `None`
+    /// for sessions created before parent tracking was added.
+    #[serde(default)]
+    pub parent_session: Option<SessionId>,
 }
 
 fn default_title() -> String {
@@ -70,5 +76,35 @@ mod tests {
         assert_eq!(summary.session_id, *session.session_id());
         assert_eq!(summary.title, "Full Session");
         assert!(summary.updated_at <= jiff::Timestamp::now());
+        // And parent_session defaults to None (session has no parent).
+        assert!(summary.parent_session.is_none());
+    }
+
+    #[rstest::rstest]
+    fn session_summary_deserializes_parent_session_from_json() {
+        // Given a ChatSessionState with a parent session set.
+        let parent_id = SessionId::new();
+        let mut session = ChatSessionState::new();
+        session.set_title("Child Session".to_owned());
+        session.restore_parent_session(Some(parent_id.clone()));
+        let json = serde_json::to_string(&session).expect("serialize");
+
+        // When deserializing as SessionSummary.
+        let summary: SessionSummary = serde_json::from_str(&json).expect("deserialize summary");
+
+        // Then parent_session is populated.
+        assert_eq!(summary.parent_session, Some(parent_id));
+    }
+
+    #[rstest::rstest]
+    fn session_summary_defaults_parent_session_to_none() {
+        // Given JSON without a parent_session field.
+        let json = r#"{"session_id":"abc","title":"test","updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z","session_state":"loaded"}"#;
+
+        // When deserializing.
+        let summary: SessionSummary = serde_json::from_str(json).expect("deserialize");
+
+        // Then parent_session defaults to None.
+        assert!(summary.parent_session.is_none());
     }
 }
