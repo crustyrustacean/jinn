@@ -16,7 +16,6 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDi
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
-use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::provider::protocol::command::{CancelStream, SendToLlmProvider};
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 use crate::feat::provider_infra::LlmServiceFactoryService;
@@ -27,7 +26,7 @@ use crate::feat::tools_actor::protocol::command::ExecuteToolBatch;
 use crate::feat::tools_actor::protocol::event::{
     ToolCallReceived, ToolCallStreaming, ToolUseStarted,
 };
-use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition};
+use crate::feat::tools_actor::tool_types::ToolCall;
 use crate::protocol::{ChatEntry, Command, Event, SessionId};
 use error_stack::Report;
 use futures::StreamExt as _;
