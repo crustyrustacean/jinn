@@ -1,7 +1,7 @@
 //! Vertical minimap — one block per chat entry in a single-column display.
 //!
 //! Renders colored blocks (`█`) representing chat entries in a vertical column,
-//! one entry per row. Excluded entry types (Actor, Thinking) produce no block.
+//! one entry per row. Excluded entry types (Actor) produce no block.
 //! The viewport scrolls to keep the selected entry visible. A `>` arrow overlay
 //! on the chat log area points at the selected entry's row.
 
@@ -35,6 +35,8 @@ enum MinimapCategory {
     System,
     /// Skill entries — orange.
     Skill,
+    /// Thinking/reasoning blocks — dark gray.
+    Thinking,
 }
 
 impl MinimapCategory {
@@ -48,6 +50,7 @@ impl MinimapCategory {
             Self::Error => Color::Red,
             Self::System => Color::Yellow,
             Self::Skill => Color::Rgb(255, 165, 0),
+            Self::Thinking => Color::DarkGray,
         }
     }
 
@@ -61,8 +64,9 @@ impl MinimapCategory {
             ChatEntryKind::Error(..) => Some(Self::Error),
             ChatEntryKind::System(..) | ChatEntryKind::Transient(..) => Some(Self::System),
             ChatEntryKind::Skill { .. } => Some(Self::Skill),
-            // Excluded: Actor, Thinking.
-            ChatEntryKind::Actor { .. } | ChatEntryKind::Thinking(..) => None,
+            ChatEntryKind::Thinking(..) => Some(Self::Thinking),
+            // Excluded: Actor.
+            ChatEntryKind::Actor { .. } => None,
         }
     }
 }
@@ -100,13 +104,10 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
 /// Finds the block index corresponding to the given history index.
 ///
 /// Returns `None` if the history index maps to an excluded entry or
-/// is out of range. Falls back to the last visible entry if no match.
+/// is out of range.
 fn find_block_index(history_idx: Option<usize>, visible: &[VisibleEntry]) -> Option<usize> {
     match history_idx {
-        Some(idx) => visible
-            .iter()
-            .position(|e| e.history_index == idx)
-            .or_else(|| visible.len().checked_sub(1)),
+        Some(idx) => visible.iter().position(|e| e.history_index == idx),
         None => visible.len().checked_sub(1),
     }
 }
@@ -328,8 +329,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn find_block_index_falls_back_to_last_for_excluded_entry() {
-        // Given visible entries at history indices 0, 2, 5.
+    fn find_block_index_returns_none_for_excluded_entry() {
+        // Given visible entries at history indices 0, 2.
         let visible = vec![
             VisibleEntry {
                 history_index: 0,
@@ -343,11 +344,11 @@ mod tests {
             },
         ];
 
-        // When looking for history index 3 (excluded).
-        let result = find_block_index(Some(3), &visible);
+        // When looking for history index 1 (excluded).
+        let result = find_block_index(Some(1), &visible);
 
-        // Then it falls back to the last visible entry (block index 1).
-        assert_eq!(result, Some(1));
+        // Then it returns None (no fallback).
+        assert!(result.is_none());
     }
 
     #[rstest::rstest]
@@ -518,12 +519,15 @@ mod tests {
         // When rendering in a 10-row viewport.
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
 
-        // Then only 2 blocks (user and assistant).
-        // user=history_idx 0 → block_idx 0, assistant=history_idx 3 → block_idx 1
-        // Selection at last (3), but excluded → falls back to last visible (block 1).
-        // Midpoint=5, so block 0 at row 4, block 1 at row 5.
+        // Then 3 blocks (user, thinking, assistant). Actor is still excluded.
+        // user=history_idx 0 → block_idx 0
+        // thinking=history_idx 2 → block_idx 1
+        // assistant=history_idx 3 → block_idx 2
+        // Selection at last (3) → block 2. Midpoint=5.
+        // Block 0 at row 3, block 1 at row 4, block 2 at row 5.
         let block_count = rows.iter().filter(|r| r.contains('\u{2588}')).count();
-        assert_eq!(block_count, 2);
+        assert_eq!(block_count, 3);
+        assert!(rows[3].contains('\u{2588}'), "expected block at row 3");
         assert!(rows[4].contains('\u{2588}'), "expected block at row 4");
         assert!(rows[5].contains('\u{2588}'), "expected block at row 5");
         assert_eq!(arrow.expect("arrow exists").row, 5);
@@ -541,6 +545,29 @@ mod tests {
 
         // Then a block is rendered at midpoint (not empty).
         assert!(rows[5].contains('\u{2588}'));
+    }
+
+    #[rstest::rstest]
+    fn selecting_thinking_entry_positions_arrow_at_midpoint() {
+        // Given a session with User + Thinking + Assistant entries, Thinking selected.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::thinking("reasoning"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
+        state.active_session_mut().set_selected_entry_index(1);
+
+        // When rendering in a 10-row viewport.
+        let (arrow, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then the arrow is at the midpoint (row 5), and 3 blocks are visible.
+        // Selection at history index 1 (Thinking) → block index 1. Midpoint=5.
+        assert_eq!(arrow.expect("arrow exists").row, 5);
+        let block_count = rows.iter().filter(|r| r.contains('\u{2588}')).count();
+        assert_eq!(block_count, 3, "expected 3 blocks when thinking is selected");
     }
 
     #[rstest::rstest]
