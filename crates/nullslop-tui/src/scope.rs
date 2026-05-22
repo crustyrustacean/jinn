@@ -22,8 +22,6 @@ pub enum Scope {
     SidebarMinimap,
     /// Picker — Provider/model selection.
     PickerProvider,
-    /// Picker — Keymap search.
-    PickerKeymap,
     /// Picker — Session browser.
     PickerSession,
     /// Picker — Persona selection.
@@ -54,7 +52,6 @@ impl std::fmt::Display for Scope {
             Self::SidebarSessions => write!(f, "SidebarSessions"),
             Self::SidebarMinimap => write!(f, "SidebarMinimap"),
             Self::PickerProvider => write!(f, "Picker(provider)"),
-            Self::PickerKeymap => write!(f, "Picker(keymap)"),
             Self::PickerSession => write!(f, "Picker(session)"),
             Self::PickerPersona => write!(f, "Picker(persona)"),
             Self::PickerTheme => write!(f, "Picker(theme)"),
@@ -79,7 +76,6 @@ impl std::str::FromStr for Scope {
             "SidebarSessions" => Ok(Self::SidebarSessions),
             "SidebarMinimap" => Ok(Self::SidebarMinimap),
             "Picker(provider)" => Ok(Self::PickerProvider),
-            "Picker(keymap)" => Ok(Self::PickerKeymap),
             "Picker(session)" => Ok(Self::PickerSession),
             "Picker(persona)" => Ok(Self::PickerPersona),
             "Picker(theme)" => Ok(Self::PickerTheme),

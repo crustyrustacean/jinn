@@ -33,10 +33,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Provider => {
             state.provider.provider_picker.reset();
         }
-        PickerKind::Keymap => {
-            state.frontend.keymap_picker.reset();
-            state.frontend.keymap_picker_show_all = true;
-        }
         PickerKind::Session => {
             state.frontend.session_picker.reset();
         }
@@ -71,7 +67,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 LoadPersonaPickerEntries,
             )])
         }
-        PickerKind::Keymap | PickerKind::Theme => IntentResult::empty(),
+        PickerKind::Theme => IntentResult::empty(),
         PickerKind::SessionLifecycle => {
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
@@ -179,7 +175,6 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
 
     match state.frontend.scope_stack.picker_kind().copied() {
         Some(PickerKind::Provider) => (confirm_provider(state), None),
-        Some(PickerKind::Keymap) => confirm_keymap(state),
         Some(PickerKind::Session) => (confirm_session(state), None),
         Some(PickerKind::Persona) => (confirm_persona(state), None),
         Some(PickerKind::Theme) => (confirm_theme(state), None),
@@ -226,40 +221,6 @@ pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Toggles the keymap scope filter between showing all entries and the
-/// current scope's entries only.
-pub fn handle_toggle_keymap_scope_filter(state: &mut AppState) -> IntentResult {
-    validator::validate_toggle_keymap_scope_filter(state);
-
-    if state.frontend.scope_stack.picker_kind().copied() != Some(PickerKind::Keymap) {
-        return IntentResult::empty();
-    }
-
-    state.frontend.keymap_picker_show_all = !state.frontend.keymap_picker_show_all;
-
-    let scope = state
-        .frontend
-        .scope_stack
-        .parent()
-        .map(std::string::ToString::to_string)
-        .unwrap_or_default();
-
-    let filtered: Vec<_> = if state.frontend.keymap_picker_show_all {
-        state.frontend.all_keymap_entries.clone()
-    } else {
-        state
-            .frontend
-            .all_keymap_entries
-            .iter()
-            .filter(|e| e.scope == scope)
-            .cloned()
-            .collect()
-    };
-
-    state.frontend.keymap_picker.set_items(filtered);
-    IntentResult::empty()
-}
-
 // --- Private confirm handlers ---
 
 /// Confirms the selected provider and dispatches a switch command.
@@ -283,18 +244,6 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
             updates: vec![PreferenceUpdate::SetLastModel(Some(provider_id))],
         }),
     ])
-}
-
-/// Confirms a keymap selection. Returns the selected intent for the caller
-/// to re-dispatch, rather than dispatching it directly (avoids circular dep).
-fn confirm_keymap(state: &mut AppState) -> (IntentResult, Option<Intent>) {
-    let Some(entry) = state.frontend.keymap_picker.selected_item() else {
-        return (IntentResult::empty(), None);
-    };
-    let intent = entry.command.clone();
-
-    state.frontend.scope_stack.pop();
-    (IntentResult::empty(), Some(intent))
 }
 
 /// Confirms the selected persona and sets it as active.

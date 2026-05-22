@@ -154,7 +154,6 @@ impl Default for ContextSlidingWindowConfig {
 const DEFAULT_RETRY_MAX_RETRIES: u32 = 5;
 const DEFAULT_RETRY_BASE_DELAY_SECS: u64 = 2;
 const DEFAULT_RETRY_MAX_DELAY_SECS: u64 = 60;
-const DEFAULT_RETRY_JITTER_FRACTION: f64 = 0.5;
 
 /// Retry configuration for LLM provider requests.
 ///
@@ -172,9 +171,6 @@ pub struct RequestRetryConfig {
     /// Overridden by provider-supplied Retry-After / error body hints.
     #[serde(default = "default_retry_max_delay_secs")]
     pub max_delay_secs: u64,
-    /// Jitter amount as a fraction (0.0 to 1.0). Default: 0.5.
-    #[serde(default = "default_retry_jitter_fraction")]
-    pub jitter_fraction: f64,
 }
 
 fn default_retry_max_retries() -> u32 {
@@ -186,9 +182,6 @@ fn default_retry_base_delay_secs() -> u64 {
 fn default_retry_max_delay_secs() -> u64 {
     DEFAULT_RETRY_MAX_DELAY_SECS
 }
-fn default_retry_jitter_fraction() -> f64 {
-    DEFAULT_RETRY_JITTER_FRACTION
-}
 
 impl Default for RequestRetryConfig {
     fn default() -> Self {
@@ -196,7 +189,6 @@ impl Default for RequestRetryConfig {
             max_retries: DEFAULT_RETRY_MAX_RETRIES,
             base_delay_secs: DEFAULT_RETRY_BASE_DELAY_SECS,
             max_delay_secs: DEFAULT_RETRY_MAX_DELAY_SECS,
-            jitter_fraction: DEFAULT_RETRY_JITTER_FRACTION,
         }
     }
 }
@@ -209,7 +201,6 @@ impl RequestRetryConfig {
             max_retries: self.max_retries,
             base_delay: std::time::Duration::from_secs(self.base_delay_secs),
             max_delay: std::time::Duration::from_secs(self.max_delay_secs),
-            jitter_fraction: self.jitter_fraction,
         }
     }
 }

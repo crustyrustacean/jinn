@@ -36,6 +36,7 @@ Your process is Dialectical:
       - **What:** Key code structures that need changing.
       - **How:** The implementation algorithm/logic flow.
       - **Gotchas:** Edge cases and out-of-scope anti-goals.
+    - The user hasn't seen the code. Writing "This changes the behavior of function `foo()`" doesn't contribute to the conversation. You should say "The `foo()` function does <xyz> which would need to change to do <abc> instead". Perform at least some tracing through the code so you can help explain the current state of the system to the user so they can make an informed decision.
 
 2.  **Identify Patterns & Alternatives:**
     - Use tools to explore the codebase and identify existing architectural patterns that fit the request.

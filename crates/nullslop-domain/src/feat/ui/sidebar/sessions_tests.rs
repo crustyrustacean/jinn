@@ -43,14 +43,14 @@ fn section_id_is_sessions() {
 fn content_height_with_one_session() {
     let section = SessionsSection::new();
     let state = AppState::default();
-    assert_eq!(section.content_height(&state), 4); // header + blank + 1 session + gap
+    assert_eq!(section.content_height(&state), 2); // 1 session + footer
 }
 
 #[rstest::rstest]
 fn content_height_with_three_sessions() {
     let section = SessionsSection::new();
     let state = state_with_sessions(3);
-    assert_eq!(section.content_height(&state), 6); // header + blank + 3 sessions + gap
+    assert_eq!(section.content_height(&state), 4); // 3 sessions + footer
 }
 
 #[rstest::rstest]
@@ -62,8 +62,8 @@ fn content_height_capped_at_max_visible() {
     // When computing content height.
     let height = section.content_height(&state);
 
-    // Then it is capped at 3 + 15 = 18, not 3 + 20 = 23.
-    assert_eq!(height, 18);
+    // Then it is capped at 15 + 1 = 16, not 20 + 1 = 21.
+    assert_eq!(height, 16);
 }
 
 // --- Navigation ---
@@ -321,11 +321,20 @@ fn render_rows(
 }
 
 #[rstest::rstest]
-fn render_shows_sessions_header() {
+fn render_shows_sessions_footer() {
+    // Given a sessions section with default state.
     let mut section = SessionsSection::new();
     let state = AppState::default();
+
+    // When rendering.
     let rows = render_rows(&mut section, &state, 30, 5);
-    assert!(rows[0].contains("Sessions"));
+
+    // Then the last row contains "Sessions" (footer at the bottom).
+    let combined = rows.join("\n");
+    assert!(
+        combined.contains("Sessions"),
+        "should contain 'Sessions' in footer, got: {combined}"
+    );
 }
 
 #[rstest::rstest]
@@ -365,10 +374,9 @@ fn render_shows_down_arrow_when_entries_hidden_below() {
     let rows = render_rows(&mut section, &state, 30, 20);
 
     // Then the ↓ indicator appears on the last visible entry row.
-    // Row layout: 0=header, 1=blank, 2..16=entries (15), 17=gap.
-    // Last entry row is row 16 (index 14 in visible window).
-    // Indicator is right-aligned on that row.
-    let last_entry_row = &rows[16];
+    // Row layout: 0..14=entries (15), 15=footer.
+    // Last entry row is row 14 (index 14 in visible window).
+    let last_entry_row = &rows[14];
     assert!(
         last_entry_row.contains("\u{2193}"),
         "last entry row should contain ↓, got: {last_entry_row}"
@@ -386,8 +394,8 @@ fn render_shows_up_arrow_when_entries_hidden_above() {
     };
     let rows = render_rows(&mut section, &state, 30, 20);
 
-    // Then the ↑ indicator appears on the first visible entry row (row 2).
-    let first_entry_row = &rows[2];
+    // Then the ↑ indicator appears on the first visible entry row (row 0).
+    let first_entry_row = &rows[0];
     assert!(
         first_entry_row.contains("\u{2191}"),
         "first entry row should contain ↑, got: {first_entry_row}"
@@ -406,8 +414,8 @@ fn render_shows_both_arrows_when_viewport_in_middle() {
     let rows = render_rows(&mut section, &state, 30, 20);
 
     // Then both indicators appear.
-    let first_entry_row = &rows[2];
-    let last_entry_row = &rows[16];
+    let first_entry_row = &rows[0];
+    let last_entry_row = &rows[14];
     assert!(
         first_entry_row.contains("\u{2191}"),
         "first entry row should contain ↑, got: {first_entry_row}"
@@ -449,9 +457,10 @@ fn render_arrow_has_inverted_colors() {
         })
         .unwrap();
 
-    // Then the ↓ indicator on row 16 has fg=Black, bg=LightGreen.
+    // Then the ↓ indicator on row 14 has fg=Black, bg=LightGreen.
+    // Row layout: 0..14=entries (15), 15=footer.
     let buffer = terminal.backend().buffer();
-    let arrow_cell = buffer.cell((29, 16)).expect("cell should exist");
+    let arrow_cell = buffer.cell((29, 14)).expect("cell should exist");
     assert_eq!(arrow_cell.symbol(), "\u{2193}");
     assert_eq!(arrow_cell.style().fg, Some(Color::Black));
     assert_eq!(arrow_cell.style().bg, Some(Color::LightGreen));
@@ -605,10 +614,10 @@ fn render_session_title_is_red_when_last_entry_is_error() {
         })
         .unwrap();
 
-    // Then the title text on row 2 (first entry row) has red foreground.
+    // Then the title text on row 0 (first entry row) has red foreground.
     let buffer = terminal.backend().buffer();
     // The title starts after indicator(1) + space(1) + prefix(2) = column 4.
-    let title_cell = buffer.cell((4, 2)).expect("title cell should exist");
+    let title_cell = buffer.cell((4, 0)).expect("title cell should exist");
     assert_eq!(title_cell.style().fg, Some(Color::Red));
 }
 
@@ -631,9 +640,9 @@ fn render_session_title_is_normal_when_last_entry_is_not_error() {
         })
         .unwrap();
 
-    // Then the title text on row 2 has the primary_text color (active session).
+    // Then the title text on row 0 has the primary_text color (active session).
     let buffer = terminal.backend().buffer();
-    let title_cell = buffer.cell((4, 2)).expect("title cell should exist");
+    let title_cell = buffer.cell((4, 0)).expect("title cell should exist");
     assert_eq!(title_cell.style().fg, Some(primary_text));
 }
 

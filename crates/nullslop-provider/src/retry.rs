@@ -44,9 +44,6 @@ pub struct RetryConfig {
     /// Maximum delay cap for exponential backoff.
     /// Overridden by provider-supplied hints (Retry-After / error body).
     pub max_delay: Duration,
-    /// Jitter amount as a fraction (0.0 to 1.0) of the computed delay.
-    /// A value of 0.0 means no jitter; 1.0 means full jitter.
-    pub jitter_fraction: f64,
 }
 
 impl Default for RetryConfig {
@@ -55,7 +52,6 @@ impl Default for RetryConfig {
             max_retries: 5,
             base_delay: Duration::from_secs(2),
             max_delay: Duration::from_secs(60),
-            jitter_fraction: 0.5,
         }
     }
 }
@@ -111,14 +107,11 @@ impl RetryingLlmService {
         let exponential = base_secs * 2_f64.powi(i32::try_from(attempt).unwrap_or(i32::MAX));
         let capped = exponential.min(self.config.max_delay.as_secs_f64());
 
-        // Apply jitter: subtract a random fraction of jitter_fraction * capped
-        let jitter_range = capped * self.config.jitter_fraction;
-        let jitter = if jitter_range > 0.0 {
-            rand::random_range(0.0..jitter_range)
-        } else {
-            0.0
-        };
-        let final_delay = (capped - jitter).max(0.0);
+        // AWS full jitter: random value in [0, capped]
+        if capped <= 0.0 {
+            return Some(Duration::ZERO);
+        }
+        let final_delay = rand::random_range(0.0..capped);
 
         Some(Duration::from_secs_f64(final_delay))
     }
@@ -279,7 +272,6 @@ mod tests {
                 max_retries: 5,
                 base_delay: Duration::from_millis(1),
                 max_delay: Duration::from_millis(10),
-                jitter_fraction: 0.0,
             },
             Box::new(callback),
         );
@@ -306,7 +298,6 @@ mod tests {
                 max_retries: 3,
                 base_delay: Duration::from_millis(1),
                 max_delay: Duration::from_millis(10),
-                jitter_fraction: 0.0,
             },
             Box::new(callback),
         );
@@ -332,7 +323,6 @@ mod tests {
                 max_retries: 5,
                 base_delay: Duration::from_millis(1),
                 max_delay: Duration::from_millis(10),
-                jitter_fraction: 0.0,
             },
             Box::new(callback),
         );
@@ -363,7 +353,6 @@ mod tests {
                 max_retries: 5,
                 base_delay: Duration::from_millis(1),
                 max_delay: Duration::from_millis(10),
-                jitter_fraction: 0.0,
             },
             Box::new(callback),
         );
@@ -396,7 +385,6 @@ mod tests {
                 max_retries: 5,
                 base_delay: Duration::from_millis(1),
                 max_delay: Duration::from_millis(50),
-                jitter_fraction: 0.0,
             },
             Box::new(callback),
         );
@@ -422,7 +410,6 @@ mod tests {
                 max_retries: 0,
                 base_delay: Duration::from_millis(1),
                 max_delay: Duration::from_millis(10),
-                jitter_fraction: 0.0,
             },
             Box::new(callback),
         );
@@ -437,33 +424,33 @@ mod tests {
     }
 
     #[test]
-    fn backoff_doubles_each_attempt() {
+    fn full_jitter_delays_are_within_expected_range() {
+        // Given a retry config with base_delay=2s, max_delay=60s.
         let svc = RetryingLlmService::new(
             Box::new(FlakyService::new(0, LlmServiceError::Retryable)),
             RetryConfig {
                 max_retries: 5,
                 base_delay: Duration::from_secs(2),
                 max_delay: Duration::from_secs(60),
-                jitter_fraction: 0.0,
             },
             Box::new(NoOpOnRetry),
         );
 
-        // Attempt 0: 2 * 2^0 = 2s
-        let d0 = svc.compute_delay(0, &Report::new(LlmServiceError::Retryable));
-        assert_eq!(d0, Some(Duration::from_secs(2)));
-
-        // Attempt 1: 2 * 2^1 = 4s
-        let d1 = svc.compute_delay(1, &Report::new(LlmServiceError::Retryable));
-        assert_eq!(d1, Some(Duration::from_secs(4)));
-
-        // Attempt 2: 2 * 2^2 = 8s
-        let d2 = svc.compute_delay(2, &Report::new(LlmServiceError::Retryable));
-        assert_eq!(d2, Some(Duration::from_secs(8)));
-
-        // Attempt 5: 2 * 2^5 = 64, capped at 60s
-        let d5 = svc.compute_delay(5, &Report::new(LlmServiceError::Retryable));
-        assert_eq!(d5, Some(Duration::from_secs(60)));
+        // When sampling many delays for each attempt.
+        // Then all delays fall within [0, min(base*2^attempt, max_delay)].
+        for attempt in 0..6u32 {
+            let upper_secs = (2u64.pow(attempt) * 2).min(60);
+            let upper = Duration::from_secs(upper_secs);
+            for _ in 0..200 {
+                let delay = svc
+                    .compute_delay(attempt, &Report::new(LlmServiceError::Retryable))
+                    .expect("should return Some for Retryable");
+                assert!(
+                    delay <= upper,
+                    "attempt {attempt}: delay {delay:?} exceeds upper bound {upper:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -492,7 +479,6 @@ mod tests {
                 max_retries: 5,
                 base_delay: Duration::from_secs(2),
                 max_delay: Duration::from_secs(10),
-                jitter_fraction: 0.0,
             },
             Box::new(NoOpOnRetry),
         );
@@ -505,5 +491,139 @@ mod tests {
         );
         // Provider hint overrides max_delay.
         assert_eq!(d, Some(Duration::from_secs(100)));
+    }
+
+    #[test]
+    fn full_jitter_delay_respects_max_delay_cap() {
+        // Given a retry config with max_delay=1s (much lower than exponential would produce).
+        let svc = RetryingLlmService::new(
+            Box::new(FlakyService::new(0, LlmServiceError::Retryable)),
+            RetryConfig {
+                max_retries: 5,
+                base_delay: Duration::from_secs(10),
+                max_delay: Duration::from_secs(1),
+            },
+            Box::new(NoOpOnRetry),
+        );
+
+        // When sampling delays for high attempts.
+        // Then all delays are capped at max_delay.
+        let cap = Duration::from_secs(1);
+        for attempt in 0..10u32 {
+            for _ in 0..200 {
+                let delay = svc
+                    .compute_delay(attempt, &Report::new(LlmServiceError::Retryable))
+                    .expect("should return Some");
+                assert!(
+                    delay <= cap,
+                    "attempt {attempt}: delay {delay:?} exceeds max_delay cap {cap:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn full_jitter_rate_limited_without_hint_uses_exponential() {
+        // Given a retry config with base_delay=2s, max_delay=60s.
+        let svc = RetryingLlmService::new(
+            Box::new(FlakyService::new(0, LlmServiceError::Retryable)),
+            RetryConfig {
+                max_retries: 5,
+                base_delay: Duration::from_secs(2),
+                max_delay: Duration::from_secs(60),
+            },
+            Box::new(NoOpOnRetry),
+        );
+
+        // When computing delay for RateLimited without a hint.
+        // Then the delay falls within the exponential range [0, base*2^attempt].
+        for attempt in 0..5u32 {
+            let upper_secs = 2u64.pow(attempt) * 2;
+            let upper = Duration::from_secs(upper_secs);
+            for _ in 0..200 {
+                let delay = svc
+                    .compute_delay(
+                        attempt,
+                        &Report::new(LlmServiceError::RateLimited { retry_after: None }),
+                    )
+                    .expect("should return Some for RateLimited");
+                assert!(
+                    delay <= upper,
+                    "attempt {attempt}: delay {delay:?} exceeds exponential bound {upper:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn full_jitter_distribution_has_expected_mean() {
+        // Given a retry config with base_delay=2s.
+        let svc = RetryingLlmService::new(
+            Box::new(FlakyService::new(0, LlmServiceError::Retryable)),
+            RetryConfig {
+                max_retries: 5,
+                base_delay: Duration::from_secs(2),
+                max_delay: Duration::from_secs(60),
+            },
+            Box::new(NoOpOnRetry),
+        );
+
+        // When sampling 1000 delays for attempt 3 (target = 2 * 2^3 = 16s).
+        // Then the mean is approximately target/2 = 8s (within ±20%).
+        let target_secs = 16.0;
+        let expected_mean = target_secs / 2.0;
+        let sample_count = 1000;
+        let mut sum = 0.0;
+        for _ in 0..sample_count {
+            let delay = svc
+                .compute_delay(3, &Report::new(LlmServiceError::Retryable))
+                .expect("should return Some");
+            sum += delay.as_secs_f64();
+        }
+        let mean = sum / f64::from(sample_count);
+        let tolerance = expected_mean * 0.2;
+        assert!(
+            (mean - expected_mean).abs() < tolerance,
+            "mean {mean:.2}s is outside expected range [{:.2}s, {:.2}s]",
+            expected_mean - tolerance,
+            expected_mean + tolerance
+        );
+    }
+
+    #[test]
+    fn full_jitter_all_attempts_within_bounds() {
+        // Given a retry config with base_delay=2s, max_delay=60s.
+        let svc = RetryingLlmService::new(
+            Box::new(FlakyService::new(0, LlmServiceError::Retryable)),
+            RetryConfig {
+                max_retries: 5,
+                base_delay: Duration::from_secs(2),
+                max_delay: Duration::from_secs(60),
+            },
+            Box::new(NoOpOnRetry),
+        );
+
+        // When sampling 200 delays for each attempt 0–5.
+        // Then every delay is within [0, min(base*2^attempt, max_delay)].
+        let cases = [
+            (0u32, 2u64),  // 2 * 2^0 = 2
+            (1u32, 4u64),  // 2 * 2^1 = 4
+            (2u32, 8u64),  // 2 * 2^2 = 8
+            (3u32, 16u64), // 2 * 2^3 = 16
+            (4u32, 32u64), // 2 * 2^4 = 32
+            (5u32, 60u64), // 2 * 2^5 = 64, capped at 60
+        ];
+        for (attempt, upper_secs) in cases {
+            let upper = Duration::from_secs(upper_secs);
+            for _ in 0..200 {
+                let delay = svc
+                    .compute_delay(attempt, &Report::new(LlmServiceError::Retryable))
+                    .expect("should return Some");
+                assert!(
+                    delay <= upper,
+                    "attempt {attempt}: delay {delay:?} exceeds bound {upper:?}"
+                );
+            }
+        }
     }
 }

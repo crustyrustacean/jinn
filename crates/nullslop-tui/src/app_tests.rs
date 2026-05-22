@@ -9,8 +9,7 @@ use std::sync::Arc;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use nullslop_domain::feat::ui::sidebar::Sidebar;
 use nullslop_domain::{
-    ActorHostService, AppCore, AppState, AppUiRegistry, FakeActorHost, Intent, PickerKind,
-    Services, State,
+    ActorHostService, AppCore, AppState, AppUiRegistry, FakeActorHost, Services, State,
 };
 use ratatui::layout::Rect;
 
@@ -61,7 +60,6 @@ fn test_app() -> TuiApp {
 #[case::sidebar(nullslop_domain::FocusScope::SidebarPersona, Scope::SidebarPersona)]
 #[case::input(nullslop_domain::FocusScope::Input, Scope::Input)]
 #[case::picker_provider(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, Scope::PickerProvider)]
-#[case::picker_keymap(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Keymap }, Scope::PickerKeymap)]
 #[case::sidebar_resize(nullslop_domain::FocusScope::SidebarResize, Scope::SidebarResize)]
 fn scope_for_focus_maps_correctly(
     #[case] focus: nullslop_domain::FocusScope,
@@ -260,149 +258,4 @@ fn mouse_events_not_handled_when_mouse_selection_disabled() {
 
     // Then the selection remains Idle (event was not handled).
     assert_eq!(app.selection, SelectionState::Idle);
-}
-
-// --- Keymap scope toggle tests ---
-
-#[rstest::rstest]
-fn toggle_scope_filter_to_current_scope_limits_to_origin_scope() {
-    // Given an app in Normal scope with keymap picker entries (default is show_all=true).
-    let mut app = test_app();
-    app.which_key.set_scope(Scope::Normal);
-
-    app.route_intent(Intent::OpenPicker {
-        kind: PickerKind::Keymap,
-    });
-
-    // When toggling the scope filter (true -> false).
-    app.route_intent(Intent::ToggleKeymapScopeFilter);
-
-    // Then show_all is false and entries are Normal-scope only (the origin scope).
-    {
-        let state = app.core.state.read();
-        assert!(
-            !state.frontend.keymap_picker_show_all,
-            "should be false after toggle"
-        );
-        let scope_entries = state.frontend.keymap_picker.items();
-        assert!(!scope_entries.is_empty(), "should have Normal entries");
-        for entry in scope_entries {
-            assert_eq!(
-                entry.scope, "Normal",
-                "all entries should be Normal scope (origin), got: {}",
-                entry.scope
-            );
-        }
-    }
-}
-
-#[rstest::rstest]
-fn toggle_scope_filter_back_to_all_includes_multiple_scopes() {
-    // Given an app in Normal scope with keymap picker entries.
-    let mut app = test_app();
-    app.which_key.set_scope(Scope::Normal);
-
-    app.route_intent(Intent::OpenPicker {
-        kind: PickerKind::Keymap,
-    });
-
-    // When toggling twice (true -> false -> true).
-    app.route_intent(Intent::ToggleKeymapScopeFilter);
-    app.route_intent(Intent::ToggleKeymapScopeFilter);
-
-    // Then show_all is true and entries include multiple scopes.
-    {
-        let state = app.core.state.read();
-        assert!(
-            state.frontend.keymap_picker_show_all,
-            "should be true after second toggle"
-        );
-        let all_entries = state.frontend.keymap_picker.items();
-        assert!(!all_entries.is_empty(), "should have entries");
-        let scopes: std::collections::HashSet<&str> =
-            all_entries.iter().map(|e| e.scope.as_str()).collect();
-        assert!(
-            scopes.len() > 1,
-            "all scopes should include multiple scopes, got: {scopes:?}"
-        );
-    }
-}
-
-#[rstest::rstest]
-fn toggle_keymap_scope_filter_preserves_filter_text() {
-    // Given an app with keymap picker open and filter text entered.
-    let mut app = test_app();
-    app.which_key.set_scope(Scope::Normal);
-
-    // Populate initial entries (stores origin scope).
-    app.route_intent(Intent::OpenPicker {
-        kind: PickerKind::Keymap,
-    });
-
-    // Insert filter text.
-    {
-        let mut state = app.core.state.write();
-        state.frontend.keymap_picker.insert_char('q');
-    }
-
-    // When toggling the scope filter.
-    app.route_intent(Intent::ToggleKeymapScopeFilter);
-
-    // Then the filter text is preserved.
-    let state = app.core.state.read();
-    assert_eq!(
-        state.frontend.keymap_picker.filter(),
-        "q",
-        "filter text should be preserved after toggle"
-    );
-}
-
-#[rstest::rstest]
-fn keymap_picker_defaults_to_all_on_open() {
-    // Given an app in Normal scope.
-    let mut app = test_app();
-    app.which_key.set_scope(Scope::Normal);
-
-    // When opening the keymap picker.
-    app.route_intent(Intent::OpenPicker {
-        kind: PickerKind::Keymap,
-    });
-
-    // Then show_all is true by default.
-    let state = app.core.state.read();
-    assert!(
-        state.frontend.keymap_picker_show_all,
-        "should default to show_all=true"
-    );
-}
-
-#[rstest::rstest]
-fn toggle_keymap_scope_filter_noop_in_non_keymap_picker() {
-    // Given an app with the provider picker open and keymap state populated.
-    let mut app = test_app();
-    app.which_key.set_scope(Scope::Normal);
-
-    // Populate keymap entries and set show_all to false (simulating a previous toggle).
-    {
-        let mut state = app.core.state.write();
-        state.frontend.keymap_picker_show_all = false;
-        // Push provider picker onto scope stack.
-        state
-            .frontend
-            .scope_stack
-            .push(nullslop_domain::FocusScope::Picker {
-                kind: PickerKind::Provider,
-            });
-    }
-    app.which_key.set_scope(Scope::PickerProvider);
-
-    // When handling ToggleKeymapScopeFilter in a non-keymap picker.
-    app.route_intent(Intent::ToggleKeymapScopeFilter);
-
-    // Then keymap_picker_show_all is unchanged (still false).
-    let state = app.core.state.read();
-    assert!(
-        !state.frontend.keymap_picker_show_all,
-        "should remain unchanged when picker is not Keymap"
-    );
 }

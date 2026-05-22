@@ -89,11 +89,112 @@ fn selected_entry_gutter_is_yellow() {
     let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
     assert_eq!(gutter_cell.style().fg, Some(Color::Yellow));
 
-    // And the unselected entry's gutter has dark gray fg.
+    // And the unselected entry's gutter has the context included color (not ignored).
     let unselected_gutter = buffer.cell((0, 8)).expect("cell should exist");
     assert_eq!(
         unselected_gutter.style().fg,
+        Some(crate::feat::theme::default_theme().gutter_context_included)
+    );
+}
+
+#[rstest::rstest]
+fn unselected_not_ignored_entry_shows_context_color() {
+    // Given a ChatLogElement with 2 entries, second selected, first not ignored.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = AppState::default();
+        s.active_session_mut().push_entry(ChatEntry::user("hello"));
+        s.active_session_mut().push_entry(ChatEntry::user("world"));
+        // push_entry auto-selects last (index 1). Entry 0 is unselected, not ignored.
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then the unselected, not-ignored entry's gutter has the context included color.
+    // 2 entries × 3 lines = 6, 4 blank above. Entry 0 at rows 4-6.
+    let buffer = terminal.backend().buffer().clone();
+    let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
+    assert_eq!(
+        gutter_cell.style().fg,
+        Some(crate::feat::theme::default_theme().gutter_context_included)
+    );
+}
+
+#[rstest::rstest]
+fn unselected_ignored_entry_shows_gray() {
+    // Given a ChatLogElement with 2 entries, first ignored, second selected.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = AppState::default();
+        s.active_session_mut()
+            .push_entry(ChatEntry::user("hello").with_ignored(true));
+        s.active_session_mut().push_entry(ChatEntry::user("world"));
+        // push_entry auto-selects last (index 1). Entry 0 is unselected, ignored.
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then the unselected, ignored entry's gutter has the border_unfocused color.
+    // 2 entries × 3 lines = 6, 4 blank above. Entry 0 at rows 4-6.
+    let buffer = terminal.backend().buffer().clone();
+    let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
+    assert_eq!(
+        gutter_cell.style().fg,
         Some(crate::feat::theme::default_theme().border_unfocused)
+    );
+}
+
+#[rstest::rstest]
+fn unselected_ignored_pinned_entry_shows_context_color() {
+    // Given a ChatLogElement with 2 entries: first ignored+pinned, second selected.
+    let mut element = ChatLogElement::new();
+    let state = {
+        let mut s = AppState::default();
+        s.active_session_mut().push_entry(
+            ChatEntry::user("hello")
+                .with_ignored(true)
+                .with_pin(PinPosition::Top),
+        );
+        s.active_session_mut().push_entry(ChatEntry::user("world"));
+        // push_entry auto-selects last (index 1). Entry 0 is unselected, ignored but pinned.
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 10);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then the unselected, ignored+pinned entry's gutter shows the context included color
+    // (effective inclusion: pinned overrides ignored).
+    // 2 entries × 3 lines = 6, 4 blank above. Entry 0 at rows 4-6.
+    let buffer = terminal.backend().buffer().clone();
+    // The pin icon is on the first line (row 4), but the gutter character on row 5 also shows
+    // the context color (non-pin lines use gutter_style, not pin_highlight_style).
+    let gutter_cell = buffer.cell((0, 5)).expect("cell should exist");
+    assert_eq!(
+        gutter_cell.style().fg,
+        Some(crate::feat::theme::default_theme().gutter_context_included)
     );
 }
 
