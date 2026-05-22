@@ -9,8 +9,7 @@ use std::sync::Arc;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use nullslop_domain::feat::ui::sidebar::Sidebar;
 use nullslop_domain::{
-    ActorHostService, AppCore, AppState, AppUiRegistry, FakeActorHost, Intent,
-    Services, State,
+    ActorHostService, AppCore, AppState, AppUiRegistry, FakeActorHost, Services, State,
 };
 use ratatui::layout::Rect;
 
@@ -260,4 +259,3 @@ fn mouse_events_not_handled_when_mouse_selection_disabled() {
     // Then the selection remains Idle (event was not handled).
     assert_eq!(app.selection, SelectionState::Idle);
 }
-

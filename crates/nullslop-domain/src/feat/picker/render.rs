@@ -4,8 +4,8 @@ use crate::common::app_state::AppState;
 use nullslop_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::text::Line;
 use ratatui::style::Style;
+use ratatui::text::Line;
 
 /// Renders the persona picker overlay using [`SelectionWidget`].
 ///

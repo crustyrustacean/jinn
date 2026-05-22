@@ -274,5 +274,3 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         }
     })
 }
-
-
