@@ -198,11 +198,17 @@ impl App {
             }
             Commands::Bench { subcommand } => match subcommand {
                 BenchCommands::Run {
-                    model: _,
-                    task: _,
-                    headless: _,
+                    db_path,
+                    model: _model,
+                    task: _task,
+                    headless: _headless,
                     csv,
                 } => {
+                    // Ensure the db_path directory exists.
+                    std::fs::create_dir_all(&db_path)
+                        .change_context(AppError)
+                        .attach("failed to create bench database directory")?;
+
                     let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
                         &self.handle(),
                         llm_service,
@@ -210,7 +216,8 @@ impl App {
                         resolved_api_keys,
                         config_storage,
                         SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::new().expect("failed to create session store"),
+                            SqliteSessionStore::new_in(&db_path)
+                                .expect("failed to create bench session store"),
                         )),
                         UserPreferencesStorageService::new(Arc::new(
                             FilesystemUserPreferencesStorage::default_path(),
@@ -225,7 +232,7 @@ impl App {
                     );
                     load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
-                    // TODO: Create bench sessions for each task/model pair.
+                    // TODO: Create bench sessions for each task/model pair (Phase 3).
                     // For now, just launch the TUI with the bench actor active.
                     let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
                     let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
