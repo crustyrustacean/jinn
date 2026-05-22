@@ -27,9 +27,6 @@ pub fn validate_picker_move_cursor_left(_state: &AppState) {}
 /// Validates the PickerMoveCursorRight intent.
 pub fn validate_picker_move_cursor_right(_state: &AppState) {}
 
-/// Validates the ToggleKeymapScopeFilter intent.
-pub fn validate_toggle_keymap_scope_filter(_state: &AppState) {}
-
 // --- Fallible validators ---
 
 /// Errors from validating a PickerConfirm intent.
@@ -59,7 +56,6 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
 
     let has_selection = match kind {
         PickerKind::Provider => state.provider.provider_picker.selected_item().is_some(),
-        PickerKind::Keymap => state.frontend.keymap_picker.selected_item().is_some(),
         PickerKind::Session => state.frontend.session_picker.selected_item().is_some(),
         PickerKind::Persona => state.frontend.persona_picker.selected_item().is_some(),
         PickerKind::Theme => state.frontend.theme_picker.selected_item().is_some(),

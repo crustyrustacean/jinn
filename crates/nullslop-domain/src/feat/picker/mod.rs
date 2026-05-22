@@ -1,12 +1,10 @@
-//! Picker — fuzzy search picker for providers, strategies, keymaps, and sessions.
+//! Picker — fuzzy search picker for providers, strategies, and sessions.
 //!
 //! Handles all picker intents (open, insert char, backspace, confirm, move,
-//! cursor movement, toggle scope filter), their validators, and rendering.
+//! cursor movement), their validators, and rendering.
 
 pub mod intent;
 
-pub mod keymap_entries;
-pub mod keymap_entry;
 pub mod picker_kind;
 pub mod render;
 

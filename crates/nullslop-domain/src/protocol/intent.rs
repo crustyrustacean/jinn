@@ -102,8 +102,6 @@ pub enum Intent {
     PickerMoveCursorLeft,
     /// Move the picker filter cursor right.
     PickerMoveCursorRight,
-    /// Toggle the keymap picker scope filter.
-    ToggleKeymapScopeFilter,
     /// Create a new session.
     SessionNew,
     /// Refresh the model list from all providers.
@@ -234,7 +232,6 @@ impl std::fmt::Display for Intent {
             Intent::PickerMoveDown => write!(f, "picker move down"),
             Intent::PickerMoveCursorLeft => write!(f, "picker cursor left"),
             Intent::PickerMoveCursorRight => write!(f, "picker cursor right"),
-            Intent::ToggleKeymapScopeFilter => write!(f, "toggle keymap scope filter"),
             Intent::SessionNew => write!(f, "session new"),
             Intent::RefreshModels => write!(f, "refresh models"),
             Intent::RescanPromptTemplates => write!(f, "rescan prompt templates"),

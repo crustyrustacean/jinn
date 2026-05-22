@@ -374,6 +374,7 @@ impl<'a> HistoryRender<'a> {
 
             // Build gutter lines for this entry (delegates to gutter submodule).
             let is_pinned = entry.pin_position.is_some();
+            let is_included_in_context = !entry.ignored || entry.pin_position.is_some();
             let gutter_ctx = gutter::GutterStyle {
                 is_pinned,
                 is_selected,
@@ -383,6 +384,8 @@ impl<'a> HistoryRender<'a> {
                 gutter_active_color,
                 gutter_inactive_color,
                 gutter_str: GUTTER_STR,
+                is_included_in_context,
+                gutter_context_color: self.theme.gutter_context_included,
             };
             let entry_gutter_lines =
                 gutter::build_entry_gutter_lines(&entry_content_lines, &gutter_ctx);
