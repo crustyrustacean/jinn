@@ -15,3 +15,4 @@ pkg
 .kilo
 .opencode
 .git-fossil-marks
+bench-results.csv
