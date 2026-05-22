@@ -330,8 +330,12 @@ fn load_lifecycle_picker_entries(state: &mut AppState) {
     // Add lifecycles from preferences.
     for lifecycle in &state.frontend.preferences.session_lifecycles {
         let has_args = lifecycle
-            .setup_command
+            .setup
             .as_ref()
+            .and_then(|cmd| match cmd {
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(s) => Some(s.as_str()),
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => None,
+            })
             .is_some_and(|cmd| CommandTemplate::parse(cmd).has_params());
         entries.push(SessionLifecycleEntry {
             name: lifecycle.name.clone(),
@@ -365,7 +369,11 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
             .session_lifecycles
             .iter()
             .find(|l| l.name == lifecycle_name)
-            .and_then(|l| l.setup_command.as_ref())
+            .and_then(|l| l.setup.as_ref())
+            .and_then(|cmd| match cmd {
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(s) => Some(s.as_str()),
+                crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => None,
+            })
             .map(|cmd| {
                 crate::feat::session_lifecycle::command_template::CommandTemplate::parse(cmd)
                     .display()

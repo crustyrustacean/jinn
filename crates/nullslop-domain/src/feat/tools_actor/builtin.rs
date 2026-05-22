@@ -11,10 +11,10 @@ use super::{
 };
 
 /// A built-in tool entry: its definition paired with its execute function.
-pub(super) type BuiltinToolEntry = (ToolDefinition, fn(ToolCall, ToolContext) -> BoxedToolFuture);
+pub type BuiltinToolEntry = (ToolDefinition, fn(ToolCall, ToolContext) -> BoxedToolFuture);
 
 /// Returns the built-in tool definitions and their execute functions.
-pub(super) fn builtin_tools() -> Vec<BuiltinToolEntry> {
+pub fn builtin_tools() -> Vec<BuiltinToolEntry> {
     vec![
         (
             builtin_get_time::definition(),

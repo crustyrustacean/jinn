@@ -59,7 +59,11 @@ pub fn arg_input_popup_rect(area: Rect, state: &AppState) -> Rect {
         .session_lifecycles
         .iter()
         .find(|l| l.name == arg_state.lifecycle_name)
-        .and_then(|l| l.setup_command.as_ref())
+        .and_then(|l| l.setup.as_ref())
+        .and_then(|cmd| match cmd {
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(s) => Some(s.as_str()),
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => None,
+        })
         .map_or(1, |cmd| {
             let template = CommandTemplate::parse(cmd);
             let display_args: Vec<String> = split_preserving_quotes(&arg_state.input);
@@ -99,7 +103,11 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .session_lifecycles
         .iter()
         .find(|l| l.name == arg_state.lifecycle_name)
-        .and_then(|l| l.setup_command.as_ref())
+        .and_then(|l| l.setup.as_ref())
+        .and_then(|cmd| match cmd {
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(s) => Some(s.as_str()),
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => None,
+        })
         .map(|cmd| CommandTemplate::parse(cmd));
 
     let theme = &state.frontend.theme;
@@ -223,7 +231,7 @@ mod tests {
 
     fn make_state_with_args(
         lifecycle_name: &str,
-        setup_command: Option<&str>,
+        setup_cmd: Option<&str>,
         input: &str,
         cursor_pos: usize,
     ) -> AppState {
@@ -234,7 +242,7 @@ mod tests {
             input: input.to_owned(),
             cursor_pos,
         };
-        if let Some(cmd) = setup_command {
+        if let Some(cmd) = setup_cmd {
             state
                 .frontend
                 .preferences
@@ -242,8 +250,8 @@ mod tests {
                 .push(SessionLifecycle {
                     name: lifecycle_name.to_owned(),
                     description: None,
-                    setup_command: Some(cmd.to_owned()),
-                    teardown_command: None,
+                    setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(cmd.to_owned())),
+                    teardown: None,
                 });
         }
         state
