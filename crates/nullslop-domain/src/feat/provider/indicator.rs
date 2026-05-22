@@ -65,7 +65,7 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         let is_phase_busy = matches!(
             phase,
-            SessionPhase::Sending | SessionPhase::Streaming | SessionPhase::Compacting
+            SessionPhase::Sending | SessionPhase::Streaming | SessionPhase::Compacting | SessionPhase::TearingDown
         );
         if !is_lifecycle_busy && !is_phase_busy {
             return;
@@ -75,6 +75,8 @@ impl UiElement<AppState> for StreamingIndicatorElement {
             " Working...".to_owned()
         } else if matches!(phase, SessionPhase::Compacting) {
             " Compacting...".to_owned()
+        } else if matches!(phase, SessionPhase::TearingDown) {
+            " Tearing down...".to_owned()
         } else if queue_len > 0 {
             format!(" Working... ({queue_len} queued)")
         } else {
