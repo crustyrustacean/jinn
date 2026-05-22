@@ -20,7 +20,7 @@ use crate::feat::chat_input::protocol::command::{
 use crate::feat::compaction_actor::protocol::command::{
     BeginCompaction, CancelCompaction, CompactContext, EndCompaction, EnqueueCompaction,
 };
-use crate::feat::context::protocol::command::{AssemblePrompt, LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry};
+use crate::feat::context::protocol::command::{LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry};
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::provider::protocol::command::{
     CancelStream, LoadProviderPickerEntries, ProviderSwitch, RefreshModels, RescanPromptTemplates,
@@ -67,8 +67,6 @@ pub enum Command {
     CancelStream(CancelStream),
     /// Switch the active LLM provider.
     ProviderSwitch(ProviderSwitch),
-    /// Send conversation context to the LLM provider.
-    AssemblePrompt(AssemblePrompt),
     /// Send conversation context to the LLM provider.
     SendToLlmProvider(SendToLlmProvider),
     /// Refresh the model list from all providers.
@@ -142,7 +140,7 @@ impl Command {
             Self::PushChatEntry(..) => Some(PushChatEntry::NAME),
             Self::CancelStream(..) => Some(CancelStream::NAME),
             Self::ProviderSwitch(..) => Some(ProviderSwitch::NAME),
-            Self::AssemblePrompt(..) => Some(AssemblePrompt::NAME),
+
             Self::SendToLlmProvider(..) => Some(SendToLlmProvider::NAME),
             Self::RefreshModels => Some(RefreshModels::NAME),
             Self::RescanPromptTemplates => Some(RescanPromptTemplates::NAME),
@@ -199,7 +197,7 @@ impl std::fmt::Display for Command {
             Command::ProviderSwitch(payload) => {
                 write!(f, "provider switch to '{}'", payload.provider_id)
             }
-            Command::AssemblePrompt(..) => write!(f, "assemble prompt"),
+
             Command::SendToLlmProvider(..) => write!(f, "send to LLM provider"),
             Command::RefreshModels => write!(f, "refresh models"),
             Command::RescanPromptTemplates => write!(f, "rescan prompt templates"),

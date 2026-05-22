@@ -101,7 +101,7 @@ pub type SessionState = SessionMap;
 
 /// Context assembly state — owned by the context-actor.
 ///
-/// Written to exclusively by `PromptAssemblyActor` and `IntentHandler`.
+/// Written to exclusively by `SessionActor` and `IntentHandler`.
 /// No other actor should mutate these fields.
 #[derive(Debug)]
 pub struct ContextAssemblyState {

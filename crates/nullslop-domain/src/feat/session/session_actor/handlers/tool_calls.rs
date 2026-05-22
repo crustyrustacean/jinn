@@ -101,7 +101,7 @@ impl SessionPersistenceActor {
     /// By this point, the session history already contains `ToolCall`,
     /// `ToolResult`, and `Assistant` entries from earlier event handlers,
     /// and the session is already in sending state (set by `on_stream_completed`
-    /// for the `ToolUse` reason). We just need to emit `AssemblePrompt` with
+    /// for the `ToolUse` reason). We just need to assemble the prompt via
     /// the full session history.
     pub(in crate::feat::session::session_actor) fn on_tool_batch_completed(
         &self,
@@ -122,7 +122,7 @@ impl SessionPersistenceActor {
         };
 
         if soft_cancelled {
-            // Soft cancel: don't emit AssemblePrompt. Session is already in
+            // Soft cancel: don't assemble prompt. Session is already in
             // Sending phase; it will return to Idle when the QueueActor sees
             // the SessionPhaseChanged event. But we need to explicitly end the
             // turn — finish sending and go to Idle.
