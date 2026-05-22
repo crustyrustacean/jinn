@@ -135,24 +135,27 @@ impl SidebarSection for SessionsSection {
             }
         }
 
-        // Footer: ╰─── Sessions ───╯
+        // Footer: ╰─── Sessions ───╯ (with highlighted S)
         let label = " Sessions ";
         let width = area.width as usize;
         let label_len = label.len();
         let dash_budget = width.saturating_sub(2).saturating_sub(label_len);
         let left_dashes = dash_budget / 2;
         let right_dashes = dash_budget - left_dashes;
-        let footer = format!(
-            "\u{2570}{}{}{}\u{256F}",
+        let before_s = format!(
+            "\u{2570}{}\u{0020}",
             "\u{2500}".repeat(left_dashes),
-            label,
+        );
+        let after_s = format!(
+            "essions {}\u{256F}",
             "\u{2500}".repeat(right_dashes),
         );
 
-        lines.push(Line::from(Span::styled(
-            footer,
-            Style::default().fg(theme.primary_text),
-        )));
+        lines.push(Line::from(vec![
+            Span::styled(before_s, Style::default().fg(theme.primary_text)),
+            Span::styled("S".to_owned(), Style::default().fg(theme.accent_action)),
+            Span::styled(after_s, Style::default().fg(theme.primary_text)),
+        ]));
 
         let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
         frame.render_widget(widget, area);

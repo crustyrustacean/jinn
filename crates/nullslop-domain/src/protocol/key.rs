@@ -50,6 +50,12 @@ impl ratatui_which_key::Key for KeyEvent {
             return format!("<C-{}>", c.to_ascii_lowercase());
         }
 
+        if self.modifiers.alt
+            && let Key::Char(c) = self.key
+        {
+            return format!("<M-{}>", c.to_ascii_lowercase());
+        }
+
         let base = match self.key {
             Key::Char(' ') => "Space".to_owned(),
             Key::Char(c) => c.to_string(),
@@ -69,10 +75,11 @@ impl ratatui_which_key::Key for KeyEvent {
             Key::F(n) => format!("F{n}"),
         };
 
-        match (self.modifiers.shift, self.modifiers.ctrl) {
-            (true, false) => format!("S-{base}"),
-            (false, true) => format!("C-{base}"),
-            (true, true) => format!("C-S-{base}"),
+        match (self.modifiers.shift, self.modifiers.ctrl, self.modifiers.alt) {
+            (true, false, false) => format!("S-{base}"),
+            (false, true, false) => format!("C-{base}"),
+            (true, true, false) => format!("C-S-{base}"),
+            (false, false, true) => format!("M-{base}"),
             _ => base,
         }
     }
@@ -103,7 +110,7 @@ impl ratatui_which_key::Key for KeyEvent {
 impl KeyEvent {
     /// Parse a key notation string into a `KeyEvent`.
     ///
-    /// Supports modifier-prefixed forms: `c-` for Ctrl and `s-` for Shift.
+    /// Supports modifier-prefixed forms: `c-` for Ctrl, `s-` for Shift, `m-` for Meta/Alt.
     /// Modifiers apply to both named keys and single characters.
     ///
     /// Named keys: `"tab"`, `"enter"`, `"escape"`, arrow keys,
@@ -125,6 +132,8 @@ impl KeyEvent {
 
         let (modifiers, rest) = if let Some(stripped) = lower.strip_prefix("s-") {
             (Modifiers::shift(), stripped)
+        } else if let Some(stripped) = lower.strip_prefix("m-") {
+            (Modifiers::alt(), stripped)
         } else if let Some(stripped) = lower.strip_prefix("c-") {
             (Modifiers::ctrl(), stripped)
         } else {
