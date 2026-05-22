@@ -96,7 +96,7 @@ impl App {
         // at a bench database to inspect results after a bench run.
         let session_store = {
             let store = match &cli.db_path {
-                Some(path) => SqliteSessionStore::new_in(path),
+                Some(path) => SqliteSessionStore::open_or_create(path),
                 None => SqliteSessionStore::new(),
             };
             SessionStoreService::new(Arc::new(
@@ -209,7 +209,12 @@ impl App {
                 let runner = Runner::Headless(Box::new(headless));
                 runner.run().change_context(AppError)?;
             }
-            Commands::Bench { subcommand } => match subcommand {
+            Commands::Bench { subcommand } => {
+                if cli.db_path.is_some() {
+                    return Err(Report::new(AppError)
+                        .attach("--db-path cannot be used with bench subcommands. Use 'bench tui <db_path>' instead"));
+                }
+                match subcommand {
                 BenchCommands::Run {
                     db_path,
                     model,
@@ -218,11 +223,6 @@ impl App {
                     csv,
                     artifact_dir,
                 } => {
-                    // Ensure the db_path directory exists.
-                    std::fs::create_dir_all(&db_path)
-                        .change_context(AppError)
-                        .attach("failed to create bench database directory")?;
-
                     if let Some(ref dir) = artifact_dir {
                         std::fs::create_dir_all(dir)
                             .change_context(AppError)
@@ -243,7 +243,7 @@ impl App {
                         resolved_api_keys,
                         config_storage,
                         SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::new_in(&db_path)
+                            SqliteSessionStore::open_or_create(&db_path)
                                 .expect("failed to create bench session store"),
                         )),
                         UserPreferencesStorageService::new(Arc::new(
@@ -357,6 +357,7 @@ impl App {
                         },
                     }));
                     runner.run().change_context(AppError)?;
+                }
                 }
             },
         }

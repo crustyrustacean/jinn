@@ -17,9 +17,9 @@ pub struct Cli {
     #[arg(long)]
     pub log_dir: Option<PathBuf>,
 
-    /// Session database directory. Defaults to the platform data directory.
+    /// Session database file. Defaults to the platform data directory.
     /// Use this to inspect a bench database after a run, e.g.
-    /// `nullslop --db-path ./bench.db`.
+    /// `nullslop --db-path ./bench.db/sessions.db`.
     #[arg(long)]
     pub db_path: Option<PathBuf>,
 
@@ -79,7 +79,7 @@ pub enum HeadlessCommands {
 pub enum BenchCommands {
     /// Run benchmark tasks through the actor pipeline.
     Run {
-        /// Database directory for bench sessions (isolated from user's real database).
+        /// Database file path for bench sessions (isolated from user's real database).
         db_path: PathBuf,
 
         /// Model(s) to benchmark (e.g., `openai/gpt-4o`). At least one required.
