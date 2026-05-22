@@ -321,8 +321,8 @@ pub fn session_preview_popup_rect(
 
     // Right-align: right edge = frame right edge.
     let popup_x = frame_area.x + frame_area.width.saturating_sub(popup_width);
-    // Bottom edge = sessions_top_y - 1 (1-row gap above sessions section).
-    let popup_y = sessions_top_y.saturating_sub(popup_height);
+    // Bottom edge = sessions_top_y + 1 (1-row gap above sessions section).
+    let popup_y = sessions_top_y.saturating_sub(popup_height + 1);
 
     Rect::new(popup_x, popup_y, popup_width, popup_height)
 }
