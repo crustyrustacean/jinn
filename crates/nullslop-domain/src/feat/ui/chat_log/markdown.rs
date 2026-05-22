@@ -20,37 +20,15 @@ use crate::feat::theme::Theme;
 /// Creates a [`MarkdownRenderer`] with syntax highlighting hooks, parses the
 /// markdown, and renders it using the nullslop theme. The `width` parameter
 /// controls word-wrapping.
-///
-/// When `cache` is `Some`, the parsed AST is cached and reused across calls
-/// with the same text and theme generation. Pass `None` to skip caching
-/// (e.g. in tests or one-off rendering).
 pub fn render_markdown(
     text: &str,
     width: u16,
     theme: &Theme,
-    cache: Option<&mut MarkdownAstCache>,
 ) -> Vec<Line<'static>> {
     let text = text.trim();
-    let generation = theme.generation();
-
-    let blocks: Arc<Vec<MarkdownBlock>> = match cache {
-        Some(cache) => match cache.get(text, generation) {
-            Some(cached) => cached,
-            None => {
-                let renderer = MarkdownRenderer::new(width as usize);
-                let parsed = Arc::new(renderer.parse(text));
-                cache.insert(text, generation, parsed.clone());
-                parsed
-            }
-        },
-        None => {
-            let renderer = MarkdownRenderer::new(width as usize);
-            Arc::new(renderer.parse(text))
-        }
-    };
-
     let renderer = MarkdownRenderer::new(width as usize)
         .with_render_hooks(highlight_hooks(width as usize, theme));
+    let blocks = renderer.parse(text);
     renderer.render(&blocks, theme)
 }
 

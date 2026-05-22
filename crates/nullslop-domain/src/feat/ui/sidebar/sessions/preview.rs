@@ -19,7 +19,6 @@ use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::{ChatSessionState, SessionState};
 use crate::feat::theme::Theme;
 use crate::feat::ui::chat_log::entry_to_lines;
-use crate::feat::ui::chat_log::markdown::MarkdownAstCache;
 use crate::feat::ui::chat_log::shared::RenderContext;
 use crate::feat::ui::sidebar::sessions::MAX_VISIBLE_SESSIONS;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
@@ -287,9 +286,8 @@ fn build_preview_lines(
     };
 
     let mut all_lines = Vec::new();
-    let mut cache = MarkdownAstCache::new();
     for entry in entries {
-        all_lines.extend(entry_to_lines(entry, &ctx, &mut cache));
+        all_lines.extend(entry_to_lines(entry, &ctx));
     }
 
     // Take the last PREVIEW_MAX_LINES lines.
