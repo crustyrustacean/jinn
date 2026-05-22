@@ -262,14 +262,14 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         b
         .bind("<esc>", Intent::RenameSessionLeave, KeyCategory::General)
         .bind("<enter>", Intent::RenameSessionConfirm, KeyCategory::Input)
-        .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
-        .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
-        .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
-        .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
-        .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
+        .bind("<left>", Intent::RenameCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::RenameCursorRight, KeyCategory::Input)
+        .bind("<backspace>", Intent::RenameDeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", Intent::RenameDeleteForward, KeyCategory::Input)
+        .bind("<c-j>", Intent::RenameInsertChar { ch: '\n' }, KeyCategory::Input)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
-                Some(Intent::InsertChar { ch: c })
+                Some(Intent::RenameInsertChar { ch: c })
             } else {
                 None
             }
