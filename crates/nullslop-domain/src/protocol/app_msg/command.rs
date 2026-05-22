@@ -20,7 +20,9 @@ use crate::feat::chat_input::protocol::command::{
 use crate::feat::compaction_actor::protocol::command::{
     BeginCompaction, CancelCompaction, CompactContext, EndCompaction, EnqueueCompaction,
 };
-use crate::feat::context::protocol::command::{LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry};
+use crate::feat::context::protocol::command::{
+    LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry,
+};
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::provider::protocol::command::{
     CancelStream, LoadProviderPickerEntries, ProviderSwitch, RefreshModels, RescanPromptTemplates,

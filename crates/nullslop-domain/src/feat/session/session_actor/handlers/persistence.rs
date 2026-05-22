@@ -70,9 +70,7 @@ impl SessionPersistenceActor {
                 }
 
                 // Reset in-memory state so the sidebar filter includes this session.
-                session.set_session_state(
-                    crate::feat::session::chat_session::SessionState::Loaded,
-                );
+                session.set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
 
                 let _ =
                     ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));

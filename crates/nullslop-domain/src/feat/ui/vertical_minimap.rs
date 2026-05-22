@@ -98,10 +98,7 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
 ///
 /// Returns `None` if the history index maps to an excluded entry or
 /// is out of range. Falls back to the last visible entry if no match.
-fn find_block_index(
-    history_idx: Option<usize>,
-    visible: &[VisibleEntry],
-) -> Option<usize> {
+fn find_block_index(history_idx: Option<usize>, visible: &[VisibleEntry]) -> Option<usize> {
     match history_idx {
         Some(idx) => visible
             .iter()
@@ -117,7 +114,11 @@ fn find_block_index(
 /// (`viewport_height / 2`). The offset is simply the block index
 /// minus the midpoint. At the start, this produces empty space above;
 /// at the end, empty space below.
-fn compute_minimap_scroll(selected_block: usize, _total_blocks: usize, viewport_height: usize) -> usize {
+fn compute_minimap_scroll(
+    selected_block: usize,
+    _total_blocks: usize,
+    viewport_height: usize,
+) -> usize {
     let midpoint = viewport_height / 2;
     selected_block.saturating_sub(midpoint)
 }
@@ -189,7 +190,14 @@ pub fn render_vertical_minimap(
     frame.render_widget(widget, area);
 
     // Render scroll direction arrows.
-    render_scroll_arrows(frame, area, selected_block, total_blocks, viewport_height, muted_text_color);
+    render_scroll_arrows(
+        frame,
+        area,
+        selected_block,
+        total_blocks,
+        viewport_height,
+        muted_text_color,
+    );
 
     // Arrow is always at the midpoint row.
     let arrow_row = midpoint as u16;
@@ -283,8 +291,8 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::ChatEntry;
-    use crate::feat::theme::default_theme;
     use crate::feat::theme::Theme;
+    use crate::feat::theme::default_theme;
 
     // --- find_block_index ---
 
@@ -466,22 +474,21 @@ mod tests {
         // Row 0 is empty (above midpoint).
         assert!(rows[0].trim().is_empty(), "expected empty at row 0");
         // Row 5 has the block.
-        assert!(rows[5].contains('\u{2588}'), "expected block at midpoint row 5");
+        assert!(
+            rows[5].contains('\u{2588}'),
+            "expected block at midpoint row 5"
+        );
     }
 
     #[rstest::rstest]
     fn arrow_at_midpoint_when_last_entry_selected() {
         // Given 3 entries, selection at last (index 2).
         let mut state = AppState::default();
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
         state
             .active_session_mut()
             .push_entry(ChatEntry::assistant("b"));
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("c"));
+        state.active_session_mut().push_entry(ChatEntry::user("c"));
 
         // When rendering in a 10-row viewport.
         let (arrow, _rows) = render_to_buffer(&state, 1, 10);
@@ -494,9 +501,7 @@ mod tests {
     fn excluded_entries_produce_no_blocks_midpoint() {
         // Given a history with Actor and Thinking entries mixed in.
         let mut state = AppState::default();
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
         state
             .active_session_mut()
             .push_entry(ChatEntry::actor("bash", "output"));
@@ -514,10 +519,7 @@ mod tests {
         // user=history_idx 0 → block_idx 0, assistant=history_idx 3 → block_idx 1
         // Selection at last (3), but excluded → falls back to last visible (block 1).
         // Midpoint=5, so block 0 at row 4, block 1 at row 5.
-        let block_count = rows
-            .iter()
-            .filter(|r| r.contains('\u{2588}'))
-            .count();
+        let block_count = rows.iter().filter(|r| r.contains('\u{2588}')).count();
         assert_eq!(block_count, 2);
         assert!(rows[4].contains('\u{2588}'), "expected block at row 4");
         assert!(rows[5].contains('\u{2588}'), "expected block at row 5");
@@ -624,10 +626,7 @@ mod tests {
 
         // Then the top row has a ▲ character.
         let top_row = &rows[0];
-        assert!(
-            top_row.contains('▲'),
-            "expected '▲' at top, got: {top_row}"
-        );
+        assert!(top_row.contains('▲'), "expected '▲' at top, got: {top_row}");
     }
 
     #[rstest::rstest]
@@ -636,15 +635,11 @@ mod tests {
         // Midpoint=5, selected at last (2). Entries above: 2 > 5? No.
         // Entries below: 2+(10-5)=7 < 3? No.
         let mut state = AppState::default();
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
         state
             .active_session_mut()
             .push_entry(ChatEntry::assistant("b"));
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::user("c"));
+        state.active_session_mut().push_entry(ChatEntry::user("c"));
 
         // When rendering.
         let (_arrow, rows) = render_to_buffer(&state, 1, 10);
