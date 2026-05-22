@@ -359,9 +359,7 @@ fn verify_fix_logic_sort(dir: &Path) -> bool {
 
     // Output should contain the sorted array.
     let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout.contains("11")
-        && stdout.contains("90")
-        && stdout.contains("Sorted")
+    stdout.contains("11") && stdout.contains("90") && stdout.contains("Sorted")
 }
 
 // -- redirect verifiers --
@@ -374,7 +372,8 @@ fn verify_redirect_change_color(dir: &Path) -> bool {
         || content.contains("#333333")
         || content.contains("darkgray")
         || content.contains("dark gray");
-    let heading_ok = content.contains("orange") || content.contains("#ff") || content.contains("#FF");
+    let heading_ok =
+        content.contains("orange") || content.contains("#ff") || content.contains("#FF");
 
     bg_ok && heading_ok
 }

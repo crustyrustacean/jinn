@@ -59,7 +59,7 @@ mod tests {
         assert!(state.active_session().history().is_empty());
         assert!(!state.frontend.scope_stack.is_picker());
         // And the old session is preserved in the sessions map.
-        assert!(state.session.sessions().contains_key(&old_id));
+        assert!(state.session.contains(&old_id));
     }
 
     #[rstest::rstest]

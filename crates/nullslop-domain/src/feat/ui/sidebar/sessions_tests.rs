@@ -18,9 +18,9 @@ fn state_with_sessions(count: usize) -> AppState {
     // Default state already has 1 session. Add more as needed.
     for i in 1..count {
         let session = ChatSessionState::new();
-        let id = session.session_id().clone();
+        let _id = session.session_id().clone();
         // Give each additional session a title.
-        state.session.sessions_mut().insert(id, {
+        state.session.insert({
             let mut s = ChatSessionState::new();
             s.push_entry(ChatEntry::user(format!("message for session {i}")));
             s
@@ -555,8 +555,8 @@ fn close_session_switches_to_next() {
     handle_session_close(&mut state);
 
     // Then the closed session is removed and active session changed.
-    assert!(!state.session.sessions().contains_key(&closing_id));
-    assert_eq!(state.session.sessions().len(), 2);
+    assert!(!state.session.contains(&closing_id));
+    assert_eq!(state.session.session_count(), 2);
     assert_ne!(*state.session.active_session_id(), closing_id);
 }
 
@@ -577,7 +577,7 @@ fn close_non_active_session_keeps_active() {
     handle_session_close(&mut state);
 
     // Then the closed session is removed.
-    assert!(!state.session.sessions().contains_key(&closing_id));
+    assert!(!state.session.contains(&closing_id));
     // And the active session did NOT change.
     assert_eq!(*state.session.active_session_id(), active_id);
 }
@@ -594,7 +594,7 @@ fn close_last_session_creates_new() {
     handle_session_close(&mut state);
 
     // Then a new session is created.
-    assert_eq!(state.session.sessions().len(), 1);
+    assert_eq!(state.session.session_count(), 1);
     assert_ne!(*state.session.active_session_id(), original_id);
     assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
 }
@@ -615,7 +615,7 @@ fn close_session_clamps_index() {
     // Then index is clamped to valid range.
     let selected = state.frontend.sessions_section.selected_index;
     assert!(selected.is_some());
-    assert!(selected.unwrap() < state.session.sessions().len());
+    assert!(selected.unwrap() < state.session.session_count());
 }
 
 #[rstest::rstest]
@@ -1115,52 +1115,40 @@ fn state_with_tree() -> AppState {
     root_a.push_entry(ChatEntry::user("root a"));
     root_a.set_title("root a".to_owned());
     let root_a_id = root_a.session_id().clone();
-    state
-        .session
-        .sessions_mut()
-        .insert(root_a_id.clone(), root_a);
+    state.session.insert(root_a);
 
     // Create child_a1 under root_a.
     let mut child_a1 = ChatSessionState::new();
     child_a1.set_title("child a1".to_owned());
     child_a1.set_parent_session(root_a_id.clone());
     let child_a1_id = child_a1.session_id().clone();
-    state
-        .session
-        .sessions_mut()
-        .insert(child_a1_id.clone(), child_a1);
+    state.session.insert(child_a1);
 
     // Create grandchild_a1a under child_a1.
     let mut grandchild = ChatSessionState::new();
     grandchild.set_title("grandchild a1a".to_owned());
     grandchild.set_parent_session(child_a1_id.clone());
-    let grandchild_id = grandchild.session_id().clone();
-    state
-        .session
-        .sessions_mut()
-        .insert(grandchild_id, grandchild);
+    let _grandchild_id = grandchild.session_id().clone();
+    state.session.insert(grandchild);
 
     // Create child_a2 under root_a.
     let mut child_a2 = ChatSessionState::new();
     child_a2.set_title("child a2".to_owned());
     child_a2.set_parent_session(root_a_id.clone());
-    let child_a2_id = child_a2.session_id().clone();
-    state.session.sessions_mut().insert(child_a2_id, child_a2);
+    let _child_a2_id = child_a2.session_id().clone();
+    state.session.insert(child_a2);
 
     // Create root_b with a title (newest root).
     let mut newest_root = ChatSessionState::new();
     newest_root.push_entry(ChatEntry::user("root b"));
     newest_root.set_title("root b".to_owned());
     let newest_root_id = newest_root.session_id().clone();
-    state
-        .session
-        .sessions_mut()
-        .insert(newest_root_id.clone(), newest_root);
+    state.session.insert(newest_root);
 
     // Remove the default session (created at AppState::default).
     let default_id = state.session.active_session_id().clone();
     if default_id != root_a_id && default_id != newest_root_id {
-        state.session.sessions_mut().remove(&default_id);
+        state.session.remove(&default_id);
     }
 
     // Set active to root_b.
@@ -1259,10 +1247,7 @@ fn orphan_session_appears_as_root() {
     let mut orphan = ChatSessionState::new();
     orphan.set_title("orphan".to_owned());
     orphan.set_parent_session(crate::protocol::SessionId::new());
-    state
-        .session
-        .sessions_mut()
-        .insert(orphan.session_id().clone(), orphan);
+    state.session.insert(orphan);
 
     // When collecting sorted sessions.
     let sessions = sorted_open_sessions(&state);
@@ -1355,7 +1340,7 @@ fn close_child_session_clamps_cursor() {
     handle_session_close(&mut state);
 
     // Then child_a1 is removed.
-    assert!(!state.session.sessions().contains_key(&child_a1_id));
+    assert!(!state.session.contains(&child_a1_id));
     // And the cursor is clamped to valid range.
     let remaining = sorted_open_sessions(&state);
     let selected = state.frontend.sessions_section.selected_index.unwrap();
@@ -1379,7 +1364,7 @@ fn close_root_session_promotes_children_to_roots() {
     handle_session_close(&mut state);
 
     // Then root_a is removed.
-    assert!(!state.session.sessions().contains_key(&root_a_id));
+    assert!(!state.session.contains(&root_a_id));
     // And its former children are now orphans (roots in the new tree).
     let remaining = sorted_open_sessions(&state);
     let former_children: Vec<_> = remaining
