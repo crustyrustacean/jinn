@@ -93,7 +93,7 @@ impl BuiltinHandler for BenchTaskHandler {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used)]
+    #![allow(clippy::expect_used, reason = "test code")]
 
     use super::*;
 
