@@ -1,7 +1,7 @@
 //! LLM streaming actor.
 //!
 //! Subscribes to [`SendToLlmProvider`] and [`CancelStream`] commands, and
-//! [`ToolsRegistered`] and [`StreamCompleted`] events. On send, creates an
+//! [`StreamCompleted`] events. On send, creates an
 //! LLM service via the factory and streams tokens and tool call events back
 //! as bus commands. When the LLM requests tool use, emits [`ExecuteToolBatch`]
 //! — the session actor handles the continuation via context assembly.
@@ -25,7 +25,7 @@ use crate::feat::provider_infra::StreamEvent;
 use crate::feat::tools_actor::protocol::command::CancelToolBatch;
 use crate::feat::tools_actor::protocol::command::ExecuteToolBatch;
 use crate::feat::tools_actor::protocol::event::{
-    ToolCallReceived, ToolCallStreaming, ToolUseStarted, ToolsRegistered,
+    ToolCallReceived, ToolCallStreaming, ToolUseStarted,
 };
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition};
 use crate::protocol::{ChatEntry, Command, Event, SessionId};
@@ -103,7 +103,6 @@ impl Actor for LlmActor {
         ctx.set_description("LLM streaming with tool support");
         ctx.subscribe_command::<SendToLlmProvider>();
         ctx.subscribe_command::<CancelStream>();
-        ctx.subscribe_event::<ToolsRegistered>();
         ctx.subscribe_event::<StreamCompleted>();
 
         Self {
@@ -150,9 +149,6 @@ impl LlmActor {
     /// Dispatches incoming events to the appropriate handler.
     fn handle_event(&mut self, event: &Event) {
         match event {
-            Event::ToolsRegistered(payload) => {
-                self.handle_tools_registered(&payload.definitions);
-            }
             Event::StreamCompleted(payload) => {
                 self.handle_stream_completed(payload);
             }
@@ -462,17 +458,6 @@ impl LlmActor {
         }
     }
 
-    /// Caches tool definitions from a [`ToolsRegistered`] event into shared state.
-    fn handle_tools_registered(&self, definitions: &[ToolDefinition]) {
-        let mut state = self.state.write();
-        for def in definitions {
-            state
-                .context
-                .tool_definitions
-                .insert(def.name.clone(), def.clone());
-        }
-    }
-
     /// Cancels the active stream for a session and emits a completion event.
     fn cancel_stream(&mut self, session_id: &SessionId, ctx: &ActorContext) {
         // If there's an active session, cancel any pending tool batches.
@@ -491,9 +476,6 @@ impl LlmActor {
             handle.abort();
         }
         let had_session = self.sessions.remove(session_id).is_some();
-        if let Some(handle) = self.tasks.remove(session_id) {
-            handle.abort();
-        }
         // Only emit StreamCompleted if there was actually an active session
         // to cancel. Avoids pushing a spurious "Cancelled" error entry when
         // the user presses ESC with nothing streaming.
