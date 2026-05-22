@@ -466,6 +466,52 @@ fn render_arrow_has_inverted_colors() {
     assert_eq!(arrow_cell.style().bg, Some(Color::LightGreen));
 }
 
+#[rstest::rstest]
+fn render_footer_uses_focus_accent_when_sidebar_focused() {
+    // Given a sessions section with sidebar focused.
+    let mut section = SessionsSection::new();
+    let state = {
+        let mut s = AppState::default();
+        s.frontend.scope_stack.push(FocusScope::SidebarSessions);
+        s
+    };
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(30, 5);
+    terminal
+        .draw(|frame| {
+            section.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then the footer box-drawing corner (╰) at column 0, row 1 has focus_accent color.
+    let buffer = terminal.backend().buffer();
+    let corner_cell = buffer.cell((0, 1)).expect("corner cell should exist");
+    assert_eq!(corner_cell.symbol(), "\u{2570}");
+    assert_eq!(corner_cell.style().fg, Some(state.frontend.theme.focus_accent));
+}
+
+#[rstest::rstest]
+fn render_footer_uses_border_unfocused_when_sidebar_not_focused() {
+    // Given a sessions section with default state (no sidebar focus).
+    let mut section = SessionsSection::new();
+    let state = AppState::default();
+
+    // When rendering.
+    let (mut terminal, area) = setup_term(30, 5);
+    terminal
+        .draw(|frame| {
+            section.render(frame, area, &state);
+        })
+        .unwrap();
+
+    // Then the footer box-drawing corner (╰) at column 0, row 1 has border_unfocused color.
+    let buffer = terminal.backend().buffer();
+    let corner_cell = buffer.cell((0, 1)).expect("corner cell should exist");
+    assert_eq!(corner_cell.symbol(), "\u{2570}");
+    assert_eq!(corner_cell.style().fg, Some(state.frontend.theme.border_unfocused));
+}
+
 // --- Close session ---
 
 #[rstest::rstest]
