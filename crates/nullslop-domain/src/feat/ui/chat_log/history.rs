@@ -440,7 +440,7 @@ impl<'a> HistoryRender<'a> {
 ///
 /// Each entry type is delegated to its own submodule. Lines returned here are
 /// content-width only — the gutter is rendered as a separate column.
-fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'static>> {
+pub(crate) fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'static>> {
     match &entry.kind {
         ChatEntryKind::User { display, .. } => user::to_lines(display, ctx),
         ChatEntryKind::System(text) => system::to_lines(text, ctx),
