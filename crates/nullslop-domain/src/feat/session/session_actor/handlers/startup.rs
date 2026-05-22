@@ -40,9 +40,14 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
 
             // Apply config defaults to the default session.
+            // Only set the model if the session still has the no-provider sentinel.
+            // Bench sessions are created with an explicit model before this handler
+            // fires, so we must not overwrite them with the user's saved preference.
             let session = state.active_session_mut();
             if let Some(ref model) = prefs.last_model {
-                session.set_model(model.clone());
+                if session.profile().model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                    session.set_model(model.clone());
+                }
             }
             if let Some(ref strategy_str) = prefs.last_strategy {
                 let strategy_id = PromptStrategyId::new(strategy_str.clone());
@@ -206,6 +211,93 @@ mod tests {
         assert!(
             state.session.contains(&store_id2),
             "second store session should be in map"
+        );
+    }
+
+    #[tokio::test]
+    async fn saved_model_overwrites_no_provider_sentinel() {
+        // Given an actor with a default session (NO_PROVIDER_ID model)
+        // and saved preferences with a last_model.
+        let (actor, _store) = test_actor_with_store(vec![]);
+        let (_sink, ctx) = test_context();
+
+        // Save preferences with a last_model.
+        let prefs = crate::feat::preferences_actor::user_preferences::UserPreferences {
+            last_model: Some("my-model".to_owned()),
+            ..Default::default()
+        };
+        actor
+            .services
+            .as_ref()
+            .expect("services")
+            .user_preferences_storage
+            .save(&prefs)
+            .expect("save prefs");
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the active session's model was updated from the saved preference.
+        let state = actor.state.read();
+        assert_eq!(
+            state.active_session().profile().model, "my-model",
+            "default session model should be updated from saved preference"
+        );
+    }
+
+    #[tokio::test]
+    async fn saved_model_does_not_overwrite_explicitly_set_model() {
+        // Given an actor with a session that has an explicit model (not NO_PROVIDER_ID)
+        // and saved preferences with a different last_model.
+        let (actor, _store) = test_actor_with_store(vec![]);
+
+        // Set an explicit model on the active session (simulating bench actor behavior).
+        {
+            let mut state = actor.state.write();
+            state.active_session_mut().set_model("bench-model".to_owned());
+        }
+
+        // Save preferences with a different last_model.
+        let prefs = crate::feat::preferences_actor::user_preferences::UserPreferences {
+            last_model: Some("wrong-model".to_owned()),
+            ..Default::default()
+        };
+        actor
+            .services
+            .as_ref()
+            .expect("services")
+            .user_preferences_storage
+            .save(&prefs)
+            .expect("save prefs");
+
+        let (_sink, ctx) = test_context();
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the active session's model was NOT overwritten.
+        let state = actor.state.read();
+        assert_eq!(
+            state.active_session().profile().model, "bench-model",
+            "explicitly set model should not be overwritten by saved preference"
         );
     }
 }
