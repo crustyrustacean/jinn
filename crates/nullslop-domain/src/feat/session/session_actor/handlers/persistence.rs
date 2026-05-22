@@ -98,3 +98,66 @@ impl SessionPersistenceActor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+
+    use super::super::super::helpers::{test_actor_with_store, test_context};
+    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::chat_session::SessionState;
+    use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
+    use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
+    use crate::protocol::Command;
+
+    #[tokio::test]
+    async fn loading_archived_session_resets_state_to_loaded() {
+        // Given an archived session in the store.
+        let mut store_session = ChatSessionState::new();
+        store_session.set_title("Archived Chat".to_owned());
+        store_session.set_session_state(SessionState::Archived);
+        let session_id = store_session.session_id().clone();
+        let (mut actor, _store) = test_actor_with_store(vec![store_session]);
+        let (sink, ctx) = test_context();
+
+        // When loading the archived session.
+        actor
+            .on_load_requested(
+                &SessionLoadRequested {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SessionLoadCompleted is emitted with session_state == Loaded.
+        let loaded_session = sink
+            .commands()
+            .iter()
+            .find_map(|cmd| match cmd {
+                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                _ => None,
+            })
+            .expect("expected SessionLoadCompleted command");
+
+        assert_eq!(
+            loaded_session.session_state(),
+            SessionState::Loaded,
+            "loaded session should have SessionState::Loaded"
+        );
+
+        // And the session appears in sorted_open_sessions.
+        let mut state = actor.state.write();
+        state
+            .session
+            .sessions_mut()
+            .insert(session_id.clone(), loaded_session);
+        state.session.set_active(session_id.clone());
+
+        let sidebar_sessions = sorted_open_sessions(&state);
+        assert!(
+            sidebar_sessions.iter().any(|s| s.id == session_id),
+            "archived session should appear in sidebar after loading"
+        );
+    }
+}
