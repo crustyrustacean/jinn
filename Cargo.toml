@@ -123,8 +123,9 @@ uuid = { version = "1.23.1", features = ["v7", "serde"] }
 
 # Tokenization
 tiktoken = "3"
-
 regex = "1"
+petgraph = "0.7"
+tokio-util = "0.7"
 csv = "1"
 ctrlc = "3"
 comfy-table = "7"
