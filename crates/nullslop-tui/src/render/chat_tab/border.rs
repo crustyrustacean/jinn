@@ -18,9 +18,9 @@ pub(super) fn render_border(
 ) {
     let border_color = match focus_scope {
         FocusScope::SidebarResize => sidebar_resize_accent,
-        FocusScope::SidebarPersona
-        | FocusScope::SidebarPins
-        | FocusScope::SidebarSessions => focus_accent,
+        FocusScope::SidebarPersona | FocusScope::SidebarPins | FocusScope::SidebarSessions => {
+            focus_accent
+        }
         _ => border_unfocused,
     };
     let border_style = Style::default().fg(border_color);

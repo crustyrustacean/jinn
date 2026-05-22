@@ -105,9 +105,7 @@ impl App {
                 Some(path) => SqliteSessionStore::open_or_create(path),
                 None => SqliteSessionStore::new(),
             };
-            SessionStoreService::new(Arc::new(
-                store.expect("failed to create session store"),
-            ))
+            SessionStoreService::new(Arc::new(store.expect("failed to create session store")))
         };
 
         match cli.command.unwrap_or(Commands::Tui) {
@@ -221,151 +219,152 @@ impl App {
                         .attach("--db-path cannot be used with bench subcommands. Use 'bench tui <db_path>' instead"));
                 }
                 match subcommand {
-                BenchCommands::Run {
-                    db_path,
-                    model,
-                    task,
-                    headless: _headless,
-                    csv,
-                    artifact_dir,
-                } => {
-                    if let Some(ref dir) = artifact_dir {
-                        std::fs::create_dir_all(dir)
-                            .change_context(AppError)
-                            .attach("failed to create artifact directory")?;
-                    }
-
-                    // Build the bench plan from models × tasks.
-                    let plan = nullslop_bench::orchestrator::build_plan(&model, &task);
-                    tracing::info!(
-                        pairs = plan.pairs.len(),
-                        "built bench plan"
-                    );
-
-                    let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
-                        &self.handle(),
-                        llm_service,
-                        provider_registry,
-                        resolved_api_keys,
-                        config_storage,
-                        SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(&db_path)
-                                .expect("failed to create bench session store"),
-                        )),
-                        UserPreferencesStorageService::new(Arc::new(
-                            FilesystemUserPreferencesStorage::default_path(),
-                        )),
-                        Some(csv),
-                        Some(plan),
+                    BenchCommands::Run {
+                        db_path,
+                        model,
+                        task,
+                        headless: _headless,
+                        csv,
                         artifact_dir,
-                    );
-                    let paths = &services.paths;
-                    load_prompt_templates(
-                        &core.state,
-                        &paths.prompts_dir(),
-                        &paths.system_prompts_dir(),
-                    );
-                    load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
+                    } => {
+                        if let Some(ref dir) = artifact_dir {
+                            std::fs::create_dir_all(dir)
+                                .change_context(AppError)
+                                .attach("failed to create artifact directory")?;
+                        }
 
-                    let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
-                    let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
-                    let mut ui_registry = nullslop_domain::AppUiRegistry::new();
-                    nullslop_domain::register_all_ui_elements(&mut ui_registry);
-                    let which_key = nullslop_tui::app::WhichKeyInstance::new(
-                        nullslop_tui::keymap::init(),
-                        nullslop_tui::Scope::Normal,
-                    );
+                        // Build the bench plan from models × tasks.
+                        let plan = nullslop_bench::orchestrator::build_plan(&model, &task);
+                        tracing::info!(pairs = plan.pairs.len(), "built bench plan");
 
-                    let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp {
-                        core,
-                        services,
-                        actor_host,
-                        ui_registry,
-                        events: nullslop_tui::MsgHandler::new(),
-                        which_key,
-                        suspend: nullslop_tui::suspend::Suspend::new(),
-                        event_thread: None,
-                        status: nullslop_tui::AppStatus::Starting,
-                        selection: nullslop_tui::selection::SelectionState::Idle,
-                        selectable_rects: Default::default(),
-                        pending_clipboard: false,
-                        config: tui_config,
-                        sidebar: {
-                            let mut s = nullslop_domain::feat::ui::sidebar::Sidebar::new();
-                            nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
-                            s
-                        },
-                    }));
-                    runner.run().change_context(AppError)?;
-                }
-                BenchCommands::Show { csv } => {
-                    nullslop_bench::show::show_results(&csv)
-                        .map_err(|e| error_stack::Report::new(AppError).attach(e.to_string()))?;
-                }
-                BenchCommands::Compare { csv_a, csv_b } => {
-                    nullslop_bench::compare::compare_results(&csv_a, &csv_b)
-                        .map_err(|e| error_stack::Report::new(AppError).attach(e.to_string()))?;
-                }
-                BenchCommands::Tui { db_path } => {
-                    let session_store = SessionStoreService::new(Arc::new(
-                        SqliteSessionStore::open_or_create(&db_path)
-                            .expect("failed to create session store"),
-                    ));
-                    let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
-                        &self.handle(),
-                        llm_service.clone(),
-                        provider_registry.clone(),
-                        resolved_api_keys.clone(),
-                        config_storage.clone(),
-                        session_store,
-                        UserPreferencesStorageService::new(Arc::new(
-                            FilesystemUserPreferencesStorage::default_path(),
-                        )),
-                        None,
-                        None,
-                        None,
-                    );
-                    let paths = &services.paths;
-                    load_prompt_templates(
-                        &core.state,
-                        &paths.prompts_dir(),
-                        &paths.system_prompts_dir(),
-                    );
-                    load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
+                        let (core, services, actor_host) =
+                            actor_wiring::create_core_with_actor_host(
+                                &self.handle(),
+                                llm_service,
+                                provider_registry,
+                                resolved_api_keys,
+                                config_storage,
+                                SessionStoreService::new(Arc::new(
+                                    SqliteSessionStore::open_or_create(&db_path)
+                                        .expect("failed to create bench session store"),
+                                )),
+                                UserPreferencesStorageService::new(Arc::new(
+                                    FilesystemUserPreferencesStorage::default_path(),
+                                )),
+                                Some(csv),
+                                Some(plan),
+                                artifact_dir,
+                            );
+                        let paths = &services.paths;
+                        load_prompt_templates(
+                            &core.state,
+                            &paths.prompts_dir(),
+                            &paths.system_prompts_dir(),
+                        );
+                        load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
-                    let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
-                    let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
-                    let mut ui_registry = nullslop_domain::AppUiRegistry::new();
-                    nullslop_domain::register_all_ui_elements(&mut ui_registry);
-                    let which_key = nullslop_tui::app::WhichKeyInstance::new(
-                        nullslop_tui::keymap::init(),
-                        nullslop_tui::Scope::Normal,
-                    );
+                        let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
+                        let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
+                        let mut ui_registry = nullslop_domain::AppUiRegistry::new();
+                        nullslop_domain::register_all_ui_elements(&mut ui_registry);
+                        let which_key = nullslop_tui::app::WhichKeyInstance::new(
+                            nullslop_tui::keymap::init(),
+                            nullslop_tui::Scope::Normal,
+                        );
 
-                    let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp {
-                        core,
-                        services,
-                        actor_host,
-                        ui_registry,
-                        events: nullslop_tui::MsgHandler::new(),
-                        which_key,
-                        suspend: nullslop_tui::suspend::Suspend::new(),
-                        event_thread: None,
-                        status: nullslop_tui::AppStatus::Starting,
-                        selection: nullslop_tui::selection::SelectionState::Idle,
-                        selectable_rects: Default::default(),
-                        pending_clipboard: false,
-                        config: tui_config,
-                        sidebar: {
-                            let mut s = nullslop_domain::feat::ui::sidebar::Sidebar::new();
-                            nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
-                            s
-                        },
-                    }));
-                    runner.run().change_context(AppError)?;
+                        let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp {
+                            core,
+                            services,
+                            actor_host,
+                            ui_registry,
+                            events: nullslop_tui::MsgHandler::new(),
+                            which_key,
+                            suspend: nullslop_tui::suspend::Suspend::new(),
+                            event_thread: None,
+                            status: nullslop_tui::AppStatus::Starting,
+                            selection: nullslop_tui::selection::SelectionState::Idle,
+                            selectable_rects: Default::default(),
+                            pending_clipboard: false,
+                            config: tui_config,
+                            sidebar: {
+                                let mut s = nullslop_domain::feat::ui::sidebar::Sidebar::new();
+                                nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                                s
+                            },
+                        }));
+                        runner.run().change_context(AppError)?;
+                    }
+                    BenchCommands::Show { csv } => {
+                        nullslop_bench::show::show_results(&csv).map_err(|e| {
+                            error_stack::Report::new(AppError).attach(e.to_string())
+                        })?;
+                    }
+                    BenchCommands::Compare { csv_a, csv_b } => {
+                        nullslop_bench::compare::compare_results(&csv_a, &csv_b).map_err(|e| {
+                            error_stack::Report::new(AppError).attach(e.to_string())
+                        })?;
+                    }
+                    BenchCommands::Tui { db_path } => {
+                        let session_store = SessionStoreService::new(Arc::new(
+                            SqliteSessionStore::open_or_create(&db_path)
+                                .expect("failed to create session store"),
+                        ));
+                        let (core, services, actor_host) =
+                            actor_wiring::create_core_with_actor_host(
+                                &self.handle(),
+                                llm_service.clone(),
+                                provider_registry.clone(),
+                                resolved_api_keys.clone(),
+                                config_storage.clone(),
+                                session_store,
+                                UserPreferencesStorageService::new(Arc::new(
+                                    FilesystemUserPreferencesStorage::default_path(),
+                                )),
+                                None,
+                                None,
+                                None,
+                            );
+                        let paths = &services.paths;
+                        load_prompt_templates(
+                            &core.state,
+                            &paths.prompts_dir(),
+                            &paths.system_prompts_dir(),
+                        );
+                        load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
+
+                        let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
+                        let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
+                        let mut ui_registry = nullslop_domain::AppUiRegistry::new();
+                        nullslop_domain::register_all_ui_elements(&mut ui_registry);
+                        let which_key = nullslop_tui::app::WhichKeyInstance::new(
+                            nullslop_tui::keymap::init(),
+                            nullslop_tui::Scope::Normal,
+                        );
+
+                        let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp {
+                            core,
+                            services,
+                            actor_host,
+                            ui_registry,
+                            events: nullslop_tui::MsgHandler::new(),
+                            which_key,
+                            suspend: nullslop_tui::suspend::Suspend::new(),
+                            event_thread: None,
+                            status: nullslop_tui::AppStatus::Starting,
+                            selection: nullslop_tui::selection::SelectionState::Idle,
+                            selectable_rects: Default::default(),
+                            pending_clipboard: false,
+                            config: tui_config,
+                            sidebar: {
+                                let mut s = nullslop_domain::feat::ui::sidebar::Sidebar::new();
+                                nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                                s
+                            },
+                        }));
+                        runner.run().change_context(AppError)?;
+                    }
                 }
-                }
-            },
+            }
         }
 
         Ok(())
