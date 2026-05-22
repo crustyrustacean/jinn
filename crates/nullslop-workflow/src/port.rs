@@ -98,10 +98,10 @@ impl PortValue {
     pub fn into_string(self) -> Result<String, PortError> {
         match self {
             Self::String(s) => Ok(s),
-            actual => Err(PortError::TypeMismatch {
+            other @ Self::Json(_) => Err(PortError::TypeMismatch {
                 name: String::new(),
                 expected: PortType::String,
-                actual: PortType::from_value(&actual),
+                actual: PortType::from_value(&other),
             }),
         }
     }
@@ -114,10 +114,10 @@ impl PortValue {
     pub fn into_json(self) -> Result<serde_json::Value, PortError> {
         match self {
             Self::Json(v) => Ok(v),
-            actual => Err(PortError::TypeMismatch {
+            other @ Self::String(_) => Err(PortError::TypeMismatch {
                 name: String::new(),
                 expected: PortType::Json,
-                actual: PortType::from_value(&actual),
+                actual: PortType::from_value(&other),
             }),
         }
     }
@@ -156,8 +156,8 @@ impl PortValues {
     }
 
     /// Inserts a value, returning the previous value for that port (if any).
-    pub fn insert(&mut self, name: impl Into<String>, value: PortValue) -> Option<PortValue> {
-        self.0.insert(name.into(), value)
+    pub fn insert(&mut self, name: String, value: PortValue) -> Option<PortValue> {
+        self.0.insert(name, value)
     }
 
     /// Returns `true` if the map contains a value for the given port name.
@@ -340,7 +340,7 @@ mod tests {
     fn take_string_returns_value_when_present() {
         // Given a PortValues with a string port.
         let mut values = PortValues::new();
-        values.insert("prompt", PortValue::String("hello".to_owned()));
+        values.insert("prompt".to_owned(), PortValue::String("hello".to_owned()));
 
         // When taking the string value.
         let result = values.take_string("prompt");
@@ -365,7 +365,7 @@ mod tests {
     fn take_string_returns_type_mismatch_for_json_value() {
         // Given a PortValues with a JSON port.
         let mut values = PortValues::new();
-        values.insert("data", PortValue::Json(serde_json::json!({"key": 42})));
+        values.insert("data".to_owned(), PortValue::Json(serde_json::json!({"key": 42})));
 
         // When taking as a string.
         let result = values.take_string("data");
@@ -385,7 +385,7 @@ mod tests {
     fn get_string_returns_reference_to_value() {
         // Given a PortValues with a string port.
         let mut values = PortValues::new();
-        values.insert("prompt", PortValue::String("hello".to_owned()));
+        values.insert("prompt".to_owned(), PortValue::String("hello".to_owned()));
 
         // When getting the string reference.
         let result = values.get_string("prompt");
@@ -399,7 +399,7 @@ mod tests {
         // Given a PortValues with a JSON port.
         let mut values = PortValues::new();
         let json = serde_json::json!({"key": "value"});
-        values.insert("data", PortValue::Json(json.clone()));
+        values.insert("data".to_owned(), PortValue::Json(json.clone()));
 
         // When getting the JSON reference.
         let result = values.get_json("data");
@@ -424,8 +424,8 @@ mod tests {
     fn insert_and_take_roundtrip() {
         // Given a PortValues with multiple ports.
         let mut values = PortValues::new();
-        values.insert("text", PortValue::String("hello".to_owned()));
-        values.insert("data", PortValue::Json(serde_json::json!([1, 2, 3])));
+        values.insert("text".to_owned(), PortValue::String("hello".to_owned()));
+        values.insert("data".to_owned(), PortValue::Json(serde_json::json!([1, 2, 3])));
 
         // When taking all values back.
         let text = values.take_string("text").unwrap();
@@ -443,7 +443,7 @@ mod tests {
     fn contains_returns_true_for_present_port() {
         // Given a PortValues with a port.
         let mut values = PortValues::new();
-        values.insert("name", PortValue::String("test".to_owned()));
+        values.insert("name".to_owned(), PortValue::String("test".to_owned()));
 
         // When checking if the port exists.
         // Then it returns true.
@@ -455,8 +455,8 @@ mod tests {
     fn len_returns_number_of_ports() {
         // Given a PortValues with two ports.
         let mut values = PortValues::new();
-        values.insert("a", PortValue::String("1".to_owned()));
-        values.insert("b", PortValue::String("2".to_owned()));
+        values.insert("a".to_owned(), PortValue::String("1".to_owned()));
+        values.insert("b".to_owned(), PortValue::String("2".to_owned()));
 
         // When checking length.
         // Then it returns 2.
@@ -489,8 +489,8 @@ mod tests {
     fn iter_yields_all_port_pairs() {
         // Given a PortValues with two ports.
         let mut values = PortValues::new();
-        values.insert("a", PortValue::String("1".to_owned()));
-        values.insert("b", PortValue::Json(serde_json::json!(2)));
+        values.insert("a".to_owned(), PortValue::String("1".to_owned()));
+        values.insert("b".to_owned(), PortValue::Json(serde_json::json!(2)));
 
         // When iterating.
         let pairs: Vec<_> = values.iter().collect();
