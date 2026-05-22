@@ -30,7 +30,10 @@ pub struct CheckResult {
 
 impl CheckResult {
     /// Create a passing check.
-    pub fn pass(name: impl Into<String>) -> Self {
+    pub fn pass<N>(name: N) -> Self
+    where
+        N: Into<String>,
+    {
         Self {
             name: name.into(),
             passed: true,
@@ -39,7 +42,11 @@ impl CheckResult {
     }
 
     /// Create a failing check with a detail message.
-    pub fn fail(name: impl Into<String>, detail: impl Into<String>) -> Self {
+    pub fn fail<N, D>(name: N, detail: D) -> Self
+    where
+        N: Into<String>,
+        D: Into<String>,
+    {
         Self {
             name: name.into(),
             passed: false,
@@ -62,7 +69,10 @@ pub struct VerificationReport {
 
 impl VerificationReport {
     /// Create a new report for the given task.
-    pub fn new(task: impl Into<String>, checks: Vec<CheckResult>) -> Self {
+    pub fn new<T>(task: T, checks: Vec<CheckResult>) -> Self
+    where
+        T: Into<String>,
+    {
         Self {
             task: task.into(),
             checks,
@@ -121,7 +131,7 @@ pub struct CustomTool {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used)]
+    #![allow(clippy::expect_used, reason = "test code")]
 
     use super::*;
 
@@ -173,8 +183,8 @@ mod tests {
         // Then failures() returns only the failed checks.
         let failures: Vec<&CheckResult> = report.failures().collect();
         assert_eq!(failures.len(), 2);
-        assert_eq!(failures[0].name, "b");
-        assert_eq!(failures[1].name, "d");
+        assert_eq!(failures.get(0).expect("first failure").name, "b");
+        assert_eq!(failures.get(1).expect("second failure").name, "d");
     }
 
     #[test]

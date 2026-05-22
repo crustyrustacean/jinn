@@ -43,7 +43,7 @@ pub fn register_bench_tasks(registry: &mut BuiltinRegistry) {
 pub struct BenchTaskHandler {
     name: String,
     fixture_dir: Option<String>,
-    #[allow(dead_code, reason = "verify is called by the bench actor, not this handler")]
+    #[expect(dead_code, reason = "verify is called by the bench actor, not this handler")]
     verify: fn(&Path) -> VerificationReport,
 }
 
@@ -98,7 +98,7 @@ impl BuiltinHandler for BenchTaskHandler {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used)]
+    #![allow(clippy::expect_used, reason = "test code")]
 
     use super::*;
 
