@@ -47,6 +47,7 @@ pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::er
         "Time",
         "Passed",
         "Status",
+        "Detail",
     ]);
 
     for key in keys {
@@ -73,6 +74,7 @@ pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::er
                     Cell::new(text).fg(Color::Yellow)
                 };
                 let status_cell = Cell::new(&b.status);
+                let detail_cell = Cell::new(&b.detail);
 
                 table.add_row(vec![
                     Cell::new(name),
@@ -84,6 +86,7 @@ pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::er
                     time_cell,
                     passed_cell,
                     status_cell,
+                    detail_cell,
                 ]);
             }
             (None, Some(b)) => {
@@ -97,6 +100,7 @@ pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::er
                     Cell::new(format_duration(b.wall_time_ms)),
                     Cell::new(if b.passed { "✓" } else { "✗" }),
                     Cell::new(&b.status),
+                    Cell::new(&b.detail),
                 ]);
             }
             (Some(a), None) => {
@@ -110,6 +114,7 @@ pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::er
                     Cell::new(format_duration(a.wall_time_ms)),
                     Cell::new(if a.passed { "✓" } else { "✗" }),
                     Cell::new(&a.status),
+                    Cell::new(&a.detail),
                 ]);
             }
             (None, None) => {
