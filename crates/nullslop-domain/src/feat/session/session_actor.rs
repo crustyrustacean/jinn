@@ -20,7 +20,7 @@
 mod handlers;
 mod helpers;
 
-pub(crate) use handlers::lifecycle::setup_running_msg;
+pub use handlers::lifecycle::setup_running_msg;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;

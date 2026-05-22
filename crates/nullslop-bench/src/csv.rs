@@ -46,6 +46,7 @@ const HEADER: [&str; 9] = [
 
 /// A progressive CSV writer that flushes after every row.
 pub struct BenchCsvWriter {
+    /// Underlying CSV writer.
     writer: Writer<std::fs::File>,
 }
 
