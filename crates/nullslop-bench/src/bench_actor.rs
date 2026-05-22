@@ -24,7 +24,6 @@ use crate::task::{BenchTask, VerificationReport};
 use crate::tasks;
 
 /// A tracked bench session.
-#[allow(dead_code, reason = "timeout and verify used by bench lifecycle")]
 struct BenchSession {
     /// The bench task name (matches the lifecycle name).
     task_name: String,
@@ -291,7 +290,7 @@ impl BenchActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
     use std::path::Path;
     use std::time::Duration;
