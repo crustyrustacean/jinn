@@ -2211,3 +2211,67 @@ fn restore_is_noop_when_nothing_saved() {
     assert_eq!(session.ui.scroll_offset, Some(10));
     assert_eq!(session.ui.selected_entry_index, Some(0));
 }
+
+// --- Empty assistant navigation skip tests ---
+
+#[rstest::rstest]
+fn select_next_entry_skips_empty_assistant() {
+    // Given history [user, empty_assistant, user] with selection at 0.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::user("c"));
+    session.ui.selected_entry_index = Some(0);
+
+    // When selecting next.
+    session.select_next_entry();
+
+    // Then selection skips the empty assistant and lands on index 2.
+    assert_eq!(session.selected_entry_index(), Some(2));
+}
+
+#[rstest::rstest]
+fn select_prev_entry_skips_empty_assistant() {
+    // Given history [user, empty_assistant, user] with selection at 2.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::user("c"));
+    session.ui.selected_entry_index = Some(2);
+
+    // When selecting previous.
+    session.select_prev_entry();
+
+    // Then selection skips the empty assistant and lands on index 0.
+    assert_eq!(session.selected_entry_index(), Some(0));
+}
+
+#[rstest::rstest]
+fn select_next_entry_stays_put_when_only_empty_assistant_remains() {
+    // Given history [user, empty_assistant] with selection at 0.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.ui.selected_entry_index = Some(0);
+
+    // When selecting next.
+    session.select_next_entry();
+
+    // Then selection stays at 0 (can't skip to empty assistant).
+    assert_eq!(session.selected_entry_index(), Some(0));
+}
+
+#[rstest::rstest]
+fn select_prev_entry_stays_put_when_only_empty_assistant_remains() {
+    // Given history [empty_assistant, user] with selection at 1.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::user("b"));
+    session.ui.selected_entry_index = Some(1);
+
+    // When selecting previous.
+    session.select_prev_entry();
+
+    // Then selection stays at 1 (can't skip to empty assistant).
+    assert_eq!(session.selected_entry_index(), Some(1));
+}

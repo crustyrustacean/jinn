@@ -41,9 +41,16 @@ pub fn handle_mouse_scroll_down(state: &mut AppState) -> IntentResult {
 /// Scrolls the chat log to the very top and moves cursor to the first entry.
 pub fn handle_scroll_to_top(state: &mut AppState) -> IntentResult {
     state.active_session_mut().scroll_to_top();
-    // Set cursor to first entry.
+    // Set cursor to first non-empty-assistant entry.
     if !state.active_session().history().is_empty() {
-        state.active_session_mut().set_selected_entry_index(0);
+        let mut idx = 0;
+        let max = state.active_session().history().len();
+        while idx < max && state.active_session().history()[idx].is_empty_assistant() {
+            idx += 1;
+        }
+        if idx < max {
+            state.active_session_mut().set_selected_entry_index(idx);
+        }
     }
     IntentResult::empty()
 }
@@ -51,10 +58,16 @@ pub fn handle_scroll_to_top(state: &mut AppState) -> IntentResult {
 /// Scrolls the chat log to the very bottom and moves cursor to the last entry.
 pub fn handle_scroll_to_bottom(state: &mut AppState) -> IntentResult {
     state.active_session_mut().scroll_to_bottom();
-    // Set cursor to last entry.
+    // Set cursor to last non-empty-assistant entry.
     let max = state.active_session().history().len().saturating_sub(1);
     if !state.active_session().history().is_empty() {
-        state.active_session_mut().set_selected_entry_index(max);
+        let mut idx = max;
+        while idx > 0 && state.active_session().history()[idx].is_empty_assistant() {
+            idx = idx.saturating_sub(1);
+        }
+        if !state.active_session().history()[idx].is_empty_assistant() {
+            state.active_session_mut().set_selected_entry_index(idx);
+        }
     }
     IntentResult::empty()
 }
@@ -254,5 +267,33 @@ mod tests {
 
         // Then no commands are emitted.
         assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn scroll_to_top_skips_empty_assistant_at_index_0() {
+        // Given history [empty_assistant, user].
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::assistant(""));
+        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+
+        // When scrolling to top.
+        let _result = handle_scroll_to_top(&mut state);
+
+        // Then selection skips the empty assistant and lands on index 1.
+        assert_eq!(state.active_session().selected_entry_index(), Some(1));
+    }
+
+    #[rstest::rstest]
+    fn scroll_to_bottom_skips_empty_assistant_at_last_index() {
+        // Given history [user, empty_assistant].
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().push_entry(ChatEntry::assistant(""));
+
+        // When scrolling to bottom.
+        let _result = handle_scroll_to_bottom(&mut state);
+
+        // Then selection skips the empty assistant and lands on index 0.
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
     }
 }
