@@ -20,7 +20,7 @@ pub struct Cli {
     /// Session database file. Defaults to the platform data directory.
     /// Use this to inspect a bench database after a run, e.g.
     /// `nullslop --db-path ./bench.db/sessions.db`.
-    #[arg(long)]
+    #[arg(long, value_hint = clap::ValueHint::FilePath)]
     pub db_path: Option<PathBuf>,
 
     /// The subcommand to run. If omitted, launches the TUI.
@@ -80,6 +80,7 @@ pub enum BenchCommands {
     /// Run benchmark tasks through the actor pipeline.
     Run {
         /// Database file path for bench sessions (isolated from user's real database).
+        #[arg(value_hint = clap::ValueHint::FilePath)]
         db_path: PathBuf,
 
         /// Model(s) to benchmark (e.g., `openai/gpt-4o`). At least one required.
@@ -122,6 +123,7 @@ pub enum BenchCommands {
     /// Launch the TUI pointed at a bench database for inspection.
     Tui {
         /// Database file to open.
+        #[arg(value_hint = clap::ValueHint::FilePath)]
         db_path: PathBuf,
     },
 }
