@@ -65,6 +65,13 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         &mut rects,
     );
 
+    // Session preview popup — when sidebar sessions section is focused.
+    nullslop_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
+        frame,
+        layout.main,
+        &state,
+    );
+
     // Status bar — always visible at bottom.
     status_bar::render_status_bar(&mut app.ui_registry, frame, layout.status_bar, &state);
 
