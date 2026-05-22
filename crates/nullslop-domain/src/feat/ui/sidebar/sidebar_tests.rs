@@ -402,7 +402,12 @@ fn sidebar_with_all_sections() -> Sidebar {
 }
 
 /// Finds the first row in the buffer that contains the given needle text.
-fn find_row_containing(buf: &ratatui::buffer::Buffer, width: u16, height: u16, needle: &str) -> Option<u16> {
+fn find_row_containing(
+    buf: &ratatui::buffer::Buffer,
+    width: u16,
+    height: u16,
+    needle: &str,
+) -> Option<u16> {
     for y in 0..height {
         let row: String = (0..width)
             .map(|x| buf.cell((x, y)).map_or(" ", ratatui::buffer::Cell::symbol))
@@ -428,7 +433,11 @@ fn sessions_header_anchored_to_bottom() {
     // When rendering.
     terminal
         .draw(|frame| {
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &state);
+            sidebar.render(
+                frame,
+                ratatui::layout::Rect::new(0, 0, width, height),
+                &state,
+            );
         })
         .unwrap();
 
@@ -464,7 +473,11 @@ fn sessions_header_below_persona_when_sidebar_is_short() {
     // When rendering.
     terminal
         .draw(|frame| {
-            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &state);
+            sidebar.render(
+                frame,
+                ratatui::layout::Rect::new(0, 0, width, height),
+                &state,
+            );
         })
         .unwrap();
 

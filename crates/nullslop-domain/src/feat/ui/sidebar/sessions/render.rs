@@ -165,8 +165,7 @@ impl SidebarSection for SessionsSection {
             .sessions()
             .values()
             .filter(|s| {
-                s.session_state()
-                    == crate::feat::session::chat_session::SessionState::Loaded
+                s.session_state() == crate::feat::session::chat_session::SessionState::Loaded
             })
             .count() as u16;
         let visible = session_count.min(MAX_VISIBLE_SESSIONS as u16);

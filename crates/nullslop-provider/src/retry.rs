@@ -577,7 +577,7 @@ mod tests {
         for _ in 0..sample_count {
             let delay = svc
                 .compute_delay(3, &Report::new(LlmServiceError::Retryable))
-            .expect("should return Some");
+                .expect("should return Some");
             sum += delay.as_secs_f64();
         }
         let mean = sum / f64::from(sample_count);
@@ -606,12 +606,12 @@ mod tests {
         // When sampling 200 delays for each attempt 0–5.
         // Then every delay is within [0, min(base*2^attempt, max_delay)].
         let cases = [
-            (0u32, 2u64),   // 2 * 2^0 = 2
-            (1u32, 4u64),   // 2 * 2^1 = 4
-            (2u32, 8u64),   // 2 * 2^2 = 8
-            (3u32, 16u64),  // 2 * 2^3 = 16
-            (4u32, 32u64),  // 2 * 2^4 = 32
-            (5u32, 60u64),  // 2 * 2^5 = 64, capped at 60
+            (0u32, 2u64),  // 2 * 2^0 = 2
+            (1u32, 4u64),  // 2 * 2^1 = 4
+            (2u32, 8u64),  // 2 * 2^2 = 8
+            (3u32, 16u64), // 2 * 2^3 = 16
+            (4u32, 32u64), // 2 * 2^4 = 32
+            (5u32, 60u64), // 2 * 2^5 = 64, capped at 60
         ];
         for (attempt, upper_secs) in cases {
             let upper = Duration::from_secs(upper_secs);
