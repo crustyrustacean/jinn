@@ -35,7 +35,7 @@ use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn;
 use crate::feat::session_lifecycle::protocol::command::{
-    PersistSession, RunSessionSetup, RunSessionTeardown,
+    FinishSessionTeardown, PersistSession, RunSessionSetup, RunSessionTeardown,
 };
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{
@@ -127,6 +127,8 @@ pub enum Command {
     PersistSession(PersistSession),
     /// Request graceful termination of the current turn.
     SoftCancelTurn(SoftCancelTurn),
+    /// Finish an async teardown shell command (result from spawned task).
+    FinishSessionTeardown(FinishSessionTeardown),
 }
 
 impl Command {
@@ -173,6 +175,7 @@ impl Command {
             }
             Self::PersistSession(..) => Some(PersistSession::NAME),
             Self::SoftCancelTurn(..) => Some(SoftCancelTurn::NAME),
+            Self::FinishSessionTeardown(..) => Some(FinishSessionTeardown::NAME),
         }
     }
 }
@@ -276,6 +279,9 @@ impl std::fmt::Display for Command {
             }
             Command::SoftCancelTurn(payload) => {
                 write!(f, "soft cancel turn for {}", payload.session_id)
+            }
+            Command::FinishSessionTeardown(payload) => {
+                write!(f, "finish session teardown for {}", payload.session_id)
             }
         }
     }
