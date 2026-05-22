@@ -304,7 +304,10 @@ mod tests {
         let original = LifecycleCommand::Shell("echo /tmp".to_owned());
 
         // When serializing and deserializing through a wrapper.
-        let toml_str = toml::to_string(&CommandWrapper { cmd: original.clone() }).expect("serialize");
+        let toml_str = toml::to_string(&CommandWrapper {
+            cmd: original.clone(),
+        })
+        .expect("serialize");
         let restored: CommandWrapper = toml::from_str(&toml_str).expect("deserialize");
 
         // Then it matches the original.
@@ -317,7 +320,10 @@ mod tests {
         let original = LifecycleCommand::Builtin(BuiltinId("hello-world".to_owned()));
 
         // When serializing and deserializing through a wrapper.
-        let toml_str = toml::to_string(&CommandWrapper { cmd: original.clone() }).expect("serialize");
+        let toml_str = toml::to_string(&CommandWrapper {
+            cmd: original.clone(),
+        })
+        .expect("serialize");
         let restored: CommandWrapper = toml::from_str(&toml_str).expect("deserialize");
 
         // Then it matches the original.

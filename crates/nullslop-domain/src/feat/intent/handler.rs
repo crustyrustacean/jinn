@@ -31,7 +31,7 @@
 
 use crate::AppState;
 use crate::feat::session::chat_session::SessionPhase;
-use crate::protocol::{Command, PinPosition, PickerKind, SessionId};
+use crate::protocol::{Command, PickerKind, PinPosition, SessionId};
 
 use crate::Intent;
 use crate::feat;
