@@ -441,6 +441,13 @@ pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
 /// Handles `EnterInsertMode` — pushes Input onto the scope stack.
 pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
+
+    // If entering from pins, restore the viewport to its pre-pin position.
+    // The pin cursor jump is only for pin → Normal, not pin → Insert.
+    if state.active_session().has_saved_history_position() {
+        state.active_session_mut().restore_history_position();
+    }
+
     state.frontend.scope_stack.push(FocusScope::Input);
     IntentResult::empty()
 }
