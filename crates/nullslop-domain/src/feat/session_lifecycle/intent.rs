@@ -159,7 +159,9 @@ pub fn handle_session_lifecycle_setup(
                     template.render(args)
                 }
             }
-            crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => id.to_string(),
+            crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
+                id.to_string()
+            }
         };
 
         return IntentResult::with_commands(vec![
@@ -369,7 +371,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo /tmp/workdir".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "echo /tmp/workdir".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
 
@@ -407,7 +413,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "script.sh $1".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
 
@@ -485,8 +495,16 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo /tmp/workdir".to_owned())),
-                teardown: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("cleanup.sh $1".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "echo /tmp/workdir".to_owned(),
+                    ),
+                ),
+                teardown: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "cleanup.sh $1".to_owned(),
+                    ),
+                ),
             });
         let session_id = state.session.active_session_id().clone();
         state
@@ -558,7 +576,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1 $2".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "script.sh $1 $2".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
         let old_id = state.session.active_session_id().clone();
@@ -601,7 +623,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "script.sh $1".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
         let old_id = state.session.active_session_id().clone();
@@ -751,7 +777,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1 $2".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "script.sh $1 $2".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
 
@@ -775,7 +805,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1 $2".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "script.sh $1 $2".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
 
@@ -819,7 +853,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $@".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "script.sh $@".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
 
@@ -843,7 +881,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh <branch> <target>".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "script.sh <branch> <target>".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
 
@@ -868,7 +910,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "test".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1 $2".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "script.sh $1 $2".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
         let old_id = state.session.active_session_id().clone();
@@ -907,7 +953,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("script.sh $1 $2".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "script.sh $1 $2".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
         let old_id = state.session.active_session_id().clone();
@@ -987,7 +1037,11 @@ mod tests {
             .push(SessionLifecycle {
                 name: "fossil branch".to_owned(),
                 description: None,
-                setup: Some(crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell("echo /tmp/workdir".to_owned())),
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "echo /tmp/workdir".to_owned(),
+                    ),
+                ),
                 teardown: None,
             });
         let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);

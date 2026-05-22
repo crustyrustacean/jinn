@@ -75,7 +75,11 @@ impl ratatui_which_key::Key for KeyEvent {
             Key::F(n) => format!("F{n}"),
         };
 
-        match (self.modifiers.shift, self.modifiers.ctrl, self.modifiers.alt) {
+        match (
+            self.modifiers.shift,
+            self.modifiers.ctrl,
+            self.modifiers.alt,
+        ) {
             (true, false, false) => format!("S-{base}"),
             (false, true, false) => format!("C-{base}"),
             (true, true, false) => format!("C-S-{base}"),
