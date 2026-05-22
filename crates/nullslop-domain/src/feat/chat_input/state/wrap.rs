@@ -4,8 +4,12 @@
 //! index ranges. Each visual line tracks its start/end grapheme position in the
 //! original text, whether it's a wrapped continuation, and which logical line
 //! it belongs to.
+//!
+//! Column counting uses `unicode_width` so that wide characters (CJK, emoji)
+//! are correctly counted as 2 display columns.
 
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 /// A single visual line produced by word-wrapping.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,7 +135,7 @@ fn wrap_logical_line(
             }
         }
 
-        col += 1;
+        col += UnicodeWidthStr::width(*g);
 
         if col > width {
             // Need to wrap.
@@ -147,7 +151,10 @@ fn wrap_logical_line(
                 first_line = false;
                 // Recompute col from the remaining graphemes.
                 // i+1 graphemes have been processed; break_pos started the new line.
-                col = (i + 1).saturating_sub(break_pos);
+                col = graphemes[break_pos..=i]
+                    .iter()
+                    .map(|g| UnicodeWidthStr::width(*g))
+                    .sum();
                 last_word_break = None;
             } else {
                 // No word break found — break at the current position
@@ -160,7 +167,7 @@ fn wrap_logical_line(
                 });
                 line_start = i;
                 first_line = false;
-                col = 1;
+                col = UnicodeWidthStr::width(*g);
                 last_word_break = None;
             }
         }
@@ -310,16 +317,17 @@ mod tests {
 
     #[rstest::rstest]
     fn unicode_text_wraps_correctly() {
-        // Given text with emoji (each emoji is 1 grapheme, 2 display columns
-        // but we count graphemes for wrapping).
+        // Given text with emoji (each emoji is 1 grapheme, 2 display columns).
         let text = "🎉🎊🎈🎁🎁🎊🎈🎉";
 
-        // When wrapping at width 5 (graphemes, not columns).
+        // When wrapping at width 5 (display columns).
         let lines = wrap_text(text, 5);
 
-        // Then there are 2 lines (5 + 3 graphemes).
-        assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0].grapheme_end - lines[0].grapheme_start, 5);
+        // Then emoji wrap by display width: 2 emoji = 4 cols fits, 3rd = 6 > 5.
+        // 8 emoji → 4 lines of 2 graphemes each.
+        assert_eq!(lines.len(), 4);
+        assert_eq!(lines[0].grapheme_end - lines[0].grapheme_start, 2);
+        assert!(lines[1].is_continuation);
     }
 
     #[rstest::rstest]
@@ -383,5 +391,65 @@ mod tests {
         assert_eq!(lines[2].grapheme_start, 3);
         assert_eq!(lines[2].grapheme_end, 4);
         assert_eq!(lines[2].logical_line_index, 2);
+    }
+
+    #[rstest::rstest]
+    fn cjk_chars_wrap_at_display_width() {
+        // Given 6 CJK characters (each 2 display columns).
+        let text = "中文测试字符";
+
+        // When wrapping at width 10 (display columns).
+        let lines = wrap_text(text, 10);
+
+        // Then 5 CJK = 10 cols fits, 6th overflows → 2 lines.
+        assert_eq!(lines.len(), 2);
+        // Line 1: 5 graphemes (10 display cols).
+        assert_eq!(lines[0].grapheme_end - lines[0].grapheme_start, 5);
+        // Line 2: 1 grapheme (2 display cols).
+        assert_eq!(lines[1].grapheme_end - lines[1].grapheme_start, 1);
+        assert!(lines[1].is_continuation);
+    }
+
+    #[rstest::rstest]
+    fn cjk_exactly_fits_width() {
+        // Given 5 CJK characters (10 display columns).
+        let text = "中文测试字";
+
+        // When wrapping at width 10.
+        let lines = wrap_text(text, 10);
+
+        // Then no wrap — exactly fits.
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].grapheme_end - lines[0].grapheme_start, 5);
+    }
+
+    #[rstest::rstest]
+    fn mixed_ascii_cjk_exactly_fits() {
+        // Given "hello中文" (5 ASCII + 2 CJK = 9 display cols).
+        let text = "hello中文";
+
+        // When wrapping at width 9.
+        let lines = wrap_text(text, 9);
+
+        // "hello中文" = 9 cols, exactly fits.
+        // Then no wrap.
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].grapheme_end - lines[0].grapheme_start, 7);
+    }
+
+    #[rstest::rstest]
+    fn mixed_ascii_cjk_forces_wrap() {
+        // Given "hello中文测试" (5+2+2 = 9 display cols).
+        let text = "hello中文测试";
+
+        // When wrapping at width 7.
+        let lines = wrap_text(text, 7);
+
+        // "hello中" = 7 cols, "文" = 2 → 9 > 7, forced break.
+        assert_eq!(lines.len(), 2);
+        // Line 1: "hello中" = 6 graphemes (7 display cols).
+        assert_eq!(lines[0].grapheme_end - lines[0].grapheme_start, 6);
+        // Line 2: "文测试" = 3 graphemes (6 display cols).
+        assert_eq!(lines[1].grapheme_end - lines[1].grapheme_start, 3);
     }
 }
