@@ -10,10 +10,14 @@ pub mod close;
 pub mod r#continue;
 pub mod navigate;
 pub mod new_with_lifecycle;
+pub mod preview;
 pub mod reconcile;
 pub mod render;
 pub mod state;
 pub mod teardown;
+
+#[cfg(test)]
+mod preview_tests;
 
 use std::time::Duration;
 
@@ -30,6 +34,10 @@ pub use close::{
 pub use r#continue::handle_session_continue;
 pub use navigate::{navigate, receive_cursor, scroll_to_cursor};
 pub use new_with_lifecycle::handle_sidebar_session_new_with_lifecycle;
+pub use preview::{
+    render_session_preview, render_session_preview_for_state, session_preview_popup_rect,
+    sessions_section_content_height,
+};
 pub use reconcile::reconcile_after_session_removal;
 pub use render::SessionsSection;
 pub use state::SessionsSectionState;
