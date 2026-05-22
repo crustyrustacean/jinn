@@ -1,7 +1,5 @@
 //! Fixture directory management for bench tasks.
 
-#![allow(dead_code, reason = "used by runner in phase 4")]
-
 use std::fs;
 use std::io;
 use std::path::Path;

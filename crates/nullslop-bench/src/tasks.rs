@@ -8,7 +8,6 @@
 //! - **fix-code**: Model receives broken code and must fix it.
 //! - **redirect**: Multi-turn, model is asked to do X, then told to do Y instead.
 
-#![allow(dead_code, reason = "used by runner")]
 #![allow(clippy::missing_docs_in_private_items, reason = "helpers")]
 
 use std::path::Path;
