@@ -136,8 +136,13 @@ impl SessionPersistenceActor {
         payload: &RunSessionSetup,
         ctx: &ActorContext,
     ) {
-        // "running" entry is now emitted by the intent handler as a PushChatEntry
-        // command before this handler runs. No direct push needed here.
+        // Mark session as busy (spinner) before the .await.
+        {
+            let mut state = self.state.write();
+            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+                session.mark_busy();
+            }
+        }
 
         match payload.lifecycle_command {
             Some(ref cmd) => match cmd {
@@ -161,6 +166,14 @@ impl SessionPersistenceActor {
         ctx: &ActorContext,
     ) {
         let result = run_setup_command(&payload.command).await;
+
+        // Clear busy flag in all code paths.
+        {
+            let mut state = self.state.write();
+            if let Some(session) = state.session.sessions_mut().get_mut(&payload.session_id) {
+                session.mark_busy_complete();
+            }
+        }
 
         match result {
             Ok(cwd) => {
@@ -670,8 +683,24 @@ impl SessionPersistenceActor {
             template.render(lifecycle_args)
         };
 
+        // Mark session as busy (spinner) before the .await.
+        {
+            let mut state = self.state.write();
+            if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                session.mark_busy();
+            }
+        }
+
         match run_teardown_command(&rendered).await {
             Ok(()) => {
+                // Clear busy flag.
+                {
+                    let mut state = self.state.write();
+                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                        session.mark_busy_complete();
+                    }
+                }
+
                 // Advance lifecycle_script_state: SetupRan → TeardownRan.
                 {
                     let mut state = self.state.write();
@@ -683,6 +712,14 @@ impl SessionPersistenceActor {
                 true
             }
             Err(report) => {
+                // Clear busy flag.
+                {
+                    let mut state = self.state.write();
+                    if let Some(session) = state.session.sessions_mut().get_mut(session_id) {
+                        session.mark_busy_complete();
+                    }
+                }
+
                 let error_msg =
                     if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
                         format_lifecycle_error(cmd_err)

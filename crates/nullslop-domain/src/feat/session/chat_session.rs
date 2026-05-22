@@ -138,6 +138,37 @@ impl LifecycleScriptState {
     }
 }
 
+/// Reference-counted busy indicator for tracking concurrent async operations.
+///
+/// Callers increment with [`Self::set_busy`] before starting an operation
+/// and decrement with [`Self::busy_complete`] when it finishes.
+/// [`Self::is_busy`] returns true while any operation is in flight.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BusyCounter {
+    count: u32,
+}
+
+impl BusyCounter {
+    /// Increment the busy counter. Represents one more in-flight operation.
+    pub fn set_busy(&mut self) {
+        self.count = self.count.saturating_add(1);
+    }
+
+    /// Decrement the busy counter. Floors at zero with a warning log on underflow.
+    pub fn busy_complete(&mut self) {
+        if self.count == 0 {
+            tracing::warn!("busy_complete called with no outstanding busy tokens");
+            return;
+        }
+        self.count -= 1;
+    }
+
+    /// Returns `true` while any operation is in flight (counter > 0).
+    pub fn is_busy(&self) -> bool {
+        self.count > 0
+    }
+}
+
 /// Groups runtime-only fields that are specific to the current running instance
 /// and have no meaning across restarts (stream indices, queues, in-progress flags).
 /// The entire struct is skipped during serialization so individual fields cannot
@@ -170,6 +201,10 @@ pub struct SessionCoreEphemeral {
     /// Not persisted — compaction is ephemeral.
     #[serde(skip)]
     pub(crate) compaction_gathered_indices: Vec<usize>,
+    /// Reference-counted busy counter for lifecycle scripts and other async operations.
+    /// Rendered as the animated "Working..." spinner when non-zero.
+    #[serde(default)]
+    pub(crate) busy_counter: BusyCounter,
 }
 
 // Core session state — owned by session-actor and context-actor.
@@ -1572,6 +1607,22 @@ impl ChatSessionState {
     /// Advances lifecycle state after successful teardown: `SetupRan → TeardownRan`.
     pub fn advance_lifecycle_after_teardown(&mut self) {
         self.core.lifecycle_script_state.advance_after_teardown();
+    }
+
+    /// Whether the session has any in-flight async operations that should
+    /// show the "Working..." spinner.
+    pub fn is_busy(&self) -> bool {
+        self.core.ephemeral.busy_counter.is_busy()
+    }
+
+    /// Mark the session as busy (increment the counter).
+    pub fn mark_busy(&mut self) {
+        self.core.ephemeral.busy_counter.set_busy();
+    }
+
+    /// Mark one busy operation as complete (decrement the counter).
+    pub fn mark_busy_complete(&mut self) {
+        self.core.ephemeral.busy_counter.busy_complete();
     }
 
     /// Request graceful turn termination at the next pause point.
