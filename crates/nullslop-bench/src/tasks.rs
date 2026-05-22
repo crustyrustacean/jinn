@@ -33,7 +33,7 @@ fn one_shot_tasks() -> Vec<BenchTask> {
             messages: vec![
                 "Write a hello world program in Rust. Save it to src/main.rs and run it.",
             ],
-            fixture_dir: None,
+            fixture_dir: Some("hello-world"),
             timeout: Duration::from_secs(300),
             persona: None,
             tools: BenchTools {
