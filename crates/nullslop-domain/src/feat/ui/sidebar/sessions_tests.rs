@@ -488,7 +488,10 @@ fn render_footer_uses_focus_accent_when_sidebar_focused() {
     let buffer = terminal.backend().buffer();
     let corner_cell = buffer.cell((0, 1)).expect("corner cell should exist");
     assert_eq!(corner_cell.symbol(), "\u{2570}");
-    assert_eq!(corner_cell.style().fg, Some(state.frontend.theme.focus_accent));
+    assert_eq!(
+        corner_cell.style().fg,
+        Some(state.frontend.theme.focus_accent)
+    );
 }
 
 #[rstest::rstest]
@@ -509,7 +512,10 @@ fn render_footer_uses_border_unfocused_when_sidebar_not_focused() {
     let buffer = terminal.backend().buffer();
     let corner_cell = buffer.cell((0, 1)).expect("corner cell should exist");
     assert_eq!(corner_cell.symbol(), "\u{2570}");
-    assert_eq!(corner_cell.style().fg, Some(state.frontend.theme.border_unfocused));
+    assert_eq!(
+        corner_cell.style().fg,
+        Some(state.frontend.theme.border_unfocused)
+    );
 }
 
 #[rstest::rstest]
@@ -534,7 +540,10 @@ fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
     let buffer = terminal.backend().buffer();
     let corner_cell = buffer.cell((0, 1)).expect("corner cell should exist");
     assert_eq!(corner_cell.symbol(), "\u{2570}");
-    assert_eq!(corner_cell.style().fg, Some(state.frontend.theme.border_unfocused));
+    assert_eq!(
+        corner_cell.style().fg,
+        Some(state.frontend.theme.border_unfocused)
+    );
 }
 
 // --- Close session ---

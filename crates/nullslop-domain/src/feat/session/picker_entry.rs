@@ -1,4 +1,4 @@
-//! Session picker entry type and rendering.
+//! Session tree entry type and rendering for the tree-structured session picker.
 
 use std::ops::Range;
 
@@ -6,15 +6,21 @@ use crate::feat::picker::style::{dim_style, selected_style};
 use crate::feat::session::chat_session::SessionState;
 use crate::feat::theme::Theme;
 use crate::protocol::SessionId;
-use nullslop_selection_widget::PickerItem;
+use nullslop_selection_widget::TreeItem;
 use nullslop_selection_widget::highlight_text_with_bg;
 use ratatui::text::{Line, Span};
 
-/// A saved session entry ready for display in the picker.
+/// A saved session entry ready for display in the tree-structured picker.
+///
+/// Implements [`TreeItem`] for tree-aware fuzzy filtering and rendering.
+/// ID fields are pre-computed as strings to satisfy the `&str` return types
+/// on [`TreeItem::id`] and [`TreeItem::parent_id`].
 #[derive(Debug, Clone)]
-pub struct SessionEntry {
+pub struct SessionTreeEntry {
     /// The session's unique identifier.
     pub session_id: SessionId,
+    /// Pre-computed string representation of `session_id` for `TreeItem::id`.
+    id_str: String,
     /// Human-readable title (derived from first user message).
     pub title: String,
     /// When this session was last modified.
@@ -23,9 +29,46 @@ pub struct SessionEntry {
     pub theme: Theme,
     /// Whether this session is loaded in memory or archived.
     pub session_state: SessionState,
+    /// Parent session ID — `None` for root sessions.
+    pub parent_id: Option<SessionId>,
+    /// Pre-computed string representation of `parent_id` for `TreeItem::parent_id`.
+    parent_id_str: Option<String>,
 }
 
-impl PickerItem for SessionEntry {
+impl SessionTreeEntry {
+    /// Creates a new session tree entry.
+    pub fn new(
+        session_id: SessionId,
+        title: String,
+        updated_at: jiff::Timestamp,
+        theme: Theme,
+        session_state: SessionState,
+        parent_id: Option<SessionId>,
+    ) -> Self {
+        let id_str = session_id.to_string();
+        let parent_id_str = parent_id.as_ref().map(std::string::ToString::to_string);
+        Self {
+            session_id,
+            id_str,
+            title,
+            updated_at,
+            theme,
+            session_state,
+            parent_id,
+            parent_id_str,
+        }
+    }
+}
+
+impl TreeItem for SessionTreeEntry {
+    fn id(&self) -> &str {
+        &self.id_str
+    }
+
+    fn parent_id(&self) -> Option<&str> {
+        self.parent_id_str.as_deref()
+    }
+
     fn display_label(&self) -> &str {
         &self.title
     }
@@ -108,14 +151,15 @@ mod tests {
 
     #[rstest::rstest]
     fn archived_entry_renders_with_dimmed_foreground() {
-        // Given an archived session entry.
-        let entry = SessionEntry {
-            session_id: SessionId::new(),
-            title: "Archived Chat".to_owned(),
-            updated_at: jiff::Timestamp::now(),
-            theme: default_theme(),
-            session_state: SessionState::Archived,
-        };
+        // Given an archived session tree entry.
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "Archived Chat".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Archived,
+            None,
+        );
 
         // When rendering (not selected).
         let row = entry.render_row(false);
@@ -127,14 +171,15 @@ mod tests {
 
     #[rstest::rstest]
     fn loaded_entry_renders_with_normal_foreground() {
-        // Given a loaded session entry.
-        let entry = SessionEntry {
-            session_id: SessionId::new(),
-            title: "Active Chat".to_owned(),
-            updated_at: jiff::Timestamp::now(),
-            theme: default_theme(),
-            session_state: SessionState::Loaded,
-        };
+        // Given a loaded session tree entry.
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "Active Chat".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            None,
+        );
 
         // When rendering (not selected).
         let row = entry.render_row(false);
@@ -146,15 +191,16 @@ mod tests {
 
     #[rstest::rstest]
     fn archived_selected_entry_has_contrast_foreground() {
-        // Given an archived session entry.
+        // Given an archived session tree entry.
         let theme = default_theme();
-        let entry = SessionEntry {
-            session_id: SessionId::new(),
-            title: "Archived Chat".to_owned(),
-            updated_at: jiff::Timestamp::now(),
-            theme: theme.clone(),
-            session_state: SessionState::Archived,
-        };
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "Archived Chat".to_owned(),
+            jiff::Timestamp::now(),
+            theme.clone(),
+            SessionState::Archived,
+            None,
+        );
 
         // When rendering (selected).
         let row = entry.render_row(true);
@@ -167,5 +213,42 @@ mod tests {
         );
         assert_eq!(title_span.style.fg, Some(expected_fg));
         assert_eq!(title_span.style.bg, Some(theme.picker_selected_bg));
+    }
+
+    #[rstest::rstest]
+    fn tree_item_id_returns_session_id_string() {
+        // Given a session tree entry.
+        let id = SessionId::new();
+        let entry = SessionTreeEntry::new(
+            id.clone(),
+            "Test".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            None,
+        );
+
+        // When calling id().
+        // Then it returns the string representation of the session ID.
+        assert_eq!(entry.id(), id.to_string());
+        assert!(entry.parent_id().is_none());
+    }
+
+    #[rstest::rstest]
+    fn tree_item_parent_id_returns_string() {
+        // Given a session tree entry with a parent.
+        let parent_id = SessionId::new();
+        let entry = SessionTreeEntry::new(
+            SessionId::new(),
+            "Child".to_owned(),
+            jiff::Timestamp::now(),
+            default_theme(),
+            SessionState::Loaded,
+            Some(parent_id.clone()),
+        );
+
+        // When calling parent_id().
+        // Then it returns the string representation of the parent ID.
+        assert_eq!(entry.parent_id(), Some(parent_id.to_string().as_str()));
     }
 }

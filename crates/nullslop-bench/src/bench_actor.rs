@@ -12,26 +12,24 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use nullslop_domain::feat::chat_input::protocol::command::EnqueueUserMessage;
-use nullslop_domain::feat::provider::protocol::command::CancelStream;
-use nullslop_domain::feat::provider::protocol::event::StreamCompleted;
-use nullslop_domain::feat::session::chat_session::{ChatSessionState, SessionPhase};
-use nullslop_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
-use nullslop_domain::feat::session::profile::SessionProfile;
-use nullslop_domain::feat::session::token_stats::TokenStats;
-use nullslop_domain::feat::session_lifecycle::builtin::{BuiltinId, LifecycleCommand};
-use nullslop_domain::feat::session_lifecycle::protocol::command::RunSessionSetup;
-use nullslop_domain::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
-use nullslop_domain::{
-    Actor, ActorContext, ActorEnvelope, NoDirectMsg, State,
-};
-use nullslop_domain::protocol::PromptStrategyId;
-use nullslop_domain::feat::session::session_actor::setup_running_msg;
-use nullslop_domain::protocol::{Command, Event, SessionId};
 use crate::csv::{BenchCsvWriter, BenchResult};
 use crate::orchestrator::BenchPlan;
 use crate::task::BenchTask;
 use crate::tasks;
+use nullslop_domain::feat::chat_input::protocol::command::EnqueueUserMessage;
+use nullslop_domain::feat::provider::protocol::command::CancelStream;
+use nullslop_domain::feat::provider::protocol::event::StreamCompleted;
+use nullslop_domain::feat::session::chat_session::{ChatSessionState, SessionPhase};
+use nullslop_domain::feat::session::profile::SessionProfile;
+use nullslop_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+use nullslop_domain::feat::session::session_actor::setup_running_msg;
+use nullslop_domain::feat::session::token_stats::TokenStats;
+use nullslop_domain::feat::session_lifecycle::builtin::{BuiltinId, LifecycleCommand};
+use nullslop_domain::feat::session_lifecycle::protocol::command::RunSessionSetup;
+use nullslop_domain::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
+use nullslop_domain::protocol::PromptStrategyId;
+use nullslop_domain::protocol::{Command, Event, SessionId};
+use nullslop_domain::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, State};
 
 /// A tracked bench session.
 struct BenchSession {
@@ -191,9 +189,7 @@ impl BenchActor {
             new_session.set_lifecycle_name(Some(task_name.clone()));
 
             let new_id = new_session.session_id().clone();
-            state
-                .session
-                .insert(new_session);
+            state.session.insert(new_session);
             state.session.set_active(new_id.clone());
             new_id
         };
@@ -227,11 +223,7 @@ impl BenchActor {
     }
 
     /// Enqueue a message for the given session.
-    fn enqueue_message(
-        session_id: &SessionId,
-        message: &str,
-        ctx: &ActorContext,
-    ) {
+    fn enqueue_message(session_id: &SessionId, message: &str, ctx: &ActorContext) {
         let _ = ctx.send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
             session_id: session_id.clone(),
             entry: nullslop_domain::ChatEntry::user(message.to_owned()),
@@ -324,7 +316,10 @@ impl BenchActor {
     }
 
     /// Handle `SessionPhaseChanged` — finalize result when tracked session returns to Idle.
-    #[expect(clippy::unused_async, reason = "called via .await from the async handle method")]
+    #[expect(
+        clippy::unused_async,
+        reason = "called via .await from the async handle method"
+    )]
     async fn handle_session_phase_changed(
         &mut self,
         payload: &SessionPhaseChanged,
@@ -684,7 +679,9 @@ mod tests {
 
         // Manually set the deadline to the past to simulate timeout.
         if let Some(tracked) = actor.pending.get_mut(&session_id) {
-            tracked.deadline = Instant::now().checked_sub(Duration::from_secs(1)).unwrap_or(Instant::now());
+            tracked.deadline = Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap_or(Instant::now());
         }
 
         // When StreamCompleted fires.
@@ -707,10 +704,7 @@ mod tests {
                 Command::CancelStream(CancelStream { session_id: sid }) if sid == &session_id
             )
         });
-        assert!(
-            found,
-            "expected CancelStream command for timed-out session"
-        );
+        assert!(found, "expected CancelStream command for timed-out session");
     }
 
     #[test]
@@ -750,7 +744,10 @@ mod tests {
 
         // And messages_remaining is decremented.
         let tracked = actor.pending.get(&session_id).expect("tracked");
-        assert_eq!(tracked.messages_remaining, 0, "hello-world has 1 message, should be 0 remaining");
+        assert_eq!(
+            tracked.messages_remaining, 0,
+            "hello-world has 1 message, should be 0 remaining"
+        );
     }
 
     #[tokio::test]
@@ -822,16 +819,16 @@ mod tests {
             .await;
 
         // Then the session is removed from pending (finalized).
-        assert!(!actor.pending.contains_key(&session_id), "session should be removed after final idle");
+        assert!(
+            !actor.pending.contains_key(&session_id),
+            "session should be removed after final idle"
+        );
     }
 
     #[test]
     fn plan_driven_actor_starts_first_pair_on_activate() {
         // Given a plan with 1 model and 1 task.
-        let plan = build_plan(
-            &["test-model".to_owned()],
-            &["hello-world".to_owned()],
-        );
+        let plan = build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]);
 
         let state = State::new(nullslop_domain::AppState::default());
         let (sink, _ctx) = test_context();
