@@ -259,6 +259,7 @@ impl<'a> HistoryRender<'a> {
                     tool_entry_max_lines: max_lines,
                     theme: self.theme.clone(),
                     paired_status,
+                    is_streaming: false,
                 };
                 let lines = entry_to_lines(entry, &ctx);
                 let wrapped_count: u16 = if self.content_width == 0 {
@@ -388,6 +389,7 @@ impl<'a> HistoryRender<'a> {
                     tool_entry_max_lines: max_lines,
                     theme: self.theme.clone(),
                     paired_status,
+                    is_streaming: false,
                 };
                 entry_to_lines(entry, &ctx)
             };

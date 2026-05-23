@@ -1612,6 +1612,19 @@ impl ChatSessionState {
         self.ui.expanded_entries.contains(id)
     }
 
+    /// Returns `true` if the given entry is a `ToolCall` that is still
+    /// actively streaming arguments from the LLM.
+    pub fn is_tool_call_streaming(&self, entry_id: &ChatEntryId) -> bool {
+        let Some(idx) = self.core.history.iter().position(|e| e.id == *entry_id) else {
+            return false;
+        };
+        self.core
+            .ephemeral
+            .streaming_tool_call_indices
+            .values()
+            .any(|&v| v == idx)
+    }
+
     /// Returns this session's working directory for tool execution.
     pub fn cwd(&self) -> &std::path::Path {
         &self.core.cwd
