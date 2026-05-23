@@ -489,7 +489,6 @@ struct PersistableCore {
     blobs: HashMap<String, JsonValue>,
     lifecycle_name: Option<String>,
     lifecycle_args: Vec<String>,
-    session_state: SessionState,
     lifecycle_script_state: LifecycleScriptState,
 }
 
@@ -507,7 +506,6 @@ impl From<&SessionCore> for PersistableCore {
             blobs: core.blobs.clone(),
             lifecycle_name: core.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle_args.clone(),
-            session_state: core.session_state,
             lifecycle_script_state: core.lifecycle_script_state,
         }
     }
@@ -529,7 +527,7 @@ impl From<PersistableCore> for SessionCore {
             blobs: core.blobs,
             lifecycle_name: core.lifecycle_name,
             lifecycle_args: core.lifecycle_args,
-            session_state: core.session_state,
+            session_state: SessionState::Loaded, // overridden by TryFrom<SessionLoadContext> from archived column
             lifecycle_script_state: core.lifecycle_script_state,
             ephemeral: SessionCoreEphemeral::default(),
         }
@@ -629,7 +627,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             cwd,
             lifecycle_name,
             lifecycle_args,
-            archived: _archived, // archive status is a persistence concern, not part of ChatSessionState
+            archived,
             lifecycle_script_state,
             metadata,
         } = ctx.row;
@@ -681,6 +679,13 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 lifecycle_script_state: serde_json::from_str(&lifecycle_script_state)
                     .unwrap_or_default(),
             }
+        };
+
+        // Single source of truth: archived column → session_state.
+        core.session_state = if archived {
+            SessionState::Archived
+        } else {
+            SessionState::Loaded
         };
 
         // Overlay data from normalized tables (always loaded regardless of path).
