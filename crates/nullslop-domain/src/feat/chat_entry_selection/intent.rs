@@ -134,9 +134,8 @@ pub fn handle_expand_tool_entry(state: &mut AppState) -> IntentResult {
 /// - If nothing is selected → no-op.
 pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
     let session = state.active_session();
-    let vi_idx = match session.selected_entry_index() {
-        Some(idx) => idx,
-        None => return IntentResult::empty(),
+    let Some(vi_idx) = session.selected_entry_index() else {
+        return IntentResult::empty();
     };
 
     let history = session.history();
