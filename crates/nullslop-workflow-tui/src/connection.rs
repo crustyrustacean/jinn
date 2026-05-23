@@ -93,75 +93,67 @@ impl ConnectionRouter for SimpleRouter {
 /// Given the previous, current, and next cell positions, pick the correct
 /// box-drawing character.
 fn box_char(prev: Option<(u16, u16)>, curr: (u16, u16), next: Option<(u16, u16)>) -> char {
-    let from_dir = prev.and_then(|p| direction(p, curr));
-    let to_dir = next.and_then(|n| direction(curr, n));
+    // Compute the direction from the corner toward each neighbor.
+    let d_prev = prev.and_then(|p| dir_toward(curr, p));
+    let d_next = next.and_then(|n| dir_toward(curr, n));
 
-    match (from_dir, to_dir) {
+    match (d_prev, d_next) {
         // Straight lines
-        (Some(Dir::H), Some(Dir::H)) => '─',
-        (Some(Dir::V), Some(Dir::V)) => '│',
-        // Start/end caps (only one direction)
-        (None, Some(Dir::H)) | (Some(Dir::H), None) => '─',
-        (None, Some(Dir::V)) | (Some(Dir::V), None) => '│',
-        // Turns
-        (Some(Dir::H), Some(Dir::V)) | (Some(Dir::V), Some(Dir::H)) => {
-            // Need to know which quadrant to pick the right corner.
-            turn_char(prev, curr, next)
-        }
+        (Some(Dir2D::Left), Some(Dir2D::Right))
+        | (Some(Dir2D::Right), Some(Dir2D::Left)) => '─',
+        (Some(Dir2D::Up), Some(Dir2D::Down))
+        | (Some(Dir2D::Down), Some(Dir2D::Up)) => '│',
+        // End caps (only one direction)
+        (None, Some(Dir2D::Left))
+        | (None, Some(Dir2D::Right))
+        | (Some(Dir2D::Left), None)
+        | (Some(Dir2D::Right), None) => '─',
+        (None, Some(Dir2D::Up))
+        | (None, Some(Dir2D::Down))
+        | (Some(Dir2D::Up), None)
+        | (Some(Dir2D::Down), None) => '│',
+        // Corners — classified by which directions the arms extend from the corner.
+        // ╭ arms extend RIGHT and DOWN (corner is at top-left)
+        (Some(Dir2D::Right), Some(Dir2D::Down))
+        | (Some(Dir2D::Down), Some(Dir2D::Right)) => '╭',
+        // ╮ arms extend LEFT and DOWN (corner is at top-right)
+        (Some(Dir2D::Left), Some(Dir2D::Down))
+        | (Some(Dir2D::Down), Some(Dir2D::Left)) => '╮',
+        // ╰ arms extend RIGHT and UP (corner is at bottom-left)
+        (Some(Dir2D::Right), Some(Dir2D::Up))
+        | (Some(Dir2D::Up), Some(Dir2D::Right)) => '╰',
+        // ╯ arms extend LEFT and UP (corner is at bottom-right)
+        (Some(Dir2D::Left), Some(Dir2D::Up))
+        | (Some(Dir2D::Up), Some(Dir2D::Left)) => '╯',
         // Fallback
         _ => '┼',
     }
 }
 
-/// Direction between two adjacent cells.
+/// Direction from one cell toward an adjacent cell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Dir {
-    H, // horizontal
-    V, // vertical
+enum Dir2D {
+    Up,
+    Down,
+    Left,
+    Right,
 }
 
-fn direction(a: (u16, u16), b: (u16, u16)) -> Option<Dir> {
-    match a {
-        (ax, ay) if ax == b.0 && ay != b.1 => Some(Dir::V),
-        (ax, ay) if ax != b.0 && ay == b.1 => Some(Dir::H),
+/// Computes the direction from `curr` toward `other`.
+///
+/// Returns `None` if the cells are not orthogonally adjacent.
+fn dir_toward(curr: (u16, u16), other: (u16, u16)) -> Option<Dir2D> {
+    let (cx, cy) = (i32::from(curr.0), i32::from(curr.1));
+    let (ox, oy) = (i32::from(other.0), i32::from(other.1));
+    let dx = ox - cx;
+    let dy = oy - cy;
+    match (dx.signum(), dy.signum()) {
+        (1, 0) => Some(Dir2D::Right),
+        (-1, 0) => Some(Dir2D::Left),
+        (0, 1) => Some(Dir2D::Down),
+        (0, -1) => Some(Dir2D::Up),
         _ => None,
     }
-}
-
-/// Pick the correct rounded corner character for a turn.
-fn turn_char(prev: Option<(u16, u16)>, curr: (u16, u16), next: Option<(u16, u16)>) -> char {
-    let (cx, cy) = curr;
-    let (px, py) = prev.unwrap_or(curr);
-    let (nx, ny) = next.unwrap_or(curr);
-
-    // Determine the two segments meeting at curr.
-    let from_left = px < cx;
-    let from_right = px > cx;
-    let from_above = py < cy;
-    let from_below = py > cy;
-    let to_left = nx < cx;
-    let to_right = nx > cx;
-    let to_above = ny < cy;
-    let to_below = ny > cy;
-
-    // ╭ top-left corner: comes from above or right, goes right or below
-    if (from_above || to_below) && (from_right || to_right) && !(from_left || to_left) {
-        return '╭';
-    }
-    // ╮ top-right corner: comes from above or left, goes left or below
-    if (from_above || to_below) && (from_left || to_left) && !(from_right || to_right) {
-        return '╮';
-    }
-    // ╰ bottom-left corner: comes from below or right, goes right or above
-    if (from_below || to_above) && (from_right || to_right) && !(from_left || to_left) {
-        return '╰';
-    }
-    // ╯ bottom-right corner: comes from below or left, goes left or above
-    if (from_below || to_above) && (from_left || to_left) && !(from_right || to_right) {
-        return '╯';
-    }
-
-    '┼' // fallback
 }
 
 /// Renders a connection path into a ratatui buffer with the given port type's color.
@@ -227,6 +219,52 @@ mod tests {
         assert!(
             has_turn,
             "path should contain at least one corner character"
+        );
+    }
+
+    #[test]
+    fn turn_source_above_target_uses_correct_corners() {
+        // Wire goes right then down (y1=0 < y2=5).
+        let path = SimpleRouter::route((0, 0), (10, 5), &[]);
+        let turns: Vec<_> = path
+            .iter()
+            .filter(|c| matches!(c.char, '╮' | '╭' | '╯' | '╰'))
+            .collect();
+        assert_eq!(turns.len(), 2, "should have exactly two turns");
+        // First turn at (5,0): arms go LEFT and DOWN = ╮
+        assert_eq!(
+            turns[0].char, '╮',
+            "first turn should be ╮ (left+down arms) at {:?}",
+            turns[0].pos
+        );
+        // Second turn at (5,5): arms go UP and RIGHT = ╰
+        assert_eq!(
+            turns[1].char, '╰',
+            "second turn should be ╰ (up+right arms) at {:?}",
+            turns[1].pos
+        );
+    }
+
+    #[test]
+    fn turn_source_below_target_uses_correct_corners() {
+        // Wire goes right then up (y1=5 > y2=0).
+        let path = SimpleRouter::route((0, 5), (10, 0), &[]);
+        let turns: Vec<_> = path
+            .iter()
+            .filter(|c| matches!(c.char, '╮' | '╭' | '╯' | '╰'))
+            .collect();
+        assert_eq!(turns.len(), 2, "should have exactly two turns");
+        // First turn at (5,5): arms go LEFT and UP = ╯
+        assert_eq!(
+            turns[0].char, '╯',
+            "first turn should be ╯ (left+up arms) at {:?}",
+            turns[0].pos
+        );
+        // Second turn at (5,0): arms go DOWN and RIGHT = ╭
+        assert_eq!(
+            turns[1].char, '╭',
+            "second turn should be ╭ (down+right arms) at {:?}",
+            turns[1].pos
         );
     }
 
