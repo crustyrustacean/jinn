@@ -230,11 +230,9 @@ impl PortValues {
     ///
     /// Returns [`PortError::Missing`] if the port is absent.
     pub fn take(&mut self, name: &str) -> Result<PortValue, PortError> {
-        self.0
-            .remove(name)
-            .ok_or_else(|| PortError::Missing {
-                name: name.to_owned(),
-            })
+        self.0.remove(name).ok_or_else(|| PortError::Missing {
+            name: name.to_owned(),
+        })
     }
 
     /// Removes and returns a string value by port name.
@@ -365,7 +363,10 @@ mod tests {
     fn take_string_returns_type_mismatch_for_json_value() {
         // Given a PortValues with a JSON port.
         let mut values = PortValues::new();
-        values.insert("data".to_owned(), PortValue::Json(serde_json::json!({"key": 42})));
+        values.insert(
+            "data".to_owned(),
+            PortValue::Json(serde_json::json!({"key": 42})),
+        );
 
         // When taking as a string.
         let result = values.take_string("data");
@@ -425,7 +426,10 @@ mod tests {
         // Given a PortValues with multiple ports.
         let mut values = PortValues::new();
         values.insert("text".to_owned(), PortValue::String("hello".to_owned()));
-        values.insert("data".to_owned(), PortValue::Json(serde_json::json!([1, 2, 3])));
+        values.insert(
+            "data".to_owned(),
+            PortValue::Json(serde_json::json!([1, 2, 3])),
+        );
 
         // When taking all values back.
         let text = values.take_string("text").unwrap();
