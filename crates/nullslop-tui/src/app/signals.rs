@@ -8,6 +8,8 @@ pub(super) struct TuiSignalsSnapshot {
     pub toggle_whichkey: bool,
     /// Whether an external editor was requested.
     pub edit_requested: bool,
+    /// Text to copy to the system clipboard (from yank-selected-entry intent).
+    pub yank_text: Option<String>,
 }
 
 impl TuiSignalsSnapshot {
@@ -16,6 +18,7 @@ impl TuiSignalsSnapshot {
         Self {
             toggle_whichkey: state.frontend.tui_signals.toggle_whichkey,
             edit_requested: state.frontend.tui_signals.edit_requested,
+            yank_text: state.frontend.tui_signals.yank_text.clone(),
         }
     }
 }
